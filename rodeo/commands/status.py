@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import ssl
 import urllib.request
-from pathlib import Path
-
 import click
 from rich import box
 from rich.console import Console
@@ -58,7 +56,7 @@ def status_cmd(config_path: str) -> None:
     table.add_column("Autostart", justify="center")
 
     try:
-        from ..engine.libvirt import LibvirtDriver, RODEO_VMS
+        from ..engine.libvirt import LibvirtDriver
 
         with LibvirtDriver(cfg["libvirt"]["uri"]) as lv:
             vms = lv.list_vms()

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import os
-import subprocess
 
 import click
 from rich.console import Console
@@ -32,9 +31,6 @@ _DEFAULT_KEY = os.path.expanduser("~/.ssh/id_ed25519")
 @click.option("-c", "--command", "remote_cmd", default=None, help="Run command and exit.")
 def ssh_cmd(vm: str, config_path: str, key: str, login_user: str | None, remote_cmd: str | None) -> None:
     """Open an SSH session to a rodeo VM."""
-    from ..config import load_config
-
-    cfg = load_config(config_path)
     ip = _VM_IPS[vm]
     user = login_user or _VM_USERS[vm]
 

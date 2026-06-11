@@ -3,8 +3,6 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
-
 import yaml
 
 _STATE_PATH = Path.home() / ".rodeo" / "state.yaml"

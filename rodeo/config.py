@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -83,12 +82,22 @@ def load_config(plan_path: str | Path = "rodeo-plan.yaml") -> dict:
 
     cfg = _resolve_secrets(cfg, secrets)
 
-    # RODEO_ANSIBLE_PATH env override
     env_path = os.environ.get("RODEO_ANSIBLE_PATH")
     if env_path:
         cfg["ansible"]["path"] = env_path
 
     return cfg
+
+
+def validate_config(cfg: dict) -> None:
+    """Raise ValueError if any credentials still contain unresolved ?? placeholders."""
+    creds = cfg.get("credentials", {})
+    unresolved = [k for k, v in creds.items() if isinstance(v, str) and v.startswith("??")]
+    if unresolved:
+        raise ValueError(
+            f"Secrets not resolved: {', '.join(unresolved)}\n"
+            "Edit ~/.rodeo/secrets.yaml or run: rodeo init"
+        )
 
 
 _BUNDLED_DATA = Path(__file__).parent / "data"

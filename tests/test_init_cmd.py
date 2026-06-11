@@ -26,6 +26,7 @@ def test_init_writes_random_secrets(tmp_path):
     assert stat.S_IMODE(secrets.stat().st_mode) == 0o600
     content = secrets.read_text()
     assert "Foobar" not in content and "CHANGE_ME" not in content
+    assert "harvester_token:" in content
     assert (tmp_path / "work" / "rodeo-plan.yaml").exists()
 
 

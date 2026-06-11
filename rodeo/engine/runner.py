@@ -301,6 +301,7 @@ class DeployRunner:
             "harvester_vip":         net.get("vip", "192.168.122.10"),
             "rancher_ip":            net.get("rancher_ip", "192.168.122.9"),
             "dns_domain":            net.get("dns_domain", "aerogrid.com"),
+            "libvirt_network_gateway": net.get("gateway", "192.168.122.1"),
             "harvester_os_password": creds.get("harvester_os_password", ""),
             "rancher_vm_password":   creds.get("harvester_os_password", ""),
             "harvester_version":     ver.get("harvester", "1.8.0"),
@@ -312,6 +313,9 @@ class DeployRunner:
             "rancher_disk_gb":       r_res.get("disk_gb", 60),
             "image_dir":             storage.get("image_dir", "/var/lib/libvirt/images"),
         }
+        # Only override the role-default join token when the plan provides one.
+        if creds.get("harvester_token"):
+            vars_data["harvester_token"] = creds["harvester_token"]
 
         rodeo_dir = Path.home() / ".rodeo"
         rodeo_dir.mkdir(parents=True, exist_ok=True)

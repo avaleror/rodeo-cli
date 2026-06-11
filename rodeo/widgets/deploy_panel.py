@@ -105,3 +105,7 @@ class DeployPanel(Vertical):
             f" [bold green]✓ Complete[/bold green]  "
             f"Harvester: https://{vip}  Rancher: https://{rancher_ip}:30002"
         )
+        self.append_ansible(
+            "[bold green]✓ Deployment complete.[/bold green] "
+            "Credentials: admin / password in ~/.rodeo/secrets.yaml"
+        )

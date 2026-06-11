@@ -121,6 +121,17 @@ def test_vars_file_wires_plan_and_is_private(fake_profile, fake_cfg, tmp_path):
     assert data["harvester_os_password"] == "Secret123"
     assert data["harvester_memory_mb"] == 4096
     assert data["harvester_version"] == "1.9.0"
+    assert data["libvirt_network_gateway"] == "192.168.122.1"
+    assert "harvester_token" not in data  # role default applies when plan has none
+
+
+def test_vars_file_passes_token_when_set(fake_profile, fake_cfg, tmp_path):
+    fake_cfg["network"]["gateway"] = "10.0.0.1"
+    fake_cfg["credentials"]["harvester_token"] = "tok-abc123"
+    vars_file = DeployRunner(fake_cfg, tmp_path)._write_vars_file()
+    data = yaml.safe_load(vars_file.read_text())
+    assert data["harvester_token"] == "tok-abc123"
+    assert data["libvirt_network_gateway"] == "10.0.0.1"
 
 
 def test_stale_vars_files_are_swept(fake_profile, fake_cfg, tmp_path):

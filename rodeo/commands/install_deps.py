@@ -109,20 +109,46 @@ def _install_fedora() -> None:
         console.print(f"[yellow]  ⚠  kubectl install failed: {exc}[/yellow]")
 
 
-def _install_ansible() -> None:
-    console.print("[bold]  Installing ansible-core via pip...[/bold]")
-    _run([sys.executable, "-m", "pip", "install", "--quiet", "ansible-core>=2.16"])
-    _run([sys.executable, "-m", "pip", "install", "--quiet", "jinja2", "pyyaml"])
+_ANSIBLE_DISTRO_PKG = {
+    "suse":   ["zypper", "--non-interactive", "install", "ansible-core"],
+    "debian": ["apt-get", "install", "-y", "ansible-core"],
+    "fedora": ["dnf", "install", "-y", "ansible-core"],
+}
+
+
+def _install_ansible(distro: str) -> None:
+    """Prefer the distro package (plays nice with PEP 668); fall back to pip."""
+    if shutil.which("ansible-playbook"):
+        console.print("[bold]  ansible-playbook already present — skipping install.[/bold]")
+        _install_ansible_collections()
+        return
+
+    pkg_cmd = _ANSIBLE_DISTRO_PKG.get(distro)
+    installed = False
+    if pkg_cmd:
+        console.print(f"[bold]  Installing ansible-core via {pkg_cmd[0]}...[/bold]")
+        installed = _run(pkg_cmd, check=False).returncode == 0 and \
+            shutil.which("ansible-playbook") is not None
+
+    if not installed:
+        console.print("[bold]  Installing ansible-core via pip...[/bold]")
+        _run([sys.executable, "-m", "pip", "install", "--quiet", "ansible-core>=2.16"])
+
     _install_ansible_collections()
 
 
 def _install_ansible_collections() -> None:
     console.print("[bold]  Installing Ansible collections...[/bold]")
     req_file = Path(__file__).parent.parent / "data" / "ansible" / "requirements.yml"
-    if req_file.exists():
-        _run(["ansible-galaxy", "collection", "install", "-r", str(req_file)], check=False)
-    else:
+    if not req_file.exists():
         console.print("[yellow]  ⚠  requirements.yml not found, skipping collection install[/yellow]")
+        return
+    r = _run(["ansible-galaxy", "collection", "install", "-r", str(req_file)], check=False)
+    if r.returncode != 0:
+        console.print(
+            "[red]  ✗  ansible-galaxy collection install failed — "
+            "rodeo deploy will retry, but check network access to galaxy.ansible.com[/red]"
+        )
 
 
 @click.command("install-deps")
@@ -147,7 +173,7 @@ def install_deps_cmd(skip_ansible: bool) -> None:
         raise SystemExit(1)
 
     if not skip_ansible:
-        _install_ansible()
+        _install_ansible(distro)
 
     console.print("\n[bold green]✓  Dependencies installed.[/bold green]")
     console.print("Next step: [bold]rodeo init[/bold]")

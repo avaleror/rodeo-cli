@@ -56,3 +56,5 @@ credentials:
   # an empty password.
   harvester_os_password: "??harvester_os_password"
   lab_admin_password: "??lab_admin_password"
+  # Cluster join token — random per environment (rodeo init generates it)
+  harvester_token: "??harvester_token"

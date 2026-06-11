@@ -242,5 +242,6 @@ def _deploy_plain(
         elif isinstance(event, DeployComplete):
             net = cfg["network"]
             console.print("\n[bold green]✓  Deployment complete.[/bold green]")
-            console.print(f"  Harvester:  https://{net['vip']}")
-            console.print(f"  Rancher:    https://{net['rancher_ip']}:30002\n")
+            console.print(f"  Harvester:    https://{net['vip']}")
+            console.print(f"  Rancher:      https://{net['rancher_ip']}:30002")
+            console.print("  Credentials:  admin / password in ~/.rodeo/secrets.yaml\n")

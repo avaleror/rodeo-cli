@@ -178,7 +178,3 @@ def find_ansible_root(cfg: dict) -> Path | None:
         if (p / "ansible" / "playbook.yml").exists():
             return p
     return None
-
-
-# Keep old name for backward compatibility
-find_ansible_path = find_ansible_root

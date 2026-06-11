@@ -99,6 +99,22 @@ If a source resolves to nothing, `rodeo deploy` fails fast instead of deploying 
 
 Note: `??cmd:` runs a shell command from the plan file, so treat `rodeo-plan.yaml` with the same care as a Makefile.
 
+## Security model
+
+This is a single-tenant training lab tool, not production tooling. Trade-offs are intentional and scoped to an isolated lab host:
+
+- TLS verification is off everywhere (Harvester and Rancher use self-signed certs)
+- SSH host key checking is off (`StrictHostKeyChecking=no`) for the lab VMs
+- libvirt runs VMs with `security_driver = "none"` (required for nested KVM on SELinux-enforcing SLES 16)
+- The host's DNAT exposes the Harvester UI and Rancher NodePort on the host IP by design
+- One ed25519 host key is baked into all guests so the deployer can drive them
+
+What IS protected: secrets live in chmod-600 files, never on argv or in git, password-rendering Ansible tasks run with `no_log`, and `rodeo init` generates random per-environment passwords and cluster join tokens. Run `deployment_target: baremetal` hosts behind a firewall and change nothing about the defaults on anything network-facing.
+
+## Troubleshooting
+
+`rodeo logs --bundle` writes a `rodeo-bundle-<timestamp>.tar.gz` with phase state, a credential-redacted config, and the tail of every VM serial log — attach it when asking for help.
+
 ## Requirements
 
 - Linux host with KVM (`/dev/kvm`)

@@ -4,7 +4,7 @@ from __future__ import annotations
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Vertical
-from textual.widgets import DataTable, Label, RichLog
+from textual.widgets import DataTable, Label, ProgressBar, RichLog
 
 from ..state import PHASES
 
@@ -29,6 +29,11 @@ class DeployPanel(Vertical):
         color: $text-muted;
         padding: 0 1;
     }
+    #phase-progress {
+        height: 1;
+        margin: 0 1;
+        display: none;
+    }
     #ansible-log {
         height: 1fr;
         padding: 0 1;
@@ -39,6 +44,7 @@ class DeployPanel(Vertical):
     def compose(self) -> ComposeResult:
         yield DataTable(id="phases-table", show_header=True, cursor_type="none")
         yield Label("", id="phase-sep")
+        yield ProgressBar(id="phase-progress", total=100.0, show_eta=False)
         yield RichLog(id="ansible-log", highlight=True, markup=True, wrap=True, auto_scroll=True)
 
     def on_mount(self) -> None:
@@ -61,6 +67,7 @@ class DeployPanel(Vertical):
         m, s = divmod(int(elapsed), 60)
         t.update_cell(phase, "status",  Text("✓ done", style="green"))
         t.update_cell(phase, "elapsed", f"{m}:{s:02d}")
+        self.query_one("#phase-progress", ProgressBar).display = False
 
     def set_phase_skipped(self, phase: str) -> None:
         t = self.query_one("#phases-table", DataTable)
@@ -70,6 +77,17 @@ class DeployPanel(Vertical):
         t = self.query_one("#phases-table", DataTable)
         t.update_cell(phase, "status", Text("✗ failed", style="bold red"))
         self.query_one("#phase-sep", Label).update(f" [red]✗ {phase} failed[/red]")
+
+    def update_progress(self, step: str, elapsed: float, total: float, detail: str = "") -> None:
+        bar = self.query_one("#phase-progress", ProgressBar)
+        bar.display = True
+        bar.update(total=total, progress=elapsed)
+        m_e, s_e = divmod(int(elapsed), 60)
+        m_t = int(total) // 60
+        info = f"  {detail}" if detail else ""
+        self.query_one("#phase-sep", Label).update(
+            f" ▶ {step}{info}  {m_e}:{s_e:02d} / {m_t}:00"
+        )
 
     def append_ansible(self, line: str) -> None:
         self.query_one("#ansible-log", RichLog).write(line)

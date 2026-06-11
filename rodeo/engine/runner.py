@@ -53,6 +53,14 @@ class LogLine(DeployEvent):
 
 
 @dataclass
+class ProgressUpdate(DeployEvent):
+    step: str
+    elapsed: float
+    total: float
+    detail: str = ""
+
+
+@dataclass
 class DeployComplete(DeployEvent):
     pass
 
@@ -198,14 +206,12 @@ class DeployRunner:
         if r.returncode != 0:
             yield LogLine(f"  ⚠  firewall-cmd reload: {r.stderr.strip()}")
 
-        start_script = self.root / "deployer" / "lib" / "start-vms.sh"
-        if not start_script.exists():
-            yield LogLine(f"  ✗  {start_script} not found")
-            self._last_rc = 1
-            return
-
-        env = {**os.environ, "HARVESTER_VIP": self.cfg["network"]["vip"]}
-        yield from self._stream_subprocess([str(start_script)], env=env)
+        from .cluster import ClusterPhase
+        phase = ClusterPhase(self.cfg)
+        yield from phase.stream()
+        self._last_rc = 0 if phase.success else 1
+        if phase.error:
+            yield LogLine(f"  ✗  cluster: {phase.error}")
 
     def _stream_rancher(self) -> Iterator[DeployEvent]:
         script = self.root / "deployer" / "lib" / "setup-rancher.sh"

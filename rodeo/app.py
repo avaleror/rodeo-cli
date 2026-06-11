@@ -22,6 +22,7 @@ from .engine.runner import (
     PhaseFailed,
     PhaseSkipped,
     PhaseStarted,
+    ProgressUpdate,
 )
 from .widgets.deploy_panel import DeployPanel
 from .widgets.logs_panel import LogsPanel
@@ -68,6 +69,15 @@ class _LogLine(Message):
         super().__init__()
         self.vm = vm
         self.line = line
+
+
+class _ProgressUpdate(Message):
+    def __init__(self, step: str, elapsed: float, total: float, detail: str = "") -> None:
+        super().__init__()
+        self.step = step
+        self.elapsed = elapsed
+        self.total = total
+        self.detail = detail
 
 
 class _DeployComplete(Message):
@@ -153,6 +163,10 @@ class RodeoApp(App):
             elif isinstance(event, PhaseFailed):
                 self.post_message(_PhaseFailed(event.phase, event.rc))
                 self.post_message(_DeployFailed(event.phase))
+            elif isinstance(event, ProgressUpdate):
+                self.post_message(_ProgressUpdate(
+                    event.step, event.elapsed, event.total, event.detail
+                ))
             elif isinstance(event, LogLine):
                 self.post_message(_AnsibleLine(event.line))
             elif isinstance(event, DeployComplete):
@@ -197,6 +211,11 @@ class RodeoApp(App):
 
     def on__phase_failed(self, msg: _PhaseFailed) -> None:
         self.query_one(DeployPanel).set_phase_failed(msg.phase)
+
+    def on__progress_update(self, msg: _ProgressUpdate) -> None:
+        self.query_one(DeployPanel).update_progress(
+            msg.step, msg.elapsed, msg.total, msg.detail
+        )
 
     def on__ansible_line(self, msg: _AnsibleLine) -> None:
         self.query_one(DeployPanel).append_ansible(msg.line)

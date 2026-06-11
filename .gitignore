@@ -18,7 +18,7 @@ htmlcov/
 .mypy_cache/
 
 # Secrets / local config
-secrets.yaml
+/secrets.yaml
 *.secrets.yaml
 .env
 

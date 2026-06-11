@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ssl
+import urllib.error
 import urllib.request
 import click
 from rich import box
@@ -38,6 +39,8 @@ def _vip_reachable(vip: str) -> bool:
         ctx.verify_mode = ssl.CERT_NONE
         urllib.request.urlopen(f"https://{vip}", timeout=5, context=ctx)
         return True
+    except urllib.error.HTTPError:
+        return True  # any HTTP status means the VIP answered
     except Exception:
         return False
 
@@ -61,7 +64,7 @@ def status_cmd(config_path: str) -> None:
         from ..engine.libvirt import LibvirtDriver
 
         with LibvirtDriver(cfg["libvirt"]["uri"]) as lv:
-            vms = lv.list_vms()
+            vms = lv.list_vms(list(cfg.get("vms", {}).keys()) or profile.vm_names)
     except RuntimeError as exc:
         console.print(f"[yellow]⚠  {exc}[/yellow]\n")
         vms = []

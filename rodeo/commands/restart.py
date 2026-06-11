@@ -8,11 +8,9 @@ from rich.console import Console
 
 console = Console()
 
-_VALID_VMS = ["harvester1", "harvester2", "harvester3", "rancher"]
-
 
 @click.command("restart")
-@click.argument("vm", type=click.Choice(_VALID_VMS + ["all"]))
+@click.argument("vm")
 @click.option("--config", "config_path", default="rodeo-plan.yaml", show_default=True)
 @click.option("--hard", is_flag=True, help="Force-kill instead of ACPI shutdown.")
 def restart_cmd(vm: str, config_path: str, hard: bool) -> None:
@@ -21,7 +19,11 @@ def restart_cmd(vm: str, config_path: str, hard: bool) -> None:
     from ..engine.libvirt import LibvirtDriver
 
     cfg = load_config(config_path)
-    targets = _VALID_VMS if vm == "all" else [vm]
+    vm_names = list(cfg.get("vms", {}).keys())
+    if vm != "all" and vm not in vm_names:
+        console.print(f"[red]✗  Unknown VM '{vm}'. Known: {', '.join(vm_names + ['all'])}[/red]")
+        raise SystemExit(1)
+    targets = vm_names if vm == "all" else [vm]
 
     with LibvirtDriver(cfg["libvirt"]["uri"]) as lv:
         for name in targets:

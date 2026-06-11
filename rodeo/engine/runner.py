@@ -213,28 +213,12 @@ class DeployRunner:
             yield LogLine(f"  ✗  cluster: {phase.error}")
 
     def _stream_rancher(self) -> Iterator[DeployEvent]:
-        script = self.root / "deployer" / "lib" / "setup-rancher.sh"
-        if not script.exists():
-            yield LogLine(f"  ✗  {script} not found")
-            self._last_rc = 1
-            return
-
-        creds = self.cfg.get("credentials", {})
-        net = self.cfg["network"]
-        ver = self.cfg.get("versions", {})
-        env = {
-            **os.environ,
-            "RANCHER_VM_IP":         net.get("rancher_ip", "192.168.122.9"),
-            "RANCHER_VERSION":       ver.get("rancher", "2.13.1"),
-            "K3S_VERSION":           ver.get("k3s", "v1.31.4+k3s1"),
-            "HARVESTER_VIP":         net.get("vip", "192.168.122.10"),
-            "HARVESTER_OS_PASSWORD": creds.get("harvester_os_password", ""),
-            "CERT_MANAGER_VERSION":  ver.get("cert_manager", "v1.16.2"),
-            "LAB_ADMIN_PASSWORD":    creds.get(
-                "lab_admin_password", creds.get("harvester_os_password", "")
-            ),
-        }
-        yield from self._stream_subprocess([str(script)], env=env)
+        from .rancher import RancherPhase
+        phase = RancherPhase(self.cfg)
+        yield from phase.stream()
+        self._last_rc = 0 if phase.success else 1
+        if phase.error:
+            yield LogLine(f"  ✗  rancher: {phase.error}")
 
     def _stream_finalise(self) -> Iterator[DeployEvent]:
         vm_names = list(self.cfg.get("vms", {}).keys())

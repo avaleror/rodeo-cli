@@ -1,0 +1,637 @@
+"""RancherPhase — Python port of deployer/lib/setup-rancher.sh."""
+from __future__ import annotations
+
+import json
+import os
+import ssl
+import subprocess
+import tempfile
+import time
+import urllib.request
+from pathlib import Path
+from typing import Iterator
+
+from .cluster import KUBECONFIG_PATH
+from .runner import DeployEvent, LogLine, ProgressUpdate
+
+
+class RancherPhase:
+    """Install K3s + Rancher Prime on the rancher VM and import the Harvester cluster."""
+
+    SSH_TIMEOUT     = 300    # wait for rancher VM SSH (5 min)
+    K3S_TIMEOUT     = 600    # K3s node Ready (10 min)
+    PING_TIMEOUT    = 600    # Rancher /ping (10 min)
+    CLUSTER_TIMEOUT = 1800   # cluster Active in Rancher (30 min)
+
+    SSH_POLL     = 10
+    K3S_POLL     = 10
+    PING_POLL    = 10
+    CLUSTER_POLL = 30
+
+    def __init__(self, cfg: dict) -> None:
+        net  = cfg["network"]
+        ver  = cfg.get("versions", {})
+        cred = cfg.get("credentials", {})
+
+        self.rancher_ip       = net.get("rancher_ip", "192.168.122.9")
+        self.vip              = net["vip"]
+        self.nodeport         = int(net.get("rancher_nodeport", 30002))
+        self.dns_domain       = net.get("dns_domain", "aerogrid.com")
+
+        self.rancher_version  = ver.get("rancher", "2.13.1")
+        self.k3s_version      = ver.get("k3s", "v1.31.4+k3s1")
+        self.cert_mgr_version = ver.get("cert_manager", "v1.16.2")
+
+        self.ssh_key       = Path(cfg.get("ssh", {}).get("identity_file", "/root/.ssh/id_ed25519"))
+        self.admin_password = cred.get("lab_admin_password", cred.get("harvester_os_password", ""))
+
+        self.rancher_api      = f"https://{self.rancher_ip}:{self.nodeport}"
+        self.rancher_hostname = f"rancher.{self.rancher_ip}.sslip.io"
+
+        self.success      = False
+        self.error        = ""
+        self._api_token   = ""
+        self._cluster_id  = ""
+
+    def stream(self) -> Iterator[DeployEvent]:
+        """Yield events. Check self.success after exhaustion."""
+        yield LogLine(f"Waiting for rancher VM SSH at {self.rancher_ip}...")
+        if not (yield from self._wait_ssh()):
+            self.error = f"SSH not reachable after {self.SSH_TIMEOUT // 60} min"
+            return
+        yield LogLine("  SSH is up.")
+
+        yield LogLine(f"Installing K3s {self.k3s_version}...")
+        if not (yield from self._install_k3s()):
+            return
+        yield LogLine("  K3s installed.")
+
+        yield LogLine("Waiting for K3s node Ready...")
+        if not (yield from self._wait_k3s_ready()):
+            self.error = "K3s node never became Ready"
+            return
+        yield LogLine("  K3s node Ready.")
+
+        yield LogLine("Installing Helm...")
+        if not (yield from self._install_helm()):
+            return
+        yield LogLine("  Helm installed.")
+
+        yield LogLine(f"Installing cert-manager {self.cert_mgr_version}...")
+        if not (yield from self._install_cert_manager()):
+            return
+        yield LogLine("  cert-manager installed.")
+
+        yield LogLine(f"Installing Rancher Prime {self.rancher_version} (may take 10+ min)...")
+        if not (yield from self._install_rancher()):
+            return
+        yield LogLine("  Rancher Prime installed.")
+
+        yield LogLine(f"Exposing Rancher on NodePort {self.nodeport}...")
+        if not (yield from self._expose_nodeport()):
+            return
+        yield LogLine("  NodePort configured.")
+
+        yield LogLine(f"Waiting for Rancher /ping on {self.rancher_api}...")
+        if not (yield from self._wait_ping()):
+            self.error = f"Rancher did not respond after {self.PING_TIMEOUT // 60} min"
+            return
+        yield LogLine("  Rancher is up.")
+
+        yield LogLine("Configuring Rancher admin password and server-url...")
+        if not (yield from self._configure_api()):
+            return
+        yield LogLine("  Rancher API configured.")
+
+        yield LogLine("Importing Harvester cluster into Rancher...")
+        if not (yield from self._import_harvester()):
+            return
+        yield LogLine("  Harvester cluster import started.")
+
+        yield LogLine("Setting Harvester dashboard admin password...")
+        yield from self._set_harvester_password()
+
+        yield LogLine("Ejecting installer ISOs from Harvester VMs...")
+        yield from self._eject_cdroms()
+
+        yield LogLine(
+            f"\n  Rancher URL  : {self.rancher_api}  (NodePort)"
+            f"\n  Cluster ID   : {self._cluster_id}"
+        )
+        self.success = True
+
+    # ---------- SSH helpers ----------
+
+    def _ssh_opts(self) -> list[str]:
+        return [
+            "-i", str(self.ssh_key),
+            "-o", "StrictHostKeyChecking=no",
+            "-o", "UserKnownHostsFile=/dev/null",
+            "-o", "ConnectTimeout=10",
+            "-o", "BatchMode=yes",
+            "-o", "LogLevel=ERROR",
+        ]
+
+    def _ssh_run(self, *remote_cmd: str, timeout: int = 30) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["ssh", *self._ssh_opts(), f"root@{self.rancher_ip}", *remote_cmd],
+            capture_output=True, text=True, timeout=timeout,
+        )
+
+    def _ssh_script(self, script: str, timeout: int = 120) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["ssh", *self._ssh_opts(), f"root@{self.rancher_ip}", "bash", "-s"],
+            input=script, capture_output=True, text=True, timeout=timeout,
+        )
+
+    # ---------- HTTP helpers ----------
+
+    def _ssl_ctx(self) -> ssl.SSLContext:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        return ctx
+
+    def _http(
+        self,
+        method: str,
+        path: str,
+        data: dict | None = None,
+        token: str = "",
+    ) -> dict:
+        url = f"{self.rancher_api}{path}"
+        body = json.dumps(data).encode() if data is not None else None
+        headers = {"Content-Type": "application/json"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        req = urllib.request.Request(url, data=body, headers=headers, method=method)
+        with urllib.request.urlopen(req, context=self._ssl_ctx(), timeout=30) as resp:
+            return json.loads(resp.read())
+
+    # ---------- Phase sub-steps ----------
+
+    def _wait_ssh(self) -> Iterator[DeployEvent]:
+        t0 = time.monotonic()
+        while True:
+            elapsed = time.monotonic() - t0
+            try:
+                r = self._ssh_run("echo ok", timeout=15)
+                if r.returncode == 0:
+                    yield ProgressUpdate("Waiting for SSH", elapsed, self.SSH_TIMEOUT)
+                    return True
+            except Exception:
+                pass
+
+            if elapsed >= self.SSH_TIMEOUT:
+                yield ProgressUpdate("Waiting for SSH", elapsed, self.SSH_TIMEOUT)
+                return False
+
+            yield ProgressUpdate("Waiting for SSH", elapsed, self.SSH_TIMEOUT)
+            m, s = divmod(int(elapsed), 60)
+            yield LogLine(f"  {m:02d}:{s:02d} / {self.SSH_TIMEOUT // 60}:00 — SSH not ready yet...")
+            time.sleep(self.SSH_POLL)
+
+    def _install_k3s(self) -> Iterator[DeployEvent]:
+        script = (
+            "set -euo pipefail\n"
+            f'export INSTALL_K3S_VERSION="{self.k3s_version}"\n'
+            "curl -sfL https://get.k3s.io"
+            " | sh -s - --write-kubeconfig-mode 644 --disable traefik --node-name rancher\n"
+        )
+        yield LogLine("  Running K3s installer (1-3 min)...")
+        r = self._ssh_script(script, timeout=300)
+        for line in (r.stdout + r.stderr).splitlines():
+            if line.strip():
+                yield LogLine(f"  {line}")
+        if r.returncode != 0:
+            self.error = "K3s install failed"
+            return False
+        return True
+
+    def _wait_k3s_ready(self) -> Iterator[DeployEvent]:
+        script = (
+            "set -euo pipefail\n"
+            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+            "kubectl get nodes --no-headers 2>/dev/null | awk '{print $2}' | head -1\n"
+        )
+        t0 = time.monotonic()
+        while True:
+            elapsed = time.monotonic() - t0
+            try:
+                r = self._ssh_script(script, timeout=30)
+                if r.returncode == 0 and r.stdout.strip() == "Ready":
+                    yield ProgressUpdate("K3s node Ready", elapsed, self.K3S_TIMEOUT)
+                    return True
+            except Exception:
+                pass
+
+            if elapsed >= self.K3S_TIMEOUT:
+                yield ProgressUpdate("K3s node Ready", elapsed, self.K3S_TIMEOUT)
+                return False
+
+            yield ProgressUpdate("K3s node Ready", elapsed, self.K3S_TIMEOUT)
+            m, s = divmod(int(elapsed), 60)
+            yield LogLine(f"  {m:02d}:{s:02d} / {self.K3S_TIMEOUT // 60}:00 — waiting for K3s node...")
+            time.sleep(self.K3S_POLL)
+
+    def _install_helm(self) -> Iterator[DeployEvent]:
+        script = (
+            "set -euo pipefail\n"
+            "curl -sfL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash\n"
+        )
+        yield LogLine("  Running Helm installer...")
+        r = self._ssh_script(script, timeout=120)
+        for line in (r.stdout + r.stderr).splitlines():
+            if line.strip():
+                yield LogLine(f"  {line}")
+        if r.returncode != 0:
+            self.error = "Helm install failed"
+            return False
+        return True
+
+    def _install_cert_manager(self) -> Iterator[DeployEvent]:
+        v = self.cert_mgr_version
+        script = (
+            "set -euo pipefail\n"
+            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+            "helm repo add rancher-prime https://charts.rancher.com/server-charts/prime\n"
+            "helm repo add jetstack https://charts.jetstack.io\n"
+            "helm repo update\n"
+            f"kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/{v}/cert-manager.crds.yaml\n"
+            f"helm install cert-manager jetstack/cert-manager --namespace cert-manager --create-namespace --version {v}\n"
+            "kubectl -n cert-manager rollout status deployment/cert-manager --timeout=180s\n"
+            "kubectl -n cert-manager rollout status deployment/cert-manager-webhook --timeout=180s\n"
+        )
+        yield LogLine("  Adding Helm repos and installing cert-manager (3-5 min)...")
+        r = self._ssh_script(script, timeout=480)
+        for line in (r.stdout + r.stderr).splitlines():
+            if line.strip():
+                yield LogLine(f"  {line}")
+        if r.returncode != 0:
+            self.error = "cert-manager install failed"
+            return False
+        return True
+
+    def _install_rancher(self) -> Iterator[DeployEvent]:
+        script = (
+            "set -euo pipefail\n"
+            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+            f'helm install rancher rancher-prime/rancher'
+            f' --namespace cattle-system --create-namespace'
+            f' --version "{self.rancher_version}"'
+            f' --set hostname="{self.rancher_hostname}"'
+            ' --set bootstrapPassword="admin"'
+            ' --set replicas=1'
+            ' --set ingress.tls.source=rancher'
+            ' --wait --timeout 600s\n'
+        )
+        yield LogLine("  Running helm install rancher (up to 10 min)...")
+        r = self._ssh_script(script, timeout=720)
+        for line in (r.stdout + r.stderr).splitlines():
+            if line.strip():
+                yield LogLine(f"  {line}")
+        if r.returncode != 0:
+            self.error = "Rancher Prime install failed"
+            return False
+        return True
+
+    def _expose_nodeport(self) -> Iterator[DeployEvent]:
+        patch = json.dumps({
+            "spec": {
+                "type": "NodePort",
+                "ports": [{"port": 443, "nodePort": self.nodeport}],
+            }
+        })
+        script = (
+            "set -euo pipefail\n"
+            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+            f"kubectl -n cattle-system patch svc rancher -p '{patch}'\n"
+        )
+        r = self._ssh_script(script, timeout=30)
+        if r.returncode != 0:
+            self.error = f"NodePort patch failed: {r.stderr.strip()}"
+            yield LogLine(f"  ✗ {self.error}")
+            return False
+        return True
+
+    def _wait_ping(self) -> Iterator[DeployEvent]:
+        ctx = self._ssl_ctx()
+        t0 = time.monotonic()
+        while True:
+            elapsed = time.monotonic() - t0
+            try:
+                resp = urllib.request.urlopen(
+                    f"{self.rancher_api}/ping", timeout=5, context=ctx
+                )
+                if b"pong" in resp.read():
+                    yield ProgressUpdate("Waiting for /ping", elapsed, self.PING_TIMEOUT)
+                    return True
+            except Exception:
+                pass
+
+            if elapsed >= self.PING_TIMEOUT:
+                yield ProgressUpdate("Waiting for /ping", elapsed, self.PING_TIMEOUT)
+                return False
+
+            yield ProgressUpdate("Waiting for /ping", elapsed, self.PING_TIMEOUT)
+            m, s = divmod(int(elapsed), 60)
+            yield LogLine(f"  {m:02d}:{s:02d} / {self.PING_TIMEOUT // 60}:00 — Rancher not responding yet...")
+            time.sleep(self.PING_POLL)
+
+    def _configure_api(self) -> Iterator[DeployEvent]:
+        try:
+            resp = self._http(
+                "POST",
+                "/v3-public/localProviders/local?action=login",
+                {"username": "admin", "password": "admin"},
+            )
+            temp_token = resp.get("token", "")
+        except Exception as exc:
+            self.error = f"Initial Rancher login failed: {exc}"
+            yield LogLine(f"  ✗ {self.error}")
+            return False
+
+        if not temp_token:
+            self.error = "Initial login returned no token"
+            yield LogLine(f"  ✗ {self.error}")
+            return False
+
+        try:
+            self._http(
+                "POST",
+                "/v3/users?action=changepassword",
+                {"currentPassword": "admin", "newPassword": self.admin_password},
+                token=temp_token,
+            )
+        except Exception as exc:
+            self.error = f"Password change failed: {exc}"
+            yield LogLine(f"  ✗ {self.error}")
+            return False
+
+        try:
+            resp = self._http(
+                "POST",
+                "/v3-public/localProviders/local?action=login",
+                {"username": "admin", "password": self.admin_password},
+            )
+            self._api_token = resp.get("token", "")
+        except Exception as exc:
+            self.error = f"Re-login after password change failed: {exc}"
+            yield LogLine(f"  ✗ {self.error}")
+            return False
+
+        if not self._api_token:
+            self.error = "Re-login returned no token"
+            yield LogLine(f"  ✗ {self.error}")
+            return False
+
+        try:
+            self._http(
+                "PUT",
+                "/v3/settings/server-url",
+                {"value": self.rancher_api},
+                token=self._api_token,
+            )
+        except Exception as exc:
+            yield LogLine(f"  ⚠ server-url set: {exc}")
+
+        try:
+            pass_file = Path("/root/rancher-password")
+            pass_file.write_text(self.admin_password)
+            pass_file.chmod(0o600)
+            yield LogLine("  Admin password saved to /root/rancher-password")
+        except Exception:
+            pass
+
+        return True
+
+    def _import_harvester(self) -> Iterator[DeployEvent]:
+        try:
+            resp = self._http(
+                "POST",
+                "/v3/clusters",
+                {
+                    "type": "cluster",
+                    "name": "harvester",
+                    "harvesterConfig": {},
+                    "annotations": {
+                        "field.cattle.io/description": "Harvester HCI cluster for SUSE Virt Rodeo"
+                    },
+                },
+                token=self._api_token,
+            )
+            self._cluster_id = resp.get("id", "")
+        except Exception as exc:
+            self.error = f"Cluster create failed: {exc}"
+            yield LogLine(f"  ✗ {self.error}")
+            return False
+
+        yield LogLine(f"  Cluster record: {self._cluster_id}")
+
+        try:
+            resp = self._http(
+                "GET",
+                f"/v3/clusterregistrationtokens?clusterId={self._cluster_id}",
+                token=self._api_token,
+            )
+            manifest_url = resp.get("data", [{}])[0].get("manifestUrl", "")
+        except Exception as exc:
+            self.error = f"Failed to get manifest URL: {exc}"
+            yield LogLine(f"  ✗ {self.error}")
+            return False
+
+        if not manifest_url:
+            self.error = "Manifest URL is empty"
+            yield LogLine(f"  ✗ {self.error}")
+            return False
+
+        yield from self._patch_coredns()
+
+        yield LogLine("  Applying import manifest to Harvester cluster...")
+        r = subprocess.run(
+            ["kubectl", "--kubeconfig", str(KUBECONFIG_PATH), "apply", "-f", manifest_url],
+            capture_output=True, text=True, timeout=60,
+        )
+        if r.returncode != 0:
+            self.error = f"kubectl apply manifest failed: {r.stderr.strip()}"
+            yield LogLine(f"  ✗ {self.error}")
+            return False
+        yield LogLine("  Import manifest applied.")
+
+        yield LogLine("  Waiting for cluster to go Active (up to 30 min)...")
+        if not (yield from self._wait_cluster_active()):
+            yield LogLine("  ⚠ Cluster not Active in time — check the Rancher UI")
+
+        try:
+            kube_dir = Path("/root/.kube")
+            kube_dir.mkdir(parents=True, exist_ok=True)
+            dest = kube_dir / "harvester.yaml"
+            dest.write_text(KUBECONFIG_PATH.read_text())
+            dest.chmod(0o600)
+            yield LogLine(f"  Harvester kubeconfig saved to {dest}")
+        except Exception as exc:
+            yield LogLine(f"  ⚠ kubeconfig copy: {exc}")
+
+        return True
+
+    def _patch_coredns(self) -> Iterator[DeployEvent]:
+        dns_server = "192.168.122.1"
+        cm_name = None
+        for candidate in ("rke2-coredns-rke2-coredns", "coredns"):
+            r = subprocess.run(
+                [
+                    "kubectl", "--kubeconfig", str(KUBECONFIG_PATH),
+                    "get", "cm", candidate, "-n", "kube-system", "--ignore-not-found",
+                ],
+                capture_output=True, text=True, timeout=30,
+            )
+            if r.returncode == 0 and candidate in r.stdout:
+                cm_name = candidate
+                break
+
+        if not cm_name:
+            yield LogLine("  ⚠ CoreDNS ConfigMap not found — pod DNS patch skipped")
+            return
+
+        r = subprocess.run(
+            [
+                "kubectl", "--kubeconfig", str(KUBECONFIG_PATH),
+                "get", "cm", cm_name, "-n", "kube-system", "-o", "json",
+            ],
+            capture_output=True, text=True, timeout=30,
+        )
+        if r.returncode != 0:
+            yield LogLine("  ⚠ CoreDNS get failed — pod DNS patch skipped")
+            return
+
+        try:
+            cm = json.loads(r.stdout)
+            corefile = cm.get("data", {}).get("Corefile", "")
+        except json.JSONDecodeError:
+            yield LogLine("  ⚠ CoreDNS JSON parse error — pod DNS patch skipped")
+            return
+
+        if self.dns_domain in corefile:
+            yield LogLine(f"  {self.dns_domain} zone already present — CoreDNS patch skipped")
+            return
+
+        zone = (
+            f"\n{self.dns_domain}:53 {{\n"
+            f"    errors\n"
+            f"    forward . {dns_server}\n"
+            f"    cache 30\n"
+            f"}}\n"
+        )
+        cm["data"]["Corefile"] = corefile + zone
+
+        fd, tmp_path = tempfile.mkstemp(suffix=".json")
+        try:
+            os.close(fd)
+            with open(tmp_path, "w") as f:
+                json.dump(cm, f)
+            r2 = subprocess.run(
+                ["kubectl", "--kubeconfig", str(KUBECONFIG_PATH), "apply", "-f", tmp_path],
+                capture_output=True, text=True, timeout=30,
+            )
+            if r2.returncode == 0:
+                yield LogLine(f"  CoreDNS patched: {self.dns_domain} -> {dns_server}")
+            else:
+                yield LogLine(f"  ⚠ CoreDNS patch apply failed: {r2.stderr.strip()}")
+        finally:
+            os.unlink(tmp_path)
+
+    def _wait_cluster_active(self) -> Iterator[DeployEvent]:
+        t0 = time.monotonic()
+        state = "unknown"
+        while True:
+            elapsed = time.monotonic() - t0
+            try:
+                resp = self._http(
+                    "GET",
+                    f"/v3/clusters/{self._cluster_id}",
+                    token=self._api_token,
+                )
+                state = resp.get("state", "unknown")
+            except Exception:
+                pass
+
+            yield ProgressUpdate("Cluster Active", elapsed, self.CLUSTER_TIMEOUT, detail=state)
+
+            if state == "active":
+                return True
+
+            if elapsed >= self.CLUSTER_TIMEOUT:
+                return False
+
+            m, s = divmod(int(elapsed), 60)
+            yield LogLine(f"  {m:02d}:{s:02d} / {self.CLUSTER_TIMEOUT // 60}:00 — cluster state: {state}")
+            time.sleep(self.CLUSTER_POLL)
+
+    def _set_harvester_password(self) -> Iterator[DeployEvent]:
+        ctx = self._ssl_ctx()
+        bootstrap_token = ""
+        try:
+            req = urllib.request.Request(
+                f"https://{self.vip}/v3-public/localProviders/local?action=login",
+                data=json.dumps({"username": "admin", "password": "admin"}).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, context=ctx, timeout=30) as resp:
+                bootstrap_token = json.loads(resp.read()).get("token", "")
+        except Exception:
+            pass
+
+        if bootstrap_token:
+            try:
+                req = urllib.request.Request(
+                    f"https://{self.vip}/v3/users?action=changepassword",
+                    data=json.dumps({
+                        "currentPassword": "admin",
+                        "newPassword": self.admin_password,
+                    }).encode(),
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {bootstrap_token}",
+                    },
+                    method="POST",
+                )
+                urllib.request.urlopen(req, context=ctx, timeout=30)
+                yield LogLine("  Harvester admin password set.")
+            except Exception as exc:
+                yield LogLine(f"  ⚠ Harvester password change: {exc}")
+        else:
+            yield LogLine("  Bootstrap admin/admin returned no token — password may already be set.")
+
+        try:
+            req = urllib.request.Request(
+                f"https://{self.vip}/v3-public/localProviders/local?action=login",
+                data=json.dumps({
+                    "username": "admin",
+                    "password": self.admin_password,
+                }).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, context=ctx, timeout=30) as resp:
+                hv_token = json.loads(resp.read()).get("token", "")
+            if hv_token:
+                token_file = Path("/root/harvester-token")
+                token_file.write_text(hv_token)
+                token_file.chmod(0o600)
+                yield LogLine("  Harvester API token saved to /root/harvester-token")
+        except Exception as exc:
+            yield LogLine(f"  ⚠ Harvester token fetch: {exc}")
+
+    def _eject_cdroms(self) -> Iterator[DeployEvent]:
+        for node in ("harvester1", "harvester2", "harvester3"):
+            for dev in ("sda", "sdb"):
+                r = subprocess.run(
+                    ["virsh", "change-media", node, dev, "--eject", "--live", "--config"],
+                    capture_output=True, text=True, timeout=30,
+                )
+                if r.returncode != 0:
+                    stderr = r.stderr.lower()
+                    if not any(x in stderr for x in ("no media", "not a cdrom", "no such file")):
+                        yield LogLine(f"  ⚠ eject {node}:{dev} — {r.stderr.strip()}")
+            yield LogLine(f"  {node}: CDROMs ejected")

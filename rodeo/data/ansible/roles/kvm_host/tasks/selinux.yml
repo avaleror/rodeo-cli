@@ -1,0 +1,12 @@
+---
+- name: Set SELinux to permissive at runtime (no-op if not present)
+  ansible.builtin.command: setenforce 0
+  changed_when: false
+  failed_when: false
+
+- name: Set SELinux to permissive permanently in config
+  ansible.builtin.replace:
+    path: /etc/selinux/config
+    regexp: '^SELINUX=.*'
+    replace: 'SELINUX=permissive'
+  ignore_errors: true

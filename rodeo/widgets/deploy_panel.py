@@ -60,24 +60,30 @@ class DeployPanel(Vertical):
     # --- Public update API called by RodeoApp message handlers ---
 
     def set_phase_running(self, phase: str) -> None:
-        t = self.query_one("#phases-table", DataTable)
-        t.update_cell(phase, "status", Text("▶ running", style="bold yellow"))
+        if phase in self._phases:
+            t = self.query_one("#phases-table", DataTable)
+            t.update_cell(phase, "status", Text("▶ running", style="bold yellow"))
         self.query_one("#phase-sep", Label).update(f" ▶ {phase}")
 
     def set_phase_done(self, phase: str, elapsed: float) -> None:
-        t = self.query_one("#phases-table", DataTable)
-        m, s = divmod(int(elapsed), 60)
-        t.update_cell(phase, "status",  Text("✓ done", style="green"))
-        t.update_cell(phase, "elapsed", f"{m}:{s:02d}")
+        if phase in self._phases:
+            t = self.query_one("#phases-table", DataTable)
+            m, s = divmod(int(elapsed), 60)
+            t.update_cell(phase, "status",  Text("✓ done", style="green"))
+            t.update_cell(phase, "elapsed", f"{m}:{s:02d}")
         self.query_one("#phase-progress", ProgressBar).display = False
 
     def set_phase_skipped(self, phase: str) -> None:
+        if phase not in self._phases:
+            return
         t = self.query_one("#phases-table", DataTable)
         t.update_cell(phase, "status", Text("— skip", style="dim"))
 
     def set_phase_failed(self, phase: str) -> None:
-        t = self.query_one("#phases-table", DataTable)
-        t.update_cell(phase, "status", Text("✗ failed", style="bold red"))
+        # Pseudo-phases like "setup" (collection install) have no table row.
+        if phase in self._phases:
+            t = self.query_one("#phases-table", DataTable)
+            t.update_cell(phase, "status", Text("✗ failed", style="bold red"))
         self.query_one("#phase-sep", Label).update(f" [red]✗ {phase} failed[/red]")
 
     def update_progress(self, step: str, elapsed: float, total: float, detail: str = "") -> None:

@@ -13,6 +13,7 @@ import yaml
 _BASE_DEFAULTS: dict[str, Any] = {
     "type": "suse-virt",
     "name": "suse-virt-rodeo",
+    "deployment_target": "baremetal",  # instruqt | baremetal
     "network": {
         "mode": "nat",
         "vip": "192.168.122.10",
@@ -92,13 +93,28 @@ def load_config(plan_path: str | Path = "rodeo-plan.yaml") -> dict:
 
 
 def validate_config(cfg: dict) -> None:
-    """Raise ValueError if any credentials still contain unresolved ?? placeholders."""
+    """Raise ValueError on unresolved ??placeholders or missing/empty credentials."""
     creds = cfg.get("credentials", {})
     unresolved = [k for k, v in creds.items() if isinstance(v, str) and v.startswith("??")]
     if unresolved:
         raise ValueError(
             f"Secrets not resolved: {', '.join(unresolved)}\n"
             "Edit ~/.rodeo/secrets.yaml or run: rodeo init"
+        )
+    empty = [
+        k for k, v in creds.items()
+        if v is None or (isinstance(v, str) and (not v.strip() or v == "CHANGE_ME"))
+    ]
+    if empty:
+        raise ValueError(
+            f"Credentials are empty: {', '.join(empty)}\n"
+            "An empty password would be baked into the Harvester config ISOs.\n"
+            "Set values in rodeo-plan.yaml (??key) and ~/.rodeo/secrets.yaml, or run: rodeo init"
+        )
+    target = cfg.get("deployment_target", "baremetal")
+    if target not in ("instruqt", "baremetal"):
+        raise ValueError(
+            f"Invalid deployment_target '{target}' — use 'instruqt' or 'baremetal'."
         )
 
 

@@ -6,10 +6,11 @@ import os
 import ssl
 import subprocess
 import tempfile
+import threading
 import time
 import urllib.request
 from pathlib import Path
-from typing import Iterator
+from typing import Generator, Iterator
 
 from .cluster import KUBECONFIG_PATH
 from .runner import DeployEvent, LogLine, ProgressUpdate
@@ -28,7 +29,7 @@ class RancherPhase:
     PING_POLL    = 10
     CLUSTER_POLL = 30
 
-    def __init__(self, cfg: dict) -> None:
+    def __init__(self, cfg: dict, stop: threading.Event | None = None) -> None:
         net  = cfg["network"]
         ver  = cfg.get("versions", {})
         cred = cfg.get("credentials", {})
@@ -37,6 +38,10 @@ class RancherPhase:
         self.vip              = net["vip"]
         self.nodeport         = int(net.get("rancher_nodeport", 30002))
         self.dns_domain       = net.get("dns_domain", "aerogrid.com")
+        self.gateway          = net.get("gateway", "192.168.122.1")
+        self.harvester_nodes  = [
+            n for n in cfg.get("vms", {}) if n != "rancher"
+        ] or ["harvester1", "harvester2", "harvester3"]
 
         self.rancher_version  = ver.get("rancher", "2.13.1")
         self.k3s_version      = ver.get("k3s", "v1.31.4+k3s1")
@@ -52,6 +57,14 @@ class RancherPhase:
         self.error        = ""
         self._api_token   = ""
         self._cluster_id  = ""
+        self._stop        = stop if stop is not None else threading.Event()
+
+    def _sleep(self, seconds: float) -> bool:
+        """Sleep, but wake early on cancellation. Returns True if cancelled."""
+        if self._stop.wait(seconds):
+            self.error = "cancelled"
+            return True
+        return False
 
     def stream(self) -> Iterator[DeployEvent]:
         """Yield events. Check self.success after exhaustion."""
@@ -132,16 +145,32 @@ class RancherPhase:
             "-o", "LogLevel=ERROR",
         ]
 
+    @staticmethod
+    def _run(cmd: list[str], timeout: int, input: str | None = None) -> subprocess.CompletedProcess:
+        """subprocess.run that converts timeouts/launch errors into a failed result."""
+        try:
+            return subprocess.run(
+                cmd, input=input, capture_output=True, text=True, timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            return subprocess.CompletedProcess(
+                cmd, returncode=124, stdout="", stderr=f"timed out after {timeout}s"
+            )
+        except OSError as exc:
+            return subprocess.CompletedProcess(
+                cmd, returncode=127, stdout="", stderr=str(exc)
+            )
+
     def _ssh_run(self, *remote_cmd: str, timeout: int = 30) -> subprocess.CompletedProcess:
-        return subprocess.run(
+        return self._run(
             ["ssh", *self._ssh_opts(), f"root@{self.rancher_ip}", *remote_cmd],
-            capture_output=True, text=True, timeout=timeout,
+            timeout=timeout,
         )
 
     def _ssh_script(self, script: str, timeout: int = 120) -> subprocess.CompletedProcess:
-        return subprocess.run(
+        return self._run(
             ["ssh", *self._ssh_opts(), f"root@{self.rancher_ip}", "bash", "-s"],
-            input=script, capture_output=True, text=True, timeout=timeout,
+            timeout=timeout, input=script,
         )
 
     # ---------- HTTP helpers ----------
@@ -170,7 +199,7 @@ class RancherPhase:
 
     # ---------- Phase sub-steps ----------
 
-    def _wait_ssh(self) -> Iterator[DeployEvent]:
+    def _wait_ssh(self) -> Generator[DeployEvent, None, bool]:
         t0 = time.monotonic()
         while True:
             elapsed = time.monotonic() - t0
@@ -189,9 +218,10 @@ class RancherPhase:
             yield ProgressUpdate("Waiting for SSH", elapsed, self.SSH_TIMEOUT)
             m, s = divmod(int(elapsed), 60)
             yield LogLine(f"  {m:02d}:{s:02d} / {self.SSH_TIMEOUT // 60}:00 — SSH not ready yet...")
-            time.sleep(self.SSH_POLL)
+            if self._sleep(self.SSH_POLL):
+                return False
 
-    def _install_k3s(self) -> Iterator[DeployEvent]:
+    def _install_k3s(self) -> Generator[DeployEvent, None, bool]:
         script = (
             "set -euo pipefail\n"
             f'export INSTALL_K3S_VERSION="{self.k3s_version}"\n'
@@ -208,7 +238,7 @@ class RancherPhase:
             return False
         return True
 
-    def _wait_k3s_ready(self) -> Iterator[DeployEvent]:
+    def _wait_k3s_ready(self) -> Generator[DeployEvent, None, bool]:
         script = (
             "set -euo pipefail\n"
             "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
@@ -232,9 +262,10 @@ class RancherPhase:
             yield ProgressUpdate("K3s node Ready", elapsed, self.K3S_TIMEOUT)
             m, s = divmod(int(elapsed), 60)
             yield LogLine(f"  {m:02d}:{s:02d} / {self.K3S_TIMEOUT // 60}:00 — waiting for K3s node...")
-            time.sleep(self.K3S_POLL)
+            if self._sleep(self.K3S_POLL):
+                return False
 
-    def _install_helm(self) -> Iterator[DeployEvent]:
+    def _install_helm(self) -> Generator[DeployEvent, None, bool]:
         script = (
             "set -euo pipefail\n"
             "curl -sfL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash\n"
@@ -249,7 +280,7 @@ class RancherPhase:
             return False
         return True
 
-    def _install_cert_manager(self) -> Iterator[DeployEvent]:
+    def _install_cert_manager(self) -> Generator[DeployEvent, None, bool]:
         v = self.cert_mgr_version
         script = (
             "set -euo pipefail\n"
@@ -272,7 +303,7 @@ class RancherPhase:
             return False
         return True
 
-    def _install_rancher(self) -> Iterator[DeployEvent]:
+    def _install_rancher(self) -> Generator[DeployEvent, None, bool]:
         script = (
             "set -euo pipefail\n"
             "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
@@ -295,7 +326,7 @@ class RancherPhase:
             return False
         return True
 
-    def _expose_nodeport(self) -> Iterator[DeployEvent]:
+    def _expose_nodeport(self) -> Generator[DeployEvent, None, bool]:
         patch = json.dumps({
             "spec": {
                 "type": "NodePort",
@@ -314,7 +345,7 @@ class RancherPhase:
             return False
         return True
 
-    def _wait_ping(self) -> Iterator[DeployEvent]:
+    def _wait_ping(self) -> Generator[DeployEvent, None, bool]:
         ctx = self._ssl_ctx()
         t0 = time.monotonic()
         while True:
@@ -336,9 +367,10 @@ class RancherPhase:
             yield ProgressUpdate("Waiting for /ping", elapsed, self.PING_TIMEOUT)
             m, s = divmod(int(elapsed), 60)
             yield LogLine(f"  {m:02d}:{s:02d} / {self.PING_TIMEOUT // 60}:00 — Rancher not responding yet...")
-            time.sleep(self.PING_POLL)
+            if self._sleep(self.PING_POLL):
+                return False
 
-    def _configure_api(self) -> Iterator[DeployEvent]:
+    def _configure_api(self) -> Generator[DeployEvent, None, bool]:
         try:
             resp = self._http(
                 "POST",
@@ -405,7 +437,7 @@ class RancherPhase:
 
         return True
 
-    def _import_harvester(self) -> Iterator[DeployEvent]:
+    def _import_harvester(self) -> Generator[DeployEvent, None, bool]:
         try:
             resp = self._http(
                 "POST",
@@ -448,9 +480,9 @@ class RancherPhase:
         yield from self._patch_coredns()
 
         yield LogLine("  Applying import manifest to Harvester cluster...")
-        r = subprocess.run(
+        r = self._run(
             ["kubectl", "--kubeconfig", str(KUBECONFIG_PATH), "apply", "-f", manifest_url],
-            capture_output=True, text=True, timeout=60,
+            timeout=60,
         )
         if r.returncode != 0:
             self.error = f"kubectl apply manifest failed: {r.stderr.strip()}"
@@ -475,15 +507,15 @@ class RancherPhase:
         return True
 
     def _patch_coredns(self) -> Iterator[DeployEvent]:
-        dns_server = "192.168.122.1"
+        dns_server = self.gateway
         cm_name = None
         for candidate in ("rke2-coredns-rke2-coredns", "coredns"):
-            r = subprocess.run(
+            r = self._run(
                 [
                     "kubectl", "--kubeconfig", str(KUBECONFIG_PATH),
                     "get", "cm", candidate, "-n", "kube-system", "--ignore-not-found",
                 ],
-                capture_output=True, text=True, timeout=30,
+                timeout=30,
             )
             if r.returncode == 0 and candidate in r.stdout:
                 cm_name = candidate
@@ -493,12 +525,12 @@ class RancherPhase:
             yield LogLine("  ⚠ CoreDNS ConfigMap not found — pod DNS patch skipped")
             return
 
-        r = subprocess.run(
+        r = self._run(
             [
                 "kubectl", "--kubeconfig", str(KUBECONFIG_PATH),
                 "get", "cm", cm_name, "-n", "kube-system", "-o", "json",
             ],
-            capture_output=True, text=True, timeout=30,
+            timeout=30,
         )
         if r.returncode != 0:
             yield LogLine("  ⚠ CoreDNS get failed — pod DNS patch skipped")
@@ -529,9 +561,9 @@ class RancherPhase:
             os.close(fd)
             with open(tmp_path, "w") as f:
                 json.dump(cm, f)
-            r2 = subprocess.run(
+            r2 = self._run(
                 ["kubectl", "--kubeconfig", str(KUBECONFIG_PATH), "apply", "-f", tmp_path],
-                capture_output=True, text=True, timeout=30,
+                timeout=30,
             )
             if r2.returncode == 0:
                 yield LogLine(f"  CoreDNS patched: {self.dns_domain} -> {dns_server}")
@@ -540,7 +572,7 @@ class RancherPhase:
         finally:
             os.unlink(tmp_path)
 
-    def _wait_cluster_active(self) -> Iterator[DeployEvent]:
+    def _wait_cluster_active(self) -> Generator[DeployEvent, None, bool]:
         t0 = time.monotonic()
         state = "unknown"
         while True:
@@ -565,7 +597,8 @@ class RancherPhase:
 
             m, s = divmod(int(elapsed), 60)
             yield LogLine(f"  {m:02d}:{s:02d} / {self.CLUSTER_TIMEOUT // 60}:00 — cluster state: {state}")
-            time.sleep(self.CLUSTER_POLL)
+            if self._sleep(self.CLUSTER_POLL):
+                return False
 
     def _set_harvester_password(self) -> Iterator[DeployEvent]:
         ctx = self._ssl_ctx()
@@ -624,11 +657,11 @@ class RancherPhase:
             yield LogLine(f"  ⚠ Harvester token fetch: {exc}")
 
     def _eject_cdroms(self) -> Iterator[DeployEvent]:
-        for node in ("harvester1", "harvester2", "harvester3"):
+        for node in self.harvester_nodes:
             for dev in ("sda", "sdb"):
-                r = subprocess.run(
+                r = self._run(
                     ["virsh", "change-media", node, dev, "--eject", "--live", "--config"],
-                    capture_output=True, text=True, timeout=30,
+                    timeout=30,
                 )
                 if r.returncode != 0:
                     stderr = r.stderr.lower()

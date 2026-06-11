@@ -16,6 +16,9 @@ class RodeoProfile(ABC):
     phases: list[str]
     vm_names: list[str]
     ansible_phases: frozenset[str]
+    # Phases skipped when deployment_target is "instruqt" (they break image save)
+    # unless the user passes --finalise.
+    guarded_phases: frozenset[str] = frozenset()
 
     @abstractmethod
     def default_cfg(self) -> dict:

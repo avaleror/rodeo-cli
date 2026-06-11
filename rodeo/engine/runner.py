@@ -6,6 +6,7 @@ import os
 import signal
 import subprocess
 import tempfile
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -83,18 +84,22 @@ class DeployRunner:
         from_phase: str | None = None,
         install_collections: bool = True,
         force: bool = False,
+        include_guarded: bool = False,
     ) -> None:
         self.cfg = cfg
         self.root = root
         self.from_phase = from_phase
         self.install_collections = install_collections
         self.force = force
+        self.include_guarded = include_guarded
         self._plan_name = cfg.get("name", "default")
         self._proc: subprocess.Popen | None = None
         self._last_rc: int = 0
+        self.stop = threading.Event()
 
     def terminate(self) -> None:
-        """Send SIGTERM to the current subprocess process group."""
+        """Stop the pipeline: signal poll loops and SIGTERM the subprocess group."""
+        self.stop.set()
         if self._proc and self._proc.poll() is None:
             try:
                 os.killpg(os.getpgid(self._proc.pid), signal.SIGTERM)
@@ -137,6 +142,11 @@ class DeployRunner:
 
         vars_file = self._write_vars_file()
 
+        guard_active = (
+            self.cfg.get("deployment_target", "baremetal") == "instruqt"
+            and not self.include_guarded
+        )
+
         for idx, phase in enumerate(profile.phases):
             if idx < start_idx:
                 yield PhaseSkipped(phase, "before_start")
@@ -144,11 +154,27 @@ class DeployRunner:
             if not self.force and is_phase_done(phase, self._plan_name):
                 yield PhaseSkipped(phase, "done")
                 continue
+            if guard_active and phase in profile.guarded_phases:
+                yield LogLine(
+                    f"  ⚠  {phase} skipped: deployment_target is 'instruqt' and this "
+                    "phase breaks Instruqt image save. Run with --finalise after the "
+                    "image snapshot, or set deployment_target: baremetal."
+                )
+                yield PhaseSkipped(phase, "instruqt")
+                continue
+            if self.stop.is_set():
+                mark_phase_failed(phase, "cancelled", self._plan_name)
+                yield PhaseFailed(phase, 130, "cancelled")
+                return
 
             yield PhaseStarted(phase)
             t0 = time.monotonic()
 
-            yield from profile.run_phase(phase, self, vars_file)
+            try:
+                yield from profile.run_phase(phase, self, vars_file)
+            except Exception as exc:
+                self._last_rc = 1
+                yield LogLine(f"  ✗  {phase}: unexpected error: {exc}")
 
             elapsed = time.monotonic() - t0
             ok = self._last_rc == 0
@@ -184,9 +210,9 @@ class DeployRunner:
         self._last_rc = self._proc.returncode
         self._proc = None
 
-    # ---------- Phase runners ----------
+    # ---------- Phase runners (public API for profiles) ----------
 
-    def _stream_ansible(self, tags: str, vars_file: Path) -> Iterator[DeployEvent]:
+    def stream_ansible(self, tags: str, vars_file: Path) -> Iterator[DeployEvent]:
         inventory = self.root / self.cfg["ansible"]["inventory"]
         playbook = self.root / "ansible" / "playbook.yml"
         cmd = [
@@ -198,7 +224,7 @@ class DeployRunner:
         ]
         yield from self._stream_subprocess(cmd)
 
-    def _stream_cluster(self) -> Iterator[DeployEvent]:
+    def stream_cluster(self) -> Iterator[DeployEvent]:
         yield LogLine("Starting firewalld...")
         subprocess.run(["systemctl", "start", "firewalld"], capture_output=True)
         r = subprocess.run(["firewall-cmd", "--reload"], capture_output=True, text=True)
@@ -206,21 +232,21 @@ class DeployRunner:
             yield LogLine(f"  ⚠  firewall-cmd reload: {r.stderr.strip()}")
 
         from .cluster import ClusterPhase
-        phase = ClusterPhase(self.cfg)
+        phase = ClusterPhase(self.cfg, stop=self.stop)
         yield from phase.stream()
         self._last_rc = 0 if phase.success else 1
         if phase.error:
             yield LogLine(f"  ✗  cluster: {phase.error}")
 
-    def _stream_rancher(self) -> Iterator[DeployEvent]:
+    def stream_rancher(self) -> Iterator[DeployEvent]:
         from .rancher import RancherPhase
-        phase = RancherPhase(self.cfg)
+        phase = RancherPhase(self.cfg, stop=self.stop)
         yield from phase.stream()
         self._last_rc = 0 if phase.success else 1
         if phase.error:
             yield LogLine(f"  ✗  rancher: {phase.error}")
 
-    def _stream_finalise(self) -> Iterator[DeployEvent]:
+    def stream_finalise(self) -> Iterator[DeployEvent]:
         vm_names = list(self.cfg.get("vms", {}).keys())
         successes = 0
         try:
@@ -289,6 +315,9 @@ class DeployRunner:
 
         rodeo_dir = Path.home() / ".rodeo"
         rodeo_dir.mkdir(parents=True, exist_ok=True)
+        # Sweep vars files left behind by a previous SIGKILL'd run.
+        for stale in rodeo_dir.glob("rodeo-vars-*.yaml"):
+            stale.unlink(missing_ok=True)
         fd, path_str = tempfile.mkstemp(
             prefix="rodeo-vars-", suffix=".yaml", dir=rodeo_dir
         )

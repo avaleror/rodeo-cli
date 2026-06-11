@@ -20,7 +20,7 @@ from ..engine.runner import (
     PhaseStarted,
     ProgressUpdate,
 )
-from ..state import PHASES
+from ..profiles import get_profile
 
 console = Console()
 
@@ -29,17 +29,19 @@ console = Console()
 @click.option("--config", "config_path", default="rodeo-plan.yaml", show_default=True)
 @click.option(
     "--from", "from_phase",
-    type=click.Choice(PHASES),
     default=None,
-    help="Resume from a specific phase.",
+    help="Resume from a specific phase (see profile phases).",
 )
 @click.option("--ansible-path", default=None, help="Path containing ansible/playbook.yml.")
 @click.option("--tui/--no-tui", default=None,
               help="Force TUI on/off (default: auto-detect TTY).")
-@click.option("--install-collections", is_flag=True, default=True,
+@click.option("--install-collections/--no-install-collections", default=True,
               help="Run ansible-galaxy install before Ansible phases.")
 @click.option("--force", is_flag=True, default=False,
               help="Re-run all phases, ignoring phase state.")
+@click.option("--finalise", "include_guarded", is_flag=True, default=False,
+              help="Run finalise even when deployment_target is 'instruqt' "
+                   "(only after the Instruqt image snapshot).")
 @click.option("--check", "preflight_only", is_flag=True, default=False,
               help="Run preflight checks and exit without deploying.")
 def deploy_cmd(
@@ -49,14 +51,23 @@ def deploy_cmd(
     tui: bool | None,
     install_collections: bool,
     force: bool,
+    include_guarded: bool,
     preflight_only: bool,
 ) -> None:
     """Deploy the full SUSE Virtualization Rodeo cluster."""
     cfg = load_config(config_path)
     try:
         validate_config(cfg)
+        profile = get_profile(cfg.get("type", "suse-virt"))
     except ValueError as exc:
         console.print(f"[red]✗  {exc}[/red]")
+        raise SystemExit(1)
+
+    if from_phase is not None and from_phase not in profile.phases:
+        console.print(
+            f"[red]✗  Unknown phase '{from_phase}'. "
+            f"Valid phases: {', '.join(profile.phases)}[/red]"
+        )
         raise SystemExit(1)
 
     root = Path(ansible_path) if ansible_path else find_ansible_root(cfg)
@@ -83,13 +94,14 @@ def deploy_cmd(
                 from_phase=from_phase,
                 install_collections=install_collections,
                 force=force,
+                include_guarded=include_guarded,
             )
             app.run()
             return
         except ImportError:
             console.print("[yellow]⚠  textual not installed — falling back to plain output[/yellow]")
 
-    _deploy_plain(cfg, root, from_phase, install_collections, force)
+    _deploy_plain(cfg, root, from_phase, install_collections, force, include_guarded)
 
 
 def _run_preflight(cfg: dict, root: Path) -> bool:
@@ -150,17 +162,13 @@ def _run_preflight(cfg: dict, root: Path) -> bool:
         disk_detail = f"cannot stat {image_dir}"
     checks.append(("disk", disk_ok, disk_detail))
 
-    # Ansible
-    checks.append((
-        "ansible-playbook",
-        shutil.which("ansible-playbook") is not None,
-        "ansible-playbook not found in PATH",
-    ))
-    checks.append((
-        "ansible-galaxy",
-        shutil.which("ansible-galaxy") is not None,
-        "ansible-galaxy not found in PATH",
-    ))
+    # Required tools
+    for tool in ("ansible-playbook", "ansible-galaxy", "kubectl", "virsh", "ssh"):
+        checks.append((
+            tool,
+            shutil.which(tool) is not None,
+            f"{tool} not found in PATH",
+        ))
 
     console.print(f"\n[bold]Preflight — {cfg.get('name', 'rodeo')}[/bold]\n")
     all_ok = True
@@ -195,6 +203,7 @@ def _deploy_plain(
     from_phase: str | None,
     install_collections: bool,
     force: bool = False,
+    include_guarded: bool = False,
 ) -> None:
     runner = DeployRunner(
         cfg=cfg,
@@ -202,6 +211,7 @@ def _deploy_plain(
         from_phase=from_phase,
         install_collections=install_collections,
         force=force,
+        include_guarded=include_guarded,
     )
 
     console.print(f"\n[bold]rodeo deploy[/bold]  [{root}]\n")
@@ -210,7 +220,8 @@ def _deploy_plain(
         if isinstance(event, PhaseStarted):
             console.rule(f"[bold cyan]{event.phase}[/bold cyan]")
         elif isinstance(event, PhaseSkipped):
-            label = "already complete" if event.reason == "done" else "skipped"
+            labels = {"done": "already complete", "instruqt": "guarded — instruqt target"}
+            label = labels.get(event.reason, "skipped")
             console.print(f"  [dim]skip[/dim]  {event.phase}  ({label})")
         elif isinstance(event, ProgressUpdate):
             m_e, s_e = divmod(int(event.elapsed), 60)

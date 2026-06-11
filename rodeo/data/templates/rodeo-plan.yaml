@@ -4,6 +4,11 @@
 
 name: suse-virt-rodeo
 
+# instruqt: the finalise phase (VM autostart + libvirt-guests) is skipped unless
+# you pass --finalise. Running it before the Instruqt image snapshot breaks
+# instance boot. Use baremetal for normal hosts.
+deployment_target: instruqt   # instruqt | baremetal
+
 network:
   mode: nat              # nat | bridge
   vip: "192.168.122.10"   # kube-vip floating IP — must not be a node IP
@@ -36,8 +41,8 @@ libvirt:
   uri: qemu:///system
 
 ansible:
-  # Path to the directory containing ansible/site.yml.
-  # Falls back to: RODEO_ANSIBLE_PATH env var, then ./
+  # Path to the directory containing ansible/playbook.yml.
+  # Falls back to: RODEO_ANSIBLE_PATH env var, bundled data, then ./
   path: null
   inventory: deployer/inventory.local
 

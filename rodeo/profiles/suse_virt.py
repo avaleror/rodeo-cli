@@ -15,6 +15,7 @@ class SuseVirtProfile(RodeoProfile):
     phases = ["kvm_host", "vms", "cluster", "rancher", "finalise"]
     vm_names = ["harvester1", "harvester2", "harvester3", "rancher"]
     ansible_phases = frozenset(["kvm_host", "vms"])
+    guarded_phases = frozenset(["finalise"])
 
     def default_cfg(self) -> dict:
         return {
@@ -43,12 +44,12 @@ class SuseVirtProfile(RodeoProfile):
         vars_file: Path,
     ) -> Iterator["DeployEvent"]:
         if phase in ("kvm_host", "vms"):
-            yield from runner._stream_ansible(phase, vars_file)
+            yield from runner.stream_ansible(phase, vars_file)
         elif phase == "cluster":
-            yield from runner._stream_cluster()
+            yield from runner.stream_cluster()
         elif phase == "rancher":
-            yield from runner._stream_rancher()
+            yield from runner.stream_rancher()
         elif phase == "finalise":
-            yield from runner._stream_finalise()
+            yield from runner.stream_finalise()
         else:
             runner._last_rc = 0

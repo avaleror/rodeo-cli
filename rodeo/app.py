@@ -111,6 +111,7 @@ class RodeoApp(App):
         install_collections: bool = True,
         watch_only: bool = False,
         force: bool = False,
+        include_guarded: bool = False,
     ) -> None:
         super().__init__()
         self.cfg = cfg
@@ -119,6 +120,7 @@ class RodeoApp(App):
         self.install_collections = install_collections
         self.watch_only = watch_only
         self.force = force
+        self.include_guarded = include_guarded
         self._runner: DeployRunner | None = None
         self._stop_tailers = threading.Event()
 
@@ -153,6 +155,7 @@ class RodeoApp(App):
             from_phase=self.from_phase,
             install_collections=self.install_collections,
             force=self.force,
+            include_guarded=self.include_guarded,
         )
         for event in self._runner.run():
             if isinstance(event, PhaseStarted):

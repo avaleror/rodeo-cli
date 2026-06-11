@@ -1,0 +1,24 @@
+---
+- name: Gather libvirt pool facts
+  community.libvirt.virt_pool:
+    command: facts
+
+- name: Create default storage pool if absent
+  block:
+    - name: Define storage pool
+      community.libvirt.virt_pool:
+        command: define
+        name: "{{ libvirt_pool_name }}"
+        xml: |
+          <pool type='dir'>
+            <name>{{ libvirt_pool_name }}</name>
+            <target>
+              <path>{{ libvirt_pool_path }}</path>
+            </target>
+          </pool>
+    - name: Activate and autostart storage pool
+      community.libvirt.virt_pool:
+        name: "{{ libvirt_pool_name }}"
+        state: active
+        autostart: true
+  when: libvirt_pool_name not in (ansible_libvirt_pools | default({}))

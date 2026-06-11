@@ -1,0 +1,11 @@
+---
+# Shared lab addressing — single source of truth for both roles.
+# Both kvm_host and vms role defaults carry the same vars as low-precedence
+# fallbacks; this file (group_vars) wins and keeps them in sync.
+harvester_vip: "192.168.122.10"
+rancher_ip: "192.168.122.9"
+
+# Network model: nat (virbr0 + DNAT) or bridge (real LAN IPs, no DNAT).
+# Override in deploy.vars.yml for bridge mode.
+network_mode: nat
+host_bridge: br0

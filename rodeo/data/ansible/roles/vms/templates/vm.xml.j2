@@ -1,0 +1,103 @@
+<domain type='kvm'>
+  <name>{{ item.name }}</name>
+  <uuid>{{ item.uuid }}</uuid>
+  <memory unit='MiB'>{{ libvirt_flavors[item.flavor].memory_mib }}</memory>
+  <vcpu placement='static'>{{ libvirt_flavors[item.flavor].vcpu }}</vcpu>
+  <cpu mode='host-passthrough' check='none' migratable='on'/>
+  <os>
+    <type arch='x86_64' machine='q35'>hvm</type>
+{% if item.flavor == 'harvester' %}
+    <loader readonly='yes' type='pflash'>{{ ovmf_code }}</loader>
+    <nvram template='{{ ovmf_vars_template }}'>{{ image_dir }}/{{ item.name }}-ovmf-vars.fd</nvram>
+{% endif %}
+    <!-- Boot order is set per-device via the disk boot-order elements below.
+         Do not add os-level boot-dev entries here; libvirt rejects mixing them. -->
+  </os>
+  <features>
+    <acpi/>
+    <apic/>
+{% if item.flavor == 'harvester' %}
+    <smm state='on'/>
+{% endif %}
+  </features>
+  <clock offset='utc'>
+    <timer name='rtc' tickpolicy='catchup'/>
+    <timer name='pit' tickpolicy='delay'/>
+    <timer name='hpet' present='no'/>
+  </clock>
+  <on_poweroff>destroy</on_poweroff>
+  <on_reboot>restart</on_reboot>
+  <on_crash>destroy</on_crash>
+  <devices>
+    <emulator>/usr/bin/qemu-system-x86_64</emulator>
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2' cache='none' io='native'/>
+      <source file='{{ image_dir }}/{{ item.name }}-vda.qcow2'/>
+      <target dev='vda' bus='virtio'/>
+{% if item.flavor == 'harvester' %}
+      <boot order='2'/>
+{% else %}
+      <boot order='1'/>
+{% endif %}
+    </disk>
+{% if item.flavor == 'harvester' %}
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <source file='{{ image_dir }}/harvester-v{{ harvester_version }}-amd64.iso'/>
+      <target dev='sda' bus='sata'/>
+      <readonly/>
+      <boot order='1'/>
+    </disk>
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <source file='{{ image_dir }}/{{ item.config_iso_name }}.iso'/>
+      <target dev='sdb' bus='sata'/>
+      <readonly/>
+    </disk>
+{% else %}
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <source file='{{ image_dir }}/rancher-cloud-init.iso'/>
+      <target dev='sda' bus='sata'/>
+      <readonly/>
+    </disk>
+{% endif %}
+    <!--
+      NICs. NAT mode attaches each NIC to the libvirt network (virbr0); bridge
+      mode attaches to the host bridge ({{ host_bridge }}). Harvester nodes get
+      five NICs, the Rancher VM gets management only:
+        eth0 management  eth1 storage  eth2 migration  eth3 service1  eth4 service2
+    -->
+{% if item.flavor == 'harvester' %}
+{% set nic_macs = [item.mgmt_mac, item.storage_mac, item.migration_mac, item.service1_mac, item.service2_mac] %}
+{% else %}
+{% set nic_macs = [item.mgmt_mac] %}
+{% endif %}
+{% for mac in nic_macs %}
+    <interface type='{{ "bridge" if network_mode == "bridge" else "network" }}'>
+      <mac address='{{ mac }}'/>
+{% if network_mode == 'bridge' %}
+      <source bridge='{{ host_bridge }}'/>
+{% else %}
+      <source network='{{ libvirt_network_name }}'/>
+{% endif %}
+      <model type='{% if item.flavor == "harvester" %}e1000{% else %}virtio{% endif %}'/>
+    </interface>
+{% endfor %}
+    <!-- Install progress: tail -f {{ serial_log_dir }}/{{ item.name }}_serial.log -->
+    <serial type='file'>
+      <source path='{{ serial_log_dir }}/{{ item.name }}_serial.log' append='on'/>
+      <target type='isa-serial' port='0'/>
+    </serial>
+    <graphics type='vnc' port='-1' autoport='yes' listen='127.0.0.1'>
+      <listen type='address' address='127.0.0.1'/>
+    </graphics>
+    <video>
+      <model type='vga' vram='16384' heads='1'/>
+    </video>
+    <memballoon model='virtio'/>
+    <rng model='virtio'>
+      <backend model='random'>/dev/urandom</backend>
+    </rng>
+  </devices>
+</domain>

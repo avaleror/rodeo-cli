@@ -1,0 +1,118 @@
+---
+# On Instruqt, eth0 is configured via cloud-init/Instruqt bootstrap. SLES 16 uses
+# NetworkManager (wicked is removed). When firewalld starts and integrates with NM
+# via D-Bus, NM reports the zone for each connected interface. If the NM connection
+# for eth0 has no zone set (which cloud-init typically does not set), firewalld can
+# leave eth0 in an undefined zone state or reassign it in a way that drops the
+# Instruqt management connection after a save/restart. We therefore keep firewalld
+# disabled and stopped during the build phase. rodeo.sh phase 5 starts it right
+# before the final image save, at which point the VMs are fully running and no more
+# intermediate saves/reboots will occur.
+# On bare-metal deployer runs, deploy.sh starts it explicitly after the Ansible phase.
+- name: Install firewalld — disabled and stopped during build (phase 5 / deployer enables it)
+  ansible.builtin.systemd:
+    name: firewalld
+    enabled: false
+    state: stopped
+  # enabled: false prevents firewalld from auto-starting on boot during the build
+  # phase. When firewalld starts and integrates with NetworkManager, it may reassign
+  # eth0's zone in a way that drops the Instruqt management connection. rodeo.sh
+  # phase 5 runs: systemctl enable --now firewalld right before the image is saved,
+  # so it is active in the final baked image.
+
+# All remaining tasks use permanent: true + immediate: false so they stage
+# the rules into /etc/firewalld without touching the live (non-running) daemon.
+
+# Protect the management connection — explicit SSH even if the public zone default
+# ever differs across SLES 16 image variants.
+- name: Ensure SSH is allowed in the public zone (protect management connectivity)
+  ansible.posix.firewalld:
+    zone: public
+    service: ssh
+    permanent: true
+    immediate: false
+    state: enabled
+
+- name: Allow forwarding in the libvirt zone
+  ansible.posix.firewalld:
+    zone: libvirt
+    forward: true
+    permanent: true
+    state: enabled
+  notify: reload firewalld
+
+# Belt-and-braces for the RKE2 cluster underneath Harvester: explicitly accept
+# all traffic within the node subnet in the libvirt zone, so the RKE2 supervisor
+# (9345) and apiserver (6443), etcd (2379-2381), kubelet (10250) and the
+# Canal/VXLAN + Kube-OVN overlays between nodes are never dropped by the host
+# firewall — even if bridge-netfilter gets turned on by something else.
+- name: Accept intra-cluster traffic on the node subnet (NAT mode, libvirt zone)
+  ansible.posix.firewalld:
+    zone: libvirt
+    rich_rule: "rule family=ipv4 source address={{ libvirt_network_cidr }} accept"
+    permanent: true
+    immediate: false
+    state: enabled
+  when: network_mode == 'nat'
+  notify: reload firewalld
+
+# --- NAT mode: expose the UI ports on the host and DNAT them to the guests ---
+# firewalld on SLES 16 uses the nftables backend; port_forward drives the DNAT
+# natively (no raw iptables, no custom systemd unit).
+
+- name: Expose Harvester UI and Rancher NodePorts on the public zone (NAT mode)
+  ansible.posix.firewalld:
+    zone: public
+    port: "{{ item }}/tcp"
+    permanent: true
+    immediate: false
+    state: enabled
+  loop:
+    - "{{ harvester_ui_port }}"
+    - "{{ rancher_nodeport }}"
+  when: network_mode == 'nat'
+  notify: reload firewalld
+
+- name: Enable masquerade on the public zone (host egress)
+  ansible.posix.firewalld:
+    zone: public
+    masquerade: true
+    permanent: true
+    immediate: false
+    state: enabled
+  when: network_mode == 'nat'
+  notify: reload firewalld
+
+# The DNAT'd packets leave the host toward the guests via virbr0, which firewalld
+# binds to the libvirt zone. Masquerading there SNATs them to the host's virbr0
+# address so the guest replies route back through the host and the forwarded
+# connection completes, even if the guest's default route is not the host.
+- name: Enable masquerade on the libvirt zone (DNAT return path to guests)
+  ansible.posix.firewalld:
+    zone: libvirt
+    masquerade: true
+    permanent: true
+    immediate: false
+    state: enabled
+  when: network_mode == 'nat'
+  notify: reload firewalld
+
+- name: Forward host UI ports to the Harvester VIP and Rancher node (NAT mode)
+  ansible.posix.firewalld:
+    zone: public
+    port_forward:
+      - port: "{{ item.port }}"
+        proto: tcp
+        toport: "{{ item.toport }}"
+        toaddr: "{{ item.toaddr }}"
+    permanent: true
+    immediate: false
+    state: enabled
+  loop:
+    # Harvester serves on 443 at the VIP, so host:8443 must DNAT to VIP:443.
+    - { port: "{{ harvester_ui_port }}", toport: "{{ harvester_https_port }}", toaddr: "{{ harvester_vip }}" }
+    - { port: "{{ rancher_nodeport }}", toport: "{{ rancher_nodeport }}", toaddr: "{{ rancher_ip }}" }
+  loop_control:
+    label: "{{ item.port }} -> {{ item.toaddr }}:{{ item.toport }}"
+  when: network_mode == 'nat'
+  notify: reload firewalld

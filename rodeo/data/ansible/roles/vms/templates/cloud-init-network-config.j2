@@ -1,0 +1,9 @@
+{% set rancher_node = vm_nodes | selectattr('name', 'equalto', 'rancher') | first %}
+version: 2
+ethernets:
+  eth0:
+    addresses:
+      - {{ rancher_node.ip }}/{{ node_prefix }}
+    gateway4: {{ libvirt_network_gateway }}
+    nameservers:
+      addresses: [8.8.8.8, 1.1.1.1]

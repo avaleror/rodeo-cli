@@ -1,0 +1,30 @@
+<network>
+  <name>default</name>
+  <forward mode='nat'>
+    <nat>
+      <port start='1024' end='65535'/>
+    </nat>
+  </forward>
+  <bridge name='virbr0' stp='on' delay='0'/>
+  <!-- aerogrid.com served locally by libvirt's built-in dnsmasq on virbr0 -->
+  <domain name='{{ lab_dns_domain }}' localOnly='yes'/>
+  <dns>
+    <!-- Harvester floating VIP — cluster API + UI -->
+    <host ip='{{ harvester_vip }}'>
+      <hostname>virtualization.{{ lab_dns_domain }}</hostname>
+    </host>
+{% for node in vm_nodes %}
+    <host ip='{{ node.ip }}'>
+      <hostname>{{ node.hostname }}.{{ lab_dns_domain }}</hostname>
+    </host>
+{% endfor %}
+  </dns>
+  <ip address='{{ libvirt_network_gateway }}' netmask='255.255.255.0'>
+    <dhcp>
+      <range start='192.168.122.100' end='192.168.122.254'/>
+{% for node in vm_nodes %}
+      <host mac='{{ node.mgmt_mac }}' name='{{ node.name }}' ip='{{ node.ip }}'/>
+{% endfor %}
+    </dhcp>
+  </ip>
+</network>

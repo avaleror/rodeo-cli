@@ -1,0 +1,14 @@
+---
+- name: Ensure serial console log directory exists
+  ansible.builtin.file:
+    path: "{{ serial_log_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: Define KVM virtual machines from template
+  community.libvirt.virt:
+    command: define
+    xml: "{{ lookup('template', 'vm.xml.j2') }}"
+  loop: "{{ vm_nodes }}"
+  loop_control:
+    label: "{{ item.name }}"

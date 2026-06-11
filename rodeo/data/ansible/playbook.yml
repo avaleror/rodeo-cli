@@ -1,0 +1,9 @@
+---
+- name: Configure KVM host for SUSE Virtualization Rodeo
+  hosts: kvm_host
+  become: true
+  roles:
+    - role: kvm_host
+      tags: [kvm_host]
+    - role: vms
+      tags: [vms]

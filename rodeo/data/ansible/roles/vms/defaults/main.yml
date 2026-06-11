@@ -1,0 +1,114 @@
+---
+image_dir: /var/lib/libvirt/images
+config_dir: /root/harvester-configs
+serial_log_dir: /var/log/libvirt/qemu
+
+harvester_version: "1.8.0"
+harvester_iso_checksum: "sha512:dcbe2b2ba47e1f15854eb054f0cf5a5efe711db7aa86c4a4e50410e0f12aa5481085f99b85e62e89ddb53b95b61dc859b8568152f986be7d4168fd6b8ead026a"  # harvester-v1.8.0-amd64.iso from releases.rancher.com
+# Floating kube-vip VIP — a free address, NOT any node IP (nodes are .11/.12/.13,
+# rancher .9). It migrates to a surviving node on failure. Outside the DHCP pool.
+harvester_vip: "192.168.122.10"
+harvester_token: "HarvesterRodeoBootstrapToken2024"
+# Single lab password. Used for the Harvester node OS console, the Rancher VM root
+# console, and (via setup-rancher.sh) the Harvester and Rancher dashboard admins.
+# Lab-grade only — do not reuse anywhere real.
+harvester_os_password: "Foobar12345$"
+
+rancher_vm_password: "Foobar12345$"
+
+# OVMF/UEFI firmware from the qemu-ovmf-x86_64 package (202602+, SLES 16 / Leap 16).
+# The 202602 build dropped the old 2MB images; these are the plain 4MB non-SecureBoot
+# variants — correct for nested KVM guests with no Secure Boot requirement.
+ovmf_code: /usr/share/qemu/ovmf-x86_64-4m-code.bin
+ovmf_vars_template: /usr/share/qemu/ovmf-x86_64-4m-vars.bin
+
+libvirt_pool_name: default
+libvirt_pool_path: /var/lib/libvirt/images
+libvirt_network_name: default
+libvirt_network_gateway: "192.168.122.1"
+
+# Lab DNS domain served by libvirt's built-in dnsmasq on virbr0 (and written
+# to /etc/hosts on the host for geekohive scripts + cloud-client).
+lab_dns_domain: "aerogrid.com"
+
+# network_mode and host_bridge are set in ansible/group_vars/all.yml.
+# Values below are role-default fallbacks only — group_vars takes precedence.
+#   nat    — guests on libvirt virbr0 (default network), gateway 192.168.122.1
+#   bridge — guests attach to the host bridge; set node IPs + libvirt_network_gateway
+#            to your real LAN values, and harvester_vip to a free LAN address.
+network_mode: nat
+host_bridge: br0
+
+# Subnet of the node network. /24 for the default NAT network; override both for
+# a non-/24 LAN in bridge mode.
+node_subnet_mask: "255.255.255.0"
+node_prefix: 24
+
+leap16_url: "https://download.opensuse.org/distribution/leap/16.0/appliances/Leap-16.0-Minimal-VM.x86_64-kvm-and-xen.qcow2"
+
+# Sized to fit a ~64 GB / 32 vCPU host: 3x16 GiB + 8 GiB = 56 GiB for guests,
+# leaving ~8 GB for the host + QEMU overhead. Harvester meets its 16 GiB minimum.
+# CPU is 3x8 + 4 = 28 vCPU, leaving 4 for the host. Bump back up on a larger host
+# (e.g. 20 GiB / 12 GiB on a 90 GB box, or 24 GiB / 16 GiB on a 128 GiB box).
+libvirt_flavors:
+  harvester:
+    memory_mib: 16384
+    vcpu: 8
+    disk_gb: 270
+  rancher:
+    memory_mib: 8192
+    vcpu: 4
+    disk_gb: 60
+
+# NIC assignment per Harvester node (all on virbr0 — lab single-bridge constraint)
+#
+#   eth0  management  02:00:00:0D:62:Ex  static IP from installer, cluster API
+#   eth1  storage     02:00:00:0D:63:Ex  Longhorn storage traffic
+#   eth2  migration   02:00:00:0D:64:Ex  KubeVirt live migration
+#   eth3  service1    02:00:00:0D:65:Ex  Kube-OVN OVN uplink (primary VM networks)
+#   eth4  service2    02:00:00:0D:66:Ex  Kube-OVN second uplink / additional VM network
+#
+# Only eth0 has a libvirt DHCP static reservation — Harvester manages the others.
+# Rancher VM has management NIC only (no cluster roles, no storage/migration).
+
+vm_nodes:
+  - name: harvester1
+    flavor: harvester
+    hostname: alpha          # alpha.aerogrid.com — Harvester node 1 (cluster bootstrap)
+    uuid: "1c5e1f38-1fb8-4f03-9eaa-12838f70faa1"
+    mgmt_mac: "02:00:00:0D:62:E1"
+    storage_mac: "02:00:00:0D:63:E1"
+    migration_mac: "02:00:00:0D:64:E1"
+    service1_mac: "02:00:00:0D:65:E1"
+    service2_mac: "02:00:00:0D:66:E1"
+    ip: "192.168.122.11"
+    config_iso_name: "harvester-config-node1"
+  - name: harvester2
+    flavor: harvester
+    hostname: bravo           # bravo.aerogrid.com — Harvester node 2
+    uuid: "4e156918-3e00-44c2-bf47-0b532b3807c1"
+    mgmt_mac: "02:00:00:0D:62:E2"
+    storage_mac: "02:00:00:0D:63:E2"
+    migration_mac: "02:00:00:0D:64:E2"
+    service1_mac: "02:00:00:0D:65:E2"
+    service2_mac: "02:00:00:0D:66:E2"
+    ip: "192.168.122.12"
+    config_iso_name: "harvester-config-node2"
+  - name: harvester3
+    flavor: harvester
+    hostname: charlie         # charlie.aerogrid.com — Harvester node 3
+    uuid: "4541177c-c6b7-4ab3-b418-e2a0b17beb9d"
+    mgmt_mac: "02:00:00:0D:62:E3"
+    storage_mac: "02:00:00:0D:63:E3"
+    migration_mac: "02:00:00:0D:64:E3"
+    service1_mac: "02:00:00:0D:65:E3"
+    service2_mac: "02:00:00:0D:66:E3"
+    ip: "192.168.122.13"
+    config_iso_name: "harvester-config-node3"
+  - name: rancher
+    flavor: rancher
+    hostname: rancher         # rancher.aerogrid.com — Rancher Prime
+    uuid: "77994fd6-7ebb-4ad3-baf4-55575b0ce265"
+    mgmt_mac: "02:00:00:0D:62:E9"
+    ip: "192.168.122.9"
+    config_iso_name: ""

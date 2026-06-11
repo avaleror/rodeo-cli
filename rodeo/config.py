@@ -91,11 +91,22 @@ def load_config(plan_path: str | Path = "rodeo-plan.yaml") -> dict:
     return cfg
 
 
-def find_ansible_path(cfg: dict) -> Path | None:
-    """Return the path containing ansible/site.yml, or None."""
+_BUNDLED_DATA = Path(__file__).parent / "data"
+
+
+def find_ansible_root(cfg: dict) -> Path | None:
+    """Return the directory containing ansible/playbook.yml and deployer/.
+
+    Search order:
+      1. cfg['ansible']['path'] or RODEO_ANSIBLE_PATH env
+      2. Bundled data shipped with rodeo-cli
+      3. Current working directory
+      4. ~/instruqt-virtualization (dev checkout)
+    """
     candidates = [
         cfg["ansible"].get("path"),
         os.environ.get("RODEO_ANSIBLE_PATH"),
+        str(_BUNDLED_DATA),
         ".",
         str(Path.home() / "instruqt-virtualization"),
     ]
@@ -103,6 +114,10 @@ def find_ansible_path(cfg: dict) -> Path | None:
         if c is None:
             continue
         p = Path(c)
-        if (p / "ansible" / "site.yml").exists():
+        if (p / "ansible" / "playbook.yml").exists():
             return p
     return None
+
+
+# Keep old name for backward compatibility in deploy.py v0.1
+find_ansible_path = find_ansible_root

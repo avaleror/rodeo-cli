@@ -1,0 +1,66 @@
+---
+# In NAT mode the host routes guest traffic and DNATs the UI ports to the
+# guests, so IP forwarding must be on. In bridge mode the guests sit on the
+# physical LAN and the host does no forwarding for them.
+- name: Enable IP forwarding (NAT mode)
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: '1'
+    sysctl_file: /etc/sysctl.d/99-kvm-forward.conf
+    reload: true
+  when: network_mode == 'nat'
+
+# Harvester runs RKE2 under the hood. The Harvester nodes form the whole RKE2
+# cluster (etcd, kube-apiserver, kubelet) plus the Canal/VXLAN and Kube-OVN
+# overlays entirely over the bridge they share — virbr0 in NAT mode, the host
+# bridge in bridge mode. Two host sysctl groups keep that from breaking:
+#
+#   * bridge-netfilter off — node-to-node traffic is L2-bridged, so it must NOT
+#     be diverted into the host's nftables/firewalld FORWARD path where it can be
+#     silently dropped. Keeping it off means the host firewall never touches
+#     inter-node cluster traffic, regardless of what loads br_netfilter.
+#   * rp_filter loose — each node has five NICs on one subnet, and the kube-vip
+#     VIP and the ARP-announced LoadBalancer IPs (192.168.122.200-220) create
+#     asymmetric/multi-homed return paths. Strict reverse-path filtering drops
+#     those return packets; loose mode (2) keeps basic spoof protection without
+#     the false drops. all=2 wins over any per-interface value (kernel uses max).
+# WARNING — rp_filter risk: setting conf.all.rp_filter=2 affects every NIC on the
+# host, including the Instruqt/cloud management interface. On GCP the primary NIC
+# uses policy routing so this is safe, but if the base image has rp_filter=0
+# (disabled) adding any filtering can drop packets on asymmetrically-routed links.
+# We read the current all value first and skip the rp_filter keys if it is already 0.
+- name: Read current rp_filter setting
+  ansible.builtin.command: sysctl -n net.ipv4.conf.all.rp_filter
+  register: current_rp_filter
+  changed_when: false
+  failed_when: false
+
+- name: Drop in RKE2-friendly host sysctls (bridge-netfilter off, rp_filter loose)
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/99-harvester-rke2.conf
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      # Managed by the SUSE Virtualization Rodeo kvm_host role.
+      # Keep the host firewall off the bridged inter-node RKE2 traffic.
+      net.bridge.bridge-nf-call-iptables = 0
+      net.bridge.bridge-nf-call-ip6tables = 0
+      net.bridge.bridge-nf-call-arptables = 0
+      # Loose rp_filter for the multi-NIC + VIP + LB-ARP topology.
+      # Only applied if the base image has strict (1) — if it is 0 (disabled) on a
+      # cloud host with asymmetric management routing we leave it alone.
+      {% if current_rp_filter.stdout | trim != '0' %}
+      net.ipv4.conf.all.rp_filter = 2
+      net.ipv4.conf.default.rp_filter = 2
+      {% else %}
+      # rp_filter left at 0 — base image had it disabled (cloud host, policy routing).
+      {% endif %}
+
+# Apply now. -e ignores bridge keys that do not exist yet (br_netfilter not
+# loaded); rp_filter keys always exist and take effect immediately. The drop-in
+# in /etc/sysctl.d/ is the durable source of truth, reapplied at every boot.
+- name: Apply the RKE2 host sysctls
+  ansible.builtin.command: sysctl -e -p /etc/sysctl.d/99-harvester-rke2.conf
+  changed_when: false
+  failed_when: false

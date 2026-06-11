@@ -9,7 +9,7 @@ import yaml
 
 _STATE_PATH = Path.home() / ".rodeo" / "state.yaml"
 
-PHASES = ["preflight", "kvm_host", "vms", "rancher", "finalise"]
+PHASES = ["kvm_host", "vms", "cluster", "rancher", "finalise"]
 
 
 def _now() -> str:

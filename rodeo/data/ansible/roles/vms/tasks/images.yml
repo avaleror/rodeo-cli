@@ -1,0 +1,148 @@
+---
+- name: Ensure image, config, and serial log directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - "{{ image_dir }}"
+    - "{{ config_dir }}"
+    - "{{ serial_log_dir }}"
+
+# --- SSH key (must exist before the Harvester config + Rancher cloud-init are
+#     rendered, so its public key can be baked into both) ---
+
+- name: Generate the host SSH key used to reach the guest VMs
+  ansible.builtin.command: ssh-keygen -t ed25519 -f /root/.ssh/id_ed25519 -N ""
+  args:
+    creates: /root/.ssh/id_ed25519
+
+- name: Read the SSH public key
+  ansible.builtin.slurp:
+    src: /root/.ssh/id_ed25519.pub
+  register: ssh_pubkey_b64
+
+- name: Expose the public key as a fact for the templates
+  ansible.builtin.set_fact:
+    ssh_public_key: "{{ ssh_pubkey_b64.content | b64decode | trim }}"
+
+# --- Harvester ISO ---
+
+- name: Download Harvester {{ harvester_version }} ISO
+  ansible.builtin.get_url:
+    url: "https://releases.rancher.com/harvester/v{{ harvester_version }}/harvester-v{{ harvester_version }}-amd64.iso"
+    dest: "{{ image_dir }}/harvester-v{{ harvester_version }}-amd64.iso"
+    checksum: "{{ harvester_iso_checksum | default(omit) }}"
+    mode: '0644'
+
+# --- Harvester node disks and OVMF vars ---
+
+- name: Create Harvester node qcow2 disk images
+  ansible.builtin.command: >
+    qemu-img create -f qcow2 -o preallocation=metadata
+    {{ image_dir }}/{{ item.name }}-vda.qcow2
+    {{ libvirt_flavors[item.flavor].disk_gb }}G
+  args:
+    creates: "{{ image_dir }}/{{ item.name }}-vda.qcow2"
+  loop: "{{ vm_nodes | selectattr('flavor', 'equalto', 'harvester') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Copy OVMF variable store for each Harvester node
+  ansible.builtin.copy:
+    src: "{{ ovmf_vars_template }}"
+    dest: "{{ image_dir }}/{{ item.name }}-ovmf-vars.fd"
+    remote_src: true
+    force: false
+  loop: "{{ vm_nodes | selectattr('flavor', 'equalto', 'harvester') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# --- Harvester config seed ISOs ---
+
+- name: Create Harvester config staging directories
+  ansible.builtin.file:
+    path: "{{ config_dir }}/{{ item.config_iso_name }}/harvester"
+    state: directory
+    mode: '0755'
+  loop: "{{ vm_nodes | selectattr('flavor', 'equalto', 'harvester') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Render Harvester node config YAML
+  ansible.builtin.template:
+    src: harvester-config.yaml.j2
+    dest: "{{ config_dir }}/{{ item.config_iso_name }}/harvester/config.yaml"
+  loop: "{{ vm_nodes | selectattr('flavor', 'equalto', 'harvester') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Build Harvester config seed ISOs
+  ansible.builtin.command: >
+    xorriso -as mkisofs
+    -V HarvesterConfig -J -r
+    -o '{{ image_dir }}/{{ item.config_iso_name }}.iso'
+    '{{ config_dir }}/{{ item.config_iso_name }}'
+  loop: "{{ vm_nodes | selectattr('flavor', 'equalto', 'harvester') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# --- Rancher VM disk and cloud-init ---
+
+- name: Download openSUSE Leap 16 KVM base image (kvm-and-xen variant; virtio drivers included)
+  ansible.builtin.get_url:
+    url: "{{ leap16_url }}"
+    dest: "{{ image_dir }}/Leap-16.0-kvm-and-xen.qcow2"
+    mode: '0644'
+
+- name: Convert Leap 16 KVM base image to Rancher VM disk
+  ansible.builtin.command: >
+    qemu-img convert -f qcow2 -O qcow2 -o preallocation=metadata
+    '{{ image_dir }}/Leap-16.0-kvm-and-xen.qcow2'
+    '{{ image_dir }}/rancher-vda.qcow2'
+  args:
+    creates: "{{ image_dir }}/rancher-vda.qcow2"
+
+- name: Get Rancher disk virtual size
+  ansible.builtin.command: qemu-img info --output=json '{{ image_dir }}/rancher-vda.qcow2'
+  register: rancher_disk_info
+  changed_when: false
+  failed_when: false
+
+- name: Resize Rancher VM disk to {{ libvirt_flavors.rancher.disk_gb }}G
+  ansible.builtin.command: >
+    qemu-img resize '{{ image_dir }}/rancher-vda.qcow2' {{ libvirt_flavors.rancher.disk_gb }}G
+  when:
+    - rancher_disk_info.rc == 0
+    - (rancher_disk_info.stdout | from_json)['virtual-size'] | int < (libvirt_flavors.rancher.disk_gb | int * 1073741824)
+
+- name: Create cloud-init staging directory
+  ansible.builtin.file:
+    path: /tmp/rancher-cloud-init
+    state: directory
+    mode: '0755'
+
+- name: Write cloud-init meta-data
+  ansible.builtin.template:
+    src: cloud-init-meta-data.j2
+    dest: /tmp/rancher-cloud-init/meta-data
+
+- name: Write cloud-init user-data
+  ansible.builtin.template:
+    src: cloud-init-user-data.j2
+    dest: /tmp/rancher-cloud-init/user-data
+
+- name: Write cloud-init network-config
+  ansible.builtin.template:
+    src: cloud-init-network-config.j2
+    dest: /tmp/rancher-cloud-init/network-config
+
+# No creates: guard — cloud-init ISO is always rebuilt to match current templates
+- name: Build Rancher cloud-init seed ISO
+  ansible.builtin.command: >
+    xorriso -as mkisofs
+    -V cidata -J -r
+    -o '{{ image_dir }}/rancher-cloud-init.iso'
+    /tmp/rancher-cloud-init/meta-data
+    /tmp/rancher-cloud-init/user-data
+    /tmp/rancher-cloud-init/network-config

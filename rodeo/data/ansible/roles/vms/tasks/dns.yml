@@ -1,0 +1,13 @@
+---
+# Write /etc/hosts entries on geekohive so scripts on the host can use
+# aerogrid.com names. The libvirt dnsmasq (virbr0) serves the same records
+# to VMs on the NAT network; this covers the host itself.
+- name: Write aerogrid.com /etc/hosts entries on the KVM host
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} aerogrid.com lab DNS (managed by Ansible)"
+    block: |
+      {{ harvester_vip }}  virtualization.{{ lab_dns_domain }}
+      {% for node in vm_nodes %}
+      {{ node.ip }}  {{ node.hostname }}.{{ lab_dns_domain }}
+      {% endfor %}

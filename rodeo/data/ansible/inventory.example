@@ -1,0 +1,7 @@
+# Target: the local host (default — image build or deployer running on the KVM host itself).
+[kvm_host]
+localhost ansible_connection=local
+
+# For a remote SLES 16 / openSUSE Leap 16 host, comment out localhost above and use:
+# [kvm_host]
+# myhost ansible_host=<IP_OR_HOSTNAME> ansible_user=root

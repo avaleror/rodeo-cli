@@ -1,0 +1,45 @@
+---
+# The libvirt default network (virbr0) with static DHCP reservations is only
+# used in NAT mode. In bridge mode the guests attach directly to the host
+# bridge and get their addresses from the physical LAN, so there is nothing to
+# define here.
+- name: Configure libvirt default network with static DHCP entries (NAT mode)
+  when: network_mode == 'nat'
+  block:
+    - name: Check for running domains before network redefinition
+      ansible.builtin.command: virsh list --name --state-running
+      register: running_domains
+      changed_when: false
+      failed_when: false
+
+    - name: Fail if domains are running (network redefinition would drop guest connectivity)
+      ansible.builtin.fail:
+        msg: >
+          Cannot redefine the default network — the following domains are running:
+          {{ running_domains.stdout_lines }}.
+          Stop all VMs first: virsh destroy harvester1 harvester2 harvester3 rancher
+      when:
+        - running_domains.rc == 0
+        - running_domains.stdout | trim != ''
+
+    - name: Destroy default network to allow redefinition with static DHCP entries
+      community.libvirt.virt_net:
+        name: "{{ libvirt_network_name }}"
+        state: absent
+      failed_when: false
+
+    - name: Define default network with static DHCP entries
+      community.libvirt.virt_net:
+        command: define
+        name: "{{ libvirt_network_name }}"
+        xml: "{{ lookup('template', 'network.xml.j2') }}"
+
+    # autostart: false — if virtnetworkd socket-activates at boot (e.g. triggered by
+    # libvirt-guests), it would bring up virbr0/dnsmasq before cloud-init finishes.
+    # That can stall network-online.target and block the Instruqt agent. rodeo.sh
+    # phase 3 runs `virsh net-autostart default` to re-enable it before starting VMs.
+    - name: Start default network (active now; autostart disabled until phase 3)
+      community.libvirt.virt_net:
+        name: "{{ libvirt_network_name }}"
+        state: active
+        autostart: false

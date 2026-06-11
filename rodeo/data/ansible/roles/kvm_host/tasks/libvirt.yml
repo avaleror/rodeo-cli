@@ -1,0 +1,114 @@
+---
+- name: Set security_driver to none in qemu.conf
+  ansible.builtin.lineinfile:
+    path: /etc/libvirt/qemu.conf
+    regexp: '^#?security_driver'
+    line: 'security_driver = "none"'
+    state: present
+  notify: restart libvirt
+
+# SLES 16 enables the modular libvirt daemons by default and AppArmor is gone
+# (SELinux is enforcing). security_driver = "none" above disables per-VM sVirt
+# labelling; the host SELinux policy still permits running guests from the
+# standard /var/lib/libvirt paths used by this lab.
+
+- name: Enable and start modular libvirt daemon sockets
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop: "{{ libvirt_modular_sockets }}"
+  when: libvirt_daemon_mode == 'modular'
+
+# The kvm_server zypper pattern often enables monolithic libvirtd via package
+# post-install scripts. Running both monolithic and modular simultaneously stalls
+# boot: libvirtd takes over the default network, brings up virbr0/dnsmasq before
+# cloud-init finishes, which can block network-online.target and prevent the
+# Instruqt agent from connecting after a save/reboot.
+- name: Disable monolithic libvirtd (package scripts may enable it; we use modular)
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: false
+    state: stopped
+  loop:
+    - libvirtd.service
+    - libvirtd.socket
+  failed_when: false
+  when: libvirt_daemon_mode == 'modular'
+
+# libvirt-guests saves/restores running VMs on shutdown/startup. kvm_server
+# enables it by default. At boot it accesses the libvirt API which socket-activates
+# virtqemud → virtnetworkd → virbr0/dnsmasq — all before cloud-init is done.
+# Disable it during the build phase; VMs are started explicitly by rodeo.sh phase 3.
+# rodeo.sh phase 5 re-enables it (with virsh autostart on all VMs) so the baked
+# image gracefully shuts down and restarts VMs on any subsequent stop/reboot.
+- name: Disable libvirt-guests (must not trigger libvirt on boot during build)
+  ansible.builtin.systemd:
+    name: libvirt-guests
+    enabled: false
+    state: stopped
+  failed_when: false
+
+# Write the libvirt-guests config now so it is ready when phase 5 enables the service.
+# ON_SHUTDOWN=shutdown — send ACPI to all running VMs on host stop; prevents filesystem
+# and etcd corruption from hard-kills. PARALLEL_SHUTDOWN=4 sends ACPI to all 4 VMs at
+# once so the full fleet shuts down within GCP's ~90s ACPI window.
+# ON_BOOT=start — on host restart, start all domains with autostart=yes (set by phase 5).
+- name: Configure libvirt-guests shutdown and startup behavior
+  ansible.builtin.copy:
+    dest: /etc/sysconfig/libvirt-guests
+    content: |
+      ON_SHUTDOWN=shutdown
+      ON_BOOT=start
+      PARALLEL_SHUTDOWN=4
+      SHUTDOWN_TIMEOUT=90
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Enable and start monolithic libvirtd (legacy hosts only)
+  ansible.builtin.systemd:
+    name: libvirtd
+    enabled: true
+    state: started
+  when: libvirt_daemon_mode == 'monolithic'
+
+# Belt-and-braces: tell NetworkManager to never manage virbr0 or vnet tap interfaces.
+# SLES 16 uses NM (wicked is removed). NM typically ignores libvirt bridges it did not
+# create, but an explicit unmanaged-devices drop-in guarantees it: NM will not try to
+# DHCP virbr0 if it appears at boot before cloud-init finishes, which would stall
+# network-online.target and prevent the Instruqt agent from connecting.
+- name: Mark virbr0 and vnet* unmanaged by NetworkManager (libvirt owns them)
+  ansible.builtin.copy:
+    dest: /etc/NetworkManager/conf.d/99-libvirt-unmanaged.conf
+    content: |
+      [keyfile]
+      unmanaged-devices=interface-name:virbr0;interface-name:vnet*
+    owner: root
+    group: root
+    mode: '0644'
+  when: network_mode == 'nat'
+
+- name: Add {{ libvirt_user }} to libvirt and kvm groups
+  ansible.builtin.user:
+    name: "{{ libvirt_user }}"
+    groups:
+      - libvirt
+      - kvm
+    append: true
+
+# The default (virbr0) network is owned by the vms role's network_setup.yml in NAT
+# mode: it destroys, re-defines with static DHCP, and activates it. Activating it
+# here too is redundant and breaks re-runs — after a mid-play failure the vms role
+# has already undefined `default`, and trying to activate a non-existent network
+# would fail this task before the vms role can recreate it.
+
+- name: Validate KVM capabilities
+  ansible.builtin.command: virt-host-validate qemu
+  register: kvm_validate
+  changed_when: false
+  failed_when: false
+
+- name: Show KVM validation result
+  ansible.builtin.debug:
+    var: kvm_validate.stdout_lines

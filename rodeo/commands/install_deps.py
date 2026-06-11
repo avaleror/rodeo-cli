@@ -113,6 +113,16 @@ def _install_ansible() -> None:
     console.print("[bold]  Installing ansible-core via pip...[/bold]")
     _run([sys.executable, "-m", "pip", "install", "--quiet", "ansible-core>=2.16"])
     _run([sys.executable, "-m", "pip", "install", "--quiet", "jinja2", "pyyaml"])
+    _install_ansible_collections()
+
+
+def _install_ansible_collections() -> None:
+    console.print("[bold]  Installing Ansible collections...[/bold]")
+    req_file = Path(__file__).parent.parent / "data" / "ansible" / "requirements.yml"
+    if req_file.exists():
+        _run(["ansible-galaxy", "collection", "install", "-r", str(req_file)], check=False)
+    else:
+        console.print("[yellow]  ⚠  requirements.yml not found, skipping collection install[/yellow]")
 
 
 @click.command("install-deps")

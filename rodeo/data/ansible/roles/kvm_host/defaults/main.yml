@@ -1,0 +1,64 @@
+---
+# --- Packages (SLES 16 / Leap 16 / openSUSE) ---
+kvm_host_patterns:
+  - kvm_server   # qemu-kvm + base hypervisor stack
+  - kvm_tools    # libvirt management tooling
+
+kvm_host_packages:
+  - jq
+  - curl
+  - tmux                     # rodeo.sh auto-wraps in a tmux session so terminal disconnects do not kill long phases
+  - xorriso                  # builds the Harvester/cloud-init seed ISOs (genisoimage is gone on SLES 16)
+  - qemu-tools               # qemu-img — used heavily by the vms role (create/convert/resize)
+  - qemu-ovmf-x86_64         # UEFI/OVMF firmware for the Harvester nodes
+  - firewalld                # the firewall.yml tasks configure it; not guaranteed on a minimal image
+  - python3-firewall         # required by the ansible.posix.firewalld module (imports `firewall`)
+  - python3-libvirt-python   # required by the community.libvirt modules (virt/virt_net/virt_pool)
+
+# kubectl is not in the SUSE base repos, so the role adds the upstream Kubernetes
+# repo and installs it (used by setup-rancher.sh for the cluster import). Channel
+# is the latest stable minor; kubectl is forward/backward compatible enough for the
+# import-apply against the older K3s/Harvester clusters. Bump as new minors ship.
+kubectl_repo_channel: "stable:/v1.36"
+
+# --- Lab addressing ---
+# harvester_vip, rancher_ip, network_mode, host_bridge are set in
+# ansible/group_vars/all.yml (single source of truth). Values below are
+# role-default fallbacks only — group_vars takes precedence.
+harvester_vip: "192.168.122.10"
+rancher_ip: "192.168.122.9"
+libvirt_network_cidr: "192.168.122.0/24"
+
+# Host-side port the Harvester UI is exposed on (nginx on cloud-client targets
+# geekohive:8443). The DNAT forwards it to the port Harvester actually serves on
+# at the VIP, which is 443 (not 8443 — Harvester's management UI/API is on 443).
+harvester_ui_port: 8443
+harvester_https_port: 443
+rancher_nodeport: 30002
+
+# --- libvirt daemon model ---
+# SLES 16 ships the modular libvirt daemons (virtqemud, virtnetworkd, ...) by
+# default and no longer runs the monolithic libvirtd. Set to "monolithic" only
+# on an older host that still uses a single libvirtd.
+libvirt_daemon_mode: modular
+libvirt_user: root
+
+# Modular daemon sockets to enable (socket-activated — the daemon starts on first use).
+libvirt_modular_sockets:
+  - virtqemud.socket
+  - virtnetworkd.socket
+  - virtstoraged.socket
+  - virtnodedevd.socket
+  - virtsecretd.socket
+  - virtlogd.socket
+
+# The qemu-driver service the handlers restart, picked from the daemon model.
+libvirt_primary_service: "{{ 'virtqemud' if libvirt_daemon_mode == 'modular' else 'libvirtd' }}"
+
+# --- Network model for the lab guests ---
+#   nat    — libvirt virbr0 NAT network (self-contained single host). UIs are
+#            reached on the host via firewalld DNAT (port forwarding).
+#   bridge — guests attach to an existing host bridge ({{ host_bridge }}) on the
+#            physical LAN and get real IPs. No DNAT; UIs reached directly.
+network_mode: nat
+host_bridge: br0

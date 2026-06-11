@@ -1,0 +1,47 @@
+---
+- name: Install KVM patterns
+  community.general.zypper:
+    name: "{{ item }}"
+    type: pattern
+    state: present
+  loop: "{{ kvm_host_patterns }}"
+
+- name: Install supporting packages
+  community.general.zypper:
+    name: "{{ kvm_host_packages }}"
+    state: present
+
+# kubectl is not in the SUSE base repos — add the upstream Kubernetes repo.
+- name: Add the upstream Kubernetes repo (for kubectl)
+  ansible.builtin.copy:
+    dest: /etc/zypp/repos.d/kubernetes.repo
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      [kubernetes]
+      name=Kubernetes
+      baseurl=https://pkgs.k8s.io/core:/{{ kubectl_repo_channel }}/rpm/
+      enabled=1
+      gpgcheck=1
+      gpgkey=https://pkgs.k8s.io/core:/{{ kubectl_repo_channel }}/rpm/repodata/repomd.xml.key
+
+- name: Refresh the Kubernetes repo (auto-import its GPG key)
+  ansible.builtin.command: zypper --gpg-auto-import-keys --non-interactive refresh kubernetes
+  changed_when: false
+
+- name: Install kubectl
+  community.general.zypper:
+    name: kubectl
+    state: present
+
+- name: Verify nested virtualisation is active (Intel or AMD)
+  ansible.builtin.shell: >
+    set -o pipefail;
+    cat /sys/module/kvm_intel/parameters/nested 2>/dev/null
+    || cat /sys/module/kvm_amd/parameters/nested 2>/dev/null
+  args:
+    executable: /bin/bash
+  register: nested_virt
+  changed_when: false
+  failed_when: nested_virt.stdout | trim not in ['Y', '1']

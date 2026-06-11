@@ -1,153 +1,151 @@
-"""rodeo deploy — run the full Harvester + Rancher deployment pipeline."""
+"""rodeo deploy — orchestrate the full Harvester + Rancher pipeline."""
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import time
-import ssl
-import urllib.request
-from pathlib import Path
 
 import click
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
-from ..config import load_config, find_ansible_path
-from ..state import is_phase_done, mark_phase_done, mark_phase_failed, reset_from
+from ..config import load_config, find_ansible_root
+from ..state import PHASES, is_phase_done, mark_phase_done, mark_phase_failed, reset_from
 
 console = Console()
 
-_PHASE_TAGS = {
-    "preflight": ["preflight"],
-    "kvm_host":  ["kvm_host"],
-    "vms":       ["vms"],
-    "rancher":   ["rancher"],
-}
 
-_VIP_TIMEOUT   = 3600  # seconds to wait for Harvester VIP
-_RANCHER_TIMEOUT = 1800
+# ---------- Ansible helpers ----------
+
+def _build_extra_vars(cfg: dict) -> list[str]:
+    creds = cfg.get("credentials", {})
+    net = cfg.get("network", {})
+    return [
+        "-e", f"network_mode={net.get('mode', 'nat')}",
+        "-e", f"host_bridge={net.get('host_bridge', 'br0')}",
+        "-e", f"harvester_vip={net.get('vip', '192.168.122.10')}",
+        "-e", f"rancher_ip={net.get('rancher_ip', '192.168.122.9')}",
+        "-e", f"harvester_os_password={creds.get('harvester_os_password', '')}",
+        "-e", f"rancher_vm_password={creds.get('harvester_os_password', '')}",
+    ]
 
 
-def _run_ansible(ansible_path: Path, tags: list[str], inventory: str, extra_vars: dict | None = None) -> int:
+def _run_ansible(root: "Path", tags: str, cfg: dict, extra: list[str] | None = None) -> int:
+    from pathlib import Path
+
+    inventory = root / cfg["ansible"]["inventory"]
+    playbook = root / "ansible" / "playbook.yml"
     cmd = [
         "ansible-playbook",
-        "-i", str(ansible_path / inventory),
-        str(ansible_path / "ansible" / "site.yml"),
-        "--tags", ",".join(tags),
-    ]
-    if extra_vars:
-        import json
-        cmd += ["--extra-vars", json.dumps(extra_vars)]
-
-    proc = subprocess.run(cmd, cwd=str(ansible_path))
-    return proc.returncode
+        "-i", str(inventory),
+        str(playbook),
+        "--tags", tags,
+    ] + _build_extra_vars(cfg) + (extra or [])
+    return subprocess.run(cmd).returncode
 
 
-def _wait_for_url(url: str, timeout: int, label: str) -> bool:
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
+# ---------- Phase runners (plain Rich mode) ----------
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn(f"  [bold]{label}[/bold]"),
-        TimeElapsedColumn(),
-        console=console,
-        transient=True,
-    ) as prog:
-        prog.add_task("", total=None)
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            try:
-                urllib.request.urlopen(url, timeout=10, context=ctx)
-                return True
-            except Exception:
-                time.sleep(10)
-    return False
-
-
-def _run_phase(phase: str, ansible_path: Path, cfg: dict, from_phase: int) -> None:
-    if is_phase_done(phase) and phase not in list(_PHASE_TAGS.keys())[from_phase:]:
-        console.print(f"  [dim]skip[/dim]  {phase} (already done)")
-        return
-
-    tags = _PHASE_TAGS[phase]
-    console.print(f"\n[bold cyan]Phase: {phase}[/bold cyan]")
-
-    rc = _run_ansible(ansible_path, tags, cfg["ansible"]["inventory"])
+def _phase_ansible(phase: str, tags: str, root, cfg: dict) -> None:
+    console.rule(f"[bold cyan]{phase}[/bold cyan]")
+    rc = _run_ansible(root, tags, cfg)
     if rc != 0:
         mark_phase_failed(phase, f"ansible exited {rc}")
-        console.print(f"[red]✗  Phase {phase} failed (exit {rc}).[/red]")
-        console.print("    Fix the error and re-run with [bold]--from {phase}[/bold].")
+        console.print(f"[red]✗  {phase} failed (exit {rc}).[/red]")
         raise SystemExit(rc)
-
     mark_phase_done(phase)
     console.print(f"  [green]✓[/green]  {phase}")
 
 
-@click.command("deploy")
-@click.option("--config", "config_path", default="rodeo-plan.yaml", show_default=True)
-@click.option(
-    "--from", "from_phase",
-    type=click.Choice(["preflight", "kvm_host", "vms", "rancher", "finalise"]),
-    default=None,
-    help="Resume from a specific phase (skips earlier phases).",
-)
-@click.option("--ansible-path", default=None, help="Override path to ansible/ directory.")
-def deploy_cmd(config_path: str, from_phase: str | None, ansible_path: str | None) -> None:
-    """Deploy the full SUSE Virtualization Rodeo cluster."""
-    cfg = load_config(config_path)
+def _phase_cluster(cfg: dict, root) -> None:
+    """Start VMs and wait for Harvester cluster to be fully ready."""
+    console.rule("[bold cyan]cluster[/bold cyan]")
+    net = cfg["network"]
+    vip = net["vip"]
+    deployer = root / "deployer"
 
-    # Resolve ansible directory
-    ap = Path(ansible_path) if ansible_path else find_ansible_path(cfg)
-    if ap is None or not (ap / "ansible" / "site.yml").exists():
-        console.print(
-            "[red]Cannot find ansible/site.yml.[/red]\n"
-            "Set [bold]ansible.path[/bold] in rodeo-plan.yaml, "
-            "or use [bold]--ansible-path[/bold], "
-            "or set [bold]RODEO_ANSIBLE_PATH[/bold]."
-        )
-        raise SystemExit(1)
+    # Start firewalld (Ansible only writes permanent rules, does not start it)
+    console.print("  Starting firewalld...")
+    subprocess.run(["systemctl", "start", "firewalld"], check=False)
+    subprocess.run(["firewall-cmd", "--reload"], check=False)
 
-    phases = ["preflight", "kvm_host", "vms", "rancher"]
-    start_idx = 0
-    if from_phase:
-        reset_from(from_phase)
-        start_idx = phases.index(from_phase) if from_phase in phases else 0
+    # Start VMs via the bundled start-vms.sh
+    start_script = deployer / "lib" / "start-vms.sh"
+    if start_script.exists():
+        env = {**os.environ, "HARVESTER_VIP": vip}
+        rc = subprocess.run([str(start_script)], env=env).returncode
+        if rc != 0:
+            mark_phase_failed("cluster", f"start-vms.sh exited {rc}")
+            console.print("[red]✗  cluster: start-vms.sh failed[/red]")
+            raise SystemExit(rc)
+    else:
+        console.print("[yellow]  ⚠  start-vms.sh not found — starting VMs manually[/yellow]")
+        _start_vms_direct(cfg)
+
+    mark_phase_done("cluster")
+    console.print("  [green]✓[/green]  cluster")
+
+
+def _start_vms_direct(cfg: dict) -> None:
+    """Fallback: start VMs via libvirt-python and poll VIP."""
+    import ssl, urllib.request
+
+    from ..engine.libvirt import LibvirtDriver, RODEO_VMS
+
+    with LibvirtDriver(cfg["libvirt"]["uri"]) as lv:
+        lv.net_start()
+        for vm in RODEO_VMS:
+            lv.start(vm)
 
     vip = cfg["network"]["vip"]
-    rancher_ip = cfg["network"]["rancher_ip"]
-
-    console.print(f"\n[bold]rodeo deploy[/bold]  →  {ap}\n")
-
-    for idx, phase in enumerate(phases):
-        if idx < start_idx:
-            console.print(f"  [dim]skip[/dim]  {phase}")
-            continue
-        _run_phase(phase, ap, cfg, start_idx)
-
-        # After VMs phase: wait for Harvester VIP
-        if phase == "vms":
-            console.print(f"\n  Waiting for Harvester VIP ({vip}) — up to {_VIP_TIMEOUT // 60} min...")
-            if not _wait_for_url(f"https://{vip}", _VIP_TIMEOUT, f"VIP {vip}"):
-                console.print(f"[red]✗  VIP {vip} not reachable after {_VIP_TIMEOUT // 60} min.[/red]")
-                raise SystemExit(1)
-            console.print(f"  [green]✓[/green]  VIP online: https://{vip}")
-
-    # Finalise: enable libvirt-guests + VM autostart
-    console.print("\n[bold cyan]Phase: finalise[/bold cyan]")
-    _finalise(cfg)
-
-    console.print("\n[bold green]✓  Deployment complete.[/bold green]")
-    console.print(f"  Harvester:  https://{vip}")
-    console.print(f"  Rancher:    https://{rancher_ip}:30002\n")
+    console.print(f"  Waiting for VIP {vip} (up to 60 min)...")
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    deadline = time.time() + 3600
+    while time.time() < deadline:
+        try:
+            urllib.request.urlopen(f"https://{vip}", timeout=10, context=ctx)
+            break
+        except Exception:
+            time.sleep(30)
+    else:
+        mark_phase_failed("cluster", "VIP timeout")
+        raise SystemExit(1)
 
 
-def _finalise(cfg: dict) -> None:
-    """Enable libvirt-guests and VM autostart so the instance survives reboots."""
+def _phase_rancher(cfg: dict, root) -> None:
+    """Run setup-rancher.sh inside the Rancher VM."""
+    console.rule("[bold cyan]rancher[/bold cyan]")
+    script = root / "deployer" / "lib" / "setup-rancher.sh"
+    creds = cfg.get("credentials", {})
+    net = cfg["network"]
+    ver = cfg.get("versions", {})
+
+    env = {
+        **os.environ,
+        "RANCHER_VM_IP":         net.get("rancher_ip", "192.168.122.9"),
+        "RANCHER_VERSION":       ver.get("rancher", "2.13.1"),
+        "K3S_VERSION":           ver.get("k3s", "v1.31.4+k3s1"),
+        "HARVESTER_VIP":         net.get("vip", "192.168.122.10"),
+        "HARVESTER_OS_PASSWORD": creds.get("harvester_os_password", ""),
+        "CERT_MANAGER_VERSION":  ver.get("cert_manager", "v1.16.2"),
+        "LAB_ADMIN_PASSWORD":    creds.get("lab_admin_password", creds.get("harvester_os_password", "")),
+    }
+    rc = subprocess.run([str(script)], env=env).returncode
+    if rc != 0:
+        mark_phase_failed("rancher", f"setup-rancher.sh exited {rc}")
+        console.print("[red]✗  rancher failed[/red]")
+        raise SystemExit(rc)
+    mark_phase_done("rancher")
+    console.print("  [green]✓[/green]  rancher")
+
+
+def _phase_finalise(cfg: dict) -> None:
+    console.rule("[bold cyan]finalise[/bold cyan]")
     try:
         from ..engine.libvirt import LibvirtDriver, RODEO_VMS
-
         with LibvirtDriver(cfg["libvirt"]["uri"]) as lv:
             for vm in RODEO_VMS:
                 try:
@@ -156,7 +154,109 @@ def _finalise(cfg: dict) -> None:
                     pass
     except Exception as exc:
         console.print(f"[yellow]  ⚠  autostart: {exc}[/yellow]")
-
     subprocess.run(["systemctl", "enable", "libvirt-guests"], check=False)
     mark_phase_done("finalise")
-    console.print("  [green]✓[/green]  finalise  (libvirt-guests enabled, VM autostart set)")
+    console.print("  [green]✓[/green]  finalise")
+
+
+# ---------- CLI command ----------
+
+@click.command("deploy")
+@click.option("--config", "config_path", default="rodeo-plan.yaml", show_default=True)
+@click.option(
+    "--from", "from_phase",
+    type=click.Choice(PHASES),
+    default=None,
+    help="Resume from a specific phase.",
+)
+@click.option("--ansible-path", default=None, help="Path containing ansible/playbook.yml.")
+@click.option("--tui/--no-tui", default=None,
+              help="Force TUI on/off (default: auto-detect TTY).")
+@click.option("--install-collections", is_flag=True, default=True,
+              help="Run ansible-galaxy install before Ansible phases.")
+def deploy_cmd(
+    config_path: str,
+    from_phase: str | None,
+    ansible_path: str | None,
+    tui: bool | None,
+    install_collections: bool,
+) -> None:
+    """Deploy the full SUSE Virtualization Rodeo cluster."""
+    from pathlib import Path
+
+    cfg = load_config(config_path)
+
+    root = Path(ansible_path) if ansible_path else find_ansible_root(cfg)
+    if root is None or not (root / "ansible" / "playbook.yml").exists():
+        console.print(
+            "[red]Cannot find ansible/playbook.yml.[/red]\n"
+            "Set [bold]ansible.path[/bold] in rodeo-plan.yaml, "
+            "use [bold]--ansible-path[/bold], "
+            "or set [bold]RODEO_ANSIBLE_PATH[/bold]."
+        )
+        raise SystemExit(1)
+
+    # Decide TUI vs plain
+    use_tui = sys.stdout.isatty() if tui is None else tui
+    if use_tui:
+        try:
+            from ..app import RodeoApp
+            app = RodeoApp(
+                cfg=cfg,
+                ansible_root=root,
+                from_phase=from_phase,
+                install_collections=install_collections,
+            )
+            app.run()
+            return
+        except ImportError:
+            console.print("[yellow]⚠  textual not installed — falling back to plain output[/yellow]")
+
+    # Plain Rich mode
+    _deploy_plain(cfg, root, from_phase, install_collections)
+
+
+def _deploy_plain(cfg: dict, root, from_phase: str | None, install_collections: bool) -> None:
+    from pathlib import Path
+
+    if from_phase:
+        reset_from(from_phase)
+
+    phases = PHASES
+    start_idx = phases.index(from_phase) if from_phase and from_phase in phases else 0
+
+    console.print(f"\n[bold]rodeo deploy[/bold]  [{root}]\n")
+
+    # Install Ansible collections once (only needed before first Ansible phase)
+    if install_collections and start_idx <= phases.index("vms"):
+        req_file = root / "ansible" / "requirements.yml"
+        if req_file.exists():
+            console.print("  Installing Ansible collections...")
+            subprocess.run(
+                ["ansible-galaxy", "collection", "install", "-r", str(req_file)],
+                check=False,
+            )
+
+    for idx, phase in enumerate(phases):
+        if idx < start_idx or is_phase_done(phase):
+            if idx < start_idx:
+                console.print(f"  [dim]skip[/dim]  {phase}")
+            else:
+                console.print(f"  [dim]done[/dim]  {phase} (already complete)")
+            continue
+
+        if phase == "kvm_host":
+            _phase_ansible("kvm_host", "kvm_host", root, cfg)
+        elif phase == "vms":
+            _phase_ansible("vms", "vms", root, cfg)
+        elif phase == "cluster":
+            _phase_cluster(cfg, root)
+        elif phase == "rancher":
+            _phase_rancher(cfg, root)
+        elif phase == "finalise":
+            _phase_finalise(cfg)
+
+    net = cfg["network"]
+    console.print(f"\n[bold green]✓  Deployment complete.[/bold green]")
+    console.print(f"  Harvester:  https://{net['vip']}")
+    console.print(f"  Rancher:    https://{net['rancher_ip']}:30002\n")

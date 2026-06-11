@@ -1,0 +1,44 @@
+{% set first_harvester = vm_nodes | selectattr('flavor', 'equalto', 'harvester') | first %}
+scheme_version: 1
+
+{% if item.name == first_harvester.name %}
+server_url: ""
+{% else %}
+server_url: "https://{{ harvester_vip }}:443"
+{% endif %}
+
+token: "{{ harvester_token }}"
+
+os:
+  hostname: {{ item.name }}
+  password: "{{ harvester_os_password }}"
+  ssh_authorized_keys:
+    - "{{ ssh_public_key }}"
+  ntp_servers:
+    - 0.pool.ntp.org
+    - 1.pool.ntp.org
+  dns_nameservers:
+    - 8.8.8.8
+    - 1.1.1.1
+
+install:
+{% if item.name == first_harvester.name %}
+  mode: create
+{% else %}
+  mode: join
+{% endif %}
+  # eth0 only — the installer configures management exclusively.
+  # eth1 (storage), eth2 (migration), eth3/eth4 (service networks)
+  # are left unconfigured here and set up post-install via the Harvester UI/API.
+  management_interface:
+    interfaces:
+      - name: eth0
+    method: static
+    ip: {{ item.ip }}
+    subnet_mask: {{ node_subnet_mask }}
+    gateway: {{ libvirt_network_gateway }}
+  vip: {{ harvester_vip }}
+  vip_mode: static
+  device: /dev/vda
+  tty: ttyS0
+  poweroff: false

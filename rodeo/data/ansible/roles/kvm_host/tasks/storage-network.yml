@@ -1,0 +1,19 @@
+---
+# storage-network.yml — UNUSED
+#
+# A dedicated second libvirt network is not needed.
+#
+# In NAT mode every Harvester KVM VM has five NICs, all attached to the default
+# network (virbr0):
+#   eth0  management  — Harvester installer assigns a static IP (DHCP reservation)
+#   eth1  storage     — Longhorn storage traffic
+#   eth2  migration   — KubeVirt live migration
+#   eth3  service1    — Kube-OVN OVN uplink, primary VM networks
+#   eth4  service2    — Kube-OVN second uplink / additional VM network
+#
+# Sharing virbr0 means VM LoadBalancer IPs (192.168.122.200-220 from rodeo-ippool)
+# are directly reachable from the host without extra routing.
+#
+# In bridge mode all NICs attach to the host bridge ({{ host_bridge }}) instead.
+#
+# This file is not imported by main.yml and has no tasks to run.

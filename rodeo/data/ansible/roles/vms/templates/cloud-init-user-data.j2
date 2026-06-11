@@ -1,0 +1,15 @@
+#cloud-config
+hostname: rancher
+# Key-based root login is how the deployer/builder drive this VM. The password
+# stays as a console/debug fallback.
+disable_root: false
+users:
+  - name: root
+    lock_passwd: false
+    ssh_authorized_keys:
+      - {{ ssh_public_key }}
+chpasswd:
+  list: |
+    root:{{ rancher_vm_password }}
+  expire: false
+ssh_pwauth: true

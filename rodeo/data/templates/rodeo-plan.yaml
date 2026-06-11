@@ -47,6 +47,12 @@ ansible:
   inventory: deployer/inventory.local
 
 credentials:
-  # Use ??key to pull from ~/.rodeo/secrets.yaml
+  # ??placeholders are resolved at load time. Supported forms:
+  #   ??key                  -> ~/.rodeo/secrets.yaml (rodeo init creates it)
+  #   ??env:RODEO_PASSWORD   -> environment variable
+  #   ??file:/run/secrets/pw -> file contents (mounted secrets)
+  #   ??cmd:pass show rodeo  -> command stdout (pass, op, vault CLI...)
+  # If a source returns nothing, deploy fails fast instead of using
+  # an empty password.
   harvester_os_password: "??harvester_os_password"
   lab_admin_password: "??lab_admin_password"

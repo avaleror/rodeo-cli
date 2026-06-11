@@ -46,6 +46,62 @@ def test_secret_resolution(tmp_path, monkeypatch):
     assert cfg["credentials"]["harvester_os_password"] == "FromSecrets1"
 
 
+def test_env_resolver(tmp_path, monkeypatch):
+    monkeypatch.setenv("RODEO_TEST_PW", "FromEnv12345")
+    plan = _write_plan(
+        tmp_path, {"credentials": {"harvester_os_password": "??env:RODEO_TEST_PW"}}
+    )
+    cfg = config.load_config(plan)
+    assert cfg["credentials"]["harvester_os_password"] == "FromEnv12345"
+
+
+def test_env_resolver_missing_fails_closed(tmp_path, monkeypatch):
+    monkeypatch.delenv("RODEO_MISSING_PW", raising=False)
+    plan = _write_plan(
+        tmp_path, {"credentials": {"harvester_os_password": "??env:RODEO_MISSING_PW"}}
+    )
+    cfg = config.load_config(plan)
+    assert cfg["credentials"]["harvester_os_password"] == "??env:RODEO_MISSING_PW"
+    with pytest.raises(ValueError, match="Secrets not resolved"):
+        config.validate_config(cfg)
+
+
+def test_file_resolver(tmp_path):
+    pw_file = tmp_path / "pw.txt"
+    pw_file.write_text("FromFile12345\n")
+    plan = _write_plan(
+        tmp_path, {"credentials": {"harvester_os_password": f"??file:{pw_file}"}}
+    )
+    cfg = config.load_config(plan)
+    assert cfg["credentials"]["harvester_os_password"] == "FromFile12345"
+
+
+def test_file_resolver_missing_fails_closed(tmp_path):
+    plan = _write_plan(
+        tmp_path, {"credentials": {"harvester_os_password": "??file:/nonexistent/pw"}}
+    )
+    cfg = config.load_config(plan)
+    with pytest.raises(ValueError, match="Secrets not resolved"):
+        config.validate_config(cfg)
+
+
+def test_cmd_resolver(tmp_path):
+    plan = _write_plan(
+        tmp_path, {"credentials": {"harvester_os_password": "??cmd:echo FromCmd12345"}}
+    )
+    cfg = config.load_config(plan)
+    assert cfg["credentials"]["harvester_os_password"] == "FromCmd12345"
+
+
+def test_cmd_resolver_failure_fails_closed(tmp_path):
+    plan = _write_plan(
+        tmp_path, {"credentials": {"harvester_os_password": "??cmd:false"}}
+    )
+    cfg = config.load_config(plan)
+    with pytest.raises(ValueError, match="Secrets not resolved"):
+        config.validate_config(cfg)
+
+
 def test_unresolved_secret_kept_and_rejected(tmp_path, monkeypatch):
     _write_secrets(tmp_path, monkeypatch, {})
     plan = _write_plan(

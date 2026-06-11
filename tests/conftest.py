@@ -16,6 +16,7 @@ from rodeo.profiles.base import RodeoProfile
 def isolated_env(tmp_path, monkeypatch):
     """Keep ~/.rodeo state/vars and secrets inside tmp_path for every test."""
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("RODEO_PASSWORD", raising=False)
     monkeypatch.setattr(state, "_STATE_DIR", tmp_path / "state")
     return tmp_path
 

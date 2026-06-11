@@ -29,6 +29,44 @@ def test_init_writes_random_secrets(tmp_path):
     assert (tmp_path / "work" / "rodeo-plan.yaml").exists()
 
 
+def test_init_uses_env_password(tmp_path, monkeypatch):
+    monkeypatch.setenv("RODEO_PASSWORD", "EnvPassword12345")
+    result = CliRunner().invoke(init_cmd, [str(tmp_path / "work")])
+    assert result.exit_code == 0, result.output
+    content = (tmp_path / ".rodeo" / "secrets.yaml").read_text()
+    assert 'harvester_os_password: "EnvPassword12345"' in content
+
+
+def test_init_rejects_short_env_password(tmp_path, monkeypatch):
+    monkeypatch.setenv("RODEO_PASSWORD", "short")
+    result = CliRunner().invoke(init_cmd, [str(tmp_path / "work")])
+    assert result.exit_code == 1
+    assert not (tmp_path / ".rodeo" / "secrets.yaml").exists()
+
+
+def test_init_ask_prompts_hidden(tmp_path, monkeypatch):
+    monkeypatch.delenv("RODEO_PASSWORD", raising=False)
+    result = CliRunner().invoke(
+        init_cmd,
+        ["--ask", str(tmp_path / "work")],
+        input="PromptedPw12345\nPromptedPw12345\n",
+    )
+    assert result.exit_code == 0, result.output
+    content = (tmp_path / ".rodeo" / "secrets.yaml").read_text()
+    assert 'harvester_os_password: "PromptedPw12345"' in content  # gitleaks:allow
+    assert "PromptedPw12345" not in result.output  # hidden input is not echoed
+
+
+def test_init_ask_rejects_short_password(tmp_path):
+    result = CliRunner().invoke(
+        init_cmd,
+        ["--ask", str(tmp_path / "work")],
+        input="short\nshort\n",
+    )
+    assert result.exit_code == 1
+    assert not (tmp_path / ".rodeo" / "secrets.yaml").exists()
+
+
 def test_init_does_not_overwrite_without_force(tmp_path):
     runner = CliRunner()
     runner.invoke(init_cmd, [str(tmp_path / "work")])

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -46,12 +47,43 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return result
 
 
+def _resolve_secret_value(value: str, secrets: dict) -> str:
+    """Resolve one ??placeholder. On failure the literal is kept so
+    validate_config() fails closed with a clear message.
+
+    Supported forms:
+      ??key                  -> ~/.rodeo/secrets.yaml lookup
+      ??env:NAME             -> environment variable
+      ??file:/path           -> first line of a file (e.g. a mounted secret)
+      ??cmd:some command     -> stdout of a shell command (pass, op, vault...)
+    """
+    spec = value[2:]
+    if spec.startswith("env:"):
+        return os.environ.get(spec[4:]) or value
+    if spec.startswith("file:"):
+        try:
+            content = Path(spec[5:]).read_text().strip()
+            return content or value
+        except OSError:
+            return value
+    if spec.startswith("cmd:"):
+        try:
+            r = subprocess.run(
+                spec[4:], shell=True, capture_output=True, text=True, timeout=30
+            )
+            if r.returncode == 0 and r.stdout.strip():
+                return r.stdout.strip()
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        return value
+    return secrets.get(spec, value)
+
+
 def _resolve_secrets(cfg: dict, secrets: dict) -> dict:
-    """Replace ??key placeholders with values from secrets."""
+    """Replace ??placeholders throughout the config."""
     def _walk(obj: Any) -> Any:
         if isinstance(obj, str) and obj.startswith("??"):
-            key = obj[2:]
-            return secrets.get(key, obj)
+            return _resolve_secret_value(obj, secrets)
         if isinstance(obj, dict):
             return {k: _walk(v) for k, v in obj.items()}
         if isinstance(obj, list):
@@ -99,7 +131,9 @@ def validate_config(cfg: dict) -> None:
     if unresolved:
         raise ValueError(
             f"Secrets not resolved: {', '.join(unresolved)}\n"
-            "Edit ~/.rodeo/secrets.yaml or run: rodeo init"
+            "For ??key: edit ~/.rodeo/secrets.yaml or run: rodeo init\n"
+            "For ??env:/??file:/??cmd:: the source returned nothing — "
+            "check the variable, file, or command."
         )
     empty = [
         k for k, v in creds.items()

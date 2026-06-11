@@ -76,7 +76,28 @@ On normal hosts set `deployment_target: baremetal` and finalise runs as part of 
 
 Set `RODEO_ANSIBLE_PATH` or `ansible.path` in the plan to point at the directory containing `ansible/playbook.yml`. By default the Ansible roles bundled with the package are used.
 
-`rodeo init` generates a random lab password in `~/.rodeo/secrets.yaml`. The plan references it with `??key` placeholders.
+### Passwords
+
+`rodeo init` writes the lab password to `~/.rodeo/secrets.yaml` (chmod 600). Pick where it comes from:
+
+```bash
+rodeo init                      # random 16-char password
+rodeo init --ask                # hidden interactive prompt
+RODEO_PASSWORD=... rodeo init   # from the environment (CI / Instruqt setup)
+```
+
+The plan references secrets with `??` placeholders, which also support external sources:
+
+| Placeholder | Source |
+|---|---|
+| `??harvester_os_password` | `~/.rodeo/secrets.yaml` |
+| `??env:RODEO_PASSWORD` | environment variable |
+| `??file:/run/secrets/pw` | file contents |
+| `??cmd:pass show rodeo` | command stdout (`pass`, `op`, `vault` ...) |
+
+If a source resolves to nothing, `rodeo deploy` fails fast instead of deploying with an empty password. Passwords never appear on the ansible command line (they travel in a chmod-600 vars file) and the tasks that render them run with `no_log`.
+
+Note: `??cmd:` runs a shell command from the plan file, so treat `rodeo-plan.yaml` with the same care as a Makefile.
 
 ## Requirements
 

@@ -137,6 +137,33 @@ def test_valid_config_passes():
     config.validate_config(cfg)  # must not raise
 
 
+def test_vip_collision_with_node_ip_rejected():
+    cfg = {
+        "credentials": {"harvester_os_password": "Secret123"},
+        "network": {"vip": "192.168.122.11"},
+        "vms": {"harvester1": {"ip": "192.168.122.11", "user": "rancher"}},
+    }
+    with pytest.raises(ValueError, match="collides"):
+        config.validate_config(cfg)
+
+
+def test_rancher_ip_mismatch_rejected():
+    cfg = {
+        "credentials": {"harvester_os_password": "Secret123"},
+        "network": {"vip": "192.168.122.10", "rancher_ip": "192.168.122.9"},
+        "vms": {"rancher": {"ip": "192.168.122.99", "user": "root"}},
+    }
+    with pytest.raises(ValueError, match="rancher_ip"):
+        config.validate_config(cfg)
+
+
+def test_default_config_is_self_consistent():
+    """The shipped defaults must pass their own network validation."""
+    cfg = config.load_config("/nonexistent/plan.yaml")
+    cfg["credentials"] = {"harvester_os_password": "Secret123"}
+    config.validate_config(cfg)  # must not raise
+
+
 def test_find_ansible_root_prefers_explicit(tmp_path):
     explicit = tmp_path / "custom"
     (explicit / "ansible").mkdir(parents=True)

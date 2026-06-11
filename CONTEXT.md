@@ -207,3 +207,5 @@ The repo has a global gitleaks pre-commit hook; dummy passwords in tests need `#
 | `rodeo/data/ansible/roles/vms/defaults/main.yml` | OVMF paths, fixed MACs and static IPs baked into Harvester config ISOs |
 | `rodeo/engine/cluster.py` start order + timeouts | Sequential start with 90 s h2→h3 gap prevents etcd join races |
 | `rodeo/engine/rancher.py` API call order | bootstrap login → change password → re-login → server-url → create cluster → registration token → apply manifest is order-dependent |
+
+Drift guards: `tests/test_ansible_consistency.py` pins the role defaults, the Python profile, and the plan template to each other (VM names/IPs, VIP, gateway, flavors, versions, MAC/UUID uniqueness) — if you change one source on purpose, change all three and the test tells you where. `validate_config()` additionally rejects VIP/node-IP collisions and rancher_ip mismatches in user-edited plans at deploy time.

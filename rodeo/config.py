@@ -151,6 +151,30 @@ def validate_config(cfg: dict) -> None:
             f"Invalid deployment_target '{target}' — use 'instruqt' or 'baremetal'."
         )
 
+    # Network consistency — a VIP colliding with a node IP only surfaces
+    # 40+ minutes into the deploy as a kube-vip failure.
+    net = cfg.get("network", {})
+    vms = cfg.get("vms", {})
+    node_ips = {
+        name: spec.get("ip")
+        for name, spec in vms.items()
+        if isinstance(spec, dict) and spec.get("ip")
+    }
+    vip = net.get("vip")
+    if vip and vip in node_ips.values():
+        owner = next(n for n, ip in node_ips.items() if ip == vip)
+        raise ValueError(
+            f"network.vip ({vip}) collides with the IP of VM '{owner}'.\n"
+            "The VIP must be a free address — kube-vip floats it between nodes."
+        )
+    rancher_ip = net.get("rancher_ip")
+    vm_rancher_ip = node_ips.get("rancher")
+    if rancher_ip and vm_rancher_ip and rancher_ip != vm_rancher_ip:
+        raise ValueError(
+            f"network.rancher_ip ({rancher_ip}) does not match "
+            f"vms.rancher.ip ({vm_rancher_ip}) — update both together."
+        )
+
 
 _BUNDLED_DATA = Path(__file__).parent / "data"
 

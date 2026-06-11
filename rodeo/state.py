@@ -57,14 +57,19 @@ def reset_phase(phase: str, plan_name: str = "default") -> None:
     save_state(state, plan_name)
 
 
-def reset_from(phase: str, plan_name: str = "default") -> None:
+def reset_from(
+    phase: str,
+    plan_name: str = "default",
+    phases: list[str] | None = None,
+) -> None:
     """Clear phase and all subsequent phases."""
+    phase_list = phases if phases is not None else PHASES
     state = load_state(plan_name)
-    phases = state.get("phases", {})
-    idx = PHASES.index(phase) if phase in PHASES else 0
-    for p in PHASES[idx:]:
-        phases.pop(p, None)
-    state["phases"] = phases
+    stored = state.get("phases", {})
+    idx = phase_list.index(phase) if phase in phase_list else 0
+    for p in phase_list[idx:]:
+        stored.pop(p, None)
+    state["phases"] = stored
     save_state(state, plan_name)
 
 

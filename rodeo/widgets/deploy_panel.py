@@ -8,8 +8,6 @@ from textual.widgets import DataTable, Label, ProgressBar, RichLog
 
 from ..state import PHASES
 
-_PHASE_ORDER = PHASES  # ["kvm_host", "vms", "cluster", "rancher", "finalise"]
-
 
 class DeployPanel(Vertical):
     DEFAULT_CSS = """
@@ -41,6 +39,10 @@ class DeployPanel(Vertical):
     """
     BORDER_TITLE = "Deploy"
 
+    def __init__(self, phases: list[str] | None = None) -> None:
+        super().__init__()
+        self._phases = phases if phases is not None else PHASES
+
     def compose(self) -> ComposeResult:
         yield DataTable(id="phases-table", show_header=True, cursor_type="none")
         yield Label("", id="phase-sep")
@@ -52,7 +54,7 @@ class DeployPanel(Vertical):
         table.add_column("Phase",   key="phase",   width=12)
         table.add_column("Status",  key="status",  width=14)
         table.add_column("Elapsed", key="elapsed", width=8)
-        for phase in _PHASE_ORDER:
+        for phase in self._phases:
             table.add_row(phase, Text("○ pending", style="dim"), "", key=phase)
 
     # --- Public update API called by RodeoApp message handlers ---

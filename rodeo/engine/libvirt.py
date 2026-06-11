@@ -12,7 +12,7 @@ except ImportError:
     _libvirt = None  # type: ignore[assignment]
     _AVAILABLE = False
 
-RODEO_VMS = ["harvester1", "harvester2", "harvester3", "rancher"]
+_SUSE_VIRT_VMS = ["harvester1", "harvester2", "harvester3", "rancher"]
 
 _STATE_MAP = {
     0: "no state",
@@ -68,7 +68,7 @@ class LibvirtDriver:
             self.connect()
         return self._conn
 
-    def list_vms(self, names: list[str] = RODEO_VMS) -> list[VMInfo]:
+    def list_vms(self, names: list[str] = _SUSE_VIRT_VMS) -> list[VMInfo]:
         vms = []
         for name in names:
             try:

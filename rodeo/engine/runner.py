@@ -13,7 +13,7 @@ from typing import Iterator
 
 import yaml
 
-from ..state import PHASES, is_phase_done, mark_phase_done, mark_phase_failed, reset_from
+from ..state import is_phase_done, mark_phase_done, mark_phase_failed, reset_from
 
 
 # ---------- Events ----------
@@ -103,17 +103,24 @@ class DeployRunner:
 
     def run(self) -> Iterator[DeployEvent]:
         """Yield deploy events for all phases. Stops after first failure."""
+        from ..profiles import get_profile
+        profile = get_profile(self.cfg.get("type", "suse-virt"))
+
         if self.from_phase:
-            reset_from(self.from_phase, self._plan_name)
+            reset_from(self.from_phase, self._plan_name, profile.phases)
 
         start_idx = (
-            PHASES.index(self.from_phase)
-            if self.from_phase and self.from_phase in PHASES
+            profile.phases.index(self.from_phase)
+            if self.from_phase and self.from_phase in profile.phases
             else 0
         )
 
-        # Install Ansible collections before any Ansible phase
-        if self.install_collections and start_idx <= PHASES.index("vms"):
+        # Install Ansible collections if any ansible phase will run
+        first_ansible = next(
+            (i for i, p in enumerate(profile.phases) if p in profile.ansible_phases),
+            len(profile.phases),
+        )
+        if self.install_collections and start_idx <= first_ansible:
             req_file = self.root / "ansible" / "requirements.yml"
             if req_file.exists():
                 yield LogLine("Installing Ansible collections...")
@@ -130,7 +137,7 @@ class DeployRunner:
 
         vars_file = self._write_vars_file()
 
-        for idx, phase in enumerate(PHASES):
+        for idx, phase in enumerate(profile.phases):
             if idx < start_idx:
                 yield PhaseSkipped(phase, "before_start")
                 continue
@@ -141,16 +148,7 @@ class DeployRunner:
             yield PhaseStarted(phase)
             t0 = time.monotonic()
 
-            if phase in ("kvm_host", "vms"):
-                yield from self._stream_ansible(phase, vars_file)
-            elif phase == "cluster":
-                yield from self._stream_cluster()
-            elif phase == "rancher":
-                yield from self._stream_rancher()
-            elif phase == "finalise":
-                yield from self._stream_finalise()
-            else:
-                self._last_rc = 0
+            yield from profile.run_phase(phase, self, vars_file)
 
             elapsed = time.monotonic() - t0
             ok = self._last_rc == 0
@@ -239,11 +237,12 @@ class DeployRunner:
         yield from self._stream_subprocess([str(script)], env=env)
 
     def _stream_finalise(self) -> Iterator[DeployEvent]:
+        vm_names = list(self.cfg.get("vms", {}).keys())
         successes = 0
         try:
-            from .libvirt import LibvirtDriver, RODEO_VMS
+            from .libvirt import LibvirtDriver
             with LibvirtDriver(self.cfg["libvirt"]["uri"]) as lv:
-                for vm in RODEO_VMS:
+                for vm in vm_names:
                     try:
                         lv.set_autostart(vm, True)
                         yield LogLine(f"  autostart enabled: {vm}")

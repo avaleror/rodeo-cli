@@ -10,7 +10,8 @@ from rich.table import Table
 from rich.text import Text
 
 from ..config import load_config
-from ..state import load_state, PHASES
+from ..profiles import get_profile
+from ..state import load_state
 
 console = Console()
 
@@ -46,6 +47,7 @@ def _vip_reachable(vip: str) -> bool:
 def status_cmd(config_path: str) -> None:
     """Show VM states and cluster reachability at a glance."""
     cfg = load_config(config_path)
+    profile = get_profile(cfg.get("type", "suse-virt"))
     state = load_state(cfg.get("name", "default"))
     vip = cfg["network"]["vip"]
 
@@ -87,7 +89,7 @@ def status_cmd(config_path: str) -> None:
     # Phase progress
     if state.get("phases"):
         console.print("  [bold]Phases[/bold]")
-        for phase in PHASES:
+        for phase in profile.phases:
             info = state["phases"].get(phase, {})
             if info.get("completed"):
                 icon = "[green]✓[/green]"

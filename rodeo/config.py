@@ -8,7 +8,10 @@ from typing import Any
 import yaml
 
 
-_DEFAULTS: dict[str, Any] = {
+# Base defaults that apply to every rodeo type.
+# Profile-specific defaults (vms, resources, versions) are merged from the profile.
+_BASE_DEFAULTS: dict[str, Any] = {
+    "type": "suse-virt",
     "name": "suse-virt-rodeo",
     "network": {
         "mode": "nat",
@@ -17,24 +20,8 @@ _DEFAULTS: dict[str, Any] = {
         "gateway": "192.168.122.1",
         "dns_domain": "aerogrid.com",
     },
-    "resources": {
-        "harvester": {"memory_mib": 16384, "vcpu": 8, "disk_gb": 270},
-        "rancher": {"memory_mib": 8192, "vcpu": 4, "disk_gb": 60},
-    },
-    "versions": {
-        "harvester": "1.8.0",
-        "rancher": "2.13.1",
-        "k3s": "v1.31.4+k3s1",
-        "cert_manager": "v1.16.2",
-    },
     "storage": {"image_dir": "/var/lib/libvirt/images"},
     "libvirt": {"uri": "qemu:///system"},
-    "vms": {
-        "harvester1": {"ip": "192.168.122.11", "user": "rancher"},
-        "harvester2": {"ip": "192.168.122.12", "user": "rancher"},
-        "harvester3": {"ip": "192.168.122.13", "user": "rancher"},
-        "rancher":    {"ip": "192.168.122.9",  "user": "root"},
-    },
     "ansible": {
         "path": None,
         "inventory": "deployer/inventory.local",
@@ -74,12 +61,21 @@ def _resolve_secrets(cfg: dict, secrets: dict) -> dict:
 
 def load_config(plan_path: str | Path = "rodeo-plan.yaml") -> dict:
     plan_path = Path(plan_path)
-    cfg = dict(_DEFAULTS)
-
+    plan: dict = {}
     if plan_path.exists():
         with open(plan_path) as f:
             plan = yaml.safe_load(f) or {}
-        cfg = _deep_merge(cfg, plan)
+
+    # Determine type early so profile defaults can be merged before plan overrides.
+    type_name = plan.get("type", _BASE_DEFAULTS["type"])
+    try:
+        from .profiles import get_profile
+        profile_defaults = get_profile(type_name).default_cfg()
+    except (ImportError, ValueError):
+        profile_defaults = {}
+
+    cfg = _deep_merge(_BASE_DEFAULTS, profile_defaults)
+    cfg = _deep_merge(cfg, plan)
 
     secrets: dict = {}
     if _SECRETS_PATH.exists():
@@ -134,5 +130,5 @@ def find_ansible_root(cfg: dict) -> Path | None:
     return None
 
 
-# Keep old name for backward compatibility in deploy.py v0.1
+# Keep old name for backward compatibility
 find_ansible_path = find_ansible_root

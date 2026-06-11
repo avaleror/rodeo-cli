@@ -13,7 +13,6 @@ from textual.containers import Horizontal
 from textual.message import Message
 from textual.widgets import Footer, Header
 
-from .engine.libvirt import RODEO_VMS
 from .engine.runner import (
     DeployComplete,
     DeployRunner,
@@ -124,14 +123,16 @@ class RodeoApp(App):
         self._stop_tailers = threading.Event()
 
     def compose(self) -> ComposeResult:
+        from .profiles import get_profile
+        profile = get_profile(self.cfg.get("type", "suse-virt"))
         yield Header(show_clock=True)
         with Horizontal():
-            yield DeployPanel()
+            yield DeployPanel(phases=profile.phases)
             yield LogsPanel()
         yield Footer()
 
     def on_mount(self) -> None:
-        for vm in RODEO_VMS:
+        for vm in self.cfg.get("vms", {}).keys():
             self._tail_vm(vm)
         if not self.watch_only:
             self._run_deploy()

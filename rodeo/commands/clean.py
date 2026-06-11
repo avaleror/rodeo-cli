@@ -35,8 +35,7 @@ def clean_cmd(config_path: str, yes: bool) -> None:
     console.print()
 
     # Stop + undefine VMs
-    vms = ["harvester1", "harvester2", "harvester3", "rancher"]
-    for vm in vms:
+    for vm in list(cfg.get("vms", {}).keys()):
         console.print(f"  [dim]destroy[/dim]  {vm}")
         _virsh("destroy", vm)
         _virsh("undefine", "--nvram", vm)

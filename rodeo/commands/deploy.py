@@ -1,6 +1,8 @@
 """rodeo deploy — orchestrate the full Harvester + Rancher pipeline."""
 from __future__ import annotations
 
+import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -16,6 +18,7 @@ from ..engine.runner import (
     PhaseFailed,
     PhaseSkipped,
     PhaseStarted,
+    ProgressUpdate,
 )
 from ..state import PHASES
 
@@ -37,6 +40,8 @@ console = Console()
               help="Run ansible-galaxy install before Ansible phases.")
 @click.option("--force", is_flag=True, default=False,
               help="Re-run all phases, ignoring phase state.")
+@click.option("--check", "preflight_only", is_flag=True, default=False,
+              help="Run preflight checks and exit without deploying.")
 def deploy_cmd(
     config_path: str,
     from_phase: str | None,
@@ -44,6 +49,7 @@ def deploy_cmd(
     tui: bool | None,
     install_collections: bool,
     force: bool,
+    preflight_only: bool,
 ) -> None:
     """Deploy the full SUSE Virtualization Rodeo cluster."""
     cfg = load_config(config_path)
@@ -63,6 +69,10 @@ def deploy_cmd(
         )
         raise SystemExit(1)
 
+    if preflight_only:
+        ok = _run_preflight(cfg, root)
+        raise SystemExit(0 if ok else 1)
+
     use_tui = sys.stdout.isatty() if tui is None else tui
     if use_tui:
         try:
@@ -80,6 +90,103 @@ def deploy_cmd(
             console.print("[yellow]⚠  textual not installed — falling back to plain output[/yellow]")
 
     _deploy_plain(cfg, root, from_phase, install_collections, force)
+
+
+def _run_preflight(cfg: dict, root: Path) -> bool:
+    """Run preflight checks. Print results. Return True if all pass."""
+    res = cfg.get("resources", {})
+    storage = cfg.get("storage", {})
+    image_dir = Path(storage.get("image_dir", "/var/lib/libvirt/images"))
+
+    checks: list[tuple[str, bool, str]] = []
+
+    # Root
+    checks.append(("root", os.geteuid() == 0, "not running as root — some phases require root"))
+
+    # KVM device
+    checks.append(("/dev/kvm", Path("/dev/kvm").exists(), "/dev/kvm not found — is KVM enabled?"))
+
+    # Nested virt
+    nested = False
+    for p in (
+        "/sys/module/kvm_intel/parameters/nested",
+        "/sys/module/kvm_amd/parameters/nested",
+    ):
+        try:
+            if Path(p).read_text().strip() in ("1", "Y"):
+                nested = True
+                break
+        except OSError:
+            pass
+    checks.append(("nested virt", nested, "nested virtualization not enabled in kvm module"))
+
+    # RAM
+    avail_mib = _read_avail_mib()
+    need_mib = (
+        res.get("harvester", {}).get("memory_mib", 16384) * 3
+        + res.get("rancher", {}).get("memory_mib", 8192)
+    )
+    if avail_mib > 0:
+        ram_ok = avail_mib >= need_mib
+        ram_detail = f"need {need_mib // 1024} GB, have {avail_mib // 1024} GB available"
+    else:
+        ram_ok = True  # can't read — skip
+        ram_detail = "could not read /proc/meminfo"
+    checks.append(("RAM", ram_ok, ram_detail))
+
+    # Disk
+    need_gb = (
+        res.get("harvester", {}).get("disk_gb", 270) * 3
+        + res.get("rancher", {}).get("disk_gb", 60)
+        + 30  # ISOs
+    )
+    try:
+        stat = shutil.disk_usage(str(image_dir))
+        free_gb = stat.free // (1024 ** 3)
+        disk_ok = free_gb >= need_gb
+        disk_detail = f"need ~{need_gb} GB, have {free_gb} GB free in {image_dir}"
+    except OSError:
+        disk_ok = True
+        disk_detail = f"cannot stat {image_dir}"
+    checks.append(("disk", disk_ok, disk_detail))
+
+    # Ansible
+    checks.append((
+        "ansible-playbook",
+        shutil.which("ansible-playbook") is not None,
+        "ansible-playbook not found in PATH",
+    ))
+    checks.append((
+        "ansible-galaxy",
+        shutil.which("ansible-galaxy") is not None,
+        "ansible-galaxy not found in PATH",
+    ))
+
+    console.print(f"\n[bold]Preflight — {cfg.get('name', 'rodeo')}[/bold]\n")
+    all_ok = True
+    for label, ok, detail in checks:
+        if ok:
+            console.print(f"  [green]✓[/green]  {label}")
+        else:
+            console.print(f"  [red]✗[/red]  {label}  [dim]{detail}[/dim]")
+            all_ok = False
+
+    console.print()
+    if all_ok:
+        console.print("[bold green]All checks passed.[/bold green]\n")
+    else:
+        console.print("[bold red]One or more checks failed.[/bold red]\n")
+    return all_ok
+
+
+def _read_avail_mib() -> int:
+    try:
+        for line in Path("/proc/meminfo").read_text().splitlines():
+            if line.startswith("MemAvailable:"):
+                return int(line.split()[1]) // 1024
+    except OSError:
+        pass
+    return 0
 
 
 def _deploy_plain(
@@ -105,6 +212,14 @@ def _deploy_plain(
         elif isinstance(event, PhaseSkipped):
             label = "already complete" if event.reason == "done" else "skipped"
             console.print(f"  [dim]skip[/dim]  {event.phase}  ({label})")
+        elif isinstance(event, ProgressUpdate):
+            m_e, s_e = divmod(int(event.elapsed), 60)
+            m_t = int(event.total) // 60
+            detail = f"  {event.detail}" if event.detail else ""
+            console.print(
+                f"\r  [cyan]▶[/cyan]  {event.step}{detail}  {m_e}:{s_e:02d} / {m_t}:00",
+                end="",
+            )
         elif isinstance(event, LogLine):
             console.print(event.line)
         elif isinstance(event, PhaseDone):

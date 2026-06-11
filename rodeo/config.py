@@ -29,6 +29,12 @@ _DEFAULTS: dict[str, Any] = {
     },
     "storage": {"image_dir": "/var/lib/libvirt/images"},
     "libvirt": {"uri": "qemu:///system"},
+    "vms": {
+        "harvester1": {"ip": "192.168.122.11", "user": "rancher"},
+        "harvester2": {"ip": "192.168.122.12", "user": "rancher"},
+        "harvester3": {"ip": "192.168.122.13", "user": "rancher"},
+        "rancher":    {"ip": "192.168.122.9",  "user": "root"},
+    },
     "ansible": {
         "path": None,
         "inventory": "deployer/inventory.local",

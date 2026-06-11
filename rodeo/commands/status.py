@@ -46,7 +46,7 @@ def _vip_reachable(vip: str) -> bool:
 def status_cmd(config_path: str) -> None:
     """Show VM states and cluster reachability at a glance."""
     cfg = load_config(config_path)
-    state = load_state()
+    state = load_state(cfg.get("name", "default"))
     vip = cfg["network"]["vip"]
 
     # VM table

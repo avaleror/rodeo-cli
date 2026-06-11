@@ -60,6 +60,6 @@ def clean_cmd(config_path: str, yes: bool) -> None:
             Path(f).unlink(missing_ok=True)
 
     # Reset state from kvm_host onwards
-    reset_from("kvm_host")
+    reset_from("kvm_host", cfg.get("name", "default"))
 
     console.print("\n[bold green]✓  Clean complete.[/bold green] Run [bold]rodeo deploy[/bold] to start fresh.\n")

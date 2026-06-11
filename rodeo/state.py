@@ -1,11 +1,12 @@
-"""Persist deploy state in ~/.rodeo/state.yaml."""
+"""Persist deploy state in ~/.rodeo/state/<plan-name>.yaml."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+
 import yaml
 
-_STATE_PATH = Path.home() / ".rodeo" / "state.yaml"
+_STATE_DIR = Path.home() / ".rodeo" / "state"
 
 PHASES = ["kvm_host", "vms", "cluster", "rancher", "finalise"]
 
@@ -14,51 +15,58 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def load_state() -> dict:
-    if not _STATE_PATH.exists():
+def _state_path(plan_name: str) -> Path:
+    return _STATE_DIR / f"{plan_name}.yaml"
+
+
+def load_state(plan_name: str = "default") -> dict:
+    path = _state_path(plan_name)
+    if not path.exists():
         return {}
-    with open(_STATE_PATH) as f:
+    with open(path) as f:
         return yaml.safe_load(f) or {}
 
 
-def save_state(state: dict) -> None:
-    _STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(_STATE_PATH, "w") as f:
+def save_state(state: dict, plan_name: str = "default") -> None:
+    path = _state_path(plan_name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
         yaml.dump(state, f, default_flow_style=False)
+    path.chmod(0o600)
 
 
-def mark_phase_done(phase: str) -> None:
-    state = load_state()
+def mark_phase_done(phase: str, plan_name: str = "default") -> None:
+    state = load_state(plan_name)
     state.setdefault("phases", {})[phase] = {"completed": True, "timestamp": _now()}
-    save_state(state)
+    save_state(state, plan_name)
 
 
-def mark_phase_failed(phase: str, error: str) -> None:
-    state = load_state()
+def mark_phase_failed(phase: str, error: str, plan_name: str = "default") -> None:
+    state = load_state(plan_name)
     state.setdefault("phases", {})[phase] = {
         "completed": False,
         "last_error": error,
         "timestamp": _now(),
     }
-    save_state(state)
+    save_state(state, plan_name)
 
 
-def reset_phase(phase: str) -> None:
-    state = load_state()
+def reset_phase(phase: str, plan_name: str = "default") -> None:
+    state = load_state(plan_name)
     state.get("phases", {}).pop(phase, None)
-    save_state(state)
+    save_state(state, plan_name)
 
 
-def reset_from(phase: str) -> None:
+def reset_from(phase: str, plan_name: str = "default") -> None:
     """Clear phase and all subsequent phases."""
-    state = load_state()
+    state = load_state(plan_name)
     phases = state.get("phases", {})
     idx = PHASES.index(phase) if phase in PHASES else 0
     for p in PHASES[idx:]:
         phases.pop(p, None)
     state["phases"] = phases
-    save_state(state)
+    save_state(state, plan_name)
 
 
-def is_phase_done(phase: str) -> bool:
-    return load_state().get("phases", {}).get(phase, {}).get("completed", False)
+def is_phase_done(phase: str, plan_name: str = "default") -> bool:
+    return load_state(plan_name).get("phases", {}).get(phase, {}).get("completed", False)

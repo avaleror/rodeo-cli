@@ -89,6 +89,7 @@ class DeployRunner:
         self.from_phase = from_phase
         self.install_collections = install_collections
         self.force = force
+        self._plan_name = cfg.get("name", "default")
         self._proc: subprocess.Popen | None = None
         self._last_rc: int = 0
 
@@ -103,7 +104,7 @@ class DeployRunner:
     def run(self) -> Iterator[DeployEvent]:
         """Yield deploy events for all phases. Stops after first failure."""
         if self.from_phase:
-            reset_from(self.from_phase)
+            reset_from(self.from_phase, self._plan_name)
 
         start_idx = (
             PHASES.index(self.from_phase)
@@ -133,7 +134,7 @@ class DeployRunner:
             if idx < start_idx:
                 yield PhaseSkipped(phase, "before_start")
                 continue
-            if not self.force and is_phase_done(phase):
+            if not self.force and is_phase_done(phase, self._plan_name):
                 yield PhaseSkipped(phase, "done")
                 continue
 
@@ -155,10 +156,10 @@ class DeployRunner:
             ok = self._last_rc == 0
 
             if ok:
-                mark_phase_done(phase)
+                mark_phase_done(phase, self._plan_name)
                 yield PhaseDone(phase, elapsed)
             else:
-                mark_phase_failed(phase, f"{phase} exited {self._last_rc}")
+                mark_phase_failed(phase, f"{phase} exited {self._last_rc}", self._plan_name)
                 yield PhaseFailed(phase, self._last_rc, f"{phase} failed")
                 return
 

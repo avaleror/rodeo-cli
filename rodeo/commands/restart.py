@@ -1,0 +1,50 @@
+"""rodeo restart <vm> — graceful shutdown then start."""
+from __future__ import annotations
+
+import time
+
+import click
+from rich.console import Console
+
+console = Console()
+
+_VALID_VMS = ["harvester1", "harvester2", "harvester3", "rancher"]
+
+
+@click.command("restart")
+@click.argument("vm", type=click.Choice(_VALID_VMS + ["all"]))
+@click.option("--config", "config_path", default="rodeo-plan.yaml", show_default=True)
+@click.option("--hard", is_flag=True, help="Force-kill instead of ACPI shutdown.")
+def restart_cmd(vm: str, config_path: str, hard: bool) -> None:
+    """Restart a VM (ACPI shutdown + start). Use 'all' to cycle every VM."""
+    from ..config import load_config
+    from ..engine.libvirt import LibvirtDriver
+
+    cfg = load_config(config_path)
+    targets = _VALID_VMS if vm == "all" else [vm]
+
+    with LibvirtDriver(cfg["libvirt"]["uri"]) as lv:
+        for name in targets:
+            info = lv.get_vm(name)
+            if info.state == "not found":
+                console.print(f"[yellow]  {name}: not found, skipping[/yellow]")
+                continue
+
+            if info.state == "running":
+                console.print(f"  [dim]shutting down[/dim]  {name}...", end="")
+                if hard:
+                    lv.destroy(name)
+                else:
+                    lv.shutdown(name)
+                # wait up to 90s for clean stop
+                for _ in range(90):
+                    time.sleep(1)
+                    if not lv.is_running(name):
+                        break
+                console.print(" [green]stopped[/green]")
+
+            console.print(f"  [dim]starting[/dim]      {name}...", end="")
+            lv.start(name)
+            console.print(" [green]started[/green]")
+
+    console.print()

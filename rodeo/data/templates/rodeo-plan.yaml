@@ -1,0 +1,47 @@
+# rodeo-plan.yaml — deployment plan for SUSE Virtualization Rodeo
+# Run: rodeo init  to generate this file interactively.
+# Secrets go in ~/.rodeo/secrets.yaml (chmod 600, never committed).
+
+name: suse-virt-rodeo
+
+network:
+  mode: nat              # nat | bridge
+  vip: "192.168.122.10"   # kube-vip floating IP — must not be a node IP
+  rancher_ip: "192.168.122.9"
+  gateway: "192.168.122.1"
+  dns_domain: "aerogrid.com"
+  # bridge mode only:
+  # host_bridge: br0
+
+resources:
+  harvester:
+    memory_mib: 16384    # 16 GiB — meets Harvester minimum
+    vcpu: 8
+    disk_gb: 270         # Longhorn needs room; 270 GB works for nested KVM
+  rancher:
+    memory_mib: 8192
+    vcpu: 4
+    disk_gb: 60
+
+versions:
+  harvester: "1.8.0"
+  rancher: "2.13.1"
+  k3s: "v1.31.4+k3s1"
+  cert_manager: "v1.16.2"
+
+storage:
+  image_dir: /var/lib/libvirt/images
+
+libvirt:
+  uri: qemu:///system
+
+ansible:
+  # Path to the directory containing ansible/site.yml.
+  # Falls back to: RODEO_ANSIBLE_PATH env var, then ./
+  path: null
+  inventory: deployer/inventory.local
+
+credentials:
+  # Use ??key to pull from ~/.rodeo/secrets.yaml
+  harvester_os_password: "??harvester_os_password"
+  lab_admin_password: "??lab_admin_password"

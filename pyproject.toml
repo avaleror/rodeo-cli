@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rodeo-cli"
+version = "0.1.0"
+description = "Deploy and manage SUSE Virtualization Rodeo infrastructure"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Andres Valero", email = "anvarui@gmail.com" }]
+
+dependencies = [
+    "click>=8.1",
+    "rich>=13.7",
+    "textual>=0.60",
+    "jinja2>=3.1",
+    "pyyaml>=6.0",
+    "requests>=2.31",
+    "ansible-core>=2.16",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "pytest-cov", "ruff"]
+
+[project.scripts]
+rodeo = "rodeo.cli:cli"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["rodeo*"]
+
+[tool.setuptools.package-data]
+rodeo = ["data/**/*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"

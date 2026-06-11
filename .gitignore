@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+.Python
+
+# Dev
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# Secrets / local config
+secrets.yaml
+*.secrets.yaml
+.env
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Claude / project instructions (never committed)
+CLAUDE.md
+
+# Rodeo runtime state (stays local)
+.rodeo/

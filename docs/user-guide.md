@@ -277,12 +277,70 @@ Deploy fails immediately if a `??` placeholder does not resolve — it will not 
 
 ### Deployment phases (what happens)
 
+See visual:
+
+```mermaid
+flowchart LR
+    subgraph Host Prep
+        A[rodeo bootstrap / install-deps --link] --> B[/usr/local/bin/rodeo global binary\n+ lab dir seeded]
+    end
+
+    subgraph Declarative Definition
+        C[rodeo-plan.yaml + definition.yaml\n+ certs/ manifests/ helm/ custom/]
+    end
+
+    subgraph Execution
+        D[rodeo plan] --> E[Preview only]
+        F[rodeo deploy] --> G[kvm_host\n(packages, libvirt, firewall, storage)]
+        G --> H[vms\n(images, disks, VM XML)]
+        H --> I[pxe_server\n(iPXE, nginx, TFTP on host)]
+        I --> J[cluster\n(start VMs, iPXE Harvester install, etcd join gap)]
+        J --> K[rancher\n(K3s + Rancher Prime + import Harvester)]
+        K --> L[finalise\n(autostart on host reboot)]
+    end
+
+    B --> C
+    C --> F
+
+    style A fill:#90EE90
+    style F fill:#FFD700
+    style L fill:#87CEEB
+```
+
+Source: [`assets/diagrams/deployment-phases.mmd`](assets/diagrams/deployment-phases.mmd)
+
 1. **kvm_host** — Prepare hypervisor (packages, libvirt, firewall rules, storage)
 2. **vms** — Download images, create disks and VM definitions (VMs not started yet)
 3. **cluster** — Start VMs in order, wait for Harvester to become healthy
 4. **rancher** — Install Rancher and connect it to Harvester
 5. **finalise** — Autostart VMs on host reboot (skipped on Instruqt until `--finalise`)
+```
 
+To illustrate the bootstrap flow as well, we already have it.
+
+Now, to make docs best possible, also update the root docs if needed.
+
+Also, add comments to other key files? E.g. perhaps the init_cmd.py to document the --example better, but since asked "if they're not present", and to deliver high quality, add to bootstrap related.
+
+We have good coverage.
+
+Now, also update the Generated content docs for completeness, but since we pushed the project, and committed local.
+
+For Claude workspace, perhaps write a summary note.
+
+But to finish, create a high quality "SLES Bootstrap Guide" or integrate.
+
+Since user said "work on the project documentation and user docs", the updates to user-guide and README are key.
+
+Perhaps enhance with more Mermaid.
+
+One more: add a diagram for the overall solution in architecture.
+
+But ok.
+
+Now, since push already done for rodeo, perhaps re-push if more changes.
+
+We have more doc updates, so commit and push again.
 ### Credentials for attendees / instructors
 
 After `rodeo init`, passwords live in `~/.rodeo/secrets.yaml`:

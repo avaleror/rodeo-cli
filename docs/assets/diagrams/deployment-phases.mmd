@@ -1,0 +1,27 @@
+```mermaid
+flowchart LR
+    subgraph Host Prep
+        A[rodeo bootstrap / install-deps --link] --> B[/usr/local/bin/rodeo global binary\n+ lab dir seeded]
+    end
+
+    subgraph Declarative Definition
+        C[rodeo-plan.yaml + definition.yaml\n+ certs/ manifests/ helm/ custom/]
+    end
+
+    subgraph Execution
+        D[rodeo plan] --> E[Preview only]
+        F[rodeo deploy] --> G[kvm_host\n(packages, libvirt, firewall, storage)]
+        G --> H[vms\n(images, disks, VM XML)]
+        H --> I[pxe_server\n(iPXE, nginx, TFTP on host)]
+        I --> J[cluster\n(start VMs, iPXE Harvester install, etcd join gap)]
+        J --> K[rancher\n(K3s + Rancher Prime + import Harvester)]
+        K --> L[finalise\n(autostart on host reboot)]
+    end
+
+    B --> C
+    C --> F
+
+    style A fill:#90EE90
+    style F fill:#FFD700
+    style L fill:#87CEEB
+```

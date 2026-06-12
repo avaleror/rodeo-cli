@@ -56,8 +56,12 @@ def _pick_password(ask: bool) -> tuple[str, str]:
 @click.option("--force", is_flag=True, help="Overwrite existing files.")
 @click.option("--ask", "ask_password", is_flag=True,
               help="Prompt for the lab password instead of generating one.")
+@click.option("--example", "example", default=None, metavar="NAME",
+              help="Seed target dir from rodeo/data/examples/NAME (e.g. harvester-lab-config). "
+                   "Copies definition.yaml, tuned plan, certs/, manifests/, etc. for --config-dir use. "
+                   "The plan is still rewritten for ??env: secrets so source + sudo -E works.")
 @click.argument("target_dir", default=".", type=click.Path())
-def init_cmd(force: bool, ask_password: bool, target_dir: str) -> None:
+def init_cmd(force: bool, ask_password: bool, target_dir: str, example: str | None = None) -> None:
     """Generate rodeo-plan.yaml and ~/.rodeo/secrets.yaml.
 
     \b
@@ -65,38 +69,100 @@ def init_cmd(force: bool, ask_password: bool, target_dir: str) -> None:
       1. --ask            interactive hidden prompt
       2. $RODEO_PASSWORD  environment variable (CI / Instruqt setup scripts)
       3. generated        random 16 characters
+
+    With --example you get a ready-to-use lab dir (including EIB-style artifacts) in one step.
     """
     dest = Path(target_dir).resolve()
     dest.mkdir(parents=True, exist_ok=True)
     plan_dest = dest / "rodeo-plan.yaml"
     secrets_dest = Path.home() / ".rodeo" / "secrets.yaml"
 
-    if plan_dest.exists() and not force:
+    # Optional: seed a full example (definition + subdirs for artifacts + a tuned plan).
+    # This removes the manual "cp -r rodeo/data/examples/... ; cd ; init" dance for test flows.
+    if example:
+        src = Path(__file__).parent.parent / "data" / "examples" / example
+        if not src.is_dir():
+            console.print(f"[red]✗  Example directory not found: {src}[/red]")
+            raise SystemExit(1)
+        console.print(f"[bold]  Seeding from example '{example}' into {dest}...[/bold]")
+        for item in src.iterdir():
+            dst_item = dest / item.name
+            try:
+                if item.is_dir():
+                    if dst_item.exists():
+                        if force:
+                            shutil.rmtree(dst_item)
+                            shutil.copytree(item, dst_item)
+                            console.print(f"[green]✓[/green]  replaced dir {item.name}")
+                        else:
+                            console.print(f"[yellow]  {dst_item} exists — skipping (use --force)[/yellow]")
+                    else:
+                        shutil.copytree(item, dst_item)
+                        console.print(f"[green]✓[/green]  copied dir {item.name}")
+                else:
+                    if dst_item.exists() and not force:
+                        console.print(f"[yellow]  {dst_item} exists — skipping (use --force)[/yellow]")
+                    else:
+                        shutil.copy2(item, dst_item)
+                        console.print(f"[green]✓[/green]  copied {item.name}")
+            except Exception as exc:
+                console.print(f"[yellow]  ⚠ could not copy {item.name}: {exc}[/yellow]")
+
+    # Plan handling: never blindly overwrite a seeded example plan with the generic template.
+    # Always ensure the three credential lines use the ??env: form (so source rodeo-secrets.env + sudo -E works).
+    plan_existed = plan_dest.exists()
+    if plan_dest.exists() and not force and not example:
         console.print(f"[yellow]{plan_dest} already exists — use --force to overwrite.[/yellow]")
     else:
-        shutil.copy(_TEMPLATES / "rodeo-plan.yaml", plan_dest)
-        # Rewrite credentials to use env: form so that sourcing rodeo-secrets.env
-        # + sudo -E works out of the box (no need to touch ~/.rodeo/secrets.yaml for sudo).
-        plan_text = plan_dest.read_text()
-        plan_text = plan_text.replace(
-            'harvester_os_password: "??harvester_os_password"',
-            'harvester_os_password: "??env:HARVESTER_OS_PASSWORD"'
-        )
-        plan_text = plan_text.replace(
-            'lab_admin_password: "??lab_admin_password"',
-            'lab_admin_password: "??env:LAB_ADMIN_PASSWORD"'
-        )
-        plan_text = plan_text.replace(
-            'harvester_token: "??harvester_token"',
-            'harvester_token: "??env:HARVESTER_TOKEN"'
-        )
-        plan_dest.write_text(plan_text)
-        console.print(f"[green]✓[/green]  {plan_dest}  [dim](env-var ready)]")
+        if not plan_dest.exists() and not example:
+            # only fall back to generic template when nothing provided a plan
+            shutil.copy(_TEMPLATES / "rodeo-plan.yaml", plan_dest)
+        # Rewrite (or ensure) env form on whatever plan we have now (template, example, or pre-existing under force)
+        if plan_dest.exists():
+            plan_text = plan_dest.read_text()
+            orig_text = plan_text
+            plan_text = plan_text.replace(
+                'harvester_os_password: "??harvester_os_password"',
+                'harvester_os_password: "??env:HARVESTER_OS_PASSWORD"'
+            )
+            plan_text = plan_text.replace(
+                'lab_admin_password: "??lab_admin_password"',
+                'lab_admin_password: "??env:LAB_ADMIN_PASSWORD"'
+            )
+            plan_text = plan_text.replace(
+                'harvester_token: "??harvester_token"',
+                'harvester_token: "??env:HARVESTER_TOKEN"'
+            )
+            if plan_text != orig_text:
+                plan_dest.write_text(plan_text)
+                console.print(f"[green]✓[/green]  {plan_dest}  [dim](env-var ready)]")
+            else:
+                console.print(f"[green]✓[/green]  {plan_dest}  [dim](already env-var ready)]")
 
+    # Secrets + env file (robust: always produce a fresh rodeo-secrets.env even on re-init without --force)
     secrets_dest.parent.mkdir(parents=True, exist_ok=True)
+    password = None
+    token = None
     if secrets_dest.exists() and not force:
-        console.print(f"[yellow]{secrets_dest} already exists — use --force to overwrite.[/yellow]")
-    else:
+        # re-use values from existing secrets so we can still emit a fresh .env without overwriting the 600 file
+        try:
+            for line in secrets_dest.read_text().splitlines():
+                if line.startswith("harvester_os_password:"):
+                    password = line.split(":", 1)[1].strip().strip('"\'')
+                elif line.startswith("harvester_token:"):
+                    token = line.split(":", 1)[1].strip().strip('"\'')
+        except Exception:
+            pass
+        if password and token:
+            console.print(f"[yellow]{secrets_dest} already exists — will use its values for a fresh {dest / 'rodeo-secrets.env'}[/yellow]")
+        else:
+            console.print(f"[yellow]{secrets_dest} exists but could not parse values — regenerating[/yellow]")
+
+    if not (password and token):
+        # (re)generate secrets only when we are allowed to (first time or --force).
+        # If we couldn't parse an existing secrets (no --force), fall back to generating fresh values
+        # and write the secrets file anyway — the .env is useless without them, and --force is the common test path.
+        secrets_dest.parent.mkdir(parents=True, exist_ok=True)
         password, source = _pick_password(ask_password)
         token = secrets.token_urlsafe(24)
         secrets_dest.write_text(
@@ -113,8 +179,7 @@ def init_cmd(force: bool, ask_password: bool, target_dir: str) -> None:
             f"[green]✓[/green]  {secrets_dest}  [dim](chmod 600, password: {source})[/dim]"
         )
 
-    # Generate a sourceable env file for easy use with sudo -E (avoids the
-    # need to copy ~/.rodeo/secrets.yaml into /root/.rodeo for test flows).
+    # Always (re)generate the sourceable env file next to the plan. Safe and what makes sudo -E flows easy.
     env_file = dest / "rodeo-secrets.env"
     env_content = (
         f'export HARVESTER_OS_PASSWORD="{password}"\n'
@@ -124,24 +189,24 @@ def init_cmd(force: bool, ask_password: bool, target_dir: str) -> None:
     env_file.write_text(env_content)
     console.print(f"[green]✓[/green]  {env_file}  [dim](source this for env-var mode)]")
 
+    # Richer, copy-paste friendly next steps. Helps cut the manual export / sudo -E dance.
+    rodeo_hint = os.environ.get("RODEO") or shutil.which("rodeo") or "$(pwd)/.venv/bin/rodeo"
+    console.print("\n[bold]Next steps:[/bold]")
+    console.print("  # Ensure you have a convenient RODEO var for sudo (sudo does not inherit PATH):")
+    console.print(f"  export RODEO={rodeo_hint}")
+    console.print(f"  source {env_file.name}                    # load the passwords into current shell")
+    console.print("  sudo -E $RODEO deploy --check            # preflight (uses the ??env: values)")
+    if example:
+        console.print("")
+        console.print("  # Your dir was seeded with the example — use --config-dir (or cd here and omit it):")
+        console.print("  $RODEO plan --config-dir .")
+        console.print("  sudo -E $RODEO deploy --config-dir .")
     console.print(
-        "\n[bold]Next steps:[/bold]"
+        "\nWhy the source + sudo -E pattern?"
     )
     console.print(
-        f"  source {env_file.name}                    # load the passwords into env"
+        "A child process cannot mutate the parent's environment. Sourcing the generated .env + sudo -E is the"
     )
     console.print(
-        "  # (optional) also edit ~/.rodeo/secrets.yaml if you prefer the file method"
-    )
-    console.print(
-        "  sudo -E $RODEO deploy --check            # -E passes the HARVESTER_* vars"
-    )
-    console.print(
-        "\nWhy a sourceable file instead of 'automatic' export?"
-    )
-    console.print(
-        "A child process (rodeo) cannot modify the parent shell's environment."
-    )
-    console.print(
-        "Sourcing the generated file + sudo -E is the cleanest way for test/CI flows."
+        "least-surprise way that works for interactive tests, different shells, and CI without copying secrets to /root."
     )

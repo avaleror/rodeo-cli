@@ -1,11 +1,14 @@
-# definition.yaml — declarative definition for the suse-virt Harvester HCI + Rancher Prime rodeo.
+# definition.yaml — declarative definition for the suse-virt Harvester HCI rodeo (testing variant).
 #
-# This is a copy of the main definition for use with --config-dir ./harvester-lab-config
-# (or your own dir). Customize as needed for your lab (e.g. change IPs, resources, add manifests in sibling dirs).
+# This is a *lightweight testing variant* of the definition for use with --config-dir ./harvester-lab-config
+# (or your own dir). It deploys a 2-node Harvester cluster with no Rancher VM.
+# Customize as needed for your lab (e.g. change IPs, resources, add manifests in sibling dirs).
 # The renderer in inventory.py will prefer this definition.yaml when --config-dir points here.
 #
-# This is the authoritative definition file for the Harvester/SUSE Virtualization rodeo (our current focus).
-# It is the EXAMPLE of how definition files need to be done in rodeo-cli.
+# This example is tuned for modest hardware (e.g. Ryzen hosts where hyperthreads give ~16 logical CPUs total).
+# See rodeo-plan.yaml for the CPU reasoning (2 nodes * 6 vCPU = 12 logical, headroom for host/qemu).
+#
+# This is the EXAMPLE of how definition files need to be done in rodeo-cli.
 #
 # Focus: Harvester/SUSE Virtualization only (forget Edge Rodeo for now).
 #
@@ -35,33 +38,33 @@
 # - Keep MACs starting with 02:00:00:0D:62:... for lab consistency (libvirt DHCP + Harvester expectations).
 #
 # Current data is 1:1 copy of the previous hardcodes so behavior is unchanged until inventory.py wires it in.
+# This variant removes the Rancher node + references for the CPU-constrained test case.
 
 apiVersion: 1.0   # Schema version, like EIB. Increment for breaking changes in definition format.
 definition:
   name: suse-virt
-  description: "3-node Harvester HCI cluster + Rancher Prime on nested KVM (the default rodeo)"
+  description: "2-node Harvester HCI cluster (no Rancher) on nested KVM (testing variant for modest hardware)"
 
   # The ordered list of VMs to start/provision. This replaces all hardcoded sequences.
   # ClusterPhase will use this instead of "harvester1 then harvester2..." etc.
+  # 2-node variant: only the two Harvester nodes (Rancher omitted for CPU headroom on modest hosts).
   start_order:
     - harvester1
     - harvester2
-    - harvester3
-    - rancher
 
   # Nodes that are part of the Harvester cluster (affects VIP wait, etcd gap application, node Ready count, CDROM eject, etc.)
   # Replaces the listcomp `n for n in vms if n != "rancher"` and the fallback ["harvester1", ...]
   harvester_node_names:
     - harvester1
     - harvester2
-    - harvester3
 
   # How many Harvester nodes we expect to become Ready. Replaces the magic "3".
-  harvester_ready_count: 3
+  harvester_ready_count: 2
 
   # The etcd join gap (in seconds) inserted before starting the 3rd Harvester node.
   # This is still here as metadata because the 90s value is a carefully tuned race prevention (see CONTEXT.md DO-NOT-TOUCH).
   # Code should read it from here instead of the class constant when possible.
+  # Note: with only 2 nodes the gap is still applied before the second join for safety (harvester2 is "the 2nd").
   etcd_join_gap_seconds: 90
 
   # === "Cables" and low-level networking model (the better abstraction) ===
@@ -135,18 +138,13 @@ definition:
   # Services that need to be reachable from outside the host (DNAT + port expose).
   # This replaces the hardcoded loop in kvm_host/tasks/firewall.yml.
   # The renderer turns this into the exact port_forward list + public zone ports.
+  # Rancher service omitted in this 2-node testing variant (no rancher VM).
   exposed_services:
     - name: harvester-ui
       description: "Harvester dashboard + API"
       host_port: 8443
       guest_port: 443
       target: vip             # special: points at the Harvester VIP
-      proto: tcp
-    - name: rancher
-      description: "Rancher Prime NodePort"
-      host_port: 30002
-      guest_port: 30002
-      target: rancher         # the rancher VM
       proto: tcp
 
   # iPXE / boot configuration data.
@@ -176,7 +174,8 @@ definition:
     # Block device for lab storage (e.g. second disk on multi-disk host).
     # Examples: "/dev/sdb", "/dev/disk/by-id/ata-XXXX", "/dev/nvme0n1p2"
     # If set, future storage setup (in kvm_host or vms role) can partition, mkfs, mount to mount_point.
-    device: ""   # empty = use default (whatever is at mount_point, usually root fs)
+    # For your Ryzen host with 1TB + 2TB SSDs, use the larger one.
+    device: "/dev/nvme1n1"   # the 2 TB disk (confirm with lsblk; root usually on nvme0n1)
 
     # Where to mount the storage for libvirt images and VM disks.
     mount_point: /var/lib/libvirt/images
@@ -193,9 +192,10 @@ definition:
 
   # High-level components / recipe for this Harvester rodeo (recommended to document "what this rodeo is").
   # The renderer and roles use the detailed sections above; this is for humans and future introspection ("rodeo describe").
+  # 2-node test variant: only Harvester cluster (no Rancher component).
   components:
     - name: harvester-cluster
-      description: "3-node Harvester HCI (RKE2 + Longhorn + KubeVirt + Kube-OVN)"
+      description: "2-node Harvester HCI (RKE2 + Longhorn + KubeVirt + Kube-OVN)"
       nodes: harvester_node_names   # reference to the list above
       networks:
         - mgmt     # PXE, VIP, API, etcd, control plane
@@ -205,11 +205,6 @@ definition:
         - service2 # Kube-OVN secondary
       exposed:
         - harvester-ui   # via VIP
-    - name: rancher
-      description: "Rancher Prime on K3s (for managing the Harvester cluster)"
-      nodes: ["rancher"]
-      exposed:
-        - rancher
     - name: pxe-server
       description: "iPXE + HTTP server on the host for diskless Harvester node boot"
       on_host: true
@@ -239,7 +234,7 @@ definition:
         role: service
         description: "Kube-OVN secondary uplink"
     # Other installer config that is mostly common but can be overridden in plan.
-    # (passwords, token, rancher import are handled at runtime from secrets/plan)
+    # (passwords, token are handled at runtime from secrets/plan; no rancher import in 2-node variant)
     ntp_servers:
       - 0.pool.ntp.org
       - 1.pool.ntp.org
@@ -247,18 +242,16 @@ definition:
     # Recipe details for the Harvester installer config (sourced from definition per EIB-inspired evolution).
     # Full secrets still injected at render time from plan.
     installer_notes:
-      rke2: "RKE2 control plane on the 3 nodes; etcd join gap declared above for bootstrap race avoidance."
-      longhorn: "Storage on the dedicated storage + service NICs; Longhorn uses the 3 replicas."
+      rke2: "RKE2 control plane on the 2 nodes; etcd join gap declared above for bootstrap race avoidance."
+      longhorn: "Storage on the dedicated storage + service NICs; Longhorn uses the 2 replicas (lab only)."
 
   # Rancher VM cloud-init / bootstrap data (what gets baked into the rancher-cloud-init.iso).
+  # NOTE: In this 2-node no-Rancher testing variant the rancher node is not instantiated.
+  # The section + the rancher node_template above are kept as reference/blueprint only
+  # (so the same file structure works for both the full recipe and this light test variant).
   rancher:
-    # This drives the cloud-init-user-data.j2 and network config for the rancher VM.
-    # The actual k3s + helm + rancher install commands are in the RancherPhase / scripts.
     cloud_init:
-      # Example packages or runcmd can be added here if needed beyond the standard.
-      # Currently the heavy lifting is in the Python renderer + Ansible templates.
       packages: []
-      # runcmd examples for the base recipe (extend in definition for custom lab bootstrap).
       runcmd: []
 
   # Host prep expectations for this exact rodeo recipe (EIB-inspired "operatingSystem" / host requirements section).
@@ -362,43 +355,9 @@ definition:
       service1_mac: "02:00:00:0D:65:E2"
       service2_mac: "02:00:00:0D:66:E2"
 
-    - name: harvester3
-      template: harvester
-      index: 3
-      hostname: charlie         # charlie.aerogrid.com — Harvester node 3
-      uuid: "4541177c-c6b7-4ab3-b418-e2a0b17beb9d"
-      ip: "192.168.122.13"
-      config_iso_name: "harvester-config-node3"
-      ssh_user: rancher
-      interfaces:
-        - role: mgmt
-          mac: "02:00:00:0D:62:E3"
-        - role: storage
-          mac: "02:00:00:0D:63:E3"
-        - role: migration
-          mac: "02:00:00:0D:64:E3"
-        - role: service
-          mac: "02:00:00:0D:65:E3"
-        - role: service
-          mac: "02:00:00:0D:66:E3"
-      mgmt_mac: "02:00:00:0D:62:E3"
-      storage_mac: "02:00:00:0D:63:E3"
-      migration_mac: "02:00:00:0D:64:E3"
-      service1_mac: "02:00:00:0D:65:E3"
-      service2_mac: "02:00:00:0D:66:E3"
-
-    - name: rancher
-      template: rancher
-      index: 0
-      hostname: rancher         # rancher.aerogrid.com — Rancher Prime
-      uuid: "77994fd6-7ebb-4ad3-baf4-55575b0ce265"
-      ip: "192.168.122.9"
-      config_iso_name: ""
-      ssh_user: root
-      interfaces:
-        - role: mgmt
-          mac: "02:00:00:0D:62:E9"
-      mgmt_mac: "02:00:00:0D:62:E9"
+# Note: harvester3 and rancher node removed for this 2-node no-Rancher testing variant.
+# The main bundled definition (profiles/suse-virt/definition.yaml) keeps the full 3+1 recipe.
+# Rancher node_template blueprint remains above for reference / future re-use in other configs.
 
 # Example of how a plan could override parts of this (future syntax sketch — not yet wired):
 # In rodeo-plan.yaml you could do:
@@ -417,7 +376,7 @@ definition:
 
 # How to use this file as an example for new rodeo types:
 # 1. Copy this file to rodeo/data/profiles/<your-type>/definition.yaml
-# 2. Edit the nodes list, start_order, gaps, etc.
+# 2. Edit the nodes list, start_order, gaps, etc. (this example is 2-node Harvester only).
 # 3. Implement (or extend) rodeo/inventory.py to load "rodeo/data/profiles/<type>/definition.yaml"
 #    using yaml.safe_load + build_inventory(cfg) that applies plan overrides.
 # 4. Update the profile's default_cfg() and run_phase to be thin (just metadata + phase list).
@@ -441,6 +400,9 @@ definition:
 #   rpms/, network/, files/, pxe/  (side-loads, overlays, boot extras — future)
 # inventory records the contents under _config_dir (and used definition if present).
 # The renderer/build phases will consume artifacts (e.g. copy scripts, embed manifests).
+#
+# This particular example (harvester-lab-config) is the *2-node no-Rancher test variant*.
+# Use the main bundled definition for the full 3+1 experience.
 
 # Note on MACs: They must remain unique per plan and match the static DHCP leases that will be
 # created by the vms role. Changing them requires a full clean + redeploy on real hardware.

@@ -45,6 +45,8 @@ console = Console()
                    "(only after the Instruqt image snapshot).")
 @click.option("--check", "preflight_only", is_flag=True, default=False,
               help="Run preflight checks and exit without deploying.")
+@click.option("--ansible-verbose", "ansible_verbose", default=0, type=int, metavar="LEVEL",
+              help="Ansible verbosity level (0-4, like -vvv). Use 3 or 4 + --no-tui for perfect tracing of every ansible task during deployment phases.")
 def deploy_cmd(
     config_path: str,
     config_dir: str | None,
@@ -57,6 +59,7 @@ def deploy_cmd(
     force: bool,
     include_guarded: bool,
     preflight_only: bool,
+    ansible_verbose: int,
 ) -> None:
     """Deploy the full SUSE Virtualization Rodeo cluster."""
     if config_dir is None:
@@ -103,13 +106,14 @@ def deploy_cmd(
                 install_collections=install_collections,
                 force=force,
                 include_guarded=include_guarded,
+                ansible_verbose=ansible_verbose,
             )
             app.run()
             raise SystemExit(app.exit_code)
         except ImportError:
             console.print("[yellow]⚠  textual not installed — falling back to plain output[/yellow]")
 
-    _deploy_plain(cfg, root, from_phase, install_collections, force, include_guarded)
+    _deploy_plain(cfg, root, from_phase, install_collections, force, include_guarded, ansible_verbose)
 
 
 def _run_preflight(cfg: dict, root: Path) -> bool:
@@ -229,6 +233,7 @@ def _deploy_plain(
     install_collections: bool,
     force: bool = False,
     include_guarded: bool = False,
+    ansible_verbose: int = 0,
 ) -> None:
     runner = DeployRunner(
         cfg=cfg,
@@ -237,9 +242,10 @@ def _deploy_plain(
         install_collections=install_collections,
         force=force,
         include_guarded=include_guarded,
+        ansible_verbose=ansible_verbose,
     )
 
-    console.print(f"\n[bold]rodeo deploy[/bold]  [{root}]\n")
+    console.print(f"\n[bold]rodeo deploy[/bold]  [[{root}]]\n")
 
     # A live status line absorbs ProgressUpdate events without corrupting
     # log output (the old \r trick smeared lines). Non-TTY (CI) gets the

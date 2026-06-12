@@ -112,6 +112,7 @@ class RodeoApp(App):
         watch_only: bool = False,
         force: bool = False,
         include_guarded: bool = False,
+        ansible_verbose: int = 0,
     ) -> None:
         super().__init__()
         self.cfg = cfg
@@ -121,6 +122,7 @@ class RodeoApp(App):
         self.watch_only = watch_only
         self.force = force
         self.include_guarded = include_guarded
+        self.ansible_verbose = ansible_verbose
         self.exit_code: int = 0
         self._runner: DeployRunner | None = None
         self._stop_tailers = threading.Event()
@@ -160,6 +162,7 @@ class RodeoApp(App):
             install_collections=self.install_collections,
             force=self.force,
             include_guarded=self.include_guarded,
+            ansible_verbose=self.ansible_verbose,
         )
         for event in self._runner.run():
             if isinstance(event, PhaseStarted):

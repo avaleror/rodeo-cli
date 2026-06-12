@@ -43,11 +43,12 @@ def cli(config_dir: str | None) -> None:
 
     \b
     Quick start:
-      sudo rodeo install-deps   # once, on a fresh host
-      rodeo init                # generate rodeo-plan.yaml
-      rodeo plan                # preview what deploy would do
-      rodeo deploy              # run the full pipeline
-      rodeo status              # check cluster health
+      sudo rodeo install-deps --link              # once, on a fresh host (SLES 16 etc.) — also creates /usr/local/bin/rodeo
+      rodeo init                                  # generate plan + secrets + rodeo-secrets.env
+      rodeo init --example harvester-lab-config   # ...or seed the 2-node no-Rancher test lab in one go
+      rodeo plan                                  # preview
+      rodeo deploy                                # full pipeline
+      rodeo status
     """
     # Store for subcommands that don't get it from their own decorator
     ctx = click.get_current_context()

@@ -1,4 +1,5 @@
 # Example rodeo-plan.yaml for use with --config-dir ./harvester-lab-config
+# This is the *testing variant* for resource-constrained hosts.
 # Customize for your test host (baremetal vs instruqt, resources, credentials as ??secrets, etc.)
 # When --config-dir is used and this file exists, it is preferred for the plan.
 
@@ -8,20 +9,30 @@ deployment_target: baremetal  # change to instruqt if on Instruqt
 
 network:
   vip: 192.168.122.10
-  rancher_ip: 192.168.122.9
 
 # Example override (plan -P or here)
-# resources:
-#   harvester:
-#     memory_mib: 16384
+# This config deploys a 2-node Harvester cluster (no Rancher) using 6 vCPU per node.
+# Why: on Ryzen-class hosts, hyperthreading presents 16 logical CPUs to the hypervisor
+# (each thread counts as a processor for qemu). 2*6 = 12 leaves headroom for host + qemu overhead.
+# RAM/disk are secondary; CPU threads are the real constraint for nested virt.
+# Tune further only if needed. The example definition now expects exactly 2 harvester nodes.
+resources:
+  harvester:
+    memory_mib: 8192     # 8 GiB per node — comfortable on 64GB host with headroom
+    vcpu: 6
+    disk_gb: 100         # smaller for test; Longhorn still works (2 replicas ok for lab)
 
 # credentials use ?? for secrets.yaml or env
 credentials:
   harvester_os_password: "??harvester_os_password"
   harvester_token: "??harvester_token"
 
-# storage device example (for multi-disk host; leave empty for single-disk)
-# storage:
-#   device: "/dev/sdb"   # or by-id etc. Matches definition's storage section intent.
+# storage device for multi-disk host (use the larger 2TB disk)
+# Confirm with lsblk on your host (e.g. /dev/nvme1n1 for the 2TB).
+# This is used by the definition + kvm_host role for the libvirt pool/images.
+storage:
+  device: "/dev/nvme1n1"   # the 2 TB disk (root is usually nvme0n1 on 1TB)
+  mount_point: /var/lib/libvirt/images
+  image_dir: /var/lib/libvirt/images
 
 # For full custom definition, edit definition.yaml in this dir (it will be used instead of bundled).

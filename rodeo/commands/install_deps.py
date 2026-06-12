@@ -167,7 +167,9 @@ def _install_ansible_collections() -> None:
 
 @click.command("install-deps")
 @click.option("--skip-ansible", is_flag=True, help="Skip ansible-core pip install.")
-def install_deps_cmd(skip_ansible: bool) -> None:
+@click.option("--link", is_flag=True, help="Create/update /usr/local/bin/rodeo symlink to this invocation (so plain 'rodeo' and 'sudo rodeo' work without exports or full paths).")
+@click.option("--force-link", is_flag=True, help="Force overwrite an existing /usr/local/bin/rodeo symlink.")
+def install_deps_cmd(skip_ansible: bool, link: bool, force_link: bool) -> None:
     """Install system packages and tools required to run rodeo deploy."""
     if os.geteuid() != 0:
         console.print("[red]Must run as root: sudo rodeo install-deps[/red]")
@@ -210,4 +212,39 @@ def install_deps_cmd(skip_ansible: bool) -> None:
             "If using a venv, recreate it with --system-site-packages.[/yellow]"
         )
 
-    console.print("Next step: [bold]rodeo init[/bold]")
+    # Make rodeo feel like a normal system binary: create a stable symlink in /usr/local/bin.
+    # This is the main win for the "first phase" friction (no more export RODEO=long/path every shell,
+    # and 'sudo rodeo' becomes possible without remembering the venv location).
+    # Call with --link (or --force-link) on the *first* sudo $RODEO install-deps.
+    # The symlink points at the venv's rodeo script (its shebang keeps the correct python + site-packages).
+    # Re-run --force-link if you move/ recreate the venv later.
+    rodeo_bin = os.path.realpath(sys.argv[0]) if sys.argv[0] else None
+    target = Path("/usr/local/bin/rodeo")
+    if (link or force_link) and rodeo_bin and Path(rodeo_bin).exists():
+        try:
+            cur = os.path.realpath(str(target)) if (target.exists() or target.is_symlink()) else None
+            desired = os.path.realpath(rodeo_bin)
+            if target.exists() or target.is_symlink():
+                if force_link:
+                    target.unlink(missing_ok=True)
+                    target.symlink_to(rodeo_bin)
+                    console.print(f"[green]✓  /usr/local/bin/rodeo -> {rodeo_bin} (overwritten)[/green]")
+                elif cur == desired:
+                    console.print(f"[green]✓  /usr/local/bin/rodeo already points here[/green]")
+                else:
+                    console.print(f"[yellow]⚠  /usr/local/bin/rodeo exists and points elsewhere — use --force-link to replace[/yellow]")
+            else:
+                target.symlink_to(rodeo_bin)
+                console.print(f"[green]✓  /usr/local/bin/rodeo -> {rodeo_bin}[/green]")
+            console.print("[dim]  Now 'rodeo' (in PATH) and 'sudo rodeo' should work. If sudo restricts PATH, use: sudo env PATH=/usr/local/bin:$PATH rodeo ...[/dim]")
+        except Exception as exc:
+            console.print(f"[yellow]⚠  Could not create /usr/local/bin/rodeo link: {exc}[/yellow]")
+    elif rodeo_bin:
+        # Always give the one-liner so users know the easy path even if they didn't pass --link this time.
+        console.print("\n[bold]Make 'rodeo' a normal command (recommended, run once):[/bold]")
+        console.print(f"  sudo {rodeo_bin} install-deps --link")
+        console.print("  # (or sudo ln -s " + rodeo_bin + " /usr/local/bin/rodeo )")
+        console.print("  # After this, drop the 'export RODEO=...' and long paths in future shells.")
+
+    console.print("Next step: [bold]rodeo init[/bold]  (or `rodeo init --example harvester-lab-config /path/to/lab` for the 2-node test variant)")
+    console.print("[dim]After --link above you can usually just use 'rodeo' and 'sudo -E rodeo ...'[/dim]")

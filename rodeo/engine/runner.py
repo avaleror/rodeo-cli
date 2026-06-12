@@ -93,6 +93,7 @@ class DeployRunner:
         install_collections: bool = True,
         force: bool = False,
         include_guarded: bool = False,
+        ansible_verbose: int = 0,
     ) -> None:
         self.cfg = cfg
         self.root = root
@@ -100,6 +101,7 @@ class DeployRunner:
         self.install_collections = install_collections
         self.force = force
         self.include_guarded = include_guarded
+        self.ansible_verbose = ansible_verbose
         self._plan_name = cfg.get("name", "default")
         self._proc: subprocess.Popen | None = None
         self._last_rc: int = 0
@@ -237,6 +239,8 @@ class DeployRunner:
             "--tags", tags,
             "-e", f"@{vars_file}",
         ]
+        if self.ansible_verbose > 0:
+            cmd.append("-" + "v" * min(self.ansible_verbose, 4))
         yield from self._stream_subprocess(cmd)
 
     def stream_cluster(self) -> Iterator[DeployEvent]:

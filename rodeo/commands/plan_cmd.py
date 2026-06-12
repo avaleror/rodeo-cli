@@ -132,7 +132,7 @@ def _print_storage(cfg: dict) -> int:
         (f"harvester-v{version}-rootfs-amd64.squashfs", pxe_root / "harvester" / f"harvester-v{version}-rootfs-amd64.squashfs"),
     ]
 
-    console.print(f"\n[bold]  Storage[/bold] [dim]({image_dir})[/dim]")
+    console.print(f"\n[bold]  Storage[/bold] [dim]([[{image_dir}]])[/dim]")
     downloads = 0
     for artifact in artifacts:
         if (image_dir / artifact).exists():

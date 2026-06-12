@@ -57,17 +57,18 @@ def _install_suse() -> None:
     _run(["zypper", "--non-interactive", "install", "-t", "pattern"] + _ZYPPER_PATTERNS)
     console.print("[bold]  Installing zypper packages...[/bold]")
     _run(["zypper", "--non-interactive", "install"] + _ZYPPER_PACKAGES)
-    # Ensure the libvirt Python binding is present (package name can vary slightly
-    # by SLES version; try the common one and fall back).
+    # Ensure the libvirt Python binding is present.
+    # On SLES/SUSE the package is python3-libvirt-python (suppress "no provider" if already satisfied or variant).
     try:
-        _run(["zypper", "--non-interactive", "install", "python3-libvirt-python", "python3-libvirt"], check=False)
+        _run(["zypper", "--non-interactive", "install", "python3-libvirt-python"], check=False)
     except Exception:
         pass
     # Start libvirt daemons (modular virtqemud on SLES 16+) so the socket exists for `plan` and `status`
     # to inspect current host state. This is needed before any deploy.
+    # Note: some units may not exist on modular SLES; ignore failures (suppress stderr to avoid noise).
     try:
-        for svc in ("virtqemud", "virtnetworkd", "virtstoraged", "libvirtd"):
-            _run(["systemctl", "enable", "--now", svc], check=False)
+        for svc in ("virtqemud", "virtnetworkd", "virtstoraged"):
+            _run(["systemctl", "enable", "--now", svc], check=False, stderr=subprocess.DEVNULL)
     except Exception:
         pass
     console.print("[bold]  Adding Kubernetes repo for kubectl...[/bold]")

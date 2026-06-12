@@ -6,6 +6,8 @@ import sys
 import click
 from rich.console import Console
 
+from ._options import config_options
+
 console = Console()
 
 

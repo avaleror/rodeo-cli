@@ -46,8 +46,10 @@ def clean_cmd(config_path: str, yes: bool) -> None:
             console.print("  [dim]destroy[/dim]  libvirt default network")
             lv.net_destroy("default")
             lv.net_undefine("default")
-    except Exception:
-        # libvirt-python missing or connection failed — virsh does the same job
+    except RuntimeError as exc:
+        # libvirt-python missing or connect refused — virsh does the same job.
+        # Anything else (e.g. libvirtError mid-operation) should surface, not hide.
+        console.print(f"[yellow]⚠  {exc} — falling back to virsh[/yellow]")
 
         for vm in vm_names:
             console.print(f"  [dim]destroy[/dim]  {vm} (virsh)")

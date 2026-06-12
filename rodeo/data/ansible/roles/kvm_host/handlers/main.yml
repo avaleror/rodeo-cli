@@ -6,7 +6,7 @@
 
 - name: reload firewalld
   # firewalld is not started during the Ansible phase (see firewall.yml).
-  # This handler is a no-op here; the deployer's deploy.sh starts it explicitly.
+  # This handler is a no-op here; the rodeo cluster phase starts firewalld explicitly.
   ansible.builtin.shell: >
     systemctl is-active firewalld && firewall-cmd --reload || true
   changed_when: false

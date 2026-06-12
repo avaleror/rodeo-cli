@@ -66,6 +66,14 @@ class DeployComplete(DeployEvent):
     pass
 
 
+# Known Harvester ISO checksums (releases.rancher.com). When the plan pins a
+# version not listed here, the checksum is passed empty so get_url skips
+# verification instead of failing against the 1.8.0 role default.
+_HARVESTER_ISO_CHECKSUMS = {
+    "1.8.0": "sha512:dcbe2b2ba47e1f15854eb054f0cf5a5efe711db7aa86c4a4e50410e0f12aa5481085f99b85e62e89ddb53b95b61dc859b8568152f986be7d4168fd6b8ead026a",
+}
+
+
 # ---------- Runner ----------
 
 class DeployRunner:
@@ -141,6 +149,13 @@ class DeployRunner:
                 yield LogLine("  ✓  collections installed")
 
         vars_file = self._write_vars_file()
+
+        version = self.cfg.get("versions", {}).get("harvester", "1.8.0")
+        if version not in _HARVESTER_ISO_CHECKSUMS:
+            yield LogLine(
+                f"  ⚠  No known ISO checksum for Harvester {version} — "
+                "the download will not be verified."
+            )
 
         guard_active = (
             self.cfg.get("deployment_target", "baremetal") == "instruqt"
@@ -295,22 +310,32 @@ class DeployRunner:
         r_res = self.cfg.get("resources", {}).get("rancher", {})
         storage = self.cfg.get("storage", {})
 
+        version = ver.get("harvester", "1.8.0")
         vars_data = {
             "network_mode":          net.get("mode", "nat"),
             "host_bridge":           net.get("host_bridge", "br0"),
             "harvester_vip":         net.get("vip", "192.168.122.10"),
             "rancher_ip":            net.get("rancher_ip", "192.168.122.9"),
-            "dns_domain":            net.get("dns_domain", "aerogrid.com"),
+            "lab_dns_domain":        net.get("dns_domain", "aerogrid.com"),
             "libvirt_network_gateway": net.get("gateway", "192.168.122.1"),
             "harvester_os_password": creds.get("harvester_os_password", ""),
             "rancher_vm_password":   creds.get("harvester_os_password", ""),
-            "harvester_version":     ver.get("harvester", "1.8.0"),
-            "harvester_memory_mb":   h_res.get("memory_mib", 16384),
-            "harvester_vcpu":        h_res.get("vcpu", 8),
-            "harvester_disk_gb":     h_res.get("disk_gb", 270),
-            "rancher_memory_mb":     r_res.get("memory_mib", 8192),
-            "rancher_vcpu":          r_res.get("vcpu", 4),
-            "rancher_disk_gb":       r_res.get("disk_gb", 60),
+            "harvester_version":     version,
+            "harvester_iso_checksum": _HARVESTER_ISO_CHECKSUMS.get(version, ""),
+            # Nested structure matches what roles/vms actually consumes
+            # (vm.xml.j2, images.yml) — flat per-flavor keys are not read.
+            "libvirt_flavors": {
+                "harvester": {
+                    "memory_mib": h_res.get("memory_mib", 16384),
+                    "vcpu":       h_res.get("vcpu", 8),
+                    "disk_gb":    h_res.get("disk_gb", 270),
+                },
+                "rancher": {
+                    "memory_mib": r_res.get("memory_mib", 8192),
+                    "vcpu":       r_res.get("vcpu", 4),
+                    "disk_gb":    r_res.get("disk_gb", 60),
+                },
+            },
             "image_dir":             storage.get("image_dir", "/var/lib/libvirt/images"),
         }
         # Only override the role-default join token when the plan provides one.

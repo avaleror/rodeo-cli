@@ -112,17 +112,34 @@ def test_stop_before_phase_cancels(fake_profile, fake_cfg, tmp_path):
 
 def test_vars_file_wires_plan_and_is_private(fake_profile, fake_cfg, tmp_path):
     fake_cfg["resources"] = {"harvester": {"memory_mib": 4096, "vcpu": 2, "disk_gb": 100}}
-    fake_cfg["versions"] = {"harvester": "1.9.0"}
+    fake_cfg["versions"] = {"harvester": "1.8.0"}
     runner = DeployRunner(fake_cfg, tmp_path)
     vars_file = runner._write_vars_file()
 
     assert stat.S_IMODE(vars_file.stat().st_mode) == 0o600
     data = yaml.safe_load(vars_file.read_text())
     assert data["harvester_os_password"] == "Secret123"
-    assert data["harvester_memory_mb"] == 4096
-    assert data["harvester_version"] == "1.9.0"
+    # Nested structure: this is what roles/vms actually reads.
+    assert data["libvirt_flavors"]["harvester"]["memory_mib"] == 4096
+    assert data["libvirt_flavors"]["harvester"]["vcpu"] == 2
+    assert data["libvirt_flavors"]["rancher"]["memory_mib"] == 8192  # default kept
+    assert data["lab_dns_domain"] == "aerogrid.com"
+    assert data["harvester_version"] == "1.8.0"
+    assert data["harvester_iso_checksum"].startswith("sha512:")
     assert data["libvirt_network_gateway"] == "192.168.122.1"
     assert "harvester_token" not in data  # role default applies when plan has none
+    # Flat per-flavor keys are not consumed by Ansible — must not reappear.
+    assert "harvester_memory_mb" not in data
+    assert "dns_domain" not in data
+
+
+def test_vars_file_unknown_version_disables_checksum(fake_profile, fake_cfg, tmp_path):
+    fake_cfg["versions"] = {"harvester": "9.9.9"}
+    vars_file = DeployRunner(fake_cfg, tmp_path)._write_vars_file()
+    data = yaml.safe_load(vars_file.read_text())
+    # Empty string overrides the 1.8.0 role default so get_url skips the check
+    # instead of failing the download against the wrong checksum.
+    assert data["harvester_iso_checksum"] == ""
 
 
 def test_vars_file_passes_token_when_set(fake_profile, fake_cfg, tmp_path):

@@ -47,6 +47,8 @@ class LibvirtDriver:
 
     def connect(self) -> "LibvirtDriver":
         self._conn = _libvirt.open(self._uri)
+        if self._conn is None:
+            raise RuntimeError(f"Failed to connect to libvirt at {self._uri}")
         return self
 
     def close(self) -> None:

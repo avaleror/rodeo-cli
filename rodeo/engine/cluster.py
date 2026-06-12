@@ -1,4 +1,4 @@
-"""ClusterPhase — Python port of deployer/lib/start-vms.sh."""
+"""ClusterPhase — Python port of the retired start-vms.sh deployer script."""
 from __future__ import annotations
 
 import ssl
@@ -13,7 +13,10 @@ from typing import Generator, Iterator
 from .libvirt import LibvirtDriver
 from .runner import DeployEvent, LogLine, ProgressUpdate
 
-KUBECONFIG_PATH = Path("/tmp/harvester-kubeconfig")
+KUBECONFIG_PATH = Path.home() / ".rodeo" / "harvester-kubeconfig"
+# Legacy location used by instruqt-virtualization challenge scripts —
+# kept as a symlink to the real file.
+LEGACY_KUBECONFIG_PATH = Path("/tmp/harvester-kubeconfig")
 
 _SSH_OPTS = [
     "-o", "StrictHostKeyChecking=no",
@@ -27,7 +30,7 @@ _SSH_OPTS = [
 class ClusterPhase:
     """Start Harvester + Rancher VMs and wait for the cluster to be ready.
 
-    Replaces deployer/lib/start-vms.sh. Uses LibvirtDriver instead of virsh.
+    Replaces the retired start-vms.sh. Uses LibvirtDriver instead of virsh.
     """
 
     VIP_TIMEOUT        = 3600   # Harvester install: 20-60 min in nested KVM
@@ -180,8 +183,14 @@ class ClusterPhase:
 
             if result.returncode == 0 and result.stdout.strip():
                 content = result.stdout.replace("127.0.0.1", self.vip)
+                KUBECONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
                 KUBECONFIG_PATH.write_text(content)
                 KUBECONFIG_PATH.chmod(0o600)
+                try:
+                    LEGACY_KUBECONFIG_PATH.unlink(missing_ok=True)
+                    LEGACY_KUBECONFIG_PATH.symlink_to(KUBECONFIG_PATH)
+                except OSError:
+                    pass  # compat link only — not worth failing the phase
                 yield ProgressUpdate("Fetching kubeconfig", elapsed, self.KUBECONFIG_TIMEOUT)
                 return True
 

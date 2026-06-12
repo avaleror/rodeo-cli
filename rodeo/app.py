@@ -121,6 +121,7 @@ class RodeoApp(App):
         self.watch_only = watch_only
         self.force = force
         self.include_guarded = include_guarded
+        self.exit_code: int = 0
         self._runner: DeployRunner | None = None
         self._stop_tailers = threading.Event()
 
@@ -165,6 +166,7 @@ class RodeoApp(App):
             elif isinstance(event, PhaseDone):
                 self.post_message(_PhaseDone(event.phase, event.elapsed))
             elif isinstance(event, PhaseFailed):
+                self.exit_code = event.rc or 1
                 self.post_message(_PhaseFailed(event.phase, event.rc))
                 self.post_message(_DeployFailed(event.phase))
             elif isinstance(event, ProgressUpdate):

@@ -1,4 +1,4 @@
-"""RancherPhase — Python port of deployer/lib/setup-rancher.sh."""
+"""RancherPhase — Python port of the retired setup-rancher.sh deployer script."""
 from __future__ import annotations
 
 import json
@@ -490,10 +490,6 @@ class RancherPhase:
             return False
         yield LogLine("  Import manifest applied.")
 
-        yield LogLine("  Waiting for cluster to go Active (up to 30 min)...")
-        if not (yield from self._wait_cluster_active()):
-            yield LogLine("  ⚠ Cluster not Active in time — check the Rancher UI")
-
         try:
             kube_dir = Path("/root/.kube")
             kube_dir.mkdir(parents=True, exist_ok=True)
@@ -503,6 +499,12 @@ class RancherPhase:
             yield LogLine(f"  Harvester kubeconfig saved to {dest}")
         except Exception as exc:
             yield LogLine(f"  ⚠ kubeconfig copy: {exc}")
+
+        yield LogLine("  Waiting for cluster to go Active (up to 30 min)...")
+        if not (yield from self._wait_cluster_active()):
+            self.error = "Harvester cluster did not reach Active in Rancher"
+            yield LogLine(f"  ✗ {self.error}")
+            return False
 
         return True
 

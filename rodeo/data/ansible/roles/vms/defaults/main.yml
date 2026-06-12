@@ -10,7 +10,7 @@ harvester_iso_checksum: "sha512:dcbe2b2ba47e1f15854eb054f0cf5a5efe711db7aa86c4a4
 harvester_vip: "192.168.122.10"
 harvester_token: "HarvesterRodeoBootstrapToken2024"
 # Single lab password. Used for the Harvester node OS console, the Rancher VM root
-# console, and (via setup-rancher.sh) the Harvester and Rancher dashboard admins.
+# console, and (via the rancher phase) the Harvester and Rancher dashboard admins.
 # Lab-grade only — do not reuse anywhere real.
 harvester_os_password: "Foobar12345$"
 

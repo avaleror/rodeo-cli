@@ -97,7 +97,7 @@ def deploy_cmd(
                 include_guarded=include_guarded,
             )
             app.run()
-            return
+            raise SystemExit(app.exit_code)
         except ImportError:
             console.print("[yellow]⚠  textual not installed — falling back to plain output[/yellow]")
 

@@ -16,7 +16,7 @@ kvm_host_packages:
   - python3-libvirt-python   # required by the community.libvirt modules (virt/virt_net/virt_pool)
 
 # kubectl is not in the SUSE base repos, so the role adds the upstream Kubernetes
-# repo and installs it (used by setup-rancher.sh for the cluster import). Channel
+# repo and installs it (used by the rancher phase for the cluster import). Channel
 # is the latest stable minor; kubectl is forward/backward compatible enough for the
 # import-apply against the older K3s/Harvester clusters. Bump as new minors ship.
 kubectl_repo_channel: "stable:/v1.36"

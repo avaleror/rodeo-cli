@@ -23,6 +23,7 @@ _BUNDLE_TAIL_LINES = 2000
 @click.command("logs")
 @click.argument("vm", required=False)
 @click.option("--config", "config_path", default="rodeo-plan.yaml", show_default=True)
+@click.option("--config-dir", "config_dir", default=None, metavar="DIR", type=click.Path(file_okay=False, dir_okay=True, exists=False))
 @click.option("-n", "--lines", default=50, show_default=True, help="Initial lines to show.")
 @click.option("--no-follow", is_flag=True, help="Print and exit (no -f).")
 @click.option("--log-dir", default=str(_SERIAL_LOG_DIR), show_default=True)
@@ -33,6 +34,7 @@ _BUNDLE_TAIL_LINES = 2000
 def logs_cmd(
     vm: str | None,
     config_path: str,
+    config_dir: str | None,
     lines: int,
     no_follow: bool,
     log_dir: str,
@@ -40,7 +42,11 @@ def logs_cmd(
     output: str | None,
 ) -> None:
     """Tail the serial console log for a VM, or collect a support bundle."""
-    cfg = load_config(config_path)
+    if config_dir is None:
+        ctx = click.get_current_context()
+        if ctx.obj:
+            config_dir = ctx.obj.get("config_dir")
+    cfg = load_config(config_path, config_dir=config_dir)
 
     if bundle:
         _make_bundle(cfg, Path(log_dir), output)

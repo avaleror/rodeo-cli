@@ -15,6 +15,7 @@ console = Console()
 @click.command("ssh")
 @click.argument("vm")
 @click.option("--config", "config_path", default="rodeo-plan.yaml", show_default=True)
+@click.option("--config-dir", "config_dir", default=None, metavar="DIR", type=click.Path(file_okay=False, dir_okay=True, exists=False))
 @click.option("--key", default=None,
               help="SSH private key (default: ssh.identity_file from plan).")
 @click.option("-l", "--login", "login_user", default=None, help="Override SSH user.")
@@ -22,12 +23,17 @@ console = Console()
 def ssh_cmd(
     vm: str,
     config_path: str,
+    config_dir: str | None,
     key: str | None,
     login_user: str | None,
     remote_cmd: str | None,
 ) -> None:
     """Open an SSH session to a rodeo VM."""
-    cfg = load_config(config_path)
+    if config_dir is None:
+        ctx = click.get_current_context()
+        if ctx.obj:
+            config_dir = ctx.obj.get("config_dir")
+    cfg = load_config(config_path, config_dir=config_dir)
     vms = cfg.get("vms", {})
     if vm not in vms:
         console.print(f"[red]✗  Unknown VM '{vm}'. Known: {', '.join(vms)}[/red]")

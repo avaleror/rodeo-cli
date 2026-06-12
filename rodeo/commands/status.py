@@ -50,6 +50,10 @@ def _vip_reachable(vip: str) -> bool:
 @config_options
 def status_cmd(config_path: str, config_dir: str | None, params: tuple[str, ...], paramfile: str | None) -> None:
     """Show VM states and cluster reachability at a glance."""
+    if config_dir is None:
+        ctx = click.get_current_context()
+        if ctx.obj:
+            config_dir = ctx.obj.get("config_dir")
     cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir)
     profile = get_profile(cfg.get("type", "suse-virt"))
     state = load_state(cfg.get("name", "default"))

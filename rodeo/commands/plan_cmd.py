@@ -18,6 +18,10 @@ console = Console()
 @config_options
 def plan_cmd(config_path: str, config_dir: str | None, params: tuple[str, ...], paramfile: str | None) -> None:
     """Show what `rodeo deploy` would do, without changing anything."""
+    if config_dir is None:
+        ctx = click.get_current_context()
+        if ctx.obj:
+            config_dir = ctx.obj.get("config_dir")
     cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir)
     # Preview is read-only: validation problems are warnings here so the
     # diff is still visible. `rodeo deploy` enforces them strictly.
@@ -61,8 +65,10 @@ def _inspect_host(cfg: dict) -> dict | None:
                 "vms": {vm.name: vm for vm in infos},
                 "net_active": lv.net_is_active("default"),
             }
-    except RuntimeError as exc:
-        console.print(f"\n[yellow]⚠  {exc} — showing desired state only.[/yellow]")
+    except Exception as exc:
+        # Always fall back gracefully on any libvirt issue (missing module or daemon not up).
+        # This is normal on a clean host before install-deps has run.
+        console.print(f"\n[yellow]⚠  libvirt not reachable on host — showing desired state only.[/yellow]")
         return None
 
 

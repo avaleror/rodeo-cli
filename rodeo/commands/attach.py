@@ -12,11 +12,16 @@ console = Console()
 @click.command("attach")
 @click.argument("vm")
 @click.option("--config", "config_path", default="rodeo-plan.yaml", show_default=True)
-def attach_cmd(vm: str, config_path: str) -> None:
+@click.option("--config-dir", "config_dir", default=None, metavar="DIR", type=click.Path(file_okay=False, dir_okay=True, exists=False))
+def attach_cmd(vm: str, config_path: str, config_dir: str | None) -> None:
     """Attach to the virsh serial console of a VM (Ctrl-] to detach; honors libvirt.uri from plan)."""
     from ..config import load_config
 
-    cfg = load_config(config_path)
+    if config_dir is None:
+        ctx = click.get_current_context()
+        if ctx.obj:
+            config_dir = ctx.obj.get("config_dir")
+    cfg = load_config(config_path, config_dir=config_dir)
     vms = cfg.get("vms", {})
     if vm not in vms:
         console.print(f"[red]✗  Unknown VM '{vm}'. Known: {', '.join(vms)}[/red]")

@@ -59,6 +59,10 @@ def deploy_cmd(
     preflight_only: bool,
 ) -> None:
     """Deploy the full SUSE Virtualization Rodeo cluster."""
+    if config_dir is None:
+        ctx = click.get_current_context()
+        if ctx.obj:
+            config_dir = ctx.obj.get("config_dir")
     try:
         cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir)
         validate_config(cfg)

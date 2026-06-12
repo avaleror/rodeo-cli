@@ -57,6 +57,19 @@ def _install_suse() -> None:
     _run(["zypper", "--non-interactive", "install", "-t", "pattern"] + _ZYPPER_PATTERNS)
     console.print("[bold]  Installing zypper packages...[/bold]")
     _run(["zypper", "--non-interactive", "install"] + _ZYPPER_PACKAGES)
+    # Ensure the libvirt Python binding is present (package name can vary slightly
+    # by SLES version; try the common one and fall back).
+    try:
+        _run(["zypper", "--non-interactive", "install", "python3-libvirt-python", "python3-libvirt"], check=False)
+    except Exception:
+        pass
+    # Start libvirt daemons (modular virtqemud on SLES 16+) so the socket exists for `plan` and `status`
+    # to inspect current host state. This is needed before any deploy.
+    try:
+        for svc in ("virtqemud", "virtnetworkd", "virtstoraged", "libvirtd"):
+            _run(["systemctl", "enable", "--now", svc], check=False)
+    except Exception:
+        pass
     console.print("[bold]  Adding Kubernetes repo for kubectl...[/bold]")
     try:
         repo_url = f"https://pkgs.k8s.io/core:/stable:/{_K8S_CHANNEL}/rpm/"
@@ -184,4 +197,16 @@ def install_deps_cmd(skip_ansible: bool) -> None:
         raise SystemExit(exc.returncode or 1)
 
     console.print("\n[bold green]✓  Dependencies installed.[/bold green]")
+
+    # Verify critical Python bindings (especially for SLES where libvirt-python
+    # is a system package that venvs need --system-site-packages to see).
+    try:
+        import libvirt  # noqa: F401
+        console.print("[green]  libvirt-python binding importable.[/green]")
+    except ImportError:
+        console.print(
+            "[yellow]  ⚠  libvirt-python binding not importable in this Python. "
+            "If using a venv, recreate it with --system-site-packages.[/yellow]"
+        )
+
     console.print("Next step: [bold]rodeo init[/bold]")

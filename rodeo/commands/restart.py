@@ -12,13 +12,18 @@ console = Console()
 @click.command("restart")
 @click.argument("vm")
 @click.option("--config", "config_path", default="rodeo-plan.yaml", show_default=True)
+@click.option("--config-dir", "config_dir", default=None, metavar="DIR", type=click.Path(file_okay=False, dir_okay=True, exists=False))
 @click.option("--hard", is_flag=True, help="Force-kill instead of ACPI shutdown.")
-def restart_cmd(vm: str, config_path: str, hard: bool) -> None:
+def restart_cmd(vm: str, config_path: str, config_dir: str | None, hard: bool) -> None:
     """Restart a VM (ACPI shutdown + start). Use 'all' to cycle every VM."""
     from ..config import load_config
     from ..engine.libvirt import LibvirtDriver
 
-    cfg = load_config(config_path)
+    if config_dir is None:
+        ctx = click.get_current_context()
+        if ctx.obj:
+            config_dir = ctx.obj.get("config_dir")
+    cfg = load_config(config_path, config_dir=config_dir)
     vm_names = list(cfg.get("vms", {}).keys())
     if vm != "all" and vm not in vm_names:
         console.print(f"[red]✗  Unknown VM '{vm}'. Known: {', '.join(vm_names + ['all'])}[/red]")

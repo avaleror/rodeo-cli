@@ -32,7 +32,13 @@ class _RodeoGroup(click.Group):
 
 @click.group(cls=_RodeoGroup, context_settings={"help_option_names": ["-h", "--help"]})
 @click.version_option(__version__, "-V", "--version")
-def cli() -> None:
+@click.option(
+    "--config-dir", "config_dir", default=None, metavar="DIR",
+    type=click.Path(file_okay=False, dir_okay=True, exists=False),
+    help="Config directory for EIB-style declarative setup (definition.yaml + artifacts). "
+         "Option can appear before or after the subcommand.",
+)
+def cli(config_dir: str | None) -> None:
     """Deploy and manage the SUSE Virtualization Rodeo cluster.
 
     \b
@@ -43,6 +49,10 @@ def cli() -> None:
       rodeo deploy              # run the full pipeline
       rodeo status              # check cluster health
     """
+    # Store for subcommands that don't get it from their own decorator
+    ctx = click.get_current_context()
+    ctx.obj = ctx.obj or {}
+    ctx.obj["config_dir"] = config_dir
 
 
 cli.add_command(install_deps_cmd, name="install-deps")

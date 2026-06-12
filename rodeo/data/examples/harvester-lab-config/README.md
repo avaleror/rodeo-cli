@@ -17,10 +17,13 @@ It demonstrates the EIB-inspired model:
 ## Quick start
 
 1. cp -r rodeo/data/examples/harvester-lab-config /tmp/my-lab
-2. cp your-rodeo-plan.yaml /tmp/my-lab/rodeo-plan.yaml   # or edit in place
-3. (optional) drop a custom definition.yaml if you want to vary the topology
-4. rodeo --config-dir /tmp/my-lab plan
-5. rodeo --config-dir /tmp/my-lab deploy
+2. Edit rodeo-plan.yaml in place (or cp your own) for baremetal/instruqt, resources, etc. The shipped one has placeholders for secrets.
+3. (optional) customize definition.yaml in the dir (it overrides the bundled profile one for this rodeo).
+4. Add artifacts to certs/, manifests/, etc. as needed.
+5. rodeo --config-dir /tmp/my-lab plan
+6. rodeo --config-dir /tmp/my-lab deploy
+
+The dir now ships with definition.yaml + rodeo-plan.yaml ready for testing.
 
 The inventory (build_inventory) records `_config_dir` with the discovered files.
 Future phases (build command, artifact embedding) will use the contents.

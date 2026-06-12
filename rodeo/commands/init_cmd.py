@@ -75,7 +75,23 @@ def init_cmd(force: bool, ask_password: bool, target_dir: str) -> None:
         console.print(f"[yellow]{plan_dest} already exists — use --force to overwrite.[/yellow]")
     else:
         shutil.copy(_TEMPLATES / "rodeo-plan.yaml", plan_dest)
-        console.print(f"[green]✓[/green]  {plan_dest}")
+        # Rewrite credentials to use env: form so that sourcing rodeo-secrets.env
+        # + sudo -E works out of the box (no need to touch ~/.rodeo/secrets.yaml for sudo).
+        plan_text = plan_dest.read_text()
+        plan_text = plan_text.replace(
+            'harvester_os_password: "??harvester_os_password"',
+            'harvester_os_password: "??env:HARVESTER_OS_PASSWORD"'
+        )
+        plan_text = plan_text.replace(
+            'lab_admin_password: "??lab_admin_password"',
+            'lab_admin_password: "??env:LAB_ADMIN_PASSWORD"'
+        )
+        plan_text = plan_text.replace(
+            'harvester_token: "??harvester_token"',
+            'harvester_token: "??env:HARVESTER_TOKEN"'
+        )
+        plan_dest.write_text(plan_text)
+        console.print(f"[green]✓[/green]  {plan_dest}  [dim](env-var ready)]")
 
     secrets_dest.parent.mkdir(parents=True, exist_ok=True)
     if secrets_dest.exists() and not force:
@@ -97,8 +113,35 @@ def init_cmd(force: bool, ask_password: bool, target_dir: str) -> None:
             f"[green]✓[/green]  {secrets_dest}  [dim](chmod 600, password: {source})[/dim]"
         )
 
-    console.print(
-        "\nEdit [bold]rodeo-plan.yaml[/bold] for your environment, "
-        "then set passwords in [bold]~/.rodeo/secrets.yaml[/bold]."
+    # Generate a sourceable env file for easy use with sudo -E (avoids the
+    # need to copy ~/.rodeo/secrets.yaml into /root/.rodeo for test flows).
+    env_file = dest / "rodeo-secrets.env"
+    env_content = (
+        f'export HARVESTER_OS_PASSWORD="{password}"\n'
+        f'export LAB_ADMIN_PASSWORD="{password}"\n'
+        f'export HARVESTER_TOKEN="{token}"\n'
     )
-    console.print("Run [bold]rodeo deploy[/bold] when ready.")
+    env_file.write_text(env_content)
+    console.print(f"[green]✓[/green]  {env_file}  [dim](source this for env-var mode)]")
+
+    console.print(
+        "\n[bold]Next steps:[/bold]"
+    )
+    console.print(
+        f"  source {env_file.name}                    # load the passwords into env"
+    )
+    console.print(
+        "  # (optional) also edit ~/.rodeo/secrets.yaml if you prefer the file method"
+    )
+    console.print(
+        "  sudo -E $RODEO deploy --check            # -E passes the HARVESTER_* vars"
+    )
+    console.print(
+        "\nWhy a sourceable file instead of 'automatic' export?"
+    )
+    console.print(
+        "A child process (rodeo) cannot modify the parent shell's environment."
+    )
+    console.print(
+        "Sourcing the generated file + sudo -E is the cleanest way for test/CI flows."
+    )

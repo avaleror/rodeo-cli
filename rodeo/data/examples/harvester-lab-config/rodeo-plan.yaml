@@ -1,0 +1,27 @@
+# Example rodeo-plan.yaml for use with --config-dir ./harvester-lab-config
+# Customize for your test host (baremetal vs instruqt, resources, credentials as ??secrets, etc.)
+# When --config-dir is used and this file exists, it is preferred for the plan.
+
+type: suse-virt
+name: harvester-rodeo-test
+deployment_target: baremetal  # change to instruqt if on Instruqt
+
+network:
+  vip: 192.168.122.10
+  rancher_ip: 192.168.122.9
+
+# Example override (plan -P or here)
+# resources:
+#   harvester:
+#     memory_mib: 16384
+
+# credentials use ?? for secrets.yaml or env
+credentials:
+  harvester_os_password: "??harvester_os_password"
+  harvester_token: "??harvester_token"
+
+# storage device example (for multi-disk host; leave empty for single-disk)
+# storage:
+#   device: "/dev/sdb"   # or by-id etc. Matches definition's storage section intent.
+
+# For full custom definition, edit definition.yaml in this dir (it will be used instead of bundled).

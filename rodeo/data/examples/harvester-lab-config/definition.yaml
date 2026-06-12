@@ -1,0 +1,446 @@
+# definition.yaml — declarative definition for the suse-virt Harvester HCI + Rancher Prime rodeo.
+#
+# This is a copy of the main definition for use with --config-dir ./harvester-lab-config
+# (or your own dir). Customize as needed for your lab (e.g. change IPs, resources, add manifests in sibling dirs).
+# The renderer in inventory.py will prefer this definition.yaml when --config-dir points here.
+#
+# This is the authoritative definition file for the Harvester/SUSE Virtualization rodeo (our current focus).
+# It is the EXAMPLE of how definition files need to be done in rodeo-cli.
+#
+# Focus: Harvester/SUSE Virtualization only (forget Edge Rodeo for now).
+#
+# Purpose:
+# - Centralizes what was previously hardcoded in:
+#   - rodeo/profiles/suse_virt.py (vm_names, vms ips/users)
+#   - rodeo/engine/cluster.py (start order, "harvester1/2/3", "rancher", ETCD_JOIN_GAP usage)
+#   - rodeo/engine/rancher.py (harvester_nodes filter using name != "rancher")
+#   - rodeo/commands/plan_cmd.py (_flavor_of using name == "rancher")
+#   - rodeo/data/ansible/roles/vms/defaults/main.yml (full vm_nodes with MACs/UUIDs/ips)
+#
+# Future inventory.py (see ROADMAP Phase C) will load this (or plan overrides of it) to:
+# - Generate authoritative vm_nodes for Ansible vars file (so plan -P vms.* changes affect provisioning)
+# - Provide start_order, harvester_node_names, etc. to ClusterPhase and RancherPhase (no more string hardcodes)
+# - Support richer plan schemas (e.g. "nodes: 4" or explicit per-VM blocks with custom MACs)
+#
+# Format rules for definition files (this is the pattern to follow for all future rodeo types):
+# - Top-level: "definition:" or clear sections like network:, nodes:, storage: (the "topology" is one section)
+# - Evolved: node_templates for blueprints + per-node `template` + `interfaces:` list (role + mac + model).
+#   Old flat mac fields kept for compat; renderer normalizes and can generate missing values.
+#   Nodes declare "what" (logical cables); renderer produces "how" (MACs, DHCP, iPXE, firewall rules, etc.)
+# - Include "metadata" or top-level for profile-specific behavior (start_order, gaps, etc.)
+# - Support comments liberally (YAML).
+# - Be self-contained so it can be loaded by Python (yaml.safe_load) and referenced by Ansible (as -e @file or include_vars).
+# - When a plan provides overrides (e.g. via vms: or future nodes:), merge at runtime (see inventory.py).
+# - Deterministic generation for MACs/UUIDs when not explicit (hash of plan name + node name).
+# - Keep MACs starting with 02:00:00:0D:62:... for lab consistency (libvirt DHCP + Harvester expectations).
+#
+# Current data is 1:1 copy of the previous hardcodes so behavior is unchanged until inventory.py wires it in.
+
+apiVersion: 1.0   # Schema version, like EIB. Increment for breaking changes in definition format.
+definition:
+  name: suse-virt
+  description: "3-node Harvester HCI cluster + Rancher Prime on nested KVM (the default rodeo)"
+
+  # The ordered list of VMs to start/provision. This replaces all hardcoded sequences.
+  # ClusterPhase will use this instead of "harvester1 then harvester2..." etc.
+  start_order:
+    - harvester1
+    - harvester2
+    - harvester3
+    - rancher
+
+  # Nodes that are part of the Harvester cluster (affects VIP wait, etcd gap application, node Ready count, CDROM eject, etc.)
+  # Replaces the listcomp `n for n in vms if n != "rancher"` and the fallback ["harvester1", ...]
+  harvester_node_names:
+    - harvester1
+    - harvester2
+    - harvester3
+
+  # How many Harvester nodes we expect to become Ready. Replaces the magic "3".
+  harvester_ready_count: 3
+
+  # The etcd join gap (in seconds) inserted before starting the 3rd Harvester node.
+  # This is still here as metadata because the 90s value is a carefully tuned race prevention (see CONTEXT.md DO-NOT-TOUCH).
+  # Code should read it from here instead of the class constant when possible.
+  etcd_join_gap_seconds: 90
+
+  # === "Cables" and low-level networking model (the better abstraction) ===
+  # Instead of hardcoding MACs + separate firewall rules + pxe scripts,
+  # declare the *logical* network topology here. The inventory renderer
+  # (rodeo/inventory.py) compiles this into:
+  #   - vm_nodes with concrete MACs/UUIDs (for libvirt + Harvester config ISOs)
+  #   - DHCP static leases
+  #   - libvirt network XML fragments (for pxe_server)
+  #   - firewalld port_forward + rich rules (for kvm_host)
+  #   - iPXE script data and per-node config YAML contents
+  #   - cloud-init network configs
+  #
+  # This is the recommended way for definition files.
+
+  network:
+    # The libvirt network that carries everything (mgmt + storage + migration + overlay)
+    name: default
+    bridge: virbr0
+    mode: nat
+    cidr: 192.168.122.0/24
+    gateway: 192.168.122.1
+    domain: aerogrid.com
+    # DHCP range for dynamic + the static leases we will add for our nodes
+    dhcp_range:
+      start: 192.168.122.100
+      end: 192.168.122.254
+
+  # === EVOLVED STRUCTURE: node_templates + per-node interfaces (focused on Harvester/SUSE Virtualization) ===
+  # This is the declarative form for the Harvester rodeo topology.
+  #
+  # - node_templates define the "blueprint" for a flavor (what logical cables/NICs a harvester or rancher node has).
+  # - Each concrete node references a template and provides instance-specific data (name, ip, index, overrides).
+  # - nodes list their concrete `interfaces:` (role + mac or omitted for generation + optional model/pxe/ip overrides).
+  # - The renderer (inventory.py) uses the template + instance interfaces to:
+  #     * populate the flat *_mac fields for current Ansible compat
+  #     * generate missing MACs/UUIDs/hostnames deterministically when not provided
+  #     * build libvirt <interface> blocks, DHCP leases, iPXE matching, firewall rules, etc.
+  # - For this Harvester definition we keep explicit values in the YAML to match the established lab exactly.
+  # - The structure allows the renderer to generate what makes sense (MACs etc.) for variations or extensions of this rodeo.
+
+  node_templates:
+    harvester:
+      flavor: harvester
+      ssh_user: rancher
+      hostname_pattern: "{label}"   # alpha, bravo, charlie or custom
+      config_iso_name_pattern: "harvester-config-node{index}"
+      interfaces:   # the "cables" blueprint for this node type
+        - role: mgmt
+          model: e1000
+          pxe: true
+          ip_family: static
+        - role: storage
+          model: virtio
+        - role: migration
+          model: virtio
+        - role: service
+          model: virtio
+          count: 2   # produces service1 + service2
+    rancher:
+      flavor: rancher
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          model: virtio
+          ip_family: static
+
+  # Note: the old interface_roles: section has been replaced by the above node_templates.
+  # Legacy consumers can still be supported by the renderer expanding templates into flat macs.
+
+  # Services that need to be reachable from outside the host (DNAT + port expose).
+  # This replaces the hardcoded loop in kvm_host/tasks/firewall.yml.
+  # The renderer turns this into the exact port_forward list + public zone ports.
+  exposed_services:
+    - name: harvester-ui
+      description: "Harvester dashboard + API"
+      host_port: 8443
+      guest_port: 443
+      target: vip             # special: points at the Harvester VIP
+      proto: tcp
+    - name: rancher
+      description: "Rancher Prime NodePort"
+      host_port: 30002
+      guest_port: 30002
+      target: rancher         # the rancher VM
+      proto: tcp
+
+  # iPXE / boot configuration data.
+  # This drives the pxe_server role templates (ipxe-node.j2, config-node.yaml.j2, nginx config).
+  # The renderer will expand per-node boot entries using the node data + these templates.
+  boot:
+    pxe:
+      http_port: 8080
+      http_bind: "{{ libvirt_network_gateway }}"
+      tftp_root: /var/lib/libvirt/dnsmasq
+      http_root: /srv/harvester-pxe
+      ipxe_efi_url: "https://boot.ipxe.org/x86_64-efi/ipxe.efi"
+    harvester:
+      # Values that end up in the per-node Harvester config ISO (embedded in cloud-init or direct)
+      # These are currently partially in harvester-config.yaml.j2 and config-node.yaml.j2
+      vip: "{{ harvester_vip }}"
+      # token and passwords come from secrets / plan at render time
+
+  # Storage configuration for the host (new component alongside network, boot, exposed_services, etc.).
+  # Allows defining which disk to use for the lab's libvirt images and pool when the host
+  # has multiple disks (e.g. OS disk vs dedicated data disk for VMs/Longhorn).
+  # The renderer includes this in the inventory so it can be emitted to Ansible vars
+  # (image_dir, libvirt_pool_path, libvirt_storage_device, etc.).
+  # Roles/tasks can then use the specified device to prepare/format/mount if provided.
+  # For single-disk hosts, leave device empty or omit.
+  storage:
+    # Block device for lab storage (e.g. second disk on multi-disk host).
+    # Examples: "/dev/sdb", "/dev/disk/by-id/ata-XXXX", "/dev/nvme0n1p2"
+    # If set, future storage setup (in kvm_host or vms role) can partition, mkfs, mount to mount_point.
+    device: ""   # empty = use default (whatever is at mount_point, usually root fs)
+
+    # Where to mount the storage for libvirt images and VM disks.
+    mount_point: /var/lib/libvirt/images
+
+    # Filesystem type if we need to format the device.
+    fs_type: xfs
+
+    # Libvirt pool settings (passed as vars).
+    libvirt_pool_name: default
+    libvirt_pool_path: /var/lib/libvirt/images
+
+    # Alias for image_dir (used in templates and preflight).
+    image_dir: /var/lib/libvirt/images
+
+  # High-level components / recipe for this Harvester rodeo (recommended to document "what this rodeo is").
+  # The renderer and roles use the detailed sections above; this is for humans and future introspection ("rodeo describe").
+  components:
+    - name: harvester-cluster
+      description: "3-node Harvester HCI (RKE2 + Longhorn + KubeVirt + Kube-OVN)"
+      nodes: harvester_node_names   # reference to the list above
+      networks:
+        - mgmt     # PXE, VIP, API, etcd, control plane
+        - storage  # Longhorn
+        - migration # KubeVirt live migration
+        - service1 # Kube-OVN primary uplink
+        - service2 # Kube-OVN secondary
+      exposed:
+        - harvester-ui   # via VIP
+    - name: rancher
+      description: "Rancher Prime on K3s (for managing the Harvester cluster)"
+      nodes: ["rancher"]
+      exposed:
+        - rancher
+    - name: pxe-server
+      description: "iPXE + HTTP server on the host for diskless Harvester node boot"
+      on_host: true
+    - name: host-network-prep
+      description: "libvirt network, firewalld DNAT, sysctls, SELinux for nested KVM lab"
+      on_host: true
+
+  # Harvester-specific cluster configuration that ends up in the per-node config ISOs
+  # and drives the installer (this is part of "what the Harvester rodeo is").
+  harvester:
+    # The 5 internal networks (described in the components above).
+    # These get embedded in the Harvester config for the nodes.
+    networks:
+      mgmt:
+        role: management
+        description: "PXE boot, VIP, Kubernetes API, etcd, RKE2"
+      storage:
+        role: storage
+        description: "Longhorn CSI traffic between nodes"
+      migration:
+        role: migration
+        description: "KubeVirt live migration"
+      service1:
+        role: service
+        description: "Kube-OVN primary uplink for VM networks"
+      service2:
+        role: service
+        description: "Kube-OVN secondary uplink"
+    # Other installer config that is mostly common but can be overridden in plan.
+    # (passwords, token, rancher import are handled at runtime from secrets/plan)
+    ntp_servers:
+      - 0.pool.ntp.org
+      - 1.pool.ntp.org
+    # The VIP is usually from network, but listed here for the harvester config template.
+    # Recipe details for the Harvester installer config (sourced from definition per EIB-inspired evolution).
+    # Full secrets still injected at render time from plan.
+    installer_notes:
+      rke2: "RKE2 control plane on the 3 nodes; etcd join gap declared above for bootstrap race avoidance."
+      longhorn: "Storage on the dedicated storage + service NICs; Longhorn uses the 3 replicas."
+
+  # Rancher VM cloud-init / bootstrap data (what gets baked into the rancher-cloud-init.iso).
+  rancher:
+    # This drives the cloud-init-user-data.j2 and network config for the rancher VM.
+    # The actual k3s + helm + rancher install commands are in the RancherPhase / scripts.
+    cloud_init:
+      # Example packages or runcmd can be added here if needed beyond the standard.
+      # Currently the heavy lifting is in the Python renderer + Ansible templates.
+      packages: []
+      # runcmd examples for the base recipe (extend in definition for custom lab bootstrap).
+      runcmd: []
+
+  # Host prep expectations for this exact rodeo recipe (EIB-inspired "operatingSystem" / host requirements section).
+  # These are required for nested KVM + rich 5-NIC networking + SELinux on SLES 16.
+  # Declared here so the definition is the complete source of truth for "what the lab needs from the host".
+  # The kvm_host role (networking.yml, selinux.yml, libvirt.yml) and vms role still apply the values today;
+  # future passes can consume the compiled host_prep from inventory/runner to drive the tasks declaratively.
+  # Do not change the concrete values without testing on clean SLES 16 (see plan Phase 0).
+  host_prep:
+    sysctls:
+      - net.bridge.bridge-nf-call-iptables=0
+      - net.bridge.bridge-nf-call-ip6tables=0
+      - net.bridge.bridge-nf-call-arptables=0
+      # Loose rp_filter for the multi-NIC + VIP + LB-ARP topology (applied conditionally in role).
+      - net.ipv4.conf.all.rp_filter=2
+      - net.ipv4.conf.default.rp_filter=2
+    selinux_mode: permissive
+    libvirt:
+      # OVMF 4M non-SecureBoot as required for Harvester nested on SLES 16 (from vms defaults and CONTEXT).
+      ovmf_code: /usr/share/qemu/ovmf-x86_64-4m-code.bin
+      ovmf_vars_template: /usr/share/qemu/ovmf-x86_64-4m-vars.bin
+      use_modular_daemons: true
+    network:
+      unmanaged_interfaces:
+        - virbr0
+      # rp_filter handling noted above; role skips if base image already has 0.
+      rp_filter_loose: true
+    # The intra-cluster rich rule and firewalld prep are still in kvm_host; declared here for completeness.
+
+  # Per-VM definition (EVOLVED).
+  # Each node now:
+  # - References a node_template (harvester/rancher) for common "cable" blueprint.
+  # - Declares instance data: name, template, index, ip, hostname, uuid, config_iso_name, ssh_user.
+  # - Lists concrete `interfaces:` (the evolved replacement for flat mgmt_mac/storage_mac/...).
+  #   Each interface has role (from template), mac (concrete or omitted for generation), and overrides.
+  #
+  # Generation capability (for this Harvester/SUSE Virtualization definition and future variations of it):
+  #   You can omit "mac", "hostname", "uuid" (and even full interfaces list) from nodes in the definition.
+  #   The renderer (inventory.py) will generate them on the fly using deterministic logic
+  #   (MACs via hash of plan+node+role+index, UUID v5, hostnames via pattern or nice labels like alpha/bravo).
+  #   Provide explicit values (as this file does) when you need the exact current lab values.
+  #   This keeps the definition as the single source while allowing the renderer to "make sense" of missing details.
+  #
+  # The old flat *_mac fields are kept (with same values) for transition / current Ansible + profile compat.
+  # In full inventory.py renderer, it will:
+  #   - Look up the template for defaults (model, pxe, etc.)
+  #   - Merge/validate the interfaces list
+  #   - Generate any missing MACs/UUIDs/hostnames using deterministic logic (see inventory.py)
+  #   - Produce the flat vm_nodes + other artifacts.
+  #
+  # This structure makes "the cables" (multiple NICs with roles) first-class and declarative.
+  nodes:
+    - name: harvester1
+      template: harvester
+      index: 1
+      hostname: alpha          # alpha.aerogrid.com — Harvester node 1 (cluster bootstrap)
+      uuid: "1c5e1f38-1fb8-4f03-9eaa-12838f70faa1"
+      ip: "192.168.122.11"
+      config_iso_name: "harvester-config-node1"
+      ssh_user: rancher
+      interfaces:
+        - role: mgmt
+          mac: "02:00:00:0D:62:E1"
+        - role: storage
+          mac: "02:00:00:0D:63:E1"
+        - role: migration
+          mac: "02:00:00:0D:64:E1"
+        - role: service
+          mac: "02:00:00:0D:65:E1"
+        - role: service
+          mac: "02:00:00:0D:66:E1"
+      # Legacy flat fields (derived from interfaces above, kept for compat during evolution)
+      mgmt_mac: "02:00:00:0D:62:E1"
+      storage_mac: "02:00:00:0D:63:E1"
+      migration_mac: "02:00:00:0D:64:E1"
+      service1_mac: "02:00:00:0D:65:E1"
+      service2_mac: "02:00:00:0D:66:E1"
+
+    - name: harvester2
+      template: harvester
+      index: 2
+      hostname: bravo           # bravo.aerogrid.com — Harvester node 2
+      uuid: "4e156918-3e00-44c2-bf47-0b532b3807c1"
+      ip: "192.168.122.12"
+      config_iso_name: "harvester-config-node2"
+      ssh_user: rancher
+      interfaces:
+        - role: mgmt
+          mac: "02:00:00:0D:62:E2"
+        - role: storage
+          mac: "02:00:00:0D:63:E2"
+        - role: migration
+          mac: "02:00:00:0D:64:E2"
+        - role: service
+          mac: "02:00:00:0D:65:E2"
+        - role: service
+          mac: "02:00:00:0D:66:E2"
+      mgmt_mac: "02:00:00:0D:62:E2"
+      storage_mac: "02:00:00:0D:63:E2"
+      migration_mac: "02:00:00:0D:64:E2"
+      service1_mac: "02:00:00:0D:65:E2"
+      service2_mac: "02:00:00:0D:66:E2"
+
+    - name: harvester3
+      template: harvester
+      index: 3
+      hostname: charlie         # charlie.aerogrid.com — Harvester node 3
+      uuid: "4541177c-c6b7-4ab3-b418-e2a0b17beb9d"
+      ip: "192.168.122.13"
+      config_iso_name: "harvester-config-node3"
+      ssh_user: rancher
+      interfaces:
+        - role: mgmt
+          mac: "02:00:00:0D:62:E3"
+        - role: storage
+          mac: "02:00:00:0D:63:E3"
+        - role: migration
+          mac: "02:00:00:0D:64:E3"
+        - role: service
+          mac: "02:00:00:0D:65:E3"
+        - role: service
+          mac: "02:00:00:0D:66:E3"
+      mgmt_mac: "02:00:00:0D:62:E3"
+      storage_mac: "02:00:00:0D:63:E3"
+      migration_mac: "02:00:00:0D:64:E3"
+      service1_mac: "02:00:00:0D:65:E3"
+      service2_mac: "02:00:00:0D:66:E3"
+
+    - name: rancher
+      template: rancher
+      index: 0
+      hostname: rancher         # rancher.aerogrid.com — Rancher Prime
+      uuid: "77994fd6-7ebb-4ad3-baf4-55575b0ce265"
+      ip: "192.168.122.9"
+      config_iso_name: ""
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          mac: "02:00:00:0D:62:E9"
+      mgmt_mac: "02:00:00:0D:62:E9"
+
+# Example of how a plan could override parts of this (future syntax sketch — not yet wired):
+# In rodeo-plan.yaml you could do:
+#   topology:
+#     nodes:
+#       harvester1:
+#         ip: 192.168.122.21   # would flow to both Python vms and Ansible vm_nodes
+# Or higher level:
+#   nodes: 4
+#   resources:
+#     harvester:
+#       memory_mib: 32768
+#
+# inventory.py will be responsible for merging plan overrides into this definition
+# and producing the final vm_nodes + helpers that both Python phases and the vars_file consume.
+
+# How to use this file as an example for new rodeo types:
+# 1. Copy this file to rodeo/data/profiles/<your-type>/definition.yaml
+# 2. Edit the nodes list, start_order, gaps, etc.
+# 3. Implement (or extend) rodeo/inventory.py to load "rodeo/data/profiles/<type>/definition.yaml"
+#    using yaml.safe_load + build_inventory(cfg) that applies plan overrides.
+# 4. Update the profile's default_cfg() and run_phase to be thin (just metadata + phase list).
+# 5. Make ClusterPhase, RancherPhase, plan_cmd etc. ask the profile/inventory for topology data
+#    instead of having if name == "rancher" or hardcoded strings.
+# 6. Update the corresponding Ansible role defaults (or remove duplication) so they can be driven
+#    from the vars emitted by inventory.
+# 7. Extend test_ansible_consistency.py to treat the YAML as the source of truth for that profile.
+# 8. Add docs in user-guide.md and architecture.md showing the definition file pattern.
+
+# --config-dir support (Phase 2 EIB-inspired):
+#   rodeo --config-dir ./my-lab-config plan
+#   rodeo --config-dir ./my-lab-config deploy
+# The dir may contain:
+#   definition.yaml     (custom definition or override for this rodeo type; preferred over bundled)
+#   rodeo-plan.yaml     (your plan file; used automatically if --config not given)
+#   certs/              (certs made available to nodes)
+#   manifests/          (k8s yamls; can be pre-applied or used for image extraction in future)
+#   helm/values/        (values files for charts)
+#   custom/scripts/     (shell scripts; numbered like 50-foo.sh for order)
+#   rpms/, network/, files/, pxe/  (side-loads, overlays, boot extras — future)
+# inventory records the contents under _config_dir (and used definition if present).
+# The renderer/build phases will consume artifacts (e.g. copy scripts, embed manifests).
+
+# Note on MACs: They must remain unique per plan and match the static DHCP leases that will be
+# created by the vms role. Changing them requires a full clean + redeploy on real hardware.

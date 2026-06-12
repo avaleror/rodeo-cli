@@ -303,7 +303,8 @@ class DeployRunner:
         Keeps secrets off argv and wires resources/versions/network into Ansible.
         For the Harvester/SUSE Virtualization rodeo, vm_nodes (full with MACs, UUIDs,
         per-node interfaces/cables) now come from the centralized definition file
-        (rodeo/data/profiles/suse-virt/topology.yaml) via the inventory renderer.
+        (rodeo/data/profiles/suse-virt/definition.yaml) via the inventory renderer.
+        host_prep (sysctls, selinux, ovmf, network rules) also from definition (Phase 1 EIB plan).
         Explicit values in the definition are used (matching previous defaults exactly).
         Generation happens for omitted fields. File deleted on exit via atexit.
         """
@@ -366,6 +367,18 @@ class DeployRunner:
             vm_nodes = inv.get("vm_nodes")
             if vm_nodes:
                 vars_data["vm_nodes"] = vm_nodes
+            # host_prep comes from definition via inventory for the Harvester recipe (EIB plan Phase 1).
+            # Emitted whole + a few flat keys so kvm_host tasks (sysctls, selinux, libvirt ovmf) and
+            # future storage prep can consume without requiring large role refactors yet.
+            # Values match the expectations declared in definition.yaml host_prep.
+            host_prep = inv.get("host_prep", {})
+            if host_prep:
+                vars_data["host_prep"] = host_prep
+                vars_data["host_prep_sysctls"] = host_prep.get("sysctls", [])
+                vars_data["selinux_mode"] = host_prep.get("selinux_mode", "")
+                lp = host_prep.get("libvirt", {})
+                vars_data["libvirt_ovmf_code"] = lp.get("ovmf_code", "")
+                vars_data["libvirt_ovmf_vars_template"] = lp.get("ovmf_vars_template", "")
         except Exception:
             # Fall back to role defaults (the old behavior). The definition load is resilient.
             pass

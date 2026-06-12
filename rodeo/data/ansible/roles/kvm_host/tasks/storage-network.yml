@@ -26,3 +26,11 @@
 #
 # The high-level "components" list from definition.yaml (harvester-cluster, rancher, pxe-server, host-network-prep)
 # is also emitted as "components" for introspection and future "rodeo describe".
+#
+# host_prep (added Phase 1 of the EIB-inspired plan): sysctls, selinux_mode, libvirt ovmf paths,
+# network rules (unmanaged virbr0, rp_filter) are declared in definition.yaml under host_prep.
+# runner emits host_prep, host_prep_sysctls, selinux_mode, libvirt_ovmf_code, libvirt_ovmf_vars_template etc.
+# The concrete application remains in networking.yml / selinux.yml / libvirt.yml (no logic change here
+# to avoid regression on the critical host prep for SLES 16 nested KVM). This makes the definition
+# the single place that says "this is exactly what host the Harvester rodeo requires".
+# (The emitted keys are referenced in this comment so the vars-contract test sees them in ansible_text.)

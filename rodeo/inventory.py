@@ -5,10 +5,11 @@ is the EXAMPLE of how to remove the previous hardcoded topology assumptions for 
 
 Current status:
 - The single source of truth for the Harvester rodeo lives in rodeo/data/profiles/suse-virt/definition.yaml (the file you edit to define "what a Harvester rodeo is").
-- The renderer here compiles the logical model into concrete artifacts (vm_nodes with generated or explicit MACs, interfaces/cables, pxe data, firewall rules, storage, libvirt network, etc.).
+- The renderer here compiles the logical model into concrete artifacts (vm_nodes with generated or explicit MACs, interfaces/cables, pxe data, firewall rules, storage, libvirt network, host_prep, etc.).
 - Full wiring to all consumers and removal of remaining hardcodes is ongoing per the action items.
 
 See rodeo/data/profiles/suse-virt/definition.yaml for extensive comments on the expected structure for the Harvester rodeo.
+Host prep (sysctls, selinux, ovmf, network expectations) added in Phase 1 of EIB plan.
 """
 
 from __future__ import annotations
@@ -121,6 +122,10 @@ def build_inventory(cfg: dict) -> dict:
         # Harvester and Rancher specific recipe data from the definition (the "what" for the ISOs and cloud-init).
         "harvester": topology.get("harvester", {}),
         "rancher": topology.get("rancher", {}),
+
+        # Host prep expectations (sysctls, selinux, ovmf, network rules) declared in definition for the Harvester recipe.
+        # Passed through so runner can emit vars for kvm_host / vms roles. See Phase 1 of the EIB plan.
+        "host_prep": _compile_host_prep(topology),
 
         # Raw definition always available for advanced use or new renderers
         "_raw_topology": topology,
@@ -384,6 +389,16 @@ def _compile_libvirt_network(topology: dict, nodes: list) -> dict:
         "dhcp_hosts": dhcp_hosts,          # this populates the <host mac=... ip=...> entries
         # TFTP/HTTP options for iPXE stage 1/2 are added in the pxe_server extension
     }
+
+
+def _compile_host_prep(topology: dict) -> dict:
+    """Host prep expectations (sysctls, selinux_mode, libvirt ovmf paths, network rules) from the definition.
+
+    These describe the mandatory host configuration for the Harvester nested KVM recipe on SLES 16.
+    Passthrough today (role still has the concrete tasks); enables declarative driving later without
+    scattering the values in Ansible defaults. See plan Phase 1 and definition host_prep section.
+    """
+    return topology.get("host_prep", {})
 
 
 def get_node(cfg: dict, name: str) -> dict:

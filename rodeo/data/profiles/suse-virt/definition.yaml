@@ -240,6 +240,11 @@ definition:
       - 0.pool.ntp.org
       - 1.pool.ntp.org
     # The VIP is usually from network, but listed here for the harvester config template.
+    # Recipe details for the Harvester installer config (sourced from definition per EIB-inspired evolution).
+    # Full secrets still injected at render time from plan.
+    installer_notes:
+      rke2: "RKE2 control plane on the 3 nodes; etcd join gap declared above for bootstrap race avoidance."
+      longhorn: "Storage on the dedicated storage + service NICs; Longhorn uses the 3 replicas."
 
   # Rancher VM cloud-init / bootstrap data (what gets baked into the rancher-cloud-init.iso).
   rancher:
@@ -249,6 +254,35 @@ definition:
       # Example packages or runcmd can be added here if needed beyond the standard.
       # Currently the heavy lifting is in the Python renderer + Ansible templates.
       packages: []
+      # runcmd examples for the base recipe (extend in definition for custom lab bootstrap).
+      runcmd: []
+
+  # Host prep expectations for this exact rodeo recipe (EIB-inspired "operatingSystem" / host requirements section).
+  # These are required for nested KVM + rich 5-NIC networking + SELinux on SLES 16.
+  # Declared here so the definition is the complete source of truth for "what the lab needs from the host".
+  # The kvm_host role (networking.yml, selinux.yml, libvirt.yml) and vms role still apply the values today;
+  # future passes can consume the compiled host_prep from inventory/runner to drive the tasks declaratively.
+  # Do not change the concrete values without testing on clean SLES 16 (see plan Phase 0).
+  host_prep:
+    sysctls:
+      - net.bridge.bridge-nf-call-iptables=0
+      - net.bridge.bridge-nf-call-ip6tables=0
+      - net.bridge.bridge-nf-call-arptables=0
+      # Loose rp_filter for the multi-NIC + VIP + LB-ARP topology (applied conditionally in role).
+      - net.ipv4.conf.all.rp_filter=2
+      - net.ipv4.conf.default.rp_filter=2
+    selinux_mode: permissive
+    libvirt:
+      # OVMF 4M non-SecureBoot as required for Harvester nested on SLES 16 (from vms defaults and CONTEXT).
+      ovmf_code: /usr/share/qemu/ovmf-x86_64-4m-code.bin
+      ovmf_vars_template: /usr/share/qemu/ovmf-x86_64-4m-vars.bin
+      use_modular_daemons: true
+    network:
+      unmanaged_interfaces:
+        - virbr0
+      # rp_filter handling noted above; role skips if base image already has 0.
+      rp_filter_loose: true
+    # The intra-cluster rich rule and firewalld prep are still in kvm_host; declared here for completeness.
 
   # Per-VM definition (EVOLVED).
   # Each node now:

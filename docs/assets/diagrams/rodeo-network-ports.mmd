@@ -1,0 +1,38 @@
+flowchart LR
+    browser["Student browser"] --> instruqt["Instruqt proxy"]
+
+    subgraph cc["cloud-client"]
+        p90[":90 nginx → Harvester tab"]
+        p91[":91 nginx → Rancher tab"]
+        p92[":92 kubectl port-forward → NOC tab"]
+        p443[":443 nginx vhosts<br/>*.aerogrid.com"]
+    end
+
+    subgraph gh["geekohive — SLES 16 KVM host"]
+        d8443["firewalld DNAT :8443"]
+        d30002["firewalld DNAT :30002"]
+
+        subgraph net["virbr0 — 192.168.122.0/24"]
+            vip["VIP 192.168.122.10<br/>kube-vip (floating)"]
+            h1["harvester1 / alpha<br/>192.168.122.11"]
+            h2["harvester2 / bravo<br/>192.168.122.12"]
+            h3["harvester3 / charlie<br/>192.168.122.13"]
+            rancher["rancher / K3s<br/>192.168.122.9"]
+            lb["LB pool .200–.220<br/>alien-geeko (checkin-cluster)"]
+        end
+    end
+
+    instruqt --> p90 & p91 & p92
+
+    p90 -->|"https"| d8443
+    p91 -->|"https"| d30002
+    p443 -->|"virtualization.aerogrid.com"| d8443
+    p443 -->|"rancher.aerogrid.com"| d30002
+
+    d8443 -->|":443 Harvester UI"| vip
+    d30002 -->|":30002 Rancher UI"| rancher
+    p92 -->|"92:80 via Rancher proxy"| lb
+
+    vip -.->|"held by a healthy node"| h1
+    vip -.-> h2
+    vip -.-> h3

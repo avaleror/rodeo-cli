@@ -24,10 +24,10 @@ def _virsh(*args: str) -> None:
 @config_options
 @click.option("--yes", is_flag=True, help="Skip confirmation prompt.")
 def clean_cmd(
-    config_path: str, params: tuple[str, ...], paramfile: str | None, yes: bool
+    config_path: str, config_dir: str | None, params: tuple[str, ...], paramfile: str | None, yes: bool
 ) -> None:
     """Destroy all rodeo VMs, disks, ISOs, the libvirt network, and reset phase state."""
-    cfg = load_config(config_path, params=params, paramfile=paramfile)
+    cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir)
     image_dir = Path(cfg["storage"]["image_dir"])
     vm_names = list(cfg.get("vms", {}).keys())
 

@@ -424,5 +424,19 @@ definition:
 # 7. Extend test_ansible_consistency.py to treat the YAML as the source of truth for that profile.
 # 8. Add docs in user-guide.md and architecture.md showing the definition file pattern.
 
+# --config-dir support (Phase 2 EIB-inspired):
+#   rodeo --config-dir ./my-lab-config plan
+#   rodeo --config-dir ./my-lab-config deploy
+# The dir may contain:
+#   definition.yaml     (custom definition or override for this rodeo type; preferred over bundled)
+#   rodeo-plan.yaml     (your plan file; used automatically if --config not given)
+#   certs/              (certs made available to nodes)
+#   manifests/          (k8s yamls; can be pre-applied or used for image extraction in future)
+#   helm/values/        (values files for charts)
+#   custom/scripts/     (shell scripts; numbered like 50-foo.sh for order)
+#   rpms/, network/, files/, pxe/  (side-loads, overlays, boot extras — future)
+# inventory records the contents under _config_dir (and used definition if present).
+# The renderer/build phases will consume artifacts (e.g. copy scripts, embed manifests).
+
 # Note on MACs: They must remain unique per plan and match the static DHCP leases that will be
 # created by the vms role. Changing them requires a full clean + redeploy on real hardware.

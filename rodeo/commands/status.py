@@ -48,9 +48,9 @@ def _vip_reachable(vip: str) -> bool:
 
 @click.command("status")
 @config_options
-def status_cmd(config_path: str, params: tuple[str, ...], paramfile: str | None) -> None:
+def status_cmd(config_path: str, config_dir: str | None, params: tuple[str, ...], paramfile: str | None) -> None:
     """Show VM states and cluster reachability at a glance."""
-    cfg = load_config(config_path, params=params, paramfile=paramfile)
+    cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir)
     profile = get_profile(cfg.get("type", "suse-virt"))
     state = load_state(cfg.get("name", "default"))
     vip = cfg["network"]["vip"]

@@ -47,6 +47,7 @@ console = Console()
               help="Run preflight checks and exit without deploying.")
 def deploy_cmd(
     config_path: str,
+    config_dir: str | None,
     params: tuple[str, ...],
     paramfile: str | None,
     from_phase: str | None,
@@ -59,7 +60,7 @@ def deploy_cmd(
 ) -> None:
     """Deploy the full SUSE Virtualization Rodeo cluster."""
     try:
-        cfg = load_config(config_path, params=params, paramfile=paramfile)
+        cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir)
         validate_config(cfg)
         profile = get_profile(cfg.get("type", "suse-virt"))
     except ValueError as exc:

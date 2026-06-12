@@ -21,12 +21,30 @@ import uuid
 
 import yaml
 
+from .config_dir import load_config_dir
+
 # Base location for profile definition files (packaged with the wheel)
 _DATA_ROOT = Path(__file__).parent / "data" / "profiles"
 
 
-def _load_topology(profile_name: str) -> dict:
-    """Load the raw topology definition for a profile (e.g. 'suse-virt')."""
+def _load_topology(profile_name: str, config_dir: str | Path | None = None) -> dict:
+    """Load the raw topology definition for a profile (e.g. 'suse-virt').
+
+    If config_dir is given and <config_dir>/definition.yaml exists, it is used
+    (allows custom definitions + EIB-style artifacts dir for a lab).
+    Falls back to the bundled profile definition otherwise.
+    """
+    if config_dir:
+        candidate = Path(config_dir) / "definition.yaml"
+        if candidate.exists():
+            path = candidate
+            with open(path) as f:
+                data = yaml.safe_load(f) or {}
+            if "definition" not in data and "topology" not in data:
+                # allow raw top-level or wrapped; be permissive for user defs
+                pass
+            return data.get("definition") or data.get("topology") or data
+
     path = _DATA_ROOT / profile_name / "definition.yaml"
     if not path.exists():
         # Fallback for development when running directly from source tree
@@ -57,9 +75,12 @@ def build_inventory(cfg: dict) -> dict:
       - validate_config (for richer consistency checks)
       - profiles (so default_cfg can be derived from the definition)
 
-    Current implementation: just returns the static definition (no overrides yet).
-    This is intentional — the file itself + the examples below are the deliverable.
+    Supports --config-dir (Phase 2): if cfg["config_dir"] points to a dir with definition.yaml,
+    that definition is loaded instead of (or before) the bundled profile one. The dir contents
+    (certs, manifests, scripts, ...) are recorded under _config_dir for consumption by build
+    / renderer phases (EIB-style artifacts embedding).
 
+    Current implementation: returns rendered + compiled from definition (plus plan overrides via cfg).
     Focus: Harvester/SUSE Virtualization rodeo (our current actual focus).
 
     The key insight:
@@ -72,7 +93,8 @@ def build_inventory(cfg: dict) -> dict:
     """
     profile_name = cfg.get("type", "suse-virt")
     plan_name = cfg.get("name", profile_name)  # used for deterministic generation
-    topology = _load_topology(profile_name)
+    config_dir = cfg.get("config_dir")
+    topology = _load_topology(profile_name, config_dir)
 
     raw_nodes = topology.get("nodes", [])
     node_templates = topology.get("node_templates", {})
@@ -126,6 +148,10 @@ def build_inventory(cfg: dict) -> dict:
         # Host prep expectations (sysctls, selinux, ovmf, network rules) declared in definition for the Harvester recipe.
         # Passed through so runner can emit vars for kvm_host / vms roles. See Phase 1 of the EIB plan.
         "host_prep": _compile_host_prep(topology),
+
+        # Config dir info (EIB-style artifacts dir). Recorded for use by build/render phases.
+        # If dir had definition.yaml it was already preferred in _load_topology.
+        "_config_dir": load_config_dir(config_dir) if config_dir else None,
 
         # Raw definition always available for advanced use or new renderers
         "_raw_topology": topology,

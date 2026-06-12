@@ -16,9 +16,9 @@ console = Console()
 
 @click.command("plan")
 @config_options
-def plan_cmd(config_path: str, params: tuple[str, ...], paramfile: str | None) -> None:
+def plan_cmd(config_path: str, config_dir: str | None, params: tuple[str, ...], paramfile: str | None) -> None:
     """Show what `rodeo deploy` would do, without changing anything."""
-    cfg = load_config(config_path, params=params, paramfile=paramfile)
+    cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir)
     # Preview is read-only: validation problems are warnings here so the
     # diff is still visible. `rodeo deploy` enforces them strictly.
     try:

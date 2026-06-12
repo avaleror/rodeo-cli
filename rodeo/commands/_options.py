@@ -5,7 +5,7 @@ import click
 
 
 def config_options(f):
-    """--config / -P / --paramfile, in reverse order so help reads naturally."""
+    """--config-dir / --config / -P / --paramfile, in reverse order so help reads naturally."""
     f = click.option(
         "--paramfile", default=None, metavar="FILE",
         help="YAML file of overrides, deep-merged over the plan (like tfvars).",
@@ -18,5 +18,12 @@ def config_options(f):
     )(f)
     f = click.option(
         "--config", "config_path", default="rodeo-plan.yaml", show_default=True,
+    )(f)
+    f = click.option(
+        "--config-dir", "config_dir", default=None, metavar="DIR",
+        type=click.Path(file_okay=False, dir_okay=True, exists=False),
+        help="Config directory for EIB-style declarative setup. Contains definition.yaml "
+             "(overrides bundled), optional rodeo-plan.yaml, certs/, manifests/, helm/, "
+             "custom/scripts/ etc. for artifacts and customizations.",
     )(f)
     return f

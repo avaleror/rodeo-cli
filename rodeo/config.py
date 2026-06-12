@@ -185,8 +185,21 @@ def load_config(
     plan_path: str | Path = "rodeo-plan.yaml",
     params: tuple[str, ...] = (),
     paramfile: str | Path | None = None,
+    config_dir: str | Path | None = None,
 ) -> dict:
+    """Load config, with optional --config-dir for definition + artifacts (EIB model).
+
+    If config_dir provided and contains rodeo-plan.yaml, and plan_path is default,
+    the dir's plan is used. definition.yaml in dir (if present) is preferred by inventory.
+    """
     plan_path = Path(plan_path)
+
+    if config_dir is not None:
+        cdir = Path(config_dir)
+        if (plan_path == Path("rodeo-plan.yaml") or not plan_path.exists()):
+            candidate = cdir / "rodeo-plan.yaml"
+            if candidate.exists():
+                plan_path = candidate
 
     paramfile_data: dict = {}
     if paramfile is not None:
@@ -217,7 +230,7 @@ def load_config(
     type_name = plan.get("type", _BASE_DEFAULTS["type"])
     try:
         from .profiles import get_profile
-        profile_defaults = get_profile(type_name).default_cfg()
+        profile_defaults = get_profile(type_name).default_cfg(config_dir=config_dir)
     except (ImportError, ValueError):
         profile_defaults = {}
 
@@ -239,6 +252,9 @@ def load_config(
     env_path = os.environ.get("RODEO_ANSIBLE_PATH")
     if env_path:
         cfg["ansible"]["path"] = env_path
+
+    if config_dir is not None:
+        cfg["config_dir"] = str(Path(config_dir).resolve())
 
     return cfg
 

@@ -25,7 +25,7 @@ class SuseVirtProfile(RodeoProfile):
     ansible_phases = frozenset(["kvm_host", "vms", "pxe_server"])
     guarded_phases = frozenset(["finalise"])
 
-    def default_cfg(self) -> dict:
+    def default_cfg(self, config_dir: str | None = None) -> dict:
         # Demonstration of loading from the new topology/inventory definition file
         # (rodeo/data/profiles/suse-virt/definition.yaml).
         # This replaces the previous hardcoded dict.
@@ -33,7 +33,10 @@ class SuseVirtProfile(RodeoProfile):
         # apply plan overrides and produce the vm_nodes list for Ansible.
         if _inv is not None:
             try:
-                inv = _inv.build_inventory({"type": self.name})
+                inv_cfg = {"type": self.name}
+                if config_dir:
+                    inv_cfg["config_dir"] = config_dir
+                inv = _inv.build_inventory(inv_cfg)
                 vms = {}
                 for node in inv.get("vm_nodes", []):
                     vms[node["name"]] = {

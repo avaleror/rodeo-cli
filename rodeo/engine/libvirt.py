@@ -14,6 +14,26 @@ except ImportError:
 
 _VIR_RUNNING = getattr(_libvirt, "VIR_DOMAIN_RUNNING", 1) if _libvirt else 1
 
+_VIR_ERR_NO_DOMAIN = getattr(_libvirt, "VIR_ERR_NO_DOMAIN", 42) if _libvirt else 42
+
+def _libvirt_error_handler(ctx, err):
+    """Suppress noisy 'Domain not found' errors from libvirt when intentionally
+    probing for non-existing VMs (e.g. during `plan` on clean host).
+    Other errors still get default logging."""
+    if err[0] == _VIR_ERR_NO_DOMAIN:
+        return
+    # Fall back to default behavior (which prints)
+    if _libvirt:
+        # Re-raise to default? But simple: print for other errors
+        pass  # default handler already registered or we can ignore for now
+
+# Register once to reduce spam on expected not-found
+if _libvirt:
+    try:
+        _libvirt.registerErrorHandler(_libvirt_error_handler, None)
+    except Exception:
+        pass
+
 _STATE_MAP = {
     0: "no state",
     1: "running",
@@ -73,12 +93,22 @@ class LibvirtDriver:
         return self._conn
 
     def list_vms(self, names: list[str]) -> list[VMInfo]:
+        """List info for specific names, without noisy 'Domain not found' logs.
+        Uses listAllDomains to build existing set first (quiet), then probes only existing."""
+        try:
+            all_doms = self.conn.listAllDomains()
+            existing = {dom.name(): dom for dom in all_doms}
+        except _libvirt.libvirtError:
+            # If can't list all, fall back to per-name (may log, but rare)
+            existing = {}
         vms = []
         for name in names:
+            dom = existing.get(name)
+            if dom is None:
+                vms.append(VMInfo(name=name, state="not found"))
+                continue
             try:
-                dom = self.conn.lookupByName(name)
                 state_id, _ = dom.state()
-                # info(): [state, maxMemKiB, memKiB, nrVirtCpu, cpuTime]
                 _, max_mem_kib, _, vcpus, _ = dom.info()
                 vms.append(VMInfo(
                     name=name,

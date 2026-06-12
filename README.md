@@ -24,7 +24,8 @@ $EDITOR ~/.rodeo/secrets.yaml
 # 4. Check the host before touching it
 rodeo deploy --check
 
-# 5. Deploy
+# 5. Preview what will happen, then deploy
+rodeo plan
 rodeo deploy
 ```
 
@@ -34,6 +35,7 @@ rodeo deploy
 |---|---|
 | `install-deps` | Install zypper/apt/dnf packages + ansible-core |
 | `init` | Generate `rodeo-plan.yaml` and `~/.rodeo/secrets.yaml` |
+| `plan [-P KEY=VALUE]` | Read-only diff: VMs, network, storage, phases vs the plan |
 | `deploy [--from PHASE] [--force] [--check] [--finalise]` | Run the full pipeline (resume, re-run, preflight-only) |
 | `clean` | Destroy VMs, disks, ISOs, and reset phase state |
 | `status` | Show VM states, phase progress, and cluster VIP reachability |
@@ -73,6 +75,31 @@ On normal hosts set `deployment_target: baremetal` and finalise runs as part of 
 ## Configuration
 
 `rodeo-plan.yaml` in the current directory controls everything. Secrets go in `~/.rodeo/secrets.yaml` (chmod 600, never committed).
+
+### Parameters and overrides (Terraform style)
+
+Override any plan value from the CLI with a dotted path, or keep variants in a param file:
+
+```bash
+rodeo deploy -P resources.harvester.memory_mib=20480 -P versions.harvester=1.8.1
+rodeo plan --paramfile big-lab.yaml     # YAML deep-merged over the plan, like tfvars
+```
+
+Plans can also use Jinja templating with a `parameters:` block:
+
+```yaml
+parameters:
+  memory: 16384
+  nodes_domain: aerogrid.com
+
+resources:
+  harvester:
+    memory_mib: {{ memory }}
+network:
+  dns_domain: "{{ nodes_domain }}"
+```
+
+`-P memory=20480` then overrides the template parameter. Precedence: profile defaults < plan file < `--paramfile` < `-P`. Undefined template parameters fail with a clear error, never deploy half-rendered.
 
 Set `RODEO_ANSIBLE_PATH` or `ansible.path` in the plan to point at the directory containing `ansible/playbook.yml`. By default the Ansible roles bundled with the package are used.
 

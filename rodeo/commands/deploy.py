@@ -21,12 +21,13 @@ from ..engine.runner import (
     ProgressUpdate,
 )
 from ..profiles import get_profile
+from ._options import config_options
 
 console = Console()
 
 
 @click.command("deploy")
-@click.option("--config", "config_path", default="rodeo-plan.yaml", show_default=True)
+@config_options
 @click.option(
     "--from", "from_phase",
     default=None,
@@ -46,6 +47,8 @@ console = Console()
               help="Run preflight checks and exit without deploying.")
 def deploy_cmd(
     config_path: str,
+    params: tuple[str, ...],
+    paramfile: str | None,
     from_phase: str | None,
     ansible_path: str | None,
     tui: bool | None,
@@ -55,8 +58,8 @@ def deploy_cmd(
     preflight_only: bool,
 ) -> None:
     """Deploy the full SUSE Virtualization Rodeo cluster."""
-    cfg = load_config(config_path)
     try:
+        cfg = load_config(config_path, params=params, paramfile=paramfile)
         validate_config(cfg)
         profile = get_profile(cfg.get("type", "suse-virt"))
     except ValueError as exc:
@@ -216,30 +219,47 @@ def _deploy_plain(
 
     console.print(f"\n[bold]rodeo deploy[/bold]  [{root}]\n")
 
+    # A live status line absorbs ProgressUpdate events without corrupting
+    # log output (the old \r trick smeared lines). Non-TTY (CI) gets the
+    # periodic LogLines the poll loops already emit, so nothing is lost.
+    status = console.status("") if console.is_terminal else None
+    status_started = False
+
+    def _stop_status() -> None:
+        nonlocal status_started
+        if status is not None and status_started:
+            status.stop()
+            status_started = False
+
     for event in runner.run():
         if isinstance(event, PhaseStarted):
+            _stop_status()
             console.rule(f"[bold cyan]{event.phase}[/bold cyan]")
         elif isinstance(event, PhaseSkipped):
             labels = {"done": "already complete", "instruqt": "guarded — instruqt target"}
             label = labels.get(event.reason, "skipped")
             console.print(f"  [dim]skip[/dim]  {event.phase}  ({label})")
         elif isinstance(event, ProgressUpdate):
-            m_e, s_e = divmod(int(event.elapsed), 60)
-            m_t = int(event.total) // 60
-            detail = f"  {event.detail}" if event.detail else ""
-            console.print(
-                f"\r  [cyan]▶[/cyan]  {event.step}{detail}  {m_e}:{s_e:02d} / {m_t}:00",
-                end="",
-            )
+            if status is not None:
+                m_e, s_e = divmod(int(event.elapsed), 60)
+                m_t = int(event.total) // 60
+                detail = f"  {event.detail}" if event.detail else ""
+                status.update(f"[cyan]{event.step}[/cyan]{detail}  {m_e}:{s_e:02d} / {m_t}:00")
+                if not status_started:
+                    status.start()
+                    status_started = True
         elif isinstance(event, LogLine):
             console.print(event.line)
         elif isinstance(event, PhaseDone):
+            _stop_status()
             m, s = divmod(int(event.elapsed), 60)
             console.print(f"  [green]✓[/green]  {event.phase}  [dim]{m}:{s:02d}[/dim]")
         elif isinstance(event, PhaseFailed):
+            _stop_status()
             console.print(f"[red]✗  {event.phase} failed (exit {event.rc})[/red]")
             raise SystemExit(event.rc or 1)
         elif isinstance(event, DeployComplete):
+            _stop_status()
             net = cfg["network"]
             console.print("\n[bold green]✓  Deployment complete.[/bold green]")
             console.print(f"  Harvester:    https://{net['vip']}")

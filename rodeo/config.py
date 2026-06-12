@@ -1,12 +1,30 @@
-"""Load and merge rodeo-plan.yaml + ~/.rodeo/secrets.yaml."""
+"""Load and merge rodeo-plan.yaml + ~/.rodeo/secrets.yaml.
+
+Plan files may use Jinja templating with a `parameters:` block:
+
+    parameters:
+      memory: 16384
+    resources:
+      harvester:
+        memory_mib: {{ memory }}
+
+Value precedence: base defaults < profile defaults < plan file
+< --paramfile (deep-merged like terraform tfvars) < -P key=value
+(dotted paths, e.g. -P resources.harvester.memory_mib=20480).
+"""
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+
+class ConfigError(ValueError):
+    """User-facing configuration problem (bad YAML, bad values, bad params)."""
 
 
 # Base defaults that apply to every rodeo type.
@@ -45,6 +63,77 @@ def _deep_merge(base: dict, override: dict) -> dict:
         else:
             result[k] = v
     return result
+
+
+def _parse_param(entry: str) -> tuple[str, Any]:
+    """Parse one -P KEY=VALUE entry; VALUE is YAML-coerced (16 -> int, true -> bool)."""
+    if "=" not in entry:
+        raise ConfigError(f"-P expects KEY=VALUE, got '{entry}'")
+    key, _, raw = entry.partition("=")
+    key = key.strip()
+    if not key:
+        raise ConfigError(f"-P expects KEY=VALUE, got '{entry}'")
+    try:
+        value = yaml.safe_load(raw) if raw != "" else ""
+    except yaml.YAMLError:
+        value = raw
+    return key, value
+
+
+def _set_path(cfg: dict, dotted: str, value: Any) -> None:
+    """Set cfg['a']['b']['c'] = value for dotted 'a.b.c', creating dicts as needed."""
+    node = cfg
+    parts = dotted.split(".")
+    for part in parts[:-1]:
+        nxt = node.get(part)
+        if not isinstance(nxt, dict):
+            nxt = {}
+            node[part] = nxt
+        node = nxt
+    node[parts[-1]] = value
+
+
+def _extract_parameters_block(text: str) -> dict:
+    """Parse the top-level `parameters:` block from raw plan text.
+
+    Done textually because the rest of the file may contain Jinja that
+    breaks a plain YAML parse. Parameter defaults themselves must be
+    literal YAML (no templating).
+    """
+    match = re.search(r"^parameters:[ \t]*\n((?:[ \t]+.*\n?|\n)*)", text, re.M)
+    if not match:
+        return {}
+    try:
+        block = yaml.safe_load(match.group(1)) or {}
+    except yaml.YAMLError as exc:
+        raise ConfigError(f"Invalid YAML in parameters block: {exc}")
+    if not isinstance(block, dict):
+        raise ConfigError("The parameters block must be a mapping")
+    return block
+
+
+def _render_plan(text: str, source: str, context: dict) -> dict:
+    """Jinja-render plan text (when templated) and YAML-parse it."""
+    if "{{" in text or "{%" in text:
+        try:
+            import jinja2
+            env = jinja2.Environment(undefined=jinja2.StrictUndefined)
+            text = env.from_string(text).render(**context)
+        except jinja2.UndefinedError as exc:
+            raise ConfigError(
+                f"{source}: undefined template parameter: {exc.message}\n"
+                "Define it in the parameters block, --paramfile, or -P key=value."
+            )
+        except jinja2.TemplateSyntaxError as exc:
+            raise ConfigError(f"{source} line {exc.lineno}: template syntax error: {exc.message}")
+    try:
+        data = yaml.safe_load(text) or {}
+    except yaml.YAMLError as exc:
+        raise ConfigError(f"{source}: invalid YAML: {exc}")
+    if not isinstance(data, dict):
+        raise ConfigError(f"{source}: top level must be a mapping")
+    data.pop("parameters", None)
+    return data
 
 
 def _resolve_secret_value(value: str, secrets: dict) -> str:
@@ -92,12 +181,37 @@ def _resolve_secrets(cfg: dict, secrets: dict) -> dict:
     return _walk(cfg)
 
 
-def load_config(plan_path: str | Path = "rodeo-plan.yaml") -> dict:
+def load_config(
+    plan_path: str | Path = "rodeo-plan.yaml",
+    params: tuple[str, ...] = (),
+    paramfile: str | Path | None = None,
+) -> dict:
     plan_path = Path(plan_path)
+
+    paramfile_data: dict = {}
+    if paramfile is not None:
+        pf = Path(paramfile)
+        if not pf.exists():
+            raise ConfigError(f"Param file not found: {pf}")
+        try:
+            paramfile_data = yaml.safe_load(pf.read_text()) or {}
+        except yaml.YAMLError as exc:
+            raise ConfigError(f"{pf}: invalid YAML: {exc}")
+        if not isinstance(paramfile_data, dict):
+            raise ConfigError(f"{pf}: top level must be a mapping")
+
+    cli_params = [_parse_param(p) for p in params]
+
     plan: dict = {}
     if plan_path.exists():
-        with open(plan_path) as f:
-            plan = yaml.safe_load(f) or {}
+        text = plan_path.read_text()
+        # Template context: parameters block < paramfile scalars < -P entries
+        context = _extract_parameters_block(text)
+        context.update(
+            {k: v for k, v in paramfile_data.items() if not isinstance(v, dict)}
+        )
+        context.update({k: v for k, v in cli_params if "." not in k})
+        plan = _render_plan(text, str(plan_path), context)
 
     # Determine type early so profile defaults can be merged before plan overrides.
     type_name = plan.get("type", _BASE_DEFAULTS["type"])
@@ -109,11 +223,16 @@ def load_config(plan_path: str | Path = "rodeo-plan.yaml") -> dict:
 
     cfg = _deep_merge(_BASE_DEFAULTS, profile_defaults)
     cfg = _deep_merge(cfg, plan)
+    cfg = _deep_merge(cfg, paramfile_data)
+    for key, value in cli_params:
+        _set_path(cfg, key, value)
 
     secrets: dict = {}
     if _SECRETS_PATH.exists():
-        with open(_SECRETS_PATH) as f:
-            secrets = yaml.safe_load(f) or {}
+        try:
+            secrets = yaml.safe_load(_SECRETS_PATH.read_text()) or {}
+        except yaml.YAMLError as exc:
+            raise ConfigError(f"{_SECRETS_PATH}: invalid YAML: {exc}")
 
     cfg = _resolve_secrets(cfg, secrets)
 
@@ -125,11 +244,11 @@ def load_config(plan_path: str | Path = "rodeo-plan.yaml") -> dict:
 
 
 def validate_config(cfg: dict) -> None:
-    """Raise ValueError on unresolved ??placeholders or missing/empty credentials."""
+    """Raise ConfigError on unresolved secrets, empty credentials, or bad values."""
     creds = cfg.get("credentials", {})
     unresolved = [k for k, v in creds.items() if isinstance(v, str) and v.startswith("??")]
     if unresolved:
-        raise ValueError(
+        raise ConfigError(
             f"Secrets not resolved: {', '.join(unresolved)}\n"
             "For ??key: edit ~/.rodeo/secrets.yaml or run: rodeo init\n"
             "For ??env:/??file:/??cmd:: the source returned nothing — "
@@ -140,16 +259,27 @@ def validate_config(cfg: dict) -> None:
         if v is None or (isinstance(v, str) and (not v.strip() or v == "CHANGE_ME"))
     ]
     if empty:
-        raise ValueError(
+        raise ConfigError(
             f"Credentials are empty: {', '.join(empty)}\n"
             "An empty password would be baked into the Harvester config ISOs.\n"
             "Set values in rodeo-plan.yaml (??key) and ~/.rodeo/secrets.yaml, or run: rodeo init"
         )
     target = cfg.get("deployment_target", "baremetal")
     if target not in ("instruqt", "baremetal"):
-        raise ValueError(
+        raise ConfigError(
             f"Invalid deployment_target '{target}' — use 'instruqt' or 'baremetal'."
         )
+
+    # Resource sanity — catch -P typos before they fail deep inside libvirt.
+    for flavor, spec in cfg.get("resources", {}).items():
+        if not isinstance(spec, dict):
+            raise ConfigError(f"resources.{flavor} must be a mapping")
+        for field in ("memory_mib", "vcpu", "disk_gb"):
+            value = spec.get(field)
+            if value is not None and (not isinstance(value, int) or value <= 0):
+                raise ConfigError(
+                    f"resources.{flavor}.{field} must be a positive integer, got {value!r}"
+                )
 
     # Network consistency — a VIP colliding with a node IP only surfaces
     # 40+ minutes into the deploy as a kube-vip failure.
@@ -163,14 +293,14 @@ def validate_config(cfg: dict) -> None:
     vip = net.get("vip")
     if vip and vip in node_ips.values():
         owner = next(n for n, ip in node_ips.items() if ip == vip)
-        raise ValueError(
+        raise ConfigError(
             f"network.vip ({vip}) collides with the IP of VM '{owner}'.\n"
             "The VIP must be a free address — kube-vip floats it between nodes."
         )
     rancher_ip = net.get("rancher_ip")
     vm_rancher_ip = node_ips.get("rancher")
     if rancher_ip and vm_rancher_ip and rancher_ip != vm_rancher_ip:
-        raise ValueError(
+        raise ConfigError(
             f"network.rancher_ip ({rancher_ip}) does not match "
             f"vms.rancher.ip ({vm_rancher_ip}) — update both together."
         )

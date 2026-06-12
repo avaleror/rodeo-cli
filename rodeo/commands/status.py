@@ -13,6 +13,7 @@ from rich.text import Text
 from ..config import load_config
 from ..profiles import get_profile
 from ..state import load_state
+from ._options import config_options
 
 console = Console()
 
@@ -46,10 +47,10 @@ def _vip_reachable(vip: str) -> bool:
 
 
 @click.command("status")
-@click.option("--config", "config_path", default="rodeo-plan.yaml", show_default=True)
-def status_cmd(config_path: str) -> None:
+@config_options
+def status_cmd(config_path: str, params: tuple[str, ...], paramfile: str | None) -> None:
     """Show VM states and cluster reachability at a glance."""
-    cfg = load_config(config_path)
+    cfg = load_config(config_path, params=params, paramfile=paramfile)
     profile = get_profile(cfg.get("type", "suse-virt"))
     state = load_state(cfg.get("name", "default"))
     vip = cfg["network"]["vip"]

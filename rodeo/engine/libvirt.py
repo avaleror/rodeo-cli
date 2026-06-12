@@ -30,6 +30,8 @@ class VMInfo:
     state: str
     domain_id: Optional[int] = None
     autostart: bool = False
+    memory_mib: Optional[int] = None
+    vcpus: Optional[int] = None
 
 
 def _require_libvirt() -> None:
@@ -74,15 +76,27 @@ class LibvirtDriver:
             try:
                 dom = self.conn.lookupByName(name)
                 state_id, _ = dom.state()
+                # info(): [state, maxMemKiB, memKiB, nrVirtCpu, cpuTime]
+                _, max_mem_kib, _, vcpus, _ = dom.info()
                 vms.append(VMInfo(
                     name=name,
                     state=_STATE_MAP.get(state_id, "unknown"),
                     domain_id=dom.ID() if dom.ID() != -1 else None,
                     autostart=bool(dom.autostart()),
+                    memory_mib=max_mem_kib // 1024,
+                    vcpus=vcpus,
                 ))
             except _libvirt.libvirtError:
                 vms.append(VMInfo(name=name, state="not found"))
         return vms
+
+    def list_all_domain_names(self) -> list[str]:
+        """Names of every domain on the host (any state) — used to detect
+        non-rodeo VMs before tearing down shared resources."""
+        try:
+            return [dom.name() for dom in self.conn.listAllDomains()]
+        except _libvirt.libvirtError:
+            return []
 
     def get_vm(self, name: str) -> VMInfo:
         return self.list_vms(names=[name])[0]

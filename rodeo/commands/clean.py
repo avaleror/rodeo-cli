@@ -10,6 +10,7 @@ from rich.console import Console
 
 from ..config import load_config
 from ..state import reset_from
+from ._options import config_options
 
 console = Console()
 
@@ -19,11 +20,13 @@ def _virsh(*args: str) -> None:
 
 
 @click.command("clean")
-@click.option("--config", "config_path", default="rodeo-plan.yaml", show_default=True)
+@config_options
 @click.option("--yes", is_flag=True, help="Skip confirmation prompt.")
-def clean_cmd(config_path: str, yes: bool) -> None:
+def clean_cmd(
+    config_path: str, params: tuple[str, ...], paramfile: str | None, yes: bool
+) -> None:
     """Destroy all rodeo VMs, disks, ISOs, the libvirt network, and reset phase state."""
-    cfg = load_config(config_path)
+    cfg = load_config(config_path, params=params, paramfile=paramfile)
     image_dir = Path(cfg["storage"]["image_dir"])
     vm_names = list(cfg.get("vms", {}).keys())
 
@@ -43,9 +46,18 @@ def clean_cmd(config_path: str, yes: bool) -> None:
                 console.print(f"  [dim]destroy[/dim]  {vm}")
                 lv.destroy(vm)
                 lv.undefine(vm)
-            console.print("  [dim]destroy[/dim]  libvirt default network")
-            lv.net_destroy("default")
-            lv.net_undefine("default")
+            # The 'default' network is shared host infrastructure — only tear
+            # it down when no other VMs remain that might be using it.
+            others = sorted(set(lv.list_all_domain_names()) - set(vm_names))
+            if others:
+                console.print(
+                    f"  [yellow]keep[/yellow]     libvirt default network "
+                    f"[dim](other VMs exist: {', '.join(others[:5])})[/dim]"
+                )
+            else:
+                console.print("  [dim]destroy[/dim]  libvirt default network")
+                lv.net_destroy("default")
+                lv.net_undefine("default")
     except RuntimeError as exc:
         # libvirt-python missing or connect refused — virsh does the same job.
         # Anything else (e.g. libvirtError mid-operation) should surface, not hide.

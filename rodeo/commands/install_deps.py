@@ -162,18 +162,26 @@ def install_deps_cmd(skip_ansible: bool) -> None:
     distro = _detect_distro()
     console.print(f"\n[bold cyan]Installing packages for: {distro}[/bold cyan]")
 
-    if distro == "suse":
-        _install_suse()
-    elif distro == "debian":
-        _install_debian()
-    elif distro == "fedora":
-        _install_fedora()
-    else:
-        console.print("[red]Cannot detect distro. Install packages manually.[/red]")
-        raise SystemExit(1)
+    try:
+        if distro == "suse":
+            _install_suse()
+        elif distro == "debian":
+            _install_debian()
+        elif distro == "fedora":
+            _install_fedora()
+        else:
+            console.print("[red]Cannot detect distro. Install packages manually.[/red]")
+            raise SystemExit(1)
 
-    if not skip_ansible:
-        _install_ansible(distro)
+        if not skip_ansible:
+            _install_ansible(distro)
+    except subprocess.CalledProcessError as exc:
+        cmd = " ".join(str(c) for c in exc.cmd[:4])
+        console.print(
+            f"\n[red]✗  Package installation failed (exit {exc.returncode}): {cmd} ...[/red]\n"
+            "Check network access and repository configuration, then re-run."
+        )
+        raise SystemExit(exc.returncode or 1)
 
     console.print("\n[bold green]✓  Dependencies installed.[/bold green]")
     console.print("Next step: [bold]rodeo init[/bold]")

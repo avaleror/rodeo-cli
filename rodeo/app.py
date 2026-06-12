@@ -143,6 +143,8 @@ class RodeoApp(App):
     def action_quit(self) -> None:
         self._stop_tailers.set()
         if self._runner:
+            # Quitting mid-deploy is an aborted run, not a success.
+            self.exit_code = 130
             self._runner.terminate()
         self.exit()
 

@@ -164,6 +164,92 @@ def test_default_config_is_self_consistent():
     config.validate_config(cfg)  # must not raise
 
 
+def test_param_override_dotted_path_with_type_coercion(tmp_path):
+    plan = _write_plan(tmp_path, {})
+    cfg = config.load_config(
+        plan,
+        params=("resources.harvester.memory_mib=20480", "deployment_target=instruqt"),
+    )
+    assert cfg["resources"]["harvester"]["memory_mib"] == 20480  # int, not str
+    assert cfg["deployment_target"] == "instruqt"
+
+
+def test_param_invalid_format_rejected(tmp_path):
+    plan = _write_plan(tmp_path, {})
+    with pytest.raises(config.ConfigError, match="KEY=VALUE"):
+        config.load_config(plan, params=("justakey",))
+
+
+def test_paramfile_deep_merges_like_tfvars(tmp_path):
+    plan = _write_plan(tmp_path, {"network": {"vip": "10.1.1.1"}})
+    pf = tmp_path / "params.yaml"
+    pf.write_text(yaml.dump({"network": {"vip": "10.2.2.2"}, "name": "from-paramfile"}))
+    cfg = config.load_config(plan, paramfile=pf)
+    assert cfg["network"]["vip"] == "10.2.2.2"   # paramfile beats plan
+    assert cfg["name"] == "from-paramfile"
+    assert cfg["network"]["rancher_ip"] == "192.168.122.9"  # merge, not replace
+
+
+def test_param_beats_paramfile(tmp_path):
+    plan = _write_plan(tmp_path, {})
+    pf = tmp_path / "params.yaml"
+    pf.write_text(yaml.dump({"network": {"vip": "10.2.2.2"}}))
+    cfg = config.load_config(plan, paramfile=pf, params=("network.vip=10.3.3.3",))
+    assert cfg["network"]["vip"] == "10.3.3.3"
+
+
+def test_jinja_plan_with_parameters_block(tmp_path):
+    plan = tmp_path / "rodeo-plan.yaml"
+    plan.write_text(
+        "parameters:\n"
+        "  memory: 4096\n"
+        "  domain: lab.example\n"
+        "\n"
+        "resources:\n"
+        "  harvester:\n"
+        "    memory_mib: {{ memory }}\n"
+        "network:\n"
+        "  dns_domain: \"{{ domain }}\"\n"
+    )
+    cfg = config.load_config(plan)
+    assert cfg["resources"]["harvester"]["memory_mib"] == 4096
+    assert cfg["network"]["dns_domain"] == "lab.example"
+    assert "parameters" not in cfg
+
+
+def test_jinja_parameter_overridden_by_cli(tmp_path):
+    plan = tmp_path / "rodeo-plan.yaml"
+    plan.write_text(
+        "parameters:\n  memory: 4096\n\n"
+        "resources:\n  harvester:\n    memory_mib: {{ memory }}\n"
+    )
+    cfg = config.load_config(plan, params=("memory=8192",))
+    assert cfg["resources"]["harvester"]["memory_mib"] == 8192
+
+
+def test_jinja_undefined_parameter_is_clear_error(tmp_path):
+    plan = tmp_path / "rodeo-plan.yaml"
+    plan.write_text("network:\n  vip: \"{{ nope }}\"\n")
+    with pytest.raises(config.ConfigError, match="undefined template parameter"):
+        config.load_config(plan)
+
+
+def test_malformed_yaml_is_clean_error(tmp_path):
+    plan = tmp_path / "rodeo-plan.yaml"
+    plan.write_text("network:\n\tvip: broken-by-tab\n")
+    with pytest.raises(config.ConfigError, match="invalid YAML"):
+        config.load_config(plan)
+
+
+def test_resource_sanity_rejected():
+    cfg = {
+        "credentials": {"harvester_os_password": "Secret123"},
+        "resources": {"harvester": {"memory_mib": -4, "vcpu": 8, "disk_gb": 270}},
+    }
+    with pytest.raises(config.ConfigError, match="positive integer"):
+        config.validate_config(cfg)
+
+
 def test_find_ansible_root_prefers_explicit(tmp_path):
     explicit = tmp_path / "custom"
     (explicit / "ansible").mkdir(parents=True)

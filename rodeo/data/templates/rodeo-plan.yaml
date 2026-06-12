@@ -1,6 +1,8 @@
 # rodeo-plan.yaml — deployment plan for SUSE Virtualization Rodeo
 # Run: rodeo init  to generate this file interactively.
 # Secrets go in ~/.rodeo/secrets.yaml (chmod 600, never committed).
+#
+# Harvester nodes install via iPXE (pxe_server phase). NAT mode only for PXE today.
 
 name: suse-virt-rodeo
 

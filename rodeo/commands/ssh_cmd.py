@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import click
 from rich.console import Console
 
 from ..config import load_config
+from ..ssh import ssh_opts
 
 console = Console()
 
@@ -34,18 +36,12 @@ def ssh_cmd(
     ip = vm_info["ip"]
     user = login_user or vm_info["user"]
     if key is None:
-        key = cfg.get("ssh", {}).get(
-            "identity_file", os.path.expanduser("~/.ssh/id_ed25519")
-        )
+        key = cfg.get("ssh", {}).get("identity_file")
+        if not key:
+            # Match engine defaults: rodeo typically runs as root (sudo); the lab key lives at /root/.ssh
+            key = "/root/.ssh/id_ed25519" if os.geteuid() == 0 else str(Path.home() / ".ssh" / "id_ed25519")
 
-    ssh_args = [
-        "ssh",
-        "-i", key,
-        "-o", "StrictHostKeyChecking=no",
-        "-o", "UserKnownHostsFile=/dev/null",
-        "-o", "LogLevel=ERROR",
-        f"{user}@{ip}",
-    ]
+    ssh_args = ["ssh", "-i", key, *ssh_opts(), f"{user}@{ip}"]
     if remote_cmd:
         ssh_args.append(remote_cmd)
 

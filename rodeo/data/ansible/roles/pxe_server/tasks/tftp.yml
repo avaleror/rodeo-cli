@@ -1,0 +1,28 @@
+---
+# ipxe.efi goes in the libvirt dnsmasq TFTP root. When the UEFI firmware sends
+# a DHCP request (stage-1, no iPXE user-class), dnsmasq responds with
+# "boot file: ipxe.efi" and serves it over TFTP from this directory.
+
+- name: Download ipxe.efi to libvirt TFTP root
+  ansible.builtin.get_url:
+    url: "{{ ipxe_efi_url }}"
+    dest: "{{ pxe_tftp_root }}/ipxe.efi"
+    mode: '0644'
+  retries: 3
+  delay: 5
+
+- name: Stat ipxe.efi
+  ansible.builtin.stat:
+    path: "{{ pxe_tftp_root }}/ipxe.efi"
+  register: _ipxe_efi_stat
+
+# A truncated download (e.g. an error page) results in a tiny file.
+# Fail early so the builder track surfaces a clear error instead of
+# silently producing VMs that loop forever at the PXE boot prompt.
+- name: Verify ipxe.efi is a valid firmware (>100 KB)
+  ansible.builtin.fail:
+    msg: >
+      ipxe.efi at {{ pxe_tftp_root }}/ipxe.efi is only
+      {{ _ipxe_efi_stat.stat.size }} bytes — expected > 100 KB.
+      The download from {{ ipxe_efi_url }} likely returned an error page.
+  when: _ipxe_efi_stat.stat.size < 102400

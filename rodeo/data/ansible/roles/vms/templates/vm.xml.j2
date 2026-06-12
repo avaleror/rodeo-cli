@@ -34,11 +34,7 @@
       <driver name='qemu' type='qcow2' cache='none' io='native'/>
       <source file='{{ image_dir }}/{{ item.name }}-vda.qcow2'/>
       <target dev='vda' bus='virtio'/>
-{% if item.flavor == 'harvester' %}
-      <boot order='2'/>
-{% else %}
       <boot order='1'/>
-{% endif %}
     </disk>
 {% if item.flavor == 'harvester' %}
     <disk type='file' device='cdrom'>
@@ -46,7 +42,6 @@
       <source file='{{ image_dir }}/harvester-v{{ harvester_version }}-amd64.iso'/>
       <target dev='sda' bus='sata'/>
       <readonly/>
-      <boot order='1'/>
     </disk>
     <disk type='file' device='cdrom'>
       <driver name='qemu' type='raw'/>
@@ -82,6 +77,10 @@
       <source network='{{ libvirt_network_name }}'/>
 {% endif %}
       <model type='{% if item.flavor == "harvester" %}e1000{% else %}virtio{% endif %}'/>
+{% if item.flavor == 'harvester' and loop.first %}
+      <!-- mgmt NIC is the PXE boot fallback (order 2 — only reached if disk has no bootloader) -->
+      <boot order='2'/>
+{% endif %}
     </interface>
 {% endfor %}
     <!-- serial0: PTY for virsh console access -->
@@ -93,8 +92,8 @@
       <source path='{{ serial_log_dir }}/{{ item.name }}_serial.log' append='on'/>
       <target type='isa-serial' port='1'/>
     </serial>
-    <graphics type='vnc' port='-1' autoport='yes' listen='127.0.0.1'>
-      <listen type='address' address='127.0.0.1'/>
+    <graphics type='vnc' port='-1' autoport='yes' listen='0.0.0.0'>
+      <listen type='address' address='0.0.0.0'/>
     </graphics>
     <video>
       <model type='vga' vram='16384' heads='1'/>

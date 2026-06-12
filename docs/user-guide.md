@@ -2,7 +2,7 @@
 
 Deploy the infrastructure for a **rodeo**: a live, hands-on workshop where attendees practice on real systems. This guide is for operators who provision and manage that infrastructure on a KVM host — whether that host is an **Instruqt builder instance**, a **cloud VM**, a **local VM**, or **bare metal**.
 
-**Default workshop (suse-virt):** a 3-node Harvester HCI cluster plus Rancher Prime, all running as nested virtual machines on one Linux server.
+**Default workshop (suse-virt):** a 3-node Harvester HCI cluster plus Rancher Prime, all running as nested virtual machines on one Linux server. Harvester nodes install via **iPXE network boot** (UEFI PXE over `virbr0`, not ISO-first boot).
 
 ---
 
@@ -106,7 +106,7 @@ deployment_target: instruqt   # or baremetal
 rodeo deploy --check
 ```
 
-Checks: root, `/dev/kvm`, nested virtualization, RAM, disk, `ansible-playbook`, `kubectl`, `virsh`, `ssh`.
+Checks: root, `/dev/kvm`, nested virtualization, RAM, disk, `ansible-playbook`, `ansible-galaxy`, `kubectl` (hard requirements). `virsh` and `ssh` are recommended for `attach`/`ssh`/`restart` and some fallbacks (shown as warnings only; core `deploy` works via libvirt-python primarily).
 
 ### 4. Preview
 
@@ -124,7 +124,9 @@ rodeo deploy
 
 With a TTY you get a split-panel UI: phase progress on the left, VM serial logs on the right. In CI or scripts, use `rodeo deploy --no-tui`.
 
-**Total time:** often 1–2 hours on nested KVM (mostly Harvester install).
+**Total time:** often 1–2 hours on nested KVM (mostly Harvester iPXE install).
+
+**Deploy phases:** `kvm_host` → `vms` → `pxe_server` → `cluster` → `rancher` → `finalise`. The `pxe_server` phase provisions nginx, TFTP, boot files, and per-node iPXE scripts on `192.168.122.1:8080`. Monitor install progress with `rodeo logs harvester1` or the deploy TUI.
 
 ---
 
@@ -237,7 +239,7 @@ Deploy fails immediately if a `??` placeholder does not resolve — it will not 
 | SSH to a VM | `rodeo ssh harvester1` |
 | Tail serial log | `rodeo logs harvester1` |
 | Restart a VM | `rodeo restart harvester2` |
-| Serial console | `rodeo attach harvester1` (Ctrl+] to detach) |
+| Serial console | `rodeo attach harvester1` (Ctrl+] to detach; uses `libvirt.uri` from plan if non-default) |
 | Tear down lab | `rodeo clean` |
 | Support bundle | `rodeo logs --bundle` |
 

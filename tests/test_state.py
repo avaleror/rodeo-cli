@@ -1,4 +1,7 @@
-"""Per-plan state persistence."""
+"""Per-plan state persistence.
+
+Note: global PHASES removed; callers must supply profile.phases to reset_from (strict).
+"""
 from __future__ import annotations
 
 import stat
@@ -25,11 +28,13 @@ def test_mark_failed_records_error():
 
 
 def test_reset_from_clears_subsequent_only():
-    for p in state.PHASES:
+    phases = ["kvm_host", "vms", "pxe_server", "cluster", "rancher", "finalise"]
+    for p in phases:
         state.mark_phase_done(p, "plan-a")
-    state.reset_from("cluster", "plan-a")
+    state.reset_from("cluster", "plan-a", phases)
     assert state.is_phase_done("kvm_host", "plan-a")
     assert state.is_phase_done("vms", "plan-a")
+    assert state.is_phase_done("pxe_server", "plan-a")
     for p in ("cluster", "rancher", "finalise"):
         assert not state.is_phase_done(p, "plan-a")
 

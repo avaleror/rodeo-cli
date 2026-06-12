@@ -3,6 +3,10 @@ template describe the same lab. These values are coupled across layers
 (MAC <-> DHCP lease <-> node IP <-> Harvester config ISO <-> VIP) and a
 mismatch only surfaces 40+ minutes into a nested-KVM deploy. This test
 makes drift a CI failure instead.
+
+Note: vm_nodes / full topology still dual-sourced (profile vms for Python ops,
+role defaults for Ansible provisioning). Single source planned for Phase C
+(see ROADMAP); test will evolve into the migration contract.
 """
 from __future__ import annotations
 

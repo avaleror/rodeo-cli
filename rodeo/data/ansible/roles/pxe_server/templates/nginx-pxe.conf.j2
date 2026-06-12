@@ -1,0 +1,17 @@
+# Harvester PXE HTTP file server
+# Bound exclusively to the virbr0 IP ({{ pxe_http_bind }}:{{ pxe_http_port }}) —
+# not reachable from outside the Instruqt sandbox.
+server {
+    listen {{ pxe_http_bind }}:{{ pxe_http_port }};
+    server_name _;
+
+    root {{ pxe_http_root }};
+    autoindex on;
+
+    # rootfs.squashfs is ~1.5 GB; extend the static file send timeout so nginx
+    # doesn't drop the connection mid-transfer during a slow install.
+    send_timeout 600s;
+
+    access_log /var/log/nginx/harvester-pxe-access.log;
+    error_log  /var/log/nginx/harvester-pxe-error.log;
+}

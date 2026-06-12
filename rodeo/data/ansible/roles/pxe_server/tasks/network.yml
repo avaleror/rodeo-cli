@@ -1,0 +1,64 @@
+---
+# Redefine the libvirt default network with dnsmasq PXE extensions.
+# The extensions live in the dnsmasq namespace (xmlns:dnsmasq) of the network
+# XML and are written to libvirt's generated dnsmasq.conf at network start.
+#
+# Two-stage iPXE boot over the existing virbr0 NAT network:
+#   Stage 1 — UEFI firmware sends a DHCP request (no iPXE user-class).
+#             dnsmasq replies with boot file "ipxe.efi" (TFTP).
+#   Stage 2 — iPXE loads, sends a new DHCP request with user-class "iPXE".
+#             dnsmasq replies with the per-node HTTP URL for that MAC.
+#             iPXE fetches the script, loads kernel + initrd, and starts
+#             the Harvester unattended installer.
+#
+# The network must be destroyed and re-defined; libvirt does not allow live
+# edits to the dnsmasq options namespace. The same guard as vms/network_setup.yml
+# prevents destruction while VMs are running.
+
+# Idempotency: only destroy and redefine if the PXE dnsmasq options are not
+# already present in the running network definition. Avoids unnecessary network
+# flaps on re-runs and prevents DNS/DHCP interruption for any running guest.
+- name: Dump current network XML
+  ansible.builtin.command: virsh net-dumpxml {{ libvirt_network_name }}
+  register: _current_net_xml
+  changed_when: false
+  failed_when: false
+
+- name: Redefine network with PXE options (skipped if already present)
+  when: "'dnsmasq:options' not in (_current_net_xml.stdout | default(''))"
+  block:
+    - name: Check for running domains before network redefinition
+      ansible.builtin.command: virsh list --name --state-running
+      register: _pxe_running_domains
+      changed_when: false
+      failed_when: false
+
+    - name: Fail if any domain is running (network teardown would drop guest traffic)
+      ansible.builtin.fail:
+        msg: >
+          Cannot redefine the default network with PXE options — domains are running:
+          {{ _pxe_running_domains.stdout_lines }}.
+          Stop all VMs first: virsh destroy harvester1 harvester2 harvester3 rancher
+      when:
+        - _pxe_running_domains.rc == 0
+        - _pxe_running_domains.stdout | trim != ''
+
+    - name: Destroy default network to allow redefinition
+      community.libvirt.virt_net:
+        name: "{{ libvirt_network_name }}"
+        state: absent
+      failed_when: false
+
+    - name: Define default network with PXE dnsmasq options
+      community.libvirt.virt_net:
+        command: define
+        name: "{{ libvirt_network_name }}"
+        xml: "{{ lookup('template', 'network-pxe.xml.j2') }}"
+
+    # autostart intentionally false — same reasoning as vms/network_setup.yml:
+    # rodeo.sh phase 3 re-enables autostart before starting VMs.
+    - name: Start default network (autostart disabled until phase 3)
+      community.libvirt.virt_net:
+        name: "{{ libvirt_network_name }}"
+        state: active
+        autostart: false

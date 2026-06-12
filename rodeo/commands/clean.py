@@ -9,6 +9,7 @@ import click
 from rich.console import Console
 
 from ..config import load_config
+from ..profiles import get_profile
 from ..state import reset_from
 from ._options import config_options
 
@@ -67,9 +68,28 @@ def clean_cmd(
             console.print(f"  [dim]destroy[/dim]  {vm} (virsh)")
             _virsh("destroy", vm)
             _virsh("undefine", "--nvram", vm)
-        console.print("  [dim]destroy[/dim]  libvirt default network (virsh)")
-        _virsh("net-destroy", "default")
-        _virsh("net-undefine", "default")
+
+        # Check for other domains before touching the shared default network (parity with libvirt path)
+        try:
+            res = subprocess.run(
+                ["virsh", "list", "--all", "--name"],
+                capture_output=True, text=True, check=False
+            )
+            all_names = [n.strip() for n in res.stdout.splitlines() if n.strip()]
+            others = sorted(set(all_names) - set(vm_names))
+            if others:
+                console.print(
+                    f"  [yellow]keep[/yellow]     libvirt default network "
+                    f"[dim](other VMs exist: {', '.join(others[:5])})[/dim]"
+                )
+            else:
+                console.print("  [dim]destroy[/dim]  libvirt default network (virsh)")
+                _virsh("net-destroy", "default")
+                _virsh("net-undefine", "default")
+        except Exception:
+            # If virsh list fails, be conservative and leave the network.
+            console.print("  [yellow]keep[/yellow]     libvirt default network (virsh list failed)")
+            pass
 
     # Delete disk images and OVMF vars
     patterns = [
@@ -84,7 +104,8 @@ def clean_cmd(
             console.print(f"  [dim]delete[/dim]   {f}")
             Path(f).unlink(missing_ok=True)
 
-    # Reset state from kvm_host onwards
-    reset_from("kvm_host", cfg.get("name", "default"))
+    # Reset state from kvm_host onwards (use profile phase list for profile-aware plans)
+    profile = get_profile(cfg.get("type", "suse-virt"))
+    reset_from("kvm_host", cfg.get("name", "default"), profile.phases)
 
     console.print("\n[bold green]✓  Clean complete.[/bold green] Run [bold]rodeo deploy[/bold] to start fresh.\n")

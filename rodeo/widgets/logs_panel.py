@@ -5,9 +5,6 @@ from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.widgets import RichLog, TabbedContent, TabPane
 
-_VMS = ["harvester1", "harvester2", "harvester3", "rancher"]
-
-
 class LogsPanel(Vertical):
     DEFAULT_CSS = """
     LogsPanel {
@@ -22,9 +19,13 @@ class LogsPanel(Vertical):
     """
     BORDER_TITLE = "VM Serial Logs"
 
+    def __init__(self, vms: list[str] | None = None) -> None:
+        super().__init__()
+        self._vms = vms or ["harvester1", "harvester2", "harvester3", "rancher"]
+
     def compose(self) -> ComposeResult:
         with TabbedContent():
-            for vm in _VMS:
+            for vm in self._vms:
                 with TabPane(vm, id=f"tab-{vm}"):
                     yield RichLog(
                         id=f"log-{vm}",

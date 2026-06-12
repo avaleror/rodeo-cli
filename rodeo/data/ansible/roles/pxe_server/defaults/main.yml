@@ -1,0 +1,24 @@
+---
+# PXE server for the SUSE Virtualization Rodeo — serves Harvester boot files
+# to the 3 Harvester KVM guests on virbr0 via:
+#   - libvirt's built-in dnsmasq TFTP (stage-1: ipxe.efi)
+#   - nginx on virbr0 HTTP (stage-2: kernel, initrd, rootfs, configs)
+#
+# All vars below are pxe_server-specific. Lab vars (vm_nodes, harvester_version,
+# harvester_token, etc.) are loaded from vms/defaults in tasks/main.yml.
+
+# HTTP file server (nginx bound to virbr0 IP only — not accessible externally)
+pxe_http_root: /srv/harvester-pxe
+pxe_http_port: 8080
+pxe_http_bind: "{{ libvirt_network_gateway | default('192.168.122.1') }}"
+
+# TFTP root for libvirt's built-in dnsmasq — only ipxe.efi lives here
+pxe_tftp_root: /var/lib/libvirt/dnsmasq
+
+# iPXE UEFI firmware (x86_64). The binary must be >100 KB; a small file means
+# the download returned an error page. boot.ipxe.org serves the upstream build.
+ipxe_efi_url: "https://boot.ipxe.org/x86_64-efi/ipxe.efi"
+
+# Harvester release base URL — vmlinuz/initrd/rootfs are fetched from here.
+# harvester_version is loaded from vms/defaults in tasks/main.yml.
+pxe_harvester_base_url: "https://releases.rancher.com/harvester/v{{ harvester_version }}"

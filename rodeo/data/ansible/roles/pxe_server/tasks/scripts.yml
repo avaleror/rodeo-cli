@@ -1,0 +1,24 @@
+---
+# Per-node iPXE boot scripts and Harvester config YAMLs.
+# Each Harvester node gets its own script and config because:
+#   - harvester1 boots in CREATE mode (no server_url, sets the VIP)
+#   - harvester2/3 boot in JOIN mode (server_url = VIP, different static IPs)
+# dnsmasq routes each VM's MAC to its specific iPXE script URL (see network.yml).
+
+- name: Render per-node iPXE boot scripts
+  ansible.builtin.template:
+    src: ipxe-node.j2
+    dest: "{{ pxe_http_root }}/ipxe/{{ item.name }}"
+    mode: '0644'
+  loop: "{{ vm_nodes | selectattr('flavor', 'equalto', 'harvester') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Render per-node Harvester install config YAMLs
+  ansible.builtin.template:
+    src: config-node.yaml.j2
+    dest: "{{ pxe_http_root }}/config/config-{{ item.name }}.yaml"
+    mode: '0640'
+  loop: "{{ vm_nodes | selectattr('flavor', 'equalto', 'harvester') | list }}"
+  loop_control:
+    label: "{{ item.name }}"

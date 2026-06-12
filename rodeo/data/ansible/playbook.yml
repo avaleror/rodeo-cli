@@ -7,3 +7,5 @@
       tags: [kvm_host]
     - role: vms
       tags: [vms]
+    - role: pxe_server
+      tags: [pxe_server]

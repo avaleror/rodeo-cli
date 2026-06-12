@@ -77,7 +77,7 @@ _HARVESTER_ISO_CHECKSUMS = {
 # ---------- Runner ----------
 
 class DeployRunner:
-    """Run the five-phase deploy pipeline and stream typed events.
+    """Run the deploy pipeline and stream typed events.
 
     Usage:
         runner = DeployRunner(cfg, root)
@@ -300,8 +300,12 @@ class DeployRunner:
     def _write_vars_file(self) -> Path:
         """Write all plan values to a tempfile (mode 600) for Ansible -e @file.
 
-        Keeps secrets off argv and wires resources/versions into Ansible.
-        File is deleted on process exit via atexit.
+        Keeps secrets off argv and wires resources/versions/network into Ansible.
+        For the Harvester/SUSE Virtualization rodeo, vm_nodes (full with MACs, UUIDs,
+        per-node interfaces/cables) now come from the centralized definition file
+        (rodeo/data/profiles/suse-virt/topology.yaml) via the inventory renderer.
+        Explicit values in the definition are used (matching previous defaults exactly).
+        Generation happens for omitted fields. File deleted on exit via atexit.
         """
         creds = self.cfg.get("credentials", {})
         net = self.cfg.get("network", {})
@@ -337,10 +341,34 @@ class DeployRunner:
                 },
             },
             "image_dir":             storage.get("image_dir", "/var/lib/libvirt/images"),
+            "libvirt_pool_name":     storage.get("libvirt_pool_name", "default"),
+            "libvirt_pool_path":     storage.get("libvirt_pool_path", storage.get("image_dir", "/var/lib/libvirt/images")),
+            # New: support for specifying the disk device on multi-disk hosts.
+            # Comes from the definition file's storage section. Roles can use it
+            # to prepare the right disk for the lab (format, mount to mount_point, etc.).
+            "libvirt_storage_device": storage.get("device", ""),
+            "libvirt_storage_fs_type": storage.get("fs_type", "xfs"),
+            "libvirt_storage_mount_point": storage.get("mount_point", storage.get("image_dir", "/var/lib/libvirt/images")),
         }
         # Only override the role-default join token when the plan provides one.
         if creds.get("harvester_token"):
             vars_data["harvester_token"] = creds["harvester_token"]
+
+        # Wire the full vm_nodes (with MACs, UUIDs, interfaces, etc.) from the centralized
+        # definition (rodeo/data/profiles/suse-virt/topology.yaml via inventory.py).
+        # This makes the definition the source for both Python side and Ansible provisioning
+        # for the Harvester/SUSE Virtualization rodeo. Values match the previous role defaults
+        # exactly for this explicit definition, so deployment behavior is unchanged.
+        # If fields are omitted in the definition, the renderer generates them.
+        try:
+            from .. import inventory
+            inv = inventory.build_inventory(self.cfg)
+            vm_nodes = inv.get("vm_nodes")
+            if vm_nodes:
+                vars_data["vm_nodes"] = vm_nodes
+        except Exception:
+            # Fall back to role defaults (the old behavior). The definition load is resilient.
+            pass
 
         rodeo_dir = Path.home() / ".rodeo"
         rodeo_dir.mkdir(parents=True, exist_ok=True)

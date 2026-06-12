@@ -4,6 +4,9 @@ outside the role defaults. A key only present in defaults/main.yml means
 the override is dead and the plan value silently does nothing — exactly
 the bug where flat `harvester_memory_mb` keys were written while the
 roles read nested `libvirt_flavors`.
+
+Note: `vm_nodes` (and full per-VM details) intentionally not emitted from
+_write_vars_file today (see inventory problem in P1 list / ROADMAP Phase C).
 """
 from __future__ import annotations
 

@@ -1,0 +1,39 @@
+---
+- name: Create PXE HTTP root directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+  loop:
+    - "{{ pxe_http_root }}"
+    - "{{ pxe_http_root }}/harvester"
+    - "{{ pxe_http_root }}/ipxe"
+    - "{{ pxe_http_root }}/config"
+
+# On SLES 16 the nginx package may not include conf.d/ by default.
+# regexp match prevents inserting a duplicate if the line already exists
+# (e.g. with different whitespace), which would cause nginx to parse two
+# includes and potentially serve the distro default config instead of ours.
+- name: Ensure nginx.conf includes conf.d
+  ansible.builtin.lineinfile:
+    path: /etc/nginx/nginx.conf
+    regexp: '^\s*include\s+/etc/nginx/conf\.d/\*\.conf;'
+    line: "    include /etc/nginx/conf.d/*.conf;"
+    insertafter: "http {"
+    state: present
+  notify: restart nginx
+
+- name: Deploy nginx PXE site config
+  ansible.builtin.template:
+    src: nginx-pxe.conf.j2
+    dest: /etc/nginx/conf.d/harvester-pxe.conf
+    mode: '0644'
+  notify: restart nginx
+
+- name: Enable and start nginx
+  ansible.builtin.systemd:
+    name: nginx
+    enabled: true
+    state: started

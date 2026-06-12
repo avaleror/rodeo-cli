@@ -19,7 +19,7 @@ It replaces `rodeo.sh`, a monolithic bash script in the parent repository. Desig
 
 **GitHub:** https://github.com/avaleror/rodeo-cli
 **Author:** Andres Valero, Principal Technology Advocate at SUSE
-**Version:** 0.3.0
+**Version:** 0.4.0
 **Python:** 3.10+
 
 ---
@@ -60,6 +60,7 @@ rodeo/
 ├── cli.py                  Click group — registers all commands
 ├── config.py               Plan + secrets loading, ??resolvers, validation
 ├── state.py                Per-plan phase state at ~/.rodeo/state/<plan>.yaml
+├── ssh.py                  Shared SSH options and helpers (centralized from engine/commands)
 ├── app.py                  Textual TUI App — thin event subscriber, no deploy logic
 ├── widgets/
 │   ├── deploy_panel.py     Left panel: DataTable phases + progress bar + RichLog
@@ -74,7 +75,7 @@ rodeo/
 │   └── suse_virt.py        suse-virt profile (the only one today)
 ├── commands/               One file per CLI command (thin: load config, run engine)
 └── data/
-    ├── ansible/            Bundled roles: kvm_host (host setup) + vms (VM staging)
+    ├── ansible/            Bundled roles: kvm_host + vms + pxe_server (iPXE boot)
     ├── deployer/           inventory.local + legacy config examples (no scripts)
     └── templates/          rodeo-plan.yaml + secrets.yaml templates for init
 ```
@@ -96,13 +97,14 @@ A profile defines `phases`, `vm_names`, `ansible_phases`, `guarded_phases`, defa
 
 ## Deployment pipeline
 
-Five phases, tracked per plan in `~/.rodeo/state/<plan-name>.yaml`. Idempotent; resume with `--from PHASE`, re-run all with `--force`.
+Six phases, tracked per plan in `~/.rodeo/state/<plan-name>.yaml`. Idempotent; resume with `--from PHASE`, re-run all with `--force`.
 
 | Phase | Engine | What it does |
 |---|---|---|
 | kvm_host | Ansible (`--tags kvm_host`) | Packages, modular libvirt daemons, NM unmanaged conf, firewalld permanent rules + DNAT, storage pool |
-| vms | Ansible (`--tags vms`) | ISO/qcow2 downloads, NAT network with static leases, disks, OVMF vars, Harvester config ISOs, Rancher cloud-init ISO, domain XML (does not start VMs) |
-| cluster | Python `ClusterPhase` | Start firewalld; start harvester1, poll VIP (≤60 min); start h2, 90 s etcd gap, h3, rancher; fetch kubeconfig via SSH; wait 3 nodes Ready (≤90 min) |
+| vms | Ansible (`--tags vms`) | ISO/qcow2 downloads, NAT network with static leases, disks, OVMF vars, Harvester config ISOs, Rancher cloud-init ISO, domain XML with disk-first boot order (does not start VMs) |
+| pxe_server | Ansible (`--tags pxe_server`) | nginx on virbr0:8080, ipxe.efi TFTP, vmlinuz/initrd/rootfs, per-node iPXE scripts + config YAMLs, dnsmasq two-stage UEFI boot |
+| cluster | Python `ClusterPhase` | Start firewalld; ensure virbr0 up; start harvester1, poll VIP (≤60 min); start h2, 90 s etcd gap, h3, rancher; fetch kubeconfig via SSH; wait 3 nodes Ready (≤90 min) |
 | rancher | Python `RancherPhase` | Wait SSH; install K3s, Helm, cert-manager, Rancher Prime; NodePort 30002; set admin password via API; import Harvester cluster; CoreDNS zone patch; eject install ISOs |
 | finalise | Python (runner) | `set_autostart` on all VMs (fails if zero succeed) + enable libvirt-guests |
 
@@ -171,7 +173,7 @@ These are the non-obvious things that burned time during development:
 | `restart VM\|all [--hard]` | ACPI shutdown + start; VM names from plan. |
 | `ssh VM [-l user] [-c cmd]` | IP/user from plan `vms`; key from `ssh.identity_file`. |
 | `logs [VM] [--bundle -o FILE]` | Tail serial log, or write a support bundle (state + redacted config + serial log tails). |
-| `attach VM` | virsh console (Ctrl-] to detach). |
+| `attach VM` | virsh console (Ctrl-] to detach; honors `libvirt.uri` from plan). |
 
 ---
 
@@ -196,8 +198,9 @@ The repo has a global gitleaks pre-commit hook; dummy passwords in tests need `#
 
 - **v0.1** — CLI skeleton, wrong playbook path, no bundled Ansible, phantom preflight phase.
 - **v0.2** — Textual TUI, bundled Ansible + bash deployer scripts, corrected 5-phase pipeline.
-- **v0.3 (current)** — Bash retired (ClusterPhase/RancherPhase in Python), single event-driven DeployRunner, per-plan state, preflight `--check`, instruqt finalise guard, secrets resolvers (`??env/file/cmd`), random init credentials, exception/timeout/cancellation hardening, pytest suite + CI, profile scaffold.
-- **v0.4 (planned)** — `rodeo diagnose` (Claude API log analysis), ansible-lint in CI, ansible sync check with instruqt-virtualization, streaming output for long SSH installs.
+- **v0.3** — Bash retired (ClusterPhase/RancherPhase in Python), single event-driven DeployRunner, per-plan state, preflight `--check`, instruqt finalise guard, secrets resolvers (`??env/file/cmd`), random init credentials, exception/timeout/cancellation hardening, pytest suite + CI, profile scaffold.
+- **v0.4 (current)** — Dynamic `__version__` from package metadata; centralized SSH options in `rodeo/ssh.py` + consistent key defaults; profile-driven VM lists in TUI (no hardcoded tabs/switches); removed global `state.PHASES` (profiles own phase lists, `reset_from` now strictly requires phases arg); relaxed preflight (`--check`: virsh/ssh are warnings only, core tools remain required); `attach` respects `libvirt.uri`; Cluster/Rancher use derived users + libvirt URI; eject uses LibvirtDriver with stop support; NodePort patch uses explicit `--type strategic`; libvirt driver uses constants. P0/P1 safe items complete (big inventory/topology deferred to roadmap Phase C per constraints).
+- **v0.4+ (planned)** — `rodeo diagnose` (Claude API log analysis), ansible-lint in CI, ansible sync check with instruqt-virtualization, streaming output for long SSH installs, full declarative inventory (Phase C).
 
 ---
 
@@ -207,7 +210,8 @@ The repo has a global gitleaks pre-commit hook; dummy passwords in tests need `#
 |---|---|
 | `rodeo/data/ansible/roles/kvm_host/tasks/libvirt.yml` | Modular daemon setup + NM unmanaged guard — breaks Instruqt boot if wrong |
 | `rodeo/data/ansible/roles/vms/tasks/network_setup.yml` | virbr0 `autostart: false` is intentional during build |
-| `rodeo/data/ansible/roles/vms/defaults/main.yml` | OVMF paths, fixed MACs and static IPs baked into Harvester config ISOs |
+| `rodeo/data/ansible/roles/vms/defaults/main.yml` | OVMF paths, fixed MACs and static IPs baked into Harvester config |
+| `rodeo/data/ansible/roles/pxe_server/` | iPXE boot chain — sync from test-harv-rodeo when changing PXE behavior |
 | `rodeo/engine/cluster.py` start order + timeouts | Sequential start with 90 s h2→h3 gap prevents etcd join races |
 | `rodeo/engine/rancher.py` API call order | bootstrap login → change password → re-login → server-url → create cluster → registration token → apply manifest is order-dependent |
 

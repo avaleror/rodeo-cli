@@ -1,6 +1,8 @@
 """rodeo plan — read-only diff output."""
 from __future__ import annotations
 
+import re
+
 from click.testing import CliRunner
 
 from rodeo import state
@@ -10,10 +12,12 @@ from rodeo.commands.plan_cmd import plan_cmd
 # command degrades to desired-state-only mode — itself a code path worth
 # covering (it's what users see on a laptop).
 
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
 
 def _flat(output: str) -> str:
-    """Collapse rich's line wrapping so substring asserts are reliable."""
-    return " ".join(output.split())
+    """Collapse rich markup and line wrapping so substring asserts are reliable."""
+    return " ".join(_ANSI.sub("", output).split())
 
 
 def test_plan_shows_desired_state_without_libvirt(tmp_path):
@@ -24,6 +28,8 @@ def test_plan_shows_desired_state_without_libvirt(tmp_path):
     assert "harvester1" in out
     assert "16384 MiB / 8 vcpu" in out
     assert "pending" in out
+    assert "pxe_server" in out
+    assert "ipxe.efi" in out
     assert "rodeo deploy" in out
 
 

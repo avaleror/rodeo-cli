@@ -116,8 +116,15 @@ def _print_network(actual: dict | None) -> None:
 def _print_storage(cfg: dict) -> int:
     image_dir = Path(cfg["storage"]["image_dir"])
     version = cfg.get("versions", {}).get("harvester", "?")
+    pxe_root = Path("/srv/harvester-pxe")
     artifacts = [f"harvester-v{version}-amd64.iso"]
     artifacts += [f"{name}-vda.qcow2" for name in cfg.get("vms", {})]
+    pxe_artifacts = [
+        ("ipxe.efi", Path("/var/lib/libvirt/dnsmasq/ipxe.efi")),
+        (f"harvester-v{version}-vmlinuz-amd64", pxe_root / "harvester" / f"harvester-v{version}-vmlinuz-amd64"),
+        (f"harvester-v{version}-initrd-amd64", pxe_root / "harvester" / f"harvester-v{version}-initrd-amd64"),
+        (f"harvester-v{version}-rootfs-amd64.squashfs", pxe_root / "harvester" / f"harvester-v{version}-rootfs-amd64.squashfs"),
+    ]
 
     console.print(f"\n[bold]  Storage[/bold] [dim]({image_dir})[/dim]")
     downloads = 0
@@ -127,6 +134,14 @@ def _print_storage(cfg: dict) -> int:
         else:
             verb = "+ download" if artifact.endswith(".iso") else "+ create"
             console.print(f"    {artifact:<34} [green]{verb}[/green]")
+            downloads += 1
+
+    console.print("\n[bold]  PXE boot[/bold] [dim](pxe_server phase)[/dim]")
+    for label, path in pxe_artifacts:
+        if path.exists():
+            console.print(f"    {label:<34} [dim]✓ present[/dim]")
+        else:
+            console.print(f"    {label:<34} [green]+ provision[/green]")
             downloads += 1
     return downloads
 

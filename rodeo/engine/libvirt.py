@@ -12,6 +12,8 @@ except ImportError:
     _libvirt = None  # type: ignore[assignment]
     _AVAILABLE = False
 
+_VIR_RUNNING = getattr(_libvirt, "VIR_DOMAIN_RUNNING", 1) if _libvirt else 1
+
 _STATE_MAP = {
     0: "no state",
     1: "running",
@@ -103,7 +105,7 @@ class LibvirtDriver:
 
     def start(self, name: str) -> None:
         dom = self.conn.lookupByName(name)
-        if dom.state()[0] != 1:  # VIR_DOMAIN_RUNNING
+        if dom.state()[0] != _VIR_RUNNING:
             dom.create()
 
     def shutdown(self, name: str) -> None:
@@ -133,7 +135,7 @@ class LibvirtDriver:
     def is_running(self, name: str) -> bool:
         try:
             dom = self.conn.lookupByName(name)
-            return dom.state()[0] == 1  # VIR_DOMAIN_RUNNING
+            return dom.state()[0] == _VIR_RUNNING
         except _libvirt.libvirtError:
             return False
 
@@ -149,6 +151,10 @@ class LibvirtDriver:
             net = self.conn.networkLookupByName(name)
             if not net.isActive():
                 net.create()
+
+    def net_set_autostart(self, name: str = "default", enabled: bool = True) -> None:
+        net = self.conn.networkLookupByName(name)
+        net.setAutostart(1 if enabled else 0)
 
     def net_destroy(self, name: str = "default") -> None:
         with contextlib.suppress(_libvirt.libvirtError):
@@ -166,3 +172,23 @@ class LibvirtDriver:
             pool = self.conn.storagePoolLookupByName(pool_name)
             vol = pool.storageVolLookupByName(vol_name)
             vol.delete()
+
+    def eject_media(self, name: str, target: str) -> None:
+        """Eject CDROM / ISO media from a VM's disk target (e.g. 'sda', 'sdb').
+
+        Uses libvirt-python changeMediaFlags with empty path + affect flags.
+        Best-effort (suppresses). Used from RancherPhase after import (with stop + uri).
+        """
+        with contextlib.suppress(_libvirt.libvirtError):
+            dom = self.conn.lookupByName(name)
+            flags = 0
+            for flag_name in ("VIR_DOMAIN_AFFECT_CURRENT", "VIR_DOMAIN_AFFECT_LIVE", "VIR_DOMAIN_AFFECT_CONFIG"):
+                flags |= getattr(_libvirt, flag_name, 0)
+            try:
+                dom.changeMediaFlags(target, "", flags)
+            except _libvirt.libvirtError:
+                # Fallback for older libvirt or strict qemu
+                try:
+                    dom.changeMediaFlags(target, "")
+                except _libvirt.libvirtError:
+                    pass

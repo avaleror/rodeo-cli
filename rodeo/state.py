@@ -8,8 +8,6 @@ import yaml
 
 _STATE_DIR = Path.home() / ".rodeo" / "state"
 
-PHASES = ["kvm_host", "vms", "cluster", "rancher", "finalise"]
-
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -62,8 +60,17 @@ def reset_from(
     plan_name: str = "default",
     phases: list[str] | None = None,
 ) -> None:
-    """Clear phase and all subsequent phases."""
-    phase_list = phases if phases is not None else PHASES
+    """Clear phase and all subsequent phases.
+
+    phases must be provided (profile.phases); callers (e.g. clean, runner --from) are
+    required to pass it. No fallback — raises to catch missing callers during dev/tests.
+    """
+    if not phases:
+        raise ValueError(
+            "reset_from(phase, plan_name, phases) requires the phases list "
+            "(pass profile.phases). The global default was removed."
+        )
+    phase_list = phases
     state = load_state(plan_name)
     stored = state.get("phases", {})
     idx = phase_list.index(phase) if phase in phase_list else 0

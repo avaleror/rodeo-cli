@@ -6,8 +6,6 @@ from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.widgets import DataTable, Label, ProgressBar, RichLog
 
-from ..state import PHASES
-
 
 class DeployPanel(Vertical):
     DEFAULT_CSS = """
@@ -41,7 +39,15 @@ class DeployPanel(Vertical):
 
     def __init__(self, phases: list[str] | None = None) -> None:
         super().__init__()
-        self._phases = phases if phases is not None else PHASES
+        if phases:
+            self._phases = phases
+        else:
+            # Default only for direct tests / unusual use; normal path passes from profile.
+            try:
+                from ..profiles.suse_virt import SuseVirtProfile
+                self._phases = SuseVirtProfile.phases
+            except Exception:
+                self._phases = ["kvm_host", "vms", "pxe_server", "cluster", "rancher", "finalise"]
 
     def compose(self) -> ComposeResult:
         yield DataTable(id="phases-table", show_header=True, cursor_type="none")

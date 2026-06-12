@@ -14,6 +14,7 @@ from typing import Generator, Iterator
 
 from .cluster import KUBECONFIG_PATH
 from .runner import DeployEvent, LogLine, ProgressUpdate
+from ..ssh import ssh_opts
 
 
 class RancherPhase:
@@ -42,12 +43,16 @@ class RancherPhase:
         self.harvester_nodes  = [
             n for n in cfg.get("vms", {}) if n != "rancher"
         ] or ["harvester1", "harvester2", "harvester3"]
+        self.libvirt_uri      = cfg.get("libvirt", {}).get("uri", "qemu:///system")
 
         self.rancher_version  = ver.get("rancher", "2.13.1")
         self.k3s_version      = ver.get("k3s", "v1.31.4+k3s1")
         self.cert_mgr_version = ver.get("cert_manager", "v1.16.2")
 
-        self.ssh_key       = Path(cfg.get("ssh", {}).get("identity_file", "/root/.ssh/id_ed25519"))
+        key = cfg.get("ssh", {}).get("identity_file")
+        if not key:
+            key = "/root/.ssh/id_ed25519" if os.geteuid() == 0 else str(Path.home() / ".ssh" / "id_ed25519")
+        self.ssh_key = Path(key)
         self.admin_password = cred.get("lab_admin_password", cred.get("harvester_os_password", ""))
 
         self.rancher_api      = f"https://{self.rancher_ip}:{self.nodeport}"
@@ -135,16 +140,6 @@ class RancherPhase:
 
     # ---------- SSH helpers ----------
 
-    def _ssh_opts(self) -> list[str]:
-        return [
-            "-i", str(self.ssh_key),
-            "-o", "StrictHostKeyChecking=no",
-            "-o", "UserKnownHostsFile=/dev/null",
-            "-o", "ConnectTimeout=10",
-            "-o", "BatchMode=yes",
-            "-o", "LogLevel=ERROR",
-        ]
-
     @staticmethod
     def _run(cmd: list[str], timeout: int, input: str | None = None) -> subprocess.CompletedProcess:
         """subprocess.run that converts timeouts/launch errors into a failed result."""
@@ -163,13 +158,13 @@ class RancherPhase:
 
     def _ssh_run(self, *remote_cmd: str, timeout: int = 30) -> subprocess.CompletedProcess:
         return self._run(
-            ["ssh", *self._ssh_opts(), f"root@{self.rancher_ip}", *remote_cmd],
+            ["ssh", "-i", str(self.ssh_key), *ssh_opts(), f"root@{self.rancher_ip}", *remote_cmd],
             timeout=timeout,
         )
 
     def _ssh_script(self, script: str, timeout: int = 120) -> subprocess.CompletedProcess:
         return self._run(
-            ["ssh", *self._ssh_opts(), f"root@{self.rancher_ip}", "bash", "-s"],
+            ["ssh", "-i", str(self.ssh_key), *ssh_opts(), f"root@{self.rancher_ip}", "bash", "-s"],
             timeout=timeout, input=script,
         )
 
@@ -336,7 +331,7 @@ class RancherPhase:
         script = (
             "set -euo pipefail\n"
             "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
-            f"kubectl -n cattle-system patch svc rancher -p '{patch}'\n"
+            f"kubectl -n cattle-system patch svc rancher --type strategic -p '{patch}'\n"
         )
         r = self._ssh_script(script, timeout=30)
         if r.returncode != 0:
@@ -659,10 +654,45 @@ class RancherPhase:
             yield LogLine(f"  ⚠ Harvester token fetch: {exc}")
 
     def _eject_cdroms(self) -> Iterator[DeployEvent]:
+        """Eject installer/config ISOs from Harvester VMs (best effort, respects cancellation).
+
+        Prefers LibvirtDriver.eject_media (with cfg uri); falls back to virsh -c uri.
+        Derives nodes from cfg (still name-based filter for now; see roadmap).
+        """
+        if self._stop.is_set():
+            return
+
+        # Prefer libvirt-python (no shell, uses configured URI)
+        try:
+            from .libvirt import LibvirtDriver
+            with LibvirtDriver(self.libvirt_uri) as lv:
+                for node in self.harvester_nodes:
+                    if self._stop.is_set():
+                        return
+                    for dev in ("sda", "sdb"):
+                        if self._stop.is_set():
+                            return
+                        try:
+                            lv.eject_media(node, dev)
+                        except Exception:
+                            pass  # method is already best-effort
+                    yield LogLine(f"  {node}: CDROMs ejected")
+            return
+        except Exception as exc:
+            yield LogLine(f"  ⚠ libvirt eject unavailable ({exc}) — falling back to virsh")
+
+        # Fallback using virsh (honor non-default libvirt URI)
+        virsh = ["virsh"]
+        if self.libvirt_uri != "qemu:///system":
+            virsh = ["virsh", "-c", self.libvirt_uri]
         for node in self.harvester_nodes:
+            if self._stop.is_set():
+                return
             for dev in ("sda", "sdb"):
+                if self._stop.is_set():
+                    return
                 r = self._run(
-                    ["virsh", "change-media", node, dev, "--eject", "--live", "--config"],
+                    virsh + ["change-media", node, dev, "--eject", "--live", "--config"],
                     timeout=30,
                 )
                 if r.returncode != 0:

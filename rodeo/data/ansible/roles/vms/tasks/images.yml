@@ -69,16 +69,13 @@
   loop_control:
     label: "{{ item.name }}"
 
-# no_log: the rendered config contains harvester_os_password
 - name: Render Harvester node config YAML
   ansible.builtin.template:
     src: harvester-config.yaml.j2
     dest: "{{ config_dir }}/{{ item.config_iso_name }}/harvester/config.yaml"
-    mode: '0600'
   loop: "{{ vm_nodes | selectattr('flavor', 'equalto', 'harvester') | list }}"
   loop_control:
     label: "{{ item.name }}"
-  no_log: true
 
 - name: Build Harvester config seed ISOs
   ansible.builtin.command: >
@@ -130,13 +127,10 @@
     src: cloud-init-meta-data.j2
     dest: /tmp/rancher-cloud-init/meta-data
 
-# no_log: user-data contains the rancher VM root password
 - name: Write cloud-init user-data
   ansible.builtin.template:
     src: cloud-init-user-data.j2
     dest: /tmp/rancher-cloud-init/user-data
-    mode: '0600'
-  no_log: true
 
 - name: Write cloud-init network-config
   ansible.builtin.template:

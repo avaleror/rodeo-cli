@@ -2,7 +2,7 @@
 
 Technical reference for contributors and maintainers. For deploying a workshop, see [User guide](user-guide.md).
 
-**Version:** 0.3.0  
+**Version:** 0.4.0
 **License:** Apache-2.0
 
 ---
@@ -27,7 +27,7 @@ The tool runs on **cloud instances**, **Instruqt builder VMs**, **local VMs**, o
 | Plan before apply | `rodeo plan` (read-only diff vs host) |
 | Safe resume | Per-plan state, `--from PHASE`, `--force` |
 | One orchestrator | `DeployRunner` — no duplicated TUI/plain/bash paths |
-| Host setup is idempotent | Ansible roles `kvm_host` + `vms` |
+| Host setup is idempotent | Ansible roles `kvm_host` + `vms` + `pxe_server` |
 | Long waits are cancellable | `threading.Event` + process groups in poll loops |
 | Instruqt-safe builds | `deployment_target: instruqt` skips `finalise` until snapshot |
 | Self-contained install | Ansible roles bundled in `rodeo/data/ansible/` |
@@ -59,7 +59,8 @@ The tool runs on **cloud instances**, **Instruqt builder VMs**, **local VMs**, o
         ▼                             ▼
 ┌───────────────────┐       ┌─────────────────────────────┐
 │ Ansible phases    │       │ Python phases               │
-│ kvm_host, vms     │       │ cluster · rancher · finalise│
+│ kvm_host, vms,    │       │ cluster · rancher · finalise│
+│ pxe_server        │       │                             │
 │ ansible-playbook  │       │ ClusterPhase · RancherPhase │
 │ -e @vars-file     │       │ LibvirtDriver               │
 └───────────────────┘       └─────────────────────────────┘
@@ -86,6 +87,7 @@ Neither contains pipeline logic. Both subscribe to the same `DeployRunner` gener
 |-------|------|-----------|
 | Host packages, systemd, firewalld, sysctl | **Ansible** | Declarative idempotency; SLES 16 edge cases already encoded in roles |
 | VM disks, ISOs, XML, cloud-init, network XML | **Ansible** | Template + file generation; community.libvirt modules |
+| iPXE boot server (nginx, dnsmasq, boot files) | **Ansible** | `pxe_server` role; two-stage UEFI → TFTP → HTTP |
 | VM start order, VIP poll, kubeconfig, nodes Ready | **Python** | 20–90 minute waits, progress UX, cancellation |
 | K3s, Rancher API, cluster import | **Python** | Procedural API sequence; structured errors |
 | Runtime VM ops (status, clean, restart) | **libvirt-python** | Direct API; avoids virsh where possible |
@@ -102,7 +104,8 @@ Bash deploy scripts (`start-vms.sh`, `setup-rancher.sh`, `deploy.sh`) were **ret
 rodeo/
 ├── cli.py                 Click entry; ConfigError handler
 ├── config.py              Plan load, Jinja, -P/--paramfile, secrets, validation
-├── state.py               ~/.rodeo/state/<plan-name>.yaml
+├── state.py               ~/.rodeo/state/<plan-name>.yaml (profiles own phase lists; `reset_from` requires phases arg)
+├── ssh.py                 Shared SSH opts + helpers (used by engine + commands)
 ├── app.py                 Textual TUI (event subscriber only)
 ├── engine/
 │   ├── runner.py          DeployRunner, vars file, phase dispatch helpers
@@ -115,7 +118,7 @@ rodeo/
 ├── commands/              Thin CLI wrappers
 ├── widgets/               TUI panels
 └── data/
-    ├── ansible/           kvm_host + vms roles (bundled)
+    ├── ansible/           kvm_host + vms + pxe_server roles (bundled)
     ├── deployer/          inventory.local + legacy examples
     └── templates/         init templates
 
@@ -127,13 +130,14 @@ docs/                      architecture.md, user-guide.md, assets/diagrams/
 
 ## Deployment pipeline
 
-Five phases per `SuseVirtProfile`. State is per plan name (`cfg["name"]`).
+Six phases per `SuseVirtProfile`. State is per plan name (`cfg["name"]`).
 
 | Phase | Engine | Summary |
 |-------|--------|---------|
 | `kvm_host` | Ansible | KVM packages, modular libvirt, NM unmanaged conf, firewalld rules (not started), storage pool, sysctl |
-| `vms` | Ansible | Download ISOs/images, virbr0 + DHCP leases, qcow2 disks, config ISOs, define domains (not start) |
-| `cluster` | `ClusterPhase` | firewalld on; start h1 → VIP → h2 → 90s → h3 → rancher; kubeconfig; 3 nodes Ready |
+| `vms` | Ansible | Download ISOs/images, virbr0 + DHCP leases, qcow2 disks, config ISOs, define domains (not start); disk-first boot order |
+| `pxe_server` | Ansible | nginx on `virbr0:8080`, `ipxe.efi` TFTP, vmlinuz/initrd/rootfs, per-node iPXE scripts + config YAMLs, dnsmasq two-stage boot |
+| `cluster` | `ClusterPhase` | firewalld on; virbr0 up; start h1 → VIP → h2 → 90s → h3 → rancher; kubeconfig; 3 nodes Ready |
 | `rancher` | `RancherPhase` | K3s, Helm, cert-manager, Rancher Prime, import Harvester, CoreDNS patch, eject ISOs |
 | `finalise` | `DeployRunner` | VM autostart + `libvirt-guests` enable |
 
@@ -231,7 +235,33 @@ DeployRunner.run() yields:
 
 The diagram shows the full path from a student browser through Instruqt `cloud-client` nginx tabs, host `firewalld` DNAT on **geekohive**, and `virbr0` guests (VIP, Harvester nodes, Rancher, optional LB pool).
 
-VM IPs, MACs, and UUIDs are still defined in `roles/vms/defaults/main.yml` and mirrored in the profile. Custom topologies are on the roadmap (Phase C in ROADMAP.md).
+VM IPs/user for Python-side ops (ssh, restart, status, cluster waits) come from profile `default_cfg()` + plan `vms` (profile-driven in TUI panels too). Full `vm_nodes` (MACs/UUIDs/flavors + provisioning) still from `roles/vms/defaults/main.yml` (Ansible side). Custom topologies / single inventory source on the roadmap (Phase C). TUI LogsPanel and phase focus now derive VM list from cfg/profile instead of hardcodes.
+
+### Harvester install via iPXE (not ISO-first boot)
+
+Harvester 1.8.0 requires UEFI; legacy BIOS PXE is not supported. The `pxe_server` role provisions network boot on `virbr0`:
+
+```
+UEFI firmware (empty disk, no bootloader)
+  → DHCP from dnsmasq on 192.168.122.1
+  → Stage 1: boot ipxe.efi (TFTP)
+  → Stage 2: per-node HTTP script at :8080/ipxe/harvester{1,2,3}
+  → kernel + initrd + squashfs over HTTP
+  → unattended install (config YAML at :8080/config/config-harvesterN.yaml)
+```
+
+VM XML boot order is **disk first, management NIC second**. On first boot the qcow2 is empty, so UEFI falls through to NIC PXE. After install, reboots go straight to disk. ISO CDROMs remain attached as fallback; `RancherPhase` ejects them once the cluster is up.
+
+**On-disk layout after `pxe_server`:**
+
+| Path | Purpose |
+|------|---------|
+| `/var/lib/libvirt/dnsmasq/ipxe.efi` | Stage-1 UEFI loader (TFTP) |
+| `/srv/harvester-pxe/harvester/` | vmlinuz, initrd, rootfs.squashfs, ISO symlink |
+| `/srv/harvester-pxe/ipxe/harvester{1,2,3}` | Per-node iPXE scripts |
+| `/srv/harvester-pxe/config/config-harvester{N}.yaml` | CREATE/JOIN Harvester config |
+
+Ref: [Harvester v1.8 PXE boot install](https://docs.harvesterhci.io/v1.8/install/pxe-boot-install).
 
 ---
 
@@ -252,8 +282,10 @@ Documented in role comments and [CONTEXT.md](../CONTEXT.md).
 
 - `roles/kvm_host/tasks/libvirt.yml`
 - `roles/vms/tasks/network_setup.yml`
-- `roles/vms/defaults/main.yml` (MACs ↔ DHCP ↔ Harvester config ISOs)
-- `engine/cluster.py` (`ETCD_JOIN_GAP`)
+- `roles/vms/defaults/main.yml` (MACs ↔ DHCP ↔ Harvester config)
+- `roles/pxe_server/templates/network-pxe.xml.j2` (two-stage iPXE dnsmasq routing)
+- `roles/pxe_server/templates/ipxe-node.j2` (UEFI `initrd=` kernel arg required)
+- `engine/cluster.py` (`ETCD_JOIN_GAP`, virbr0 start before VM boot)
 
 ---
 
@@ -287,6 +319,7 @@ pytest tests/ -v
 | `test_runner.py` | Pipeline events, instruqt guard, vars file |
 | `test_ansible_consistency.py` | Profile ↔ Ansible defaults ↔ plan template drift |
 | `test_ansible_vars_contract.py` | Vars file keys match Ansible consumers |
+| `test_pxe_integration.py` | Playbook order, pxe_server role, boot order, JOIN VIP guard |
 | `test_cluster.py` / `test_rancher.py` | Poll loops, timeouts, parsing |
 | `test_plan_cmd.py` | Plan diff command |
 

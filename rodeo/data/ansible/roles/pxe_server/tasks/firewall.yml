@@ -1,0 +1,16 @@
+---
+# TFTP (69/udp) must be allowed in the libvirt zone so dnsmasq can respond to
+# TFTP GET requests from the Harvester KVM guests on virbr0.
+#
+# The nginx HTTP port (pxe_http_port) is bound to 192.168.122.1 (virbr0). The
+# libvirt zone already accepts all traffic from virbr0, so no extra HTTP rule
+# is needed — only TFTP requires an explicit service rule.
+
+- name: Allow TFTP in the libvirt zone (dnsmasq PXE stage-1)
+  ansible.posix.firewalld:
+    zone: libvirt
+    service: tftp
+    permanent: true
+    immediate: false
+    state: enabled
+  notify: reload firewalld

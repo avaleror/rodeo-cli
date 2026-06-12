@@ -1,0 +1,37 @@
+---
+# The vms role already downloads the ISO (used by ISO boot). The PXE install
+# still needs the ISO accessible over HTTP so the Harvester installer can
+# fetch it during installation (iso_url in the config YAML). A symlink avoids
+# a second 1+ GB download.
+#
+# vmlinuz, initrd, and rootfs.squashfs are NOT downloaded by the vms role
+# (it boots from ISO directly). They are only needed for PXE boot and are
+# fetched here.
+
+- name: Symlink Harvester ISO into PXE HTTP root
+  ansible.builtin.file:
+    src: "{{ image_dir }}/harvester-v{{ harvester_version }}-amd64.iso"
+    dest: "{{ pxe_http_root }}/harvester/harvester-v{{ harvester_version }}-amd64.iso"
+    state: link
+    force: true
+
+- name: Download Harvester {{ harvester_version }} vmlinuz
+  ansible.builtin.get_url:
+    url: "{{ pxe_harvester_base_url }}/harvester-v{{ harvester_version }}-vmlinuz-amd64"
+    dest: "{{ pxe_http_root }}/harvester/harvester-v{{ harvester_version }}-vmlinuz-amd64"
+    mode: '0644'
+
+- name: Download Harvester {{ harvester_version }} initrd
+  ansible.builtin.get_url:
+    url: "{{ pxe_harvester_base_url }}/harvester-v{{ harvester_version }}-initrd-amd64"
+    dest: "{{ pxe_http_root }}/harvester/harvester-v{{ harvester_version }}-initrd-amd64"
+    mode: '0644'
+
+# rootfs.squashfs (~1.5 GB) is the live root filesystem. The installer mounts it
+# from HTTP; it does not need to be present on disk at install time. Download last
+# because it is by far the largest file.
+- name: Download Harvester {{ harvester_version }} rootfs squashfs
+  ansible.builtin.get_url:
+    url: "{{ pxe_harvester_base_url }}/harvester-v{{ harvester_version }}-rootfs-amd64.squashfs"
+    dest: "{{ pxe_http_root }}/harvester/harvester-v{{ harvester_version }}-rootfs-amd64.squashfs"
+    mode: '0644'

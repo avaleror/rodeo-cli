@@ -108,7 +108,10 @@ def deploy_cmd(
 
 
 def _run_preflight(cfg: dict, root: Path) -> bool:
-    """Run preflight checks. Print results. Return True if all pass."""
+    """Run preflight checks. Print results. Return True if all pass.
+    Core tools (ansible, kubectl) are hard requirements. virsh/ssh are warnings only
+    (day-2 commands + fallbacks) since libvirt-python is the primary path.
+    """
     res = cfg.get("resources", {})
     storage = cfg.get("storage", {})
     image_dir = Path(storage.get("image_dir", "/var/lib/libvirt/images"))
@@ -165,12 +168,23 @@ def _run_preflight(cfg: dict, root: Path) -> bool:
         disk_detail = f"cannot stat {image_dir}"
     checks.append(("disk", disk_ok, disk_detail))
 
-    # Required tools
-    for tool in ("ansible-playbook", "ansible-galaxy", "kubectl", "virsh", "ssh"):
+    # Core tools required for deploy phases (ansible + kubectl used by runner/cluster/rancher)
+    core_tools = ("ansible-playbook", "ansible-galaxy", "kubectl")
+    for tool in core_tools:
         checks.append((
             tool,
             shutil.which(tool) is not None,
             f"{tool} not found in PATH",
+        ))
+
+    # Day-2 / convenience tools (attach, ssh, restart, some clean fallbacks use virsh/ssh binaries;
+    # libvirt-python path is primary for most ops now). Missing these is a warning only for preflight.
+    optional_tools = ("virsh", "ssh")
+    for tool in optional_tools:
+        checks.append((
+            tool,
+            shutil.which(tool) is not None,
+            f"{tool} not found in PATH (needed for 'attach', 'ssh', and some fallbacks)",
         ))
 
     console.print(f"\n[bold]Preflight — {cfg.get('name', 'rodeo')}[/bold]\n")
@@ -179,8 +193,11 @@ def _run_preflight(cfg: dict, root: Path) -> bool:
         if ok:
             console.print(f"  [green]✓[/green]  {label}")
         else:
-            console.print(f"  [red]✗[/red]  {label}  [dim]{detail}[/dim]")
-            all_ok = False
+            if label in optional_tools:
+                console.print(f"  [yellow]⚠[/yellow]  {label}  [dim]{detail}[/dim]")
+            else:
+                console.print(f"  [red]✗[/red]  {label}  [dim]{detail}[/dim]")
+                all_ok = False
 
     console.print()
     if all_ok:

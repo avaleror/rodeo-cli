@@ -128,10 +128,11 @@ class RodeoApp(App):
     def compose(self) -> ComposeResult:
         from .profiles import get_profile
         profile = get_profile(self.cfg.get("type", "suse-virt"))
+        vms = list(self.cfg.get("vms", {}).keys()) or profile.vm_names
         yield Header(show_clock=True)
         with Horizontal():
             yield DeployPanel(phases=profile.phases)
-            yield LogsPanel()
+            yield LogsPanel(vms=vms)
         yield Footer()
 
     def on_mount(self) -> None:
@@ -206,10 +207,13 @@ class RodeoApp(App):
 
     def on__phase_started(self, msg: _PhaseStarted) -> None:
         self.query_one(DeployPanel).set_phase_running(msg.phase)
+        vms = list(self.cfg.get("vms", {}).keys())
+        harvester_vm = next((n for n in vms if n != "rancher"), vms[0] if vms else "harvester1")
+        rancher_vm = "rancher" if "rancher" in vms else (vms[-1] if vms else "rancher")
         if msg.phase in ("vms", "cluster"):
-            self.query_one(LogsPanel).switch_to("harvester1")
+            self.query_one(LogsPanel).switch_to(harvester_vm)
         elif msg.phase == "rancher":
-            self.query_one(LogsPanel).switch_to("rancher")
+            self.query_one(LogsPanel).switch_to(rancher_vm)
 
     def on__phase_skipped(self, msg: _PhaseSkipped) -> None:
         self.query_one(DeployPanel).set_phase_skipped(msg.phase)

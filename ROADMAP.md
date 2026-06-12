@@ -74,13 +74,12 @@ and custom networks; folds in old surgical tasks 9 and 10.
 
 ## Phase D — Polish (ongoing)
 
-- [ ] **S1** kill duplicated literal defaults: engine trusts merged `cfg`,
-  drop inline `.get(..., "192.168.122.9")`-style fallbacks; profile is the
-  single Python-side source
+Some items advanced in v0.4 (see CONTEXT.md version history): relaxed preflight for day-2 tools, attach respects plan uri, strict phase list enforcement in state/reset, SSH centralization (new `rodeo/ssh.py`), TUI VM lists now profile-driven, eject/libvirt + nodeport improvements. Big remaining P1 (topology hardcodes + full vm inventory overrides) are the core of Phase C.
+
+- [x] **S1** (partial) kill duplicated literal defaults: SSH options and key defaults centralized in `rodeo/ssh.py` + consistent root-aware logic across engine/commands (profile/cfg still source of truth for per-plan). More literal defaults remain.
 - [ ] **S2** phases return a `PhaseResult` instead of mutating
   `runner._last_rc` (removes the profile→runner private coupling)
-- [ ] **S3** commands call engine helpers instead of duplicating VIP-probe /
-  libvirt-listing logic
+- [x] **S3** (partial) commands call engine helpers: preflight/attach/clean use more cfg-driven logic; attach now uses libvirt uri; several virsh fallbacks improved. More VIP-probe / listing duplication remains.
 - [ ] **F1** cache `ansible-galaxy collection install` (marker keyed on
   requirements.yml hash)
 - [ ] **F3** stream helm/K3s SSH installer output (Popen instead of buffered

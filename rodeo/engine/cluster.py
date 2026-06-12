@@ -1,6 +1,7 @@
 """ClusterPhase — Python port of the retired start-vms.sh deployer script."""
 from __future__ import annotations
 
+import os
 import ssl
 import subprocess
 import threading
@@ -12,19 +13,12 @@ from typing import Generator, Iterator
 
 from .libvirt import LibvirtDriver
 from .runner import DeployEvent, LogLine, ProgressUpdate
+from ..ssh import ssh_opts
 
 KUBECONFIG_PATH = Path.home() / ".rodeo" / "harvester-kubeconfig"
 # Legacy location used by instruqt-virtualization challenge scripts —
 # kept as a symlink to the real file.
 LEGACY_KUBECONFIG_PATH = Path("/tmp/harvester-kubeconfig")
-
-_SSH_OPTS = [
-    "-o", "StrictHostKeyChecking=no",
-    "-o", "UserKnownHostsFile=/dev/null",
-    "-o", "ConnectTimeout=10",
-    "-o", "BatchMode=yes",
-    "-o", "LogLevel=ERROR",
-]
 
 
 class ClusterPhase:
@@ -45,8 +39,17 @@ class ClusterPhase:
     def __init__(self, cfg: dict, stop: threading.Event | None = None) -> None:
         self.vip      = cfg["network"]["vip"]
         self.uri      = cfg.get("libvirt", {}).get("uri", "qemu:///system")
-        self.ssh_key  = Path(cfg.get("ssh", {}).get("identity_file", "/root/.ssh/id_ed25519"))
+        key = cfg.get("ssh", {}).get("identity_file")
+        if not key:
+            key = "/root/.ssh/id_ed25519" if os.geteuid() == 0 else str(Path.home() / ".ssh" / "id_ed25519")
+        self.ssh_key = Path(key)
         self.vm_names = list(cfg.get("vms", {}).keys())
+        vms_cfg = cfg.get("vms", {})
+        # Derive harvester SSH user from config (all harvester nodes share it).
+        # We skip the VM named "rancher" (its user is root); defaults to "rancher" for Harvester OS.
+        # Used for kubeconfig fetch over VIP (Harvester cluster). See profile for per-VM users.
+        harvester_vm = next((n for n in self.vm_names if n != "rancher"), self.vm_names[0] if self.vm_names else None)
+        self.harvester_user = vms_cfg.get(harvester_vm, {}).get("user", "rancher") if harvester_vm else "rancher"
         self.success  = False
         self.error    = ""
         self._stop    = stop if stop is not None else threading.Event()
@@ -61,6 +64,15 @@ class ClusterPhase:
     def stream(self) -> Iterator[DeployEvent]:
         """Yield events. Check self.success after the generator is exhausted."""
         with LibvirtDriver(self.uri) as lv:
+            yield LogLine("Ensuring libvirt default network (virbr0) is up...")
+            try:
+                lv.net_start("default")
+                lv.net_set_autostart("default", True)
+                yield LogLine("  virbr0 active — iPXE dnsmasq ready.")
+            except Exception as exc:
+                self.error = f"default network: {exc}"
+                yield LogLine(f"  ✗  {self.error}")
+                return
 
             if not (yield from self._start_vm(lv, "harvester1")):
                 return
@@ -168,8 +180,8 @@ class ClusterPhase:
     def _fetch_kubeconfig(self) -> Generator[DeployEvent, None, bool]:
         cmd = [
             "ssh", "-i", str(self.ssh_key),
-            *_SSH_OPTS,
-            f"rancher@{self.vip}",
+            *ssh_opts(),
+            f"{self.harvester_user}@{self.vip}",
             "sudo cat /etc/rancher/rke2/rke2.yaml",
         ]
 

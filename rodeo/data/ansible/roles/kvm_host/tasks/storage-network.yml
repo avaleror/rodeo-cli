@@ -17,3 +17,12 @@
 # In bridge mode all NICs attach to the host bridge ({{ host_bridge }}) instead.
 #
 # This file is not imported by main.yml and has no tasks to run.
+#
+# Storage disk selection (from definition.yaml storage.device) is emitted as:
+#   libvirt_storage_device, libvirt_storage_fs_type, libvirt_storage_mount_point
+# These can be used by future tasks here or in vms/storage_setup.yml to prepare
+# a dedicated disk for the lab images / Longhorn when the host has multiple disks.
+# image_dir / libvirt_pool_path come from the same section.
+#
+# The high-level "components" list from definition.yaml (harvester-cluster, rancher, pxe-server, host-network-prep)
+# is also emitted as "components" for introspection and future "rodeo describe".

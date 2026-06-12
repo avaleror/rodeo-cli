@@ -21,12 +21,32 @@ The default lab (**suse-virt**) provisions a 3-node [Harvester](https://harveste
 
 ## Quick start
 
+**For clean SLES 16 / Leap 16 hosts (recommended, minimal manual steps):**
+
 ```bash
-pip install -e .
-sudo rodeo install-deps
-rodeo init
-rodeo deploy --check
+# One command: prereqs, hidden setup, binary link, ready lab dir with 2-node Harvester example
+curl -fsSL https://raw.githubusercontent.com/avaleror/rodeo-cli/main/scripts/bootstrap-sles.sh | bash
+
+# Then follow the 4 lines printed by the script (cd to lab, source secrets, plan, deploy)
+```
+
+**For development / source tree:**
+
+```bash
+git clone https://github.com/avaleror/rodeo-cli.git
+cd rodeo-cli
+python3 -m venv --system-site-packages .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+rodeo bootstrap   # does link + prepares lab dir (or use the curl above)
+```
+
+Then:
+
+```bash
+cd ~/harvester-rodeo-lab   # or your lab dir
+source rodeo-secrets.env
 rodeo plan
+sudo -E rodeo deploy --check
 rodeo deploy
 ```
 
@@ -36,8 +56,9 @@ rodeo deploy
 
 | Command | Description |
 |---------|-------------|
-| `install-deps` | Host packages (KVM, ansible, kubectl, …) |
-| `init` | Create `rodeo-plan.yaml` + `~/.rodeo/secrets.yaml` |
+| `bootstrap` | One-command host link + ready lab dir setup (for clean SLES after basic venv) |
+| `install-deps` | Host packages (KVM, ansible, kubectl, …) + optional `--link` for /usr/local/bin/rodeo |
+| `init` | Create `rodeo-plan.yaml` + `~/.rodeo/secrets.yaml` (supports `--example` for pre-seeded configs) |
 | `plan` | Preview diff vs host (no changes) |
 | `deploy` | Run the full pipeline |
 | `status` | VM states, VIP, phase progress |

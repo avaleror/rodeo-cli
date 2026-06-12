@@ -50,28 +50,60 @@ Nested KVM makes Harvester install **slow (20–60 minutes)**. Plan workshop pre
 
 ## Installation
 
-On the machine that will host the lab:
+### Recommended: one-command bootstrap for clean SLES 16 / Leap 16 (or similar)
+
+```bash
+# Minimal manual interaction — handles prereqs, setup, binary link in /usr/local/bin, and a ready lab dir
+curl -fsSL https://raw.githubusercontent.com/avaleror/rodeo-cli/main/scripts/bootstrap-sles.sh | bash
+```
+
+Follow the exact commands printed at the end (typically `cd ~/harvester-rodeo-lab`, `source rodeo-secrets.env`, `rodeo plan`, `sudo -E rodeo deploy...`).
+
+This is the clean, simple path for workshop operators on bare metal or cloud hosts.
+
+### For development or custom setups
 
 ```bash
 git clone https://github.com/avaleror/rodeo-cli
 cd rodeo-cli
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e .
+python3 -m venv --system-site-packages .venv && source .venv/bin/activate
+pip install -e ".[dev]"
 
-# System packages (once per host, requires root)
-sudo rodeo install-deps
+# Then either:
+rodeo bootstrap          # link + ready lab dir (2-node Harvester example)
+# or the curl bootstrap above
 ```
 
-`install-deps` installs KVM, libvirt, ansible-core, ansible collections, kubectl, and related tools for your distro.
+**System packages (once per host, requires root):**
+
+```bash
+sudo rodeo install-deps [--link]
+```
+
+`install-deps` installs KVM patterns, libvirt daemons, ansible-core + collections, kubectl, etc. Use `--link` (or let `bootstrap` do it) to create `/usr/local/bin/rodeo` for a clean global command with no PATH/export friction.
+
+See the root [README.md](../README.md) and `scripts/bootstrap-sles.sh` for the absolute minimal flow.
+
+### Bootstrap flow (visual)
+
+See the Mermaid source and rendered diagram in the repository:
+
+- [`assets/diagrams/bootstrap-flow.mmd`](assets/diagrams/bootstrap-flow.mmd)
+
+(Embed the content in your Markdown viewer or GitHub for the flowchart.)
 
 ---
 
 ## First-time setup
 
-### 1. Generate config
+**Best path:** Use `rodeo bootstrap` (or the curl bootstrap script) — it runs `init --example harvester-lab-config` for you and seeds a ready-to-use lab dir with the 2-node Harvester no-Rancher test configuration, plus the link for clean `rodeo` invocation.
+
+### 1. Generate config (or let bootstrap do it)
 
 ```bash
 rodeo init
+# or
+rodeo init --example harvester-lab-config /path/to/my-lab
 ```
 
 Creates:

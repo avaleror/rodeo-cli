@@ -10,6 +10,7 @@ from .commands.clean import clean_cmd
 from .commands.deploy import deploy_cmd
 from .commands.init_cmd import init_cmd
 from .commands.install_deps import install_deps_cmd
+from .commands.bootstrap_cmd import bootstrap_cmd
 from .commands.logs import logs_cmd
 from .commands.plan_cmd import plan_cmd
 from .commands.restart import restart_cmd
@@ -43,11 +44,9 @@ def cli(config_dir: str | None) -> None:
 
     \b
     Quick start:
-      sudo rodeo install-deps --link              # once, on a fresh host (SLES 16 etc.) — also creates /usr/local/bin/rodeo
-      rodeo init                                  # generate plan + secrets + rodeo-secrets.env
-      rodeo init --example harvester-lab-config   # ...or seed the 2-node no-Rancher test lab in one go
-      rodeo plan                                  # preview
-      rodeo deploy                                # full pipeline
+      # Minimal: one curl (no manual clone/venv/pip)
+      curl -fsSL https://raw.githubusercontent.com/avaleror/rodeo-cli/main/scripts/bootstrap-sles.sh | bash
+      # then follow printed commands (cd lab, source, rodeo plan, sudo -E rodeo deploy)
       rodeo status
     """
     # Store for subcommands that don't get it from their own decorator
@@ -57,6 +56,7 @@ def cli(config_dir: str | None) -> None:
 
 
 cli.add_command(install_deps_cmd, name="install-deps")
+cli.add_command(bootstrap_cmd,    name="bootstrap")
 cli.add_command(init_cmd,         name="init")
 cli.add_command(plan_cmd,         name="plan")
 cli.add_command(deploy_cmd,       name="deploy")

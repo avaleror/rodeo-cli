@@ -49,7 +49,7 @@ def cli(config_dir: str | None) -> None:
     Quick start:
       # Minimal: one curl (no manual clone/venv/pip)
       curl -fsSL https://raw.githubusercontent.com/avaleror/rodeo-cli/main/scripts/bootstrap-sles.sh | bash
-      # or generate custom first: rodeo generate --dir mylab  (interactive, full skeleton)
+      # or init with profile: rodeo init --profile test  (2 small nodes) or --profile harvester (full 3+1)
       # then follow printed (cd lab, source, plan, deploy)
       # Lifecycle: stop/start for graceful (infra-aware per def); clean --all --hard for reset (stop first unless --hard)
       rodeo status

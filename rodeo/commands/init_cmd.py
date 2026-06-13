@@ -56,12 +56,12 @@ def _pick_password(ask: bool) -> tuple[str, str]:
 @click.option("--force", is_flag=True, help="Overwrite existing files.")
 @click.option("--ask", "ask_password", is_flag=True,
               help="Prompt for the lab password instead of generating one.")
-@click.option("--example", "example", default=None, metavar="NAME",
-              help="Seed target dir from rodeo/data/examples/NAME (e.g. harvester-lab-config). "
-                   "Copies definition.yaml, tuned plan, certs/, manifests/, etc. for --config-dir use. "
-                   "The plan is still rewritten for ??env: secrets so source + sudo -E works.")
+@click.option("--profile", "profile", default=None, metavar="NAME",
+              help="Seed using profile: 'test' (2 small Harvester nodes, no Rancher) or 'harvester' (full 3-node + Rancher Prime). Always includes iPXE server as auxiliary infra. Copies definition + plan + artifacts.")
+@click.option("--example", "example", default=None, metavar="NAME", hidden=True,
+              help="Legacy. Use --profile instead.")
 @click.argument("target_dir", default=".", type=click.Path())
-def init_cmd(force: bool, ask_password: bool, target_dir: str, example: str | None = None) -> None:
+def init_cmd(force: bool, ask_password: bool, target_dir: str, profile: str | None = None, example: str | None = None) -> None:
     """Generate rodeo-plan.yaml and ~/.rodeo/secrets.yaml.
 
     \b
@@ -70,15 +70,21 @@ def init_cmd(force: bool, ask_password: bool, target_dir: str, example: str | No
       2. $RODEO_PASSWORD  environment variable (CI / Instruqt setup scripts)
       3. generated        random 16 characters
 
-    With --example you get a ready-to-use lab dir (including EIB-style artifacts) in one step.
+    With --profile (test or harvester) you get a ready-to-use lab dir (including EIB-style artifacts) in one step.
     """
     dest = Path(target_dir).resolve()
     dest.mkdir(parents=True, exist_ok=True)
     plan_dest = dest / "rodeo-plan.yaml"
     secrets_dest = Path.home() / ".rodeo" / "secrets.yaml"
 
-    # Optional: seed a full example (definition + subdirs for artifacts + a tuned plan).
-    # This removes the manual "cp -r rodeo/data/examples/... ; cd ; init" dance for test flows.
+    if profile:
+        if profile == "test":
+            example = "harvester-lab-config"
+        elif profile == "harvester":
+            example = "harvester"
+        else:
+            console.print(f"[red]Unknown profile '{profile}'. Use test or harvester.[/red]")
+            raise SystemExit(1)
     if example:
         src = Path(__file__).parent.parent / "data" / "examples" / example
         if not src.is_dir():

@@ -101,8 +101,8 @@ def bootstrap_cmd(lab_dir: str, force: bool) -> None:
     # This example is deliberately the "testing / modest hardware" variant
     # (2 nodes, 6 vCPU each, no Rancher) to keep first-time deploys feasible
     # on common developer / CI hosts.
-    console.print(f"[bold]Initializing lab at {lab} with harvester-lab-config example...[/bold]")
-    init_args = [rodeo_bin, "init", "--force" if force else "", "--example", "harvester-lab-config", str(lab)]
+    console.print(f"[bold]Initializing lab at {lab}...[/bold]")
+    init_args = [rodeo_bin, "init", "--force" if force else "", "--profile", "test", str(lab)]
     # Filter empty strings that appear when --force is not used.
     init_args = [a for a in init_args if a]
     try:

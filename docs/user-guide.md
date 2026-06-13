@@ -65,7 +65,7 @@ This is the clean, simple path for workshop operators on bare metal or cloud hos
 
 Use `rodeo generate` (new) to create a full custom config-dir skeleton (definition.yaml + rodeo-plan.yaml + certs/ etc like EIB). It collects configuration parameters (name, node count, target, storage device, optional advanced resources/network) to produce validated artifacts from pre-existing templates as base. 
 
-Why created (logical reasons in project): The declarative model (definition as single source per inventory.py and definition.yaml: nodes/templates/components/harvester sections for renderer/phases) is complex; manual creation risks invalid states (e.g. mismatched harvester_ready_count vs nodes list, missing infra_type for stop/start in stop_cmd.py/start_cmd.py, no ??env breaking credentials in init/sudo flows, resources not matching host for clean/deploy). Pre-existing templates (harvester-lab-config) provide "rails" (validated structure with infra_type, on_host components, start_order) to avoid bad defs. Parameter collection (hybrid) allows customization while producing output aligned with load_config (config.py merge), build_inventory (vm_nodes from nodes, host_prep), runner (phases), clean ( --all patterns/state), stop/start (infra-aware order/services from definition).
+Why created (logical reasons in project): The declarative model (definition as single source per inventory.py and definition.yaml: nodes/templates/components/harvester sections for renderer/phases) is complex; manual creation risks invalid states (e.g. mismatched harvester_ready_count vs nodes list, missing infra_type for stop/start in stop_cmd.py/start_cmd.py, no ??env breaking credentials in init/sudo flows, resources not matching host for clean/deploy). Pre-existing profiles (test / harvester) provide "rails" (validated structure with infra_type, on_host components including iPXE, start_order) to avoid bad defs. Parameter collection (hybrid) allows customization while producing output aligned with load_config (config.py merge), build_inventory (vm_nodes from nodes, host_prep), runner (phases), clean ( --all patterns/state), stop/start (infra-aware order/services from definition).
 
 Outcomes of using the concrete code (generate_cmd.py): Engineer gets complete, ready config-dir (full EIB-style skeleton with artifacts for --config-dir support) that "just works" in pipeline (generate -> source env -> plan/deploy -> stop for gentle pause using definition infra_type/components -> start or clean --all --hard for reset/repurpose leaving packages/binary). Post-validation (load_config) + yaml customize from template ensures correctness. Supports future ( --type for profiles). Fits general picture as pre-deploy entry point (see architecture.md declarative pipeline, user-guide flows, stop-design-options.md rationale, clean.py integration for "stop before clean", cli.py registration). 
 
@@ -121,16 +121,16 @@ See the Mermaid source and rendered diagram in the repository:
 
 ## First-time setup
 
-**Best path 1:** Use `rodeo bootstrap` (or the curl bootstrap script) — it runs `init --example harvester-lab-config` for you and seeds a ready-to-use lab dir with the 2-node Harvester no-Rancher test configuration, plus the link for clean `rodeo` invocation.
+**Best path 1:** Use `rodeo bootstrap` (or the curl bootstrap script) — it runs `init --profile test` for you and seeds a ready-to-use lab dir with the 2-node Harvester no-Rancher test configuration (iPXE always included as auxiliary), plus the link for clean `rodeo` invocation.
 
 **Best path 2 (custom):** Use `rodeo generate --dir mylab` first (parameter collection from templates) to create custom skeleton, then init/deploy.
 
 ### 1. Generate config (or let bootstrap/generate do it)
 
 ```bash
-rodeo init
+rodeo init --profile test
 # or
-rodeo init --example harvester-lab-config /path/to/my-lab
+rodeo init --profile harvester /path/to/my-lab
 # or for custom: rodeo generate --dir mylab (then cd; rodeo init --force if needed)
 ```
 

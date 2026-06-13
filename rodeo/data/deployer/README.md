@@ -7,3 +7,5 @@ was retired in rodeo-cli v0.3. Use `rodeo deploy` — the same logic lives in
 
 Only `inventory.local` is still used: it is the Ansible inventory referenced
 by the plan default `ansible.inventory: deployer/inventory.local`.
+
+Note: new commands like `generate`, `stop`, `start`, `bootstrap`, `clean --all` are in the main rodeo CLI (see user-guide).

@@ -167,7 +167,7 @@ These are the non-obvious things that burned time during development:
 | `init [DIR] [--ask] [--force]` | Plan from template; secrets with random password + token. `$RODEO_PASSWORD` honoured. |
 | `plan [-P k=v] [--paramfile F]` | Read-only diff of desired vs actual: VMs (create/change/unchanged via libvirt dom.info), network, storage artifacts, phases. Degrades to desired-only without libvirt. Validation issues are warnings here, hard errors in deploy. |
 | `deploy [--from P] [--force] [--check] [--finalise] [--tui/--no-tui] [-P k=v]` | Full pipeline. `--check` = preflight only (root, /dev/kvm, nested virt, RAM, disk, tools). |
-| `clean [--yes]` | LibvirtDriver destroy/undefine (virsh fallback), disk glob deletes, network teardown, state reset. |
+| `clean [--yes] [--all --secrets --force-network]` | Per-plan or full host reset: destroy rodeo VMs + default network + artifacts + all/specific plan states + optional secrets. Leaves packages + rodeo binary (for fresh test or node repurposing). |
 | `status` | VM table (from plan inventory), VIP probe, phase progress. |
 | `watch` | TUI view-only (TTY required). |
 | `restart VM\|all [--hard]` | ACPI shutdown + start; VM names from plan. |

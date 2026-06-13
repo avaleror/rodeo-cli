@@ -28,6 +28,7 @@ OPTIONAL_TOOLS = ("virsh", "ssh")
 # Beginner-facing profiles, smallest first, with the RAM each realistically needs.
 # `up`/`doctor` recommend the largest profile whose need fits available RAM.
 PROFILE_SIZING = [
+    {"name": "rancher", "ram_gib": 10, "label": "Rancher Prime on K3s (1 VM, no Harvester)"},
     {"name": "test", "ram_gib": 36, "label": "2-node Harvester (no Rancher)"},
     {"name": "harvester", "ram_gib": 60, "label": "3-node Harvester + Rancher Prime"},
 ]

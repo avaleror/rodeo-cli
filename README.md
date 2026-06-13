@@ -46,6 +46,16 @@ Advanced / scripted setups (custom topologies, Instruqt images, pinned versions)
 `generate`, `init`, `bootstrap`, and the explicit `plan` / `deploy` commands. See the
 [User guide](docs/user-guide.md).
 
+### Lab profiles
+
+`up`/`doctor` recommend the largest that fits your RAM. Pick one with `--profile`.
+
+| Profile | What it is | Needs ~ |
+|---------|-----------|---------|
+| `rancher` | 1 VM: Rancher Prime on K3s, no Harvester (smallest) | 10 GiB |
+| `test` | 2-node Harvester cluster, no Rancher | 36 GiB |
+| `harvester` | 3-node Harvester HCI + Rancher Prime (the full lab) | 60 GiB |
+
 ---
 
 ## Commands

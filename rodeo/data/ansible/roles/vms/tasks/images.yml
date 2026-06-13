@@ -34,6 +34,8 @@
     dest: "{{ image_dir }}/harvester-v{{ harvester_version }}-amd64.iso"
     checksum: "{{ harvester_iso_checksum | default(omit) }}"
     mode: '0644'
+  # Skip on Rancher-only labs (no Harvester nodes) so they stay small/fast.
+  when: vm_nodes | selectattr('flavor', 'equalto', 'harvester') | list | length > 0
 
 # --- Harvester node disks and OVMF vars ---
 

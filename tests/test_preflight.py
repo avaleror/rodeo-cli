@@ -21,11 +21,12 @@ def _host(ram_avail):
 def test_recommend_largest_that_fits():
     assert preflight.recommend_profile(_host(64)) == ("harvester", True)
     assert preflight.recommend_profile(_host(40)) == ("test", True)
+    assert preflight.recommend_profile(_host(16)) == ("rancher", True)
 
 
 def test_recommend_warns_when_nothing_fits():
-    name, fits = preflight.recommend_profile(_host(16))
-    assert name == "test"
+    name, fits = preflight.recommend_profile(_host(4))
+    assert name == "rancher"  # smallest
     assert fits is False
 
 

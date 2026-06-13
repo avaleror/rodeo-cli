@@ -40,9 +40,12 @@ class RancherPhase:
         self.nodeport         = int(net.get("rancher_nodeport", 30002))
         self.dns_domain       = net.get("dns_domain", "aerogrid.com")
         self.gateway          = net.get("gateway", "192.168.122.1")
-        self.harvester_nodes  = [
-            n for n in cfg.get("vms", {}) if n != "rancher"
-        ] or ["harvester1", "harvester2", "harvester3"]
+        real_harvester        = [n for n in cfg.get("vms", {}) if n != "rancher"]
+        # Standalone = a Rancher-only lab (no Harvester to import). When the plan
+        # has VMs but none of them are Harvester nodes, stop after configuring the
+        # Rancher API and skip import / Harvester password / ISO eject.
+        self.standalone       = bool(cfg.get("vms")) and not real_harvester
+        self.harvester_nodes  = real_harvester or ["harvester1", "harvester2", "harvester3"]
         self.libvirt_uri      = cfg.get("libvirt", {}).get("uri", "qemu:///system")
 
         self.rancher_version  = ver.get("rancher", "2.13.1")
@@ -120,6 +123,14 @@ class RancherPhase:
         if not (yield from self._configure_api()):
             return
         yield LogLine("  Rancher API configured.")
+
+        if self.standalone:
+            yield LogLine(
+                f"\n  Rancher URL  : {self.rancher_api}  (NodePort)"
+                "\n  Standalone Rancher lab — no Harvester cluster to import."
+            )
+            self.success = True
+            return
 
         yield LogLine("Importing Harvester cluster into Rancher...")
         if not (yield from self._import_harvester()):

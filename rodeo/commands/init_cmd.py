@@ -48,7 +48,9 @@ def _pick_password(ask: bool) -> tuple[str, str]:
 @click.option("--ask", "ask_password", is_flag=True,
               help="Prompt for the lab password instead of generating one.")
 @click.option("--profile", "profile", default=None, metavar="NAME",
-              help="Seed using profile: 'test' (2 small Harvester nodes, no Rancher) or 'harvester' (full 3-node + Rancher Prime). Always includes iPXE server as auxiliary infra. Copies definition + plan + artifacts.")
+              help="Seed using profile: 'rancher' (1 VM, Rancher Prime on K3s, no Harvester — smallest), "
+                   "'test' (2 small Harvester nodes, no Rancher), or 'harvester' (full 3-node + Rancher Prime). "
+                   "Copies definition + plan + artifacts.")
 @click.option("--example", "example", default=None, metavar="NAME", hidden=True,
               help="Legacy. Use --profile instead.")
 @click.argument("target_dir", default=".", type=click.Path())
@@ -69,12 +71,14 @@ def init_cmd(force: bool, ask_password: bool, target_dir: str, profile: str | No
     secrets_dest = Path.home() / ".rodeo" / "secrets.yaml"
 
     if profile:
-        if profile == "test":
+        if profile == "rancher":
+            example = "rancher-lab-config"
+        elif profile == "test":
             example = "harvester-lab-config"
         elif profile == "harvester":
             example = "harvester"
         else:
-            console.print(f"[red]Unknown profile '{profile}'. Use test or harvester.[/red]")
+            console.print(f"[red]Unknown profile '{profile}'. Use rancher, test, or harvester.[/red]")
             raise SystemExit(1)
     if example:
         src = Path(__file__).parent.parent / "data" / "examples" / example

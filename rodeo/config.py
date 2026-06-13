@@ -48,7 +48,6 @@ _BASE_DEFAULTS: dict[str, Any] = {
     },
     "credentials": {
         "harvester_os_password": None,
-        "lab_admin_password": None,
     },
 }
 

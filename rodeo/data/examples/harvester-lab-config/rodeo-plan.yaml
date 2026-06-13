@@ -18,7 +18,7 @@ network:
 # Tune further only if needed. The example definition now expects exactly 2 harvester nodes.
 resources:
   harvester:
-    memory_mib: 8192     # 8 GiB per node — comfortable on 64GB host with headroom
+    memory_mib: 16384    # 16 GiB per node for test procedure
     vcpu: 6
     disk_gb: 100         # smaller for test; Longhorn still works (2 replicas ok for lab)
 

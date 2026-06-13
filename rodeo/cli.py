@@ -48,7 +48,8 @@ def cli(config_dir: str | None) -> None:
     Quick start:
       # Minimal: one curl (no manual clone/venv/pip)
       curl -fsSL https://raw.githubusercontent.com/avaleror/rodeo-cli/main/scripts/bootstrap-sles.sh | bash
-      # then follow printed commands (cd lab, source, rodeo plan, sudo -E rodeo deploy)
+      # then follow printed (cd lab, source, plan, deploy)
+      # Lifecycle: stop/start for graceful (infra-aware per def); clean --all --hard for reset (stop first unless --hard)
       rodeo status
     """
     # Store for subcommands that don't get it from their own decorator

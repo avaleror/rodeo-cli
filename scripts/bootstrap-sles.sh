@@ -25,17 +25,21 @@
 #     --config-dir is optional inside the dir).
 #
 # Usage (end users):
-#   curl -fsSL https://raw.githubusercontent.com/avaleror/rodeo-cli/main/scripts/bootstrap-sles.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/avaleror/rodeo-cli/main/scripts/bootstrap-sles.sh | bash -s --
 #
 #   # Then run exactly the commands printed at the end.
+#   # To pass flags like --force:  ... | bash -s -- --force
+#   # To pin version: RODEO_REF=v0.5-june-lifecycle curl ... | bash -s -- --force
 #
 # Flags (for power users / automation):
 #   --force        Overwrite an existing internal clone and lab dir.
 #   --lab-dir DIR  Choose a different location for the seeded lab (default: ~/harvester-rodeo-lab).
+#   --ref REF      Pin to RODEO_REF (tag/branch/commit sha).
 #
 # Environment variables:
 #   RODEO_DIR      Override the internal clone location (default: ~/.rodeo-cli).
 #   LAB_DIR        Override the lab directory (same as --lab-dir).
+#   RODEO_REF      Pin rodeo-cli version (tag/branch/commit, default main). Use with --force for clean re-bootstrap.
 #
 # After successful run:
 #   - /usr/local/bin/rodeo exists and points at the prepared venv.

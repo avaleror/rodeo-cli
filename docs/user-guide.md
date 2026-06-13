@@ -275,6 +275,22 @@ Deploy fails immediately if a `??` placeholder does not resolve — it will not 
 | Tear down lab | `rodeo clean` |
 | Support bundle | `rodeo logs --bundle` |
 
+### `rodeo clean` and host reset
+
+`rodeo clean` (or `rodeo clean --yes`) destroys the VMs, their disks/ISOs, and resets phase state for the current plan (from your rodeo-plan.yaml or --config-dir).
+
+New in this release for "reset the host" / repurposing:
+
+- `rodeo clean --all --yes` : full host reset — destroys **all** rodeo-like VMs (harvester*, rancher* etc.), the default libvirt network unconditionally, all rodeo disk artifacts, **all** plan state files. Leaves packages and the `rodeo` binary/link alone. Perfect for fresh testing or giving the node back to other uses.
+
+- `--force-network` : force network cleanup even if other VMs exist.
+
+- `--secrets` : also delete the global `~/.rodeo/secrets.yaml` (passwords).
+
+Run from any dir (for --all) or from your lab dir / with --config-dir for per-plan.
+
+See `rodeo clean --help` for details.
+
 ### Deployment phases (what happens)
 
 See visual:
@@ -373,6 +389,7 @@ Use one lab password across dashboards by design (training simplicity). Change d
 **After the event:**
 
 - [ ] `rodeo clean --yes` on disposable hosts
+- [ ] `rodeo clean --all --yes --secrets` to fully reset the host (VMs + network + state + passwords) while leaving packages and the rodeo binary for repurposing or fresh start
 - [ ] Or leave running for reuse; `rodeo deploy --force` to refresh
 
 ---
@@ -441,6 +458,7 @@ rodeo deploy                     # build the lab
 rodeo status                     # health
 rodeo deploy --from finalise --finalise   # Instruqt post-snapshot only
 rodeo clean --yes                # destroy lab
+rodeo clean --all --yes --secrets  # full host reset (VMs+network+state+passwords), keep packages/binary
 ```
 
 For architecture and contributor details, see [Architecture](architecture.md).

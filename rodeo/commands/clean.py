@@ -23,43 +23,95 @@ def _virsh(*args: str) -> None:
 @click.command("clean")
 @config_options
 @click.option("--yes", is_flag=True, help="Skip confirmation prompt.")
+@click.option("--all", is_flag=True, help="Host reset mode: destroy ALL rodeo-related VMs (by name pattern), unconditionally clean the default libvirt network, delete all rodeo disk/ISO artifacts, clear ALL plan states, and (optionally with --secrets) remove global secrets. Leaves installed packages and the rodeo binary/link intact. Ideal for repurposing the host or starting completely fresh testing.")
+@click.option("--force-network", is_flag=True, help="Force destroy the libvirt 'default' network even if other non-rodeo VMs exist.")
+@click.option("--secrets", is_flag=True, help="Also remove ~/.rodeo/secrets.yaml (global passwords for the plan). Use with --all or --yes for host reset.")
 def clean_cmd(
-    config_path: str, config_dir: str | None, params: tuple[str, ...], paramfile: str | None, yes: bool
+    config_path: str, config_dir: str | None, params: tuple[str, ...], paramfile: str | None, yes: bool, all: bool, force_network: bool, secrets: bool
 ) -> None:
-    """Destroy all rodeo VMs, disks, ISOs, the libvirt network, and reset phase state."""
+    """Destroy rodeo VMs, disks, ISOs, the libvirt network (per-plan or --all host reset), reset phase state, and optionally secrets.
+
+    By default operates on the plan from config/plan file (specific VMs + plan state).
+    Use --all for full host cleanup without needing a specific plan/config (matches rodeo-like VM names).
+    """
     if config_dir is None:
         ctx = click.get_current_context()
         if ctx.obj:
             config_dir = ctx.obj.get("config_dir")
-    cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir)
-    image_dir = Path(cfg["storage"]["image_dir"])
-    vm_names = list(cfg.get("vms", {}).keys())
 
+    # For --all we can operate without a full cfg (no vms from plan), but load if provided for name etc.
+    cfg = None
+    if not all or config_path or config_dir or params or paramfile:
+        try:
+            cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir)
+        except Exception:
+            if not all:
+                raise
+            cfg = {"name": "default", "storage": {"image_dir": "/var/lib/libvirt/images"} }
+
+    image_dir = Path( (cfg or {}).get("storage", {}).get("image_dir", "/var/lib/libvirt/images") )
+    if all:
+        # Discover rodeo VMs by common patterns (harvester*, rancher*, etc.) across any plan.
+        vm_names = []
+        try:
+            from ..engine.libvirt import LibvirtDriver
+            with LibvirtDriver( (cfg or {"libvirt":{"uri":"qemu:///system"}})["libvirt"]["uri"] ) as lv:
+                all_doms = lv.list_all_domain_names()
+                vm_names = [n for n in all_doms if any(p in n for p in ("harvester", "rancher", "rodeo"))]
+        except Exception:
+            try:
+                res = subprocess.run(["virsh", "list", "--all", "--name"], capture_output=True, text=True, check=False)
+                all_doms = [n.strip() for n in res.stdout.splitlines() if n.strip()]
+                vm_names = [n for n in all_doms if any(p in n for p in ("harvester", "rancher", "rodeo"))]
+            except Exception:
+                pass
+        if not vm_names:
+            # Fallback patterns if libvirt not available yet
+            vm_names = ["harvester1", "harvester2", "harvester3", "rancher"]
+    else:
+        vm_names = list( (cfg or {}).get("vms", {}).keys() )
+        if not vm_names:
+            vm_names = ["harvester1", "harvester2", "harvester3", "rancher"]
+
+    # Confirmation: tailor message for --all vs normal per-plan clean.
     if not yes:
-        console.print("\n[bold red]This will destroy all VMs, disks, and ISOs.[/bold red]")
+        if all:
+            msg = "This will DESTROY ALL rodeo VMs (harvester*, rancher*, etc.), the default libvirt network, all disk/ISO artifacts, ALL plan state files"
+            if secrets:
+                msg += ", and the global secrets.yaml"
+            msg += ". This fully resets the host for fresh testing or repurposing (packages and rodeo binary are left alone)."
+            console.print(f"\n[bold red]{msg}[/bold red]")
+        else:
+            console.print("\n[bold red]This will destroy all VMs, disks, and ISOs for the current plan.[/bold red]")
         click.confirm("Continue?", abort=True)
 
     console.print()
 
     # Stop + undefine VMs and tear down the default network.
     # Prefer libvirt-python; fall back to virsh if it is not installed.
+    # For --all or --force-network we destroy the network unconditionally (after VM cleanup).
+    do_force_net = all or force_network
+
     try:
         from ..engine.libvirt import LibvirtDriver
 
-        with LibvirtDriver(cfg["libvirt"]["uri"]) as lv:
+        uri = (cfg or {"libvirt": {"uri": "qemu:///system"}})["libvirt"]["uri"]
+        with LibvirtDriver(uri) as lv:
             for vm in vm_names:
                 console.print(f"  [dim]destroy[/dim]  {vm}")
                 lv.destroy(vm)
                 lv.undefine(vm)
             # The 'default' network is shared host infrastructure — only tear
-            # it down when no other VMs remain that might be using it.
+            # it down when no other VMs remain that might be using it (unless --force-network / --all).
             others = sorted(set(lv.list_all_domain_names()) - set(vm_names))
-            if others:
+            if others and not do_force_net:
                 console.print(
                     f"  [yellow]keep[/yellow]     libvirt default network "
                     f"[dim](other VMs exist: {', '.join(others[:5])})[/dim]"
                 )
             else:
+                if others and do_force_net:
+                    console.print(f"  [yellow]force[/yellow]    libvirt default network ( --force-network / --all )")
                 console.print("  [dim]destroy[/dim]  libvirt default network")
                 lv.net_destroy("default")
                 lv.net_undefine("default")
@@ -81,12 +133,14 @@ def clean_cmd(
             )
             all_names = [n.strip() for n in res.stdout.splitlines() if n.strip()]
             others = sorted(set(all_names) - set(vm_names))
-            if others:
+            if others and not do_force_net:
                 console.print(
                     f"  [yellow]keep[/yellow]     libvirt default network "
                     f"[dim](other VMs exist: {', '.join(others[:5])})[/dim]"
                 )
             else:
+                if others and do_force_net:
+                    console.print("  [yellow]force[/yellow]    libvirt default network (virsh, --force-network / --all)")
                 console.print("  [dim]destroy[/dim]  libvirt default network (virsh)")
                 _virsh("net-destroy", "default")
                 _virsh("net-undefine", "default")
@@ -95,7 +149,7 @@ def clean_cmd(
             console.print("  [yellow]keep[/yellow]     libvirt default network (virsh list failed)")
             pass
 
-    # Delete disk images and OVMF vars
+    # Delete disk images and OVMF vars (patterns cover both 3-node and 2-node variants)
     patterns = [
         "harvester*.qcow2", "harvester*_vars.bin",
         "rancher*.qcow2",
@@ -108,8 +162,27 @@ def clean_cmd(
             console.print(f"  [dim]delete[/dim]   {f}")
             Path(f).unlink(missing_ok=True)
 
-    # Reset state from kvm_host onwards (use profile phase list for profile-aware plans)
-    profile = get_profile(cfg.get("type", "suse-virt"))
-    reset_from("kvm_host", cfg.get("name", "default"), profile.phases)
+    # Reset state. For --all we nuke all plan state files (for repurposing / fresh start).
+    # For normal per-plan we reset from kvm_host for the specific plan (as before).
+    if all:
+        state_dir = Path.home() / ".rodeo" / "state"
+        if state_dir.exists():
+            for f in state_dir.glob("*.yaml"):
+                console.print(f"  [dim]delete[/dim]   state {f}")
+                f.unlink(missing_ok=True)
+    else:
+        profile = get_profile( (cfg or {}).get("type", "suse-virt") )
+        reset_from("kvm_host", (cfg or {}).get("name", "default"), profile.phases)
 
-    console.print("\n[bold green]✓  Clean complete.[/bold green] Run [bold]rodeo deploy[/bold] to start fresh.\n")
+    # Secrets (global ~/.rodeo/secrets.yaml ). Only if --secrets (or --all + --secrets).
+    if secrets:
+        secrets_path = Path.home() / ".rodeo" / "secrets.yaml"
+        if secrets_path.exists():
+            console.print(f"  [dim]delete[/dim]   {secrets_path}")
+            secrets_path.unlink(missing_ok=True)
+
+    console.print("\n[bold green]✓  Clean complete.[/bold green]")
+    if all:
+        console.print("Host reset done. Packages and rodeo binary remain. You can now start fresh or repurpose the node.\n")
+    else:
+        console.print("Run [bold]rodeo deploy[/bold] to start fresh.\n")

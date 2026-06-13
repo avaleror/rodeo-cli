@@ -31,7 +31,7 @@ F (efficiency) below.
   to desired-only without libvirt; validation problems are warnings here and
   hard errors in deploy
 - **E1** plain-mode progress via `rich.Status` (no more `\r` line smearing)
-- **E2** `clean` keeps the shared `default` network when other VMs exist
+- **E2** `clean` keeps the shared `default` network when other VMs exist (now overridable with --force-network / --all for host reset)
 - **E3** `install-deps` prints a clean message on package failures
 - **E4** `ConfigError` + group-level handler: bad YAML/params show a message,
   never a traceback

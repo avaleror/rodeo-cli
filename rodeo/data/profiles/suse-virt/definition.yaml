@@ -90,6 +90,7 @@ definition:
   # This is the declarative form for the Harvester rodeo topology.
   #
   # - node_templates define the "blueprint" for a flavor (what logical cables/NICs a harvester or rancher node has).
+  #   Use `infra_type: harvester` (or `rancher`) to make stop/start infra-aware (e.g. shutdown order for cluster nodes).
   # - Each concrete node references a template and provides instance-specific data (name, ip, index, overrides).
   # - nodes list their concrete `interfaces:` (role + mac or omitted for generation + optional model/pxe/ip overrides).
   # - The renderer (inventory.py) uses the template + instance interfaces to:
@@ -105,6 +106,7 @@ definition:
       ssh_user: rancher
       hostname_pattern: "{label}"   # alpha, bravo, charlie or custom
       config_iso_name_pattern: "harvester-config-node{index}"
+      infra_type: harvester  # for stop/start: indicates Harvester cluster node (for infra-aware graceful handling)
       interfaces:   # the "cables" blueprint for this node type
         - role: mgmt
           model: e1000
@@ -120,6 +122,7 @@ definition:
     rancher:
       flavor: rancher
       ssh_user: root
+      infra_type: rancher  # for stop/start: indicates Rancher/K3s node
       interfaces:
         - role: mgmt
           model: virtio

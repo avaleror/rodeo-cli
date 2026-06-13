@@ -291,6 +291,24 @@ Run from any dir (for --all) or from your lab dir / with --config-dir for per-pl
 
 See `rodeo clean --help` for details.
 
+### Graceful stop and start (new, infra-aware from definition)
+
+`rodeo stop` (or `rodeo stop --all --yes`): graceful stop of the lab for later restart.
+
+- Analyzes definition (start_order reversed, components for on_host services like pxe-server nginx, node_templates infra_type for awareness, harvester_node_names).
+- Stops host lab services (hardcoded per component name for now).
+- For VMs: LibvirtDriver.shutdown() (ACPI graceful, per design) + wait.
+- Stops guests + relevant host services from definition.
+- Safe before clean; VMs stay defined (can restart).
+
+`rodeo start` (or `--all`): starts host services then VMs in order (with is_running wait).
+
+Use `rodeo stop` before `rodeo clean` for clean stopped state. `clean --hard` skips graceful.
+
+See definition.yaml for infra_type example (added to templates).
+
+`rodeo stop --help` / start for options. Integrates with clean via --force behavior (stop first).
+
 ### Deployment phases (what happens)
 
 See visual:
@@ -459,6 +477,8 @@ rodeo status                     # health
 rodeo deploy --from finalise --finalise   # Instruqt post-snapshot only
 rodeo clean --yes                # destroy lab
 rodeo clean --all --yes --secrets  # full host reset (VMs+network+state+passwords), keep packages/binary
+rodeo stop --all --yes             # graceful stop (infra-aware from definition; for restart)
+rodeo start --all --yes            # start back (services + VMs)
 ```
 
 For architecture and contributor details, see [Architecture](architecture.md).

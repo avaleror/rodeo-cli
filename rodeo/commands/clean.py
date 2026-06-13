@@ -3,10 +3,13 @@ from __future__ import annotations
 
 import glob
 import subprocess
+import time
 from pathlib import Path
 
 import click
 from rich.console import Console
+
+from ..engine.libvirt import LibvirtDriver
 
 from ..config import load_config
 from ..profiles import get_profile
@@ -26,8 +29,9 @@ def _virsh(*args: str) -> None:
 @click.option("--all", is_flag=True, help="Host reset mode: destroy ALL rodeo-related VMs (by name pattern), unconditionally clean the default libvirt network, delete all rodeo disk/ISO artifacts, clear ALL plan states, and (optionally with --secrets) remove global secrets. Leaves installed packages and the rodeo binary/link intact. Ideal for repurposing the host or starting completely fresh testing.")
 @click.option("--force-network", is_flag=True, help="Force destroy the libvirt 'default' network even if other non-rodeo VMs exist.")
 @click.option("--secrets", is_flag=True, help="Also remove ~/.rodeo/secrets.yaml (global passwords for the plan). Use with --all or --yes for host reset.")
+@click.option("--hard", is_flag=True, help="Hard destroy (skip graceful stop first). Default is to run stop logic for VMs if running, for clean stopped state before destroy/undefine.")
 def clean_cmd(
-    config_path: str, config_dir: str | None, params: tuple[str, ...], paramfile: str | None, yes: bool, all: bool, force_network: bool, secrets: bool
+    config_path: str, config_dir: str | None, params: tuple[str, ...], paramfile: str | None, yes: bool, all: bool, force_network: bool, secrets: bool, hard: bool
 ) -> None:
     """Destroy rodeo VMs, disks, ISOs, the libvirt network (per-plan or --all host reset), reset phase state, and optionally secrets.
 
@@ -86,6 +90,24 @@ def clean_cmd(
         click.confirm("Continue?", abort=True)
 
     console.print()
+
+    # If not --hard, do graceful stop first (VMs via ACPI shutdown) so clean happens on stopped infra.
+    # This ensures 'rodeo clean' (even without explicit 'rodeo stop') leaves clean state; --hard for immediate force.
+    if not hard:
+        try:
+            uri = (cfg or {"libvirt": {"uri": "qemu:///system"}})["libvirt"]["uri"]
+            with LibvirtDriver(uri) as lv:
+                for vm in vm_names:
+                    if lv.is_running(vm):
+                        console.print(f"  [dim]graceful stop (before destroy)[/dim] {vm}")
+                        lv.shutdown(vm)
+                        # short wait
+                        for _ in range(15):
+                            if not lv.is_running(vm):
+                                break
+                            time.sleep(2)
+        except Exception as exc:
+            console.print(f"[yellow]⚠ graceful stop before clean failed ({exc}), will hard destroy[/yellow]")
 
     # Stop + undefine VMs and tear down the default network.
     # Prefer libvirt-python; fall back to virsh if it is not installed.

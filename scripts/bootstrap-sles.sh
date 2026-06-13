@@ -76,6 +76,7 @@ done
 
 RODEO_DIR="${RODEO_DIR:-$DEFAULT_RODEO_DIR}"
 LAB_DIR="${LAB_DIR:-$DEFAULT_LAB_DIR}"
+RODEO_REF="${RODEO_REF:-main}"
 
 echo "==> Installing minimal prereqs (python, git, etc.)"
 sudo zypper --non-interactive install --no-recommends python3 python3-pip python3-virtualenv git
@@ -92,6 +93,11 @@ fi
 
 echo "==> Cloning rodeo-cli to $RODEO_DIR (internal, hidden from user)"
 git clone --depth 1 https://github.com/avaleror/rodeo-cli.git "$RODEO_DIR"
+if [ "$RODEO_REF" != "main" ]; then
+  cd "$RODEO_DIR"
+  git fetch --depth 1 origin "$RODEO_REF" || git fetch origin "$RODEO_REF"
+  git checkout "$RODEO_REF"
+fi
 
 echo "==> Setting up venv with --system-site-packages"
 cd "$RODEO_DIR"

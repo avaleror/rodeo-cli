@@ -126,7 +126,8 @@ All plan keys are wired: network and resources/versions reach Ansible through a 
 
 ### Secrets
 
-`~/.rodeo/secrets.yaml` (chmod 600). `rodeo init` writes a random 16-char password (`--ask` to prompt, `$RODEO_PASSWORD` for CI/Instruqt) and a random `harvester_token` (cluster join token).
+`~/.rodeo/secrets.yaml` (chmod 600). `rodeo init` writes a random 16-char password ( `--ask` for hidden collection, `$RODEO_PASSWORD` for CI/Instruqt) and a random `harvester_token` (cluster join token). 
+
 
 `??` placeholders in the plan resolve at load time and **fail closed** (leftover `??` aborts deploy via `validate_config`, as do empty/CHANGE_ME credentials):
 
@@ -170,7 +171,7 @@ These are the non-obvious things that burned time during development:
 | `clean [--yes] [--all --secrets --force-network --hard]` | Per-plan or full host reset: destroy rodeo VMs + default network + artifacts + all/specific plan states + optional secrets. Leaves packages + rodeo binary (for fresh test or node repurposing). Runs stop first unless --hard. |
 | `stop [--yes] [--all]` | Graceful infra-aware stop (definition: infra_type, components, reverse start_order; VM ACPI shutdown + host services). Restartable. |
 | `start [--yes] [--all]` | Start after stop (host services + VMs in order + wait). |
-| `generate [--dir] [--advanced]` | Interactive generator for custom definition + full config-dir skeleton (templates base, hybrid prompts, yaml, validation, suggests bootstrap/deploy). Supports infra_type etc. |
+| `generate [--dir] [--advanced]` | Generator for custom definition + full config-dir skeleton (from templates base via parameter collection; produces yaml with infra_type etc for stop/start/clean; validation + next steps for bootstrap/deploy). Supports declarative model entry point. |
 | `status` | VM table (from plan inventory), VIP probe, phase progress. |
 | `watch` | TUI view-only (TTY required). |
 | `restart VM\|all [--hard]` | ACPI shutdown + start; VM names from plan. |

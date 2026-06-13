@@ -1,12 +1,24 @@
-"""rodeo generate — interactive generator for definition + full config-dir skeleton.
+"""rodeo generate — command to produce customized declarative lab configuration artifacts.
 
-Uses harvester-lab-config as base template (rails for valid Harvester rodeo).
-Prompts (hybrid basic/advanced) to customize, generates yaml structure, copies artifacts dirs.
-Post: validates, suggests next steps (cd dir; rodeo init --force; etc).
+This command exists to bootstrap the project's declarative model (as defined in definition.yaml structures under data/profiles and examples) with validated, project-aligned starting artifacts. It addresses the need for engineers to quickly produce consistent definition.yaml (with sections for nodes, templates including infra_type for lifecycle commands like stop/start, components, harvester config, etc.) and supporting rodeo-plan.yaml + config-dir skeleton (certs/, manifests/, etc.) without manual YAML authoring that risks inconsistencies with inventory renderer, phase orchestration, or EIB-inspired --config-dir patterns.
 
-Supports future types via --type, but current focus Harvester (minimal 2-node or full 3+1).
+Logical reasons within project:
+- Enforces conventions from definition (e.g. start_order, harvester_node_names, infra_type for infra-aware stop/start in stop_cmd.py/start_cmd.py).
+- Produces full output compatible with load_config, build_inventory (in inventory.py), and subsequent commands (bootstrap, init, deploy, clean, stop).
+- Reduces onboarding friction for custom labs while using pre-existing templates as base (harvester-lab-config for test/minimal variants), allowing overrides for resources, targets, storage, etc.
+- Fits the "generate" pattern seen in related tools (e.g. EIB's generate for combustion), enabling "rodeo generate" as entry point before "rodeo deploy" or lifecycle (stop/start/clean).
 
-Part of making first-phase zero manual after install.
+Outcomes of using:
+- Produces ready-to-use dir with definition + plan using ??env: for credentials (integrates with init_cmd.py secrets logic and sudo -E patterns).
+- Post-generation validation via load_config ensures the output is loadable and consistent with cfg expectations (vms, storage, network, etc.).
+- Supports hybrid customization (core params + advanced) for flexibility without exposing full YAML complexity.
+- Enables full lifecycle: generate -> bootstrap/init -> deploy -> stop/start -> clean --all for reset (as enhanced in clean.py).
+
+The implementation renders from a base template (copy of harvester-lab-config for artifact dirs and initial structure), applies overrides from collected parameters to produce YAML, and provides next-step guidance. This centralizes artifact generation logic, making the declarative model (definition as single source per inventory.py comments) accessible and correct by construction.
+
+Current scope focuses on Harvester/SUSE Virtualization (suse-virt type); extensible for other profiles via --type in future.
+
+See also: docs/user-guide.md for usage, architecture.md for role in declarative pipeline, definition.yaml for expected structure (including infra_type), cli.py for registration.
 """
 
 import os
@@ -28,6 +40,29 @@ BASE_TEMPLATE = Path(__file__).parent.parent / "data" / "examples" / "harvester-
 
 
 def _prompt_basic():
+    """Collects core lab configuration parameters as a dict for template customization.
+
+    Inputs:
+    - None (uses interactive collection via rich.prompt for name, num_harvester (2/3), include_rancher (derived default), deployment_target, storage_device).
+
+    Outputs:
+    - dict with keys: 'name' (str), 'num_harvester' (int), 'include_rancher' (bool), 'deployment_target' (str), 'storage_device' (str).
+
+    Patterns inside:
+    - Uses Prompt.ask and Confirm.ask for validated collection (choices, defaults).
+    - Derives include_rancher default from num_harvester to enforce sensible rails (2-node test variant typically no Rancher).
+    - Returns flat dict as intermediate representation for override logic in _customize_* (avoids direct YAML mutation during collection).
+
+    How it works:
+    - Collects minimal set to produce valid output aligned with definition schema (start_order/harvester_node_names based on num, etc.) and plan (target, storage).
+    - Hybrid mode entry point: always called first; advanced extends the dict.
+
+    Fit in project:
+    - Enables 'rodeo generate' as zero-friction entry to declarative model (see definition.yaml for expected keys like harvester_ready_count, infra_type, components; inventory.py for rendering from such defs).
+    - Produces cfg compatible with load_config (config.py), which feeds build_inventory, DeployRunner (app.py/runner.py), phases (cluster.py for harvester_node_names/start_order, stop_cmd.py for infra_type awareness), clean.py for --all reset.
+    - Supports project goal of minimal manual (post-install generate before bootstrap/deploy), with templates ensuring correctness (no bad defs that break libvirt/pxe/ cluster bootstrap).
+    - Outcomes: Engineer gets full config-dir (with artifacts for --config-dir) ready for 'rodeo init', 'rodeo stop/start', 'rodeo clean --all', without manual YAML that could mismatch EIB-inspired patterns or lifecycle commands.
+    """
     answers = {}
     answers["name"] = Prompt.ask("Lab name", default="my-harvester-lab")
     answers["num_harvester"] = int(Prompt.ask("Num Harvester nodes (2 for test/minimal, 3 for full)", default="2", choices=["2", "3"]))
@@ -38,6 +73,28 @@ def _prompt_basic():
 
 
 def _prompt_advanced(answers):
+    """Extends basic answers dict with advanced parameters for fine-grained customization.
+
+    Inputs:
+    - answers: dict from _prompt_basic (mutated in place with additional keys).
+
+    Outputs:
+    - Same dict, augmented with: 'harvester_vcpu'/'mem'/'disk' (int), optional 'rancher_*' if include_rancher, 'network_cidr', 'vip'.
+
+    Patterns inside:
+    - Conditional prompting (if include_rancher) to keep output consistent with definition (no rancher nodes/component if not).
+    - Defaults chosen to match common test/minimal (from harvester-lab-config) or full 3-node profiles.
+    - Flat dict pattern for easy override in _customize_* (mirrors how plan overrides work in config.py _deep_merge and _set_path).
+
+    How it works:
+    - Gathers resource/network params that map directly to definition (storage, network) and plan (resources section) structures.
+    - Called only in advanced path to support hybrid (core for quick start, advanced for custom infra sizing aligned with host constraints like 16 logical CPUs).
+
+    Fit in project:
+    - Feeds the customization that produces definition/plan consumable by the full pipeline: inventory renderer (for vms/resources), runner (ansible vars for kvm_host/vms), cluster/rancher phases (for node counts), stop/start (infra_type + order), clean (for --all state reset).
+    - Logical reason: Allows engineers to generate labs matching specific hardware (e.g. Ryzen limits per CPU notes in definition) or targets (instruqt vs baremetal in plan), reducing manual edits that could break declarative invariants (e.g. harvester_ready_count matching nodes list).
+    - Outcomes: Generated artifacts enable end-to-end use (generate -> deploy -> stop for graceful pause -> start or clean --all for reset) with correct sizing, no hardcoding mismatches.
+    """
     console.print("[bold]Advanced mode:[/bold]")
     answers["harvester_vcpu"] = int(Prompt.ask("Harvester vCPU per node", default="6"))
     answers["harvester_mem"] = int(Prompt.ask("Harvester memory MiB per node", default="8192"))
@@ -52,6 +109,31 @@ def _prompt_advanced(answers):
 
 
 def _customize_definition(def_path, answers):
+    """Customizes a base definition.yaml (from template) with overrides from answers dict.
+
+    Inputs:
+    - def_path: Path to YAML file (copied from BASE_TEMPLATE).
+    - answers: dict from _prompt_* (keys for num_harvester, include_rancher, name, storage_device, resources if advanced).
+
+    Outputs:
+    - None (mutates file in place via yaml dump). Produces definition with nodes, lists, infra_type, components, storage, etc.
+
+    Patterns inside:
+    - Load -> mutate top-level 'definition' (or root) -> dump (sort_keys=False to preserve structure/comments where possible).
+    - Derives lists (start_order, harvester_node_names, nodes) from num_harvester to match schema expectations (see definition.yaml comments on these as source for ClusterPhase, stop_cmd).
+    - Conditional for rancher (removes/adds nodes/component/exposed) to keep output valid for current profiles.
+    - Hardcodes minimal node attrs + infra_type (for awareness in stop/start); uses answers for overrides.
+
+    How it works:
+    - Starts from validated template (harvester-lab-config or similar) to inherit full structure (network, node_templates with infra_type, host_prep, harvester section, artifacts dirs copied separately).
+    - Applies params to produce ready YAML that load_config can merge with plan/secrets, and inventory.py can render (nodes -> vm_nodes, components for phases).
+    - Handles 2/3 node variants + rancher toggle for test vs full labs.
+
+    Fit in project:
+    - Logical reason for creation: The declarative core (definition as single source per inventory.py and definition.yaml comments) is complex (templates, lists, infra_type for new lifecycle in stop/start_cmd.py, components for on_host in clean/stop). Manual creation risks invalid outputs that break renderer (MAC gen, start_order), phases (harvester_node_names for cluster bootstrap), or commands (clean --all discovery, stop infra awareness).
+    - Outcomes: Produces artifacts that integrate end-to-end (generate output -> rodeo init/ bootstrap for secrets/link -> deploy via runner -> stop for gentle pause using infra_type -> start or clean --all for reset without package loss). Enables engineers to get custom but correct starting points aligned with EIB config-dir + artifacts pattern, reducing errors in Harvester lab topology.
+    - Part of first-phase simplification (post-install entry before deploy/stop/clean).
+    """
     with open(def_path) as f:
         data = yaml.safe_load(f) or {}
     defn = data.get("definition", data)
@@ -121,6 +203,29 @@ def _customize_definition(def_path, answers):
 
 
 def _customize_plan(plan_path, answers):
+    """Customizes a base rodeo-plan.yaml with answers for resources, target, storage, credentials.
+
+    Inputs:
+    - plan_path: Path to plan file (from template copy).
+    - answers: dict (name, deployment_target, optional resources/storage/vip from basic/advanced).
+
+    Outputs:
+    - None (mutates file). Plan with name, resources, network, storage.device, credentials as ??env:.
+
+    Patterns inside:
+    - YAML load/mutate/dump (consistent with _customize_definition and how plan overrides are handled in config.py).
+    - Credentials always set to ??env: forms (pattern from init_cmd.py for sudo -E + env support; avoids embedding secrets).
+    - Resources conditional on include_rancher to match definition nodes.
+
+    How it works:
+    - Applies high-level params to plan sections that drive deployment (resources for vms phase, target for instruqt guards in runner, storage for image_dir in clean/deploy).
+    - Ensures compatibility with load_config merging (plan + secrets + -P).
+
+    Fit in project:
+    - Logical reason: The plan (rodeo-plan.yaml) + definition form the declarative input to the entire system (see config.py for load/merge, inventory for rendering, runner for phases). Manual plan creation often leads to mismatches (e.g. resources not aligning with host, no ??env breaking credentials in deploy/stop).
+    - Outcomes: Generated plan + definition work together for full pipeline (plan drives resources in kvm_host/vms; definition provides infra_type/start_order for stop/start/clean awareness; supports --config-dir for EIB-style artifacts). Enables generate as pre-deploy tool that produces restartable/resetable labs (via stop/start/clean).
+    - Integrates with bootstrap (for link) and init (for final secrets rewrite if needed).
+    """
     with open(plan_path) as f:
         data = yaml.safe_load(f) or {}
 
@@ -168,10 +273,32 @@ def _customize_plan(plan_path, answers):
 @click.option("--name", help="Lab name (will prompt if not given)")
 @click.option("--advanced", is_flag=True, help="Ask advanced questions (resources, network, etc.)")
 def generate_cmd(output_dir: str, name: str | None, advanced: bool):
-    """Interactively generate a ready-to-use config-dir skeleton (definition.yaml + rodeo-plan.yaml + artifacts dirs) based on your answers.
+    """Entry point for 'rodeo generate' command.
 
-    Uses harvester-lab-config as validated template base (avoids bad definitions).
-    You can customize further after generation.
+    Inputs (from click):
+    - output_dir: str (target base dir; lab subdir created inside using name).
+    - name: str | None (lab name; prompts if None).
+    - advanced: bool (triggers _prompt_advanced).
+
+    Outputs:
+    - None (side effects: creates dir with customized definition.yaml, rodeo-plan.yaml, copied subdirs (certs/, manifests/, etc.), rodeo-secrets.env; prints summary and next steps).
+
+    Patterns inside:
+    - Template copy (shutil from BASE_TEMPLATE for full EIB-style config-dir with artifacts).
+    - Parameter collection (hybrid via _prompt_basic/_prompt_advanced -> answers dict).
+    - Customization ( _customize_* for YAML overrides using declarative keys).
+    - Secrets/env (random pw + ??env: rewrite, mirroring init_cmd.py pattern for credential handling).
+    - Validation (load_config post-gen).
+    - UX (rich console + suggestions for bootstrap/deploy/stop/start/clean lifecycle).
+
+    How it works:
+    - Collects params -> copy base -> customize yamls (nodes/lists/infra_type from num/include, resources/storage from answers) -> generate env -> validate -> print.
+    - Handles 2/3 node + rancher toggle to produce valid output for current profiles/definition (see harvester-lab-config/definition.yaml and suse-virt/profile).
+
+    Fit in project:
+    - Logical reason created: The project's core is the declarative definition + plan as input to inventory renderer (build_inventory produces vm_nodes, host_prep, etc. for ansible phases and python ClusterPhase/RancherPhase/stop_cmd), load_config (merges for all cmds), and lifecycle (bootstrap for setup, deploy via runner, stop/start for graceful pause/restart using infra_type, clean for reset). Manually authoring these risks invalid states (wrong harvester_ready_count vs nodes, missing infra_type breaking stop awareness, bad resources for host, missing ??env breaking credentials in sudo -E flows).
+    - Outcomes of use: Engineer gets a complete, validated config-dir skeleton (full artifacts pattern for --config-dir) customized to needs (e.g. storage device for multi-disk per clean.py, num nodes for 2-node test vs full, infra_type for stop/start in new cmds), ready for immediate use in the pipeline without errors. Reduces first-phase manual work (post 'rodeo install-deps --link'), enforces project invariants (templates + rails), enables custom labs that work with generate -> stop/start -> clean --all for full lifecycle/reset (as requested for host repurposing without package removal).
+    - Fits general picture: Complements 'rodeo init' (secrets), 'bootstrap' (link/setup), stop/start (new lifecycle), clean (reset), all driven by definition as single source (per inventory.py and definition comments). Supports EIB-like self-contained dirs for declarative labs. See docs/architecture.md for pipeline role, user-guide for invocation, stop-design-options.md for related rationale.
     """
     console.print("[bold]rodeo generate[/bold] — interactive definition + lab config generator\n")
 

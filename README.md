@@ -27,7 +27,7 @@ The default lab (**suse-virt**) provisions a 3-node [Harvester](https://harveste
 # One command: prereqs, hidden setup, binary link, ready lab dir with 2-node Harvester example
 curl -fsSL https://raw.githubusercontent.com/avaleror/rodeo-cli/main/scripts/bootstrap-sles.sh | bash
 
-# Or generate custom first (interactive, full skeleton from templates):
+# Or generate custom first (parameter collection to produce full skeleton from templates):
 # rodeo generate --dir mylab
 # then follow printed (cd, source, plan, deploy)
 ```
@@ -59,7 +59,8 @@ rodeo deploy
 | Command | Description |
 |---------|-------------|
 | `bootstrap` | One-command host link + ready lab dir setup (for clean SLES after basic venv) |
-| `generate` | Interactive generator for custom definition + full config-dir skeleton (from templates, hybrid prompts, infra_type support). `rodeo generate --dir mylab` |
+| `generate` | Generator for custom definition + full config-dir skeleton (from templates via parameter collection, hybrid customization, infra_type support). `rodeo generate --dir mylab` |
+
 | `install-deps` | Host packages (KVM, ansible, kubectl, …) + optional `--link` for /usr/local/bin/rodeo |
 | `init` | Create `rodeo-plan.yaml` + `~/.rodeo/secrets.yaml` (supports `--example` for pre-seeded configs) |
 | `plan` | Preview diff vs host (no changes) |

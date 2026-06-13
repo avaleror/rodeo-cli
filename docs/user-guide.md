@@ -61,13 +61,19 @@ Follow the exact commands printed at the end (typically `cd ~/harvester-rodeo-la
 
 This is the clean, simple path for workshop operators on bare metal or cloud hosts.
 
-### Generate custom definition + full lab skeleton interactively (before first deploy)
+### Generate custom definition + full lab skeleton (before first deploy)
 
-Use `rodeo generate` (new) to interactively create a full custom config-dir skeleton (definition.yaml + rodeo-plan.yaml + certs/ etc like EIB) based on your answers. Uses pre-validated templates as base (rails to avoid bad defs), hybrid basic/advanced prompts, supports infra_type etc for stop/start awareness. You can add extra customizations after.
+Use `rodeo generate` (new) to create a full custom config-dir skeleton (definition.yaml + rodeo-plan.yaml + certs/ etc like EIB). It collects configuration parameters (name, node count, target, storage device, optional advanced resources/network) to produce validated artifacts from pre-existing templates as base. 
+
+Why created (logical reasons in project): The declarative model (definition as single source per inventory.py and definition.yaml: nodes/templates/components/harvester sections for renderer/phases) is complex; manual creation risks invalid states (e.g. mismatched harvester_ready_count vs nodes list, missing infra_type for stop/start in stop_cmd.py/start_cmd.py, no ??env breaking credentials in init/sudo flows, resources not matching host for clean/deploy). Pre-existing templates (harvester-lab-config) provide "rails" (validated structure with infra_type, on_host components, start_order) to avoid bad defs. Parameter collection (hybrid) allows customization while producing output aligned with load_config (config.py merge), build_inventory (vm_nodes from nodes, host_prep), runner (phases), clean ( --all patterns/state), stop/start (infra-aware order/services from definition).
+
+Outcomes of using the concrete code (generate_cmd.py): Engineer gets complete, ready config-dir (full EIB-style skeleton with artifacts for --config-dir support) that "just works" in pipeline (generate -> source env -> plan/deploy -> stop for gentle pause using definition infra_type/components -> start or clean --all --hard for reset/repurpose leaving packages/binary). Post-validation (load_config) + yaml customize from template ensures correctness. Supports future ( --type for profiles). Fits general picture as pre-deploy entry point (see architecture.md declarative pipeline, user-guide flows, stop-design-options.md rationale, clean.py integration for "stop before clean", cli.py registration). 
+
+See generate_cmd.py for full function docs (inputs like answers dict from collection, outputs side-effect files, patterns like template copy + customize using declarative keys, how: collection -> override -> validate -> suggest; fits as bootstrap for model used by all cmds).
 
 ```bash
 rodeo generate --dir my-custom-lab
-# prompts: name, num Harvester nodes, include Rancher?, target, storage device, (advanced: resources, cidr...)
+# collects: name, num Harvester nodes, include Rancher?, target, storage device, (advanced: resources, cidr...)
 cd my-custom-lab
 source rodeo-secrets.env
 rodeo plan --config-dir .
@@ -113,7 +119,7 @@ See the Mermaid source and rendered diagram in the repository:
 
 **Best path 1:** Use `rodeo bootstrap` (or the curl bootstrap script) — it runs `init --example harvester-lab-config` for you and seeds a ready-to-use lab dir with the 2-node Harvester no-Rancher test configuration, plus the link for clean `rodeo` invocation.
 
-**Best path 2 (custom):** Use `rodeo generate --dir mylab` first (interactive from templates) to create custom skeleton, then init/deploy.
+**Best path 2 (custom):** Use `rodeo generate --dir mylab` first (parameter collection from templates) to create custom skeleton, then init/deploy.
 
 ### 1. Generate config (or let bootstrap/generate do it)
 
@@ -133,7 +139,7 @@ Password sources for `rodeo init`:
 
 ```bash
 rodeo init                      # random 16-character password
-rodeo init --ask                # hidden prompt
+rodeo init --ask                # hidden collection for password
 RODEO_PASSWORD='...' rodeo init # CI / automation (12+ chars)
 ```
 
@@ -292,22 +298,16 @@ Deploy fails immediately if a `??` placeholder does not resolve — it will not 
 | Serial console | `rodeo attach harvester1` (Ctrl+] to detach; uses `libvirt.uri` from plan if non-default) |
 | Tear down lab | `rodeo clean` |
 | Support bundle | `rodeo logs --bundle` |
-| Generate custom lab skeleton | `rodeo generate --dir mylab` (interactive, full config-dir from templates) |
+| Generate custom lab skeleton | `rodeo generate --dir mylab` (parameter collection from templates to produce full config-dir) |
 | Graceful stop/restart | `rodeo stop --all --yes` / `start --all --yes` (infra-aware per definition) |
 
 ### `rodeo clean` and host reset
 
-`rodeo clean` (or `rodeo clean --yes`) destroys the VMs, their disks/ISOs, and resets phase state for the current plan (from your rodeo-plan.yaml or --config-dir).
+`rodeo clean` (or `rodeo clean --yes`) destroys the VMs, their disks/ISOs, and resets phase state for the current plan (from your rodeo-plan.yaml or --config-dir). By default runs graceful stop first if VMs running (unless --hard).
 
-New in this release for "reset the host" / repurposing:
+Why created/enhanced (logical reasons within the project): Original clean (clean.py) did hard destroy (libvirt destroy/undefine or virsh, glob deletes for artifacts in image_dir, reset_from in state.py from kvm_host using profile.phases from get_profile) + conditional network teardown (to avoid breaking other VMs, per list_all_domain_names in libvirt.py or virsh list). This was destructive only, no "way to undo any VMs , networks, specific plans and passwords to start working from scratch" with "clean the rest" (no package removal) "so a fresh testing can start or the node can be repurposed for something else". No "check if there are VMs running, if so has to execute a clean stop" before. No "stop process that stops all in a timely and clean manner to be able to restart the lab if needed" "based of the definition file" "infra aware" ("in the definition file or definition structure would be good to indicate if a VM/host is going to run Kubernetes or harvester" -> infra_type). "the cleaning script has to check if there are VMs running, if so has to execute a clean stop". "we need to make sure that runs before cleaning the host". "we have a proper stop process that has tu run when w run 'rodeo stop --all' or something like this, to the clean process we can add also a force parameter that executes first the stop process".
 
-- `rodeo clean --all --yes --hard` : full host reset — destroys **all** rodeo-like VMs (harvester*, rancher* etc.), the default libvirt network unconditionally, all rodeo disk artifacts, **all** plan state files. Leaves packages and the `rodeo` binary/link alone. Perfect for fresh testing or giving the node back to other uses. By default (no --hard), clean will first run graceful stop (if VMs running) for clean stopped state before destroy.
-
-- `--force-network` : force network cleanup even if other VMs exist.
-
-- `--secrets` : also delete the global `~/.rodeo/secrets.yaml` (passwords).
-
-Run from any dir (for --all) or from your lab dir / with --config-dir for per-plan.
+Outcomes of using (enhanced clean.py + stop_cmd): "undo any VMs , networks, specific plans and passwords" (per-plan via cfg name/vms or --all patterns like in clean; network unconditional with --force-network; state nuke for all/specific in state.py dir; --secrets for ~/.rodeo/secrets.yaml; artifacts glob in image_dir). "There´s no need to remove the packages we installed, but clean the rest" (explicit in --all help/msg; leaves /usr/local/bin/rodeo from install-deps --link in bootstrap_cmd). "clean the rest so a fresh testing can start or the node can be repurposed for something else" (full reset post-stop for stopped state; restart via start/deploy). "runs before cleaning the host so the clean process do it with all stopped" (pre-destroy: if not --hard and running, shutdown + short wait using LibvirtDriver; "to the clean process we can add also a force parameter that executes first the stop process" -> --hard for bypass/immediate, default preconditions with stop per "if VMs running, execute a clean stop"). "proper stop process" ('rodeo stop --all') "has tu run when w run 'rodeo stop --all'" integrated. "The stop process needs to analyze the definition file to be infra aware" (called from clean, uses same as stop_cmd: topology for infra_type/order/components; see definition.yaml). "pause things as they should" (via stop's reverse).
 
 See `rodeo clean --help` for details.
 
@@ -317,11 +317,9 @@ See `rodeo clean --help` for details.
 
 `rodeo stop` (or `rodeo stop --all --yes`): graceful stop of the lab for later restart.
 
-- Analyzes definition (start_order reversed, components for on_host services like pxe-server nginx, node_templates infra_type for awareness, harvester_node_names).
-- Stops host lab services (hardcoded per component name for now).
-- For VMs: LibvirtDriver.shutdown() (ACPI graceful, per design) + wait.
-- Stops guests + relevant host services from definition.
-- Safe before clean; VMs stay defined (can restart).
+Why (logical in project): Complements deploy (runner.py phases start in order from definition start_order/components) and clean (old only hard destroy/undefine + state reset from kvm_host; no gentle reversible). Definition (inventory.py _load_topology + definition.yaml: start_order, components on_host, node_templates infra_type, harvester_node_names) encodes "infra" (Harvester for cluster, Rancher for K3s, pxe for boot). Without stop, no "way to stop all the deployment based of the definition file" in "timely and clean manner" (reverse order, host services + VM ACPI, infra aware via infra_type) so "they stop gently and they can be restored and start again" (VMs off/defined; clusters paused restorable). "The idea is having a stop process" that "analyzes the definition file to be infra aware and pause things as they should" (reverse start_order for VMs; components for host; "in the definition file or definition structure would be good to indicate if a VM/host is going to run Kubernetes or harvester" -> infra_type in templates).
+
+Outcomes of using (stop_cmd.py): "runs before cleaning the host so the clean process do it with all stopped" (clean.py preconditions with stop unless --hard; --force in clean executes stop first per request). "proper stop process that has tu run when w run 'rodeo stop --all'" (or per-plan; idempotent, checks running via driver). "to the clean process we can add also a force parameter that executes first the stop process" (--hard for bypass; default preconditions). Gentle ACPI (LibvirtDriver.shutdown) + services stop (from components) + wait. "pause things as they should" (order from def). "can be restored" via start or deploy --from. "to the clean process we can add also a force parameter" integrated.
 
 `rodeo start` (or `--all`): starts host services then VMs in order (with is_running wait).
 
@@ -337,6 +335,8 @@ Example flow for reset/restart:
   # ... repurpose or fresh
   rodeo start --all --yes
   # or rodeo deploy to fully restore
+
+See stop_cmd.py/start_cmd.py for full function docs (inputs from config/definition via load/_load_topology, outputs side-effects, patterns like reverse order + helpers using LibvirtDriver, how: load -> ordered stop/start services/VMs, fit: lifecycle with generate/clean/deploy; logical reasons/outcomes as above for reversible infra from decl model).
 
 ### Deployment phases (what happens)
 

@@ -79,7 +79,7 @@ Some items advanced in v0.4 (see CONTEXT.md version history): relaxed preflight 
 - [x] **S1** (partial) kill duplicated literal defaults: SSH options and key defaults centralized in `rodeo/ssh.py` + consistent root-aware logic across engine/commands (profile/cfg still source of truth for per-plan). More literal defaults remain.
 - [ ] **S2** phases return a `PhaseResult` instead of mutating
   `runner._last_rc` (removes the profile→runner private coupling)
-- [x] **S3** (partial) commands call engine helpers: preflight/attach/clean use more cfg-driven logic; attach now uses libvirt uri; several virsh fallbacks improved. More VIP-probe / listing duplication remains.
+- [x] **S3** (partial) commands call engine helpers: preflight/attach/clean use more cfg-driven logic; attach now uses libvirt uri; virsh fallbacks in stop/start/clean now pass configured libvirt uri (full consistency); several other fallbacks improved. More VIP-probe / listing duplication remains.
 - [ ] **F1** cache `ansible-galaxy collection install` (marker keyed on
   requirements.yml hash)
 - [ ] **F3** stream helm/K3s SSH installer output (Popen instead of buffered

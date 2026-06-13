@@ -112,7 +112,7 @@ Details: [User guide — Deployment targets](docs/user-guide.md#deployment-targe
 ## Configuration
 
 - **Plan:** `rodeo-plan.yaml` (in your working directory)
-- **Secrets:** `~/.rodeo/secrets.yaml` (chmod 600, never commit)
+- **Secrets:** `~/.rodeo/secrets.yaml` (chmod 600, never commit; `rodeo generate` warns instead of silent clobber if exists)
 - **Overrides:** `-P resources.harvester.memory_mib=20480` or `--paramfile lab.yaml`
 - **State:** `~/.rodeo/state/<plan-name>.yaml`
 

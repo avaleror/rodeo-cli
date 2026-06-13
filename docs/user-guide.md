@@ -82,6 +82,10 @@ sudo -E rodeo deploy --config-dir . --check
 
 See `rodeo generate --help`. Generates ready structure; then use bootstrap/init/deploy as usual.
 
+Note: `generate` always writes a fresh local `rodeo-secrets.env` in the lab dir. For the global `~/.rodeo/secrets.yaml` it now checks if the file exists first and prints a warning instead of silently overwriting (protects multi-lab users and prior credentials; delete the global file to force refresh on next generate). This was added after audit to address silent clobber risk while keeping the "ready to use" UX for new labs.
+
+Why: matches the priority from post-audit remaining items; outcomes: safer, no data loss for users, still enables the generate -> source -> deploy flow without extra init.
+
 ### For development or custom setups
 
 ```bash
@@ -387,23 +391,6 @@ Also, add comments to other key files? E.g. perhaps the init_cmd.py to document 
 
 We have good coverage.
 
-Now, also update the Generated content docs for completeness, but since we pushed the project, and committed local.
-
-For Claude workspace, perhaps write a summary note.
-
-But to finish, create a high quality "SLES Bootstrap Guide" or integrate.
-
-Since user said "work on the project documentation and user docs", the updates to user-guide and README are key.
-
-Perhaps enhance with more Mermaid.
-
-One more: add a diagram for the overall solution in architecture.
-
-But ok.
-
-Now, since push already done for rodeo, perhaps re-push if more changes.
-
-We have more doc updates, so commit and push again.
 ### Credentials for attendees / instructors
 
 After `rodeo init`, passwords live in `~/.rodeo/secrets.yaml`:

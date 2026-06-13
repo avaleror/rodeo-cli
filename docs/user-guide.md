@@ -61,6 +61,21 @@ Follow the exact commands printed at the end (typically `cd ~/harvester-rodeo-la
 
 This is the clean, simple path for workshop operators on bare metal or cloud hosts.
 
+### Generate custom definition + full lab skeleton interactively (before first deploy)
+
+Use `rodeo generate` (new) to interactively create a full custom config-dir skeleton (definition.yaml + rodeo-plan.yaml + certs/ etc like EIB) based on your answers. Uses pre-validated templates as base (rails to avoid bad defs), hybrid basic/advanced prompts, supports infra_type etc for stop/start awareness. You can add extra customizations after.
+
+```bash
+rodeo generate --dir my-custom-lab
+# prompts: name, num Harvester nodes, include Rancher?, target, storage device, (advanced: resources, cidr...)
+cd my-custom-lab
+source rodeo-secrets.env
+rodeo plan --config-dir .
+sudo -E rodeo deploy --config-dir . --check
+```
+
+See `rodeo generate --help`. Generates ready structure; then use bootstrap/init/deploy as usual.
+
 ### For development or custom setups
 
 ```bash
@@ -96,14 +111,17 @@ See the Mermaid source and rendered diagram in the repository:
 
 ## First-time setup
 
-**Best path:** Use `rodeo bootstrap` (or the curl bootstrap script) — it runs `init --example harvester-lab-config` for you and seeds a ready-to-use lab dir with the 2-node Harvester no-Rancher test configuration, plus the link for clean `rodeo` invocation.
+**Best path 1:** Use `rodeo bootstrap` (or the curl bootstrap script) — it runs `init --example harvester-lab-config` for you and seeds a ready-to-use lab dir with the 2-node Harvester no-Rancher test configuration, plus the link for clean `rodeo` invocation.
 
-### 1. Generate config (or let bootstrap do it)
+**Best path 2 (custom):** Use `rodeo generate --dir mylab` first (interactive from templates) to create custom skeleton, then init/deploy.
+
+### 1. Generate config (or let bootstrap/generate do it)
 
 ```bash
 rodeo init
 # or
 rodeo init --example harvester-lab-config /path/to/my-lab
+# or for custom: rodeo generate --dir mylab (then cd; rodeo init --force if needed)
 ```
 
 Creates:
@@ -274,6 +292,8 @@ Deploy fails immediately if a `??` placeholder does not resolve — it will not 
 | Serial console | `rodeo attach harvester1` (Ctrl+] to detach; uses `libvirt.uri` from plan if non-default) |
 | Tear down lab | `rodeo clean` |
 | Support bundle | `rodeo logs --bundle` |
+| Generate custom lab skeleton | `rodeo generate --dir mylab` (interactive, full config-dir from templates) |
+| Graceful stop/restart | `rodeo stop --all --yes` / `start --all --yes` (infra-aware per definition) |
 
 ### `rodeo clean` and host reset
 

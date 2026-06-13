@@ -50,7 +50,26 @@ Nested KVM makes Harvester install **slow (20–60 minutes)**. Plan workshop pre
 
 ## Installation
 
-### Recommended: one-command bootstrap for clean SLES 16 / Leap 16 (or similar)
+### Fastest path: `rodeo up`
+
+On a clean Linux host with Python 3.10+, get the `rodeo` command, then run one thing:
+
+```bash
+git clone https://github.com/avaleror/rodeo-cli.git
+cd rodeo-cli
+python3 -m venv --system-site-packages .venv && source .venv/bin/activate
+pip install -e .
+
+rodeo doctor   # optional: see if the host is ready and which lab fits
+rodeo up       # set up + deploy a lab, then print how to log in
+```
+
+`rodeo up` does the rest: it checks the host, offers to install missing deps, picks a lab
+sized for your RAM, generates secrets, escalates with sudo on its own, deploys, and shows
+the URLs and password. No `source`, no `sudo -E`, no `--config-dir`. The rest of this guide
+covers the advanced and Instruqt paths.
+
+### (advanced) One-command bootstrap for clean SLES 16 / Leap 16
 
 ```bash
 # Minimal manual interaction — handles prereqs, setup, binary link in /usr/local/bin, and a ready lab dir
@@ -484,6 +503,9 @@ Run workshop hosts on a **private network** or behind a firewall. Do not expose 
 ## Quick reference
 
 ```bash
+rodeo doctor                     # host readiness + which lab fits
+rodeo up                         # set up + deploy a lab (the easy path)
+# --- or the explicit, lower-level commands: ---
 sudo rodeo install-deps          # once per host
 rodeo init                       # plan + secrets
 rodeo deploy --check             # preflight

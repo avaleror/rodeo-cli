@@ -1,0 +1,82 @@
+"""Shared secret generation for init / generate / up.
+
+One place that knows how to make a Rancher-valid password, a cluster join
+token, and how to write (or reuse) ~/.rodeo/secrets.yaml. Commands import these
+helpers instead of each rolling their own, so the rules stay in sync.
+"""
+from __future__ import annotations
+
+import secrets
+import stat
+import string
+from pathlib import Path
+
+def secrets_path() -> Path:
+    """Default secrets location, resolved live from HOME (test- and sudo-friendly)."""
+    return Path.home() / ".rodeo" / "secrets.yaml"
+
+
+# Back-compat constant; prefer secrets_path() so HOME changes are honored.
+SECRETS_PATH = secrets_path()
+
+
+def random_password(length: int = 16) -> str:
+    """Random password that satisfies Rancher complexity (upper+lower+digit, 12+ chars)."""
+    alphabet = string.ascii_letters + string.digits
+    while True:
+        pw = "".join(secrets.choice(alphabet) for _ in range(length))
+        if (any(c.isdigit() for c in pw) and any(c.isupper() for c in pw)
+                and any(c.islower() for c in pw)):
+            return pw
+
+
+def gen_token() -> str:
+    """Random Harvester cluster join token."""
+    return secrets.token_urlsafe(24)
+
+
+def write_secrets_file(path: Path, password: str, token: str) -> None:
+    """Write ~/.rodeo/secrets.yaml (chmod 600) with the lab-wide password + token."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "# ~/.rodeo/secrets.yaml — kept out of version control\n"
+        "# One lab-wide password for OS consoles, the Harvester dashboard, and\n"
+        "# the Rancher admin. The token joins the Harvester nodes into one cluster.\n"
+        f'harvester_os_password: "{password}"\n'
+        f'lab_admin_password: "{password}"\n'
+        f'harvester_token: "{token}"\n'
+    )
+    path.chmod(stat.S_IRUSR | stat.S_IWUSR)  # 0600
+
+
+def read_secrets_file(path: Path | None = None) -> tuple[str | None, str | None]:
+    """Return (password, token) parsed from an existing secrets file, or (None, None)."""
+    path = path or secrets_path()
+    password = token = None
+    try:
+        for line in path.read_text().splitlines():
+            if line.startswith("harvester_os_password:"):
+                password = line.split(":", 1)[1].strip().strip("\"'")
+            elif line.startswith("harvester_token:"):
+                token = line.split(":", 1)[1].strip().strip("\"'")
+    except OSError:
+        pass
+    return password, token
+
+
+def ensure_secrets_file(path: Path | None = None, force: bool = False) -> tuple[str, str, bool]:
+    """Make sure a usable secrets file exists. Return (password, token, created).
+
+    Reuses existing values unless ``force``. Generates and writes fresh ones when
+    missing (or unparseable). This is the silent, file-based path that lets deploy
+    read ``??key`` placeholders with no env vars and no ``sudo -E``.
+    """
+    path = path or secrets_path()
+    if path.exists() and not force:
+        password, token = read_secrets_file(path)
+        if password and token:
+            return password, token, False
+    password = random_password()
+    token = gen_token()
+    write_secrets_file(path, password, token)
+    return password, token, True

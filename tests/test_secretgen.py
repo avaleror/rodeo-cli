@@ -1,0 +1,39 @@
+"""Shared secret generation helpers."""
+from __future__ import annotations
+
+import stat
+
+from rodeo import secretgen
+
+
+def test_random_password_complexity():
+    for _ in range(20):
+        pw = secretgen.random_password()
+        assert len(pw) >= 12
+        assert any(c.isdigit() for c in pw)
+        assert any(c.isupper() for c in pw)
+        assert any(c.islower() for c in pw)
+
+
+def test_ensure_secrets_file_creates_then_reuses(tmp_path):
+    path = tmp_path / ".rodeo" / "secrets.yaml"
+    pw1, tok1, created1 = secretgen.ensure_secrets_file(path)
+    assert created1 is True
+    assert path.exists()
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+    pw2, tok2, created2 = secretgen.ensure_secrets_file(path)
+    assert created2 is False
+    assert (pw2, tok2) == (pw1, tok1)
+
+
+def test_read_secrets_file_roundtrip(tmp_path):
+    path = tmp_path / "secrets.yaml"
+    secretgen.write_secrets_file(path, "Password1234", "tok-abc")  # gitleaks:allow
+    pw, tok = secretgen.read_secrets_file(path)
+    assert pw == "Password1234"  # gitleaks:allow
+    assert tok == "tok-abc"
+
+
+def test_read_secrets_file_missing(tmp_path):
+    assert secretgen.read_secrets_file(tmp_path / "nope.yaml") == (None, None)

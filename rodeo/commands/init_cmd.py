@@ -5,25 +5,16 @@ import os
 import secrets
 import shutil
 import stat
-import string
 from pathlib import Path
 
 import click
 from rich.console import Console
 
+from ..secretgen import random_password as _random_password
+
 console = Console()
 
 _TEMPLATES = Path(__file__).parent.parent / "data" / "templates"
-
-
-def _random_password(length: int = 16) -> str:
-    """Random password that satisfies Rancher complexity (letters+digits, 12+ chars)."""
-    alphabet = string.ascii_letters + string.digits
-    while True:
-        pw = "".join(secrets.choice(alphabet) for _ in range(length))
-        if any(c.isdigit() for c in pw) and any(c.isupper() for c in pw) \
-                and any(c.islower() for c in pw):
-            return pw
 
 
 def _pick_password(ask: bool) -> tuple[str, str]:

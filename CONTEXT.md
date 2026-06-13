@@ -170,6 +170,7 @@ These are the non-obvious things that burned time during development:
 | `clean [--yes] [--all --secrets --force-network --hard]` | Per-plan or full host reset: destroy rodeo VMs + default network + artifacts + all/specific plan states + optional secrets. Leaves packages + rodeo binary (for fresh test or node repurposing). Runs stop first unless --hard. |
 | `stop [--yes] [--all]` | Graceful infra-aware stop (definition: infra_type, components, reverse start_order; VM ACPI shutdown + host services). Restartable. |
 | `start [--yes] [--all]` | Start after stop (host services + VMs in order + wait). |
+| `generate [--dir] [--advanced]` | Interactive generator for custom definition + full config-dir skeleton (templates base, hybrid prompts, yaml, validation, suggests bootstrap/deploy). Supports infra_type etc. |
 | `status` | VM table (from plan inventory), VIP probe, phase progress. |
 | `watch` | TUI view-only (TTY required). |
 | `restart VM\|all [--hard]` | ACPI shutdown + start; VM names from plan. |

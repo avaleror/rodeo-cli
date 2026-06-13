@@ -10,7 +10,6 @@ Fits general picture as part of lifecycle commands (with generate for entry, boo
 
 import subprocess
 import time
-from pathlib import Path
 
 import click
 from rich.console import Console
@@ -154,7 +153,10 @@ def start_cmd(config_path: str, config_dir: str | None, params: tuple[str, ...],
     except RuntimeError as exc:
         console.print(f"[yellow]⚠  {exc} — falling back to virsh[/yellow]")
         for name in ( [v for v in start_order if v in vm_names] or vm_names ):
-            subprocess.run(["virsh", "start", name], check=False, capture_output=True)
-            console.print(f"  [dim]virsh start[/dim] {name}")
+            try:
+                subprocess.run(["virsh", "-c", uri, "start", name], check=False, capture_output=True)
+                console.print(f"  [dim]virsh start[/dim] {name}")
+            except Exception:
+                pass
 
     console.print("\n[bold green]✓  Start complete.[/bold green] Use 'rodeo status' or 'rodeo deploy --from cluster' to fully restore.\n")

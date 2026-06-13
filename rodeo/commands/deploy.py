@@ -245,7 +245,7 @@ def _deploy_plain(
         ansible_verbose=ansible_verbose,
     )
 
-    console.print(f"\n[bold]rodeo deploy[/bold]  [[{root}]]\n")
+    console.print(f"\n[bold]rodeo deploy[/bold]  {root}\n")
 
     # A live status line absorbs ProgressUpdate events without corrupting
     # log output (the old \r trick smeared lines). Non-TTY (CI) gets the

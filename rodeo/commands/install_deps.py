@@ -230,9 +230,9 @@ def install_deps_cmd(skip_ansible: bool, link: bool, force_link: bool) -> None:
                     target.symlink_to(rodeo_bin)
                     console.print(f"[green]✓  /usr/local/bin/rodeo -> {rodeo_bin} (overwritten)[/green]")
                 elif cur == desired:
-                    console.print(f"[green]✓  /usr/local/bin/rodeo already points here[/green]")
+                    console.print("[green]✓  /usr/local/bin/rodeo already points here[/green]")
                 else:
-                    console.print(f"[yellow]⚠  /usr/local/bin/rodeo exists and points elsewhere — use --force-link to replace[/yellow]")
+                    console.print("[yellow]⚠  /usr/local/bin/rodeo exists and points elsewhere — use --force-link to replace[/yellow]")
             else:
                 target.symlink_to(rodeo_bin)
                 console.print(f"[green]✓  /usr/local/bin/rodeo -> {rodeo_bin}[/green]")

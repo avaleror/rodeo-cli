@@ -19,8 +19,12 @@ from ._options import config_options
 console = Console()
 
 
-def _virsh(*args: str) -> None:
-    subprocess.run(["virsh", *args], check=False, capture_output=True)
+def _virsh(*args: str, uri: str | None = None) -> None:
+    cmd = ["virsh"]
+    if uri:
+        cmd.extend(["-c", uri])
+    cmd.extend(args)
+    subprocess.run(cmd, check=False, capture_output=True)
 
 
 @click.command("clean")
@@ -60,13 +64,13 @@ def clean_cmd(
         # Discover rodeo VMs by common patterns (harvester*, rancher*, etc.) across any plan.
         vm_names = []
         try:
-            from ..engine.libvirt import LibvirtDriver
             with LibvirtDriver( (cfg or {"libvirt":{"uri":"qemu:///system"}})["libvirt"]["uri"] ) as lv:
                 all_doms = lv.list_all_domain_names()
                 vm_names = [n for n in all_doms if any(p in n for p in ("harvester", "rancher", "rodeo"))]
         except Exception:
             try:
-                res = subprocess.run(["virsh", "list", "--all", "--name"], capture_output=True, text=True, check=False)
+                u = (cfg or {"libvirt": {"uri": "qemu:///system"}})["libvirt"]["uri"]
+                res = subprocess.run(["virsh", "-c", u, "list", "--all", "--name"], capture_output=True, text=True, check=False)
                 all_doms = [n.strip() for n in res.stdout.splitlines() if n.strip()]
                 vm_names = [n for n in all_doms if any(p in n for p in ("harvester", "rancher", "rodeo"))]
             except Exception:
@@ -116,17 +120,13 @@ def clean_cmd(
     # For --all or --force-network we destroy the network unconditionally (after VM cleanup).
     do_force_net = all or force_network
 
+    uri = (cfg or {"libvirt": {"uri": "qemu:///system"}})["libvirt"]["uri"]
     try:
-        from ..engine.libvirt import LibvirtDriver
-
-        uri = (cfg or {"libvirt": {"uri": "qemu:///system"}})["libvirt"]["uri"]
         with LibvirtDriver(uri) as lv:
             for vm in vm_names:
                 console.print(f"  [dim]destroy[/dim]  {vm}")
                 lv.destroy(vm)
                 lv.undefine(vm)
-            # The 'default' network is shared host infrastructure — only tear
-            # it down when no other VMs remain that might be using it (unless --force-network / --all).
             others = sorted(set(lv.list_all_domain_names()) - set(vm_names))
             if others and not do_force_net:
                 console.print(
@@ -135,24 +135,21 @@ def clean_cmd(
                 )
             else:
                 if others and do_force_net:
-                    console.print(f"  [yellow]force[/yellow]    libvirt default network ( --force-network / --all )")
+                    console.print("  [yellow]force[/yellow]    libvirt default network ( --force-network / --all )")
                 console.print("  [dim]destroy[/dim]  libvirt default network")
                 lv.net_destroy("default")
                 lv.net_undefine("default")
     except RuntimeError as exc:
-        # libvirt-python missing or connect refused — virsh does the same job.
-        # Anything else (e.g. libvirtError mid-operation) should surface, not hide.
         console.print(f"[yellow]⚠  {exc} — falling back to virsh[/yellow]")
 
         for vm in vm_names:
             console.print(f"  [dim]destroy[/dim]  {vm} (virsh)")
-            _virsh("destroy", vm)
-            _virsh("undefine", "--nvram", vm)
+            _virsh("destroy", vm, uri=uri)
+            _virsh("undefine", "--nvram", vm, uri=uri)
 
-        # Check for other domains before touching the shared default network (parity with libvirt path)
         try:
             res = subprocess.run(
-                ["virsh", "list", "--all", "--name"],
+                ["virsh", "-c", uri, "list", "--all", "--name"],
                 capture_output=True, text=True, check=False
             )
             all_names = [n.strip() for n in res.stdout.splitlines() if n.strip()]
@@ -166,10 +163,9 @@ def clean_cmd(
                 if others and do_force_net:
                     console.print("  [yellow]force[/yellow]    libvirt default network (virsh, --force-network / --all)")
                 console.print("  [dim]destroy[/dim]  libvirt default network (virsh)")
-                _virsh("net-destroy", "default")
-                _virsh("net-undefine", "default")
+                _virsh("net-destroy", "default", uri=uri)
+                _virsh("net-undefine", "default", uri=uri)
         except Exception:
-            # If virsh list fails, be conservative and leave the network.
             console.print("  [yellow]keep[/yellow]     libvirt default network (virsh list failed)")
             pass
 

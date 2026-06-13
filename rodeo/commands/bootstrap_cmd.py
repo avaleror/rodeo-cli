@@ -27,7 +27,6 @@ Clean interface goals:
 - No mandatory --config-dir flags when operating inside a prepared lab dir.
 """
 
-import os
 import shutil
 import subprocess
 import sys

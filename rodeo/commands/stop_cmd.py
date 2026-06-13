@@ -10,7 +10,6 @@ See definition.yaml for infra_type addition (in node_templates) and components (
 
 import subprocess
 import time
-from pathlib import Path
 
 import click
 from rich.console import Console
@@ -214,8 +213,7 @@ def stop_cmd(config_path: str, config_dir: str | None, params: tuple[str, ...], 
         console.print(f"[yellow]⚠  {exc} — falling back to virsh shutdown[/yellow]")
         for name in ( [v for v in stop_order if v in vm_names] or vm_names ):
             try:
-                # virsh shutdown is graceful ACPI
-                subprocess.run(["virsh", "shutdown", name], check=False, capture_output=True)
+                subprocess.run(["virsh", "-c", uri, "shutdown", name], check=False, capture_output=True)
                 console.print(f"  [dim]virsh shutdown[/dim] {name}")
             except Exception:
                 pass

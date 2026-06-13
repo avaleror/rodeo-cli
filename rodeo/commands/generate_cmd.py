@@ -21,9 +21,9 @@ Current scope focuses on Harvester/SUSE Virtualization (suse-virt type); extensi
 See also: docs/user-guide.md for usage, architecture.md for role in declarative pipeline, definition.yaml for expected structure (including infra_type), cli.py for registration.
 """
 
-import os
+import secrets
 import shutil
-import tempfile
+import string
 from pathlib import Path
 
 import click
@@ -32,7 +32,6 @@ from rich.console import Console
 from rich.prompt import Confirm, Prompt
 
 from ..config import load_config  # for post validate
-from ._options import config_options
 
 console = Console()
 
@@ -142,40 +141,41 @@ def _customize_definition(def_path, answers):
     defn["description"] = f"{answers['num_harvester']}-node Harvester HCI cluster{' + Rancher' if answers.get('include_rancher') else ''} on nested KVM (generated)"
 
     # nodes and lists
+    # Use template's first matching node as base to preserve interfaces/MACs/uuids/etc from explicit template
+    harv_tmpl = next((dict(n) for n in defn.get("nodes", []) if n.get("template") == "harvester"), {})
+    ranch_tmpl = next((dict(n) for n in defn.get("nodes", []) if n.get("template") == "rancher"), {})
     nodes = []
     harvester_names = []
+    hostnames = ["alpha", "bravo", "charlie"]
     for i in range(1, answers["num_harvester"] + 1):
         node_name = f"harvester{i}"
         harvester_names.append(node_name)
-        # base from template or minimal
-        base_node = {
+        base_node = dict(harv_tmpl)  # copy to preserve
+        base_node.update({
             "name": node_name,
-            "template": "harvester",
             "index": i,
-            "hostname": f"{'alpha' if i==1 else 'bravo' if i==2 else 'charlie' if i==3 else f'node{i}'}",
+            "hostname": hostnames[i-1] if i <= 3 else f"node{i}",
             "ip": f"192.168.122.{10 + i}",
             "config_iso_name": f"harvester-config-node{i}",
-            "ssh_user": "rancher",
             "infra_type": "harvester",
-        }
+        })
         nodes.append(base_node)
 
     if answers.get("include_rancher"):
-        nodes.append({
-            "name": "rancher",
-            "template": "rancher",
-            "index": 0,
-            "hostname": "rancher",
-            "ip": "192.168.122.9",
-            "config_iso_name": "",
-            "ssh_user": "root",
-            "infra_type": "rancher",
-        })
+        rnode = dict(ranch_tmpl) if ranch_tmpl else {"name": "rancher", "template": "rancher", "index": 0, "hostname": "rancher", "ip": "192.168.122.9", "config_iso_name": "", "ssh_user": "root", "infra_type": "rancher"}
+        rnode.update({"infra_type": "rancher"})
+        nodes.append(rnode)
 
     defn["nodes"] = nodes
     defn["start_order"] = harvester_names + (["rancher"] if answers.get("include_rancher") else [])
     defn["harvester_node_names"] = harvester_names
     defn["harvester_ready_count"] = answers["num_harvester"]
+
+    # Update harvester section notes based on num (template may have 2-node text)
+    if "harvester" in defn and "installer_notes" in defn["harvester"]:
+        n = answers["num_harvester"]
+        defn["harvester"]["installer_notes"]["rke2"] = f"RKE2 control plane on the {n} nodes; etcd join gap declared above for bootstrap race avoidance."
+        defn["harvester"]["installer_notes"]["longhorn"] = f"Storage on the dedicated storage + service NICs; Longhorn uses the {n} replicas (lab only)."
 
     # storage
     if answers.get("storage_device"):
@@ -197,6 +197,12 @@ def _customize_definition(def_path, answers):
     if "exposed_services" in defn:
         exps = [e for e in defn["exposed_services"] if e["name"] != "rancher" or answers.get("include_rancher")]
         defn["exposed_services"] = exps
+
+    # Update rancher note if present (template has 2-node specific)
+    if "rancher" in defn and isinstance(defn.get("rancher"), dict):
+        if "cloud_init" not in defn["rancher"]:
+            defn["rancher"]["cloud_init"] = {}
+        # keep as is, or update comment if in full structure
 
     with open(def_path, "w") as f:
         yaml.safe_dump(data, f, sort_keys=False, default_flow_style=False)
@@ -326,8 +332,6 @@ def generate_cmd(output_dir: str, name: str | None, advanced: bool):
 
     # post generate secrets like init (to make ready, use ??env)
     # simple random for now
-    import secrets
-    import string
     alphabet = string.ascii_letters + string.digits
     pw = "".join(secrets.choice(alphabet) for _ in range(16))
     while not (any(c.isdigit() for c in pw) and any(c.isupper() for c in pw) and any(c.islower() for c in pw)):
@@ -337,13 +341,24 @@ def generate_cmd(output_dir: str, name: str | None, advanced: bool):
     env_file = out / "rodeo-secrets.env"
     env_content = f'export HARVESTER_OS_PASSWORD="{pw}"\nexport LAB_ADMIN_PASSWORD="{pw}"\nexport HARVESTER_TOKEN="{token}"\n'
     env_file.write_text(env_content)
-
-    # also create global secrets? but for generate, env is enough, user can init if wants global
     console.print(f"[green]Created {env_file}[/green] (use with source + sudo -E)")
 
-    # validation
+    secrets_dest = Path.home() / ".rodeo" / "secrets.yaml"
+    secrets_dest.parent.mkdir(parents=True, exist_ok=True)
+    if secrets_dest.exists():
+        console.print(f"[yellow]{secrets_dest} exists — not overwriting (delete to refresh on next generate)[/yellow]")
+    else:
+        secrets_dest.write_text(
+            "# ~/.rodeo/secrets.yaml — kept out of version control\n"
+            f'harvester_os_password: "{pw}"\n'
+            f'lab_admin_password: "{pw}"\n'
+            f'harvester_token: "{token}"\n'
+        )
+        secrets_dest.chmod(0o600)
+        console.print(f"[green]Created {secrets_dest}[/green]")
+
     try:
-        cfg = load_config(None, config_dir=str(out))
+        load_config(None, config_dir=str(out))
         console.print("[green]✓ Generated files validated (load_config OK)[/green]")
     except Exception as e:
         console.print(f"[yellow]⚠ Validation warning: {e}[/yellow]")

@@ -110,7 +110,6 @@ def init_cmd(force: bool, ask_password: bool, target_dir: str, example: str | No
 
     # Plan handling: never blindly overwrite a seeded example plan with the generic template.
     # Always ensure the three credential lines use the ??env: form (so source rodeo-secrets.env + sudo -E works).
-    plan_existed = plan_dest.exists()
     if plan_dest.exists() and not force and not example:
         console.print(f"[yellow]{plan_dest} already exists — use --force to overwrite.[/yellow]")
     else:

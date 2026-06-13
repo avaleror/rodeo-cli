@@ -113,7 +113,7 @@ def _make_bundle(cfg: dict, log_dir: Path, output: str | None) -> None:
             for f in sorted(tmp_path.iterdir()):
                 tar.add(f, arcname=f"rodeo-bundle/{f.name}")
 
-    console.print(f"[green]✓[/green]  [[{dest}]]")
+    console.print(f"[green]✓[/green]  {dest}")
     console.print(
         f"  [dim]plan: {plan_name} · serial logs: "
         f"{', '.join(collected) if collected else 'none found'} · credentials redacted[/dim]"

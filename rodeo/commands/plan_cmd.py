@@ -65,10 +65,10 @@ def _inspect_host(cfg: dict) -> dict | None:
                 "vms": {vm.name: vm for vm in infos},
                 "net_active": lv.net_is_active("default"),
             }
-    except Exception as exc:
+    except Exception:
         # Always fall back gracefully on any libvirt issue (missing module or daemon not up).
         # This is normal on a clean host before install-deps has run.
-        console.print(f"\n[yellow]⚠  libvirt not reachable on host — showing desired state only.[/yellow]")
+        console.print("\n[yellow]⚠  libvirt not reachable on host — showing desired state only.[/yellow]")
         return None
 
 
@@ -132,7 +132,7 @@ def _print_storage(cfg: dict) -> int:
         (f"harvester-v{version}-rootfs-amd64.squashfs", pxe_root / "harvester" / f"harvester-v{version}-rootfs-amd64.squashfs"),
     ]
 
-    console.print(f"\n[bold]  Storage[/bold] [dim]([[{image_dir}]])[/dim]")
+    console.print(f"\n[bold]  Storage[/bold] [dim]({image_dir})[/dim]")
     downloads = 0
     for artifact in artifacts:
         if (image_dir / artifact).exists():

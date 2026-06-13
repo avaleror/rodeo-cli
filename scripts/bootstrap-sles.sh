@@ -95,7 +95,7 @@ fi
 echo "==> Cloning rodeo-cli to $RODEO_DIR (internal, hidden from user)"
 git clone --depth 1 https://github.com/avaleror/rodeo-cli.git "$RODEO_DIR"
 if [ "$RODEO_REF" != "main" ]; then
-  (cd "$RODEO_DIR" && git fetch --depth 1 origin "$RODEO_REF" || git fetch origin "$RODEO_REF" && git checkout FETCH_HEAD)
+  (cd "$RODEO_DIR" && git fetch --depth 1 --tags origin "$RODEO_REF" || git fetch --tags origin "$RODEO_REF" && git checkout FETCH_HEAD)
 fi
 
 echo "==> Setting up venv with --system-site-packages"

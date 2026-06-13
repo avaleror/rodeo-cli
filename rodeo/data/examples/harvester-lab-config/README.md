@@ -26,6 +26,10 @@ Follow the commands printed by the script (cd ~/harvester-rodeo-lab, source rode
 
 This is the minimal manual interaction path. `rodeo` works globally; the lab dir is the clean declarative context.
 
+Lab lifecycle commands (infra-aware from definition):
+- `rodeo stop --all --yes` / `start --all --yes`: graceful stop (VMs + host services) / start; restartable.
+- `rodeo clean --all --yes --secrets --hard`: full host reset (VMs/networks/states/passwords; packages + binary untouched).
+
 See the SLES test guide for details.
 
 The inventory (build_inventory) records `_config_dir` with the discovered files.

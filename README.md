@@ -61,8 +61,10 @@ rodeo deploy
 | `init` | Create `rodeo-plan.yaml` + `~/.rodeo/secrets.yaml` (supports `--example` for pre-seeded configs) |
 | `plan` | Preview diff vs host (no changes) |
 | `deploy` | Run the full pipeline |
+| `stop` | Graceful infra-aware stop of the lab (VMs + host services per definition; --all for everything). VMs stay defined for restart. |
+| `start` | Start the lab after stop (host services + VMs per definition). |
 | `status` | VM states, VIP, phase progress |
-| `clean` | Destroy lab VMs, disks, reset state. `--all --yes --secrets --force-network` for full host reset (all rodeo VMs/networks/states/passwords; leaves packages + rodeo binary for repurposing or fresh start). |
+| `clean` | Destroy lab VMs, disks, reset state. `--all --yes --secrets --force-network --hard` for full host reset (all rodeo VMs/networks/states/passwords; leaves packages + rodeo binary for repurposing or fresh start). |
 | `watch` | TUI: phases + serial logs |
 | `ssh` / `logs` / `restart` / `attach` | VM access and ops |
 | `logs --bundle` | Support tarball for troubleshooting |

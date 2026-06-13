@@ -281,7 +281,7 @@ Deploy fails immediately if a `??` placeholder does not resolve — it will not 
 
 New in this release for "reset the host" / repurposing:
 
-- `rodeo clean --all --yes` : full host reset — destroys **all** rodeo-like VMs (harvester*, rancher* etc.), the default libvirt network unconditionally, all rodeo disk artifacts, **all** plan state files. Leaves packages and the `rodeo` binary/link alone. Perfect for fresh testing or giving the node back to other uses.
+- `rodeo clean --all --yes --hard` : full host reset — destroys **all** rodeo-like VMs (harvester*, rancher* etc.), the default libvirt network unconditionally, all rodeo disk artifacts, **all** plan state files. Leaves packages and the `rodeo` binary/link alone. Perfect for fresh testing or giving the node back to other uses. By default (no --hard), clean will first run graceful stop (if VMs running) for clean stopped state before destroy.
 
 - `--force-network` : force network cleanup even if other VMs exist.
 
@@ -290,6 +290,8 @@ New in this release for "reset the host" / repurposing:
 Run from any dir (for --all) or from your lab dir / with --config-dir for per-plan.
 
 See `rodeo clean --help` for details.
+
+**Important:** For gentle stop before clean, use `rodeo stop --all --yes` first (infra-aware per definition). `clean --hard` skips the stop step.
 
 ### Graceful stop and start (new, infra-aware from definition)
 
@@ -303,11 +305,18 @@ See `rodeo clean --help` for details.
 
 `rodeo start` (or `--all`): starts host services then VMs in order (with is_running wait).
 
-Use `rodeo stop` before `rodeo clean` for clean stopped state. `clean --hard` skips graceful.
+Use `rodeo stop` before `rodeo clean` for clean stopped state. `clean --hard` skips graceful (immediate force destroy).
 
-See definition.yaml for infra_type example (added to templates).
+See definition.yaml for infra_type example (added to templates for stop/start awareness).
 
-`rodeo stop --help` / start for options. Integrates with clean via --force behavior (stop first).
+`rodeo stop --help` / start for options. Integrates with clean: default clean runs stop first if VMs running; use --hard to bypass.
+
+Example flow for reset/restart:
+  rodeo stop --all --yes
+  rodeo clean --all --yes --secrets   # or with --hard if already stopped
+  # ... repurpose or fresh
+  rodeo start --all --yes
+  # or rodeo deploy to fully restore
 
 ### Deployment phases (what happens)
 

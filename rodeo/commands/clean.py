@@ -37,6 +37,8 @@ def clean_cmd(
 
     By default operates on the plan from config/plan file (specific VMs + plan state).
     Use --all for full host cleanup without needing a specific plan/config (matches rodeo-like VM names).
+
+    Graceful stop integration: unless --hard, will first run stop logic (VMs via shutdown if running) for clean state before destroy. See stop_cmd.py and user docs.
     """
     if config_dir is None:
         ctx = click.get_current_context()

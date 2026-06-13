@@ -32,6 +32,7 @@ The tool runs on **cloud instances**, **Instruqt builder VMs**, **local VMs**, o
 | Instruqt-safe builds | `deployment_target: instruqt` skips `finalise` until snapshot |
 | Self-contained install | Ansible roles bundled in `rodeo/data/ansible/` |
 | Minimal first-phase friction | `scripts/bootstrap-sles.sh` (curl | bash) + `rodeo bootstrap` subcommand + `install-deps --link` for global binary + `init --example` for pre-seeded declarative labs. See visual in user-guide. |
+| Graceful stop/restart + host reset | `rodeo stop`/`start` (infra-aware from definition: infra_type, components, start_order; graceful ACPI + host services; restartable). `clean --all --hard --secrets --force-network` for full reset (VMs/networks/states/passwords; no package removal). Clean runs stop first unless --hard. |
 
 **Vision (roadmap):** Terraform-for-labs — declare desired state, preview diff, converge, destroy what you own. See [ROADMAP.md](../ROADMAP.md).
 

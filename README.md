@@ -56,14 +56,31 @@ Advanced / scripted setups (custom topologies, Instruqt images, pinned versions)
 | `test` | 2-node Harvester cluster, no Rancher | 36 GiB |
 | `harvester` | 3-node Harvester HCI + Rancher Prime (the full lab) | 60 GiB |
 
+`rodeo profiles` lists these plus any you create.
+
+### Make your own rodeo (declarative)
+
+Scaffold a working lab, edit two YAML files, deploy it:
+
+```bash
+rodeo new mylab --from harvester      # copies into ~/.rodeo/profiles/mylab
+$EDITOR ~/.rodeo/profiles/mylab/definition.yaml
+rodeo up --profile mylab
+```
+
+A profile is a config-dir: `definition.yaml` (topology) + `rodeo-plan.yaml` (resources,
+credentials). Full format and how-to: **[Create your own rodeo](docs/custom-rodeos.md)**.
+
 ---
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `up` | **Start here.** One command: doctor → pick a lab that fits → secrets → deploy → login info. Self-escalates with sudo. |
+| `up` | **Start here.** One command: doctor → pick a lab that fits → secrets → deploy → login info. Self-escalates with sudo. `--profile <name>` for a specific lab. |
 | `doctor` | Host readiness (RAM, CPU, disk, KVM, nested virt, tools) and which lab profile fits |
+| `new` | Scaffold a custom rodeo you can edit: `rodeo new mylab --from harvester` → edit → `rodeo up --profile mylab` |
+| `profiles` | List deployable profiles (bundled + your custom ones in `~/.rodeo/profiles/`) |
 | `bootstrap` | (advanced) One-command host link + ready lab dir setup for clean SLES |
 | `generate` | (advanced) Custom definition + full config-dir skeleton from templates. `rodeo generate --dir mylab` |
 | `install-deps` | Host packages (KVM, ansible, kubectl, …) + optional `--link` for /usr/local/bin/rodeo |

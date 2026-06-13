@@ -23,7 +23,7 @@ from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
 from ..config import find_ansible_root, find_lab_dir, load_config, validate_config
-from ..labseed import seed_lab
+from ..labseed import custom_profile_dir, profile_kind, seed_lab
 from ..preflight import (
     PROFILE_SIZING,
     detect_host,
@@ -88,12 +88,24 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
     )
     if not lab_ready:
         chosen = profile or _choose_profile(host, assume_yes)
-        lab_name = name or (lab.name if lab else "rodeo-lab")
-        if lab is None:
-            lab = DEFAULT_LABS_ROOT / lab_name
-        console.print(f"\n[bold]Setting up the '{chosen}' lab[/bold] at [cyan]{lab}[/cyan] "
-                      f"([dim]{profile_label(chosen)}[/dim])")
-        seed_lab(chosen, lab, force=False)
+        kind = profile_kind(chosen)
+        if kind is None:
+            console.print(
+                f"[red]✗  No profile named '{chosen}'.[/red]  "
+                f"Use rancher / test / harvester, or create your own: [bold]rodeo new {chosen}[/bold]"
+            )
+            raise SystemExit(1)
+        if kind == "custom" and lab is None:
+            # Custom profiles are editable and writable — deploy them in place.
+            lab = custom_profile_dir(chosen)
+            console.print(f"\n[bold]Deploying custom profile '{chosen}'[/bold] from [cyan]{lab}[/cyan]")
+        else:
+            lab_name = name or (lab.name if lab else chosen)
+            if lab is None:
+                lab = DEFAULT_LABS_ROOT / lab_name
+            console.print(f"\n[bold]Setting up the '{chosen}' lab[/bold] at [cyan]{lab}[/cyan] "
+                          f"([dim]{profile_label(chosen)}[/dim])")
+            seed_lab(chosen, lab, force=False)
     else:
         console.print(f"\nUsing existing lab at [cyan]{lab}[/cyan].")
 

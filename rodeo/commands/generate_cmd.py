@@ -275,7 +275,7 @@ def _customize_plan(plan_path, answers):
 
 
 @click.command("generate",
-               short_help="(advanced) Generate a custom lab config-dir. New users: prefer 'rodeo up'.")
+               short_help="(advanced) Interactive config-dir generator. Prefer 'rodeo new <name>'.")
 @click.option("--dir", "output_dir", default=".", help="Output directory for the generated config-dir skeleton (default: current dir)")
 @click.option("--name", help="Lab name (will prompt if not given)")
 @click.option("--advanced", is_flag=True, help="Ask advanced questions (resources, network, etc.)")

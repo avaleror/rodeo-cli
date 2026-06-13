@@ -8,6 +8,7 @@ keeps its own env-var form for CI; this is the beginner path.
 """
 from __future__ import annotations
 
+import re
 import shutil
 from pathlib import Path
 
@@ -22,9 +23,24 @@ PROFILE_EXAMPLE = {
     "harvester": "harvester",         # full 3-node Harvester + Rancher Prime
 }
 
+_LAB_MARKERS = ("rodeo-plan.yaml", "definition.yaml")
+
+
+def custom_profiles_root() -> Path:
+    """Where user-created profiles live (resolved live so HOME/sudo are honored)."""
+    return Path.home() / ".rodeo" / "profiles"
+
+
+def custom_profile_dir(name: str) -> Path:
+    return custom_profiles_root() / name
+
+
+def _is_lab_dir(path: Path) -> bool:
+    return path.is_dir() and any((path / m).exists() for m in _LAB_MARKERS)
+
 
 def example_dir(profile: str) -> Path:
-    """Resolve a profile name to its bundled example directory."""
+    """Resolve a bundled profile name to its example directory."""
     name = PROFILE_EXAMPLE.get(profile, profile)
     src = _EXAMPLES / name
     if not src.is_dir():
@@ -32,16 +48,92 @@ def example_dir(profile: str) -> Path:
     return src
 
 
-def seed_lab(profile: str, dest: Path, force: bool = False) -> Path:
-    """Copy a profile's example into ``dest`` and normalize its plan for `up`.
+def profile_kind(name: str) -> str | None:
+    """Return 'bundled', 'custom', or None for a profile name."""
+    if name in PROFILE_EXAMPLE:
+        return "bundled"
+    if _is_lab_dir(custom_profile_dir(name)):
+        return "custom"
+    return None
 
-    Returns the lab directory. Leaves credentials in ``??key`` form so deploy reads
-    them straight from ~/.rodeo/secrets.yaml. Blanks any host-specific storage device
-    so a single-disk machine works out of the box.
+
+def resolve_profile_source(name: str) -> Path:
+    """Source config-dir for a profile name: bundled example or custom profile dir."""
+    kind = profile_kind(name)
+    if kind == "bundled":
+        return example_dir(name)
+    if kind == "custom":
+        return custom_profile_dir(name)
+    raise FileNotFoundError(
+        f"No profile named '{name}'. Bundled: {', '.join(PROFILE_EXAMPLE)}. "
+        f"Create a custom one with:  rodeo new {name}"
+    )
+
+
+def list_profiles() -> list[dict]:
+    """All available profiles: bundled examples plus the user's custom ones."""
+    out = [
+        {"name": n, "kind": "bundled", "path": str(_EXAMPLES / PROFILE_EXAMPLE[n])}
+        for n in PROFILE_EXAMPLE
+    ]
+    root = custom_profiles_root()
+    if root.is_dir():
+        for d in sorted(root.iterdir()):
+            if _is_lab_dir(d):
+                out.append({"name": d.name, "kind": "custom", "path": str(d)})
+    return out
+
+
+def scaffold_profile(name: str, from_base: str = "harvester", force: bool = False) -> Path:
+    """Create an editable custom profile under ~/.rodeo/profiles/<name> from a base.
+
+    Copies a working bundled lab (so the topology deploys as-is), retitles it, and
+    keeps all the definition.yaml comments intact for editing. Run it later with
+    ``rodeo up --profile <name>``.
+    """
+    if from_base not in PROFILE_EXAMPLE:
+        raise FileNotFoundError(
+            f"--from '{from_base}' is not a bundled base. Use one of: {', '.join(PROFILE_EXAMPLE)}"
+        )
+    dest = custom_profile_dir(name)
+    if dest.exists() and not force:
+        raise FileExistsError(f"Profile '{name}' already exists at {dest} (use --force to overwrite)")
+    if dest.exists():
+        shutil.rmtree(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(example_dir(from_base), dest)
+
+    normalize_plan(dest / "rodeo-plan.yaml", name=name)
+    _retitle_definition(dest / "definition.yaml", name)
+    return dest
+
+
+def _retitle_definition(def_path: Path, name: str) -> None:
+    """Set the definition name and prepend an edit-me header, preserving comments."""
+    if not def_path.exists():
+        return
+    text = def_path.read_text()
+    # The definition name is the only 2-space-indented `name:` (node names are deeper).
+    text = re.sub(r"(?m)^(  name:\s*).*$", rf"\g<1>{name}", text, count=1)
+    header = (
+        f"# Custom rodeo '{name}' — scaffolded by 'rodeo new'. Edit freely.\n"
+        f"# Deploy it with:  rodeo up --profile {name}\n"
+        f"# Definition format + how-to:  docs/custom-rodeos.md\n\n"
+    )
+    def_path.write_text(header + text)
+
+
+def seed_lab(profile: str, dest: Path, force: bool = False) -> Path:
+    """Copy a profile's source into ``dest`` and normalize its plan for `up`.
+
+    Works for bundled examples and custom profiles. Returns the lab directory.
+    Leaves credentials in ``??key`` form so deploy reads them straight from
+    ~/.rodeo/secrets.yaml. Blanks any host-specific storage device so a single-disk
+    machine works out of the box.
     """
     dest = dest.expanduser().resolve()
     dest.mkdir(parents=True, exist_ok=True)
-    src = example_dir(profile)
+    src = resolve_profile_source(profile)
 
     for item in src.iterdir():
         target = dest / item.name

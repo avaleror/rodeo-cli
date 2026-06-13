@@ -72,6 +72,31 @@ def test_up_deploys_when_root(tmp_path, monkeypatch):
     assert captured.get("name") == "deployme"
 
 
+def test_up_with_custom_profile_deploys_in_place(tmp_path, monkeypatch):
+    monkeypatch.setattr(up_mod, "detect_host", _ready_host)
+    from rodeo.labseed import scaffold_profile
+    scaffold_profile("mycustom", from_base="rancher")
+
+    result = CliRunner().invoke(
+        up_mod.up_cmd, ["--no-deploy", "--yes", "--profile", "mycustom"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "custom profile 'mycustom'" in result.output
+    # In-place: the profile dir under ~/.rodeo/profiles is the lab.
+    # (de-wrap: rich may line-break the long path in rendered output)
+    unwrapped = result.output.replace("\n", "")
+    assert str(tmp_path / ".rodeo" / "profiles" / "mycustom") in unwrapped
+
+
+def test_up_unknown_profile_errors(tmp_path, monkeypatch):
+    monkeypatch.setattr(up_mod, "detect_host", _ready_host)
+    result = CliRunner().invoke(
+        up_mod.up_cmd, ["--no-deploy", "--yes", "--profile", "ghost"]
+    )
+    assert result.exit_code == 1
+    assert "rodeo new ghost" in result.output
+
+
 def test_up_offers_install_when_deps_missing(tmp_path, monkeypatch):
     host = _ready_host()
     host["has_kvm"] = False

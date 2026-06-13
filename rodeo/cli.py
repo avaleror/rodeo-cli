@@ -14,7 +14,9 @@ from .commands.install_deps import install_deps_cmd
 from .commands.bootstrap_cmd import bootstrap_cmd
 from .commands.generate_cmd import generate_cmd
 from .commands.logs import logs_cmd
+from .commands.new_cmd import new_cmd
 from .commands.plan_cmd import plan_cmd
+from .commands.profiles_cmd import profiles_cmd
 from .commands.restart import restart_cmd
 from .commands.ssh_cmd import ssh_cmd
 from .commands.status import status_cmd
@@ -52,6 +54,9 @@ def cli(config_dir: str | None) -> None:
       rodeo doctor     # is my host ready, and which lab fits?
       rodeo up         # set up + deploy a lab, then show how to log in
     \b
+    Make your own:  rodeo new <name> --from harvester  →  edit  →  rodeo up --profile <name>
+    List profiles:  rodeo profiles
+    \b
     Day-2:  rodeo status · stop · start · clean · ssh · logs
     """
     # Store for subcommands that don't get it from their own decorator
@@ -62,6 +67,8 @@ def cli(config_dir: str | None) -> None:
 
 cli.add_command(up_cmd,           name="up")
 cli.add_command(doctor_cmd,       name="doctor")
+cli.add_command(new_cmd,          name="new")
+cli.add_command(profiles_cmd,     name="profiles")
 cli.add_command(install_deps_cmd, name="install-deps")
 cli.add_command(bootstrap_cmd,    name="bootstrap")
 cli.add_command(generate_cmd,     name="generate")

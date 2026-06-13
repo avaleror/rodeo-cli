@@ -11,6 +11,7 @@ from .commands.deploy import deploy_cmd
 from .commands.init_cmd import init_cmd
 from .commands.install_deps import install_deps_cmd
 from .commands.bootstrap_cmd import bootstrap_cmd
+from .commands.generate_cmd import generate_cmd
 from .commands.logs import logs_cmd
 from .commands.plan_cmd import plan_cmd
 from .commands.restart import restart_cmd
@@ -48,6 +49,7 @@ def cli(config_dir: str | None) -> None:
     Quick start:
       # Minimal: one curl (no manual clone/venv/pip)
       curl -fsSL https://raw.githubusercontent.com/avaleror/rodeo-cli/main/scripts/bootstrap-sles.sh | bash
+      # or generate custom first: rodeo generate --dir mylab  (interactive, full skeleton)
       # then follow printed (cd lab, source, plan, deploy)
       # Lifecycle: stop/start for graceful (infra-aware per def); clean --all --hard for reset (stop first unless --hard)
       rodeo status
@@ -60,6 +62,7 @@ def cli(config_dir: str | None) -> None:
 
 cli.add_command(install_deps_cmd, name="install-deps")
 cli.add_command(bootstrap_cmd,    name="bootstrap")
+cli.add_command(generate_cmd,     name="generate")
 cli.add_command(init_cmd,         name="init")
 cli.add_command(plan_cmd,         name="plan")
 cli.add_command(deploy_cmd,       name="deploy")

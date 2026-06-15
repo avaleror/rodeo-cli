@@ -20,7 +20,12 @@ resources:
   harvester:
     memory_mib: 16384    # 16 GiB per node for test procedure
     vcpu: 6
-    disk_gb: 100         # smaller for test; Longhorn still works (2 replicas ok for lab)
+    # 250 GB is Harvester's documented minimum and it matters: the elemental
+    # install carves the disk into OS + a ~50 GB Longhorn partition + the
+    # persistent partition that holds container images. At 100 GB the persistent
+    # partition is only ~27 GB, which fills up (Harvester pulls ~19 GB of images)
+    # → containerd "no space left on device" → RKE2 never converges → no VIP.
+    disk_gb: 250
 
 # credentials use ?? for secrets.yaml or env
 credentials:

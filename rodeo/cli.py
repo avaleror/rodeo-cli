@@ -8,17 +8,21 @@ from . import __version__
 from .commands.attach import attach_cmd
 from .commands.clean import clean_cmd
 from .commands.deploy import deploy_cmd
+from .commands.doctor_cmd import doctor_cmd
 from .commands.init_cmd import init_cmd
 from .commands.install_deps import install_deps_cmd
 from .commands.bootstrap_cmd import bootstrap_cmd
 from .commands.generate_cmd import generate_cmd
 from .commands.logs import logs_cmd
+from .commands.new_cmd import new_cmd
 from .commands.plan_cmd import plan_cmd
+from .commands.profiles_cmd import profiles_cmd
 from .commands.restart import restart_cmd
 from .commands.ssh_cmd import ssh_cmd
 from .commands.status import status_cmd
 from .commands.stop_cmd import stop_cmd
 from .commands.start_cmd import start_cmd
+from .commands.up_cmd import up_cmd
 from .commands.watch import watch_cmd
 from .config import ConfigError
 
@@ -43,16 +47,17 @@ class _RodeoGroup(click.Group):
          "Option can appear before or after the subcommand.",
 )
 def cli(config_dir: str | None) -> None:
-    """Deploy and manage the SUSE Virtualization Rodeo cluster.
+    """Deploy and manage SUSE/Rancher learning labs on KVM.
 
     \b
-    Quick start:
-      # Minimal: one curl (no manual clone/venv/pip)
-      curl -fsSL https://raw.githubusercontent.com/avaleror/rodeo-cli/main/scripts/bootstrap-sles.sh | bash
-      # or init with profile: rodeo init --profile test  (2 small nodes) or --profile harvester (full 3+1)
-      # then follow printed (cd lab, source, plan, deploy)
-      # Lifecycle: stop/start for graceful (infra-aware per def); clean --all --hard for reset (stop first unless --hard)
-      rodeo status
+    New here? Two commands:
+      rodeo doctor     # is my host ready, and which lab fits?
+      rodeo up         # set up + deploy a lab, then show how to log in
+    \b
+    Make your own:  rodeo new <name> --from harvester  →  edit  →  rodeo up --profile <name>
+    List profiles:  rodeo profiles
+    \b
+    Day-2:  rodeo status · stop · start · clean · ssh · logs
     """
     # Store for subcommands that don't get it from their own decorator
     ctx = click.get_current_context()
@@ -60,6 +65,10 @@ def cli(config_dir: str | None) -> None:
     ctx.obj["config_dir"] = config_dir
 
 
+cli.add_command(up_cmd,           name="up")
+cli.add_command(doctor_cmd,       name="doctor")
+cli.add_command(new_cmd,          name="new")
+cli.add_command(profiles_cmd,     name="profiles")
 cli.add_command(install_deps_cmd, name="install-deps")
 cli.add_command(bootstrap_cmd,    name="bootstrap")
 cli.add_command(generate_cmd,     name="generate")

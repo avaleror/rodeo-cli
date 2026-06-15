@@ -38,7 +38,8 @@ from rich.console import Console
 console = Console()
 
 
-@click.command("bootstrap")
+@click.command("bootstrap",
+               short_help="(advanced) Link binary + seed a lab on clean SLES. New users: prefer 'rodeo up'.")
 @click.option(
     "--lab-dir",
     default=str(Path.home() / "harvester-rodeo-lab"),

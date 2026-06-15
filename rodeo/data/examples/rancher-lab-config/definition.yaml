@@ -1,0 +1,100 @@
+# definition.yaml — Rancher-only rodeo (Rancher Prime on K3s, no Harvester).
+#
+# The laptop-sized lab: one VM, learn Rancher / Fleet / cluster management.
+# Same declarative model as suse-virt; the renderer (inventory.py) compiles this
+# into vm_nodes, DHCP leases, libvirt network, and host_prep. See the suse-virt
+# definition for the full annotated reference.
+
+apiVersion: 1.0
+definition:
+  name: rancher
+  description: "Rancher Prime on K3s — single VM, no Harvester (smallest lab)"
+
+  # Only the rancher VM. No Harvester cluster, so no start gaps / VIP / etcd.
+  start_order:
+    - rancher
+  harvester_node_names: []
+  harvester_ready_count: 0
+
+  network:
+    name: default
+    bridge: virbr0
+    mode: nat
+    cidr: 192.168.122.0/24
+    gateway: 192.168.122.1
+    domain: aerogrid.com
+    dhcp_range:
+      start: 192.168.122.100
+      end: 192.168.122.254
+
+  node_templates:
+    rancher:
+      flavor: rancher
+      ssh_user: root
+      infra_type: rancher
+      interfaces:
+        - role: mgmt
+          model: virtio
+          ip_family: static
+
+  # Only Rancher is exposed (NodePort 30002). No Harvester UI forward.
+  exposed_services:
+    - name: rancher
+      description: "Rancher Prime NodePort"
+      host_port: 30002
+      guest_port: 30002
+      target: rancher
+      proto: tcp
+
+  storage:
+    device: ""
+    mount_point: /var/lib/libvirt/images
+    libvirt_pool_name: default
+    libvirt_pool_path: /var/lib/libvirt/images
+    image_dir: /var/lib/libvirt/images
+
+  components:
+    - name: rancher
+      description: "Rancher Prime on K3s"
+      nodes: ["rancher"]
+      exposed:
+        - rancher
+    - name: host-network-prep
+      description: "libvirt network, firewalld DNAT, sysctls for the nested KVM lab"
+      on_host: true
+
+  # Rancher VM cloud-init (the K3s + Helm + Rancher install is in RancherPhase).
+  rancher:
+    cloud_init:
+      packages: []
+      runcmd: []
+
+  # Host prep for nested KVM on SLES 16 (same essentials as suse-virt; no 5-NIC
+  # Harvester networking needed, but the OVMF + libvirt + sysctl basics apply).
+  host_prep:
+    sysctls:
+      - net.bridge.bridge-nf-call-iptables=0
+      - net.bridge.bridge-nf-call-ip6tables=0
+    selinux_mode: permissive
+    libvirt:
+      ovmf_code: /usr/share/qemu/ovmf-x86_64-4m-code.bin
+      ovmf_vars_template: /usr/share/qemu/ovmf-x86_64-4m-vars.bin
+      use_modular_daemons: true
+    network:
+      unmanaged_interfaces:
+        - virbr0
+      rp_filter_loose: false
+
+  nodes:
+    - name: rancher
+      template: rancher
+      index: 0
+      hostname: rancher
+      uuid: "77994fd6-7ebb-4ad3-baf4-55575b0ce265"
+      ip: "192.168.122.9"
+      config_iso_name: ""
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          mac: "02:00:00:0D:62:E9"
+      mgmt_mac: "02:00:00:0D:62:E9"

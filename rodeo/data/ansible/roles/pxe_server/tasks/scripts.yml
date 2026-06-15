@@ -3,22 +3,35 @@
 # Each Harvester node gets its own script and config because:
 #   - harvester1 boots in CREATE mode (no server_url, sets the VIP)
 #   - harvester2/3 boot in JOIN mode (server_url = VIP, different static IPs)
-# dnsmasq routes each VM's MAC to its specific iPXE script URL (see network.yml).
+# Routing: dnsmasq serves one generic boot.ipxe to every iPXE client, which
+# chains to the per-node script by MAC (ipxe/mac-<mac>). See network.yml +
+# templates/ipxe-boot.j2.
 
-- name: Render per-node iPXE boot scripts
+- name: Render the generic stage-2 iPXE boot script (chains to per-node by MAC)
+  ansible.builtin.template:
+    src: ipxe-boot.j2
+    dest: "{{ pxe_http_root }}/ipxe/boot.ipxe"
+    mode: '0644'
+
+- name: Render per-node iPXE boot scripts (named by mgmt MAC for the chain)
   ansible.builtin.template:
     src: ipxe-node.j2
-    dest: "{{ pxe_http_root }}/ipxe/{{ item.name }}"
+    dest: "{{ pxe_http_root }}/ipxe/mac-{{ item.mgmt_mac | lower | replace(':', '-') }}"
     mode: '0644'
   loop: "{{ vm_nodes | selectattr('flavor', 'equalto', 'harvester') | list }}"
   loop_control:
     label: "{{ item.name }}"
 
+# 0644 (not 0640): nginx runs as an unprivileged user and must read these to
+# serve them over HTTP to the iPXE installer. With 0640 root:root the fetch got
+# HTTP 403 and the Harvester installer retried forever. The config is served
+# unauthenticated over HTTP on the isolated lab network regardless of file mode,
+# so 0640 added no real protection — it only broke the serve.
 - name: Render per-node Harvester install config YAMLs
   ansible.builtin.template:
     src: config-node.yaml.j2
     dest: "{{ pxe_http_root }}/config/config-{{ item.name }}.yaml"
-    mode: '0640'
+    mode: '0644'
   loop: "{{ vm_nodes | selectattr('flavor', 'equalto', 'harvester') | list }}"
   loop_control:
     label: "{{ item.name }}"

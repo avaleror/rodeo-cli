@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 from .base import RodeoProfile
+from .rancher import RancherProfile
 from .suse_virt import SuseVirtProfile
 
 _REGISTRY: dict[str, RodeoProfile] = {
     "suse-virt": SuseVirtProfile(),
+    "rancher": RancherProfile(),
 }
 
 

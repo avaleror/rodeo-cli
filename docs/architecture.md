@@ -2,7 +2,7 @@
 
 Technical reference for contributors and maintainers. For deploying a workshop, see [User guide](user-guide.md).
 
-**Version:** 0.4.0
+**Version:** 0.6.0
 **License:** Apache-2.0
 
 ---
@@ -248,11 +248,17 @@ Harvester 1.8.0 requires UEFI; legacy BIOS PXE is not supported. The `pxe_server
 ```
 UEFI firmware (empty disk, no bootloader)
   → DHCP from dnsmasq on 192.168.122.1
-  → Stage 1: boot ipxe.efi (TFTP)
-  → Stage 2: per-node HTTP script at :8080/ipxe/harvester{1,2,3}
-  → kernel + initrd + squashfs over HTTP
+  → Stage 1: boot ipxe.efi (TFTP)                  [dhcp-boot tag:!ipxe]
+  → Stage 2: ONE generic boot.ipxe over HTTP       [dhcp-boot tag:ipxe]
+  → boot.ipxe chains to the per-node script by MAC: :8080/ipxe/mac-<mac>
+  → kernel + initrd + squashfs over HTTP (installer console logged to ttyS1)
   → unattended install (config YAML at :8080/config/config-harvesterN.yaml)
 ```
+
+The per-node routing is **MAC-based**, not per-host dnsmasq tags: libvirt already
+writes a `<host mac=…>` for each node's IP, and a second `dhcp-host` for the same
+MAC (to set a routing tag) is silently ignored by dnsmasq — so all iPXE clients
+get one `boot.ipxe`, which selects the node script by `${net0/mac:hexhyp}`.
 
 VM XML boot order is **disk first, management NIC second**. On first boot the qcow2 is empty, so UEFI falls through to NIC PXE. After install, reboots go straight to disk. ISO CDROMs remain attached as fallback; `RancherPhase` ejects them once the cluster is up.
 
@@ -262,8 +268,9 @@ VM XML boot order is **disk first, management NIC second**. On first boot the qc
 |------|---------|
 | `/var/lib/libvirt/dnsmasq/ipxe.efi` | Stage-1 UEFI loader (TFTP) |
 | `/srv/harvester-pxe/harvester/` | vmlinuz, initrd, rootfs.squashfs, ISO symlink |
-| `/srv/harvester-pxe/ipxe/harvester{1,2,3}` | Per-node iPXE scripts |
-| `/srv/harvester-pxe/config/config-harvester{N}.yaml` | CREATE/JOIN Harvester config |
+| `/srv/harvester-pxe/ipxe/boot.ipxe` | Generic stage-2 script (chains by MAC) |
+| `/srv/harvester-pxe/ipxe/mac-<mac>` | Per-node iPXE scripts (named by mgmt MAC) |
+| `/srv/harvester-pxe/config/config-harvester{N}.yaml` | CREATE/JOIN Harvester config (0644 so nginx serves it) |
 
 Ref: [Harvester v1.8 PXE boot install](https://docs.harvesterhci.io/v1.8/install/pxe-boot-install).
 

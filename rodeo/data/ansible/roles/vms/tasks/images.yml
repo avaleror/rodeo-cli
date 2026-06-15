@@ -89,76 +89,8 @@
   loop_control:
     label: "{{ item.name }}"
 
-# --- Rancher VM disk and cloud-init ---
-
-- name: Download openSUSE Leap 16 KVM base image (kvm-and-xen variant; virtio drivers included)
-  ansible.builtin.get_url:
-    url: "{{ leap16_url }}"
-    dest: "{{ image_dir }}/Leap-16.0-kvm-and-xen.qcow2"
-    mode: '0644'
-
-# Leap 16 Minimal-VM images ship WITHOUT cloud-init, so the NoCloud seed ISO
-# (built below) would be ignored and the Rancher VM would never get its SSH key.
-# Inject cloud-init into the disk at build time with virt-customize (libguestfs).
-# Build to a temp file and move into place so the final disk only exists when
-# both steps succeed — keeps the `creates:` guard correct on re-runs.
-- name: Build Rancher VM disk (Leap base + inject cloud-init)
-  ansible.builtin.shell: |
-    set -euo pipefail
-    tmp='{{ image_dir }}/rancher-vda.qcow2.building'
-    rm -f "$tmp"
-    qemu-img convert -f qcow2 -O qcow2 -o preallocation=metadata \
-      '{{ image_dir }}/Leap-16.0-kvm-and-xen.qcow2' "$tmp"
-    virt-customize -a "$tmp" \
-      --install cloud-init \
-      --run-command 'systemctl enable cloud-init-local.service cloud-init.service cloud-config.service cloud-final.service'
-    mv "$tmp" '{{ image_dir }}/rancher-vda.qcow2'
-  args:
-    executable: /bin/bash
-    creates: "{{ image_dir }}/rancher-vda.qcow2"
-  environment:
-    LIBGUESTFS_BACKEND: direct
-
-- name: Get Rancher disk virtual size
-  ansible.builtin.command: qemu-img info --output=json '{{ image_dir }}/rancher-vda.qcow2'
-  register: rancher_disk_info
-  changed_when: false
-  failed_when: false
-
-- name: Resize Rancher VM disk to {{ libvirt_flavors.rancher.disk_gb }}G
-  ansible.builtin.command: >
-    qemu-img resize '{{ image_dir }}/rancher-vda.qcow2' {{ libvirt_flavors.rancher.disk_gb }}G
-  when:
-    - rancher_disk_info.rc == 0
-    - (rancher_disk_info.stdout | from_json)['virtual-size'] | int < (libvirt_flavors.rancher.disk_gb | int * 1073741824)
-
-- name: Create cloud-init staging directory
-  ansible.builtin.file:
-    path: /tmp/rancher-cloud-init
-    state: directory
-    mode: '0755'
-
-- name: Write cloud-init meta-data
-  ansible.builtin.template:
-    src: cloud-init-meta-data.j2
-    dest: /tmp/rancher-cloud-init/meta-data
-
-- name: Write cloud-init user-data
-  ansible.builtin.template:
-    src: cloud-init-user-data.j2
-    dest: /tmp/rancher-cloud-init/user-data
-
-- name: Write cloud-init network-config
-  ansible.builtin.template:
-    src: cloud-init-network-config.j2
-    dest: /tmp/rancher-cloud-init/network-config
-
-# No creates: guard — cloud-init ISO is always rebuilt to match current templates
-- name: Build Rancher cloud-init seed ISO
-  ansible.builtin.command: >
-    xorriso -as mkisofs
-    -V cidata -J -r
-    -o '{{ image_dir }}/rancher-cloud-init.iso'
-    /tmp/rancher-cloud-init/meta-data
-    /tmp/rancher-cloud-init/user-data
-    /tmp/rancher-cloud-init/network-config
+# --- Rancher VM disk and cloud-init (only when the topology has a Rancher node) ---
+# Rancher-less labs (e.g. the 2-node 'test' profile) skip this entirely.
+- name: Provision the Rancher VM image + cloud-init
+  ansible.builtin.include_tasks: rancher_image.yml
+  when: (vm_nodes | selectattr('flavor', 'equalto', 'rancher') | list | length) > 0

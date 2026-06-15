@@ -104,7 +104,14 @@ class SuseVirtProfile(RodeoProfile):
         elif phase == "cluster":
             yield from runner.stream_cluster()
         elif phase == "rancher":
-            yield from runner.stream_rancher()
+            # Topologies without a Rancher node (e.g. the 2-node 'test' lab) skip
+            # the Rancher install/import entirely.
+            if "rancher" in runner.cfg.get("vms", {}):
+                yield from runner.stream_rancher()
+            else:
+                from ..engine.runner import LogLine
+                yield LogLine("No Rancher node in this topology — skipping rancher phase.")
+                runner._last_rc = 0
         elif phase == "finalise":
             yield from runner.stream_finalise()
         else:

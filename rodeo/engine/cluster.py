@@ -37,6 +37,7 @@ class ClusterPhase:
     ETCD_JOIN_GAP      = 90     # gap between harvester2 and harvester3 prevents etcd join race
 
     def __init__(self, cfg: dict, stop: threading.Event | None = None) -> None:
+        self.cfg      = cfg
         self.vip      = cfg["network"]["vip"]
         self.uri      = cfg.get("libvirt", {}).get("uri", "qemu:///system")
         key = cfg.get("ssh", {}).get("identity_file")
@@ -45,14 +46,41 @@ class ClusterPhase:
         self.ssh_key = Path(key)
         self.vm_names = list(cfg.get("vms", {}).keys())
         vms_cfg = cfg.get("vms", {})
+        # Topology comes from the definition (via inventory), not hardcoded names:
+        # start_order, which nodes are Harvester, how many must be Ready, and the
+        # etcd join gap. Falls back to deriving from cfg["vms"] if inventory fails.
+        self._load_topology()
         # Derive harvester SSH user from config (all harvester nodes share it).
-        # We skip the VM named "rancher" (its user is root); defaults to "rancher" for Harvester OS.
-        # Used for kubeconfig fetch over VIP (Harvester cluster). See profile for per-VM users.
-        harvester_vm = next((n for n in self.vm_names if n != "rancher"), self.vm_names[0] if self.vm_names else None)
+        # Used for kubeconfig fetch over VIP. Defaults to "rancher" for Harvester OS.
+        harvester_vm = self.harvester_nodes[0] if self.harvester_nodes else (self.vm_names[0] if self.vm_names else None)
         self.harvester_user = vms_cfg.get(harvester_vm, {}).get("user", "rancher") if harvester_vm else "rancher"
         self.success  = False
         self.error    = ""
         self._stop    = stop if stop is not None else threading.Event()
+
+    def _load_topology(self) -> None:
+        """Resolve start order, Harvester node set, Ready count, and etcd gap.
+
+        Prefers the rendered inventory (definition.yaml) so 2-node, 3-node, or any
+        topology works without hardcoded names. Falls back to cfg["vms"] ordering.
+        """
+        self.start_order = list(self.vm_names)
+        self.harvester_nodes = [n for n in self.vm_names if n != "rancher"]
+        self.ready_count = len(self.harvester_nodes) or 3
+        self.etcd_gap = self.ETCD_JOIN_GAP
+        try:
+            from .. import inventory
+            inv = inventory.build_inventory(self.cfg)
+            if inv.get("start_order"):
+                self.start_order = list(inv["start_order"])
+            if inv.get("harvester_node_names"):
+                self.harvester_nodes = list(inv["harvester_node_names"])
+            if inv.get("harvester_ready_count"):
+                self.ready_count = int(inv["harvester_ready_count"])
+            if inv.get("etcd_join_gap_seconds") is not None:
+                self.etcd_gap = int(inv["etcd_join_gap_seconds"])
+        except Exception:
+            pass  # keep the cfg-derived fallback
 
     def _sleep(self, seconds: float) -> bool:
         """Sleep, but wake early on cancellation. Returns True if cancelled."""
@@ -74,7 +102,16 @@ class ClusterPhase:
                 yield LogLine(f"  ✗  {self.error}")
                 return
 
-            if not (yield from self._start_vm(lv, "harvester1")):
+            order = self.start_order or self.vm_names
+            if not order:
+                self.error = "no VMs in topology"
+                yield LogLine(f"  ✗  {self.error}")
+                return
+            harvester_set = set(self.harvester_nodes)
+
+            # Bootstrap node first (first in start_order — a Harvester node).
+            bootstrap = order[0]
+            if not (yield from self._start_vm(lv, bootstrap)):
                 return
 
             yield LogLine(f"Waiting for Harvester VIP {self.vip} (20-60 min expected)...")
@@ -83,22 +120,27 @@ class ClusterPhase:
                 return
             yield LogLine("  VIP responding — bootstrap node is up.")
 
-            if not (yield from self._start_vm(lv, "harvester2")):
-                return
-
-            yield LogLine(
-                f"Waiting {self.ETCD_JOIN_GAP}s before harvester3 "
-                "(prevents etcd join race)..."
-            )
-            yield from self._countdown(self.ETCD_JOIN_GAP, "etcd join gap")
-            if self._stop.is_set():
-                self.error = "cancelled"
-                return
-
-            if not (yield from self._start_vm(lv, "harvester3")):
-                return
-            if not (yield from self._start_vm(lv, "rancher")):
-                return
+            # Remaining nodes in order. Insert the etcd join gap before each
+            # additional Harvester join node (not the first join, not non-Harvester
+            # nodes like rancher) — same race-avoidance as the old h2→90s→h3 flow,
+            # generalised to any node count.
+            joins_started = 0
+            for name in order[1:]:
+                if name in harvester_set:
+                    if joins_started >= 1 and self.etcd_gap > 0:
+                        yield LogLine(
+                            f"Waiting {self.etcd_gap}s before {name} (prevents etcd join race)..."
+                        )
+                        yield from self._countdown(self.etcd_gap, "etcd join gap")
+                        if self._stop.is_set():
+                            self.error = "cancelled"
+                            return
+                    if not (yield from self._start_vm(lv, name)):
+                        return
+                    joins_started += 1
+                else:
+                    if not (yield from self._start_vm(lv, name)):
+                        return
 
             yield from self._log_vm_states(lv)
 
@@ -108,12 +150,12 @@ class ClusterPhase:
                 return
             yield LogLine(f"  Kubeconfig saved to {KUBECONFIG_PATH} (127.0.0.1 rewritten to VIP).")
 
-            yield LogLine("Waiting for 3 Harvester nodes Ready (up to 90 min)...")
+            yield LogLine(f"Waiting for {self.ready_count} Harvester nodes Ready (up to 90 min)...")
             if not (yield from self._wait_nodes_ready()):
                 self.error = f"Timed out after {self.NODES_TIMEOUT // 60} min waiting for nodes"
                 return
 
-            yield LogLine("All 3 Harvester nodes Ready. Cluster is up.")
+            yield LogLine(f"All {self.ready_count} Harvester nodes Ready. Cluster is up.")
             self.success = True
 
     # ---------- VM start ----------
@@ -233,21 +275,21 @@ class ClusterPhase:
                 "Waiting for nodes Ready",
                 elapsed,
                 self.NODES_TIMEOUT,
-                detail=f"{ready}/3 nodes Ready",
+                detail=f"{ready}/{self.ready_count} nodes Ready",
             )
 
-            if ready >= 3:
+            if ready >= self.ready_count:
                 return True
 
             if elapsed >= self.NODES_TIMEOUT:
-                yield LogLine(f"  ✗ Only {ready}/3 nodes Ready after {self.NODES_TIMEOUT // 60} min")
+                yield LogLine(f"  ✗ Only {ready}/{self.ready_count} nodes Ready after {self.NODES_TIMEOUT // 60} min")
                 return False
 
             if elapsed - last_log >= self.NODES_LOG_EVERY:
                 m, s = divmod(int(elapsed), 60)
                 yield LogLine(
                     f"  {m:02d}:{s:02d} / {self.NODES_TIMEOUT // 60}:00"
-                    f" — {ready}/3 nodes Ready"
+                    f" — {ready}/{self.ready_count} nodes Ready"
                 )
                 last_log = elapsed
 

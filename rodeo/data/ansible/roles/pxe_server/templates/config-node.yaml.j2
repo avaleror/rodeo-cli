@@ -30,8 +30,11 @@ install:
   mode: join
 {% endif %}
   management_interface:
+    # Match the mgmt NIC by MAC, not by name: the installer boots with
+    # net.ifnames=1, so the interface is ens3/ens5/etc. (no eth0). hwAddr is
+    # name-independent and always matches the static DHCP lease for this node.
     interfaces:
-      - name: eth0
+      - hwAddr: "{{ item.mgmt_mac }}"
     method: static
     ip: {{ item.ip }}
     subnet_mask: {{ node_subnet_mask }}

@@ -97,13 +97,27 @@
     dest: "{{ image_dir }}/Leap-16.0-kvm-and-xen.qcow2"
     mode: '0644'
 
-- name: Convert Leap 16 KVM base image to Rancher VM disk
-  ansible.builtin.command: >
-    qemu-img convert -f qcow2 -O qcow2 -o preallocation=metadata
-    '{{ image_dir }}/Leap-16.0-kvm-and-xen.qcow2'
-    '{{ image_dir }}/rancher-vda.qcow2'
+# Leap 16 Minimal-VM images ship WITHOUT cloud-init, so the NoCloud seed ISO
+# (built below) would be ignored and the Rancher VM would never get its SSH key.
+# Inject cloud-init into the disk at build time with virt-customize (libguestfs).
+# Build to a temp file and move into place so the final disk only exists when
+# both steps succeed — keeps the `creates:` guard correct on re-runs.
+- name: Build Rancher VM disk (Leap base + inject cloud-init)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    tmp='{{ image_dir }}/rancher-vda.qcow2.building'
+    rm -f "$tmp"
+    qemu-img convert -f qcow2 -O qcow2 -o preallocation=metadata \
+      '{{ image_dir }}/Leap-16.0-kvm-and-xen.qcow2' "$tmp"
+    virt-customize -a "$tmp" \
+      --install cloud-init \
+      --run-command 'systemctl enable cloud-init-local.service cloud-init.service cloud-config.service cloud-final.service'
+    mv "$tmp" '{{ image_dir }}/rancher-vda.qcow2'
   args:
+    executable: /bin/bash
     creates: "{{ image_dir }}/rancher-vda.qcow2"
+  environment:
+    LIBGUESTFS_BACKEND: direct
 
 - name: Get Rancher disk virtual size
   ansible.builtin.command: qemu-img info --output=json '{{ image_dir }}/rancher-vda.qcow2'

@@ -17,18 +17,22 @@ _ZYPPER_PATTERNS = ["kvm_server", "kvm_tools"]
 # python3-lxml is required by the community.libvirt Ansible modules (virt_net etc.)
 # in the vms phase. On SUSE the generic name resolves via capabilities to the
 # versioned package (e.g. python313-lxml).
+# guestfs-tools provides virt-customize, used to inject cloud-init into the
+# Rancher VM image (Leap 16 base images ship without it). See roles/vms images.yml.
 _ZYPPER_PACKAGES = [
     "jq", "curl", "tmux", "xorriso", "qemu-tools",
     "qemu-ovmf-x86_64", "firewalld", "python3-firewall",
-    "python3-libvirt-python", "python3-lxml",
+    "python3-libvirt-python", "python3-lxml", "guestfs-tools",
 ]
 _APT_PACKAGES = [
     "qemu-kvm", "libvirt-daemon-system", "libvirt-clients",
-    "xorriso", "tmux", "python3-libvirt", "python3-lxml", "jq", "curl", "firewalld",
+    "xorriso", "tmux", "python3-libvirt", "python3-lxml", "libguestfs-tools",
+    "jq", "curl", "firewalld",
 ]
 _DNF_PACKAGES = [
     "qemu-kvm", "libvirt", "virt-install", "xorriso",
-    "tmux", "python3-libvirt", "python3-lxml", "jq", "curl", "firewalld",
+    "tmux", "python3-libvirt", "python3-lxml", "guestfs-tools",
+    "jq", "curl", "firewalld",
 ]
 _K8S_CHANNEL = "v1.36"
 

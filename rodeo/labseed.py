@@ -18,9 +18,10 @@ _EXAMPLES = Path(__file__).parent / "data" / "examples"
 
 # Beginner-facing profile name -> bundled example directory.
 PROFILE_EXAMPLE = {
-    "rancher": "rancher-lab-config",  # 1 VM: Rancher Prime on K3s, no Harvester (smallest)
-    "test": "harvester-lab-config",   # 2-node Harvester, no Rancher (modest hosts)
-    "harvester": "harvester",         # full 3-node Harvester + Rancher Prime
+    "rancher": "rancher-lab-config",        # 1 VM: Rancher Prime on K3s, no Harvester (smallest)
+    "test": "harvester-lab-config",         # 2-node Harvester, no Rancher (modest hosts)
+    "harvester-ha": "harvester-ha-config",  # 3-node Harvester, no Rancher (3-member etcd HA, lean sizing)
+    "harvester": "harvester",               # full 3-node Harvester + Rancher Prime
 }
 
 _LAB_MARKERS = ("rodeo-plan.yaml", "definition.yaml")

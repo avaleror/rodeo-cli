@@ -11,6 +11,20 @@ def test_profile_maps_to_bundled_example():
     assert example_dir("test").is_dir()
 
 
+def test_harvester_ha_profile(tmp_path):
+    import yaml
+    assert PROFILE_EXAMPLE["harvester-ha"] == "harvester-ha-config"
+    lab = seed_lab("harvester-ha", tmp_path / "ha")
+    defn = yaml.safe_load((lab / "definition.yaml").read_text())["definition"]
+    names = [n["name"] for n in defn["nodes"]]
+    assert names == ["harvester1", "harvester2", "harvester3"]
+    assert "rancher" not in defn["start_order"]
+    assert defn["harvester_ready_count"] == 3
+    plan = yaml.safe_load((lab / "rodeo-plan.yaml").read_text())
+    assert plan["resources"]["harvester"]["disk_gb"] == 250
+    assert "rancher" not in plan.get("resources", {})
+
+
 def test_seed_lab_normalizes_plan(tmp_path):
     lab = seed_lab("test", tmp_path / "labs" / "mylab")
     plan = lab / "rodeo-plan.yaml"

@@ -1,0 +1,53 @@
+# rodeo-plan.yaml — 3-node Harvester HCI cluster, NO Rancher (lean "test" sizing).
+# Like the 2-node `test` profile but three nodes, so you get a real 3-member
+# etcd HA cluster. Validated live on a 16 vCPU / 62 GiB host (mild CPU overcommit:
+# 3 x 6 = 18 vCPU; load stayed ~5). The suse-virt profile skips the rancher phase
+# automatically because there is no Rancher node in the topology.
+
+name: harvester-ha
+
+deployment_target: baremetal   # instruqt | baremetal
+
+network:
+  mode: nat              # nat | bridge
+  vip: "192.168.122.10"   # kube-vip floating IP — must not be a node IP
+  gateway: "192.168.122.1"
+  dns_domain: "aerogrid.com"
+
+resources:
+  harvester:
+    memory_mib: 16384    # 16 GiB per node
+    vcpu: 6              # 3 x 6 = 18 vCPU (overcommit fine on a 16-thread host)
+    # 250 GB is Harvester's documented minimum and it matters: the persistent
+    # partition holds ~19 GB of container images; smaller disks fill up and
+    # containerd hits "no space" → RKE2 never converges → no VIP.
+    disk_gb: 250
+
+versions:
+  harvester: "1.8.0"
+  k3s: "v1.31.4+k3s1"
+  cert_manager: "v1.16.2"
+
+storage:
+  image_dir: /var/lib/libvirt/images
+
+libvirt:
+  uri: qemu:///system
+
+ansible:
+  # Path to the directory containing ansible/playbook.yml.
+  # Falls back to: RODEO_ANSIBLE_PATH env var, bundled data, then ./
+  path: null
+  inventory: deployer/inventory.local
+
+credentials:
+  # ??placeholders are resolved at load time. Supported forms:
+  #   ??key                  -> ~/.rodeo/secrets.yaml (rodeo init creates it)
+  #   ??env:RODEO_PASSWORD   -> environment variable
+  #   ??file:/run/secrets/pw -> file contents (mounted secrets)
+  #   ??cmd:pass show rodeo  -> command stdout (pass, op, vault CLI...)
+  # If a source returns nothing, deploy fails fast instead of using
+  # an empty password.
+  harvester_os_password: "??harvester_os_password"
+  # Cluster join token — random per environment (rodeo init generates it)
+  harvester_token: "??harvester_token"

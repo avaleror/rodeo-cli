@@ -43,19 +43,13 @@
          reload loop (stage-1 and stage-2 would both receive ipxe.efi). -->
     <dnsmasq:option value='dhcp-boot=tag:!ipxe,ipxe.efi'/>
 
-    <!-- Tag each Harvester node MAC with its node name for boot routing.
-         Multiple dhcp-host entries for the same MAC are supported by dnsmasq —
-         the existing <host mac=.../> in the <dhcp> block assigns the IP+hostname;
-         these entries only set the tag and do not conflict. -->
-{% for node in vm_nodes | selectattr('flavor', 'equalto', 'harvester') | list %}
-    <dnsmasq:option value='dhcp-host={{ node.mgmt_mac }},set:pxe_{{ node.name }}'/>
-{% endfor %}
-
-    <!-- Stage 2: iPXE loaded + node tag → per-node boot script URL (HTTP).
-         Each script tells iPXE which kernel/initrd/rootfs to fetch and which
-         config YAML to use (create vs join, node-specific static IP). -->
-{% for node in vm_nodes | selectattr('flavor', 'equalto', 'harvester') | list %}
-    <dnsmasq:option value='dhcp-boot=tag:pxe_{{ node.name }},tag:ipxe,http://{{ pxe_http_bind }}:{{ pxe_http_port }}/ipxe/{{ node.name }}'/>
-{% endfor %}
+    <!-- Stage 2: any iPXE client → one generic boot script that chains to the
+         per-node script selected by the mgmt NIC's MAC (ipxe/mac-${net0/mac}).
+         We deliberately do NOT use per-host dnsmasq tags: libvirt already writes
+         a <host mac=.../> dhcp-host for each node's IP, and a SECOND dhcp-host for
+         the same MAC (to set a tag) is silently ignored by dnsmasq — so the
+         per-node tag never applied and iPXE received no boot file. The MAC-based
+         chain sidesteps that conflict entirely. -->
+    <dnsmasq:option value='dhcp-boot=tag:ipxe,http://{{ pxe_http_bind }}:{{ pxe_http_port }}/ipxe/boot.ipxe'/>
   </dnsmasq:options>
 </network>

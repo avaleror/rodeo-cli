@@ -1,10 +1,117 @@
 # rodeo-cli
 
-Deploy and manage infrastructure for **rodeos** — live, hands-on workshops where attendees work on real systems.
-
-The default lab (**suse-virt**) provisions a 3-node [Harvester](https://harvesterhci.io/) HCI cluster and [Rancher Prime](https://www.rancher.com/) on nested KVM, on a single Linux host. Harvester nodes install via **iPXE network boot** (UEFI PXE, not ISO-first). Use it on **Instruqt**, **cloud VMs**, **local VMs**, or **bare metal**.
+A CLI for deploying hands-on lab infrastructure. Point it at a Linux host with KVM, pick a profile, and it builds a working lab of nested VMs — Harvester HCI clusters, Rancher Prime, or both — without you writing a line of Ansible or touching libvirt directly.
 
 **Version:** 0.6.0 · **Python:** 3.10+ · **License:** Apache-2.0
+
+---
+
+## How it works
+
+A **profile** describes a lab: how many VMs, what they run, how much RAM, what ports to expose on the host. Two YAML files define each profile:
+
+- `rodeo-plan.yaml` — resources, credentials, deployment target (bare metal or Instruqt)
+- `definition.yaml` — topology: nodes, network, exposed services, start order
+
+The CLI reads those files and drives a **phase pipeline** through Ansible roles on the target host:
+
+```
+kvm_host → vms → [pxe_server → cluster] → [rancher] → finalise
+```
+
+`kvm_host` prepares the hypervisor (packages, libvirt, firewall, storage). `vms` creates disk images and VM definitions. Harvester labs add `pxe_server` (nginx + TFTP + per-node iPXE scripts) and `cluster` (starts VMs, waits for Harvester to install via network boot). `rancher` installs Rancher Prime on K3s and imports the Harvester cluster. `finalise` enables VM autostart.
+
+Credentials live in `~/.rodeo/secrets.yaml` (chmod 600, never committed). The plan references them with `??key` placeholders; `rodeo up` generates that file for you.
+
+---
+
+## Quick start
+
+Two commands on a Linux host with KVM and Python 3.10+:
+
+```bash
+git clone https://github.com/avaleror/rodeo-cli.git
+cd rodeo-cli
+python3 -m venv --system-site-packages .venv && source .venv/bin/activate
+pip install -e .
+
+rodeo doctor   # check the host, see which profiles fit your RAM
+rodeo up       # pick a lab, generate secrets, deploy, print login info
+```
+
+`rodeo up` self-escalates with sudo, auto-detects an existing lab dir, and ends with the URLs and credentials to log in. No `source`, no `sudo -E`, no `--config-dir`.
+
+To pick a specific profile:
+
+```bash
+rodeo up --profile rancher        # Rancher Prime only, ~10 GiB RAM
+rodeo up --profile harvester-ha   # 3-node Harvester HA, ~52 GiB RAM
+rodeo up --profile harvester      # full lab: 3-node Harvester + Rancher, ~60 GiB RAM
+```
+
+---
+
+## Profiles
+
+| Profile | What it deploys | RAM needed |
+|---------|----------------|-----------|
+| `rancher` | 1 VM: Rancher Prime on K3s | ~10 GiB |
+| `test` | 2-node Harvester cluster, no Rancher | ~36 GiB |
+| `harvester-ha` | 3-node Harvester, no Rancher (3-member etcd HA) | ~52 GiB |
+| `harvester` | 3-node Harvester HCI + Rancher Prime | ~60 GiB |
+
+`rodeo doctor` recommends the largest profile that fits available RAM. `rodeo profiles` lists all profiles including any you create yourself.
+
+You can scaffold and customize your own:
+
+```bash
+rodeo new mylab --from harvester
+$EDITOR ~/.rodeo/profiles/mylab/definition.yaml
+rodeo up --profile mylab
+```
+
+Full walkthrough: [Create your own rodeo](docs/custom-rodeos.md).
+
+---
+
+## Commands
+
+| Command | What it does |
+|---------|-------------|
+| `up` | Front door: host check, install deps, pick lab, generate secrets, deploy, print login info |
+| `doctor` | Host readiness check and profile recommendation by available RAM |
+| `new` | Scaffold a custom lab from a bundled base: `rodeo new mylab --from harvester` |
+| `profiles` | List deployable profiles (bundled + your custom ones in `~/.rodeo/profiles/`) |
+| `install-deps` | Install host packages (KVM, libvirt, ansible, kubectl) |
+| `init` | Create `rodeo-plan.yaml` and `~/.rodeo/secrets.yaml` |
+| `plan` | Preview what deploy would change (no changes made) |
+| `deploy` | Run the phase pipeline. Flags: `--from PHASE`, `--force`, `--check`, `--no-tui`, `-P key=value` |
+| `status` | VM states, VIP reachability, phase progress |
+| `stop` | Graceful stop in reverse definition order (infra-aware) |
+| `start` | Start host services and VMs in definition order |
+| `clean` | Destroy lab VMs, disks, state. `--all --yes --secrets` for a full host reset |
+| `watch` | Split-panel TUI: phase progress + VM serial logs |
+| `ssh` | SSH into a lab VM: `rodeo ssh harvester1` |
+| `logs` | Tail VM serial log. `--bundle` packages a support tarball |
+| `restart` | Restart a single VM |
+| `attach` | Serial console (Ctrl+] to detach) |
+| `bootstrap` | (advanced) One-shot host setup for clean SLES, links binary, seeds a lab dir |
+| `generate` | (advanced) Interactive config-dir skeleton from templates |
+
+---
+
+## Configuration
+
+Plans go in the lab directory (`rodeo-plan.yaml`). Secrets go in `~/.rodeo/secrets.yaml`. The CLI walks up from the current directory to find a lab, so you can run commands from inside it without `--config-dir`.
+
+Override plan values at deploy time without editing files:
+
+```bash
+rodeo deploy -P resources.harvester.memory_mib=20480
+rodeo deploy --paramfile overrides.yaml
+```
+
+Precedence: profile defaults < plan < paramfile < `-P`.
 
 ---
 
@@ -12,132 +119,10 @@ The default lab (**suse-virt**) provisions a 3-node [Harvester](https://harveste
 
 | Guide | For |
 |-------|-----|
-| **[User guide](docs/user-guide.md)** | Workshop operators — install, deploy, Instruqt workflow, day-2 ops |
-| **[Architecture](docs/architecture.md)** | Contributors — design, pipeline, Ansible/Python split, constraints |
-| [ROADMAP.md](ROADMAP.md) | Planned features (Terraform-for-labs direction) |
-| [CONTEXT.md](CONTEXT.md) | Full project context for development |
-
----
-
-## Quick start
-
-New to this? Two commands.
-
-```bash
-rodeo doctor   # is my host ready, and which lab fits my RAM?
-rodeo up       # set up + deploy a lab, then show how to log in
-```
-
-`rodeo up` checks the host, offers to install missing deps, picks a lab sized for your
-machine, generates secrets for you, escalates with sudo on its own, and ends with the
-URLs and password to log in. No `source`, no `sudo -E`, no `--config-dir`.
-
-**Installing the `rodeo` command first** (on a clean Linux host with Python 3.10+):
-
-```bash
-git clone https://github.com/avaleror/rodeo-cli.git
-cd rodeo-cli
-python3 -m venv --system-site-packages .venv && source .venv/bin/activate
-pip install -e .
-rodeo up
-```
-
-Advanced / scripted setups (custom topologies, Instruqt images, pinned versions) use
-`generate`, `init`, `bootstrap`, and the explicit `plan` / `deploy` commands. See the
-[User guide](docs/user-guide.md).
-
-### Lab profiles
-
-`up`/`doctor` recommend the largest that fits your RAM. Pick one with `--profile`.
-
-| Profile | What it is | Needs ~ |
-|---------|-----------|---------|
-| `rancher` | 1 VM: Rancher Prime on K3s, no Harvester (smallest) | 10 GiB |
-| `test` | 2-node Harvester cluster, no Rancher | 36 GiB |
-| `harvester-ha` | 3-node Harvester, no Rancher (3-member etcd HA) | 52 GiB |
-| `harvester` | 3-node Harvester HCI + Rancher Prime (the full lab) | 60 GiB |
-
-`rodeo profiles` lists these plus any you create.
-
-### Make your own rodeo (declarative)
-
-Scaffold a working lab, edit two YAML files, deploy it:
-
-```bash
-rodeo new mylab --from harvester      # copies into ~/.rodeo/profiles/mylab
-$EDITOR ~/.rodeo/profiles/mylab/definition.yaml
-rodeo up --profile mylab
-```
-
-A profile is a config-dir: `definition.yaml` (topology) + `rodeo-plan.yaml` (resources,
-credentials). Full format and how-to: **[Create your own rodeo](docs/custom-rodeos.md)**.
-
----
-
-## Commands
-
-| Command | Description |
-|---------|-------------|
-| `up` | **Start here.** One command: doctor → pick a lab that fits → secrets → deploy → login info. Self-escalates with sudo. `--profile <name>` for a specific lab. |
-| `doctor` | Host readiness (RAM, CPU, disk, KVM, nested virt, tools) and which lab profile fits |
-| `new` | Scaffold a custom rodeo you can edit: `rodeo new mylab --from harvester` → edit → `rodeo up --profile mylab` |
-| `profiles` | List deployable profiles (bundled + your custom ones in `~/.rodeo/profiles/`) |
-| `bootstrap` | (advanced) One-command host link + ready lab dir setup for clean SLES |
-| `generate` | (advanced) Custom definition + full config-dir skeleton from templates. `rodeo generate --dir mylab` |
-| `install-deps` | Host packages (KVM, ansible, kubectl, …) + optional `--link` for /usr/local/bin/rodeo |
-| `init` | Create `rodeo-plan.yaml` + `~/.rodeo/secrets.yaml` (supports `--example` for pre-seeded configs) |
-| `plan` | Preview diff vs host (no changes) |
-| `deploy` | Run the full pipeline |
-| `stop` | Graceful infra-aware stop of the lab (VMs + host services per definition; --all for everything). VMs stay defined for restart. |
-| `start` | Start the lab after stop (host services + VMs per definition). |
-| `status` | VM states, VIP, phase progress |
-| `clean` | Destroy lab VMs, disks, reset state. `--all --yes --secrets --force-network --hard` for full host reset (all rodeo VMs/networks/states/passwords; leaves packages + rodeo binary for repurposing or fresh start). |
-| `watch` | TUI: phases + serial logs |
-| `ssh` / `logs` / `restart` / `attach` | VM access and ops |
-| `logs --bundle` | Support tarball for troubleshooting |
-
-`deploy` options: `--from PHASE`, `--force`, `--check`, `--finalise`, `--no-tui`, `-P key=value`, `--paramfile FILE`.
-
----
-
-## What gets deployed
-
-| VM | Role | Default IP |
-|----|------|------------|
-| harvester1–3 | Harvester HCI nodes | .11 – .13 |
-| rancher | Rancher Prime on K3s | .9 |
-| (VIP) | Harvester API/UI | .10 |
-
-**Host sizing (default):** ~64 GiB RAM, ~32 vCPU, ~900 GiB disk.
-
----
-
-## Instruqt vs bare metal
-
-```yaml
-# rodeo-plan.yaml
-deployment_target: instruqt   # or baremetal
-```
-
-- **instruqt** — skips `finalise` until after image snapshot (prevents broken instance boot)
-- **baremetal** — full deploy including VM autostart on host reboot
-
-After an Instruqt snapshot:
-
-```bash
-rodeo deploy --from finalise --finalise
-```
-
-Details: [User guide — Deployment targets](docs/user-guide.md#deployment-targets-in-detail).
-
----
-
-## Configuration
-
-- **Plan:** `rodeo-plan.yaml` (in your working directory)
-- **Secrets:** `~/.rodeo/secrets.yaml` (chmod 600, never commit; `rodeo generate` warns instead of silent clobber if exists)
-- **Overrides:** `-P resources.harvester.memory_mib=20480` or `--paramfile lab.yaml`
-- **State:** `~/.rodeo/state/<plan-name>.yaml`
+| [Rancher profile guide](docs/guide-rancher.md) | Deploy Rancher Prime on K3s |
+| [Harvester profile guide](docs/guide-harvester.md) | Deploy Harvester HCI (2-node, 3-node, full lab) |
+| [Create your own rodeo](docs/custom-rodeos.md) | Scaffold and customize a topology |
+| [Architecture](docs/architecture.md) | How the codebase is structured |
 
 ---
 
@@ -148,8 +133,6 @@ pip install -e ".[dev]"
 ruff check rodeo tests
 pytest tests/ -v
 ```
-
-CI runs on Python 3.10 and 3.12.
 
 ---
 

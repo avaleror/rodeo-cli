@@ -22,11 +22,16 @@
   loop_control:
     label: "{{ item.name }}"
 
+# 0644 (not 0640): nginx runs as an unprivileged user and must read these to
+# serve them over HTTP to the iPXE installer. With 0640 root:root the fetch got
+# HTTP 403 and the Harvester installer retried forever. The config is served
+# unauthenticated over HTTP on the isolated lab network regardless of file mode,
+# so 0640 added no real protection — it only broke the serve.
 - name: Render per-node Harvester install config YAMLs
   ansible.builtin.template:
     src: config-node.yaml.j2
     dest: "{{ pxe_http_root }}/config/config-{{ item.name }}.yaml"
-    mode: '0640'
+    mode: '0644'
   loop: "{{ vm_nodes | selectattr('flavor', 'equalto', 'harvester') | list }}"
   loop_control:
     label: "{{ item.name }}"

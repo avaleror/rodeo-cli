@@ -1,0 +1,53 @@
+name: Integration tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "Profile to test (leave blank for all)"
+        required: false
+        default: ""
+  schedule:
+    - cron: "0 2 * * *"   # nightly at 02:00 UTC
+
+concurrency:
+  group: integration
+  cancel-in-progress: true   # only one integration run at a time on the shared host
+
+jobs:
+  integration:
+    name: "${{ matrix.profile }}"
+    runs-on: [self-hosted, kvm, sles16]
+    timeout-minutes: 180
+    if: >
+      github.event.inputs.profile == '' ||
+      github.event.inputs.profile == matrix.profile
+
+    strategy:
+      max-parallel: 1        # one profile at a time — they share the same physical host
+      fail-fast: false       # finish each profile independently so we get all results
+      matrix:
+        profile: [rancher, test, harvester-ha, harvester]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python venv
+        run: |
+          python3 -m venv --system-site-packages .venv
+          .venv/bin/pip install -e . -q
+
+      # Pre-run cleanup — wipe whatever the previous run left.
+      # Run as root via absolute path (bypasses SLES secure_path restriction).
+      - name: Pre-run cleanup
+        run: sudo $GITHUB_WORKSPACE/.venv/bin/rodeo clean --all --yes --secrets --force-network || true
+
+      - name: Deploy — ${{ matrix.profile }}
+        run: .venv/bin/rodeo up --profile ${{ matrix.profile }} --yes
+
+      - name: Verify cluster
+        run: sudo $GITHUB_WORKSPACE/.venv/bin/rodeo status
+
+      - name: Post-run cleanup
+        if: always()    # clean up even when deploy fails
+        run: sudo $GITHUB_WORKSPACE/.venv/bin/rodeo clean --all --yes --secrets --force-network || true

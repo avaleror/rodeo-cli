@@ -12,6 +12,7 @@ degrades gracefully when a value cannot be read.
 """
 from __future__ import annotations
 
+import importlib.util
 import os
 import shutil
 from pathlib import Path
@@ -24,6 +25,10 @@ DEFAULT_IMAGE_DIR = "/var/lib/libvirt/images"
 
 CORE_TOOLS = ("ansible-playbook", "ansible-galaxy", "kubectl")
 OPTIONAL_TOOLS = ("virsh", "ssh")
+# Python modules the deploy needs: libvirt-python (LibvirtDriver) and lxml
+# (community.libvirt Ansible modules in the vms phase). Missing lxml only surfaces
+# ~20 min into vms, so we check up front.
+CORE_PY_MODULES = ("libvirt", "lxml")
 
 # Beginner-facing profiles, smallest first, with the RAM each realistically needs.
 # `up`/`doctor` recommend the largest profile whose need fits available RAM.
@@ -66,6 +71,13 @@ def _nested_enabled() -> bool:
     return False
 
 
+def _module_present(name: str) -> bool:
+    try:
+        return importlib.util.find_spec(name) is not None
+    except (ImportError, ValueError):
+        return False
+
+
 def detect_pkg_mgr() -> str:
     """Best-effort package manager: zypper | apt | dnf | unknown."""
     for tool, mgr in (("zypper", "zypper"), ("apt-get", "apt"), ("dnf", "dnf")):
@@ -96,11 +108,14 @@ def detect_host(image_dir: str = DEFAULT_IMAGE_DIR) -> dict:
         "disk_free_gib": _free_gib(image_dir),
         "core_tools": {t: shutil.which(t) is not None for t in CORE_TOOLS},
         "optional_tools": {t: shutil.which(t) is not None for t in OPTIONAL_TOOLS},
+        "py_modules": {m: _module_present(m) for m in CORE_PY_MODULES},
     }
 
 
 def missing_core_tools(host: dict) -> list[str]:
-    return [t for t, ok in host["core_tools"].items() if not ok]
+    missing = [t for t, ok in host["core_tools"].items() if not ok]
+    missing += [f"python3-{m}" for m, ok in host.get("py_modules", {}).items() if not ok and m == "lxml"]
+    return missing
 
 
 def recommend_profile(host: dict) -> tuple[str, bool]:
@@ -189,6 +204,11 @@ def run_preflight(cfg: dict, root: Path) -> bool:
 
     for tool in CORE_TOOLS:
         checks.append((tool, shutil.which(tool) is not None, f"{tool} not found in PATH", False))
+    for mod in CORE_PY_MODULES:
+        checks.append((
+            f"python: {mod}", _module_present(mod),
+            f"Python module '{mod}' not importable — run: sudo rodeo install-deps", False,
+        ))
     for tool in OPTIONAL_TOOLS:
         checks.append((tool, shutil.which(tool) is not None,
                        f"{tool} not found in PATH (needed for 'attach', 'ssh', and some fallbacks)", True))

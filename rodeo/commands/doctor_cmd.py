@@ -11,6 +11,7 @@ from rich.console import Console
 from rich.table import Table
 
 from ..preflight import (
+    CORE_PY_MODULES,
     CORE_TOOLS,
     OPTIONAL_TOOLS,
     PROFILE_SIZING,
@@ -48,6 +49,9 @@ def doctor_cmd() -> None:
     for tool in CORE_TOOLS:
         ok = host["core_tools"][tool]
         checks.add_row(_mark(ok, tool), "" if ok else "required — run: sudo rodeo install-deps")
+    for mod in CORE_PY_MODULES:
+        ok = host.get("py_modules", {}).get(mod, False)
+        checks.add_row(_mark(ok, f"python: {mod}"), "" if ok else "required — run: sudo rodeo install-deps")
     for tool in OPTIONAL_TOOLS:
         ok = host["optional_tools"][tool]
         checks.add_row(_warn_mark(ok, tool), "" if ok else "optional (ssh/attach/fallbacks)")

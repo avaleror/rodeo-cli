@@ -9,9 +9,11 @@ def test_detect_host_has_expected_keys():
     for key in (
         "is_root", "pkg_mgr", "has_kvm", "nested", "ram_total_gib",
         "ram_avail_gib", "cpus", "disk_free_gib", "core_tools", "optional_tools",
+        "py_modules",
     ):
         assert key in host
     assert set(host["core_tools"]) == set(preflight.CORE_TOOLS)
+    assert set(host["py_modules"]) == set(preflight.CORE_PY_MODULES)
 
 
 def _host(ram_avail):

@@ -201,7 +201,15 @@ class RancherPhase:
             headers["Authorization"] = f"Bearer {token}"
         req = urllib.request.Request(url, data=body, headers=headers, method=method)
         with urllib.request.urlopen(req, context=self._ssl_ctx(), timeout=30) as resp:
-            return json.loads(resp.read())
+            raw = resp.read()
+        # Some actions (e.g. changepassword) return 200 with an empty body.
+        # Treat empty/non-JSON success responses as {} rather than raising.
+        if not raw or not raw.strip():
+            return {}
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
 
     # ---------- Phase sub-steps ----------
 
@@ -376,35 +384,45 @@ class RancherPhase:
             if self._sleep(self.PING_POLL):
                 return False
 
-    def _configure_api(self) -> Generator[DeployEvent, None, bool]:
+    def _login(self, password: str) -> str:
+        """Return a login token for admin@<password>, or '' on failure."""
         try:
             resp = self._http(
                 "POST",
                 "/v3-public/localProviders/local?action=login",
-                {"username": "admin", "password": "admin"},
+                {"username": "admin", "password": password},
             )
-            temp_token = resp.get("token", "")
-        except Exception as exc:
-            self.error = f"Initial Rancher login failed: {exc}"
-            yield LogLine(f"  ✗ {self.error}")
-            return False
+            return resp.get("token", "")
+        except Exception:
+            return ""
+
+    def _configure_api(self) -> Generator[DeployEvent, None, bool]:
+        # Idempotent: a previous run may have already changed the admin password,
+        # so try the bootstrap password first, then the configured one.
+        temp_token = self._login("admin")
+        on_bootstrap = bool(temp_token)
+        if not temp_token:
+            temp_token = self._login(self.admin_password)
 
         if not temp_token:
-            self.error = "Initial login returned no token"
+            self.error = "Rancher login failed (tried bootstrap and configured passwords)"
             yield LogLine(f"  ✗ {self.error}")
             return False
 
-        try:
-            self._http(
-                "POST",
-                "/v3/users?action=changepassword",
-                {"currentPassword": "admin", "newPassword": self.admin_password},
-                token=temp_token,
-            )
-        except Exception as exc:
-            self.error = f"Password change failed: {exc}"
-            yield LogLine(f"  ✗ {self.error}")
-            return False
+        if on_bootstrap:
+            try:
+                self._http(
+                    "POST",
+                    "/v3/users?action=changepassword",
+                    {"currentPassword": "admin", "newPassword": self.admin_password},
+                    token=temp_token,
+                )
+            except Exception as exc:
+                self.error = f"Password change failed: {exc}"
+                yield LogLine(f"  ✗ {self.error}")
+                return False
+        else:
+            yield LogLine("  Admin password already set — skipping change.")
 
         try:
             resp = self._http(

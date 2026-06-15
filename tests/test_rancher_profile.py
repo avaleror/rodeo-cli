@@ -11,9 +11,11 @@ from rodeo.profiles import get_profile
 
 def test_profile_phases_skip_harvester():
     p = get_profile("rancher")
-    assert p.phases == ["kvm_host", "vms", "rancher", "finalise"]
+    assert p.phases == ["kvm_host", "vms", "boot", "rancher", "finalise"]
     assert "pxe_server" not in p.phases
     assert "cluster" not in p.phases
+    # 'boot' starts the network + VM in place of the Harvester ClusterPhase.
+    assert "boot" in p.phases
     assert p.vm_names == ["rancher"]
 
 

@@ -23,7 +23,8 @@ except ImportError:
 
 class RancherProfile(RodeoProfile):
     name = "rancher"
-    phases = ["kvm_host", "vms", "rancher", "finalise"]
+    # 'boot' starts the network + VM (no Harvester cluster, so no pxe_server/cluster).
+    phases = ["kvm_host", "vms", "boot", "rancher", "finalise"]
     vm_names = ["rancher"]
     ansible_phases = frozenset(["kvm_host", "vms"])
     guarded_phases = frozenset(["finalise"])
@@ -75,6 +76,8 @@ class RancherProfile(RodeoProfile):
     ) -> Iterator["DeployEvent"]:
         if phase in ("kvm_host", "vms"):
             yield from runner.stream_ansible(phase, vars_file)
+        elif phase == "boot":
+            yield from runner.stream_boot()
         elif phase == "rancher":
             yield from runner.stream_rancher()
         elif phase == "finalise":

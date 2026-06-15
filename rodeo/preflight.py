@@ -35,6 +35,7 @@ CORE_PY_MODULES = ("libvirt", "lxml")
 PROFILE_SIZING = [
     {"name": "rancher", "ram_gib": 10, "label": "Rancher Prime on K3s (1 VM, no Harvester)"},
     {"name": "test", "ram_gib": 36, "label": "2-node Harvester (no Rancher)"},
+    {"name": "harvester-ha", "ram_gib": 52, "label": "3-node Harvester, no Rancher (etcd HA)"},
     {"name": "harvester", "ram_gib": 60, "label": "3-node Harvester + Rancher Prime"},
 ]
 

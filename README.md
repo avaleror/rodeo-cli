@@ -54,6 +54,7 @@ Advanced / scripted setups (custom topologies, Instruqt images, pinned versions)
 |---------|-----------|---------|
 | `rancher` | 1 VM: Rancher Prime on K3s, no Harvester (smallest) | 10 GiB |
 | `test` | 2-node Harvester cluster, no Rancher | 36 GiB |
+| `harvester-ha` | 3-node Harvester, no Rancher (3-member etcd HA) | 52 GiB |
 | `harvester` | 3-node Harvester HCI + Rancher Prime (the full lab) | 60 GiB |
 
 `rodeo profiles` lists these plus any you create.

@@ -257,6 +257,49 @@ class DeployRunner:
         if phase.error:
             yield LogLine(f"  ✗  cluster: {phase.error}")
 
+    def stream_boot(self) -> Iterator[DeployEvent]:
+        """Bring up host network + start the lab VMs (for non-Harvester profiles).
+
+        The suse-virt pipeline starts VMs inside ClusterPhase (which also waits on the
+        Harvester VIP, etcd join, and nodes Ready). Profiles without a Harvester cluster
+        (e.g. rancher) use this lighter step instead: start firewalld, activate the
+        libvirt network, and boot the defined VMs so the next phase can SSH to them.
+        """
+        yield LogLine("Starting firewalld...")
+        subprocess.run(["systemctl", "start", "firewalld"], capture_output=True)
+        r = subprocess.run(["firewall-cmd", "--reload"], capture_output=True, text=True)
+        if r.returncode != 0:
+            yield LogLine(f"  ⚠  firewall-cmd reload: {r.stderr.strip()}")
+
+        uri = self.cfg.get("libvirt", {}).get("uri", "qemu:///system")
+        vm_names = list(self.cfg.get("vms", {}).keys())
+        try:
+            from .libvirt import LibvirtDriver
+            with LibvirtDriver(uri) as lv:
+                yield LogLine("Ensuring libvirt network (virbr0) is up...")
+                try:
+                    lv.net_start("default")
+                    lv.net_set_autostart("default", True)
+                    yield LogLine("  virbr0 active.")
+                except Exception as exc:
+                    yield LogLine(f"  ⚠  network start: {exc}")
+                for name in vm_names:
+                    info = lv.get_vm(name)
+                    if info.state == "not found":
+                        yield LogLine(f"  ✗ {name}: domain not found — was the vms phase completed?")
+                        self._last_rc = 1
+                        return
+                    if info.state == "running":
+                        yield LogLine(f"  {name}: already running.")
+                    else:
+                        lv.start(name)
+                        yield LogLine(f"  {name}: started.")
+        except Exception as exc:
+            yield LogLine(f"  ✗  libvirt: {exc}")
+            self._last_rc = 1
+            return
+        self._last_rc = 0
+
     def stream_rancher(self) -> Iterator[DeployEvent]:
         from .rancher import RancherPhase
         phase = RancherPhase(self.cfg, stop=self.stop)

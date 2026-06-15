@@ -34,6 +34,8 @@
     dest: "{{ image_dir }}/harvester-v{{ harvester_version }}-amd64.iso"
     checksum: "{{ harvester_iso_checksum | default(omit) }}"
     mode: '0644'
+  # Skip on Rancher-only labs (no Harvester nodes) so they stay small/fast.
+  when: vm_nodes | selectattr('flavor', 'equalto', 'harvester') | list | length > 0
 
 # --- Harvester node disks and OVMF vars ---
 
@@ -87,62 +89,8 @@
   loop_control:
     label: "{{ item.name }}"
 
-# --- Rancher VM disk and cloud-init ---
-
-- name: Download openSUSE Leap 16 KVM base image (kvm-and-xen variant; virtio drivers included)
-  ansible.builtin.get_url:
-    url: "{{ leap16_url }}"
-    dest: "{{ image_dir }}/Leap-16.0-kvm-and-xen.qcow2"
-    mode: '0644'
-
-- name: Convert Leap 16 KVM base image to Rancher VM disk
-  ansible.builtin.command: >
-    qemu-img convert -f qcow2 -O qcow2 -o preallocation=metadata
-    '{{ image_dir }}/Leap-16.0-kvm-and-xen.qcow2'
-    '{{ image_dir }}/rancher-vda.qcow2'
-  args:
-    creates: "{{ image_dir }}/rancher-vda.qcow2"
-
-- name: Get Rancher disk virtual size
-  ansible.builtin.command: qemu-img info --output=json '{{ image_dir }}/rancher-vda.qcow2'
-  register: rancher_disk_info
-  changed_when: false
-  failed_when: false
-
-- name: Resize Rancher VM disk to {{ libvirt_flavors.rancher.disk_gb }}G
-  ansible.builtin.command: >
-    qemu-img resize '{{ image_dir }}/rancher-vda.qcow2' {{ libvirt_flavors.rancher.disk_gb }}G
-  when:
-    - rancher_disk_info.rc == 0
-    - (rancher_disk_info.stdout | from_json)['virtual-size'] | int < (libvirt_flavors.rancher.disk_gb | int * 1073741824)
-
-- name: Create cloud-init staging directory
-  ansible.builtin.file:
-    path: /tmp/rancher-cloud-init
-    state: directory
-    mode: '0755'
-
-- name: Write cloud-init meta-data
-  ansible.builtin.template:
-    src: cloud-init-meta-data.j2
-    dest: /tmp/rancher-cloud-init/meta-data
-
-- name: Write cloud-init user-data
-  ansible.builtin.template:
-    src: cloud-init-user-data.j2
-    dest: /tmp/rancher-cloud-init/user-data
-
-- name: Write cloud-init network-config
-  ansible.builtin.template:
-    src: cloud-init-network-config.j2
-    dest: /tmp/rancher-cloud-init/network-config
-
-# No creates: guard — cloud-init ISO is always rebuilt to match current templates
-- name: Build Rancher cloud-init seed ISO
-  ansible.builtin.command: >
-    xorriso -as mkisofs
-    -V cidata -J -r
-    -o '{{ image_dir }}/rancher-cloud-init.iso'
-    /tmp/rancher-cloud-init/meta-data
-    /tmp/rancher-cloud-init/user-data
-    /tmp/rancher-cloud-init/network-config
+# --- Rancher VM disk and cloud-init (only when the topology has a Rancher node) ---
+# Rancher-less labs (e.g. the 2-node 'test' profile) skip this entirely.
+- name: Provision the Rancher VM image + cloud-init
+  ansible.builtin.include_tasks: rancher_image.yml
+  when: (vm_nodes | selectattr('flavor', 'equalto', 'rancher') | list | length) > 0

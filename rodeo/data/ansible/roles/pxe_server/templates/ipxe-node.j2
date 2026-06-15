@@ -17,7 +17,7 @@ kernel http://{{ pxe_http_bind }}:{{ pxe_http_port }}/harvester/harvester-v{{ ha
   rd.noverifyssl \
   net.ifnames=1 \
   root=live:http://{{ pxe_http_bind }}:{{ pxe_http_port }}/harvester/harvester-v{{ harvester_version }}-rootfs-amd64.squashfs \
-  console=ttyS0,115200n8 \
+  console=ttyS1,115200n8 console=ttyS0,115200n8 \
   harvester.install.automatic=true \
   harvester.install.skipchecks=true \
   harvester.install.config_url=http://{{ pxe_http_bind }}:{{ pxe_http_port }}/config/config-{{ item.name }}.yaml

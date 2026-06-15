@@ -40,9 +40,12 @@ class RancherPhase:
         self.nodeport         = int(net.get("rancher_nodeport", 30002))
         self.dns_domain       = net.get("dns_domain", "aerogrid.com")
         self.gateway          = net.get("gateway", "192.168.122.1")
-        self.harvester_nodes  = [
-            n for n in cfg.get("vms", {}) if n != "rancher"
-        ] or ["harvester1", "harvester2", "harvester3"]
+        real_harvester        = [n for n in cfg.get("vms", {}) if n != "rancher"]
+        # Standalone = a Rancher-only lab (no Harvester to import). When the plan
+        # has VMs but none of them are Harvester nodes, stop after configuring the
+        # Rancher API and skip import / Harvester password / ISO eject.
+        self.standalone       = bool(cfg.get("vms")) and not real_harvester
+        self.harvester_nodes  = real_harvester or ["harvester1", "harvester2", "harvester3"]
         self.libvirt_uri      = cfg.get("libvirt", {}).get("uri", "qemu:///system")
 
         self.rancher_version  = ver.get("rancher", "2.13.1")
@@ -121,6 +124,14 @@ class RancherPhase:
             return
         yield LogLine("  Rancher API configured.")
 
+        if self.standalone:
+            yield LogLine(
+                f"\n  Rancher URL  : {self.rancher_api}  (NodePort)"
+                "\n  Standalone Rancher lab — no Harvester cluster to import."
+            )
+            self.success = True
+            return
+
         yield LogLine("Importing Harvester cluster into Rancher...")
         if not (yield from self._import_harvester()):
             return
@@ -190,7 +201,15 @@ class RancherPhase:
             headers["Authorization"] = f"Bearer {token}"
         req = urllib.request.Request(url, data=body, headers=headers, method=method)
         with urllib.request.urlopen(req, context=self._ssl_ctx(), timeout=30) as resp:
-            return json.loads(resp.read())
+            raw = resp.read()
+        # Some actions (e.g. changepassword) return 200 with an empty body.
+        # Treat empty/non-JSON success responses as {} rather than raising.
+        if not raw or not raw.strip():
+            return {}
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
 
     # ---------- Phase sub-steps ----------
 
@@ -365,35 +384,45 @@ class RancherPhase:
             if self._sleep(self.PING_POLL):
                 return False
 
-    def _configure_api(self) -> Generator[DeployEvent, None, bool]:
+    def _login(self, password: str) -> str:
+        """Return a login token for admin@<password>, or '' on failure."""
         try:
             resp = self._http(
                 "POST",
                 "/v3-public/localProviders/local?action=login",
-                {"username": "admin", "password": "admin"},
+                {"username": "admin", "password": password},
             )
-            temp_token = resp.get("token", "")
-        except Exception as exc:
-            self.error = f"Initial Rancher login failed: {exc}"
-            yield LogLine(f"  ✗ {self.error}")
-            return False
+            return resp.get("token", "")
+        except Exception:
+            return ""
+
+    def _configure_api(self) -> Generator[DeployEvent, None, bool]:
+        # Idempotent: a previous run may have already changed the admin password,
+        # so try the bootstrap password first, then the configured one.
+        temp_token = self._login("admin")
+        on_bootstrap = bool(temp_token)
+        if not temp_token:
+            temp_token = self._login(self.admin_password)
 
         if not temp_token:
-            self.error = "Initial login returned no token"
+            self.error = "Rancher login failed (tried bootstrap and configured passwords)"
             yield LogLine(f"  ✗ {self.error}")
             return False
 
-        try:
-            self._http(
-                "POST",
-                "/v3/users?action=changepassword",
-                {"currentPassword": "admin", "newPassword": self.admin_password},
-                token=temp_token,
-            )
-        except Exception as exc:
-            self.error = f"Password change failed: {exc}"
-            yield LogLine(f"  ✗ {self.error}")
-            return False
+        if on_bootstrap:
+            try:
+                self._http(
+                    "POST",
+                    "/v3/users?action=changepassword",
+                    {"currentPassword": "admin", "newPassword": self.admin_password},
+                    token=temp_token,
+                )
+            except Exception as exc:
+                self.error = f"Password change failed: {exc}"
+                yield LogLine(f"  ✗ {self.error}")
+                return False
+        else:
+            yield LogLine("  Admin password already set — skipping change.")
 
         try:
             resp = self._http(

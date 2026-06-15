@@ -274,7 +274,8 @@ def _customize_plan(plan_path, answers):
         yaml.safe_dump(data, f, sort_keys=False, default_flow_style=False)
 
 
-@click.command("generate")
+@click.command("generate",
+               short_help="(advanced) Interactive config-dir generator. Prefer 'rodeo new <name>'.")
 @click.option("--dir", "output_dir", default=".", help="Output directory for the generated config-dir skeleton (default: current dir)")
 @click.option("--name", help="Lab name (will prompt if not given)")
 @click.option("--advanced", is_flag=True, help="Ask advanced questions (resources, network, etc.)")

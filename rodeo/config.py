@@ -53,6 +53,51 @@ _BASE_DEFAULTS: dict[str, Any] = {
 
 _SECRETS_PATH = Path.home() / ".rodeo" / "secrets.yaml"
 
+# Markers that identify a lab directory, so commands can be run from anywhere
+# inside it without passing --config-dir (like git/terraform finding their root).
+_LAB_MARKERS = ("rodeo-plan.yaml", "definition.yaml")
+
+
+def _invoking_home() -> Path:
+    """Real user's home even under plain ``sudo`` (uses SUDO_USER)."""
+    sudo_user = os.environ.get("SUDO_USER")
+    if sudo_user:
+        try:
+            import pwd
+            return Path(pwd.getpwnam(sudo_user).pw_dir)
+        except (KeyError, ImportError):
+            pass
+    return Path.home()
+
+
+def _resolve_secrets_path() -> Path:
+    """Secrets file to read, resolved live so HOME/SUDO_USER are honored.
+
+    Order: the invoking user's ~/.rodeo/secrets.yaml (correct under plain ``sudo``,
+    where HOME is /root but SUDO_USER points back at the user), then the module
+    constant (which tests monkeypatch). Lets ``rodeo up`` write secrets as the user
+    and have the escalated deploy still find them — no ``sudo -E`` needed.
+    """
+    live = _invoking_home() / ".rodeo" / "secrets.yaml"
+    if live.exists():
+        return live
+    if _SECRETS_PATH.exists():
+        return _SECRETS_PATH
+    return live
+
+
+def find_lab_dir(start: str | Path | None = None) -> Path | None:
+    """Walk up from ``start`` (default cwd) for a lab dir, or None.
+
+    A lab dir contains rodeo-plan.yaml or definition.yaml. Lets the user run
+    `rodeo deploy` / `plan` / `up` from anywhere inside their lab.
+    """
+    here = Path(start or Path.cwd()).resolve()
+    for d in (here, *here.parents):
+        if any((d / m).exists() for m in _LAB_MARKERS):
+            return d
+    return None
+
 
 def _deep_merge(base: dict, override: dict) -> dict:
     result = dict(base)
@@ -193,6 +238,13 @@ def load_config(
     """
     plan_path = Path(plan_path)
 
+    # Auto-detect the lab dir when neither an explicit plan nor --config-dir was
+    # given, so commands work from anywhere inside a lab without --config-dir .
+    if config_dir is None and plan_path == Path("rodeo-plan.yaml") and not plan_path.exists():
+        detected = find_lab_dir()
+        if detected is not None:
+            config_dir = str(detected)
+
     if config_dir is not None:
         cdir = Path(config_dir)
         if (plan_path == Path("rodeo-plan.yaml") or not plan_path.exists()):
@@ -240,11 +292,12 @@ def load_config(
         _set_path(cfg, key, value)
 
     secrets: dict = {}
-    if _SECRETS_PATH.exists():
+    secrets_path = _resolve_secrets_path()
+    if secrets_path.exists():
         try:
-            secrets = yaml.safe_load(_SECRETS_PATH.read_text()) or {}
+            secrets = yaml.safe_load(secrets_path.read_text()) or {}
         except yaml.YAMLError as exc:
-            raise ConfigError(f"{_SECRETS_PATH}: invalid YAML: {exc}")
+            raise ConfigError(f"{secrets_path}: invalid YAML: {exc}")
 
     cfg = _resolve_secrets(cfg, secrets)
 

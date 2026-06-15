@@ -1,0 +1,30 @@
+# Example rodeo-plan.yaml — Rancher-only lab (Rancher Prime on K3s, no Harvester).
+# The smallest lab: one VM, fits a modest host (~10-16 GiB RAM).
+# Used by `rodeo up --profile rancher` and `rodeo init --profile rancher`.
+
+type: rancher
+name: rancher-lab
+deployment_target: baremetal
+
+network:
+  rancher_ip: 192.168.122.9
+
+# One VM running K3s + Rancher Prime + cert-manager.
+resources:
+  rancher:
+    memory_mib: 8192
+    vcpu: 4
+    disk_gb: 60
+
+# Credentials resolve from ~/.rodeo/secrets.yaml (rodeo init / up generate them).
+#   harvester_os_password -> the rancher VM root password
+#   lab_admin_password    -> the Rancher dashboard admin password
+credentials:
+  harvester_os_password: "??harvester_os_password"
+  lab_admin_password: "??lab_admin_password"
+
+storage:
+  image_dir: /var/lib/libvirt/images
+
+# The full topology lives in definition.yaml in this directory (used because
+# --config-dir points here). Edit it for custom networks or resources.

@@ -4,7 +4,7 @@ Deploy and manage infrastructure for **rodeos** — live, hands-on workshops whe
 
 The default lab (**suse-virt**) provisions a 3-node [Harvester](https://harvesterhci.io/) HCI cluster and [Rancher Prime](https://www.rancher.com/) on nested KVM, on a single Linux host. Harvester nodes install via **iPXE network boot** (UEFI PXE, not ISO-first). Use it on **Instruqt**, **cloud VMs**, **local VMs**, or **bare metal**.
 
-**Version:** 0.4.0 · **Python:** 3.10+ · **License:** Apache-2.0
+**Version:** 0.6.0 · **Python:** 3.10+ · **License:** Apache-2.0
 
 ---
 
@@ -21,36 +21,55 @@ The default lab (**suse-virt**) provisions a 3-node [Harvester](https://harveste
 
 ## Quick start
 
-**For clean SLES 16 / Leap 16 hosts (recommended, minimal manual steps):**
+New to this? Two commands.
 
 ```bash
-# One command: prereqs, hidden setup, binary link, ready lab dir with 2-node Harvester example
-curl -fsSL https://raw.githubusercontent.com/avaleror/rodeo-cli/main/scripts/bootstrap-sles.sh | bash
-
-# Or generate custom first (parameter collection to produce full skeleton from templates):
-# rodeo generate --dir mylab
-# then follow printed (cd, source, plan, deploy)
+rodeo doctor   # is my host ready, and which lab fits my RAM?
+rodeo up       # set up + deploy a lab, then show how to log in
 ```
 
-**For development / source tree:**
+`rodeo up` checks the host, offers to install missing deps, picks a lab sized for your
+machine, generates secrets for you, escalates with sudo on its own, and ends with the
+URLs and password to log in. No `source`, no `sudo -E`, no `--config-dir`.
+
+**Installing the `rodeo` command first** (on a clean Linux host with Python 3.10+):
 
 ```bash
 git clone https://github.com/avaleror/rodeo-cli.git
 cd rodeo-cli
 python3 -m venv --system-site-packages .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-rodeo bootstrap   # does link + prepares lab dir (or use the curl above)
+pip install -e .
+rodeo up
 ```
 
-Then:
+Advanced / scripted setups (custom topologies, Instruqt images, pinned versions) use
+`generate`, `init`, `bootstrap`, and the explicit `plan` / `deploy` commands. See the
+[User guide](docs/user-guide.md).
+
+### Lab profiles
+
+`up`/`doctor` recommend the largest that fits your RAM. Pick one with `--profile`.
+
+| Profile | What it is | Needs ~ |
+|---------|-----------|---------|
+| `rancher` | 1 VM: Rancher Prime on K3s, no Harvester (smallest) | 10 GiB |
+| `test` | 2-node Harvester cluster, no Rancher | 36 GiB |
+| `harvester` | 3-node Harvester HCI + Rancher Prime (the full lab) | 60 GiB |
+
+`rodeo profiles` lists these plus any you create.
+
+### Make your own rodeo (declarative)
+
+Scaffold a working lab, edit two YAML files, deploy it:
 
 ```bash
-cd ~/harvester-rodeo-lab   # or your lab dir
-source rodeo-secrets.env
-rodeo plan
-sudo -E rodeo deploy --check
-rodeo deploy
+rodeo new mylab --from harvester      # copies into ~/.rodeo/profiles/mylab
+$EDITOR ~/.rodeo/profiles/mylab/definition.yaml
+rodeo up --profile mylab
 ```
+
+A profile is a config-dir: `definition.yaml` (topology) + `rodeo-plan.yaml` (resources,
+credentials). Full format and how-to: **[Create your own rodeo](docs/custom-rodeos.md)**.
 
 ---
 
@@ -58,9 +77,12 @@ rodeo deploy
 
 | Command | Description |
 |---------|-------------|
-| `bootstrap` | One-command host link + ready lab dir setup (for clean SLES after basic venv) |
-| `generate` | Generator for custom definition + full config-dir skeleton (from templates via parameter collection, hybrid customization, infra_type support). `rodeo generate --dir mylab` |
-
+| `up` | **Start here.** One command: doctor → pick a lab that fits → secrets → deploy → login info. Self-escalates with sudo. `--profile <name>` for a specific lab. |
+| `doctor` | Host readiness (RAM, CPU, disk, KVM, nested virt, tools) and which lab profile fits |
+| `new` | Scaffold a custom rodeo you can edit: `rodeo new mylab --from harvester` → edit → `rodeo up --profile mylab` |
+| `profiles` | List deployable profiles (bundled + your custom ones in `~/.rodeo/profiles/`) |
+| `bootstrap` | (advanced) One-command host link + ready lab dir setup for clean SLES |
+| `generate` | (advanced) Custom definition + full config-dir skeleton from templates. `rodeo generate --dir mylab` |
 | `install-deps` | Host packages (KVM, ansible, kubectl, …) + optional `--link` for /usr/local/bin/rodeo |
 | `init` | Create `rodeo-plan.yaml` + `~/.rodeo/secrets.yaml` (supports `--example` for pre-seeded configs) |
 | `plan` | Preview diff vs host (no changes) |

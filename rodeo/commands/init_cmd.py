@@ -48,8 +48,8 @@ def _pick_password(ask: bool) -> tuple[str, str]:
 @click.option("--ask", "ask_password", is_flag=True,
               help="Prompt for the lab password instead of generating one.")
 @click.option("--profile", "profile", default=None, metavar="NAME",
-              help="Seed using profile: 'rancher' (1 VM, Rancher Prime on K3s, no Harvester — smallest), "
-                   "'test' (2 small Harvester nodes, no Rancher), or 'harvester' (full 3-node + Rancher Prime). "
+              help="Seed using a bundled profile: 'rancher' (1 VM, no Harvester), 'test' (2-node Harvester, "
+                   "no Rancher), 'harvester-ha' (3-node Harvester, no Rancher), or 'harvester' (3-node + Rancher). "
                    "Copies definition + plan + artifacts.")
 @click.option("--example", "example", default=None, metavar="NAME", hidden=True,
               help="Legacy. Use --profile instead.")
@@ -71,14 +71,10 @@ def init_cmd(force: bool, ask_password: bool, target_dir: str, profile: str | No
     secrets_dest = Path.home() / ".rodeo" / "secrets.yaml"
 
     if profile:
-        if profile == "rancher":
-            example = "rancher-lab-config"
-        elif profile == "test":
-            example = "harvester-lab-config"
-        elif profile == "harvester":
-            example = "harvester"
-        else:
-            console.print(f"[red]Unknown profile '{profile}'. Use rancher, test, or harvester.[/red]")
+        from ..labseed import PROFILE_EXAMPLE
+        example = PROFILE_EXAMPLE.get(profile)
+        if example is None:
+            console.print(f"[red]Unknown profile '{profile}'. Use one of: {', '.join(PROFILE_EXAMPLE)}.[/red]")
             raise SystemExit(1)
     if example:
         src = Path(__file__).parent.parent / "data" / "examples" / example

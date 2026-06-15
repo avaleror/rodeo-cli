@@ -1,0 +1,24 @@
+rodeo-cli
+Copyright 2026 Andres Valero
+Copyright 2026 Raúl Mahiques
+
+This product is licensed under the Apache License, Version 2.0.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
+---
+
+This product bundles Ansible roles in rodeo/data/ansible/ and uses the
+following open-source components at runtime:
+
+- ansible-core (GPL-3.0) — https://github.com/ansible/ansible
+- community.libvirt Ansible collection (GPL-3.0) — https://github.com/ansible-collections/community.libvirt
+- libvirt-python (LGPL-2.1) — https://gitlab.com/libvirt/libvirt-python
+- click (BSD-3-Clause) — https://github.com/pallets/click
+- rich (MIT) — https://github.com/Textualize/rich
+- textual (MIT) — https://github.com/Textualize/textual
+- PyYAML (MIT) — https://github.com/yaml/pyyaml
+- Jinja2 (BSD-3-Clause) — https://github.com/pallets/jinja
+- lxml (BSD-3-Clause) — https://github.com/lxml/lxml
+
+Runtime dependencies are installed separately and are not distributed
+as part of this package. Their licenses apply independently.

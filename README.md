@@ -117,12 +117,33 @@ Precedence: profile defaults < plan < paramfile < `-P`.
 
 ## Documentation
 
+**Deployment guides**
+
 | Guide | For |
 |-------|-----|
 | [Rancher profile guide](docs/guide-rancher.md) | Deploy Rancher Prime on K3s |
 | [Harvester profile guide](docs/guide-harvester.md) | Deploy Harvester HCI (2-node, 3-node, full lab) |
+| [Bare metal example](docs/examples/bare-metal.md) | Full walkthrough on a physical or cloud host |
+| [Instruqt example](docs/examples/instruqt.md) | Build an Instruqt track image with a pre-deployed cluster |
+| [Testing and CI](docs/examples/testing.md) | Unit tests, integration tests, GitHub Actions |
+
+**Reference**
+
+| Document | What's in it |
+|----------|-------------|
+| [rodeo-plan.yaml reference](docs/reference/plan.md) | Every field in the plan file, annotated |
+| [definition.yaml reference](docs/reference/definition.md) | Every field in the topology file, annotated |
 | [Create your own rodeo](docs/custom-rodeos.md) | Scaffold and customize a topology |
-| [Architecture](docs/architecture.md) | How the codebase is structured |
+| [Operations runbook](docs/runbook.md) | Diagnose and recover from common failures |
+
+**Project**
+
+| Document | What's in it |
+|----------|-------------|
+| [Architecture](docs/architecture.md) | Codebase design for contributors |
+| [ROADMAP.md](ROADMAP.md) | Planned features and validation queue |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |
+| [SECURITY.md](SECURITY.md) | How to report vulnerabilities |
 
 ---
 
@@ -136,6 +157,6 @@ pytest tests/ -v
 
 ---
 
-## Author
+## Authors
 
-Andres Valero — Principal Technology Advocate, SUSE
+Andres Valero and Raúl Mahiques — Principal Technology Advocates, SUSE

@@ -6,7 +6,7 @@ This document gives any developer or AI assistant enough context to audit, exten
 
 ## What this is
 
-`rodeo-cli` is a Python CLI tool that deploys and manages the **SUSE Virtualization Rodeo** — an Instruqt-based training lab that runs a 3-node Harvester HCI cluster plus Rancher Prime, all inside nested KVM virtual machines on a single SLES 16 host.
+`rodeo-cli` is a Python CLI that deploys and manages **rodeos** — live, hands-on labs on nested KVM. It is **Terraform-for-labs**: a declarative `definition.yaml` + `rodeo-plan.yaml` describe the desired lab; `rodeo plan` diffs it against the host; `rodeo deploy` converges. Two profiles ship today: `suse-virt` (3-node Harvester HCI + Rancher Prime, also a 2-node `test` variant) and `rancher` (Rancher Prime on K3s, single VM, no Harvester). It runs on Instruqt, cloud VMs, local VMs, or bare metal.
 
 It replaces `rodeo.sh`, a monolithic bash script in the parent repository. Design goals:
 
@@ -16,10 +16,11 @@ It replaces `rodeo.sh`, a monolithic bash script in the parent repository. Desig
 - A Textual split-panel TUI showing deploy progress and VM serial logs side by side
 - Self-contained packaging: Ansible roles ship inside the Python package
 - Infra-agnostic: cloud VMs, bare metal, or Instruqt (`deployment_target` guard)
+- Beginner on-ramp: `rodeo up` (one command: doctor → pick a lab → secrets → deploy → login) with file-based secrets and sudo self-escalation (no `source`/`-E`)
 
 **GitHub:** https://github.com/avaleror/rodeo-cli
 **Author:** Andres Valero, Principal Technology Advocate at SUSE
-**Version:** 0.4.0
+**Version:** 0.6.0 (validated end-to-end on real SLES 16 for the `rancher` and 2-node `test` profiles)
 **Python:** 3.10+
 
 ---
@@ -70,12 +71,22 @@ rodeo/
 │   ├── cluster.py          ClusterPhase — VM start order, VIP/kubeconfig/nodes waits
 │   ├── rancher.py          RancherPhase — K3s, cert-manager, Rancher, import
 │   └── libvirt.py          LibvirtDriver — direct libvirt-python VM/network ops
+├── inventory.py            build_inventory(): renders definition.yaml → vm_nodes (MAC/UUID gen), pxe, firewall, host_prep
+├── config_dir.py           --config-dir (EIB-style) loader
+├── preflight.py            Host detect + run_preflight + recommend_profile (doctor/up/check)
+├── secretgen.py            Shared password/token generation + ~/.rodeo/secrets.yaml
+├── labseed.py              Seed a lab from a profile; resolve/scaffold custom profiles
+├── privilege.py            sudo self-escalation (ensure_root)
+├── success.py              Topology-aware success screen
 ├── profiles/
 │   ├── base.py             RodeoProfile ABC: phases, vm_names, guarded_phases
-│   └── suse_virt.py        suse-virt profile (the only one today)
+│   ├── suse_virt.py        suse-virt profile (Harvester + Rancher; conditional rancher phase)
+│   └── rancher.py          rancher profile (Rancher Prime on K3s, no Harvester)
 ├── commands/               One file per CLI command (thin: load config, run engine)
 └── data/
     ├── ansible/            Bundled roles: kvm_host + vms + pxe_server (iPXE boot)
+    ├── profiles/<type>/definition.yaml   Bundled declarative topology per profile
+    ├── examples/           harvester / harvester-lab-config (test) / rancher-lab-config
     ├── deployer/           inventory.local + legacy config examples (no scripts)
     └── templates/          rodeo-plan.yaml + secrets.yaml templates for init
 ```
@@ -91,7 +102,13 @@ Failure semantics:
 
 ### Profiles
 
-A profile defines `phases`, `vm_names`, `ansible_phases`, `guarded_phases`, default config, and phase dispatch. `suse-virt` is the only profile; the scaffold exists for future rodeo types. CLI commands resolve VM names and phase lists from the loaded plan/profile, never from hardcoded lists.
+A profile defines `phases`, `vm_names`, `ansible_phases`, `guarded_phases`, default config, and phase dispatch. Two ship today:
+- **`suse-virt`** — `kvm_host → vms → pxe_server → cluster → rancher → finalise`. Harvester HCI + Rancher. The `rancher` phase is skipped when the topology has no Rancher node (e.g. the 2-node `test` lab).
+- **`rancher`** — `kvm_host → vms → boot → rancher → finalise`. One VM = Rancher Prime on K3s, no Harvester (no pxe_server/cluster). The lightweight `boot` phase starts the network + VM (the suse-virt `cluster` phase does that for Harvester).
+
+CLI commands resolve VM names and phase lists from the loaded plan/profile, never from hardcoded lists. Topology (start order, node names, ready count, etcd gap) comes from the definition via `inventory.build_inventory()`, not hardcoded strings.
+
+**Profiles as a CLI concept (`--profile`):** distinct from the engine `type`. `--profile <name>` selects a *runnable config-dir* — a bundled example (`rancher`/`test`/`harvester`) or a custom one under `~/.rodeo/profiles/<name>` created with `rodeo new`. See `docs/custom-rodeos.md`.
 
 ---
 
@@ -103,9 +120,10 @@ Six phases, tracked per plan in `~/.rodeo/state/<plan-name>.yaml`. Idempotent; r
 |---|---|---|
 | kvm_host | Ansible (`--tags kvm_host`) | Packages, modular libvirt daemons, NM unmanaged conf, firewalld permanent rules + DNAT, storage pool |
 | vms | Ansible (`--tags vms`) | ISO/qcow2 downloads, NAT network with static leases, disks, OVMF vars, Harvester config ISOs, Rancher cloud-init ISO, domain XML with disk-first boot order (does not start VMs) |
-| pxe_server | Ansible (`--tags pxe_server`) | nginx on virbr0:8080, ipxe.efi TFTP, vmlinuz/initrd/rootfs, per-node iPXE scripts + config YAMLs, dnsmasq two-stage UEFI boot |
-| cluster | Python `ClusterPhase` | Start firewalld; ensure virbr0 up; start harvester1, poll VIP (≤60 min); start h2, 90 s etcd gap, h3, rancher; fetch kubeconfig via SSH; wait 3 nodes Ready (≤90 min) |
-| rancher | Python `RancherPhase` | Wait SSH; install K3s, Helm, cert-manager, Rancher Prime; NodePort 30002; set admin password via API; import Harvester cluster; CoreDNS zone patch; eject install ISOs |
+| pxe_server | Ansible (`--tags pxe_server`) | nginx on virbr0:8080, ipxe.efi TFTP, vmlinuz/initrd/rootfs, **one generic `boot.ipxe`** + per-node scripts named by MAC, per-node config YAMLs (0644), dnsmasq two-stage UEFI boot |
+| boot (rancher profile) | Python (runner) | Lightweight: start firewalld + network + the defined VMs (no Harvester VIP/etcd waits) |
+| cluster | Python `ClusterPhase` | **Topology-driven from the definition** (start_order, harvester_node_names, harvester_ready_count, etcd gap). Start firewalld; virbr0 up; start the bootstrap node; poll VIP (≤60 min); start remaining nodes in order with the etcd gap before each additional join node; fetch kubeconfig via SSH; wait `ready_count` nodes Ready (≤90 min). Works for 2-node, 3-node, N-node. |
+| rancher | Python `RancherPhase` | Wait SSH; install K3s, Helm, cert-manager, Rancher Prime; NodePort 30002; set admin password via API (idempotent; tolerates empty API bodies); standalone mode skips import when no Harvester nodes; else import Harvester + CoreDNS patch + eject ISOs |
 | finalise | Python (runner) | `set_autostart` on all VMs (fails if zero succeed) + enable libvirt-guests |
 
 ### Instruqt guard
@@ -155,8 +173,13 @@ These are the non-obvious things that burned time during development:
 3. **Instruqt boot failure root cause.** libvirtd/libvirt-guests starting at boot activates virbr0/dnsmasq before cloud-init finishes, stalling network-online.target. Both stay disabled during build; libvirt-guests is enabled only in finalise (post-snapshot).
 4. **OVMF path.** 4MB non-SecureBoot variants only: `ovmf-x86_64-4m-{code,vars}.bin` from `qemu-ovmf-x86_64`.
 5. **xorriso not genisoimage** for all ISO building.
-6. **Nested KVM is slow.** Harvester install takes 20-60 min; VIP timeout is 3600 s, nodes-Ready 5400 s (class constants on `ClusterPhase`).
+6. **Nested KVM is slow.** Harvester install takes 20-60 min; VIP timeout is 3600 s, nodes-Ready 5400 s (class constants on `ClusterPhase`). With adequate disk, a 2-node cluster converged in ~19 min on a 16 vCPU / 62 GiB host.
 7. **kubectl** comes from the upstream repo `pkgs.k8s.io/core:/stable:/v1.36/` (channel duplicated in `install_deps.py` and `roles/kvm_host/defaults/main.yml` — bump both).
+8. **`python3-lxml` is required** — the `community.libvirt` Ansible modules (vms phase) import it. In install-deps; checked in preflight/doctor.
+9. **`guestfs-tools` (`virt-customize`) is required** — the Leap 16 Minimal-VM cloud image ships **without cloud-init**, so the vms role injects it into the Rancher disk at build time. (The rancher VM's NoCloud seed ISO is otherwise ignored.)
+10. **Harvester disk ≥ 250 GB.** The elemental install carves the disk into OS + a ~50 GB Longhorn partition + the persistent partition that holds container images (~19 GB). At 100 GB the persistent partition is only ~27 GB → containerd "no space left on device" → RKE2 never converges → no VIP. The `test` profile uses 250 GB; the full profile 270 GB.
+11. **Installer console logging.** The VM's file-backed serial is `ttyS1`; the Harvester installer cmdline sets `console=ttyS1 console=ttyS0` so the kernel/dracut output is captured in `*_serial.log` (and a console-only `ttyS0` pty can block kernel writes → boot hang).
+12. **`sudo rodeo` caveat (unfixed):** SLES sudo `secure_path` excludes `/usr/local/bin`, so `sudo rodeo <cmd>` fails "command not found". `rodeo up` self-escalates with the absolute path; day-2 root commands (clean/stop/start) should do the same (backlog).
 
 ---
 
@@ -164,8 +187,13 @@ These are the non-obvious things that burned time during development:
 
 | Command | Notes |
 |---|---|
-| `install-deps` | Root required. Distro packages (zypper/apt/dnf) for KVM stack + ansible-core (pip fallback) + kubectl repo + collections. |
-| `init [DIR] [--ask] [--force]` | Plan from template; secrets with random password + token. `$RODEO_PASSWORD` honoured. |
+| `up [--profile N] [--name] [--dir] [--yes] [--no-deploy]` | **Start here.** Doctor → pick a lab that fits RAM → file-based secrets → sudo self-escalation → deploy → success screen. Resolves bundled + custom profiles. |
+| `doctor` | Read-only host report (RAM/CPU/disk/KVM/nested virt/tools/python: libvirt+lxml) + which profile fits. |
+| `new <name> --from <base>` | Scaffold an editable custom profile under `~/.rodeo/profiles/<name>` (copies a working bundled lab). Deploy with `rodeo up --profile <name>`. |
+| `profiles` | List bundled + custom profiles. |
+| `install-deps` | Root required. Distro packages (zypper/apt/dnf) for KVM stack + ansible-core + kubectl repo + collections + python3-lxml + guestfs-tools. |
+| `bootstrap` / `generate` | (advanced) Clean-SLES one-command setup / interactive config-dir generator. New users prefer `up` / `new`. |
+| `init [DIR] [--ask] [--force] [--profile rancher\|test\|harvester]` | Plan from template or seed from a profile; secrets with random password + token. `$RODEO_PASSWORD` honoured. |
 | `plan [-P k=v] [--paramfile F]` | Read-only diff of desired vs actual: VMs (create/change/unchanged via libvirt dom.info), network, storage artifacts, phases. Degrades to desired-only without libvirt. Validation issues are warnings here, hard errors in deploy. |
 | `deploy [--from P] [--force] [--check] [--finalise] [--tui/--no-tui] [-P k=v]` | Full pipeline. `--check` = preflight only (root, /dev/kvm, nested virt, RAM, disk, tools). |
 | `clean [--yes] [--all --secrets --force-network --hard]` | Per-plan or full host reset: destroy rodeo VMs + default network + artifacts + all/specific plan states + optional secrets. Leaves packages + rodeo binary (for fresh test or node repurposing). Runs stop first unless --hard. |
@@ -194,44 +222,9 @@ pip install -e ".[dev]"
 ruff check rodeo tests && pytest tests/
 ```
 
-For end-user / clean-host testing use the bootstrap script (see README and user-guide):
-```bash
-curl -fsSL https://raw.githubusercontent.com/avaleror/rodeo-cli/main/scripts/bootstrap-sles.sh | bash
-```
-```
+For end-user / clean-host testing, the simplest path is `rodeo up` (or the bootstrap script). The global **gitleaks** pre-commit hook means dummy passwords in tests need a `# gitleaks:allow` comment.
 
-Also update ROADMAP if it mentions setup, but for time, skip if not critical.
-
-Now, update the Generated content files in the Claude workspace to reflect the final state (since user said "update all the docs and files").
-
-The test doc, plan, assessment we have been updating via previous replaces.
-
-Also, perhaps add a new high-quality doc or enhance.
-
-Now, for diagrams, we created one.
-
-To deliver high quality, perhaps create a new top-level docs or enhance user-guide further with more Mermaid.
-
-Also, add comments to other code files? The user said "add comments to the code if they´re not present" — focus on the new bootstrap related code, which we did.
-
-Existing code may have comments, but to be thorough, perhaps add to cli.py quickstart or something, but since many, focus on bootstrap.
-
-Now, time to push.
-
-First, update the Claude Generated docs to be consistent.
-
-We already did some replaces on them.
-
-Let's make sure the test doc in Generated is up to date with the curl flow (we did a replace earlier).
-
-Also, commit the Claude workspace changes.
-
-First, stage and commit in rodeo-cli.
-
-Use terminal for git operations.
-
-Since push uses the direct github url as before.
-The repo has a global gitleaks pre-commit hook; dummy passwords in tests need `# gitleaks:allow`.
+Live SLES 16 testing has covered the `rancher` and 2-node `test` profiles end-to-end (see Version history). The full 3-node `harvester` profile has not yet been run live.
 
 ---
 
@@ -241,7 +234,9 @@ The repo has a global gitleaks pre-commit hook; dummy passwords in tests need `#
 - **v0.2** — Textual TUI, bundled Ansible + bash deployer scripts, corrected 5-phase pipeline.
 - **v0.3** — Bash retired (ClusterPhase/RancherPhase in Python), single event-driven DeployRunner, per-plan state, preflight `--check`, instruqt finalise guard, secrets resolvers (`??env/file/cmd`), random init credentials, exception/timeout/cancellation hardening, pytest suite + CI, profile scaffold.
 - **v0.4 (current)** — Dynamic `__version__` from package metadata; centralized SSH options in `rodeo/ssh.py` + consistent key defaults; profile-driven VM lists in TUI (no hardcoded tabs/switches); removed global `state.PHASES` (profiles own phase lists, `reset_from` now strictly requires phases arg); relaxed preflight (`--check`: virsh/ssh are warnings only, core tools remain required); `attach` respects `libvirt.uri`; Cluster/Rancher use derived users + libvirt URI; eject uses LibvirtDriver with stop support; NodePort patch uses explicit `--type strategic`; libvirt driver uses constants; added tests for generate/stop/start; generate no longer silently clobbers global secrets (exists check + warning); virsh fallbacks in stop/start/clean now honor plan libvirt.uri. P0/P1 safe items complete (big inventory/topology deferred to roadmap Phase C per constraints).
-- **v0.4+ (planned)** — `rodeo diagnose` (Claude API log analysis), ansible-lint in CI, ansible sync check with instruqt-virtualization, streaming output for long SSH installs, full declarative inventory (Phase C).
+- **v0.5 (june-lifecycle tag)** — `generate` + `stop`/`start` (infra-aware from definition) + `clean --all/--hard/--secrets/--force-network` host reset + `bootstrap` + `--config-dir` (EIB-style) + `init --profile`. Versioning moved to git tags.
+- **v0.6 (current)** — **Beginner on-ramp**: `rodeo up` (doctor → fit a lab → file secrets → self-sudo → deploy → success), `rodeo doctor`, file-based secrets default, lab-dir auto-detect. **`rancher` profile** (Rancher Prime on K3s, single VM) + lightweight `boot` phase. **Declarative custom rodeos**: `rodeo new` / `rodeo profiles`, profiles resolve from `~/.rodeo/profiles/`; `docs/custom-rodeos.md`. **Phase C (topology-driven)**: ClusterPhase reads start_order/harvester_node_names/harvester_ready_count/etcd_gap from the definition; conditional rancher phase; 2/3/N-node works. **Hardened by live SLES 16 testing** (both profiles validated end-to-end): python3-lxml + preflight check; cloud-init injected into the Leap 16 image (`virt-customize`); MAC-based iPXE chain (per-host dnsmasq tags were silently ignored vs libvirt host entries); installer console logged to the serial file; Harvester config YAMLs 0644 (nginx 403); mgmt interface by MAC not eth0; **Harvester disk 250 GB** (100 GB filled → containerd no-space → no VIP); topology-aware success screen; RancherPhase tolerates empty API bodies + idempotent password.
+- **planned** — full 3-node `harvester` live regression; `sudo rodeo` self-escalation for clean/stop/start; `rodeo diagnose` (Claude API log analysis); ansible-lint + ansible sync check in CI; `--output json`; finish wiring `vm_nodes` overrides + `nodes: N` shorthand; split `rancher.py` into api/remote.
 
 ---
 
@@ -252,8 +247,8 @@ The repo has a global gitleaks pre-commit hook; dummy passwords in tests need `#
 | `rodeo/data/ansible/roles/kvm_host/tasks/libvirt.yml` | Modular daemon setup + NM unmanaged guard — breaks Instruqt boot if wrong |
 | `rodeo/data/ansible/roles/vms/tasks/network_setup.yml` | virbr0 `autostart: false` is intentional during build |
 | `rodeo/data/ansible/roles/vms/defaults/main.yml` | OVMF paths, fixed MACs and static IPs baked into Harvester config |
-| `rodeo/data/ansible/roles/pxe_server/` | iPXE boot chain — sync from test-harv-rodeo when changing PXE behavior |
-| `rodeo/engine/cluster.py` start order + timeouts | Sequential start with 90 s h2→h3 gap prevents etcd join races |
+| `rodeo/data/ansible/roles/pxe_server/` | iPXE boot chain (generic `boot.ipxe` → MAC-named per-node scripts), config-YAML perms (0644), installer kernel cmdline (console=ttyS1, root=live squashfs, hwAddr mgmt interface). All validated live — change carefully. |
+| `rodeo/engine/cluster.py` start order + timeouts | Topology-driven (definition), but the bootstrap-first → VIP → join-with-etcd-gap sequence and VIP/Ready timeouts prevent etcd join races; change with a live regression |
 | `rodeo/engine/rancher.py` API call order | bootstrap login → change password → re-login → server-url → create cluster → registration token → apply manifest is order-dependent |
 
 Drift guards: `tests/test_ansible_consistency.py` pins the role defaults, the Python profile, and the plan template to each other (VM names/IPs, VIP, gateway, flavors, versions, MAC/UUID uniqueness) — if you change one source on purpose, change all three and the test tells you where. `validate_config()` additionally rejects VIP/node-IP collisions and rancher_ip mismatches in user-edited plans at deploy time.

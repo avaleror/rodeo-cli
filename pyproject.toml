@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rodeo-cli"
-version = "0.4.0"
-description = "Deploy and manage SUSE Virtualization Rodeo infrastructure"
+version = "0.6.0"
+description = "Deploy and manage SUSE/Rancher learning labs (rodeos) on KVM"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }

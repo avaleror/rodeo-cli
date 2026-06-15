@@ -53,24 +53,26 @@ hypervisor is the source of truth, not a state file.
 - [ ] Phase-skip logic consults actual domain existence, not just phase state
   (fixes "manually undefined VM still shows vms ✓ done")
 
-## Phase C — Declarative inventory (~4-5 days + live KVM regression)
+## Phase C — Declarative inventory ✅ (largely done 2026-06-15, live-validated)
 
-The structural change: the plan declares the VM topology instead of the
-Ansible role defaults hardcoding it. Prerequisite for variable node counts
-and custom networks; folds in old surgical tasks 9 and 10.
+The structural change: the topology comes from the definition instead of the
+Ansible role defaults hardcoding it. Done and validated end-to-end on real
+SLES 16 for the `rancher` and 2-node `test` profiles.
 
-- [ ] `rodeo/inventory.py` renders `vm_nodes` from the plan: names, count,
-  IPs (base+offset or explicit), deterministic MACs (hash of plan+name),
-  `uuid5` UUIDs
-- [ ] Pass rendered `vm_nodes` via the vars file; role defaults become
-  fallback only (`tests/test_ansible_consistency.py` is the migration
-  contract — update both sides together)
-- [ ] Plan schema: `nodes: 3` or explicit per-VM blocks; ClusterPhase derives
-  start order and Ready count from inventory instead of hardcoded names
-- [ ] Split `rancher.py` into `engine/rancher/api.py` (HTTP) and
-  `engine/rancher/remote.py` (SSH) while it grows inventory awareness
-- [ ] **Gate:** full deploy regression on geekohive before merge — this
-  touches the MAC↔DHCP↔config-ISO chain (see CONTEXT.md fragile files)
+- [x] `rodeo/inventory.py` renders `vm_nodes` from `definition.yaml`: names,
+  IPs, deterministic MACs (hash of plan+node+role), `uuid5` UUIDs; generates
+  missing fields, explicit values win
+- [x] Rendered `vm_nodes` flow to the vars file (`DeployRunner._write_vars_file`);
+  role defaults are fallback. `tests/test_ansible_consistency.py` is the contract
+- [x] `ClusterPhase` derives start_order / harvester_node_names /
+  harvester_ready_count / etcd_gap from the inventory — no hardcoded names; 2/3/
+  N-node works. suse-virt skips the `rancher` phase when no Rancher node
+- [x] **Gate:** live deploy regression done on the test host (validated the
+  MAC↔DHCP↔config-ISO chain end-to-end)
+- [ ] Plan schema sugar `nodes: 3` / per-VM override blocks (definition already
+  supports explicit nodes; the shorthand is the remaining piece)
+- [ ] Split `rancher.py` into `engine/rancher/api.py` (HTTP) + `remote.py` (SSH)
+  — deferred (pure refactor, no functional gain)
 
 ## Phase D — Polish (ongoing)
 
@@ -94,10 +96,14 @@ Some items advanced in v0.4 (see CONTEXT.md version history): relaxed preflight 
 
 ## Standing constraints
 
-- Do not touch the Instruqt-sensitive files without a live regression:
+- Do not touch the Instruqt/PXE-sensitive files without a live regression:
   `roles/kvm_host/tasks/libvirt.yml`, `roles/vms/tasks/network_setup.yml`,
-  `roles/vms/defaults/main.yml`, the 90 s etcd join gap, the Rancher API
-  call order. See CONTEXT.md.
-- No bash deploy scripts return. Ansible stays for `kvm_host`/`vms` only.
+  `roles/vms/defaults/main.yml`, the `pxe_server` boot chain (generic
+  `boot.ipxe` → MAC-named scripts, installer cmdline, config-YAML perms), the
+  etcd join gap (now applied before each additional Harvester join node), and
+  the Rancher API call order. See CONTEXT.md.
+- No bash deploy scripts return. Ansible stays for `kvm_host`/`vms`/`pxe_server`.
 - Wall time is dominated by nested-KVM Harvester install (20-60 min);
   optimize UX and correctness first, CLI-side speed second.
+- Harvester nodes need ≥ 250 GB disk (container images fill smaller persistent
+  partitions → containerd fails → no VIP). Validated live.

@@ -4,7 +4,7 @@ Deploy and manage infrastructure for **rodeos** — live, hands-on workshops whe
 
 The default lab (**suse-virt**) provisions a 3-node [Harvester](https://harvesterhci.io/) HCI cluster and [Rancher Prime](https://www.rancher.com/) on nested KVM, on a single Linux host. Harvester nodes install via **iPXE network boot** (UEFI PXE, not ISO-first). Use it on **Instruqt**, **cloud VMs**, **local VMs**, or **bare metal**.
 
-**Version:** 0.4.0 · **Python:** 3.10+ · **License:** Apache-2.0
+**Version:** 0.6.0 · **Python:** 3.10+ · **License:** Apache-2.0
 
 ---
 

@@ -116,3 +116,34 @@
     label: "{{ item.port }} -> {{ item.toaddr }}:{{ item.toport }}"
   when: network_mode == 'nat'
   notify: reload firewalld
+
+# libvirt runs its OWN nftables firewall (table ip libvirt_network) whose
+# guest_input chain rejects new inbound to guests — which silently kills the
+# DNAT'd host port-forwards above (e.g. host:8443 -> Harvester VIP). firewalld
+# accepts the DNAT'd packet, but libvirt's table rejects it right after.
+# Install a libvirt network hook that inserts `ct status dnat accept` BEFORE
+# that reject, re-applied whenever libvirt rebuilds its table on network start.
+- name: Install libvirt network hook to allow DNAT'd inbound to lab guests
+  ansible.builtin.copy:
+    dest: /etc/libvirt/hooks/network
+    mode: '0755'
+    content: |
+      #!/bin/sh
+      # rodeo: let DNAT'd inbound (host port-forwards) reach lab guests/VIP.
+      # libvirt's NAT network rejects new inbound to guests and rebuilds its nft
+      # table on each (re)start, so re-add an accept BEFORE the reject each time.
+      [ "$1" = "default" ] || exit 0
+      case "$2" in started|plugged|updated) ;; *) exit 0 ;; esac
+      for h in $(nft -a list chain ip libvirt_network guest_input 2>/dev/null | awk '/ct status dnat accept/{print $NF}'); do
+        nft delete rule ip libvirt_network guest_input handle "$h" 2>/dev/null
+      done
+      rh=$(nft -a list chain ip libvirt_network guest_input 2>/dev/null | awk '/oif .virbr0.*reject/{print $NF; exit}')
+      [ -n "$rh" ] && nft insert rule ip libvirt_network guest_input position "$rh" ct status dnat accept 2>/dev/null
+      exit 0
+  when: network_mode == 'nat'
+
+- name: Apply the DNAT-allow rule to the running libvirt network now (no-op if not up yet)
+  ansible.builtin.command: /etc/libvirt/hooks/network default started
+  when: network_mode == 'nat'
+  changed_when: false
+  failed_when: false

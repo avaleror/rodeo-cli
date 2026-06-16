@@ -27,21 +27,23 @@ Credentials live in `~/.rodeo/secrets.yaml` (chmod 600, never committed). The pl
 
 ## Quick start
 
-Two commands on a Linux host with KVM and Python 3.10+:
+One command to install on SLES 16 / Leap 16:
 
 ```bash
-git clone https://github.com/avaleror/rodeo-cli.git
-cd rodeo-cli
-python3 -m venv --system-site-packages .venv && source .venv/bin/activate
-pip install -e .
-
-rodeo doctor   # check the host, see which profiles fit your RAM
-rodeo up       # pick a lab, generate secrets, deploy, print login info
+curl -fsSL https://raw.githubusercontent.com/avaleror/rodeo-cli/main/install.sh | bash
 ```
 
-`rodeo up` self-escalates with sudo, auto-detects an existing lab dir, and ends with the URLs and credentials to log in. No `source`, no `sudo -E`, no `--config-dir`.
+Then:
 
-It also wraps itself in a **tmux session** automatically, so a dropped SSH or Instruqt connection does not kill a running deploy. Re-attach any time with `tmux attach -t rodeo-<profile>`. Use `--no-tmux` to skip this in scripts.
+```bash
+rodeo up
+```
+
+That is it. The installer clones the repo, sets up a Python environment internally, and links `rodeo` as a system command. No venv to activate, no PATH to set, no sudo prefix — ever.
+
+`rodeo up` self-escalates with sudo, auto-detects an existing lab dir, and ends with the URLs and credentials to log in. It also wraps itself in a **tmux session** automatically, so a dropped SSH or Instruqt connection does not kill a running deploy. Re-attach any time with `tmux attach -t rodeo-<profile>`.
+
+Use `--no-tmux` to skip the tmux wrap in scripts.
 
 To pick a specific profile:
 

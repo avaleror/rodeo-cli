@@ -208,6 +208,12 @@ class DeployRunner:
 
     # ---------- Subprocess helpers ----------
 
+    @property
+    def _log_file(self) -> Path:
+        log_dir = Path.home() / ".rodeo" / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        return log_dir / f"{self._plan_name}.log"
+
     def _stream_subprocess(
         self, cmd: list[str], env: dict | None = None
     ) -> Iterator[DeployEvent]:
@@ -217,12 +223,16 @@ class DeployRunner:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            errors="replace",
             bufsize=1,
             env=env,
             start_new_session=True,
         )
-        for raw in self._proc.stdout:  # type: ignore[union-attr]
-            yield LogLine(raw.rstrip())
+        with open(self._log_file, "a", errors="replace") as lf:
+            lf.write(f"\n--- {' '.join(cmd)} ---\n")
+            for raw in self._proc.stdout:  # type: ignore[union-attr]
+                lf.write(raw)
+                yield LogLine(raw.rstrip())
         self._proc.wait()
         self._last_rc = self._proc.returncode
         self._proc = None

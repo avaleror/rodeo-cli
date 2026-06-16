@@ -462,27 +462,33 @@ class RancherPhase:
         return True
 
     def _import_harvester(self) -> Generator[DeployEvent, None, bool]:
+        # Idempotent: reuse the cluster record if one named "harvester" already exists.
         try:
-            resp = self._http(
-                "POST",
-                "/v3/clusters",
-                {
-                    "type": "cluster",
-                    "name": "harvester",
-                    "harvesterConfig": {},
-                    "annotations": {
-                        "field.cattle.io/description": "Harvester HCI cluster for SUSE Virt Rodeo"
+            existing = self._http("GET", "/v3/clusters?name=harvester", token=self._api_token)
+            existing_data = existing.get("data", [])
+            if existing_data:
+                self._cluster_id = existing_data[0].get("id", "")
+                yield LogLine(f"  Reusing existing cluster record: {self._cluster_id}")
+            else:
+                resp = self._http(
+                    "POST",
+                    "/v3/clusters",
+                    {
+                        "type": "cluster",
+                        "name": "harvester",
+                        "harvesterConfig": {},
+                        "annotations": {
+                            "field.cattle.io/description": "Harvester HCI cluster for SUSE Virt Rodeo"
+                        },
                     },
-                },
-                token=self._api_token,
-            )
-            self._cluster_id = resp.get("id", "")
+                    token=self._api_token,
+                )
+                self._cluster_id = resp.get("id", "")
+                yield LogLine(f"  Cluster record: {self._cluster_id}")
         except Exception as exc:
             self.error = f"Cluster create failed: {exc}"
             yield LogLine(f"  ✗ {self.error}")
             return False
-
-        yield LogLine(f"  Cluster record: {self._cluster_id}")
 
         # Rancher creates the registration token asynchronously — poll until it appears.
         manifest_url = ""

@@ -303,7 +303,7 @@ class RancherPhase:
             "helm repo add jetstack https://charts.jetstack.io\n"
             "helm repo update\n"
             f"kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/{v}/cert-manager.crds.yaml\n"
-            f"helm install cert-manager jetstack/cert-manager --namespace cert-manager --create-namespace --version {v}\n"
+            f"helm upgrade --install cert-manager jetstack/cert-manager --namespace cert-manager --create-namespace --version {v}\n"
             "kubectl -n cert-manager rollout status deployment/cert-manager --timeout=180s\n"
             "kubectl -n cert-manager rollout status deployment/cert-manager-webhook --timeout=180s\n"
         )
@@ -321,7 +321,7 @@ class RancherPhase:
         script = (
             "set -euo pipefail\n"
             "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
-            f'helm install rancher rancher-prime/rancher'
+            f'helm upgrade --install rancher rancher-prime/rancher'
             f' --namespace cattle-system --create-namespace'
             f' --version "{self.rancher_version}"'
             f' --set hostname="{self.rancher_hostname}"'

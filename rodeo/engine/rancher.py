@@ -462,96 +462,124 @@ class RancherPhase:
         return True
 
     def _import_harvester(self) -> Generator[DeployEvent, None, bool]:
-        # Idempotent: reuse the cluster record if one named "harvester" already exists.
-        try:
-            existing = self._http("GET", "/v3/clusters?name=harvester", token=self._api_token)
-            existing_data = existing.get("data", [])
-            if existing_data:
-                self._cluster_id = existing_data[0].get("id", "")
-                yield LogLine(f"  Reusing existing cluster record: {self._cluster_id}")
-            else:
-                resp = self._http(
-                    "POST",
-                    "/v3/clusters",
-                    {
-                        "type": "cluster",
-                        "name": "harvester",
-                        "harvesterConfig": {},
-                        "annotations": {
-                            "field.cattle.io/description": "Harvester HCI cluster for SUSE Virt Rodeo"
-                        },
-                    },
-                    token=self._api_token,
-                )
-                self._cluster_id = resp.get("id", "")
-                yield LogLine(f"  Cluster record: {self._cluster_id}")
-        except Exception as exc:
-            self.error = f"Cluster create failed: {exc}"
+        # Use the provisioning.cattle.io/v1 Cluster API — the documented import path
+        # per https://docs.harvesterhci.io/v1.8/rancher/virtualization-management
+        # CATTLE_INSECURE_TLS is injected via agentEnvVars at creation time so the
+        # agent trusts Rancher's self-signed cert without a separate patch step.
+        cluster_manifest = json.dumps({
+            "apiVersion": "provisioning.cattle.io/v1",
+            "kind": "Cluster",
+            "metadata": {
+                "name": "harvester",
+                "namespace": "fleet-default",
+                "labels": {"provider.cattle.io": "harvester"},
+                "annotations": {
+                    "field.cattle.io/description": "Harvester HCI cluster for SUSE Virt Rodeo",
+                },
+            },
+            "spec": {
+                "agentEnvVars": [
+                    {"name": "CATTLE_INSECURE_TLS", "value": "true"},
+                ],
+            },
+        })
+
+        yield LogLine("  Creating Harvester cluster record (provisioning API)...")
+        r = self._ssh_script(
+            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+            f"echo {json.dumps(cluster_manifest)} | kubectl apply -f -\n",
+            timeout=30,
+        )
+        if r.returncode != 0:
+            self.error = f"Cluster create failed: {r.stderr.strip()}"
             yield LogLine(f"  ✗ {self.error}")
             return False
 
-        # Rancher creates the registration token asynchronously — poll until it appears.
+        # Poll for .status.clusterName — the internal c-m-xxxxx ID Rancher assigns.
+        yield LogLine("  Waiting for cluster ID...")
+        t0 = time.monotonic()
+        cluster_id = ""
+        while time.monotonic() - t0 < 120:
+            r = self._ssh_script(
+                "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+                "kubectl get cluster.provisioning.cattle.io/harvester -n fleet-default "
+                "-o jsonpath='{.status.clusterName}' 2>/dev/null\n",
+                timeout=15,
+            )
+            if r.returncode == 0 and r.stdout.strip():
+                cluster_id = r.stdout.strip()
+                break
+            time.sleep(5)
+
+        if not cluster_id:
+            self.error = "Cluster ID not assigned after 120 s"
+            yield LogLine(f"  ✗ {self.error}")
+            return False
+
+        self._cluster_id = cluster_id
+        yield LogLine(f"  Cluster record: {cluster_id}")
+
+        # Create the ClusterRegistrationToken in the cluster's namespace.
+        token_manifest = json.dumps({
+            "apiVersion": "management.cattle.io/v3",
+            "kind": "ClusterRegistrationToken",
+            "metadata": {"name": "default-token", "namespace": cluster_id},
+            "spec": {"clusterName": cluster_id},
+        })
+
+        r = self._ssh_script(
+            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+            f"echo {json.dumps(token_manifest)} | kubectl apply -f -\n",
+            timeout=30,
+        )
+        if r.returncode != 0:
+            self.error = f"Registration token create failed: {r.stderr.strip()}"
+            yield LogLine(f"  ✗ {self.error}")
+            return False
+
+        # Poll for .status.manifestUrl.
+        yield LogLine("  Waiting for manifest URL...")
         manifest_url = ""
         t0 = time.monotonic()
         while time.monotonic() - t0 < 60:
-            try:
-                resp = self._http(
-                    "GET",
-                    f"/v3/clusterregistrationtokens?clusterId={self._cluster_id}",
-                    token=self._api_token,
-                )
-                data = resp.get("data", [])
-                if data:
-                    manifest_url = data[0].get("manifestUrl", "")
-                    break
-            except Exception as exc:
-                self.error = f"Failed to get manifest URL: {exc}"
-                yield LogLine(f"  ✗ {self.error}")
-                return False
-            time.sleep(3)
+            r = self._ssh_script(
+                "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+                f"kubectl get clusterregistrationtoken.management.cattle.io/default-token "
+                f"-n {cluster_id} -o jsonpath='{{.status.manifestUrl}}' 2>/dev/null\n",
+                timeout=15,
+            )
+            if r.returncode == 0 and r.stdout.strip():
+                manifest_url = r.stdout.strip()
+                break
+            time.sleep(5)
 
         if not manifest_url:
-            self.error = "Manifest URL not available after 60 s (Rancher token not created)"
+            self.error = "Manifest URL not available after 60 s"
             yield LogLine(f"  ✗ {self.error}")
             return False
 
         yield from self._patch_coredns()
 
-        # Rancher uses a self-signed cert; curl -k downloads the manifest, kubectl applies it.
-        yield LogLine("  Applying import manifest to Harvester cluster...")
+        # Apply cluster-registration-url to Harvester — the native import mechanism.
+        # Harvester's controller deploys the cattle-cluster-agent from this setting.
+        yield LogLine("  Registering Harvester with Rancher via cluster-registration-url...")
+        setting_manifest = json.dumps({
+            "apiVersion": "harvesterhci.io/v1beta1",
+            "kind": "Setting",
+            "metadata": {"name": "cluster-registration-url"},
+            "value": manifest_url,
+        })
         r = self._run(
             ["bash", "-c",
-             f"curl -sk {manifest_url} | kubectl --kubeconfig {KUBECONFIG_PATH} apply -f -"],
-            timeout=60,
+             f"echo {json.dumps(setting_manifest)} | "
+             f"kubectl --kubeconfig {KUBECONFIG_PATH} apply -f -"],
+            timeout=30,
         )
         if r.returncode != 0:
-            self.error = f"kubectl apply manifest failed: {r.stderr.strip()}"
+            self.error = f"cluster-registration-url apply failed: {r.stderr.strip()}"
             yield LogLine(f"  ✗ {self.error}")
             return False
-        yield LogLine("  Import manifest applied.")
-
-        # With traefik disabled the NodePort bypasses the ingress layer, so the
-        # cert-manager CA in Rancher's cacerts doesn't match the cert the Rancher
-        # pod serves on the NodePort. Patch the agent to skip TLS verification —
-        # consistent with the curl -sk approach we use everywhere in this lab.
-        yield LogLine("  Patching cattle-cluster-agent for self-signed cert...")
-        t0 = time.monotonic()
-        patched = False
-        while time.monotonic() - t0 < 60:
-            r = self._run(
-                ["kubectl", "--kubeconfig", str(KUBECONFIG_PATH),
-                 "set", "env", "deployment/cattle-cluster-agent",
-                 "-n", "cattle-system", "CATTLE_INSECURE_TLS=true"],
-                timeout=15,
-            )
-            if r.returncode == 0:
-                patched = True
-                break
-            time.sleep(5)
-        if patched:
-            yield LogLine("  Agent patched — will reconnect with TLS verification disabled.")
-        else:
-            yield LogLine("  ⚠ Agent patch timed out — cluster may still reach Active.")
+        yield LogLine("  Registration URL applied — Harvester will deploy the cluster agent.")
 
         try:
             kube_dir = Path("/root/.kube")

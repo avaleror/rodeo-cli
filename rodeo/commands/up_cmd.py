@@ -32,7 +32,15 @@ from ..preflight import (
     recommend_profile,
     run_preflight,
 )
-from ..privilege import ensure_root, find_rodeo_bin, is_root, sudo_prefix
+from ..privilege import (
+    ensure_root,
+    ensure_tmux_session,
+    find_rodeo_bin,
+    in_tmux,
+    is_root,
+    sudo_prefix,
+    tmux_available,
+)
 from ..secretgen import ensure_secrets_file
 from .deploy import execute_deploy
 
@@ -51,11 +59,30 @@ DEFAULT_LABS_ROOT = Path.home() / "rodeo-labs"
               help="Where to create/use the lab (default: ~/rodeo-labs/<name>).")
 @click.option("--yes", "-y", "assume_yes", is_flag=True, help="Accept defaults, no prompts.")
 @click.option("--no-deploy", is_flag=True, help="Set up the lab and stop before deploying.")
+@click.option("--no-tmux", is_flag=True,
+              help="Skip tmux session wrapping (useful inside scripts or existing sessions).")
 @click.option("--resume", is_flag=True, hidden=True,
               help="Internal: continue after sudo re-exec.")
 def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
-           assume_yes: bool, no_deploy: bool, resume: bool) -> None:
-    """Bring up a SUSE/Rancher learning lab in one command."""
+           assume_yes: bool, no_deploy: bool, no_tmux: bool, resume: bool) -> None:
+    """Bring up a SUSE/Rancher learning lab in one command.
+
+    Runs inside a tmux session automatically so the deploy survives SSH or
+    Instruqt disconnects. Re-attach any time with: tmux attach -t rodeo-<profile>
+    """
+    # --- tmux self-wrap (first thing, before any side effects) ---
+    # Skip when: already in tmux, --no-tmux, --no-deploy (short-lived), --resume (root re-exec).
+    if not (no_tmux or no_deploy or resume or in_tmux()):
+        session = f"rodeo-{profile or 'up'}"
+        if tmux_available():
+            ensure_tmux_session(session)  # does not return unless already in tmux
+        else:
+            console.print(
+                "[yellow]⚠  tmux not found — deploy will not survive a disconnect.[/yellow]\n"
+                "  Install it:  sudo zypper install -y tmux   (or apt/dnf)\n"
+                "  Then re-run: rodeo up\n"
+            )
+
     host = detect_host()
 
     # Resolve the lab directory (explicit > detected > to-be-created).

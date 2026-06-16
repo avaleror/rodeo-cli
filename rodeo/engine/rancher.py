@@ -484,15 +484,28 @@ class RancherPhase:
 
         yield LogLine(f"  Cluster record: {self._cluster_id}")
 
-        try:
-            resp = self._http(
-                "GET",
-                f"/v3/clusterregistrationtokens?clusterId={self._cluster_id}",
-                token=self._api_token,
-            )
-            manifest_url = resp.get("data", [{}])[0].get("manifestUrl", "")
-        except Exception as exc:
-            self.error = f"Failed to get manifest URL: {exc}"
+        # Rancher creates the registration token asynchronously — poll until it appears.
+        manifest_url = ""
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < 60:
+            try:
+                resp = self._http(
+                    "GET",
+                    f"/v3/clusterregistrationtokens?clusterId={self._cluster_id}",
+                    token=self._api_token,
+                )
+                data = resp.get("data", [])
+                if data:
+                    manifest_url = data[0].get("manifestUrl", "")
+                    break
+            except Exception as exc:
+                self.error = f"Failed to get manifest URL: {exc}"
+                yield LogLine(f"  ✗ {self.error}")
+                return False
+            time.sleep(3)
+
+        if not manifest_url:
+            self.error = "Manifest URL not available after 60 s (Rancher token not created)"
             yield LogLine(f"  ✗ {self.error}")
             return False
 

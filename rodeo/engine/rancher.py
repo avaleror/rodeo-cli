@@ -515,16 +515,13 @@ class RancherPhase:
             yield LogLine(f"  ✗ {self.error}")
             return False
 
-        if not manifest_url:
-            self.error = "Manifest URL is empty"
-            yield LogLine(f"  ✗ {self.error}")
-            return False
-
         yield from self._patch_coredns()
 
+        # Rancher uses a self-signed cert; curl -k downloads the manifest, kubectl applies it.
         yield LogLine("  Applying import manifest to Harvester cluster...")
         r = self._run(
-            ["kubectl", "--kubeconfig", str(KUBECONFIG_PATH), "apply", "-f", manifest_url],
+            ["bash", "-c",
+             f"curl -sk {manifest_url} | kubectl --kubeconfig {KUBECONFIG_PATH} apply -f -"],
             timeout=60,
         )
         if r.returncode != 0:

@@ -35,6 +35,21 @@
     name: kubectl
     state: present
 
+# The kvm_server zypper pattern post-install scripts can start firewalld immediately
+# after package installation. If firewalld is running when libvirt.yml starts the
+# modular libvirt sockets, libvirt and NetworkManager integrate via D-Bus: NM reports
+# the zone for every connected interface including eth0. On Instruqt eth0 has no zone
+# set in its NM connection profile (cloud-init does not set one), so firewalld may
+# assign it to a restrictive zone or flush its rules — dropping the Instruqt
+# management connection before we can stop it in firewall.yml.
+# Kill firewalld NOW, before any libvirt daemon starts, to close that window.
+- name: Stop and disable firewalld immediately after package install (protect Instruqt eth0)
+  ansible.builtin.systemd:
+    name: firewalld
+    enabled: false
+    state: stopped
+  failed_when: false
+
 - name: Verify nested virtualisation is active (Intel or AMD)
   ansible.builtin.shell: >
     set -o pipefail;

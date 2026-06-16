@@ -9,16 +9,18 @@
 # before the final image save, at which point the VMs are fully running and no more
 # intermediate saves/reboots will occur.
 # On bare-metal deployer runs, deploy.sh starts it explicitly after the Ansible phase.
-- name: Install firewalld — disabled and stopped during build (phase 5 / deployer enables it)
+# firewalld is stopped at the end of packages.yml (before libvirt sockets start)
+# to close the window where the kvm_server post-install scripts can start it and
+# trigger NM/firewalld zone reassignment on eth0. Repeat the stop here as a
+# belt-and-braces measure and mask the socket so nothing socket-activates it
+# during the rest of the kvm_host phase.
+- name: Ensure firewalld is stopped and masked during kvm_host phase
   ansible.builtin.systemd:
     name: firewalld
     enabled: false
     state: stopped
-  # enabled: false prevents firewalld from auto-starting on boot during the build
-  # phase. When firewalld starts and integrates with NetworkManager, it may reassign
-  # eth0's zone in a way that drops the Instruqt management connection. rodeo.sh
-  # phase 5 runs: systemctl enable --now firewalld right before the image is saved,
-  # so it is active in the final baked image.
+    masked: true
+  failed_when: false
 
 # All remaining tasks use permanent: true + immediate: false so they stage
 # the rules into /etc/firewalld without touching the live (non-running) daemon.

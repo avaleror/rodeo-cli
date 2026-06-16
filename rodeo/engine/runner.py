@@ -245,6 +245,9 @@ class DeployRunner:
 
     def stream_cluster(self) -> Iterator[DeployEvent]:
         yield LogLine("Starting firewalld...")
+        # kvm_host masks firewalld to prevent it starting during Ansible phases
+        # (protects Instruqt eth0 from zone reassignment). Unmask before starting.
+        subprocess.run(["systemctl", "unmask", "firewalld"], capture_output=True)
         subprocess.run(["systemctl", "start", "firewalld"], capture_output=True)
         r = subprocess.run(["firewall-cmd", "--reload"], capture_output=True, text=True)
         if r.returncode != 0:
@@ -266,6 +269,7 @@ class DeployRunner:
         libvirt network, and boot the defined VMs so the next phase can SSH to them.
         """
         yield LogLine("Starting firewalld...")
+        subprocess.run(["systemctl", "unmask", "firewalld"], capture_output=True)
         subprocess.run(["systemctl", "start", "firewalld"], capture_output=True)
         r = subprocess.run(["firewall-cmd", "--reload"], capture_output=True, text=True)
         if r.returncode != 0:

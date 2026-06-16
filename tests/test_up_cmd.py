@@ -66,7 +66,7 @@ def test_up_deploys_when_root(tmp_path, monkeypatch):
     lab = tmp_path / "labs" / "deployme"
 
     result = CliRunner().invoke(
-        up_mod.up_cmd, ["--yes", "--profile", "test", "--dir", str(lab)]
+        up_mod.up_cmd, ["--yes", "--no-tmux", "--profile", "test", "--dir", str(lab)]
     )
     assert result.exit_code == 0, result.output
     assert captured.get("name") == "deployme"

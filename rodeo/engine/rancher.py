@@ -51,6 +51,7 @@ class RancherPhase:
         self.rancher_version  = ver.get("rancher", "2.13.1")
         self.k3s_version      = ver.get("k3s", "v1.31.4+k3s1")
         self.cert_mgr_version = ver.get("cert_manager", "v1.16.2")
+        self.ui_ext_version   = ver.get("harvester_ui_extension", "1.7.1")
 
         key = cfg.get("ssh", {}).get("identity_file")
         if not key:
@@ -344,24 +345,31 @@ class RancherPhase:
         return True
 
     def _install_ui_extension(self) -> Iterator[DeployEvent]:
-        # v1.7.x is the latest compatible branch for Rancher 2.13.x (v1.8.0 needs 2.14+).
+        # v1.7.x is the compatible branch for Rancher 2.13.x; v1.8.0 requires 2.14+.
+        # Version is configurable via versions.harvester_ui_extension in the plan.
         script = (
             "set -euo pipefail\n"
             "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
             "helm repo add harvester-ui-extension https://harvester.github.io/harvester-ui-extension 2>/dev/null || true\n"
             "helm repo update harvester-ui-extension\n"
-            "helm upgrade --install harvester harvester-ui-extension/harvester"
-            " --namespace cattle-ui-plugin-system --create-namespace"
-            " --version 1.7.1\n"
+            f"helm upgrade --install harvester harvester-ui-extension/harvester"
+            f" --namespace cattle-ui-plugin-system --create-namespace"
+            f" --version {self.ui_ext_version}\n"
         )
         r = self._ssh_script(script, timeout=180)
         for line in (r.stdout + r.stderr).splitlines():
             if line.strip():
                 yield LogLine(f"  {line}")
         if r.returncode != 0:
-            yield LogLine("  ⚠ Harvester UI Extension install failed (non-fatal — install manually from Rancher UI)")
+            yield LogLine(
+                "  ⚠ Harvester UI Extension install failed (non-fatal — "
+                "install manually: Extensions > Add Repository > harvester-ui-extension)"
+            )
         else:
-            yield LogLine("  Harvester UI Extension installed.")
+            yield LogLine(
+                f"  Harvester UI Extension {self.ui_ext_version} deployed "
+                "(pods start in ~1 min — refresh the Rancher UI if the Virtualization tab is missing)."
+            )
 
     def _expose_nodeport(self) -> Generator[DeployEvent, None, bool]:
         patch = json.dumps({
@@ -488,7 +496,7 @@ class RancherPhase:
         # Use the provisioning.cattle.io/v1 Cluster API — the documented import path
         # per https://docs.harvesterhci.io/v1.8/rancher/virtualization-management
         # CATTLE_INSECURE_TLS is injected via agentEnvVars at creation time so the
-        # agent trusts Rancher's self-signed cert without a separate patch step.
+        # agent trusts Rancher's self-signed cert on a NodePort (no ingress/traefik).
         cluster_manifest = json.dumps({
             "apiVersion": "provisioning.cattle.io/v1",
             "kind": "Cluster",
@@ -508,9 +516,13 @@ class RancherPhase:
         })
 
         yield LogLine("  Creating Harvester cluster record (provisioning API)...")
+        # Heredoc avoids all shell quoting issues when JSON passes over SSH.
         r = self._ssh_script(
+            "set -euo pipefail\n"
             "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
-            f"echo {json.dumps(cluster_manifest)} | kubectl apply -f -\n",
+            "kubectl apply -f - <<'__MANIFEST__'\n"
+            f"{cluster_manifest}\n"
+            "__MANIFEST__\n",
             timeout=30,
         )
         if r.returncode != 0:
@@ -518,10 +530,12 @@ class RancherPhase:
             yield LogLine(f"  ✗ {self.error}")
             return False
 
-        # Poll for .status.clusterName — the internal c-m-xxxxx ID Rancher assigns.
-        yield LogLine("  Waiting for cluster ID...")
+        # Poll .status.clusterName — the c-m-xxxxx ID Rancher assigns.
+        # 10 s poll interval (was 5 s) to reduce SSH connection pile-up.
+        yield LogLine("  Waiting for cluster ID (up to 2 min)...")
         t0 = time.monotonic()
         cluster_id = ""
+        _last_log = 0.0
         while time.monotonic() - t0 < 120:
             r = self._ssh_script(
                 "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
@@ -532,7 +546,13 @@ class RancherPhase:
             if r.returncode == 0 and r.stdout.strip():
                 cluster_id = r.stdout.strip()
                 break
-            time.sleep(5)
+            elapsed = time.monotonic() - t0
+            if elapsed - _last_log >= 15:
+                m, s = divmod(int(elapsed), 60)
+                yield LogLine(f"  {m:02d}:{s:02d} / 02:00 — waiting for cluster ID...")
+                _last_log = elapsed
+            if self._sleep(10):
+                return False
 
         if not cluster_id:
             self.error = "Cluster ID not assigned after 120 s"
@@ -549,10 +569,12 @@ class RancherPhase:
             "metadata": {"name": "default-token", "namespace": cluster_id},
             "spec": {"clusterName": cluster_id},
         })
-
         r = self._ssh_script(
+            "set -euo pipefail\n"
             "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
-            f"echo {json.dumps(token_manifest)} | kubectl apply -f -\n",
+            "kubectl apply -f - <<'__MANIFEST__'\n"
+            f"{token_manifest}\n"
+            "__MANIFEST__\n",
             timeout=30,
         )
         if r.returncode != 0:
@@ -560,11 +582,13 @@ class RancherPhase:
             yield LogLine(f"  ✗ {self.error}")
             return False
 
-        # Poll for .status.manifestUrl.
-        yield LogLine("  Waiting for manifest URL...")
+        # Poll .status.manifestUrl — extended to 120 s; Rancher can be slow after
+        # creating the cluster record, especially under load.
+        yield LogLine("  Waiting for manifest URL (up to 2 min)...")
         manifest_url = ""
         t0 = time.monotonic()
-        while time.monotonic() - t0 < 60:
+        _last_log = 0.0
+        while time.monotonic() - t0 < 120:
             r = self._ssh_script(
                 "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
                 f"kubectl get clusterregistrationtoken.management.cattle.io/default-token "
@@ -574,17 +598,23 @@ class RancherPhase:
             if r.returncode == 0 and r.stdout.strip():
                 manifest_url = r.stdout.strip()
                 break
-            time.sleep(5)
+            elapsed = time.monotonic() - t0
+            if elapsed - _last_log >= 15:
+                m, s = divmod(int(elapsed), 60)
+                yield LogLine(f"  {m:02d}:{s:02d} / 02:00 — waiting for manifest URL...")
+                _last_log = elapsed
+            if self._sleep(10):
+                return False
 
         if not manifest_url:
-            self.error = "Manifest URL not available after 60 s"
+            self.error = "Manifest URL not available after 120 s"
             yield LogLine(f"  ✗ {self.error}")
             return False
 
         yield from self._patch_coredns()
 
         # Apply cluster-registration-url to Harvester — the native import mechanism.
-        # Harvester's controller deploys the cattle-cluster-agent from this setting.
+        # Harvester's controller deploys cattle-cluster-agent from this setting.
         yield LogLine("  Registering Harvester with Rancher via cluster-registration-url...")
         setting_manifest = json.dumps({
             "apiVersion": "harvesterhci.io/v1beta1",
@@ -592,11 +622,11 @@ class RancherPhase:
             "metadata": {"name": "cluster-registration-url"},
             "value": manifest_url,
         })
+        # Pass JSON via stdin — avoids all shell quoting issues (no bash -c / echo).
         r = self._run(
-            ["bash", "-c",
-             f"echo {json.dumps(setting_manifest)} | "
-             f"kubectl --kubeconfig {KUBECONFIG_PATH} apply -f -"],
+            ["kubectl", "--kubeconfig", str(KUBECONFIG_PATH), "apply", "-f", "-"],
             timeout=30,
+            input=setting_manifest,
         )
         if r.returncode != 0:
             self.error = f"cluster-registration-url apply failed: {r.stderr.strip()}"

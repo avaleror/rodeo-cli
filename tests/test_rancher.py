@@ -72,36 +72,31 @@ def test_harvester_nodes_fallback_when_vms_missing(cfg):
     assert phase.harvester_nodes == ["harvester1", "harvester2", "harvester3"]
 
 
-def test_import_fails_when_cluster_never_active(cfg, monkeypatch):
-    """Regression for the silent-success import: a cluster stuck outside
-    'active' must fail the phase, not log a warning and return True."""
+def test_import_fails_when_cluster_id_never_assigned(cfg, monkeypatch):
+    """Provisioning API: if Rancher never assigns a cluster ID the import must fail."""
     phase = RancherPhase(cfg)
     phase._api_token = "token"
 
-    responses = {
-        ("POST", "/v3/clusters"): {"id": "c-m-test"},
-        ("GET", "/v3/clusterregistrationtokens?clusterId=c-m-test"): {
-            "data": [{"manifestUrl": "https://rancher/manifest.yaml"}]
-        },
-    }
-    monkeypatch.setattr(
-        RancherPhase, "_http",
-        lambda self, method, path, data=None, token="": responses[(method, path)],
-    )
-    # kubectl calls (CoreDNS probe + manifest apply) succeed
-    monkeypatch.setattr(
-        rancher_mod.subprocess, "run",
-        lambda *a, **k: subprocess.CompletedProcess(a, 0, stdout="", stderr=""),
-    )
-    # kubeconfig copy is irrelevant here
-    monkeypatch.setattr(
-        RancherPhase, "_wait_cluster_active",
-        lambda self: iter(()),  # empty generator -> return value None -> falsy
-    )
+    # cluster apply succeeds; all status polls return empty (ID never assigned)
+    def fake_ssh(self, script, timeout=60):
+        if "kubectl apply" in script:
+            return subprocess.CompletedProcess([], 0, stdout="configured", stderr="")
+        return subprocess.CompletedProcess([], 0, stdout="", stderr="")
+
+    monkeypatch.setattr(RancherPhase, "_ssh_script", fake_ssh)
+    monkeypatch.setattr(rancher_mod.time, "sleep", lambda _: None)
+
+    # make the 120 s poll window expire after one iteration
+    _calls = {"n": 0}
+    def fake_monotonic():
+        _calls["n"] += 1
+        return 0.0 if _calls["n"] == 1 else 999.0
+
+    monkeypatch.setattr(rancher_mod.time, "monotonic", fake_monotonic)
 
     _, ok = drain(phase._import_harvester())
     assert ok is False
-    assert "did not reach Active" in phase.error
+    assert "Cluster ID not assigned" in phase.error
 
 
 def test_wait_ssh_cancellable(cfg, monkeypatch):

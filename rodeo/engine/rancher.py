@@ -124,6 +124,9 @@ class RancherPhase:
             return
         yield LogLine("  Rancher API configured.")
 
+        yield LogLine("Installing Harvester UI Extension...")
+        yield from self._install_ui_extension()
+
         if self.standalone:
             yield LogLine(
                 f"\n  Rancher URL  : {self.rancher_api}  (NodePort)"
@@ -339,6 +342,26 @@ class RancherPhase:
             self.error = "Rancher Prime install failed"
             return False
         return True
+
+    def _install_ui_extension(self) -> Iterator[DeployEvent]:
+        # v1.7.x is the latest compatible branch for Rancher 2.13.x (v1.8.0 needs 2.14+).
+        script = (
+            "set -euo pipefail\n"
+            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+            "helm repo add harvester-ui-extension https://harvester.github.io/harvester-ui-extension 2>/dev/null || true\n"
+            "helm repo update harvester-ui-extension\n"
+            "helm upgrade --install harvester harvester-ui-extension/harvester"
+            " --namespace cattle-ui-plugin-system --create-namespace"
+            " --version 1.7.1\n"
+        )
+        r = self._ssh_script(script, timeout=180)
+        for line in (r.stdout + r.stderr).splitlines():
+            if line.strip():
+                yield LogLine(f"  {line}")
+        if r.returncode != 0:
+            yield LogLine("  ⚠ Harvester UI Extension install failed (non-fatal — install manually from Rancher UI)")
+        else:
+            yield LogLine("  Harvester UI Extension installed.")
 
     def _expose_nodeport(self) -> Generator[DeployEvent, None, bool]:
         patch = json.dumps({

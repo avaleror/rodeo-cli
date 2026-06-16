@@ -10,6 +10,7 @@ kvm_host_packages:
   - tmux                     # rodeo.sh auto-wraps in a tmux session so terminal disconnects do not kill long phases
   - xorriso                  # builds the Harvester/cloud-init seed ISOs (genisoimage is gone on SLES 16)
   - qemu-tools               # qemu-img — used heavily by the vms role (create/convert/resize)
+  - guestfs-tools            # virt-customize — injects cloud-init into the Rancher base image
   - qemu-ovmf-x86_64         # UEFI/OVMF firmware for the Harvester nodes
   - firewalld                # the firewall.yml tasks configure it; not guaranteed on a minimal image
   - python3-firewall         # required by the ansible.posix.firewalld module (imports `firewall`)

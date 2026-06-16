@@ -197,7 +197,7 @@ class RodeoApp(App):
             if self._stop_tailers.is_set() or time.monotonic() > deadline:
                 return
             time.sleep(5)
-        with open(log_file) as f:
+        with open(log_file, errors="replace") as f:
             f.seek(0, 2)
             while not self._stop_tailers.is_set():
                 line = f.readline()

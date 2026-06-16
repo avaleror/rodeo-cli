@@ -57,6 +57,16 @@ rodeo deploy -P deployment_target=instruqt
 rodeo up --profile harvester --yes
 ```
 
+`rodeo up` immediately wraps itself in a tmux session named `rodeo-harvester`. This is critical on Instruqt: the browser tab can time out or close during a 90–150 minute deploy, and without tmux the process dies and leaves the host in a broken state.
+
+**If your Instruqt tab closes or times out**, re-open the terminal tab and re-attach:
+
+```bash
+tmux attach -t rodeo-harvester
+```
+
+Detach without stopping the deploy: `Ctrl+b  d`.
+
 The `finalise` phase is skipped automatically when `deployment_target: instruqt`. The pipeline stops after `rancher`.
 
 Verify the cluster is healthy before snapshotting:

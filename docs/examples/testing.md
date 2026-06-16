@@ -65,8 +65,8 @@ On a host that meets the [bare metal requirements](bare-metal.md#host-requiremen
 # Clean any previous state first
 rodeo clean --all --yes --secrets --force-network
 
-# Deploy and verify
-rodeo up --profile test --yes
+# Deploy and verify (--no-tmux skips the session wrap for scripted runs)
+rodeo up --profile test --yes --no-tmux
 rodeo status
 
 # Clean up for the next run

@@ -530,6 +530,29 @@ class RancherPhase:
             return False
         yield LogLine("  Import manifest applied.")
 
+        # With traefik disabled the NodePort bypasses the ingress layer, so the
+        # cert-manager CA in Rancher's cacerts doesn't match the cert the Rancher
+        # pod serves on the NodePort. Patch the agent to skip TLS verification —
+        # consistent with the curl -sk approach we use everywhere in this lab.
+        yield LogLine("  Patching cattle-cluster-agent for self-signed cert...")
+        t0 = time.monotonic()
+        patched = False
+        while time.monotonic() - t0 < 60:
+            r = self._run(
+                ["kubectl", "--kubeconfig", str(KUBECONFIG_PATH),
+                 "set", "env", "deployment/cattle-cluster-agent",
+                 "-n", "cattle-system", "CATTLE_INSECURE_TLS=true"],
+                timeout=15,
+            )
+            if r.returncode == 0:
+                patched = True
+                break
+            time.sleep(5)
+        if patched:
+            yield LogLine("  Agent patched — will reconnect with TLS verification disabled.")
+        else:
+            yield LogLine("  ⚠ Agent patch timed out — cluster may still reach Active.")
+
         try:
             kube_dir = Path("/root/.kube")
             kube_dir.mkdir(parents=True, exist_ok=True)

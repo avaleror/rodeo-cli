@@ -60,6 +60,14 @@ rodeo up --profile harvester      # full lab
 
 `rodeo up` checks the host, installs missing packages (with your consent), generates credentials, and drives the full pipeline. It self-escalates with sudo.
 
+**Disconnect protection (tmux):** `rodeo up` automatically wraps itself in a named tmux session before starting the deploy. If your SSH or Instruqt connection drops mid-deploy, the process keeps running. Re-attach any time:
+
+```bash
+tmux attach -t rodeo-harvester    # or rodeo-test, rodeo-harvester-ha — matches --profile name
+```
+
+Detach without stopping the deploy: `Ctrl+b  d`. If you run `rodeo up` again and the session exists, it re-attaches to the running deploy instead of starting a second one. Use `--no-tmux` to skip this behaviour in scripts.
+
 ---
 
 ## What happens during deploy

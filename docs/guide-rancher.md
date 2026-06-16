@@ -38,7 +38,9 @@ Run `rodeo doctor` to check your host and confirm this profile fits.
 rodeo up --profile rancher
 ```
 
-That is it. `rodeo up` checks the host, installs any missing packages (with your consent), generates credentials, and starts the deploy. It self-escalates with sudo — you do not need to prefix `sudo` yourself.
+`rodeo up` checks the host, installs any missing packages (with your consent), generates credentials, and starts the deploy. It self-escalates with sudo — you do not need to prefix `sudo` yourself.
+
+`rodeo up` wraps itself in a tmux session (`rodeo-rancher`) automatically, so a dropped SSH connection does not kill the deploy. Re-attach with `tmux attach -t rodeo-rancher`. Use `--no-tmux` to skip this in scripts.
 
 If `rodeo up` is already installed and you have already run `install-deps` once:
 

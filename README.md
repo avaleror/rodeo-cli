@@ -41,6 +41,8 @@ rodeo up       # pick a lab, generate secrets, deploy, print login info
 
 `rodeo up` self-escalates with sudo, auto-detects an existing lab dir, and ends with the URLs and credentials to log in. No `source`, no `sudo -E`, no `--config-dir`.
 
+It also wraps itself in a **tmux session** automatically, so a dropped SSH or Instruqt connection does not kill a running deploy. Re-attach any time with `tmux attach -t rodeo-<profile>`. Use `--no-tmux` to skip this in scripts.
+
 To pick a specific profile:
 
 ```bash
@@ -78,7 +80,7 @@ Full walkthrough: [Create your own rodeo](docs/custom-rodeos.md).
 
 | Command | What it does |
 |---------|-------------|
-| `up` | Front door: host check, install deps, pick lab, generate secrets, deploy, print login info |
+| `up` | Front door: host check, install deps, pick lab, generate secrets, deploy, print login info. Wraps in tmux automatically — re-attach with `tmux attach -t rodeo-<profile>` |
 | `doctor` | Host readiness check and profile recommendation by available RAM |
 | `new` | Scaffold a custom lab from a bundled base: `rodeo new mylab --from harvester` |
 | `profiles` | List deployable profiles (bundled + your custom ones in `~/.rodeo/profiles/`) |

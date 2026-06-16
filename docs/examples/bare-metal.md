@@ -64,22 +64,26 @@ rodeo up --profile harvester
 ```
 
 `rodeo up` will:
-1. Confirm the host checks pass
-2. Generate `~/.rodeo/secrets.yaml` with random credentials
-3. Seed the lab directory into `~/rodeo-labs/harvester/`
-4. Self-escalate with sudo and start the deploy pipeline
-5. Print login info when done
+1. Start a tmux session named `rodeo-harvester` so the deploy survives disconnects
+2. Confirm the host checks pass
+3. Generate `~/.rodeo/secrets.yaml` with random credentials
+4. Seed the lab directory into `~/rodeo-labs/harvester/`
+5. Self-escalate with sudo and start the deploy pipeline
+6. Print login info when done
 
-Watch progress in a separate terminal:
+**If your SSH session drops**, re-attach to the running deploy:
 
 ```bash
-rodeo watch
+tmux attach -t rodeo-harvester
 ```
 
-Or tail a specific node's serial log:
+Detach without stopping the deploy: `Ctrl+b  d`.
+
+Open a second tmux window (`Ctrl+b  c`) to watch progress while the deploy runs:
 
 ```bash
-rodeo logs harvester1
+rodeo watch         # split-panel TUI: phases + serial logs
+rodeo logs harvester1   # or tail a single node
 ```
 
 Total time: 90–150 minutes (most of it is Harvester iPXE install on nested KVM; bare metal is significantly faster).

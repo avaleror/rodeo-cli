@@ -39,6 +39,33 @@ def test_up_no_deploy_seeds_and_secrets(tmp_path, monkeypatch):
     assert "Ready" in result.output
 
 
+def test_up_target_instruqt_written_to_plan(tmp_path, monkeypatch):
+    monkeypatch.setattr(up_mod, "detect_host", _ready_host)
+    lab = tmp_path / "labs" / "iq"
+
+    result = CliRunner().invoke(
+        up_mod.up_cmd,
+        ["--no-deploy", "--yes", "--profile", "test", "--dir", str(lab), "--target", "instruqt"],
+    )
+    assert result.exit_code == 0, result.output
+    data = yaml.safe_load((lab / "rodeo-plan.yaml").read_text())
+    assert data["deployment_target"] == "instruqt"
+
+
+def test_up_target_auto_detect_baremetal(tmp_path, monkeypatch):
+    monkeypatch.setattr(up_mod, "detect_host", _ready_host)
+    monkeypatch.setattr(up_mod, "_detect_target", lambda: "baremetal")
+    lab = tmp_path / "labs" / "bm"
+
+    result = CliRunner().invoke(
+        up_mod.up_cmd,
+        ["--no-deploy", "--yes", "--profile", "test", "--dir", str(lab)],
+    )
+    assert result.exit_code == 0, result.output
+    data = yaml.safe_load((lab / "rodeo-plan.yaml").read_text())
+    assert data["deployment_target"] == "baremetal"
+
+
 def test_up_uses_existing_lab(tmp_path, monkeypatch):
     monkeypatch.setattr(up_mod, "detect_host", _ready_host)
     from rodeo.labseed import seed_lab
@@ -105,7 +132,7 @@ def test_up_offers_install_when_deps_missing(tmp_path, monkeypatch):
 
     # Decline the install prompt -> command stops with guidance.
     result = CliRunner().invoke(
-        up_mod.up_cmd, ["--no-deploy", "--dir", str(tmp_path / "l")],
+        up_mod.up_cmd, ["--no-deploy", "--dir", str(tmp_path / "l"), "--target", "baremetal"],
         input="n\n",
     )
     assert result.exit_code == 1

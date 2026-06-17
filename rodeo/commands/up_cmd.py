@@ -22,6 +22,8 @@ from rich.console import Console
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
+_VALID_TARGETS = ("baremetal", "instruqt")
+
 from ..config import find_ansible_root, find_lab_dir, load_config, validate_config
 from ..labseed import custom_profile_dir, profile_kind, seed_lab
 from ..preflight import (
@@ -61,10 +63,18 @@ DEFAULT_LABS_ROOT = Path.home() / "rodeo-labs"
 @click.option("--no-deploy", is_flag=True, help="Set up the lab and stop before deploying.")
 @click.option("--no-tmux", is_flag=True,
               help="Skip tmux session wrapping (useful inside scripts or existing sessions).")
+@click.option(
+    "--target",
+    "deployment_target",
+    default=None,
+    type=click.Choice(list(_VALID_TARGETS), case_sensitive=False),
+    help="Where this lab runs: 'baremetal' or 'instruqt' (default: auto-detect).",
+)
 @click.option("--resume", is_flag=True, hidden=True,
               help="Internal: continue after sudo re-exec.")
 def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
-           assume_yes: bool, no_deploy: bool, no_tmux: bool, resume: bool) -> None:
+           assume_yes: bool, no_deploy: bool, no_tmux: bool,
+           deployment_target: str | None, resume: bool) -> None:
     """Bring up a SUSE/Rancher learning lab in one command.
 
     Runs inside a tmux session automatically so the deploy survives SSH or
@@ -102,6 +112,21 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
         _deploy(lab, assume_yes=True)
         return
 
+    # Resolve deployment target: explicit flag > existing plan > auto-detect > prompt.
+    if deployment_target is None:
+        if lab is not None and (lab / "rodeo-plan.yaml").exists():
+            import yaml as _yaml
+            _plan = _yaml.safe_load((lab / "rodeo-plan.yaml").read_text()) or {}
+            deployment_target = _plan.get("deployment_target") or _detect_target()
+        else:
+            deployment_target = _detect_target()
+        if not assume_yes:
+            deployment_target = Prompt.ask(
+                "Where is this running?",
+                choices=list(_VALID_TARGETS),
+                default=deployment_target,
+            )
+
     console.print("\n[bold]rodeo up[/bold] — let's get a lab running.\n")
     _print_host(host)
 
@@ -133,7 +158,7 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
                 lab = DEFAULT_LABS_ROOT / lab_name
             console.print(f"\n[bold]Setting up the '{chosen}' lab[/bold] at [cyan]{lab}[/cyan] "
                           f"([dim]{profile_label(chosen)}[/dim])")
-            seed_lab(chosen, lab, force=False)
+            seed_lab(chosen, lab, force=False, deployment_target=deployment_target)
     else:
         console.print(f"\nUsing existing lab at [cyan]{lab}[/cyan].")
 
@@ -155,7 +180,8 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
 
     if not is_root():
         console.print("\n[bold]Switching to root for the install[/bold] (sudo)…")
-        ensure_root(["up", "--resume", "--dir", str(lab), "--yes"])  # does not return
+        ensure_root(["up", "--resume", "--dir", str(lab), "--yes",
+                     "--target", deployment_target])  # does not return
 
     _deploy(lab, assume_yes=assume_yes)
 
@@ -201,6 +227,14 @@ def _ensure_host_ready(host: dict, assume_yes: bool) -> bool:
         console.print("Fix the host, then run [bold]sudo rodeo install-deps[/bold] manually.")
         return False
     return True
+
+
+def _detect_target() -> str:
+    """Best-effort: are we running on Instruqt?"""
+    import os
+    if os.environ.get("INSTRUQT_PARTICIPANT_ID") or Path("/etc/instruqt").exists():
+        return "instruqt"
+    return "baremetal"
 
 
 def _choose_profile(host: dict, assume_yes: bool) -> str:

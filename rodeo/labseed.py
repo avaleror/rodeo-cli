@@ -124,7 +124,12 @@ def _retitle_definition(def_path: Path, name: str) -> None:
     def_path.write_text(header + text)
 
 
-def seed_lab(profile: str, dest: Path, force: bool = False) -> Path:
+def seed_lab(
+    profile: str,
+    dest: Path,
+    force: bool = False,
+    deployment_target: str = "baremetal",
+) -> Path:
     """Copy a profile's source into ``dest`` and normalize its plan for `up`.
 
     Works for bundled examples and custom profiles. Returns the lab directory.
@@ -149,12 +154,16 @@ def seed_lab(profile: str, dest: Path, force: bool = False) -> Path:
                 continue
             shutil.copy2(item, target)
 
-    normalize_plan(dest / "rodeo-plan.yaml", name=dest.name)
+    normalize_plan(dest / "rodeo-plan.yaml", name=dest.name, deployment_target=deployment_target)
     return dest
 
 
-def normalize_plan(plan_path: Path, name: str | None = None) -> None:
-    """Make a seeded plan beginner-safe: baremetal, file-secret creds, no fixed disk.
+def normalize_plan(
+    plan_path: Path,
+    name: str | None = None,
+    deployment_target: str = "baremetal",
+) -> None:
+    """Make a seeded plan beginner-safe: file-secret creds, no fixed disk.
 
     A round-trip through YAML drops the example's comments, which is fine for a
     generated lab. Keeps ``??key`` (file) credential form, never ``??env:``.
@@ -165,7 +174,7 @@ def normalize_plan(plan_path: Path, name: str | None = None) -> None:
 
     if name:
         data["name"] = name
-    data["deployment_target"] = "baremetal"
+    data["deployment_target"] = deployment_target
 
     # Single-disk hosts: never inherit a hard-coded device like /dev/nvme1n1.
     storage = data.get("storage")

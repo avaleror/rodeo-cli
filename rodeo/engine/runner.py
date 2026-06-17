@@ -17,6 +17,24 @@ import yaml
 from ..state import is_phase_done, mark_phase_done, mark_phase_failed, reset_from
 
 
+# ---------- Networking helpers ----------
+
+def _detect_ext_iface() -> str:
+    """Return the interface that holds the default route (the external NIC)."""
+    try:
+        r = subprocess.run(
+            ["ip", "route", "show", "default"],
+            capture_output=True, text=True, timeout=5,
+        )
+        for line in r.stdout.splitlines():
+            parts = line.split()
+            if "dev" in parts:
+                return parts[parts.index("dev") + 1]
+    except Exception:
+        pass
+    return "eth0"
+
+
 # ---------- Events ----------
 
 @dataclass
@@ -253,15 +271,55 @@ class DeployRunner:
             cmd.append("-" + "v" * min(self.ansible_verbose, 4))
         yield from self._stream_subprocess(cmd)
 
-    def stream_cluster(self) -> Iterator[DeployEvent]:
-        yield LogLine("Starting firewalld...")
-        # kvm_host masks firewalld to prevent it starting during Ansible phases
-        # (protects Instruqt eth0 from zone reassignment). Unmask before starting.
+    def _start_firewalld(self) -> Iterator[DeployEvent]:
+        """Unmask, start, and target-aware configure firewalld.
+
+        kvm_host masks firewalld during the Ansible phase to protect Instruqt's
+        external NIC from zone reassignment. This method unmaskes it, starts it,
+        and applies target-specific hardening before the first DNAT'd packet arrives.
+        """
+        target = self.cfg.get("deployment_target", "baremetal")
+        yield LogLine(f"Starting firewalld (target: {target})...")
         subprocess.run(["systemctl", "unmask", "firewalld"], capture_output=True)
         subprocess.run(["systemctl", "start", "firewalld"], capture_output=True)
+
+        if target == "instruqt":
+            # On Instruqt (GCP), cloud-init doesn't assign a firewalld zone to the
+            # external NIC. Without an explicit assignment the NIC falls into the
+            # default zone (usually public), but we pin it to be safe — the DNAT
+            # port_forward rules are in the public zone and only apply to interfaces
+            # that are in it.
+            ext = _detect_ext_iface()
+            yield LogLine(f"  Instruqt: pinning {ext} to public zone...")
+            subprocess.run(
+                ["firewall-cmd", "--zone=public", f"--change-interface={ext}", "--permanent"],
+                capture_output=True,
+            )
+
         r = subprocess.run(["firewall-cmd", "--reload"], capture_output=True, text=True)
         if r.returncode != 0:
             yield LogLine(f"  ⚠  firewall-cmd reload: {r.stderr.strip()}")
+
+        # Re-trigger the libvirt hook so `ct status dnat accept` lands in guest_input
+        # now that firewalld's DNAT rules are actually active. The hook also fires on
+        # VM plug-in events, but this covers the gap between firewalld start and the
+        # first VM boot.
+        hook = Path("/etc/libvirt/hooks/network")
+        if hook.exists():
+            subprocess.run([str(hook), "default", "started"], capture_output=True)
+
+        if target == "instruqt":
+            net = self.cfg.get("network", {})
+            ui_port = 8443
+            rport = net.get("rancher_nodeport", 30002)
+            yield LogLine(
+                f"  Instruqt: host ports {ui_port} (Harvester) and {rport} (Rancher) "
+                "are forwarded. Make sure both are declared as services in the "
+                "Instruqt track configuration so GCP opens them."
+            )
+
+    def stream_cluster(self) -> Iterator[DeployEvent]:
+        yield from self._start_firewalld()
 
         from .cluster import ClusterPhase
         phase = ClusterPhase(self.cfg, stop=self.stop)
@@ -278,12 +336,7 @@ class DeployRunner:
         (e.g. rancher) use this lighter step instead: start firewalld, activate the
         libvirt network, and boot the defined VMs so the next phase can SSH to them.
         """
-        yield LogLine("Starting firewalld...")
-        subprocess.run(["systemctl", "unmask", "firewalld"], capture_output=True)
-        subprocess.run(["systemctl", "start", "firewalld"], capture_output=True)
-        r = subprocess.run(["firewall-cmd", "--reload"], capture_output=True, text=True)
-        if r.returncode != 0:
-            yield LogLine(f"  ⚠  firewall-cmd reload: {r.stderr.strip()}")
+        yield from self._start_firewalld()
 
         uri = self.cfg.get("libvirt", {}).get("uri", "qemu:///system")
         vm_names = list(self.cfg.get("vms", {}).keys())

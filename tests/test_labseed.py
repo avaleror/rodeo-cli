@@ -33,13 +33,19 @@ def test_seed_lab_normalizes_plan(tmp_path):
 
     data = yaml.safe_load(plan.read_text())
     assert data["name"] == "mylab"
-    assert data["deployment_target"] == "baremetal"
+    assert data["deployment_target"] == "baremetal"  # default
     # Single-disk safe: no inherited host device.
     assert data.get("storage", {}).get("device", "") == ""
     # File-form credentials (??key), never ??env:.
     for val in data.get("credentials", {}).values():
         assert isinstance(val, str) and val.startswith("??")
         assert not val.startswith("??env:")
+
+
+def test_seed_lab_sets_instruqt_target(tmp_path):
+    lab = seed_lab("test", tmp_path / "labs" / "iq", deployment_target="instruqt")
+    data = yaml.safe_load((lab / "rodeo-plan.yaml").read_text())
+    assert data["deployment_target"] == "instruqt"
 
 
 def test_seed_lab_preserves_existing_files_without_force(tmp_path):

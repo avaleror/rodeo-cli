@@ -27,12 +27,9 @@ install:
 {% else %}
   mode: join
 {% endif %}
-  # eth0 only — the installer configures management exclusively.
-  # eth1 (storage), eth2 (migration), eth3/eth4 (service networks)
-  # are left unconfigured here and set up post-install via the Harvester UI/API.
   management_interface:
     interfaces:
-      - name: eth0
+      - hwAddr: "{{ item.mgmt_mac }}"
     method: static
     ip: {{ item.ip }}
     subnet_mask: {{ node_subnet_mask }}

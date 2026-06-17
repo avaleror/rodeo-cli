@@ -1,0 +1,74 @@
+#!/bin/bash
+# /usr/local/bin/manage_nft_rules.sh
+# Managed by rodeo-cli — regenerated during the kvm_host phase.
+#
+# Adds a DNAT rule (host:{{ harvester_ui_port }} → {{ harvester_vip }}:{{ harvester_https_port }})
+# when any Harvester cluster node is running, and removes it when all nodes are stopped.
+# The nft table and chain are created once and never torn down.
+
+VIRTUAL_IP="{{ harvester_vip }}"
+VM_NAMES=({{ harvester_node_names | join(' ') }})
+NFT_TABLE="ip"
+NFT_TABLE_NAME="nat"
+NFT_CHAIN="prerouting"
+KVM_PORT="{{ harvester_ui_port }}"
+VIP_PORT="{{ harvester_https_port }}"
+NFT_RULE="tcp dport ${KVM_PORT} dnat to ${VIRTUAL_IP}:${VIP_PORT}"
+
+# Improvement over reference: use virsh domstate per-VM rather than parsing
+# `virsh list --all`, which is fragile when a VM name is a substring of another.
+is_any_vm_running() {
+    for vm in "${VM_NAMES[@]}"; do
+        if virsh domstate "$vm" 2>/dev/null | grep -q "^running"; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+nft_table_exists() {
+    nft list table "$NFT_TABLE" "$NFT_TABLE_NAME" &>/dev/null
+}
+
+nft_chain_exists() {
+    nft list chain "$NFT_TABLE" "$NFT_TABLE_NAME" "$NFT_CHAIN" &>/dev/null
+}
+
+create_nft_structure() {
+    if ! nft_table_exists; then
+        nft add table "$NFT_TABLE" "$NFT_TABLE_NAME"
+    fi
+    if ! nft_chain_exists; then
+        nft add chain "$NFT_TABLE" "$NFT_TABLE_NAME" "$NFT_CHAIN" \
+            '{ type nat hook prerouting priority -100; }'
+    fi
+}
+
+add_nft_rule() {
+    if ! nft list chain "$NFT_TABLE" "$NFT_TABLE_NAME" "$NFT_CHAIN" 2>/dev/null \
+            | grep -qF "$NFT_RULE"; then
+        # shellcheck disable=SC2086
+        nft add rule "$NFT_TABLE" "$NFT_TABLE_NAME" "$NFT_CHAIN" $NFT_RULE
+    fi
+}
+
+remove_nft_rule() {
+    # Improvement over reference: the nft handle is on the SAME line as the rule
+    # (grep -A1 in the original was wrong — it would return the next rule's handle).
+    local handle
+    handle=$(nft -a list chain "$NFT_TABLE" "$NFT_TABLE_NAME" "$NFT_CHAIN" 2>/dev/null \
+             | grep -F "$NFT_RULE" \
+             | awk '{ for(i=NF;i>=1;i--) if($i=="handle"){ print $(i+1); break } }')
+    if [ -n "$handle" ]; then
+        nft delete rule "$NFT_TABLE" "$NFT_TABLE_NAME" "$NFT_CHAIN" handle "$handle"
+    fi
+}
+
+if is_any_vm_running; then
+    create_nft_structure
+    add_nft_rule
+else
+    if nft_chain_exists; then
+        remove_nft_rule
+    fi
+fi

@@ -99,23 +99,25 @@
   when: network_mode == 'nat'
   notify: reload firewalld
 
-- name: Forward host UI ports to the Harvester VIP and Rancher node (NAT mode)
+# Harvester UI DNAT (host:8443 → VIP:443) is managed dynamically by the
+# libvirt qemu hook (/etc/libvirt/hooks/qemu) via nftables — NOT by a static
+# firewalld port_forward — because the kube-vip VIP only exists when the
+# cluster nodes are running. Adding a static DNAT to a non-existent VIP causes
+# connection resets. The hook inserts the rule on first node start and removes
+# it when the last node stops. The port is still opened below so the kernel
+# accepts ingress traffic regardless; the hook decides where it goes.
+
+- name: Forward Rancher NodePort to the Rancher VM (NAT mode, static)
   ansible.posix.firewalld:
     zone: public
     port_forward:
-      - port: "{{ item.port }}"
+      - port: "{{ rancher_nodeport }}"
         proto: tcp
-        toport: "{{ item.toport }}"
-        toaddr: "{{ item.toaddr }}"
+        toport: "{{ rancher_nodeport }}"
+        toaddr: "{{ rancher_ip }}"
     permanent: true
     immediate: false
     state: enabled
-  loop:
-    # Harvester serves on 443 at the VIP, so host:8443 must DNAT to VIP:443.
-    - { port: "{{ harvester_ui_port }}", toport: "{{ harvester_https_port }}", toaddr: "{{ harvester_vip }}" }
-    - { port: "{{ rancher_nodeport }}", toport: "{{ rancher_nodeport }}", toaddr: "{{ rancher_ip }}" }
-  loop_control:
-    label: "{{ item.port }} -> {{ item.toaddr }}:{{ item.toport }}"
   when: network_mode == 'nat'
   notify: reload firewalld
 

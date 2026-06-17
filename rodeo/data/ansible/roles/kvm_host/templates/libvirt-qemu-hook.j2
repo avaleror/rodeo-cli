@@ -1,0 +1,24 @@
+#!/bin/bash
+# /etc/libvirt/hooks/qemu — libvirt qemu hook dispatcher (managed by rodeo-cli).
+# Called by libvirt as: qemu <domain> <action> <sub_action>
+#
+# Events handled:
+#   started  — VM fully up: add the DNAT rule if not present.
+#   stopped  — VM fully down: remove the rule if no other cluster nodes running.
+#   migrate  — VM migrating away or arriving: re-evaluate the rule so the host
+#              that loses the VM removes the rule and the receiving host adds it.
+# All other events (prepare, release, reconnect, etc.) are ignored.
+
+MANAGED_VMS=({{ harvester_node_names | join(' ') }})
+
+case "$2" in
+    started|stopped|migrate) ;;
+    *) exit 0 ;;
+esac
+
+for vm in "${MANAGED_VMS[@]}"; do
+    if [ "$1" = "$vm" ]; then
+        /usr/local/bin/manage_nft_rules.sh
+        exit $?
+    fi
+done

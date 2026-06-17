@@ -41,6 +41,14 @@ class LogsPanel(Vertical):
         except Exception:
             pass
 
+    def append_logs(self, vm: str, lines: list[str]) -> None:
+        try:
+            log = self.query_one(f"#log-{vm}", RichLog)
+            for line in lines:
+                log.write(line)
+        except Exception:
+            pass
+
     def switch_to(self, vm: str) -> None:
         try:
             self.query_one(TabbedContent).active = f"tab-{vm}"

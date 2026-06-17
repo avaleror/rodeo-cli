@@ -37,6 +37,18 @@ harvester_ui_port: 8443
 harvester_https_port: 443
 rancher_nodeport: 30002
 
+# --- Libvirt qemu hook: dynamic nftables NAT for the Harvester cluster ---
+# The hook adds/removes these DNAT rules based on whether any cluster node is
+# running. Override in deploy.vars.yml if the node names or ports differ.
+
+# Domain names that are Harvester cluster nodes (not rancher, not utility VMs).
+# The hook only reacts to lifecycle events from domains in this list.
+harvester_node_names:
+  - harvester1
+  - harvester2
+  - harvester3
+
+
 # --- libvirt daemon model ---
 # SLES 16 ships the modular libvirt daemons (virtqemud, virtnetworkd, ...) by
 # default and no longer runs the monolithic libvirtd. Set to "monolithic" only

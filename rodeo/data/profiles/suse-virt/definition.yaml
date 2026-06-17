@@ -141,12 +141,18 @@ definition:
       guest_port: 443
       target: vip             # special: points at the Harvester VIP
       proto: tcp
+      managed_by: hook        # DNAT is dynamic: added by the libvirt qemu hook when any
+                              # cluster node starts, removed when the last node stops.
+                              # The kube-vip VIP only exists while the cluster is running;
+                              # a static firewalld port_forward would send packets to a
+                              # non-existent address. The hook uses nftables ip nat prerouting.
     - name: rancher
       description: "Rancher Prime NodePort"
       host_port: 30002
       guest_port: 30002
       target: rancher         # the rancher VM
       proto: tcp
+      managed_by: firewalld   # static port_forward: Rancher VM IP is always reachable
 
   # iPXE / boot configuration data.
   # This drives the pxe_server role templates (ipxe-node.j2, config-node.yaml.j2, nginx config).

@@ -1,0 +1,54 @@
+---
+# Install the rodeo libvirt hooks for dynamic nftables NAT management.
+#
+# Architecture:
+#   /usr/local/bin/manage_nft_rules.sh          — logic: checks running VMs,
+#                                                  adds/removes the DNAT rule.
+#   /etc/libvirt/hooks/qemu                     — dispatcher: called by libvirt
+#                                                  for every qemu domain event;
+#                                                  routes started/stopped events
+#                                                  on cluster VMs to the script.
+#   /etc/libvirt/hooks/qemu.d/<vm>/start/begin/ — per-VM start hook (calls script)
+#   /etc/libvirt/hooks/qemu.d/<vm>/stop/end/    — per-VM stop hook  (calls script)
+#
+# The nft table (ip nat) and chain (prerouting) are created once on first start
+# and never torn down. Only the DNAT rule handle is transient.
+
+- name: Install NFT rules management script
+  ansible.builtin.template:
+    src: manage_nft_rules.sh.j2
+    dest: /usr/local/bin/manage_nft_rules.sh
+    mode: '0755'
+  when: network_mode == 'nat'
+
+- name: Ensure /etc/libvirt/hooks exists
+  ansible.builtin.file:
+    path: /etc/libvirt/hooks
+    state: directory
+    mode: '0755'
+
+- name: Install libvirt qemu hook dispatcher
+  ansible.builtin.template:
+    src: libvirt-qemu-hook.j2
+    dest: /etc/libvirt/hooks/qemu
+    mode: '0755'
+  when: network_mode == 'nat'
+  notify: restart libvirt
+
+- name: Create per-VM qemu hook directories
+  ansible.builtin.file:
+    path: "/etc/libvirt/hooks/qemu.d/{{ item.0 }}/{{ item.1 }}"
+    state: directory
+    mode: '0755'
+  loop: "{{ harvester_node_names | product(['start/begin', 'stop/end']) | list }}"
+  when: network_mode == 'nat'
+
+- name: Install per-VM start and stop hook scripts
+  ansible.builtin.copy:
+    dest: "/etc/libvirt/hooks/qemu.d/{{ item.0 }}/{{ item.1 }}/manage-nft-rules.sh"
+    content: |
+      #!/bin/bash
+      /usr/local/bin/manage_nft_rules.sh
+    mode: '0755'
+  loop: "{{ harvester_node_names | product(['start/begin', 'stop/end']) | list }}"
+  when: network_mode == 'nat'

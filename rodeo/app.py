@@ -238,13 +238,6 @@ class RodeoApp(App):
 
     def on__phase_started(self, msg: _PhaseStarted) -> None:
         self.query_one(DeployPanel).set_phase_running(msg.phase)
-        vms = list(self.cfg.get("vms", {}).keys())
-        harvester_vm = next((n for n in vms if n != "rancher"), vms[0] if vms else "harvester1")
-        rancher_vm = "rancher" if "rancher" in vms else (vms[-1] if vms else "rancher")
-        if msg.phase in ("vms", "cluster"):
-            self.query_one(LogsPanel).switch_to(harvester_vm)
-        elif msg.phase == "rancher":
-            self.query_one(LogsPanel).switch_to(rancher_vm)
 
     def on__phase_skipped(self, msg: _PhaseSkipped) -> None:
         self.query_one(DeployPanel).set_phase_skipped(msg.phase)

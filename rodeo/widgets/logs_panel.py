@@ -1,9 +1,10 @@
-"""Right panel: tabbed VM serial console logs."""
+"""Right panel: all VM serial console logs visible simultaneously in a split view."""
 from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.containers import Vertical
-from textual.widgets import RichLog, TabbedContent, TabPane
+from textual.widgets import RichLog
+
 
 class LogsPanel(Vertical):
     DEFAULT_CSS = """
@@ -14,6 +15,7 @@ class LogsPanel(Vertical):
     }
     LogsPanel RichLog {
         height: 1fr;
+        border: tall $panel;
         padding: 0 1;
     }
     """
@@ -24,16 +26,17 @@ class LogsPanel(Vertical):
         self._vms = vms or ["harvester1", "harvester2", "harvester3", "rancher"]
 
     def compose(self) -> ComposeResult:
-        with TabbedContent():
-            for vm in self._vms:
-                with TabPane(vm, id=f"tab-{vm}"):
-                    yield RichLog(
-                        id=f"log-{vm}",
-                        highlight=False,
-                        markup=False,
-                        wrap=False,
-                        auto_scroll=True,
-                    )
+        for vm in self._vms:
+            log = RichLog(
+                id=f"log-{vm}",
+                highlight=False,
+                markup=False,
+                wrap=False,
+                auto_scroll=True,
+                max_lines=500,
+            )
+            log.border_title = vm
+            yield log
 
     def append_log(self, vm: str, line: str) -> None:
         try:
@@ -50,7 +53,4 @@ class LogsPanel(Vertical):
             pass
 
     def switch_to(self, vm: str) -> None:
-        try:
-            self.query_one(TabbedContent).active = f"tab-{vm}"
-        except Exception:
-            pass
+        pass  # no-op: split view shows all VMs simultaneously

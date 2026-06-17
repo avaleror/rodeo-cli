@@ -113,14 +113,24 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
         return
 
     # Resolve deployment target: explicit flag > existing plan > auto-detect > prompt.
+    # Only prompt when the value came from auto-detection — if the plan or the
+    # --target flag already provided it, asking again is noise (and crashes on
+    # non-interactive stdin with EOFError).
+    _needs_prompt = False
     if deployment_target is None:
         if lab is not None and (lab / "rodeo-plan.yaml").exists():
             import yaml as _yaml
             _plan = _yaml.safe_load((lab / "rodeo-plan.yaml").read_text()) or {}
-            deployment_target = _plan.get("deployment_target") or _detect_target()
+            _stored = _plan.get("deployment_target")
+            if _stored:
+                deployment_target = _stored
+            else:
+                deployment_target = _detect_target()
+                _needs_prompt = True
         else:
             deployment_target = _detect_target()
-        if not assume_yes:
+            _needs_prompt = True
+        if not assume_yes and _needs_prompt:
             deployment_target = Prompt.ask(
                 "Where is this running?",
                 choices=list(_VALID_TARGETS),
@@ -161,6 +171,15 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
             seed_lab(chosen, lab, force=False, deployment_target=deployment_target)
     else:
         console.print(f"\nUsing existing lab at [cyan]{lab}[/cyan].")
+        # Persist deployment_target back to the plan so the root re-exec sees
+        # the resolved value (e.g. --target flag on a re-run of an existing lab).
+        _plan_path = lab / "rodeo-plan.yaml"
+        if _plan_path.exists():
+            import yaml as _yaml
+            _plan_data = _yaml.safe_load(_plan_path.read_text()) or {}
+            if _plan_data.get("deployment_target") != deployment_target:
+                _plan_data["deployment_target"] = deployment_target
+                _plan_path.write_text(_yaml.dump(_plan_data, default_flow_style=False))
 
     # 3. Secrets — silent, file-based.
     _, _, created = ensure_secrets_file()

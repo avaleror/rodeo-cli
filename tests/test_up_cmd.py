@@ -78,6 +78,37 @@ def test_up_uses_existing_lab(tmp_path, monkeypatch):
     assert "Using existing lab" in result.output
 
 
+def test_up_existing_lab_target_written_back(tmp_path, monkeypatch):
+    """--target on a re-run of an existing lab must be persisted to the plan."""
+    monkeypatch.setattr(up_mod, "detect_host", _ready_host)
+    from rodeo.labseed import seed_lab
+    lab = seed_lab("test", tmp_path / "existing", deployment_target="baremetal")
+
+    result = CliRunner().invoke(
+        up_mod.up_cmd,
+        ["--no-deploy", "--yes", "--dir", str(lab), "--target", "instruqt"],
+    )
+    assert result.exit_code == 0, result.output
+    data = yaml.safe_load((lab / "rodeo-plan.yaml").read_text())
+    assert data["deployment_target"] == "instruqt"
+
+
+def test_up_existing_lab_no_prompt_for_known_target(tmp_path, monkeypatch):
+    """Re-running on an existing lab must not prompt for target (avoids EOFError)."""
+    monkeypatch.setattr(up_mod, "detect_host", _ready_host)
+    from rodeo.labseed import seed_lab
+    lab = seed_lab("test", tmp_path / "existing", deployment_target="instruqt")
+
+    # No --yes and no input — if a prompt fires it would cause an error.
+    result = CliRunner().invoke(
+        up_mod.up_cmd,
+        ["--no-deploy", "--dir", str(lab)],
+        input="",
+    )
+    assert result.exit_code == 0, result.output
+    assert "Where is this running?" not in result.output
+
+
 def test_up_deploys_when_root(tmp_path, monkeypatch):
     monkeypatch.setattr(up_mod, "detect_host", _ready_host)
     monkeypatch.setattr(up_mod, "is_root", lambda: True)

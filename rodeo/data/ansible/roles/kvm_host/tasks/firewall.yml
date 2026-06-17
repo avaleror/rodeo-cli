@@ -141,8 +141,9 @@
       for h in $(nft -a list chain ip libvirt_network guest_input 2>/dev/null | awk '/ct status dnat accept/{print $NF}'); do
         nft delete rule ip libvirt_network guest_input handle "$h" 2>/dev/null
       done
-      rh=$(nft -a list chain ip libvirt_network guest_input 2>/dev/null | awk '/oif .virbr0.*reject/{print $NF; exit}')
-      [ -n "$rh" ] && nft insert rule ip libvirt_network guest_input position "$rh" ct status dnat accept 2>/dev/null
+      # Match both old nft output (oif virbr0 reject) and new (oifname "virbr0" reject).
+      rh=$(nft -a list chain ip libvirt_network guest_input 2>/dev/null | awk '/oif.*virbr0.*reject/{print $NF; exit}')
+      [ -n "$rh" ] && nft insert rule ip libvirt_network guest_input handle "$rh" ct status dnat accept 2>/dev/null
       exit 0
   when: network_mode == 'nat'
 

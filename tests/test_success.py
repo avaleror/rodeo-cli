@@ -30,3 +30,35 @@ def test_harvester_shows_both(capsys):
     assert "Harvester UI" in out
     assert "Rancher Prime" in out
     assert "ssh harvester1" in out
+
+
+def test_instruqt_shows_tab_hint(capsys):
+    cfg = {
+        "deployment_target": "instruqt",
+        "network": {"vip": "192.168.122.10", "rancher_ip": "192.168.122.9"},
+        "vms": {
+            "harvester1": {"ip": "192.168.122.11"},
+            "rancher": {"ip": "192.168.122.9"},
+        },
+    }
+    out = _render(cfg, capsys)
+    assert "Instruqt lab UI" in out
+    assert "track config" in out
+    assert "192.168.122.10" in out
+    assert ":8443" not in out
+
+
+def test_baremetal_shows_dnat_url(capsys, monkeypatch):
+    monkeypatch.setattr(success, "_host_ip", lambda: "10.1.2.3")
+    cfg = {
+        "deployment_target": "baremetal",
+        "network": {"vip": "192.168.122.10", "rancher_ip": "192.168.122.9"},
+        "vms": {
+            "harvester1": {"ip": "192.168.122.11"},
+            "rancher": {"ip": "192.168.122.9"},
+        },
+    }
+    out = _render(cfg, capsys)
+    assert "10.1.2.3:8443" in out
+    assert "10.1.2.3:30002" in out
+    assert "Instruqt" not in out

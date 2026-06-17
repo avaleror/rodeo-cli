@@ -5,6 +5,8 @@ credentials, and the first thing to try. Shared by ``rodeo deploy`` and ``rodeo 
 """
 from __future__ import annotations
 
+import subprocess
+
 from rich.console import Console
 from rich.panel import Panel
 
@@ -21,15 +23,37 @@ def _has_rancher(cfg: dict) -> bool:
     return False
 
 
+def _host_ip() -> str:
+    """Return the IP on the default-route interface, or a placeholder."""
+    try:
+        r = subprocess.run(
+            ["ip", "route", "get", "8.8.8.8"],
+            capture_output=True, text=True, timeout=5,
+        )
+        parts = r.stdout.split()
+        if "src" in parts:
+            return parts[parts.index("src") + 1]
+    except Exception:
+        pass
+    return "<host-ip>"
+
+
 def render_success(cfg: dict) -> None:
     """Print the success panel with access URLs, credentials, and next steps.
 
-    Topology-aware: only shows the Harvester UI / Rancher lines and hints for the
-    components the deployed profile actually has.
+    Topology-aware: only shows the Harvester UI / Rancher lines for the components
+    the deployed profile actually includes.
+
+    Target-aware: baremetal detects the host IP and shows the DNAT'd ports; Instruqt
+    shows internal IPs and points the user to the Instruqt tab in the lab UI.
     """
+    target = cfg.get("deployment_target", "baremetal")
     net = cfg.get("network", {})
     vip = net.get("vip", "192.168.122.10")
     rancher_ip = net.get("rancher_ip", "192.168.122.9")
+    rancher_nodeport = int(net.get("rancher_nodeport", 30002))
+    harvester_ui_port = 8443
+
     vms = cfg.get("vms", {})
     harvester_nodes = [n for n in vms if n != "rancher"]
     has_harvester = bool(harvester_nodes)
@@ -39,12 +63,27 @@ def render_success(cfg: dict) -> None:
     lines.append("[bold green]Your lab is up.[/bold green]\n")
 
     lines.append("[bold]Open in a browser[/bold] (accept the self-signed cert):")
-    if has_harvester:
-        lines.append(f"  Harvester UI   https://{vip}")
-        lines.append("                 or  https://<this-host-ip>:8443  (from another machine)")
-    if has_rancher:
-        lines.append(f"  Rancher Prime  https://{rancher_ip}:30002")
-        lines.append("                 or  https://<this-host-ip>:30002  (from another machine)")
+
+    if target == "instruqt":
+        if has_harvester:
+            lines.append(f"  Harvester UI   https://{vip}  (from the host)")
+            lines.append("                 External: use the Harvester tab in the Instruqt lab UI")
+        if has_rancher:
+            lines.append(f"  Rancher Prime  https://{rancher_ip}:{rancher_nodeport}  (from the host)")
+            lines.append("                 External: use the Rancher tab in the Instruqt lab UI")
+        lines.append("")
+        lines.append(
+            f"[dim]Instruqt tabs need host ports {harvester_ui_port} (Harvester) "
+            f"and {rancher_nodeport} (Rancher) declared as services in the track config.[/dim]"
+        )
+    else:
+        host = _host_ip()
+        if has_harvester:
+            lines.append(f"  Harvester UI   https://{vip}  (on the host)")
+            lines.append(f"                 https://{host}:{harvester_ui_port}  (remote)")
+        if has_rancher:
+            lines.append(f"  Rancher Prime  https://{rancher_ip}:{rancher_nodeport}  (on the host)")
+            lines.append(f"                 https://{host}:{rancher_nodeport}  (remote)")
 
     lines.append("")
     lines.append("[bold]Log in[/bold]")

@@ -310,7 +310,7 @@ class DeployRunner:
 
         if target == "instruqt":
             net = self.cfg.get("network", {})
-            ui_port = 8443
+            ui_port = net.get("harvester_ui_port", 8443)
             rport = net.get("rancher_nodeport", 30002)
             yield LogLine(
                 f"  Instruqt: host ports {ui_port} (Harvester) and {rport} (Rancher) "

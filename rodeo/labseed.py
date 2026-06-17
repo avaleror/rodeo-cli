@@ -174,6 +174,8 @@ def normalize_plan(
 
     if name:
         data["name"] = name
+    if deployment_target not in ("baremetal", "instruqt"):
+        raise ValueError(f"Unknown deployment_target: {deployment_target!r}")
     data["deployment_target"] = deployment_target
 
     # Single-disk hosts: never inherit a hard-coded device like /dev/nvme1n1.

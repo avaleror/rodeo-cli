@@ -45,8 +45,12 @@ create_nft_structure() {
 }
 
 add_nft_rule() {
+    # grep -qF on $NFT_RULE is fragile: nft list chain may render "dnat ip to"
+    # while NFT_RULE has "dnat to" (no "ip"), causing a false miss and duplicate
+    # rules on every VM lifecycle event. Match the destination IP:PORT instead —
+    # that part is always rendered verbatim by nft regardless of version.
     if ! nft list chain "$NFT_TABLE" "$NFT_TABLE_NAME" "$NFT_CHAIN" 2>/dev/null \
-            | grep -qF "$NFT_RULE"; then
+            | grep -qF "${VIRTUAL_IP}:${VIP_PORT}"; then
         # shellcheck disable=SC2086
         nft add rule "$NFT_TABLE" "$NFT_TABLE_NAME" "$NFT_CHAIN" $NFT_RULE
     fi

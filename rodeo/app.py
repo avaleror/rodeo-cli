@@ -1,10 +1,17 @@
 """RodeoApp — Textual TUI for deploy progress + VM serial logs."""
 from __future__ import annotations
 
+import re
 import threading
 import time
 from pathlib import Path
 from typing import ClassVar
+
+# Strip ANSI CSI sequences (cursor movement, colors, screen-clear, alternate-screen
+# switch) and lone carriage returns before feeding serial console output to Textual.
+# Cursor-movement codes are the primary TUI-breaker: they execute at terminal level
+# rather than inside the widget and corrupt Textual's own screen state.
+_ANSI_RE = re.compile(r'\x1b(?:\[[0-9;?]*[A-Za-z]|[^[])')
 
 from textual import work
 from textual.app import App, ComposeResult
@@ -63,11 +70,11 @@ class _AnsibleLine(Message):
         self.line = line
 
 
-class _LogLine(Message):
-    def __init__(self, vm: str, line: str) -> None:
+class _LogLines(Message):
+    def __init__(self, vm: str, lines: list[str]) -> None:
         super().__init__()
         self.vm = vm
-        self.line = line
+        self.lines = lines
 
 
 class _ProgressUpdate(Message):
@@ -197,14 +204,33 @@ class RodeoApp(App):
             if self._stop_tailers.is_set() or time.monotonic() > deadline:
                 return
             time.sleep(5)
+
+        batch: list[str] = []
+        flush_at = time.monotonic() + 0.2
+
         with open(log_file, errors="replace") as f:
             f.seek(0, 2)
             while not self._stop_tailers.is_set():
-                line = f.readline()
-                if line:
-                    self.post_message(_LogLine(vm, line.rstrip()))
-                else:
-                    time.sleep(0.3)
+                raw = f.readline()
+                if raw:
+                    # iPXE uses \r (no \n) for progress bars — split on \r too
+                    # so each overwrite segment becomes its own line rather than
+                    # one giant line with embedded carriage returns.
+                    for segment in raw.split('\r'):
+                        clean = _ANSI_RE.sub('', segment).rstrip()
+                        if clean:
+                            batch.append(clean)
+
+                now = time.monotonic()
+                if now >= flush_at:
+                    if batch:
+                        self.post_message(_LogLines(vm, batch))
+                        batch = []
+                    flush_at = now + 0.2
+                    if not raw:
+                        time.sleep(0.05)
+                elif not raw:
+                    time.sleep(0.05)
 
     # ---------- Message handlers (main thread) ----------
 
@@ -235,8 +261,8 @@ class RodeoApp(App):
     def on__ansible_line(self, msg: _AnsibleLine) -> None:
         self.query_one(DeployPanel).append_ansible(msg.line)
 
-    def on__log_line(self, msg: _LogLine) -> None:
-        self.query_one(LogsPanel).append_log(msg.vm, msg.line)
+    def on__log_lines(self, msg: _LogLines) -> None:
+        self.query_one(LogsPanel).append_logs(msg.vm, msg.lines)
 
     def on__deploy_complete(self, _: _DeployComplete) -> None:
         net = self.cfg["network"]

@@ -5,7 +5,6 @@ import json
 import os
 import ssl
 import subprocess
-import tempfile
 import threading
 import time
 import urllib.request
@@ -125,9 +124,6 @@ class RancherPhase:
             return
         yield LogLine("  Rancher API configured.")
 
-        yield LogLine("Installing Harvester UI Extension...")
-        yield from self._install_ui_extension()
-
         if self.standalone:
             yield LogLine(
                 f"\n  Rancher URL  : {self.rancher_api}  (NodePort)"
@@ -135,6 +131,9 @@ class RancherPhase:
             )
             self.success = True
             return
+
+        yield LogLine("Installing Harvester UI Extension...")
+        yield from self._install_ui_extension()
 
         yield LogLine("Importing Harvester cluster into Rancher...")
         if not (yield from self._import_harvester()):
@@ -303,8 +302,8 @@ class RancherPhase:
         script = (
             "set -euo pipefail\n"
             "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
-            "helm repo add rancher-prime https://charts.rancher.com/server-charts/prime\n"
-            "helm repo add jetstack https://charts.jetstack.io\n"
+            "helm repo add rancher-prime https://charts.rancher.com/server-charts/prime || true\n"
+            "helm repo add jetstack https://charts.jetstack.io || true\n"
             "helm repo update\n"
             f"kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/{v}/cert-manager.crds.yaml\n"
             f"helm upgrade --install cert-manager jetstack/cert-manager --namespace cert-manager --create-namespace --version {v}\n"
@@ -334,7 +333,7 @@ class RancherPhase:
             ' --set ingress.tls.source=rancher'
             ' --wait --timeout 600s\n'
         )
-        yield LogLine("  Running helm install rancher (up to 10 min)...")
+        yield LogLine("  Running helm upgrade --install rancher (up to 10 min)...")
         r = self._ssh_script(script, timeout=720)
         for line in (r.stdout + r.stderr).splitlines():
             if line.strip():
@@ -350,11 +349,11 @@ class RancherPhase:
         script = (
             "set -euo pipefail\n"
             "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
-            "helm repo add harvester-ui-extension https://harvester.github.io/harvester-ui-extension 2>/dev/null || true\n"
+            "helm repo add harvester-ui-extension https://harvester.github.io/harvester-ui-extension || true\n"
             "helm repo update harvester-ui-extension\n"
             f"helm upgrade --install harvester harvester-ui-extension/harvester"
             f" --namespace cattle-ui-plugin-system --create-namespace"
-            f" --version {self.ui_ext_version}\n"
+            f' --version "{self.ui_ext_version}"\n'
         )
         r = self._ssh_script(script, timeout=180)
         for line in (r.stdout + r.stderr).splitlines():
@@ -543,8 +542,9 @@ class RancherPhase:
                 "-o jsonpath='{.status.clusterName}' 2>/dev/null\n",
                 timeout=15,
             )
-            if r.returncode == 0 and r.stdout.strip():
-                cluster_id = r.stdout.strip()
+            value = r.stdout.strip()
+            if r.returncode == 0 and value and value != "null":
+                cluster_id = value
                 break
             elapsed = time.monotonic() - t0
             if elapsed - _last_log >= 15:
@@ -595,8 +595,9 @@ class RancherPhase:
                 f"-n {cluster_id} -o jsonpath='{{.status.manifestUrl}}' 2>/dev/null\n",
                 timeout=15,
             )
-            if r.returncode == 0 and r.stdout.strip():
-                manifest_url = r.stdout.strip()
+            value = r.stdout.strip()
+            if r.returncode == 0 and value and value != "null":
+                manifest_url = value
                 break
             elapsed = time.monotonic() - t0
             if elapsed - _last_log >= 15:
@@ -608,6 +609,14 @@ class RancherPhase:
 
         if not manifest_url:
             self.error = "Manifest URL not available after 120 s"
+            yield LogLine(f"  ✗ {self.error}")
+            return False
+
+        if not KUBECONFIG_PATH.exists():
+            self.error = (
+                f"Harvester kubeconfig not found at {KUBECONFIG_PATH} — "
+                "run the cluster phase first"
+            )
             yield LogLine(f"  ✗ {self.error}")
             return False
 
@@ -702,21 +711,15 @@ class RancherPhase:
         )
         cm["data"]["Corefile"] = corefile + zone
 
-        fd, tmp_path = tempfile.mkstemp(suffix=".json")
-        try:
-            os.close(fd)
-            with open(tmp_path, "w") as f:
-                json.dump(cm, f)
-            r2 = self._run(
-                ["kubectl", "--kubeconfig", str(KUBECONFIG_PATH), "apply", "-f", tmp_path],
-                timeout=30,
-            )
-            if r2.returncode == 0:
-                yield LogLine(f"  CoreDNS patched: {self.dns_domain} -> {dns_server}")
-            else:
-                yield LogLine(f"  ⚠ CoreDNS patch apply failed: {r2.stderr.strip()}")
-        finally:
-            os.unlink(tmp_path)
+        r2 = self._run(
+            ["kubectl", "--kubeconfig", str(KUBECONFIG_PATH), "apply", "-f", "-"],
+            timeout=30,
+            input=json.dumps(cm),
+        )
+        if r2.returncode == 0:
+            yield LogLine(f"  CoreDNS patched: {self.dns_domain} -> {dns_server}")
+        else:
+            yield LogLine(f"  ⚠ CoreDNS patch apply failed: {r2.stderr.strip()}")
 
     def _wait_cluster_active(self) -> Generator[DeployEvent, None, bool]:
         t0 = time.monotonic()

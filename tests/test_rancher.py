@@ -84,7 +84,6 @@ def test_import_fails_when_cluster_id_never_assigned(cfg, monkeypatch):
         return subprocess.CompletedProcess([], 0, stdout="", stderr="")
 
     monkeypatch.setattr(RancherPhase, "_ssh_script", fake_ssh)
-    monkeypatch.setattr(rancher_mod.time, "sleep", lambda _: None)
 
     # make the 120 s poll window expire after one iteration
     _calls = {"n": 0}
@@ -97,6 +96,40 @@ def test_import_fails_when_cluster_id_never_assigned(cfg, monkeypatch):
     _, ok = drain(phase._import_harvester())
     assert ok is False
     assert "Cluster ID not assigned" in phase.error
+
+
+def test_import_fails_when_cluster_never_active(cfg, monkeypatch, tmp_path):
+    """Regression: cluster stuck outside 'active' must fail _import_harvester."""
+    phase = RancherPhase(cfg)
+    phase._api_token = "token"
+
+    def fake_ssh(self, script, timeout=60):
+        if "kubectl apply" in script:
+            return subprocess.CompletedProcess([], 0, stdout="configured", stderr="")
+        if ".status.clusterName" in script:
+            return subprocess.CompletedProcess([], 0, stdout="c-m-test123", stderr="")
+        if ".status.manifestUrl" in script:
+            return subprocess.CompletedProcess([], 0, stdout="https://rancher/manifest.yaml", stderr="")
+        return subprocess.CompletedProcess([], 0, stdout="", stderr="")
+
+    monkeypatch.setattr(RancherPhase, "_ssh_script", fake_ssh)
+    monkeypatch.setattr(
+        rancher_mod.subprocess, "run",
+        lambda *a, **k: subprocess.CompletedProcess(
+            list(a[0]) if a else [], 0, stdout="", stderr=""
+        ),
+    )
+
+    kube = tmp_path / "harvester-kubeconfig"
+    kube.write_text("dummy")
+    monkeypatch.setattr(rancher_mod, "KUBECONFIG_PATH", kube)
+
+    # _wait_cluster_active returns an empty iterator → None return value → falsy
+    monkeypatch.setattr(RancherPhase, "_wait_cluster_active", lambda self: iter(()))
+
+    _, ok = drain(phase._import_harvester())
+    assert ok is False
+    assert "did not reach Active" in phase.error
 
 
 def test_wait_ssh_cancellable(cfg, monkeypatch):

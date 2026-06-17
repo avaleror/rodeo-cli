@@ -190,6 +190,7 @@ class ClusterPhase:
         ctx.verify_mode = ssl.CERT_NONE
 
         t0 = time.monotonic()
+        _last_vm_log = 0.0
         while True:
             elapsed = time.monotonic() - t0
             up = False
@@ -215,6 +216,13 @@ class ClusterPhase:
             yield ProgressUpdate("Waiting for VIP", elapsed, self.VIP_TIMEOUT)
             m, s = divmod(int(elapsed), 60)
             yield LogLine(f"  {m:02d}:{s:02d} / {self.VIP_TIMEOUT // 60}:00 — polling {self.vip}...")
+
+            # Log VM states every 5 min so a stuck install is detectable from
+            # the TUI or log file without needing to reconnect to a console.
+            if elapsed - _last_vm_log >= 300:
+                yield from self._vm_states_snapshot("waiting for VIP", elapsed, self.VIP_TIMEOUT)
+                _last_vm_log = elapsed
+
             if self._sleep(self.VIP_POLL):
                 return False
 
@@ -298,6 +306,7 @@ class ClusterPhase:
                     f"  {m:02d}:{s:02d} / {self.NODES_TIMEOUT // 60}:00"
                     f" — {ready}/{self.ready_count} nodes Ready"
                 )
+                yield from self._vm_states_snapshot("waiting for nodes Ready", elapsed, self.NODES_TIMEOUT)
                 last_log = elapsed
 
             if self._sleep(self.NODES_POLL):
@@ -331,6 +340,41 @@ class ClusterPhase:
             yield ProgressUpdate(label, elapsed, float(seconds))
             if self._sleep(min(5.0, remaining)):
                 return
+
+    def _vm_states_snapshot(self, phase: str, elapsed: float, total: float) -> Iterator[LogLine]:
+        """Log VM states via virsh and write a heartbeat file.
+
+        The heartbeat file lets someone who reconnects to a live lab see at a
+        glance whether VMs are still running and how far the install had got,
+        distinguishing a stuck install from an Instruqt timeout (which destroys
+        the lab entirely — reconnect is impossible if the lab is gone).
+        """
+        import datetime
+        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        m, s = divmod(int(elapsed), 60)
+        tm, ts = divmod(int(total), 60)
+        header = f"{now}  {phase}  {m:02d}:{s:02d} / {tm:02d}:{ts:02d}"
+        yield LogLine(f"  [{now}] VM states:")
+        lines = [header, "  VM states:"]
+        for name in self.vm_names:
+            try:
+                r = subprocess.run(
+                    ["virsh", "domstate", name],
+                    capture_output=True, text=True, timeout=5,
+                )
+                state = r.stdout.strip() or "unknown"
+            except Exception:
+                state = "unknown"
+            yield LogLine(f"    {name:<14}  {state}")
+            lines.append(f"    {name:<14}  {state}")
+
+        lab_name = self.cfg.get("name", "rodeo")
+        heartbeat = Path.home() / ".rodeo" / "logs" / f"{lab_name}-heartbeat.txt"
+        try:
+            heartbeat.parent.mkdir(parents=True, exist_ok=True)
+            heartbeat.write_text("\n".join(lines) + "\n")
+        except Exception:
+            pass
 
     def _log_vm_states(self, lv: LibvirtDriver) -> Iterator[DeployEvent]:
         try:

@@ -231,6 +231,8 @@ class RodeoApp(App):
                         time.sleep(0.05)
                 elif not raw:
                     time.sleep(0.05)
+        if batch:
+            self.post_message(_LogLines(vm, batch))
 
     # ---------- Message handlers (main thread) ----------
 

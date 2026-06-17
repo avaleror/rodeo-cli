@@ -240,7 +240,7 @@ class ClusterPhase:
                 # Replace whatever IP is in the server field (127.0.0.1, a node IP, etc.)
                 # with the VIP so all kubectl ops always go through the cluster VIP.
                 content = re.sub(
-                    r'(server: https://)[\d.]+',
+                    r'(server: https://)[^\s:]+',
                     rf'\g<1>{self.vip}',
                     result.stdout,
                 )

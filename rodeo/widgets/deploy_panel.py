@@ -1,6 +1,8 @@
 """Left panel: phase status table + Ansible output stream."""
 from __future__ import annotations
 
+import time
+
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Vertical
@@ -56,12 +58,21 @@ class DeployPanel(Vertical):
         yield RichLog(id="ansible-log", highlight=True, markup=True, wrap=True, auto_scroll=True)
 
     def on_mount(self) -> None:
+        self._deploy_start = time.monotonic()
+        self.set_interval(1.0, self._tick_global_timer)
         table = self.query_one("#phases-table", DataTable)
         table.add_column("Phase",   key="phase",   width=12)
         table.add_column("Status",  key="status",  width=14)
         table.add_column("Elapsed", key="elapsed", width=8)
         for phase in self._phases:
             table.add_row(phase, Text("○ pending", style="dim"), "", key=phase)
+
+    def _tick_global_timer(self) -> None:
+        elapsed = time.monotonic() - self._deploy_start
+        h, rem = divmod(int(elapsed), 3600)
+        m, s = divmod(rem, 60)
+        ts = f"{h}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
+        self.border_title = f"Deploy  {ts}"
 
     # --- Public update API called by RodeoApp message handlers ---
 

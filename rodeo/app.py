@@ -7,12 +7,6 @@ import time
 from pathlib import Path
 from typing import ClassVar
 
-# Strip ANSI CSI sequences (cursor movement, colors, screen-clear, alternate-screen
-# switch) and lone carriage returns before feeding serial console output to Textual.
-# Cursor-movement codes are the primary TUI-breaker: they execute at terminal level
-# rather than inside the widget and corrupt Textual's own screen state.
-_ANSI_RE = re.compile(r'\x1b(?:\[[0-9;?]*[A-Za-z]|[^[])')
-
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -33,6 +27,9 @@ from .engine.runner import (
 from .widgets.deploy_panel import DeployPanel
 from .widgets.logs_panel import LogsPanel
 
+# Strip ANSI CSI sequences and lone carriage returns before feeding serial
+# console output to Textual. Cursor-movement codes corrupt Textual's screen state.
+_ANSI_RE = re.compile(r'\x1b(?:\[[0-9;?]*[A-Za-z]|[^[])')
 _SERIAL_LOG_DIR = Path("/var/log/libvirt/qemu")
 
 

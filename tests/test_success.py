@@ -59,6 +59,8 @@ def test_baremetal_shows_dnat_url(capsys, monkeypatch):
         },
     }
     out = _render(cfg, capsys)
-    assert "10.1.2.3:8443" in out
+    # VIP is the canonical Harvester URL; DNAT info is shown as a note.
+    assert "https://192.168.122.10" in out
+    assert "10.1.2.3:8443" in out   # DNAT note still present
     assert "10.1.2.3:30002" in out
     assert "Instruqt" not in out

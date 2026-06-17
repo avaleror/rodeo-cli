@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 import ssl
 import subprocess
 import threading
@@ -236,7 +237,13 @@ class ClusterPhase:
                 result = subprocess.CompletedProcess(cmd, returncode=124, stdout="", stderr="")
 
             if result.returncode == 0 and result.stdout.strip():
-                content = result.stdout.replace("127.0.0.1", self.vip)
+                # Replace whatever IP is in the server field (127.0.0.1, a node IP, etc.)
+                # with the VIP so all kubectl ops always go through the cluster VIP.
+                content = re.sub(
+                    r'(server: https://)[\d.]+',
+                    rf'\g<1>{self.vip}',
+                    result.stdout,
+                )
                 KUBECONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
                 KUBECONFIG_PATH.write_text(content)
                 KUBECONFIG_PATH.chmod(0o600)

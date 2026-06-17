@@ -79,11 +79,11 @@ def render_success(cfg: dict) -> None:
     else:
         host = _host_ip()
         if has_harvester:
-            lines.append(f"  Harvester UI   https://{vip}  (on the host)")
-            lines.append(f"                 https://{host}:{harvester_ui_port}  (remote)")
+            lines.append(f"  Harvester UI   https://{vip}")
+            lines.append(f"  [dim](external: host port {harvester_ui_port} → DNAT → VIP, i.e. https://{host}:{harvester_ui_port})[/dim]")
         if has_rancher:
-            lines.append(f"  Rancher Prime  https://{rancher_ip}:{rancher_nodeport}  (on the host)")
-            lines.append(f"                 https://{host}:{rancher_nodeport}  (remote)")
+            lines.append(f"  Rancher Prime  https://{rancher_ip}:{rancher_nodeport}")
+            lines.append(f"  [dim](external: https://{host}:{rancher_nodeport})[/dim]")
 
     lines.append("")
     lines.append("[bold]Log in[/bold]")

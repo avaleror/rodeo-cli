@@ -22,8 +22,6 @@ from rich.console import Console
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
-_VALID_TARGETS = ("baremetal", "instruqt")
-
 from ..config import find_ansible_root, find_lab_dir, load_config, validate_config
 from ..labseed import custom_profile_dir, profile_kind, seed_lab
 from ..preflight import (
@@ -48,6 +46,7 @@ from .deploy import execute_deploy
 
 console = Console()
 
+_VALID_TARGETS = ("baremetal", "instruqt")
 DEFAULT_LABS_ROOT = Path.home() / "rodeo-labs"
 
 

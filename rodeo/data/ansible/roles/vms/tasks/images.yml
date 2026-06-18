@@ -57,11 +57,9 @@
   register: disk_jobs
 
 - name: Copy OVMF variable store for each Harvester node (async)
-  ansible.builtin.copy:
-    src: "{{ ovmf_vars_template }}"
-    dest: "{{ image_dir }}/{{ item.name }}-ovmf-vars.fd"
-    remote_src: true
-    force: false
+  ansible.builtin.command:
+    cmd: cp {{ ovmf_vars_template }} {{ image_dir }}/{{ item.name }}-ovmf-vars.fd
+    creates: "{{ image_dir }}/{{ item.name }}-ovmf-vars.fd"
   loop: "{{ vm_nodes | selectattr('flavor', 'equalto', 'harvester') | list }}"
   loop_control:
     label: "{{ item.name }}"

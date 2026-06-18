@@ -58,11 +58,19 @@ Ownership tagging: mark libvirt objects with the plan that owns them, so the hyp
 
 - [x] SSH options centralized in `rodeo/ssh.py`; consistent root-aware logic across commands
 - [x] libvirt network hook for DNAT-allow (host:8443 → Harvester VIP) — bare metal validated
+- [x] File logging to `~/.rodeo/logs/<plan>.log` — subprocess output teed in real time
+- [x] TUI: split-view serial logs — all VM consoles visible simultaneously (removed tab switching)
+- [x] TUI: ANSI stripping + 200ms batching — fixes screen corruption from iPXE/kernel escape sequences
+- [x] TUI: global deploy timer (left panel) + per-VM elapsed timers in each console window
+- [x] VM state heartbeat file (`~/.rodeo/logs/<lab>-heartbeat.txt`) — written every 5 min during VIP/node waits; lets you tell a stuck install from an Instruqt timeout at a glance
+- [x] `deployment_target` wiring — `baremetal|instruqt` drives NIC pinning, success screen URLs, and firewall rules; auto-detected and persisted to lab plan
+- [x] Harvester install fix: ISO-seed config uses MAC-based NIC matching (`hwAddr`) instead of `name: eth0` — fixes hang on kernels with `net.ifnames=1`
+- [x] VIP enforcement — Harvester UI and kubeconfig always reference the cluster VIP, not individual node IPs
+- [x] `rodeo up` re-run: `--target` persisted to existing lab plan; no spurious interactive prompt when target is already known
 - [ ] `clean` / `stop` / `start` self-escalate with sudo (same as `up` — needed for SLES `secure_path`)
 - [ ] `--output json` for `plan` and `status` (machine-readable, CI-friendly)
 - [ ] Cache `ansible-galaxy collection install` (marker keyed on `requirements.yml` hash)
 - [ ] Stream Helm/K3s SSH installer output (removes the long blind windows in the TUI)
-- [ ] File logging to `~/.rodeo/logs/deploy-<ts>.log`
 - [ ] `PhaseResult` return type instead of mutating `runner._last_rc`
 - [ ] ansible-lint in CI
 

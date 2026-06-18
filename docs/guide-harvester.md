@@ -96,6 +96,8 @@ rodeo watch              # split-panel TUI: phases + serial logs
 rodeo logs harvester1    # just the serial log for one node
 ```
 
+The TUI shows all VM serial consoles simultaneously in a vertical split. The left panel has a global elapsed timer for the full deploy. Each console window shows a per-VM elapsed timer that starts from when the first serial output arrives for that node — useful for spotting a node that started late or stopped responding.
+
 ---
 
 ## Log in

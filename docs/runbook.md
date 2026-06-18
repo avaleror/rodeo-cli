@@ -23,6 +23,57 @@ rodeo deploy --from kvm_host --force   # re-run everything from phase kvm_host
 
 ---
 
+## Harvester install appears stuck — stuck vs timed out
+
+**Context:** the `cluster` phase waits up to 60 minutes for the Harvester VIP to come up. On nested KVM this can take 45–90 minutes. The question is whether the install is still making progress or has genuinely hung.
+
+**Step 1 — check the heartbeat file:**
+
+```bash
+cat ~/.rodeo/logs/<lab-name>-heartbeat.txt
+```
+
+rodeo writes this file every 5 minutes during the VIP and node-ready waits. It records VM states and elapsed time. If the file exists and the timestamp is recent (< 6 min old), the deploy is alive. If the file is missing or stale, the host process may have died.
+
+**Step 2 — check VM states:**
+
+```bash
+virsh list --all
+```
+
+- All `running` = install in progress (normal). Watch `rodeo logs harvester1` for kernel/installer output.
+- All `shut off` = installer exited early. Check the serial log for the error:
+
+```bash
+rodeo logs harvester1
+```
+
+- Any `paused` = memory pressure on the host. Free RAM or add swap, then `virsh resume <vm>`.
+
+**Step 3 — distinguish a stuck install from an Instruqt session timeout:**
+
+Instruqt terminates the GCP lab VM (not just the browser session) after the platform-configured idle timeout. If the lab VM is gone, there is no reconnecting — the install cannot have "hung" because the host no longer exists.
+
+Signs the lab was terminated (not stuck):
+- `virsh list --all` fails with "failed to connect to the hypervisor"
+- SSH to the Instruqt host times out entirely
+- The heartbeat file is missing or from a previous run
+
+Signs the install is genuinely stuck:
+- VMs are `running`, heartbeat is fresh, but serial log has not scrolled for > 15 minutes
+- Serial log shows a repeating error (disk full, interface not found, etcd election loop)
+
+**Common install hang causes:**
+
+| Symptom in serial log | Cause | Fix |
+|---|---|---|
+| `no network interface found` or hangs at network config | Interface name mismatch — installer got a config naming `eth0` but kernel uses `ens3` | Wipe VMs (`rodeo deploy --from vms --force`) and redeploy |
+| `curl: (7) Failed to connect` to config URL | nginx not running or virbr0 not up | Check nginx: `rodeo ssh <host> -- sudo systemctl status nginx` |
+| Disk full / `containerd` errors | VM disk < 250 GiB | Redeploy with `disk_gb: 250` in plan |
+| `etcd` election loop, node never joins | Rapid join race on 3-node setup | Increase `etcd_join_gap_seconds` in `definition.yaml` (default: 90) |
+
+---
+
 ## Harvester VIP not responding
 
 **Symptom:** the `cluster` phase times out waiting for `192.168.122.10:443`.

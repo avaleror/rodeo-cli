@@ -124,6 +124,7 @@ class DeployRunner:
         self._proc: subprocess.Popen | None = None
         self._last_rc: int = 0
         self.stop = threading.Event()
+        self._background_rancher = None  # set by stream_cluster when setup ran in background
 
     def terminate(self) -> None:
         """Stop the pipeline: signal poll loops and SIGTERM the subprocess group."""
@@ -327,6 +328,9 @@ class DeployRunner:
         self._last_rc = 0 if phase.success else 1
         if phase.error:
             yield LogLine(f"  ✗  cluster: {phase.error}")
+        # Pass the background RancherPhase to stream_rancher if setup completed.
+        if phase._background_rancher is not None and phase._background_rancher.setup_done:
+            self._background_rancher = phase._background_rancher
 
     def stream_boot(self) -> Iterator[DeployEvent]:
         """Bring up host network + start the lab VMs (for non-Harvester profiles).
@@ -369,8 +373,16 @@ class DeployRunner:
 
     def stream_rancher(self) -> Iterator[DeployEvent]:
         from .rancher import RancherPhase
-        phase = RancherPhase(self.cfg, stop=self.stop)
-        yield from phase.stream()
+        background = self._background_rancher
+        if background is not None and background.setup_done:
+            # K3s + Helm + Rancher Prime already done during the cluster phase wait.
+            # Run import only (UI extension + Harvester cluster import + CDROMs).
+            yield LogLine("Rancher K3s/Helm already complete — running import only...")
+            phase = background
+            yield from phase.stream_import()
+        else:
+            phase = RancherPhase(self.cfg, stop=self.stop)
+            yield from phase.stream()
         self._last_rc = 0 if phase.success else 1
         if phase.error:
             yield LogLine(f"  ✗  rancher: {phase.error}")

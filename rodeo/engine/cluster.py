@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import queue
 import re
 import ssl
 import subprocess
@@ -58,6 +59,7 @@ class ClusterPhase:
         self.success  = False
         self.error    = ""
         self._stop    = stop if stop is not None else threading.Event()
+        self._background_rancher = None  # set if rancher setup runs during cluster wait
 
     def _load_topology(self) -> None:
         """Resolve start order, Harvester node set, Ready count, and etcd gap.
@@ -151,10 +153,60 @@ class ClusterPhase:
                 return
             yield LogLine(f"  Kubeconfig saved to {KUBECONFIG_PATH} (127.0.0.1 rewritten to VIP).")
 
+            # If the topology has a Rancher VM, start K3s + Helm + Rancher Prime
+            # in a background thread while we wait for all Harvester nodes Ready.
+            # The Rancher VM boots from a cloud image and is reachable by SSH well
+            # before the Harvester nodes finish their iPXE install, so the two
+            # waits overlap naturally. Only the Harvester import (which writes the
+            # cluster-registration-url to Harvester nodes) must happen after nodes Ready.
+            drain: queue.Queue | None = None
+            if "rancher" in self.vm_names:
+                from .rancher import RancherPhase
+                rp = RancherPhase(self.cfg, stop=self._stop)
+                self._background_rancher = rp
+                drain = queue.Queue()
+
+                def _run_setup(rp: RancherPhase = rp, q: queue.Queue = drain) -> None:
+                    try:
+                        for ev in rp.stream_setup():
+                            q.put(ev)
+                    except Exception as exc:
+                        q.put(LogLine(f"  ✗ rancher setup: {exc}"))
+                    finally:
+                        q.put(None)  # sentinel
+
+                threading.Thread(target=_run_setup, daemon=True).start()
+                yield LogLine("Rancher K3s + Helm setup starting in background...")
+
             yield LogLine(f"Waiting for {self.ready_count} Harvester nodes Ready (up to 90 min)...")
-            if not (yield from self._wait_nodes_ready()):
+            if not (yield from self._wait_nodes_ready(drain=drain)):
                 self.error = f"Timed out after {self.NODES_TIMEOUT // 60} min waiting for nodes"
                 return
+
+            # Drain any remaining rancher-setup events and wait for it to finish.
+            if drain is not None and self._background_rancher is not None:
+                if not self._background_rancher.setup_done:
+                    yield LogLine("All Harvester nodes Ready — waiting for Rancher setup to finish...")
+                while True:
+                    try:
+                        ev = drain.get(timeout=30.0)
+                    except queue.Empty:
+                        if self._stop.is_set():
+                            self.error = "cancelled"
+                            return
+                        yield LogLine("  Still waiting for Rancher K3s/Helm setup...")
+                        continue
+                    if ev is None:
+                        break
+                    yield ev
+
+                if not self._background_rancher.setup_done:
+                    # Setup failed — null it out so stream_rancher runs a fresh full phase.
+                    yield LogLine(
+                        f"  ⚠ Rancher setup failed: {self._background_rancher.error} "
+                        "— will retry in the rancher phase."
+                    )
+                    self._background_rancher = None
 
             yield LogLine(f"All {self.ready_count} Harvester nodes Ready. Cluster is up.")
             self.success = True
@@ -278,9 +330,12 @@ class ClusterPhase:
 
     # ---------- Nodes ready ----------
 
-    def _wait_nodes_ready(self) -> Generator[DeployEvent, None, bool]:
+    def _wait_nodes_ready(
+        self, drain: "queue.Queue | None" = None
+    ) -> Generator[DeployEvent, None, bool]:
         t0 = time.monotonic()
         last_log = -self.NODES_LOG_EVERY  # force a log on the first check
+        drain_done = drain is None
 
         while True:
             elapsed = time.monotonic() - t0
@@ -308,6 +363,19 @@ class ClusterPhase:
                 )
                 yield from self._vm_states_snapshot("waiting for nodes Ready", elapsed, self.NODES_TIMEOUT)
                 last_log = elapsed
+
+            # Drain background rancher-setup events without blocking.
+            # Events are delayed by at most NODES_POLL seconds — acceptable for logs.
+            if not drain_done and drain is not None:
+                while True:
+                    try:
+                        ev = drain.get_nowait()
+                    except queue.Empty:
+                        break
+                    if ev is None:
+                        drain_done = True
+                        break
+                    yield ev
 
             if self._sleep(self.NODES_POLL):
                 return False

@@ -184,12 +184,25 @@ class ClusterPhase:
                 return
 
             # Drain any remaining rancher-setup events and wait for it to finish.
+            # Cap the wait: if setup hasn't completed within RANCHER_DRAIN_TIMEOUT
+            # after nodes are Ready, give up and let the rancher phase re-run fresh.
+            RANCHER_DRAIN_TIMEOUT = 20 * 60  # 20 min max after nodes Ready
             if drain is not None and self._background_rancher is not None:
                 if not self._background_rancher.setup_done:
                     yield LogLine("All Harvester nodes Ready — waiting for Rancher setup to finish...")
+                drain_deadline = time.monotonic() + RANCHER_DRAIN_TIMEOUT
                 while True:
+                    remaining = drain_deadline - time.monotonic()
+                    if remaining <= 0:
+                        yield LogLine(
+                            "  ⚠ Rancher background setup did not finish within "
+                            f"{RANCHER_DRAIN_TIMEOUT // 60} min after nodes Ready "
+                            "— will retry in the rancher phase."
+                        )
+                        self._background_rancher = None
+                        break
                     try:
-                        ev = drain.get(timeout=30.0)
+                        ev = drain.get(timeout=min(30.0, remaining))
                     except queue.Empty:
                         if self._stop.is_set():
                             self.error = "cancelled"
@@ -200,7 +213,7 @@ class ClusterPhase:
                         break
                     yield ev
 
-                if not self._background_rancher.setup_done:
+                if self._background_rancher is not None and not self._background_rancher.setup_done:
                     # Setup failed — null it out so stream_rancher runs a fresh full phase.
                     yield LogLine(
                         f"  ⚠ Rancher setup failed: {self._background_rancher.error} "

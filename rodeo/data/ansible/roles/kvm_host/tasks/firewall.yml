@@ -141,8 +141,13 @@
       for h in $(nft -a list chain ip libvirt_network guest_input 2>/dev/null | awk '/ct status dnat accept/{print $NF}'); do
         nft delete rule ip libvirt_network guest_input handle "$h" 2>/dev/null
       done
-      # Match both old nft output (oif virbr0 reject) and new (oifname "virbr0" reject).
-      rh=$(nft -a list chain ip libvirt_network guest_input 2>/dev/null | awk '/oif.*virbr0.*reject/{print $NF; exit}')
+      # Find the reject rule handle. Some libvirt versions include "oif(name) virbr0"
+      # in the guest_input rule itself; others emit a bare "reject" with no interface
+      # condition (the oifname guard is on the jump in the forward chain). Try the
+      # specific match first, fall back to any reject so both formats are covered.
+      chain_out=$(nft -a list chain ip libvirt_network guest_input 2>/dev/null)
+      rh=$(echo "$chain_out" | awk '/oif.*virbr0.*reject/{print $NF; exit}')
+      [ -z "$rh" ] && rh=$(echo "$chain_out" | awk '/\breject\b/{print $NF; exit}')
       [ -n "$rh" ] && nft insert rule ip libvirt_network guest_input handle "$rh" ct status dnat accept 2>/dev/null
       exit 0
   when: network_mode == 'nat'

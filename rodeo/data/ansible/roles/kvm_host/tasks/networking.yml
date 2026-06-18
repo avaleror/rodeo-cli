@@ -2,6 +2,24 @@
 # In NAT mode the host routes guest traffic and DNATs the UI ports to the
 # guests, so IP forwarding must be on. In bridge mode the guests sit on the
 # physical LAN and the host does no forwarding for them.
+# On multi-homed hosts (two or more NICs on the same subnet) Linux's default
+# ARP behaviour (arp_announce=0) lets any interface answer ARP for any local IP,
+# so clients can learn the wrong MAC and send traffic to the unintended NIC.
+# That breaks the DNAT forward path because the packet arrives on the wrong
+# interface and may not pass zone-based firewalld rules for the expected NIC.
+# arp_announce=2 restricts each interface to advertising only its own IPs.
+# Safe on single-NIC cloud hosts (GCP/AWS): makes no difference when there is
+# only one NIC, and GCP's virtual router handles ARP independently anyway.
+- name: Restrict ARP announcements to each interface's own IPs (prevent multi-NIC ARP ambiguity)
+  ansible.posix.sysctl:
+    name: "{{ item }}"
+    value: '2'
+    sysctl_file: /etc/sysctl.d/99-rodeo-net.conf
+    reload: true
+  loop:
+    - net.ipv4.conf.all.arp_announce
+    - net.ipv4.conf.default.arp_announce
+
 - name: Enable IP forwarding (NAT mode)
   ansible.posix.sysctl:
     name: net.ipv4.ip_forward

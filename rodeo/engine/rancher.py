@@ -374,7 +374,7 @@ class RancherPhase:
             "\n"
             "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
             "kubectl create namespace cattle-system --dry-run=client -o yaml | kubectl apply -f -\n"
-            "kubectl -n cattle-system create secret generic tls-rancher-ca"
+            "kubectl -n cattle-system create secret generic tls-ca"
             " --from-file=cacerts.pem=$SSL/ca.crt --dry-run=client -o yaml | kubectl apply -f -\n"
             "kubectl -n cattle-system create secret tls tls-rancher-ingress"
             " --cert=$SSL/tls.crt --key=$SSL/tls.key --dry-run=client -o yaml | kubectl apply -f -\n"

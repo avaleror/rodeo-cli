@@ -22,6 +22,7 @@ from .commands.ssh_cmd import ssh_cmd
 from .commands.status import status_cmd
 from .commands.stop_cmd import stop_cmd
 from .commands.start_cmd import start_cmd
+from .commands.start_if_needed_cmd import start_if_needed_cmd
 from .commands.up_cmd import up_cmd
 from .commands.watch import watch_cmd
 from .config import ConfigError
@@ -57,7 +58,7 @@ def cli(config_dir: str | None) -> None:
     Make your own:  rodeo new <name> --from harvester  →  edit  →  rodeo up --profile <name>
     List profiles:  rodeo profiles
     \b
-    Day-2:  rodeo status · stop · start · clean · ssh · logs
+    Day-2:  rodeo status · stop · start · start-if-needed · clean · ssh · logs
     """
     # Store for subcommands that don't get it from their own decorator
     ctx = click.get_current_context()
@@ -76,9 +77,10 @@ cli.add_command(init_cmd,         name="init")
 cli.add_command(plan_cmd,         name="plan")
 cli.add_command(deploy_cmd,       name="deploy")
 cli.add_command(clean_cmd,        name="clean")
-cli.add_command(stop_cmd,         name="stop")
-cli.add_command(start_cmd,        name="start")
-cli.add_command(status_cmd,       name="status")
+cli.add_command(stop_cmd,              name="stop")
+cli.add_command(start_cmd,             name="start")
+cli.add_command(start_if_needed_cmd,   name="start-if-needed")
+cli.add_command(status_cmd,            name="status")
 cli.add_command(watch_cmd,        name="watch")
 cli.add_command(restart_cmd,      name="restart")
 cli.add_command(ssh_cmd,          name="ssh")

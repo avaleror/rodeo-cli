@@ -15,11 +15,13 @@ KVM_PORT="{{ harvester_ui_port }}"
 VIP_PORT="{{ harvester_https_port }}"
 NFT_RULE="tcp dport ${KVM_PORT} dnat to ${VIRTUAL_IP}:${VIP_PORT}"
 
-# Improvement over reference: use virsh domstate per-VM rather than parsing
-# `virsh list --all`, which is fragile when a VM name is a substring of another.
+# Use pgrep instead of virsh domstate: this hook is called from the libvirt qemu
+# hook, which runs synchronously while libvirt holds an internal lock. Calling
+# virsh (or any libvirt client) from inside a hook re-enters libvirt and deadlocks.
+# pgrep checks the QEMU process cmdline directly — no libvirt involved.
 is_any_vm_running() {
     for vm in "${VM_NAMES[@]}"; do
-        if virsh domstate "$vm" 2>/dev/null | grep -q "^running"; then
+        if pgrep -f "guest=${vm}," > /dev/null 2>&1; then
             return 0
         fi
     done

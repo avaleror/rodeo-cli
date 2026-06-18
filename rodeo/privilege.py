@@ -90,15 +90,17 @@ def ensure_tmux_session(session_name: str, argv: list[str] | None = None) -> Non
     if result == 0:
         print(
             f"\n[tmux] Session '{session_name}' already exists.\n"
-            f"  Re-attach:  tmux attach -t {session_name}\n"
-            f"  New deploy: tmux kill-session -t {session_name} && rodeo up\n"
+            f"  Re-attach (as the user who started it, no sudo):\n"
+            f"    tmux attach -t {session_name}\n"
+            f"  Start fresh: tmux kill-session -t {session_name} && rodeo up\n"
         )
         os.execvp("tmux", ["tmux", "attach-session", "-t", session_name])  # noqa: S606
 
     print(
         f"\n[tmux] Starting session '{session_name}' — your deploy will survive disconnects.\n"
         f"  Detach any time:  Ctrl+b  d\n"
-        f"  Re-attach:        tmux attach -t {session_name}\n"
+        f"  Re-attach (as the user who started rodeo up, no sudo):\n"
+        f"    tmux attach -t {session_name}\n"
     )
     # new-session -A: attach if exists (race safety), run the full command
     os.execvp(  # noqa: S606

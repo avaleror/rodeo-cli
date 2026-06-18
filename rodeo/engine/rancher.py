@@ -62,6 +62,7 @@ class RancherPhase:
         self.rancher_hostname = f"rancher.{self.rancher_ip}.sslip.io"
 
         self.success      = False
+        self.setup_done   = False  # True after K3s+Helm+Rancher ping complete
         self.error        = ""
         self._api_token   = ""
         self._cluster_id  = ""
@@ -76,6 +77,18 @@ class RancherPhase:
 
     def stream(self) -> Iterator[DeployEvent]:
         """Yield events. Check self.success after exhaustion."""
+        yield from self.stream_setup()
+        if not self.setup_done:
+            return
+        yield from self.stream_import()
+
+    def stream_setup(self) -> Iterator[DeployEvent]:
+        """K3s + Helm + cert-manager + Rancher Prime + API config.
+
+        Can run concurrently with the Harvester node-ready wait in ClusterPhase
+        because it only touches the Rancher VM — no Harvester dependency.
+        Sets self.setup_done = True on success.
+        """
         yield LogLine(f"Waiting for rancher VM SSH at {self.rancher_ip}...")
         if not (yield from self._wait_ssh()):
             self.error = f"SSH not reachable after {self.SSH_TIMEOUT // 60} min"
@@ -124,6 +137,14 @@ class RancherPhase:
             return
         yield LogLine("  Rancher API configured.")
 
+        self.setup_done = True
+
+    def stream_import(self) -> Iterator[DeployEvent]:
+        """UI Extension + Harvester cluster import + password + CDROM eject.
+
+        Requires all Harvester nodes Ready and KUBECONFIG_PATH to exist.
+        Requires setup_done (self._api_token must be set by stream_setup).
+        """
         if self.standalone:
             yield LogLine(
                 f"\n  Rancher URL  : {self.rancher_api}  (NodePort)"

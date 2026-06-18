@@ -37,9 +37,12 @@
   # Skip on Rancher-only labs (no Harvester nodes) so they stay small/fast.
   when: vm_nodes | selectattr('flavor', 'equalto', 'harvester') | list | length > 0
 
-# --- Harvester node disks and OVMF vars ---
+# --- Harvester node disks and OVMF vars (fired in parallel) ---
+# qemu-img and OVMF copy are independent per node — fire all at once and
+# collect results after. The disk creation (preallocation=metadata on a
+# 270 GiB image) is the bottleneck; running 3 in parallel saves ~2x disk time.
 
-- name: Create Harvester node qcow2 disk images
+- name: Create Harvester node qcow2 disk images (async)
   ansible.builtin.command: >
     qemu-img create -f qcow2 -o preallocation=metadata
     {{ image_dir }}/{{ item.name }}-vda.qcow2
@@ -49,8 +52,11 @@
   loop: "{{ vm_nodes | selectattr('flavor', 'equalto', 'harvester') | list }}"
   loop_control:
     label: "{{ item.name }}"
+  async: 3600
+  poll: 0
+  register: disk_jobs
 
-- name: Copy OVMF variable store for each Harvester node
+- name: Copy OVMF variable store for each Harvester node (async)
   ansible.builtin.copy:
     src: "{{ ovmf_vars_template }}"
     dest: "{{ image_dir }}/{{ item.name }}-ovmf-vars.fd"
@@ -59,8 +65,13 @@
   loop: "{{ vm_nodes | selectattr('flavor', 'equalto', 'harvester') | list }}"
   loop_control:
     label: "{{ item.name }}"
+  async: 3600
+  poll: 0
+  register: ovmf_jobs
 
 # --- Harvester config seed ISOs ---
+# Staging dirs and template rendering are fast sequential ops. ISOs are fired
+# async immediately after templates are rendered so they overlap disk creation.
 
 - name: Create Harvester config staging directories
   ansible.builtin.file:
@@ -79,7 +90,7 @@
   loop_control:
     label: "{{ item.name }}"
 
-- name: Build Harvester config seed ISOs
+- name: Build Harvester config seed ISOs (async)
   ansible.builtin.command: >
     xorriso -as mkisofs
     -V HarvesterConfig -J -r
@@ -88,6 +99,46 @@
   loop: "{{ vm_nodes | selectattr('flavor', 'equalto', 'harvester') | list }}"
   loop_control:
     label: "{{ item.name }}"
+  async: 3600
+  poll: 0
+  register: iso_jobs
+
+# --- Collect async results ---
+# selectattr('ansible_job_id', 'defined') skips tasks that were short-circuited
+# by creates: (file already existed — no subprocess was launched).
+
+- name: Wait for disk images
+  ansible.builtin.async_status:
+    jid: "{{ item.ansible_job_id }}"
+  loop: "{{ disk_jobs.results | selectattr('ansible_job_id', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  register: disk_results
+  until: disk_results.finished
+  retries: 120
+  delay: 10
+
+- name: Wait for OVMF copies
+  ansible.builtin.async_status:
+    jid: "{{ item.ansible_job_id }}"
+  loop: "{{ ovmf_jobs.results | selectattr('ansible_job_id', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  register: ovmf_results
+  until: ovmf_results.finished
+  retries: 60
+  delay: 5
+
+- name: Wait for config ISOs
+  ansible.builtin.async_status:
+    jid: "{{ item.ansible_job_id }}"
+  loop: "{{ iso_jobs.results | selectattr('ansible_job_id', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  register: iso_results
+  until: iso_results.finished
+  retries: 60
+  delay: 5
 
 # --- Rancher VM disk and cloud-init (only when the topology has a Rancher node) ---
 # Rancher-less labs (e.g. the 2-node 'test' profile) skip this entirely.

@@ -420,7 +420,8 @@ class RancherPhase:
             "helm repo update harvester-ui-extension\n"
             f"helm upgrade --install harvester harvester-ui-extension/harvester"
             f" --namespace cattle-ui-plugin-system --create-namespace"
-            f' --version "{self.ui_ext_version}"\n'
+            f' --version "{self.ui_ext_version}"'
+            f" --wait --timeout 3m\n"
         )
         r = self._ssh_script(script, timeout=180)
         for line in (r.stdout + r.stderr).splitlines():

@@ -70,9 +70,25 @@ remove_nft_rule() {
     fi
 }
 
+ensure_libvirt_accept() {
+    # Belt-and-braces alongside /etc/libvirt/hooks/network: re-insert
+    # `ct status dnat accept` before the reject in libvirt's guest_input
+    # chain on every VM start, in case the hook ran before the chain was
+    # built or the libvirt network was restarted without triggering the hook.
+    local chain_out rh
+    chain_out=$(nft -a list chain ip libvirt_network guest_input 2>/dev/null) || return 0
+    echo "$chain_out" | grep -q "ct status dnat accept" && return 0
+    # Some libvirt versions include oif(name) in the guest_input reject rule;
+    # others emit a bare reject. Try specific match first, fall back to any reject.
+    rh=$(echo "$chain_out" | awk '/oif.*virbr0.*reject/{print $NF; exit}')
+    [ -z "$rh" ] && rh=$(echo "$chain_out" | awk '/\breject\b/{print $NF; exit}')
+    [ -n "$rh" ] && nft insert rule ip libvirt_network guest_input handle "$rh" ct status dnat accept
+}
+
 if is_any_vm_running; then
     create_nft_structure
     add_nft_rule
+    ensure_libvirt_accept
 else
     if nft_chain_exists; then
         remove_nft_rule

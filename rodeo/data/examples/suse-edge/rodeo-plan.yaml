@@ -46,6 +46,7 @@ versions:
   cert_manager: "v1.20.1"
   elemental_operator_crds: "1.9.0"
   elemental_operator: "1.9.0"
+  elemental_ui_extension: "3.0.1"
   eib: "1.3.3.1"
 
 storage:
@@ -71,3 +72,9 @@ credentials:
   rancher_admin_password: "??rancher_admin_password"
   # OS console password for the Rancher and EIB VMs.
   rancher_vm_password: "??rancher_vm_password"
+
+# Elemental: UI extension and MachineRegistration endpoints.
+# registrations: how many MachineRegistration CRs to create (one per student group, or 1 for all).
+# Names are auto-generated: <plan-name>-reg-1, <plan-name>-reg-2, ...
+elemental:
+  registrations: 1

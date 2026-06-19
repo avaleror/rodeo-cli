@@ -45,6 +45,7 @@ class SuseEdgeProfile(RodeoProfile):
                     "storage": inv.get("storage", _STORAGE),
                     "harvester_node_names": [],
                     "rancher_tls": _RANCHER_TLS,
+                    "elemental": _ELEMENTAL,
                 }
             except Exception:
                 pass
@@ -62,6 +63,7 @@ class SuseEdgeProfile(RodeoProfile):
             "storage": _STORAGE,
             "harvester_node_names": [],
             "rancher_tls": _RANCHER_TLS,
+            "elemental": _ELEMENTAL,
         }
 
     def run_phase(
@@ -97,12 +99,13 @@ class SuseEdgeProfile(RodeoProfile):
 # SUSE Edge 3.6 component versions.
 # Management cluster uses K3s (lab) — production SUSE Edge uses RKE2 v1.35.3+rke2r3.
 _VERSIONS = {
-    "rancher":                "2.14.1",
-    "k3s":                    "v1.35.3+k3s1",
-    "cert_manager":           "v1.20.1",
+    "rancher":                 "2.14.1",
+    "k3s":                     "v1.35.3+k3s1",
+    "cert_manager":            "v1.20.1",
     "elemental_operator_crds": "1.9.0",
-    "elemental_operator":     "1.9.0",
-    "eib":                    "1.3.3.1",
+    "elemental_operator":      "1.9.0",
+    "elemental_ui_extension":  "3.0.1",
+    "eib":                     "1.3.3.1",
 }
 
 _RESOURCES = {
@@ -126,4 +129,14 @@ _STORAGE = {
 _RANCHER_TLS = {
     "source": "letsEncrypt",
     "email": "admin@example.com",
+}
+
+_ELEMENTAL = {
+    # Number of MachineRegistration CRs to create in fleet-default.
+    # Names are auto-generated: {registration_prefix}-reg-1 .. -N.
+    "registrations": 1,
+    # Prefix for generated MachineRegistration names. Defaults to the plan name
+    # (set at init time in RancherPhase.__init__ from cfg["name"]).
+    # Override here to use a fixed name regardless of the plan name.
+    "registration_prefix": "",
 }

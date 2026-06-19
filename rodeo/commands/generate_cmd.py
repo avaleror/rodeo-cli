@@ -268,7 +268,8 @@ def _customize_plan(plan_path, answers):
         "harvester_token": "??env:HARVESTER_TOKEN",
     }
     if answers.get("include_rancher"):
-        data["credentials"]["lab_admin_password"] = "??env:LAB_ADMIN_PASSWORD"
+        data["credentials"]["rancher_admin_password"] = "??env:RANCHER_ADMIN_PASSWORD"
+    data["credentials"]["harvester_admin_password"] = "??env:HARVESTER_ADMIN_PASSWORD"
 
     with open(plan_path, "w") as f:
         yaml.safe_dump(data, f, sort_keys=False, default_flow_style=False)
@@ -340,7 +341,12 @@ def generate_cmd(output_dir: str, name: str | None, advanced: bool):
     token = secrets.token_urlsafe(24)
 
     env_file = out / "rodeo-secrets.env"
-    env_content = f'export HARVESTER_OS_PASSWORD="{pw}"\nexport LAB_ADMIN_PASSWORD="{pw}"\nexport HARVESTER_TOKEN="{token}"\n'
+    env_content = (
+        f'export HARVESTER_OS_PASSWORD="{pw}"\n'
+        f'export HARVESTER_ADMIN_PASSWORD="{pw}"\n'
+        f'export RANCHER_ADMIN_PASSWORD="{pw}"\n'
+        f'export HARVESTER_TOKEN="{token}"\n'
+    )
     env_file.write_text(env_content)
     console.print(f"[green]Created {env_file}[/green] (use with source + sudo -E)")
 
@@ -352,7 +358,8 @@ def generate_cmd(output_dir: str, name: str | None, advanced: bool):
         secrets_dest.write_text(
             "# ~/.rodeo/secrets.yaml — kept out of version control\n"
             f'harvester_os_password: "{pw}"\n'
-            f'lab_admin_password: "{pw}"\n'
+            f'harvester_admin_password: "{pw}"\n'
+            f'rancher_admin_password: "{pw}"\n'
             f'harvester_token: "{token}"\n'
         )
         secrets_dest.chmod(0o600)

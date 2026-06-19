@@ -36,14 +36,18 @@ def gen_token() -> str:
 
 
 def write_secrets_file(path: Path, password: str, token: str) -> None:
-    """Write ~/.rodeo/secrets.yaml (chmod 600) with the lab-wide password + token."""
+    """Write ~/.rodeo/secrets.yaml (chmod 600) with explicit per-service passwords + token."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         "# ~/.rodeo/secrets.yaml — kept out of version control\n"
-        "# One lab-wide password for OS consoles, the Harvester dashboard, and\n"
-        "# the Rancher admin. The token joins the Harvester nodes into one cluster.\n"
+        "#\n"
+        "# harvester_os_password    — OS console (rancher user SSH/TTY)\n"
+        "# harvester_admin_password — Harvester web UI admin account\n"
+        "# rancher_admin_password   — Rancher web UI admin account\n"
+        "# harvester_token          — cluster join token (shared by all nodes)\n"
         f'harvester_os_password: "{password}"\n'
-        f'lab_admin_password: "{password}"\n'
+        f'harvester_admin_password: "{password}"\n'
+        f'rancher_admin_password: "{password}"\n'
         f'harvester_token: "{token}"\n'
     )
     path.chmod(stat.S_IRUSR | stat.S_IWUSR)  # 0600

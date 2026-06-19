@@ -66,7 +66,8 @@ resources:
 
 credentials:                 # ??key resolves from ~/.rodeo/secrets.yaml
   harvester_os_password: "??harvester_os_password"
-  lab_admin_password: "??lab_admin_password"
+  harvester_admin_password: "??harvester_admin_password"
+  rancher_admin_password: "??rancher_admin_password"
   harvester_token: "??harvester_token"
 
 storage:

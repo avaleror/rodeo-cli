@@ -17,11 +17,11 @@ resources:
     disk_gb: 60
 
 # Credentials resolve from ~/.rodeo/secrets.yaml (rodeo init / up generate them).
-#   harvester_os_password -> the rancher VM root password
-#   lab_admin_password    -> the Rancher dashboard admin password
+#   harvester_os_password  -> the rancher VM root password (OS console)
+#   rancher_admin_password -> the Rancher dashboard admin password
 credentials:
   harvester_os_password: "??harvester_os_password"
-  lab_admin_password: "??lab_admin_password"
+  rancher_admin_password: "??rancher_admin_password"
 
 storage:
   image_dir: /var/lib/libvirt/images

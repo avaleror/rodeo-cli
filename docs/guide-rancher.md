@@ -72,7 +72,7 @@ rodeo status
 
 - **URL:** `https://<host-ip>:30002`
 - **Username:** `admin`
-- **Password:** the value of `lab_admin_password` in `~/.rodeo/secrets.yaml`
+- **Password:** the value of `rancher_admin_password` in `~/.rodeo/secrets.yaml`
 
 First login will prompt you to confirm the server URL. Use the host IP (the one shown in `rodeo status`), not `localhost`.
 

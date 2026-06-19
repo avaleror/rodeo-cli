@@ -57,6 +57,7 @@ credentials:
   # If a source returns nothing, deploy fails fast instead of using
   # an empty password.
   harvester_os_password: "??harvester_os_password"
-  lab_admin_password: "??lab_admin_password"
+  harvester_admin_password: "??harvester_admin_password"
+  rancher_admin_password: "??rancher_admin_password"
   # Cluster join token — random per environment (rodeo init generates it)
   harvester_token: "??harvester_token"

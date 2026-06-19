@@ -14,12 +14,21 @@ def test_bundle_collects_and_redacts(tmp_path):
     log_dir.mkdir()
     (log_dir / "harvester1_serial.log").write_text("boot line 1\nboot line 2\n")
 
-    # default plan name when no rodeo-plan.yaml exists
-    state.mark_phase_done("kvm_host", "suse-virt-rodeo")
+    plan_dir = tmp_path / "lab"
+    plan_dir.mkdir()
+    (plan_dir / "rodeo-plan.yaml").write_text(
+        "name: test-bundle-lab\n"
+        "type: suse-virt\n"
+        "credentials:\n"
+        "  rancher_admin_password: Foobar\n"  # gitleaks:allow
+    )
+
+    state.mark_phase_done("kvm_host", "test-bundle-lab")
 
     out = tmp_path / "bundle.tar.gz"
     result = CliRunner().invoke(
-        logs_cmd, ["--bundle", "--log-dir", str(log_dir), "-o", str(out)]
+        logs_cmd,
+        ["--bundle", "--config-dir", str(plan_dir), "--log-dir", str(log_dir), "-o", str(out)],
     )
     assert result.exit_code == 0, result.output
     assert out.exists()

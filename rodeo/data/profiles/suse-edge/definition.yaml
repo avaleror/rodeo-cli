@@ -1,0 +1,264 @@
+# definition.yaml — declarative definition for the SUSE Edge 3.6 rodeo.
+#
+# Topology: 1 Rancher Prime management cluster VM + 1 Edge Image Builder VM + 3 edge node VMs.
+#
+# Management cluster (rancher VM):
+#   K3s v1.35.3+k3s1 (lab simplification; production SUSE Edge uses RKE2 v1.35.3+rke2r3)
+#   Rancher Prime 2.14.1 + cert-manager v1.16.3
+#   Elemental Operator 1.9.0 (CRDs + operator Helm charts from registry.suse.com)
+#   Fleet (included in Rancher Prime)
+#
+# EIB VM (eib):
+#   openSUSE Leap Micro 6.2 (cloud-init base image)
+#   Edge Image Builder 1.3.3.1: registry.suse.com/edge/3.6/edge-image-builder:1.3.3.1
+#   Kiwi (bundled in EIB container)
+#   Podman (pre-installed on Leap Micro) + kubectl + helm
+#   Lab exercise: students build an Elemental OS image here, then boot edge nodes from it.
+#
+# Edge nodes (edge1, edge2, edge3):
+#   Boot from Elemental OS image built on the EIB VM (lab exercise, not automated).
+#   Virtual TPM 2.0 (swtpm emulator) for Elemental secure registration.
+#   UEFI boot (required for TPM 2.0 + Elemental).
+#   Students attach the EIB-built ISO as CDROM, boot, and watch registration via Rancher.
+#
+# All component versions from SUSE Edge 3.6 release.
+# Source: https://documentation.suse.com/en-us/suse-edge/3.6/
+
+apiVersion: 1.0
+definition:
+  name: suse-edge
+  description: "SUSE Edge 3.6 rodeo: Rancher Prime + Elemental + EIB + 3 edge nodes on nested KVM"
+
+  # Boot order: management cluster first, then EIB, then edge nodes (edge nodes start
+  # as part of lab exercises, not the automated deploy).
+  start_order:
+    - rancher
+    - eib
+
+  # Edge nodes are lab exercise targets — they are created by the vms phase but
+  # NOT automatically started by the deploy. Students start them after building
+  # the Elemental OS image on the EIB VM.
+  edge_node_names:
+    - edge1
+    - edge2
+    - edge3
+
+  # No Harvester cluster in this profile.
+  harvester_node_names: []
+  harvester_ready_count: 0
+
+  network:
+    name: default
+    bridge: virbr0
+    mode: nat
+    cidr: 192.168.122.0/24
+    gateway: 192.168.122.1
+    domain: aerogrid.com
+    dhcp_range:
+      start: 192.168.122.100
+      end: 192.168.122.254
+
+  node_templates:
+    rancher:
+      flavor: rancher
+      ssh_user: root
+      infra_type: rancher
+      interfaces:
+        - role: mgmt
+          model: virtio
+          ip_family: static
+
+    eib:
+      flavor: eib
+      ssh_user: root
+      infra_type: eib
+      interfaces:
+        - role: mgmt
+          model: virtio
+          ip_family: static
+
+    edge-node:
+      flavor: edge-node
+      ssh_user: root
+      infra_type: edge-node
+      # Edge nodes use virtual TPM 2.0 (swtpm) — required for Elemental secure registration.
+      # The host needs the swtpm package (added to kvm_host_packages).
+      tpm:
+        enabled: true
+        model: tpm-crb
+        version: "2.0"
+        backend: emulator
+      interfaces:
+        - role: mgmt
+          model: virtio
+          ip_family: dhcp   # edge nodes get IPs via DHCP after Elemental OS install
+
+  # DNAT: only Rancher Prime NodePort exposed externally. Edge nodes and EIB are
+  # accessed from the host console / Instruqt terminal tab.
+  exposed_services:
+    - name: rancher
+      description: "Rancher Prime NodePort (Elemental + Fleet + cluster management)"
+      host_port: 30002
+      guest_port: 30002
+      target: rancher
+      proto: tcp
+      managed_by: firewalld
+
+  storage:
+    device: ""
+    mount_point: /var/lib/libvirt/images
+    fs_type: xfs
+    libvirt_pool_name: default
+    libvirt_pool_path: /var/lib/libvirt/images
+    image_dir: /var/lib/libvirt/images
+
+  components:
+    - name: rancher
+      description: "Rancher Prime 2.14.1 on K3s — management cluster with Elemental Operator + Fleet"
+      nodes: ["rancher"]
+      exposed:
+        - rancher
+    - name: eib
+      description: "Edge Image Builder 1.3.3.1 on Leap Micro 6.2 — builds Elemental OS images for edge nodes"
+      nodes: ["eib"]
+    - name: edge-nodes
+      description: "3 Elemental-managed edge nodes (SL Micro 6.2) — onboarded via TPM registration"
+      nodes: edge_node_names
+      note: "Nodes are created by the vms phase but started as a lab exercise, not automated deploy."
+    - name: host-network-prep
+      description: "libvirt network, firewalld DNAT, sysctls, swtpm for nested KVM lab"
+      on_host: true
+
+  # Component versions — all from SUSE Edge 3.6.
+  versions:
+    rancher: "2.14.1"
+    # K3s is used here for the management cluster (lab simplification).
+    # Production SUSE Edge 3.6 uses RKE2 v1.35.3+rke2r3 for the management cluster.
+    k3s: "v1.35.3+k3s1"
+    cert_manager: "v1.16.3"
+    elemental_operator_crds: "1.9.0"
+    elemental_operator: "1.9.0"
+    eib: "1.3.3.1"
+    sl_micro: "6.2"
+
+  # Helm chart registry sources (registry.suse.com OCI charts for SUSE Edge 3.6).
+  helm_charts:
+    elemental_operator_crds:
+      chart: "oci://registry.suse.com/rancher/elemental-operator-crds-chart"
+      version: "1.9.0"
+      namespace: cattle-elemental-system
+    elemental_operator:
+      chart: "oci://registry.suse.com/rancher/elemental-operator-chart"
+      version: "1.9.0"
+      namespace: cattle-elemental-system
+
+  # EIB container image.
+  eib:
+    container_image: "registry.suse.com/edge/3.6/edge-image-builder:1.3.3.1"
+    # Base OS image for edge nodes (downloaded to the EIB VM and used as input for EIB).
+    # Students use EIB to embed Elemental registration into this base image.
+    base_image: "SL-Micro.x86_64-6.2-Default-qcow-GM.qcow2"
+    base_image_url: "https://www.suse.com/download/sle-micro/"  # requires SUSE credentials
+    # Alternatively, use the openSUSE Leap Micro 6.2 base (no credentials needed):
+    # base_image: "openSUSE-Leap-Micro.x86_64-6.2-Default-qcow.qcow2"
+
+  # Rancher VM config (cloud-init drives K3s + Rancher Prime + Elemental install).
+  rancher:
+    cloud_init:
+      packages: []
+      runcmd: []
+
+  # EIB VM config (Leap Micro 6.2 cloud-init).
+  eib_vm:
+    cloud_init:
+      # Podman is pre-installed on Leap Micro. These runcmd steps pull the EIB
+      # container and confirm kubectl/helm are reachable from the host.
+      runcmd:
+        - "podman pull registry.suse.com/edge/3.6/edge-image-builder:1.3.3.1"
+
+  host_prep:
+    sysctls:
+      - net.bridge.bridge-nf-call-iptables=0
+      - net.bridge.bridge-nf-call-ip6tables=0
+    selinux_mode: permissive
+    libvirt:
+      ovmf_code: /usr/share/qemu/ovmf-x86_64-4m-code.bin
+      ovmf_vars_template: /usr/share/qemu/ovmf-x86_64-4m-vars.bin
+      use_modular_daemons: true
+    network:
+      unmanaged_interfaces:
+        - virbr0
+      rp_filter_loose: false
+    # swtpm is required for the virtual TPM on edge nodes.
+    extra_packages:
+      - swtpm
+
+  # Per-VM definitions.
+  # MACs use 0E prefix (Edge) to distinguish from suse-virt (0D prefix).
+  nodes:
+    - name: rancher
+      template: rancher
+      index: 0
+      hostname: rancher
+      uuid: "a1000001-e00e-4000-8000-000000000009"
+      ip: "192.168.122.9"
+      config_iso_name: ""
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          mac: "02:00:00:0E:62:E9"
+      mgmt_mac: "02:00:00:0E:62:E9"
+
+    - name: eib
+      template: eib
+      index: 1
+      hostname: eib
+      uuid: "a1000002-e00e-4000-8000-000000000020"
+      ip: "192.168.122.20"
+      config_iso_name: "eib-cloud-init"
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          mac: "02:00:00:0E:62:EB"
+      mgmt_mac: "02:00:00:0E:62:EB"
+
+    - name: edge1
+      template: edge-node
+      index: 1
+      hostname: edge1
+      uuid: "a1000003-e00e-4000-8000-000000000031"
+      # Edge nodes get IPs via DHCP after Elemental OS install. Static DHCP leases
+      # are set here so IPs are predictable once the nodes register.
+      ip: "192.168.122.31"
+      config_iso_name: ""
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          mac: "02:00:00:0E:62:A1"
+      mgmt_mac: "02:00:00:0E:62:A1"
+
+    - name: edge2
+      template: edge-node
+      index: 2
+      hostname: edge2
+      uuid: "a1000004-e00e-4000-8000-000000000032"
+      ip: "192.168.122.32"
+      config_iso_name: ""
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          mac: "02:00:00:0E:62:A2"
+      mgmt_mac: "02:00:00:0E:62:A2"
+
+    - name: edge3
+      template: edge-node
+      index: 3
+      hostname: edge3
+      uuid: "a1000005-e00e-4000-8000-000000000033"
+      ip: "192.168.122.33"
+      config_iso_name: ""
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          mac: "02:00:00:0E:62:A3"
+      mgmt_mac: "02:00:00:0E:62:A3"

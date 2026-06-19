@@ -317,11 +317,15 @@ class RancherPhase:
                 return False
 
     def _install_k3s(self) -> Generator[DeployEvent, None, bool]:
+        # letsEncrypt uses Traefik ingress for HTTP01 ACME + TLS termination.
+        # All other TLS sources (secret, self-signed) expose Rancher via NodePort
+        # and don't need Traefik — disable it to keep the footprint small.
+        disable_traefik = "" if self.tls_source == "letsEncrypt" else " --disable traefik"
         script = (
             "set -euo pipefail\n"
             f'export INSTALL_K3S_VERSION="{self.k3s_version}"\n'
             "curl -sfL https://get.k3s.io"
-            " | sh -s - --write-kubeconfig-mode 644 --disable traefik --node-name rancher\n"
+            f" | sh -s - --write-kubeconfig-mode 644{disable_traefik} --node-name rancher\n"
         )
         yield LogLine("  Running K3s installer (1-3 min)...")
         r = self._ssh_script(script, timeout=300)

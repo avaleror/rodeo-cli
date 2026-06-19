@@ -64,7 +64,7 @@ class RancherPhase:
         el_cfg = cfg.get("elemental", {})
         _plan_name = cfg.get("name", "suse-edge").lower().replace("_", "-")
         self.elemental_reg_count    = int(el_cfg.get("registrations", 1))
-        self.elemental_reg_prefix   = el_cfg.get("registration_prefix", _plan_name)
+        self.elemental_reg_prefix   = el_cfg.get("registration_prefix") or _plan_name
 
         # TLS mode: 'rancher' = Rancher self-signed cert + NodePort (default)
         #           'letsEncrypt' = Let's Encrypt cert via Traefik ingress + sslip.io hostname

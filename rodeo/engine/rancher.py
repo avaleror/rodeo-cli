@@ -61,6 +61,8 @@ class RancherPhase:
         self.elemental_op_version    = ver.get("elemental_operator", "1.9.0")
         self.elemental_ui_version    = ver.get("elemental_ui_extension", "3.0.1")
 
+        self.profile_type = cfg.get("type", "")
+
         el_cfg = cfg.get("elemental", {})
         _plan_name = cfg.get("name", "suse-edge").lower().replace("_", "-")
         self.elemental_reg_count    = int(el_cfg.get("registrations", 1))
@@ -981,10 +983,60 @@ class RancherPhase:
             return False
         yield LogLine("  Elemental Operator installed.")
 
-        if not (yield from self._install_elemental_ui()):
+        # UI extension, repos, and MachineRegistrations are suse-edge-specific.
+        # Other profiles (e.g. future rancher-only) may use the Operator without the UI.
+        if self.profile_type == "suse-edge":
+            if not (yield from self._add_extension_repos()):
+                return False
+            if not (yield from self._install_elemental_ui()):
+                return False
+            if not (yield from self._create_machine_registrations()):
+                return False
+        return True
+
+    def _add_extension_repos(self) -> Generator[DeployEvent, None, bool]:
+        """Create the Rancher and partner extension ClusterRepo resources and dismiss the setup banner.
+
+        Mirrors what the Rancher UI does when you click "Add Rancher and SUSE Repositories"
+        in the Extensions page. Creates two cluster-scoped ClusterRepo CRs:
+          - rancher-ui-plugins  (rancher/ui-plugin-charts, Rancher Prime official)
+          - partner-extensions  (rancher/partner-extensions, SUSE + partners)
+        """
+        script = (
+            "set -euo pipefail\n"
+            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+            "cat <<'__EXT_REPOS__' | kubectl apply -f -\n"
+            "---\n"
+            "apiVersion: catalog.cattle.io/v1\n"
+            "kind: ClusterRepo\n"
+            "metadata:\n"
+            "  name: rancher-ui-plugins\n"
+            "spec:\n"
+            "  gitBranch: main\n"
+            "  gitRepo: https://github.com/rancher/ui-plugin-charts\n"
+            "---\n"
+            "apiVersion: catalog.cattle.io/v1\n"
+            "kind: ClusterRepo\n"
+            "metadata:\n"
+            "  name: partner-extensions\n"
+            "spec:\n"
+            "  gitBranch: main\n"
+            "  gitRepo: https://github.com/rancher/partner-extensions\n"
+            "__EXT_REPOS__\n"
+            # Dismiss the 'Add Rancher and SUSE Repositories' banner.
+            "kubectl patch setting display-add-extension-repos-banner"
+            " --type=merge -p '{\"value\": \"true\"}' 2>/dev/null || true\n"
+        )
+        yield LogLine("Adding Rancher and SUSE extension repositories...")
+        r = self._ssh_script(script, timeout=30)
+        for line in (r.stdout + r.stderr).splitlines():
+            if line.strip():
+                yield LogLine(f"  {line}")
+        if r.returncode != 0:
+            self.error = "Extension repository creation failed"
+            yield LogLine(f"  ✗ {self.error}")
             return False
-        if not (yield from self._create_machine_registrations()):
-            return False
+        yield LogLine("  Extension repositories added.")
         return True
 
     def _install_elemental_ui(self) -> Generator[DeployEvent, None, bool]:

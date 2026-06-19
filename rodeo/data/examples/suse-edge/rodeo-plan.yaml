@@ -64,7 +64,7 @@ ansible:
 # Replace the email with a real address for ACME registration.
 rancher_tls:
   source: letsEncrypt
-  email: "your-email@example.com"
+  email: "??rancher_letsencrypt_email"
 
 credentials:
   # ??placeholders resolved from ~/.rodeo/secrets.yaml at load time.

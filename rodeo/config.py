@@ -336,6 +336,16 @@ def validate_config(cfg: dict) -> None:
             f"Invalid deployment_target '{target}' — use 'instruqt' or 'baremetal'."
         )
 
+    # Let's Encrypt email must be a real address — example.com is rejected by the ACME server.
+    tls = cfg.get("rancher_tls", {})
+    if tls.get("source") == "letsEncrypt":
+        email = tls.get("email", "")
+        if not email or "example.com" in email or email.endswith("@example.com"):
+            raise ConfigError(
+                "rancher_tls.email must be a real address for Let's Encrypt registration.\n"
+                "Set it in rodeo-plan.yaml under rancher_tls.email (or use ??key to load from secrets)."
+            )
+
     # Resource sanity — catch -P typos before they fail deep inside libvirt.
     for flavor, spec in cfg.get("resources", {}).items():
         if not isinstance(spec, dict):

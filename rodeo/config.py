@@ -46,9 +46,7 @@ _BASE_DEFAULTS: dict[str, Any] = {
         "path": None,
         "inventory": "deployer/inventory.local",
     },
-    "credentials": {
-        "harvester_os_password": None,
-    },
+    "credentials": {},
 }
 
 _SECRETS_PATH = Path.home() / ".rodeo" / "secrets.yaml"
@@ -329,7 +327,7 @@ def validate_config(cfg: dict) -> None:
     if empty:
         raise ConfigError(
             f"Credentials are empty: {', '.join(empty)}\n"
-            "An empty password would be baked into the Harvester install config.\n"
+            "An empty password would be baked into the VM install config.\n"
             "Set values in rodeo-plan.yaml (??key) and ~/.rodeo/secrets.yaml, or run: rodeo init"
         )
     target = cfg.get("deployment_target", "baremetal")

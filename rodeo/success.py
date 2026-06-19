@@ -38,6 +38,26 @@ def _host_ip() -> str:
     return "<host-ip>"
 
 
+def _read_passwords() -> tuple[str, str]:
+    """Return (harvester_admin_password, rancher_admin_password) from secrets file."""
+    harvester_pw = rancher_pw = ""
+    try:
+        from pathlib import Path
+        for line in (Path.home() / ".rodeo" / "secrets.yaml").read_text().splitlines():
+            if line.startswith("harvester_admin_password:"):
+                harvester_pw = line.split(":", 1)[1].strip().strip("\"'")
+            elif line.startswith("rancher_admin_password:"):
+                rancher_pw = line.split(":", 1)[1].strip().strip("\"'")
+            elif not harvester_pw and line.startswith("lab_admin_password:"):
+                # backward compat with old secrets files
+                val = line.split(":", 1)[1].strip().strip("\"'")
+                harvester_pw = harvester_pw or val
+                rancher_pw = rancher_pw or val
+    except Exception:
+        pass
+    return harvester_pw or "(see ~/.rodeo/secrets.yaml)", rancher_pw or "(see ~/.rodeo/secrets.yaml)"
+
+
 def render_success(cfg: dict) -> None:
     """Print the success panel with access URLs, credentials, and next steps.
 
@@ -85,10 +105,15 @@ def render_success(cfg: dict) -> None:
             lines.append(f"  Rancher Prime  https://{rancher_ip}:{rancher_nodeport}")
             lines.append(f"  [dim](external: https://{host}:{rancher_nodeport})[/dim]")
 
+    harvester_pw, rancher_pw = _read_passwords()
     lines.append("")
     lines.append("[bold]Log in[/bold]")
-    lines.append("  user      admin")
-    lines.append("  password  see ~/.rodeo/secrets.yaml  (rancher_admin_password / harvester_admin_password)")
+    lines.append("  user                admin")
+    if has_harvester:
+        lines.append(f"  Harvester password  {harvester_pw}")
+    if has_rancher:
+        lines.append(f"  Rancher password    {rancher_pw}")
+    lines.append("  [dim](also in ~/.rodeo/secrets.yaml and $HARVESTER_ADMIN_PASSWORD / $RANCHER_ADMIN_PASSWORD)[/dim]")
 
     lines.append("")
     lines.append("[bold]First things to try[/bold]")

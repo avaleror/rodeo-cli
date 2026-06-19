@@ -383,10 +383,8 @@ class DeployRunner:
             yield from phase._set_harvester_password()
             yield LogLine("Ejecting installer ISOs from Harvester VMs...")
             yield from phase._eject_cdroms()
-            yield LogLine(
-                f"\n  Rancher URL  : {phase.rancher_api}  (NodePort)"
-                "\n  Harvester import is a lab exercise — see the challenge instructions."
-            )
+            phase._write_env_file()
+            yield LogLine(phase._completion_summary())
             phase.success = True
         else:
             phase = RancherPhase(self.cfg, stop=self.stop)

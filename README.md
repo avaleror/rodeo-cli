@@ -1,6 +1,6 @@
 # rodeo-cli
 
-A CLI for deploying hands-on lab infrastructure. Point it at a Linux host with KVM, pick a profile, and it builds a working lab of nested VMs — Harvester HCI clusters, Rancher Prime, or both — without you writing a line of Ansible or touching libvirt directly.
+A CLI for deploying hands-on lab infrastructure. Point it at a Linux host with KVM, pick a profile, and it builds a working lab of nested VMs — Harvester HCI clusters, Rancher Prime, SUSE Edge labs, or your own custom topology — without writing a line of Ansible or touching libvirt directly.
 
 **Version:** 0.9.1 · **Python:** 3.10+ · **License:** Apache-2.0
 
@@ -8,18 +8,19 @@ A CLI for deploying hands-on lab infrastructure. Point it at a Linux host with K
 
 ## How it works
 
-A **profile** describes a lab: how many VMs, what they run, how much RAM, what ports to expose on the host. Two YAML files define each profile:
+Every lab is defined by two dimensions:
 
-- `rodeo-plan.yaml` — resources, credentials, deployment target (bare metal or Instruqt)
-- `definition.yaml` — topology: nodes, network, exposed services, start order
+**Tech platform** — what to deploy. Defined by `type:` in the plan plus a `definition.yaml` describing the topology (VMs, network, exposed ports, boot order). Bundled platforms: `suse-virt` (Harvester HCI + Rancher), `rancher` (Rancher Prime on K3s), `suse-edge` (SUSE Edge with Elemental + EIB).
 
-The CLI reads those files and drives a **phase pipeline** through Ansible roles on the target host:
+**Host context** — where the KVM host runs. Set by `deployment_target:` in the plan (`baremetal` or `instruqt`; `aws` and `gcp` planned). Controls which phases are guarded, how DNAT and firewall rules are written, and how the success screen finds the host IP. The underlying infrastructure is always KVM/libvirt regardless of host context.
+
+The CLI reads those two files and drives a **phase pipeline** through Ansible roles on the target host:
 
 ```
 kvm_host → vms → [pxe_server → cluster] → [rancher] → finalise
 ```
 
-`kvm_host` prepares the hypervisor (packages, libvirt, firewall, storage). `vms` creates disk images and VM definitions. Harvester labs add `pxe_server` (nginx + TFTP + per-node iPXE scripts) and `cluster` (starts VMs, waits for Harvester to install via network boot). `rancher` installs Rancher Prime on K3s, exposes it on a NodePort, and configures the admin API — Harvester cluster import is left as a lab exercise. `finalise` enables VM autostart.
+`kvm_host` prepares the hypervisor (packages, libvirt, firewall, storage). `vms` creates disk images and VM definitions. Harvester labs add `pxe_server` (nginx + TFTP + per-node iPXE scripts) and `cluster` (starts VMs, waits for Harvester to install via network boot). `rancher` installs Rancher Prime on K3s and configures the admin API. `finalise` enables VM autostart (skipped on Instruqt until after the image snapshot).
 
 Credentials live in `~/.rodeo/secrets.yaml` (chmod 600, never committed). The plan references them with `??key` placeholders; `rodeo up` generates that file for you.
 
@@ -57,12 +58,15 @@ rodeo up --profile harvester      # full lab: 3-node Harvester + Rancher, ~60 Gi
 
 ## Profiles
 
-| Profile | What it deploys | RAM needed |
-|---------|----------------|-----------|
-| `rancher` | 1 VM: Rancher Prime on K3s | ~10 GiB |
-| `test` | 2-node Harvester cluster, no Rancher | ~36 GiB |
-| `harvester-ha` | 3-node Harvester, no Rancher (3-member etcd HA) | ~52 GiB |
-| `harvester` | 3-node Harvester HCI + Rancher Prime | ~60 GiB |
+| Profile | Type (engine) | What it deploys | RAM needed |
+|---------|--------------|----------------|-----------|
+| `rancher` | `rancher` | 1 VM: Rancher Prime on K3s | ~10 GiB |
+| `test` | `suse-virt` | 2-node Harvester cluster, no Rancher | ~36 GiB |
+| `harvester-ha` | `suse-virt` | 3-node Harvester, no Rancher (3-member etcd HA) | ~52 GiB |
+| `harvester` | `suse-virt` | 3-node Harvester HCI + Rancher Prime | ~60 GiB |
+| `suse-edge` | `suse-edge` | Rancher Prime + EIB + 3 edge nodes w/ vTPM | ~40 GiB |
+
+The **profile name** is what you pass to `--profile`. The **type** is the internal deploy pipeline it uses — it controls which phases run. Each bundled platform has a `definition.yaml` in `rodeo/data/platforms/<type>/`.
 
 `rodeo doctor` recommends the largest profile that fits available RAM. `rodeo profiles` lists all profiles including any you create yourself.
 

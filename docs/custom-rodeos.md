@@ -18,9 +18,15 @@ rodeo up --profile mylab              # deploy your edited lab
 | **engine `type`** | the deploy *pipeline* (which phases run) | `type:` in the plan; code in `rodeo/profiles/` |
 | **profile** (`--profile`) | a named, runnable *lab* you pick on the CLI | a config-dir (bundled or under `~/.rodeo/profiles/`) |
 
-There are two engine types today: `suse-virt` (Harvester HCI + Rancher) and `rancher`
-(Rancher Prime on K3s, no Harvester). Your custom labs pick one of these as their `type`
-and customize the rest. You are authoring topology, not a new pipeline.
+Engine types available today:
+
+| Type | What the pipeline deploys |
+|------|--------------------------|
+| `suse-virt` | Harvester HCI cluster + optional Rancher Prime |
+| `rancher` | Rancher Prime on K3s, no Harvester |
+| `suse-edge` | Rancher Prime + Edge Image Builder VM + edge nodes with vTPM |
+
+Your custom labs pick one of these as their `type` and customize the rest. You are authoring topology, not a new pipeline.
 
 List everything you can deploy:
 
@@ -81,8 +87,9 @@ The declarative model. You describe the *logical* lab; the renderer compiles it 
 concrete MACs, DHCP leases, libvirt network, firewall rules, and PXE data. The bundled
 files are heavily commented — read them as the reference:
 
-- Harvester: `rodeo/data/profiles/suse-virt/definition.yaml`
-- Rancher: `rodeo/data/profiles/rancher/definition.yaml`
+- Harvester/SUSE Virt: `rodeo/data/platforms/suse-virt/definition.yaml`
+- Rancher: `rodeo/data/platforms/rancher/definition.yaml`
+- SUSE Edge: `rodeo/data/platforms/suse-edge/definition.yaml`
 
 Key sections:
 

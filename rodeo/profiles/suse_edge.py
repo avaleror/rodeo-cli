@@ -43,6 +43,8 @@ class SuseEdgeProfile(RodeoProfile):
                     "resources": _RESOURCES,
                     "versions": _VERSIONS,
                     "storage": inv.get("storage", _STORAGE),
+                    "harvester_node_names": [],
+                    "rancher_tls": _RANCHER_TLS,
                 }
             except Exception:
                 pass
@@ -58,6 +60,8 @@ class SuseEdgeProfile(RodeoProfile):
             "resources": _RESOURCES,
             "versions": _VERSIONS,
             "storage": _STORAGE,
+            "harvester_node_names": [],
+            "rancher_tls": _RANCHER_TLS,
         }
 
     def run_phase(
@@ -108,4 +112,12 @@ _STORAGE = {
     "device": "",
     "mount_point": "/var/lib/libvirt/images",
     "image_dir": "/var/lib/libvirt/images",
+}
+
+# Let's Encrypt via sslip.io — Rancher is accessed at rancher.<ext-ip>.sslip.io:443
+# via Traefik ingress (no NodePort). Email is used for ACME registration.
+# Override email in rodeo-plan.yaml under rancher_tls.email.
+_RANCHER_TLS = {
+    "source": "letsEncrypt",
+    "email": "admin@example.com",
 }

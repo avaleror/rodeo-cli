@@ -93,13 +93,22 @@ definition:
           model: virtio
           ip_family: dhcp   # edge nodes get IPs via DHCP after Elemental OS install
 
-  # DNAT: only Rancher Prime NodePort exposed externally. Edge nodes and EIB are
-  # accessed from the host console / Instruqt terminal tab.
+  # Rancher is exposed via Traefik ingress (not NodePort) — sslip.io + Let's Encrypt.
+  # Port 80: Let's Encrypt HTTP01 ACME challenge (cert-manager + Traefik).
+  # Port 443: Rancher UI and API (Traefik terminates TLS with the LE cert).
+  # Edge nodes and EIB are accessed from the host console / Instruqt terminal tab.
   exposed_services:
-    - name: rancher
-      description: "Rancher Prime NodePort (Elemental + Fleet + cluster management)"
-      host_port: 30002
-      guest_port: 30002
+    - name: rancher-http
+      description: "Traefik HTTP — Let's Encrypt HTTP01 ACME challenge"
+      host_port: 80
+      guest_port: 80
+      target: rancher
+      proto: tcp
+      managed_by: firewalld
+    - name: rancher-https
+      description: "Traefik HTTPS — Rancher Prime UI + API + Elemental registration"
+      host_port: 443
+      guest_port: 443
       target: rancher
       proto: tcp
       managed_by: firewalld

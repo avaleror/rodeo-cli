@@ -157,3 +157,48 @@
   when: network_mode == 'nat'
   changed_when: false
   failed_when: false
+
+# --- Rancher ingress mode (suse-edge + sslip.io + Let's Encrypt) ---
+# When rancher_ingress_enabled is true, Rancher is exposed via Traefik ingress on
+# ports 80 and 443 instead of the NodePort. Port 80 is required for the Let's
+# Encrypt HTTP01 ACME challenge; port 443 is the actual HTTPS endpoint.
+- name: Open HTTP + HTTPS on the public zone for Rancher ingress
+  ansible.posix.firewalld:
+    zone: public
+    port: "{{ item }}/tcp"
+    permanent: true
+    immediate: false
+    state: enabled
+  loop:
+    - "80"
+    - "443"
+  when: network_mode == 'nat' and rancher_ingress_enabled | default(false)
+  notify: reload firewalld
+
+- name: DNAT port 80 to Rancher VM for Let's Encrypt HTTP01 challenge
+  ansible.posix.firewalld:
+    zone: public
+    port_forward:
+      - port: "80"
+        proto: tcp
+        toport: "80"
+        toaddr: "{{ rancher_ip }}"
+    permanent: true
+    immediate: false
+    state: enabled
+  when: network_mode == 'nat' and rancher_ingress_enabled | default(false)
+  notify: reload firewalld
+
+- name: DNAT port 443 to Rancher VM Traefik ingress
+  ansible.posix.firewalld:
+    zone: public
+    port_forward:
+      - port: "443"
+        proto: tcp
+        toport: "443"
+        toaddr: "{{ rancher_ip }}"
+    permanent: true
+    immediate: false
+    state: enabled
+  when: network_mode == 'nat' and rancher_ingress_enabled | default(false)
+  notify: reload firewalld

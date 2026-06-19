@@ -493,6 +493,8 @@ class DeployRunner:
             "libvirt_storage_device": storage.get("device", ""),
             "libvirt_storage_fs_type": storage.get("fs_type", "xfs"),
             "libvirt_storage_mount_point": storage.get("mount_point", storage.get("image_dir", "/var/lib/libvirt/images")),
+            # True for profiles using Traefik ingress + Let's Encrypt (suse-edge).
+            "rancher_ingress_enabled": self.cfg.get("rancher_tls", {}).get("source") == "letsEncrypt",
         }
         # Only override the role-default join token when the plan provides one.
         if creds.get("harvester_token"):

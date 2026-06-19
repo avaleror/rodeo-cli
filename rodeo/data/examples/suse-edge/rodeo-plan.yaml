@@ -18,7 +18,7 @@
 name: suse-edge-rodeo
 type: suse-edge
 
-deployment_target: instruqt   # instruqt | baremetal
+deployment_target: baremetal   # baremetal | instruqt
 
 network:
   mode: nat

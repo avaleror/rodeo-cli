@@ -56,7 +56,12 @@ class RancherPhase:
         if not key:
             key = "/root/.ssh/id_ed25519" if os.geteuid() == 0 else str(Path.home() / ".ssh" / "id_ed25519")
         self.ssh_key = Path(key)
-        self.admin_password = cred.get("lab_admin_password", cred.get("harvester_os_password", ""))
+        # Prefer the explicit per-service keys; fall back to lab_admin_password for
+        # older secrets files that predate the split.
+        _fallback = cred.get("lab_admin_password", cred.get("harvester_os_password", ""))
+        self.rancher_password   = cred.get("rancher_admin_password", _fallback)
+        self.harvester_password = cred.get("harvester_admin_password", _fallback)
+        self.admin_password     = self.rancher_password  # alias used by _configure_api
 
         self.rancher_api      = f"https://{self.rancher_ip}:{self.nodeport}"
         self.rancher_hostname = f"rancher.{self.rancher_ip}.sslip.io"
@@ -80,6 +85,8 @@ class RancherPhase:
         yield from self.stream_setup()
         if not self.setup_done:
             return
+        yield LogLine("Setting Harvester dashboard admin password...")
+        yield from self._set_harvester_password()
         yield LogLine("Ejecting installer ISOs from Harvester VMs...")
         yield from self._eject_cdroms()
         yield LogLine(
@@ -797,7 +804,7 @@ class RancherPhase:
                     f"https://{self.vip}/v3/users?action=changepassword",
                     data=json.dumps({
                         "currentPassword": "admin",
-                        "newPassword": self.admin_password,
+                        "newPassword": self.harvester_password,
                     }).encode(),
                     headers={
                         "Content-Type": "application/json",
@@ -817,7 +824,7 @@ class RancherPhase:
                 f"https://{self.vip}/v3-public/localProviders/local?action=login",
                 data=json.dumps({
                     "username": "admin",
-                    "password": self.admin_password,
+                    "password": self.harvester_password,
                 }).encode(),
                 headers={"Content-Type": "application/json"},
                 method="POST",

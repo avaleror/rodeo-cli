@@ -53,10 +53,12 @@ class RancherPhase:
         self.harvester_nodes  = real_harvester or ["harvester1", "harvester2", "harvester3"]
         self.libvirt_uri      = cfg.get("libvirt", {}).get("uri", "qemu:///system")
 
-        self.rancher_version  = ver.get("rancher", "2.13.1")
-        self.k3s_version      = ver.get("k3s", "v1.31.4+k3s1")
-        self.cert_mgr_version = ver.get("cert_manager", "v1.16.2")
-        self.ui_ext_version   = ver.get("harvester_ui_extension", "1.7.1")
+        self.rancher_version         = ver.get("rancher", "2.13.1")
+        self.k3s_version             = ver.get("k3s", "v1.31.4+k3s1")
+        self.cert_mgr_version        = ver.get("cert_manager", "v1.16.2")
+        self.ui_ext_version          = ver.get("harvester_ui_extension", "1.7.1")
+        self.elemental_crds_version  = ver.get("elemental_operator_crds", "1.9.0")
+        self.elemental_op_version    = ver.get("elemental_operator", "1.9.0")
 
         # TLS mode: 'rancher' = Rancher self-signed cert + NodePort (default)
         #           'letsEncrypt' = Let's Encrypt cert via Traefik ingress + sslip.io hostname
@@ -937,6 +939,38 @@ class RancherPhase:
                     if not any(x in stderr for x in ("no media", "not a cdrom", "no such file")):
                         yield LogLine(f"  ⚠ eject {node}:{dev} — {r.stderr.strip()}")
             yield LogLine(f"  {node}: CDROMs ejected")
+
+    def _install_elemental(self) -> Generator[DeployEvent, None, bool]:
+        """Install Elemental Operator CRDs and Operator via Helm (OCI charts from registry.suse.com)."""
+        namespace = "cattle-elemental-system"
+        script = (
+            "set -euo pipefail\n"
+            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+            f"helm upgrade --install elemental-operator-crds"
+            f" oci://registry.suse.com/rancher/elemental-operator-crds-chart"
+            f" --version {self.elemental_crds_version}"
+            f" --namespace {namespace} --create-namespace"
+            f" --wait --timeout 3m\n"
+            f"helm upgrade --install elemental-operator"
+            f" oci://registry.suse.com/rancher/elemental-operator-chart"
+            f" --version {self.elemental_op_version}"
+            f" --namespace {namespace}"
+            f" --wait --timeout 5m\n"
+        )
+        yield LogLine(
+            f"Installing Elemental Operator {self.elemental_op_version} "
+            "(CRDs + Operator, up to 8 min)..."
+        )
+        r = self._ssh_script(script, timeout=540)
+        for line in (r.stdout + r.stderr).splitlines():
+            if line.strip():
+                yield LogLine(f"  {line}")
+        if r.returncode != 0:
+            self.error = "Elemental Operator install failed"
+            yield LogLine(f"  ✗ {self.error}")
+            return False
+        yield LogLine("  Elemental Operator installed.")
+        return True
 
     def _write_env_file(self) -> None:
         """Write /etc/profile.d/rodeo.sh so passwords and URLs are available as env vars.

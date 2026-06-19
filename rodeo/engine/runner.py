@@ -393,6 +393,14 @@ class DeployRunner:
         if phase.error:
             yield LogLine(f"  ✗  rancher: {phase.error}")
 
+    def stream_elemental(self) -> Iterator[DeployEvent]:
+        from .rancher import RancherPhase
+        phase = RancherPhase(self.cfg, stop=self.stop)
+        ok = yield from phase._install_elemental()
+        self._last_rc = 0 if ok else 1
+        if phase.error:
+            yield LogLine(f"  ✗  elemental: {phase.error}")
+
     def stream_finalise(self) -> Iterator[DeployEvent]:
         vm_names = list(self.cfg.get("vms", {}).keys())
         successes = 0

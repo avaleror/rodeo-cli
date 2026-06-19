@@ -1,14 +1,14 @@
 """Topology / inventory definition loader and renderer.
 
-This module (and the accompanying definition file under rodeo/data/profiles/suse-virt/definition.yaml)
+This module (and the accompanying definition file under rodeo/data/platforms/suse-virt/definition.yaml)
 is the EXAMPLE of how to remove the previous hardcoded topology assumptions for the Harvester/SUSE Virtualization rodeo.
 
 Current status:
-- The single source of truth for the Harvester rodeo lives in rodeo/data/profiles/suse-virt/definition.yaml (the file you edit to define "what a Harvester rodeo is").
+- The single source of truth for the Harvester rodeo lives in rodeo/data/platforms/suse-virt/definition.yaml (the file you edit to define "what a Harvester rodeo is").
 - The renderer here compiles the logical model into concrete artifacts (vm_nodes with generated or explicit MACs, interfaces/cables, pxe data, firewall rules, storage, libvirt network, host_prep, etc.).
 - Full wiring to all consumers and removal of remaining hardcodes is ongoing per the action items.
 
-See rodeo/data/profiles/suse-virt/definition.yaml for extensive comments on the expected structure for the Harvester rodeo.
+See rodeo/data/platforms/suse-virt/definition.yaml for extensive comments on the expected structure for the Harvester rodeo.
 Host prep (sysctls, selinux, ovmf, network expectations) added in Phase 1 of EIB plan.
 """
 
@@ -23,8 +23,8 @@ import yaml
 
 from .config_dir import load_config_dir
 
-# Base location for profile definition files (packaged with the wheel)
-_DATA_ROOT = Path(__file__).parent / "data" / "profiles"
+# Base location for platform definition files (packaged with the wheel)
+_DATA_ROOT = Path(__file__).parent / "data" / "platforms"
 
 
 def _load_topology(profile_name: str, config_dir: str | Path | None = None) -> dict:
@@ -49,12 +49,12 @@ def _load_topology(profile_name: str, config_dir: str | Path | None = None) -> d
     if not path.exists():
         # Fallback for development when running directly from source tree
         # (the package layout puts data/ next to inventory.py)
-        path = Path(__file__).parent / "data" / "profiles" / profile_name / "definition.yaml"
+        path = Path(__file__).parent / "data" / "platforms" / profile_name / "definition.yaml"
     if not path.exists():
         raise FileNotFoundError(
             f"No definition file found for profile '{profile_name}'. "
             f"Expected at {path} (or packaged data equivalent). "
-            "See rodeo/data/profiles/suse-virt/definition.yaml as the canonical example for the Harvester rodeo."
+            "See rodeo/data/platforms/suse-virt/definition.yaml as the canonical example for the Harvester rodeo."
         )
     with open(path) as f:
         data = yaml.safe_load(f) or {}

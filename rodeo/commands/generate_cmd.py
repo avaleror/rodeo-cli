@@ -1,6 +1,6 @@
 """rodeo generate — command to produce customized declarative lab configuration artifacts.
 
-This command exists to bootstrap the project's declarative model (as defined in definition.yaml structures under data/profiles and examples) with validated, project-aligned starting artifacts. It addresses the need for engineers to quickly produce consistent definition.yaml (with sections for nodes, templates including infra_type for lifecycle commands like stop/start, components, harvester config, etc.) and supporting rodeo-plan.yaml + config-dir skeleton (certs/, manifests/, etc.) without manual YAML authoring that risks inconsistencies with inventory renderer, phase orchestration, or EIB-inspired --config-dir patterns.
+This command exists to bootstrap the project's declarative model (as defined in definition.yaml structures under data/platforms and examples) with validated, project-aligned starting artifacts. It addresses the need for engineers to quickly produce consistent definition.yaml (with sections for nodes, templates including infra_type for lifecycle commands like stop/start, components, harvester config, etc.) and supporting rodeo-plan.yaml + config-dir skeleton (certs/, manifests/, etc.) without manual YAML authoring that risks inconsistencies with inventory renderer, phase orchestration, or EIB-inspired --config-dir patterns.
 
 Logical reasons within project:
 - Enforces conventions from definition (e.g. start_order, harvester_node_names, infra_type for infra-aware stop/start in stop_cmd.py/start_cmd.py).

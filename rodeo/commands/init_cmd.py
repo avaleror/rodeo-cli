@@ -122,8 +122,12 @@ def init_cmd(force: bool, ask_password: bool, target_dir: str, profile: str | No
                 'harvester_os_password: "??env:HARVESTER_OS_PASSWORD"'
             )
             plan_text = plan_text.replace(
-                'lab_admin_password: "??lab_admin_password"',
-                'lab_admin_password: "??env:LAB_ADMIN_PASSWORD"'
+                'harvester_admin_password: "??harvester_admin_password"',
+                'harvester_admin_password: "??env:HARVESTER_ADMIN_PASSWORD"'
+            )
+            plan_text = plan_text.replace(
+                'rancher_admin_password: "??rancher_admin_password"',
+                'rancher_admin_password: "??env:RANCHER_ADMIN_PASSWORD"'
             )
             plan_text = plan_text.replace(
                 'harvester_token: "??harvester_token"',
@@ -172,7 +176,6 @@ def init_cmd(force: bool, ask_password: bool, target_dir: str, profile: str | No
             f'harvester_os_password: "{password}"\n'
             f'harvester_admin_password: "{password}"\n'
             f'rancher_admin_password: "{password}"\n'
-            f'lab_admin_password: "{password}"\n'
             f'harvester_token: "{token}"\n'
         )
         secrets_dest.chmod(stat.S_IRUSR | stat.S_IWUSR)  # chmod 600
@@ -184,7 +187,8 @@ def init_cmd(force: bool, ask_password: bool, target_dir: str, profile: str | No
     env_file = dest / "rodeo-secrets.env"
     env_content = (
         f'export HARVESTER_OS_PASSWORD="{password}"\n'
-        f'export LAB_ADMIN_PASSWORD="{password}"\n'
+        f'export HARVESTER_ADMIN_PASSWORD="{password}"\n'
+        f'export RANCHER_ADMIN_PASSWORD="{password}"\n'
         f'export HARVESTER_TOKEN="{token}"\n'
     )
     env_file.write_text(env_content)

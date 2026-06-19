@@ -20,7 +20,7 @@ def cfg():
             "gateway": "10.0.0.1",
             "dns_domain": "lab.example",
         },
-        "credentials": {"lab_admin_password": "Secret123"},
+        "credentials": {"harvester_admin_password": "Secret123", "rancher_admin_password": "Secret123"},
         "vms": {
             "harvester1": {}, "harvester2": {}, "harvester3": {}, "rancher": {},
         },

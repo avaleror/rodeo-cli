@@ -110,7 +110,7 @@ rodeo status
 
 - **Harvester UI:** `https://<host>:8443`
 - **Username:** `admin`
-- **Password:** value of `lab_admin_password` in `~/.rodeo/secrets.yaml`
+- **Password:** value of `harvester_admin_password` in `~/.rodeo/secrets.yaml`
 - **Rancher UI** (harvester profile): `https://<host>:30002` — same password
 
 The Harvester bootstrap process prompts for a VIP on first login if the cluster has not yet converged. If the UI asks for a VIP, use `192.168.122.10`.

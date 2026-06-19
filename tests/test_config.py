@@ -115,7 +115,7 @@ def test_unresolved_secret_kept_and_rejected(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("bad", [None, "", "   ", "CHANGE_ME"])
 def test_empty_credentials_rejected(bad):
-    cfg = {"credentials": {"harvester_os_password": bad, "lab_admin_password": "x1234"}}
+    cfg = {"credentials": {"harvester_os_password": bad, "rancher_admin_password": "x1234"}}
     with pytest.raises(ValueError, match="Credentials are empty"):
         config.validate_config(cfg)
 

@@ -88,7 +88,7 @@ def render_success(cfg: dict) -> None:
     lines.append("")
     lines.append("[bold]Log in[/bold]")
     lines.append("  user      admin")
-    lines.append("  password  see ~/.rodeo/secrets.yaml  (lab_admin_password)")
+    lines.append("  password  see ~/.rodeo/secrets.yaml  (rancher_admin_password / harvester_admin_password)")
 
     lines.append("")
     lines.append("[bold]First things to try[/bold]")

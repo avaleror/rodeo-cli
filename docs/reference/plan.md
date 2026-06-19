@@ -49,9 +49,10 @@ resources:
 # rodeo up and rodeo init generate ~/.rodeo/secrets.yaml automatically.
 # Deploy fails immediately if any ?? placeholder cannot be resolved.
 credentials:
-  harvester_os_password: "??harvester_os_password"   # OS login for Harvester nodes (rancher user)
-  lab_admin_password: "??lab_admin_password"         # Harvester + Rancher UI admin password
-  harvester_token: "??harvester_token"               # RKE2 cluster join token (internal)
+  harvester_os_password: "??harvester_os_password"     # OS login for Harvester nodes (rancher user)
+  harvester_admin_password: "??harvester_admin_password" # Harvester web UI admin password
+  rancher_admin_password: "??rancher_admin_password"   # Rancher web UI admin password
+  harvester_token: "??harvester_token"                 # RKE2 cluster join token (internal)
 
 # Network settings at the plan level. Most network config lives in definition.yaml.
 # Override here only if your host uses a non-default VIP or gateway.
@@ -128,7 +129,8 @@ All credential values must use `??` placeholders. Plain text passwords in plan f
 | Key | Used for |
 |-----|----------|
 | `harvester_os_password` | OS login on Harvester nodes (`rancher` user SSH + console) |
-| `lab_admin_password` | `admin` user in Harvester UI and Rancher UI |
+| `harvester_admin_password` | `admin` user in the Harvester web UI |
+| `rancher_admin_password` | `admin` user in the Rancher web UI |
 | `harvester_token` | RKE2 cluster join token — internal; do not share with attendees |
 
 `rodeo up` and `rodeo init` generate random values and write them to `~/.rodeo/secrets.yaml` (chmod 600). Never commit that file.

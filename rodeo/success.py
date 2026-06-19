@@ -74,10 +74,21 @@ def render_success(cfg: dict) -> None:
     rancher_nodeport = int(net.get("rancher_nodeport", 30002))
     harvester_ui_port = 8443
 
+    profile_type = cfg.get("type", "")
+    is_suse_edge = profile_type == "suse-edge"
+
     vms = cfg.get("vms", {})
-    harvester_nodes = [n for n in vms if n != "rancher"]
+    harvester_nodes = [n for n in vms if n not in ("rancher", "eib") and not n.startswith("edge")]
     has_harvester = bool(harvester_nodes)
     has_rancher = _has_rancher(cfg)
+
+    tls = cfg.get("rancher_tls", {})
+    tls_source = tls.get("source", "secret")
+    # For letsEncrypt: hostname is based on the external host IP, not the VM IP.
+    # rancher.py computes this at install time but doesn't persist it back to cfg,
+    # so we recompute it here the same way.
+    _ext_ip = cfg.get("rancher_hostname") or _host_ip()
+    rancher_hostname = f"rancher.{_ext_ip.replace('.', '-')}.sslip.io"
 
     lines: list[str] = []
     lines.append("[bold green]Your lab is up.[/bold green]\n")
@@ -89,21 +100,34 @@ def render_success(cfg: dict) -> None:
             lines.append(f"  Harvester UI   https://{vip}  (from the host)")
             lines.append("                 External: use the Harvester tab in the Instruqt lab UI")
         if has_rancher:
-            lines.append(f"  Rancher Prime  https://{rancher_ip}:{rancher_nodeport}  (from the host)")
+            if tls_source == "letsEncrypt":
+                lines.append(f"  Rancher Prime  https://{rancher_hostname}  (Let's Encrypt cert)")
+            else:
+                lines.append(f"  Rancher Prime  https://{rancher_ip}:{rancher_nodeport}  (from the host)")
             lines.append("                 External: use the Rancher tab in the Instruqt lab UI")
         lines.append("")
-        lines.append(
-            f"[dim]Instruqt tabs need host ports {harvester_ui_port} (Harvester) "
-            f"and {rancher_nodeport} (Rancher) declared as services in the track config.[/dim]"
-        )
+        if has_harvester:
+            lines.append(
+                f"[dim]Instruqt tabs need host ports {harvester_ui_port} (Harvester) "
+                f"and {rancher_nodeport} (Rancher) declared as services in the track config.[/dim]"
+            )
+        elif has_rancher:
+            lines.append(
+                f"[dim]Instruqt tab needs host port {rancher_nodeport} (Rancher) "
+                "declared as a service in the track config.[/dim]"
+            )
     else:
         host = _host_ip()
         if has_harvester:
             lines.append(f"  Harvester UI   https://{vip}")
             lines.append(f"  [dim](external: host port {harvester_ui_port} → DNAT → VIP, i.e. https://{host}:{harvester_ui_port})[/dim]")
         if has_rancher:
-            lines.append(f"  Rancher Prime  https://{rancher_ip}:{rancher_nodeport}")
-            lines.append(f"  [dim](external: https://{host}:{rancher_nodeport})[/dim]")
+            if tls_source == "letsEncrypt":
+                lines.append(f"  Rancher Prime  https://{rancher_hostname}")
+                lines.append(f"  [dim](Let's Encrypt cert via sslip.io — ports 80 + 443 must be reachable from internet)[/dim]")
+            else:
+                lines.append(f"  Rancher Prime  https://{rancher_ip}:{rancher_nodeport}")
+                lines.append(f"  [dim](external: https://{host}:{rancher_nodeport})[/dim]")
 
     harvester_pw, rancher_pw = _read_passwords()
     lines.append("")
@@ -118,12 +142,17 @@ def render_success(cfg: dict) -> None:
     lines.append("")
     lines.append("[bold]First things to try[/bold]")
     lines.append("  rodeo status                 # health + phase progress")
-    ssh_target = harvester_nodes[0] if has_harvester else next(iter(vms), "rancher")
-    lines.append(f"  rodeo ssh {ssh_target}{' ' * max(1, 16 - len(ssh_target))}# shell into the VM")
-    if has_harvester:
-        lines.append("  In Harvester: create a VM from an image, then watch it boot")
-    elif has_rancher:
-        lines.append("  In Rancher: explore Cluster Management and install an app from Charts")
+    if is_suse_edge:
+        lines.append("  rodeo ssh eib            # shell into the EIB VM (build Elemental OS images here)")
+        lines.append("  In Rancher: open Elemental → Registration Endpoints → create a MachineRegistration")
+        lines.append("  Then use EIB to build an Elemental OS ISO, attach it to edge1/2/3, and start them")
+    else:
+        ssh_target = harvester_nodes[0] if has_harvester else next(iter(vms), "rancher")
+        lines.append(f"  rodeo ssh {ssh_target}{' ' * max(1, 16 - len(ssh_target))}# shell into the VM")
+        if has_harvester:
+            lines.append("  In Harvester: create a VM from an image, then watch it boot")
+        elif has_rancher:
+            lines.append("  In Rancher: explore Cluster Management and install an app from Charts")
 
     lines.append("")
     lines.append("[dim]Stop for later:  rodeo stop --all --yes   ·   Tear down:  rodeo clean --yes[/dim]")

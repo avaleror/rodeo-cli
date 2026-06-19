@@ -1,0 +1,65 @@
+# rodeo-plan.yaml — SUSE Edge 3.6 rodeo deployment plan.
+#
+# What this deploys:
+#   - 1 Rancher Prime 2.14.1 VM (K3s + Elemental Operator + Fleet)
+#   - 1 Edge Image Builder 1.3.3.1 VM (openSUSE Leap Micro 6.2)
+#   - 3 edge node VMs (blank disk + virtual TPM 2.0, started as a lab exercise)
+#
+# Lab flow:
+#   1. rodeo deploy  ->  Rancher + EIB VMs come up; edge node VMs are created but not started.
+#   2. Students log into the EIB VM and use the EIB container to build an Elemental OS image.
+#   3. Students attach the image to each edge node and start them.
+#   4. Edge nodes register with Elemental Operator in Rancher via TPM.
+#
+# Versions: SUSE Edge 3.6
+#   Rancher Prime 2.14.1 / K3s v1.35.3+k3s1 / cert-manager v1.16.3
+#   Elemental Operator 1.9.0 / EIB 1.3.3.1 / SL Micro 6.2
+
+name: suse-edge-rodeo
+type: suse-edge
+
+deployment_target: instruqt   # instruqt | baremetal
+
+network:
+  mode: nat
+  rancher_ip: "192.168.122.9"
+  gateway: "192.168.122.1"
+  dns_domain: "aerogrid.com"
+
+resources:
+  rancher:
+    memory_mib: 8192
+    vcpu: 4
+    disk_gb: 60
+  eib:
+    memory_mib: 12288
+    vcpu: 4
+    disk_gb: 100
+  edge-node:
+    memory_mib: 4096
+    vcpu: 2
+    disk_gb: 20
+
+versions:
+  rancher: "2.14.1"
+  k3s: "v1.35.3+k3s1"
+  cert_manager: "v1.16.3"
+  elemental_operator_crds: "1.9.0"
+  elemental_operator: "1.9.0"
+  eib: "1.3.3.1"
+
+storage:
+  image_dir: /var/lib/libvirt/images
+
+libvirt:
+  uri: qemu:///system
+
+ansible:
+  path: null
+  inventory: deployer/inventory.local
+
+credentials:
+  # ??placeholders resolved from ~/.rodeo/secrets.yaml at load time.
+  rancher_admin_password: "??rancher_admin_password"
+  # OS console password for the Rancher and EIB VMs.
+  rancher_vm_password: "??rancher_vm_password"

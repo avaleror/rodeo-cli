@@ -6,7 +6,7 @@
   <cpu mode='host-passthrough' check='none' migratable='on'/>
   <os>
     <type arch='x86_64' machine='q35'>hvm</type>
-{% if item.flavor == 'harvester' %}
+{% if item.flavor in ('harvester', 'eib', 'edge-node') %}
     <loader readonly='yes' type='pflash'>{{ ovmf_code }}</loader>
     <nvram template='{{ ovmf_vars_template }}'>{{ image_dir }}/{{ item.name }}-ovmf-vars.fd</nvram>
 {% endif %}
@@ -16,7 +16,7 @@
   <features>
     <acpi/>
     <apic/>
-{% if item.flavor == 'harvester' %}
+{% if item.flavor in ('harvester', 'edge-node') %}
     <smm state='on'/>
 {% endif %}
   </features>
@@ -49,6 +49,18 @@
       <target dev='sdb' bus='sata'/>
       <readonly/>
     </disk>
+{% elif item.flavor == 'eib' %}
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <source file='{{ image_dir }}/eib-cloud-init.iso'/>
+      <target dev='sda' bus='sata'/>
+      <readonly/>
+    </disk>
+{% elif item.flavor == 'edge-node' %}
+    <!-- Edge nodes have no CDROM at deploy time. Students attach the EIB-built
+         Elemental OS ISO and start the VM as a lab exercise:
+           virsh change-media edge1 sda /path/to/elemental.iso --insert --live
+         After the Elemental OS install completes, the CDROM is ejected automatically. -->
 {% else %}
     <disk type='file' device='cdrom'>
       <driver name='qemu' type='raw'/>
@@ -83,6 +95,14 @@
 {% endif %}
     </interface>
 {% endfor %}
+{% if item.flavor == 'edge-node' %}
+    <!-- Virtual TPM 2.0 (swtpm emulator) — required for Elemental secure registration.
+         State is persisted in /var/lib/libvirt/swtpm/{{ item.uuid }}/
+         Host must have the swtpm package installed. -->
+    <tpm model='tpm-crb'>
+      <backend type='emulator' version='2.0'/>
+    </tpm>
+{% endif %}
     <!-- serial0: PTY for virsh console access -->
     <serial type='pty'>
       <target type='isa-serial' port='0'/>

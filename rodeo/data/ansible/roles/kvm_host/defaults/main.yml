@@ -15,6 +15,7 @@ kvm_host_packages:
   - firewalld                # the firewall.yml tasks configure it; not guaranteed on a minimal image
   - python3-firewall         # required by the ansible.posix.firewalld module (imports `firewall`)
   - python3-libvirt-python   # required by the community.libvirt modules (virt/virt_net/virt_pool)
+  - swtpm                    # software TPM 2.0 emulator for edge-node VMs (SUSE Edge Elemental)
 
 # kubectl is not in the SUSE base repos, so the role adds the upstream Kubernetes
 # repo and installs it (used by the rancher phase for the cluster import). Channel

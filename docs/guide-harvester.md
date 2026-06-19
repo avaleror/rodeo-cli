@@ -78,7 +78,7 @@ The `suse-virt` pipeline (used by all three Harvester profiles) runs these phase
 2. **vms** — downloads the Harvester ISO, creates virtual disks (250 GiB each), and writes libvirt XML definitions (VMs are defined but not started yet)
 3. **pxe_server** — sets up nginx + TFTP + dnsmasq on the host's `virbr0` (192.168.122.1). Generates a `boot.ipxe` that chains to a per-node MAC script, and a Harvester config YAML for each node
 4. **cluster** — starts VMs in order (`harvester1` first, then a gap for etcd, then the rest). Waits for each node to install Harvester via iPXE, join the cluster, and become `Ready`. Watches the VIP (192.168.122.10) for the cluster to converge
-5. **rancher** — (`harvester` profile only) installs K3s + Rancher Prime on the `rancher` VM, waits for Rancher to become healthy, then imports the Harvester cluster
+5. **rancher** — (`harvester` profile only) installs K3s + Rancher Prime on the `rancher` VM, exposes it on NodePort 30002, and configures the admin API. Harvester cluster import is intentionally left as a lab exercise — students do it via the Rancher UI as the first challenge
 6. **finalise** — enables VM autostart on host reboot (skipped on Instruqt until you run `--finalise`)
 
 ### Time estimates
@@ -114,6 +114,8 @@ rodeo status
 - **Rancher UI** (harvester profile): `https://<host>:30002` — same password
 
 The Harvester bootstrap process prompts for a VIP on first login if the cluster has not yet converged. If the UI asks for a VIP, use `192.168.122.10`.
+
+> **Instruqt labs:** Harvester cluster import into Rancher is the first lab challenge. The infrastructure is ready; students complete the import via Rancher UI > Virtualization Management > Import Existing.
 
 ### Download the kubeconfig
 

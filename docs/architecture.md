@@ -142,10 +142,10 @@ Six phases per `SuseVirtProfile`. State is per plan name (`cfg["name"]`).
 | `vms` | Ansible | Download ISOs/images, virbr0 + DHCP leases, qcow2 disks, config ISOs, define domains (not start); disk-first boot order |
 | `pxe_server` | Ansible | nginx on `virbr0:8080`, `ipxe.efi` TFTP, vmlinuz/initrd/rootfs, per-node iPXE scripts + config YAMLs, dnsmasq two-stage boot |
 | `cluster` | `ClusterPhase` | firewalld on; virbr0 up; start h1 → VIP → h2 → 90s → h3 → rancher; kubeconfig; 3 nodes Ready |
-| `rancher` | `RancherPhase` | K3s, Helm, cert-manager, Rancher Prime, import Harvester, CoreDNS patch, eject ISOs |
+| `rancher` | `RancherPhase` | K3s, Helm, cert-manager, Rancher Prime, NodePort, admin API, eject ISOs. Harvester import is a lab exercise. |
 | `finalise` | `DeployRunner` | VM autostart + `libvirt-guests` enable |
 
-**Timeouts (nested KVM):** VIP ≤ 60 min, kubeconfig ≤ 30 min, nodes Ready ≤ 90 min, Rancher import ≤ 30 min.
+**Timeouts (nested KVM):** VIP ≤ 60 min, kubeconfig ≤ 30 min, nodes Ready ≤ 90 min.
 
 **Instruqt guard:** `finalise` is in `guarded_phases`. Skipped when `deployment_target: instruqt` unless `--finalise`. Running finalise before image save breaks instance boot.
 

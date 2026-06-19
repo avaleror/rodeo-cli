@@ -2,7 +2,7 @@
 
 A CLI for deploying hands-on lab infrastructure. Point it at a Linux host with KVM, pick a profile, and it builds a working lab of nested VMs — Harvester HCI clusters, Rancher Prime, or both — without you writing a line of Ansible or touching libvirt directly.
 
-**Version:** 0.8.0 · **Python:** 3.10+ · **License:** Apache-2.0
+**Version:** 0.9.0 · **Python:** 3.10+ · **License:** Apache-2.0
 
 ---
 
@@ -19,7 +19,7 @@ The CLI reads those files and drives a **phase pipeline** through Ansible roles 
 kvm_host → vms → [pxe_server → cluster] → [rancher] → finalise
 ```
 
-`kvm_host` prepares the hypervisor (packages, libvirt, firewall, storage). `vms` creates disk images and VM definitions. Harvester labs add `pxe_server` (nginx + TFTP + per-node iPXE scripts) and `cluster` (starts VMs, waits for Harvester to install via network boot). `rancher` installs Rancher Prime on K3s and imports the Harvester cluster. `finalise` enables VM autostart.
+`kvm_host` prepares the hypervisor (packages, libvirt, firewall, storage). `vms` creates disk images and VM definitions. Harvester labs add `pxe_server` (nginx + TFTP + per-node iPXE scripts) and `cluster` (starts VMs, waits for Harvester to install via network boot). `rancher` installs Rancher Prime on K3s, exposes it on a NodePort, and configures the admin API — Harvester cluster import is left as a lab exercise. `finalise` enables VM autostart.
 
 Credentials live in `~/.rodeo/secrets.yaml` (chmod 600, never committed). The plan references them with `??key` placeholders; `rodeo up` generates that file for you.
 

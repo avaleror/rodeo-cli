@@ -69,7 +69,7 @@ rodeo/
 ├── engine/
 │   ├── runner.py           DeployRunner — single pipeline, yields typed events
 │   ├── cluster.py          ClusterPhase — VM start order, VIP/kubeconfig/nodes waits
-│   ├── rancher.py          RancherPhase — K3s, cert-manager, Rancher, import
+│   ├── rancher.py          RancherPhase — K3s, cert-manager, Rancher, NodePort, eject ISOs
 │   └── libvirt.py          LibvirtDriver — direct libvirt-python VM/network ops
 ├── inventory.py            build_inventory(): renders definition.yaml → vm_nodes (MAC/UUID gen), pxe, firewall, host_prep
 ├── config_dir.py           --config-dir (EIB-style) loader
@@ -123,7 +123,7 @@ Six phases, tracked per plan in `~/.rodeo/state/<plan-name>.yaml`. Idempotent; r
 | pxe_server | Ansible (`--tags pxe_server`) | nginx on virbr0:8080, ipxe.efi TFTP, vmlinuz/initrd/rootfs, **one generic `boot.ipxe`** + per-node scripts named by MAC, per-node config YAMLs (0644), dnsmasq two-stage UEFI boot |
 | boot (rancher profile) | Python (runner) | Lightweight: start firewalld + network + the defined VMs (no Harvester VIP/etcd waits) |
 | cluster | Python `ClusterPhase` | **Topology-driven from the definition** (start_order, harvester_node_names, harvester_ready_count, etcd gap). Start firewalld; virbr0 up; start the bootstrap node; poll VIP (≤60 min); start remaining nodes in order with the etcd gap before each additional join node; fetch kubeconfig via SSH; wait `ready_count` nodes Ready (≤90 min). Works for 2-node, 3-node, N-node. |
-| rancher | Python `RancherPhase` | Wait SSH; install K3s, Helm, cert-manager, Rancher Prime; NodePort 30002; set admin password via API (idempotent; tolerates empty API bodies); standalone mode skips import when no Harvester nodes; else import Harvester + CoreDNS patch + eject ISOs |
+| rancher | Python `RancherPhase` | Wait SSH; install K3s, Helm, cert-manager, Rancher Prime; NodePort 30002; set admin password via API (idempotent; tolerates empty API bodies); eject ISOs. Harvester cluster import is a lab exercise — not automated. |
 | finalise | Python (runner) | `set_autostart` on all VMs (fails if zero succeed) + enable libvirt-guests |
 
 ### Instruqt guard

@@ -58,9 +58,7 @@
     </disk>
 {% elif item.flavor == 'edge-node' %}
     <!-- Edge nodes have no CDROM at deploy time. Students attach the EIB-built
-         Elemental OS ISO and start the VM as a lab exercise:
-           virsh change-media edge1 sda /path/to/elemental.iso --insert --live
-         After the Elemental OS install completes, the CDROM is ejected automatically. -->
+         Elemental OS ISO as a lab exercise and start the VM to boot from it. -->
 {% else %}
     <disk type='file' device='cdrom'>
       <driver name='qemu' type='raw'/>

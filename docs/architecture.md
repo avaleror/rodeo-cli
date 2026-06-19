@@ -1,8 +1,8 @@
 # rodeo-cli — Architecture & design
 
-Technical reference for contributors and maintainers. For deploying a workshop, see [User guide](user-guide.md).
+Technical reference for contributors and maintainers. For deploying a workshop, see the [Harvester guide](guide-harvester.md) or [Rancher guide](guide-rancher.md).
 
-**Version:** 0.6.0
+**Version:** 0.9.1
 **License:** Apache-2.0
 
 ---
@@ -31,7 +31,7 @@ The tool runs on **cloud instances**, **Instruqt builder VMs**, **local VMs**, o
 | Long waits are cancellable | `threading.Event` + process groups in poll loops |
 | Instruqt-safe builds | `deployment_target: instruqt` skips `finalise` until snapshot |
 | Self-contained install | Ansible roles bundled in `rodeo/data/ansible/` |
-| Minimal first-phase friction | `scripts/bootstrap-sles.sh` (curl | bash) + `rodeo bootstrap` subcommand + `install-deps --link` for global binary + `init --example` for pre-seeded declarative labs. See visual in user-guide. |
+| Minimal first-phase friction | `curl install.sh \| bash` + `rodeo up` front door: doctor → pick lab → secrets → deploy → success screen. |
 | Graceful stop/restart + host reset | `rodeo stop`/`start` (infra-aware from definition: infra_type, components, start_order; graceful ACPI + host services; restartable). `clean --all --hard --secrets --force-network` for full reset (VMs/networks/states/passwords; no package removal). Clean runs stop first unless --hard. |
 | Interactive definition generation | `rodeo generate` (templates base via parameter collection for hybrid customization, produces full config-dir yaml skeleton with project conventions like infra_type; post-validation via load_config; next steps for bootstrap/deploy/stop/start/clean lifecycle). Enables consistent entry to declarative model (definition as source for inventory/renderer/phases). |
 
@@ -157,7 +157,7 @@ rodeo/
     └── templates/         init templates
 
 tests/                     pytest (config, runner, cluster, ansible contract, …)
-docs/                      architecture.md, user-guide.md, assets/diagrams/
+docs/                      architecture.md, guide-*.md, custom-rodeos.md, reference/, examples/, assets/diagrams/
 ```
 
 ---
@@ -387,6 +387,6 @@ Live KVM regression is still manual (or geekohive) before touching MAC/DHCP/ISO 
 
 | Document | Audience |
 |----------|----------|
-| [User guide](user-guide.md) | Workshop operators deploying labs |
+| [Harvester guide](guide-harvester.md) / [Rancher guide](guide-rancher.md) | Workshop operators deploying labs |
 | [ROADMAP.md](../ROADMAP.md) | Planned Terraform-for-labs features |
 | [CONTEXT.md](../CONTEXT.md) | Full project context for AI/developers |

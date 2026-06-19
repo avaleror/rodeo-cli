@@ -112,7 +112,7 @@ The rodeo deploys a management plane (Rancher + Rancher Prime) plus one or more 
 - Upgrade demo: Elemental OS upgrade shown live in the workshop
 
 **Milestones:**
-- [ ] `suse-edge` profile skeleton in `rodeo/data/examples/suse-edge-config/`
+- [x] `suse-edge` profile skeleton in `rodeo/data/platforms/suse-edge/` (on `feature/suse-edge` branch)
 - [ ] Engine support for Elemental node boot (cloud image, not PXE)
 - [ ] `rancher` phase extended: install Elemental Operator via Helm after Rancher
 - [ ] `cluster` phase variant: wait for edge node registration, not iPXE install

@@ -35,22 +35,36 @@ class RancherPhase:
         cred = cfg.get("credentials", {})
 
         self.rancher_ip       = net.get("rancher_ip", "192.168.122.9")
-        self.vip              = net["vip"]
+        self.vip              = net.get("vip", "")   # empty for profiles without Harvester
         self.nodeport         = int(net.get("rancher_nodeport", 30002))
         self.dns_domain       = net.get("dns_domain", "aerogrid.com")
         self.gateway          = net.get("gateway", "192.168.122.1")
-        real_harvester        = [n for n in cfg.get("vms", {}) if n != "rancher"]
-        # Standalone = a Rancher-only lab (no Harvester to import). When the plan
-        # has VMs but none of them are Harvester nodes, stop after configuring the
-        # Rancher API and skip import / Harvester password / ISO eject.
+
+        # Standalone = a Rancher-only lab (no Harvester cluster to manage).
+        # Use harvester_node_names from the definition when present — it's the
+        # authoritative list. Fall back to "everything that isn't rancher" for
+        # profiles that predate the definition file (e.g. old suse-virt plans).
+        _harvester_names = cfg.get("harvester_node_names")
+        if _harvester_names is not None:
+            real_harvester = [n for n in cfg.get("vms", {}) if n in set(_harvester_names)]
+        else:
+            real_harvester = [n for n in cfg.get("vms", {}) if n != "rancher"]
         self.standalone       = bool(cfg.get("vms")) and not real_harvester
         self.harvester_nodes  = real_harvester or ["harvester1", "harvester2", "harvester3"]
         self.libvirt_uri      = cfg.get("libvirt", {}).get("uri", "qemu:///system")
 
-        self.rancher_version  = ver.get("rancher", "2.13.1")
-        self.k3s_version      = ver.get("k3s", "v1.31.4+k3s1")
-        self.cert_mgr_version = ver.get("cert_manager", "v1.16.2")
-        self.ui_ext_version   = ver.get("harvester_ui_extension", "1.7.1")
+        self.rancher_version         = ver.get("rancher", "2.13.1")
+        self.k3s_version             = ver.get("k3s", "v1.31.4+k3s1")
+        self.cert_mgr_version        = ver.get("cert_manager", "v1.16.2")
+        self.ui_ext_version          = ver.get("harvester_ui_extension", "1.7.1")
+        self.elemental_crds_version  = ver.get("elemental_operator_crds", "1.9.0")
+        self.elemental_op_version    = ver.get("elemental_operator", "1.9.0")
+
+        # TLS mode: 'rancher' = Rancher self-signed cert + NodePort (default)
+        #           'letsEncrypt' = Let's Encrypt cert via Traefik ingress + sslip.io hostname
+        tls_cfg = cfg.get("rancher_tls", {})
+        self.tls_source        = tls_cfg.get("source", "rancher")
+        self.letsencrypt_email = tls_cfg.get("email", "admin@example.com")
 
         key = cfg.get("ssh", {}).get("identity_file")
         if not key:
@@ -63,8 +77,13 @@ class RancherPhase:
         self.harvester_password = cred.get("harvester_admin_password", _fallback)
         self.admin_password     = self.rancher_password  # alias used by _configure_api
 
-        self.rancher_api      = f"https://{self.rancher_ip}:{self.nodeport}"
-        self.rancher_hostname = f"rancher.{self.rancher_ip}.sslip.io"
+        # For letsEncrypt mode, rancher_hostname and rancher_api are updated at
+        # install time once the external IP is known (_update_sslip_hostname).
+        self.rancher_hostname = f"rancher.{self.rancher_ip.replace('.', '-')}.sslip.io"
+        if self.tls_source == "letsEncrypt":
+            self.rancher_api = f"https://{self.rancher_hostname}"
+        else:
+            self.rancher_api = f"https://{self.rancher_ip}:{self.nodeport}"
 
         self.success      = False
         self.setup_done   = False  # True after K3s+Helm+Rancher ping complete
@@ -85,10 +104,11 @@ class RancherPhase:
         yield from self.stream_setup()
         if not self.setup_done:
             return
-        yield LogLine("Setting Harvester dashboard admin password...")
-        yield from self._set_harvester_password()
-        yield LogLine("Ejecting installer ISOs from Harvester VMs...")
-        yield from self._eject_cdroms()
+        if not self.standalone:
+            yield LogLine("Setting Harvester dashboard admin password...")
+            yield from self._set_harvester_password()
+            yield LogLine("Ejecting installer ISOs from Harvester VMs...")
+            yield from self._eject_cdroms()
         self._write_env_file()
         yield LogLine(self._completion_summary())
         self.success = True
@@ -127,15 +147,21 @@ class RancherPhase:
             return
         yield LogLine("  cert-manager installed.")
 
+        if self.tls_source == "letsEncrypt":
+            yield LogLine("Detecting external IP for sslip.io hostname...")
+            self._update_sslip_hostname()
+            yield LogLine(f"  Rancher hostname: {self.rancher_hostname}")
+
         yield LogLine(f"Installing Rancher Prime {self.rancher_version} (may take 10+ min)...")
         if not (yield from self._install_rancher()):
             return
         yield LogLine("  Rancher Prime installed.")
 
-        yield LogLine(f"Exposing Rancher on NodePort {self.nodeport}...")
-        if not (yield from self._expose_nodeport()):
-            return
-        yield LogLine("  NodePort configured.")
+        if self.tls_source != "letsEncrypt":
+            yield LogLine(f"Exposing Rancher on NodePort {self.nodeport}...")
+            if not (yield from self._expose_nodeport()):
+                return
+            yield LogLine("  NodePort configured.")
 
         yield LogLine(f"Waiting for Rancher /ping on {self.rancher_api}...")
         if not (yield from self._wait_ping()):
@@ -222,6 +248,26 @@ class RancherPhase:
         ctx.verify_mode = ssl.CERT_NONE
         return ctx
 
+    def _detect_external_ip(self) -> str:
+        """Return the external IP visible to the Rancher VM (= host's NAT egress IP)."""
+        script = (
+            "curl -sf --max-time 10 https://api.ipify.org"
+            " || curl -sf --max-time 10 https://ifconfig.me"
+            " || echo ''"
+        )
+        r = self._ssh_script(script, timeout=20)
+        ip = r.stdout.strip()
+        if ip and r.returncode == 0:
+            return ip
+        return self.rancher_ip  # fallback: use internal IP (no internet access)
+
+    def _update_sslip_hostname(self) -> None:
+        """Detect external IP and update rancher_hostname + rancher_api for letsEncrypt mode."""
+        ext_ip = self._detect_external_ip()
+        dashed = ext_ip.replace(".", "-")
+        self.rancher_hostname = f"rancher.{dashed}.sslip.io"
+        self.rancher_api = f"https://{self.rancher_hostname}"
+
     def _http(
         self,
         method: str,
@@ -271,11 +317,15 @@ class RancherPhase:
                 return False
 
     def _install_k3s(self) -> Generator[DeployEvent, None, bool]:
+        # letsEncrypt uses Traefik ingress for HTTP01 ACME + TLS termination.
+        # All other TLS sources (secret, self-signed) expose Rancher via NodePort
+        # and don't need Traefik — disable it to keep the footprint small.
+        disable_traefik = "" if self.tls_source == "letsEncrypt" else " --disable traefik"
         script = (
             "set -euo pipefail\n"
             f'export INSTALL_K3S_VERSION="{self.k3s_version}"\n'
             "curl -sfL https://get.k3s.io"
-            " | sh -s - --write-kubeconfig-mode 644 --disable traefik --node-name rancher\n"
+            f" | sh -s - --write-kubeconfig-mode 644{disable_traefik} --node-name rancher\n"
         )
         yield LogLine("  Running K3s installer (1-3 min)...")
         r = self._ssh_script(script, timeout=300)
@@ -353,6 +403,14 @@ class RancherPhase:
         return True
 
     def _install_rancher(self) -> Generator[DeployEvent, None, bool]:
+        if self.tls_source == "letsEncrypt":
+            tls_flags = (
+                f' --set ingress.tls.source=letsEncrypt'
+                f' --set letsEncrypt.email="{self.letsencrypt_email}"'
+                f' --set letsEncrypt.environment=production'
+            )
+        else:
+            tls_flags = ""
         script = (
             "set -euo pipefail\n"
             "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
@@ -360,6 +418,7 @@ class RancherPhase:
             f' --namespace cattle-system --create-namespace'
             f' --version "{self.rancher_version}"'
             f' --set hostname="{self.rancher_hostname}"'
+            f'{tls_flags}'
             ' --set bootstrapPassword="admin"'
             ' --set replicas=1'
             ' --wait --timeout 600s\n'
@@ -885,6 +944,38 @@ class RancherPhase:
                         yield LogLine(f"  ⚠ eject {node}:{dev} — {r.stderr.strip()}")
             yield LogLine(f"  {node}: CDROMs ejected")
 
+    def _install_elemental(self) -> Generator[DeployEvent, None, bool]:
+        """Install Elemental Operator CRDs and Operator via Helm (OCI charts from registry.suse.com)."""
+        namespace = "cattle-elemental-system"
+        script = (
+            "set -euo pipefail\n"
+            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+            f"helm upgrade --install elemental-operator-crds"
+            f" oci://registry.suse.com/rancher/elemental-operator-crds-chart"
+            f" --version {self.elemental_crds_version}"
+            f" --namespace {namespace} --create-namespace"
+            f" --wait --timeout 3m\n"
+            f"helm upgrade --install elemental-operator"
+            f" oci://registry.suse.com/rancher/elemental-operator-chart"
+            f" --version {self.elemental_op_version}"
+            f" --namespace {namespace}"
+            f" --wait --timeout 5m\n"
+        )
+        yield LogLine(
+            f"Installing Elemental Operator {self.elemental_op_version} "
+            "(CRDs + Operator, up to 8 min)..."
+        )
+        r = self._ssh_script(script, timeout=540)
+        for line in (r.stdout + r.stderr).splitlines():
+            if line.strip():
+                yield LogLine(f"  {line}")
+        if r.returncode != 0:
+            self.error = "Elemental Operator install failed"
+            yield LogLine(f"  ✗ {self.error}")
+            return False
+        yield LogLine("  Elemental Operator installed.")
+        return True
+
     def _write_env_file(self) -> None:
         """Write /etc/profile.d/rodeo.sh so passwords and URLs are available as env vars.
 
@@ -892,14 +983,18 @@ class RancherPhase:
         $HARVESTER_ADMIN_PASSWORD, $RANCHER_ADMIN_PASSWORD, etc. in challenge scripts
         without having to parse the secrets file.
         """
-        content = (
-            "# Rodeo lab credentials — generated by rodeo-cli, do not edit by hand\n"
-            f'export HARVESTER_VIP="{self.vip}"\n'
-            f'export HARVESTER_URL="https://{self.vip}"\n'
-            f'export RANCHER_URL="{self.rancher_api}"\n'
-            f'export HARVESTER_ADMIN_PASSWORD="{self.harvester_password}"\n'
-            f'export RANCHER_ADMIN_PASSWORD="{self.rancher_password}"\n'
-        )
+        lines = ["# Rodeo lab credentials — generated by rodeo-cli, do not edit by hand"]
+        if self.vip:
+            lines += [
+                f'export HARVESTER_VIP="{self.vip}"',
+                f'export HARVESTER_URL="https://{self.vip}"',
+                f'export HARVESTER_ADMIN_PASSWORD="{self.harvester_password}"',
+            ]
+        lines += [
+            f'export RANCHER_URL="{self.rancher_api}"',
+            f'export RANCHER_ADMIN_PASSWORD="{self.rancher_password}"',
+        ]
+        content = "\n".join(lines) + "\n"
         try:
             Path("/etc/profile.d/rodeo.sh").write_text(content)
         except Exception:
@@ -911,16 +1006,30 @@ class RancherPhase:
                 pass
 
     def _completion_summary(self) -> str:
-        return (
-            "\n"
-            "  ┌─ Lab ready ──────────────────────────────────────────────┐\n"
-            "  │  Username       admin                                    │\n"
-            f"  │  Harvester pw   {self.harvester_password:<42}│\n"
-            f"  │  Rancher pw     {self.rancher_password:<42}│\n"
-            "  │                                                          │\n"
-            "  │  Passwords also in ~/.rodeo/secrets.yaml                 │\n"
-            "  │  and $HARVESTER_ADMIN_PASSWORD / $RANCHER_ADMIN_PASSWORD │\n"
-            "  │                                                          │\n"
-            "  │  Harvester import → first lab challenge                  │\n"
-            "  └──────────────────────────────────────────────────────────┘"
-        )
+        lines = [
+            "\n",
+            "  ┌─ Lab ready ──────────────────────────────────────────────┐\n",
+            f"  │  Rancher URL    {self.rancher_api:<42}│\n",
+        ]
+        if self.vip:
+            lines += [
+                f"  │  Harvester URL  https://{self.vip:<38}│\n",
+            ]
+        lines += [
+            "  │                                                          │\n",
+            "  │  Username       admin                                    │\n",
+        ]
+        if self.vip:
+            lines.append(f"  │  Harvester pw   {self.harvester_password:<42}│\n")
+        lines += [
+            f"  │  Rancher pw     {self.rancher_password:<42}│\n",
+            "  │                                                          │\n",
+            "  │  Passwords also in ~/.rodeo/secrets.yaml                 │\n",
+            "  │  and $RANCHER_ADMIN_PASSWORD / $RANCHER_URL              │\n",
+        ]
+        if not self.vip:
+            lines.append(
+                "  │  Edge nodes: attach Elemental ISO + start VMs           │\n"
+            )
+        lines.append("  └──────────────────────────────────────────────────────────┘")
+        return "".join(lines)

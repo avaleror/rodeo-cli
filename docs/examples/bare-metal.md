@@ -17,23 +17,20 @@ This example walks through deploying the full `harvester` profile (3-node Harves
 On a clean SLES 16 / Leap 16 host:
 
 ```bash
-git clone https://github.com/avaleror/rodeo-cli.git
-cd rodeo-cli
-python3 -m venv --system-site-packages .venv && source .venv/bin/activate
-pip install -e .
+curl -fsSL https://raw.githubusercontent.com/avaleror/rodeo-cli/main/install.sh | bash
 ```
 
-## Step 2: install host dependencies
+This clones the repo, sets up a Python environment internally, and links `rodeo` as a system command. No venv to activate, no PATH to set.
 
-This installs KVM packages, libvirt daemons, ansible-core, ansible collections, and kubectl:
+To install KVM packages, libvirt, ansible-core, and kubectl separately:
 
 ```bash
-rodeo install-deps --link
+rodeo install-deps
 ```
 
-`--link` creates `/usr/local/bin/rodeo` so you can run `rodeo` from anywhere without activating the venv.
+`rodeo up` (Step 3) runs this automatically if deps are missing.
 
-## Step 3: check the host
+## Step 2: check the host
 
 ```bash
 rodeo doctor
@@ -57,7 +54,7 @@ Host facts
 Recommended profile: harvester (60 GiB needed, 100 GiB available)
 ```
 
-## Step 4: deploy
+## Step 3: deploy
 
 ```bash
 rodeo up --profile harvester
@@ -88,7 +85,7 @@ rodeo logs harvester1   # or tail a single node
 
 Total time: 90–150 minutes (most of it is Harvester iPXE install on nested KVM; bare metal is significantly faster).
 
-## Step 5: log in
+## Step 4: log in
 
 After `rodeo up` finishes:
 

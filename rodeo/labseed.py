@@ -22,6 +22,7 @@ PROFILE_EXAMPLE = {
     "test": "harvester-lab-config",         # 2-node Harvester, no Rancher (modest hosts)
     "harvester-ha": "harvester-ha-config",  # 3-node Harvester, no Rancher (3-member etcd HA, lean sizing)
     "harvester": "harvester",               # full 3-node Harvester + Rancher Prime
+    "suse-edge": "suse-edge",               # Rancher + Elemental + EIB + 3 edge nodes (SUSE Edge 3.6)
 }
 
 _LAB_MARKERS = ("rodeo-plan.yaml", "definition.yaml")

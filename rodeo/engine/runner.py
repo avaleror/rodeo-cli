@@ -393,6 +393,14 @@ class DeployRunner:
         if phase.error:
             yield LogLine(f"  ✗  rancher: {phase.error}")
 
+    def stream_elemental(self) -> Iterator[DeployEvent]:
+        from .rancher import RancherPhase
+        phase = RancherPhase(self.cfg, stop=self.stop)
+        ok = yield from phase._install_elemental()
+        self._last_rc = 0 if ok else 1
+        if phase.error:
+            yield LogLine(f"  ✗  elemental: {phase.error}")
+
     def stream_finalise(self) -> Iterator[DeployEvent]:
         vm_names = list(self.cfg.get("vms", {}).keys())
         successes = 0
@@ -435,7 +443,7 @@ class DeployRunner:
         Keeps secrets off argv and wires resources/versions/network into Ansible.
         For the Harvester/SUSE Virtualization rodeo, vm_nodes (full with MACs, UUIDs,
         per-node interfaces/cables) now come from the centralized definition file
-        (rodeo/data/profiles/suse-virt/definition.yaml) via the inventory renderer.
+        (rodeo/data/platforms/suse-virt/definition.yaml) via the inventory renderer.
         host_prep (sysctls, selinux, ovmf, network rules) also from definition (Phase 1 EIB plan).
         Explicit values in the definition are used (matching previous defaults exactly).
         Generation happens for omitted fields. File deleted on exit via atexit.
@@ -443,8 +451,9 @@ class DeployRunner:
         creds = self.cfg.get("credentials", {})
         net = self.cfg.get("network", {})
         ver = self.cfg.get("versions", {})
-        h_res = self.cfg.get("resources", {}).get("harvester", {})
-        r_res = self.cfg.get("resources", {}).get("rancher", {})
+        resources = self.cfg.get("resources", {})
+        h_res = resources.get("harvester", {})
+        r_res = resources.get("rancher", {})
         storage = self.cfg.get("storage", {})
 
         version = ver.get("harvester", "1.8.0")
@@ -472,6 +481,16 @@ class DeployRunner:
                     "vcpu":       r_res.get("vcpu", 4),
                     "disk_gb":    r_res.get("disk_gb", 60),
                 },
+                "eib": {
+                    "memory_mib": resources.get("eib", {}).get("memory_mib", 12288),
+                    "vcpu":       resources.get("eib", {}).get("vcpu", 4),
+                    "disk_gb":    resources.get("eib", {}).get("disk_gb", 100),
+                },
+                "edge-node": {
+                    "memory_mib": resources.get("edge-node", {}).get("memory_mib", 4096),
+                    "vcpu":       resources.get("edge-node", {}).get("vcpu", 2),
+                    "disk_gb":    resources.get("edge-node", {}).get("disk_gb", 20),
+                },
             },
             "image_dir":             storage.get("image_dir", "/var/lib/libvirt/images"),
             "libvirt_pool_name":     storage.get("libvirt_pool_name", "default"),
@@ -482,6 +501,8 @@ class DeployRunner:
             "libvirt_storage_device": storage.get("device", ""),
             "libvirt_storage_fs_type": storage.get("fs_type", "xfs"),
             "libvirt_storage_mount_point": storage.get("mount_point", storage.get("image_dir", "/var/lib/libvirt/images")),
+            # True for profiles using Traefik ingress + Let's Encrypt (suse-edge).
+            "rancher_ingress_enabled": self.cfg.get("rancher_tls", {}).get("source") == "letsEncrypt",
         }
         # Only override the role-default join token when the plan provides one.
         if creds.get("harvester_token"):

@@ -67,9 +67,10 @@ storage:
 
 # Software versions. Pin these to reproduce a specific lab.
 versions:
-  harvester: "1.4.2"          # Harvester ISO version to download and install
-  rancher: "2.10.3"           # Rancher Prime Helm chart version
-  cert_manager: "1.16.3"      # cert-manager Helm chart version (Rancher dependency)
+  harvester: "1.8.0"          # Harvester ISO version to download and install
+  rancher: "2.13.1"           # Rancher Prime Helm chart version
+  k3s: "v1.31.4+k3s1"        # K3s version for the Rancher VM
+  cert_manager: "v1.16.2"     # cert-manager Helm chart version (Rancher dependency)
 
 # Jinja2 templating: define variables used in this file.
 # Values can be overridden with -P or --paramfile at deploy time.
@@ -92,6 +93,7 @@ parameters:
 |-------|----------|--------|
 | `suse-virt` | Harvester HCI (with or without Rancher) | `kvm_host` → `vms` → `pxe_server` → `cluster` → `rancher` → `finalise` |
 | `rancher` | Rancher Prime on K3s | `kvm_host` → `vms` → `boot` → `rancher` → `finalise` |
+| `suse-edge` | SUSE Edge 3.6 (Rancher + Elemental + EIB + edge nodes) | in development on `feature/suse-edge` |
 
 **Required.** No default.
 
@@ -154,9 +156,10 @@ Most network topology (CIDR, gateway, DNS domain, per-node IPs) is in `definitio
 
 | Field | Default | Notes |
 |-------|---------|-------|
-| `harvester` | `"1.4.2"` | ISO version string. rodeo downloads the matching ISO from the Harvester release page. |
-| `rancher` | `"2.10.3"` | Helm chart version. |
-| `cert_manager` | `"1.16.3"` | cert-manager Helm chart (Rancher dependency). |
+| `harvester` | `"1.8.0"` | ISO version string. rodeo downloads the matching ISO from the Harvester release page. |
+| `rancher` | `"2.13.1"` | Rancher Prime Helm chart version. |
+| `k3s` | `"v1.31.4+k3s1"` | K3s version installed on the Rancher VM. |
+| `cert_manager` | `"v1.16.2"` | cert-manager Helm chart (Rancher dependency). |
 
 ### `parameters`
 

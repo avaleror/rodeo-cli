@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from ..engine.runner import DeployEvent, DeployRunner
 
 # Example of loading the Harvester/SUSE Virtualization topology from the declarative definition file
-# (rodeo/data/profiles/suse-virt/definition.yaml). The renderer in inventory.py handles generation
+# (rodeo/data/platforms/suse-virt/definition.yaml). The renderer in inventory.py handles generation
 # of MACs etc. when not explicit. This is our current focus for the Harvester rodeo.
 try:
     from .. import inventory as _inv
@@ -27,7 +27,7 @@ class SuseVirtProfile(RodeoProfile):
 
     def default_cfg(self, config_dir: str | None = None) -> dict:
         # Demonstration of loading from the new topology/inventory definition file
-        # (rodeo/data/profiles/suse-virt/definition.yaml).
+        # (rodeo/data/platforms/suse-virt/definition.yaml).
         # This replaces the previous hardcoded dict.
         # Full version will come from inventory.build_inventory() which will also
         # apply plan overrides and produce the vm_nodes list for Ansible.

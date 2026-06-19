@@ -435,7 +435,7 @@ class DeployRunner:
         Keeps secrets off argv and wires resources/versions/network into Ansible.
         For the Harvester/SUSE Virtualization rodeo, vm_nodes (full with MACs, UUIDs,
         per-node interfaces/cables) now come from the centralized definition file
-        (rodeo/data/profiles/suse-virt/definition.yaml) via the inventory renderer.
+        (rodeo/data/platforms/suse-virt/definition.yaml) via the inventory renderer.
         host_prep (sysctls, selinux, ovmf, network rules) also from definition (Phase 1 EIB plan).
         Explicit values in the definition are used (matching previous defaults exactly).
         Generation happens for omitted fields. File deleted on exit via atexit.

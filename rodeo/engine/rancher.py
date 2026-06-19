@@ -914,9 +914,6 @@ class RancherPhase:
         return (
             "\n"
             "  ┌─ Lab ready ──────────────────────────────────────────────┐\n"
-            f"  │  Harvester UI  https://{self.vip:<38}│\n"
-            f"  │  Rancher UI    {self.rancher_api:<46}│\n"
-            "  │                                                          │\n"
             "  │  Username       admin                                    │\n"
             f"  │  Harvester pw   {self.harvester_password:<42}│\n"
             f"  │  Rancher pw     {self.rancher_password:<42}│\n"

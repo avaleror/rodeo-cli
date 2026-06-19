@@ -8,13 +8,16 @@
 # Usage (development):
 #   bash install.sh --dev [--dir /path/to/rodeo-cli]
 #
-#   --dev  Skip git clone/update entirely. Use an existing local checkout.
-#          The venv is created inside the repo directory and the package is
-#          installed in editable mode — source edits take effect immediately,
-#          no reinstall needed. Dev extras (pytest, ruff) are also installed.
+#   --dev  Install in editable mode with dev extras (pytest, ruff). Source
+#          edits take effect immediately, no reinstall needed.
+#
+#          If the target directory already contains a checkout, git is never
+#          touched — the existing tree is used as-is. If it doesn't exist yet,
+#          the repo is cloned once from GitHub and then left for you to manage.
+#
 #          Defaults to the directory that contains this script when --dir is
-#          not given, so you can run "bash install.sh --dev" from inside the
-#          repo and it just works.
+#          not given, so running "bash install.sh --dev" from inside the repo
+#          just works with zero git operations.
 #
 # After this script runs, type:  rodeo up
 # That is all the user ever needs to know.
@@ -48,26 +51,33 @@ if [[ -z "$RODEO_DIR" ]]; then
   fi
 fi
 
+# Decide upfront whether git is needed so the prereq install can include it.
+# Production always needs git. Dev only needs it for the initial clone — once
+# the checkout exists, git is never invoked again.
+NEED_GIT=1
+if [[ $DEV -eq 1 ]] && [[ -f "$RODEO_DIR/pyproject.toml" ]]; then
+  NEED_GIT=0
+fi
+
 # ── 1. prereqs ────────────────────────────────────────────────────────────────
-# Dev mode only needs Python — git is already present (you cloned the repo).
 echo "==> Installing prerequisites"
 if command -v zypper &>/dev/null; then
-  if [[ $DEV -eq 1 ]]; then
-    zypper --non-interactive install --no-recommends -y python3 python3-pip
-  else
+  if [[ $NEED_GIT -eq 1 ]]; then
     zypper --non-interactive install --no-recommends -y python3 python3-pip git
+  else
+    zypper --non-interactive install --no-recommends -y python3 python3-pip
   fi
 elif command -v apt-get &>/dev/null; then
-  if [[ $DEV -eq 1 ]]; then
-    apt-get install -y --no-install-recommends python3 python3-pip python3-venv
-  else
+  if [[ $NEED_GIT -eq 1 ]]; then
     apt-get install -y --no-install-recommends python3 python3-pip python3-venv git
+  else
+    apt-get install -y --no-install-recommends python3 python3-pip python3-venv
   fi
 elif command -v dnf &>/dev/null; then
-  if [[ $DEV -eq 1 ]]; then
-    dnf install -y python3 python3-pip
-  else
+  if [[ $NEED_GIT -eq 1 ]]; then
     dnf install -y python3 python3-pip git
+  else
+    dnf install -y python3 python3-pip
   fi
 else
   echo "No supported package manager found (zypper / apt-get / dnf)" >&2
@@ -76,11 +86,15 @@ fi
 
 # ── 2. clone or update ────────────────────────────────────────────────────────
 if [[ $DEV -eq 1 ]]; then
-  echo "==> Dev mode: using local checkout at $RODEO_DIR (git untouched)"
-  if [[ ! -f "$RODEO_DIR/pyproject.toml" ]]; then
-    echo "Error: $RODEO_DIR does not look like a rodeo-cli checkout (no pyproject.toml)." >&2
-    echo "       Pass --dir /path/to/rodeo-cli to point at the right directory." >&2
-    exit 1
+  if [[ -f "$RODEO_DIR/pyproject.toml" ]]; then
+    echo "==> Dev mode: using existing checkout at $RODEO_DIR (git untouched)"
+  else
+    echo "==> Dev mode: cloning $RODEO_REPO to $RODEO_DIR"
+    git clone "$RODEO_REPO" "$RODEO_DIR"
+    if [[ "$RODEO_REF" != "main" ]]; then
+      git -C "$RODEO_DIR" checkout "$RODEO_REF"
+    fi
+    echo "==> Dev mode: initial clone done — git will not be touched on future runs"
   fi
 else
   if [[ -d "$RODEO_DIR/.git" ]]; then

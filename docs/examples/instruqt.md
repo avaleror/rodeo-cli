@@ -24,12 +24,10 @@ Request the `geekohive` machine type in the Instruqt sandbox config if you are u
 ## Step 1: install rodeo-cli on the builder
 
 ```bash
-git clone https://github.com/avaleror/rodeo-cli.git
-cd rodeo-cli
-python3 -m venv --system-site-packages .venv && source .venv/bin/activate
-pip install -e .
-rodeo install-deps --link
+curl -fsSL https://raw.githubusercontent.com/avaleror/rodeo-cli/main/install.sh | bash
 ```
+
+This clones the repo, sets up a Python environment internally, links `rodeo` as a system command, and installs host dependencies (KVM, libvirt, ansible, kubectl).
 
 ## Step 2: set deployment target
 
@@ -150,6 +148,6 @@ If you accidentally enabled firewalld before the snapshot and the builder instan
 If the builder instance was recycled and the venv is gone, re-install rodeo-cli first:
 
 ```bash
-cd rodeo-cli && source .venv/bin/activate 2>/dev/null || (python3 -m venv --system-site-packages .venv && source .venv/bin/activate && pip install -e .)
+curl -fsSL https://raw.githubusercontent.com/avaleror/rodeo-cli/main/install.sh | bash
 rodeo deploy --from finalise --finalise
 ```

@@ -375,11 +375,19 @@ class DeployRunner:
         from .rancher import RancherPhase
         background = self._background_rancher
         if background is not None and background.setup_done:
-            # K3s + Helm + Rancher Prime already done during the cluster phase wait.
-            # Run import only (UI extension + Harvester cluster import + CDROMs).
-            yield LogLine("Rancher K3s/Helm already complete — running import only...")
+            # K3s + Helm + Rancher Prime already completed during the cluster phase wait.
+            # Set passwords + eject ISOs only — Harvester import is a lab exercise.
+            yield LogLine("Rancher K3s/Helm already complete — setting passwords and ejecting ISOs...")
             phase = background
-            yield from phase.stream_import()
+            yield LogLine("Setting Harvester dashboard admin password...")
+            yield from phase._set_harvester_password()
+            yield LogLine("Ejecting installer ISOs from Harvester VMs...")
+            yield from phase._eject_cdroms()
+            yield LogLine(
+                f"\n  Rancher URL  : {phase.rancher_api}  (NodePort)"
+                "\n  Harvester import is a lab exercise — see the challenge instructions."
+            )
+            phase.success = True
         else:
             phase = RancherPhase(self.cfg, stop=self.stop)
             yield from phase.stream()

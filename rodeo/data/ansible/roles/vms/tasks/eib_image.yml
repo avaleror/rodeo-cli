@@ -1,0 +1,81 @@
+---
+# EIB VM disk + cloud-init seed for SUSE Edge labs.
+# The EIB VM hosts the Edge Image Builder container that builds Elemental OS images.
+#
+# Base OS: openSUSE Leap 16 Minimal-VM (kvm-and-xen variant).
+# cloud-init is injected via virt-customize — same pattern as the Rancher VM
+# (Leap 16 Minimal-VM ships without cloud-init pre-installed).
+# Podman is also injected so the EIB container can be pulled and run on first use.
+
+- name: Download openSUSE Leap 16 base image for EIB VM
+  ansible.builtin.get_url:
+    url: "{{ leap16_url }}"
+    dest: "{{ image_dir }}/Leap-16.0-kvm-and-xen.qcow2"
+    mode: '0644'
+
+# Build to a temp file and move into place — same guard pattern as rancher_image.yml.
+- name: Build EIB VM disk (Leap 16 base + inject cloud-init + install podman)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    tmp='{{ image_dir }}/eib-vda.qcow2.building'
+    rm -f "$tmp"
+    qemu-img convert -f qcow2 -O qcow2 -o preallocation=metadata \
+      '{{ image_dir }}/Leap-16.0-kvm-and-xen.qcow2' "$tmp"
+    virt-customize -a "$tmp" \
+      --install cloud-init,podman \
+      --run-command 'systemctl enable cloud-init-local.service cloud-init.service cloud-config.service cloud-final.service'
+    mv "$tmp" '{{ image_dir }}/eib-vda.qcow2'
+  args:
+    executable: /bin/bash
+    creates: "{{ image_dir }}/eib-vda.qcow2"
+  environment:
+    LIBGUESTFS_BACKEND: direct
+
+- name: Copy OVMF variable store for EIB VM
+  ansible.builtin.command:
+    cmd: cp {{ ovmf_vars_template }} {{ image_dir }}/eib-ovmf-vars.fd
+    creates: "{{ image_dir }}/eib-ovmf-vars.fd"
+
+- name: Get EIB VM disk virtual size
+  ansible.builtin.command: qemu-img info --output=json '{{ image_dir }}/eib-vda.qcow2'
+  register: eib_disk_info
+  changed_when: false
+  failed_when: false
+
+- name: Resize EIB VM disk to {{ libvirt_flavors.eib.disk_gb }}G
+  ansible.builtin.command: >
+    qemu-img resize '{{ image_dir }}/eib-vda.qcow2' {{ libvirt_flavors.eib.disk_gb }}G
+  when:
+    - eib_disk_info.rc == 0
+    - (eib_disk_info.stdout | from_json)['virtual-size'] | int < (libvirt_flavors.eib.disk_gb | int * 1073741824)
+
+- name: Create EIB cloud-init staging directory
+  ansible.builtin.file:
+    path: /tmp/eib-cloud-init
+    state: directory
+    mode: '0755'
+
+- name: Write EIB cloud-init meta-data
+  ansible.builtin.template:
+    src: eib-cloud-init-meta-data.j2
+    dest: /tmp/eib-cloud-init/meta-data
+
+- name: Write EIB cloud-init user-data
+  ansible.builtin.template:
+    src: eib-cloud-init-user-data.j2
+    dest: /tmp/eib-cloud-init/user-data
+
+- name: Write EIB cloud-init network-config
+  ansible.builtin.template:
+    src: eib-cloud-init-network-config.j2
+    dest: /tmp/eib-cloud-init/network-config
+
+# No creates: guard — rebuilt every time so it always matches current templates.
+- name: Build EIB cloud-init seed ISO
+  ansible.builtin.command: >
+    xorriso -as mkisofs
+    -V cidata -J -r
+    -o '{{ image_dir }}/eib-cloud-init.iso'
+    /tmp/eib-cloud-init/meta-data
+    /tmp/eib-cloud-init/user-data
+    /tmp/eib-cloud-init/network-config

@@ -18,9 +18,9 @@ except ImportError:
 class SuseEdgeProfile(RodeoProfile):
     name = "suse-edge"
     # pxe_server and cluster phases are suse-virt specific — Edge uses cloud-init VMs.
-    # TODO(feature/suse-edge): add 'elemental' phase once EdgeRancherPhase installs
-    # elemental-operator-crds + elemental-operator Helm charts after Rancher.
-    phases = ["kvm_host", "vms", "rancher", "finalise"]
+    # elemental installs Elemental Operator (CRDs + Operator) on the management cluster
+    # after Rancher Prime is up. Edge nodes then register via TPM + Elemental.
+    phases = ["kvm_host", "vms", "rancher", "elemental", "finalise"]
     vm_names = ["rancher", "eib", "edge1", "edge2", "edge3"]
     ansible_phases = frozenset(["kvm_host", "vms"])
     guarded_phases = frozenset(["finalise"])
@@ -73,14 +73,18 @@ class SuseEdgeProfile(RodeoProfile):
         if phase in ("kvm_host", "vms"):
             yield from runner.stream_ansible(phase, vars_file)
         elif phase == "rancher":
-            # Installs K3s + Rancher Prime on the management cluster VM.
-            # Elemental Operator charts are installed as a follow-on step
-            # (TODO: EdgeRancherPhase on this branch).
             if "rancher" in runner.cfg.get("vms", {}):
                 yield from runner.stream_rancher()
             else:
                 from ..engine.runner import LogLine
                 yield LogLine("No Rancher node in topology — skipping rancher phase.")
+                runner._last_rc = 0
+        elif phase == "elemental":
+            if "rancher" in runner.cfg.get("vms", {}):
+                yield from runner.stream_elemental()
+            else:
+                from ..engine.runner import LogLine
+                yield LogLine("No Rancher node in topology — skipping elemental phase.")
                 runner._last_rc = 0
         elif phase == "finalise":
             yield from runner.stream_finalise()

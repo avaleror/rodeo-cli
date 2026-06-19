@@ -206,3 +206,14 @@ def clean_cmd(
         console.print("Host reset done. Packages and rodeo binary remain. You can now start fresh or repurpose the node.\n")
     else:
         console.print("Run [bold]rodeo deploy[/bold] to start fresh.\n")
+
+    # Always refresh the CLI after a clean so the next deploy runs the latest code.
+    from .self_update_cmd import _REPO_ROOT, _VENV_PIP
+    import sys as _sys
+    if (_REPO_ROOT / ".git").exists():
+        console.print("Refreshing rodeo-cli...")
+        subprocess.run(["git", "-C", str(_REPO_ROOT), "pull", "--ff-only"], check=False)
+        pip = str(_VENV_PIP) if _VENV_PIP.exists() else _sys.executable.replace("rodeo", "pip")
+        subprocess.run([pip, "install", "--quiet", "-e", str(_REPO_ROOT)], check=False)
+        from rodeo import __version__
+        console.print(f"[dim]rodeo-cli {__version__}[/dim]\n")

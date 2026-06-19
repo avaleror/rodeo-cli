@@ -80,7 +80,13 @@ class RancherPhase:
         yield from self.stream_setup()
         if not self.setup_done:
             return
-        yield from self.stream_import()
+        yield LogLine("Ejecting installer ISOs from Harvester VMs...")
+        yield from self._eject_cdroms()
+        yield LogLine(
+            f"\n  Rancher URL  : {self.rancher_api}  (NodePort)"
+            "\n  Harvester import is a lab exercise — see the challenge instructions."
+        )
+        self.success = True
 
     def stream_setup(self) -> Iterator[DeployEvent]:
         """K3s + Helm + cert-manager + Rancher Prime + API config.
@@ -105,11 +111,6 @@ class RancherPhase:
             self.error = "K3s node never became Ready"
             return
         yield LogLine("  K3s node Ready.")
-
-        yield LogLine("Generating self-signed CA + TLS cert (IP SAN for agent TLS)...")
-        if not (yield from self._generate_certs()):
-            return
-        yield LogLine("  Certs ready.")
 
         yield LogLine("Installing Helm...")
         if not (yield from self._install_helm()):
@@ -346,46 +347,6 @@ class RancherPhase:
             return False
         return True
 
-    def _generate_certs(self) -> Generator[DeployEvent, None, bool]:
-        """Generate a self-signed CA + server cert with IP and hostname SANs.
-
-        Run after K3s is Ready (needs kubectl) and before Helm install (Rancher
-        reads these secrets on startup). With ingress.tls.source=secret and
-        privateCA=true, Rancher populates its cacerts setting from tls-rancher-ca
-        so import manifests carry the CA cert — cattle-cluster-agent then verifies
-        the Rancher TLS cert without CATTLE_INSECURE_TLS.
-        """
-        script = (
-            "set -euo pipefail\n"
-            "SSL=/etc/rancher/ssl && mkdir -p $SSL\n"
-            f"IP={self.rancher_ip}\n"
-            f"HOST={self.rancher_hostname}\n"
-            "\n"
-            "openssl genrsa -out $SSL/ca.key 2048 2>/dev/null\n"
-            "openssl req -x509 -new -nodes -key $SSL/ca.key -sha256 -days 3650"
-            ' -out $SSL/ca.crt -subj "/CN=Rodeo Rancher CA" 2>/dev/null\n'
-            "\n"
-            "openssl genrsa -out $SSL/tls.key 2048 2>/dev/null\n"
-            'openssl req -new -key $SSL/tls.key -subj "/CN=$IP" -out $SSL/tls.csr 2>/dev/null\n'
-            'printf "subjectAltName=IP:%s,DNS:%s\\n" "$IP" "$HOST" > $SSL/san.ext\n'
-            "openssl x509 -req -in $SSL/tls.csr -CA $SSL/ca.crt -CAkey $SSL/ca.key"
-            " -CAcreateserial -out $SSL/tls.crt -days 3650 -sha256"
-            " -extfile $SSL/san.ext 2>/dev/null\n"
-            "\n"
-            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
-            "kubectl create namespace cattle-system --dry-run=client -o yaml | kubectl apply -f -\n"
-            "kubectl -n cattle-system create secret generic tls-ca"
-            " --from-file=cacerts.pem=$SSL/ca.crt --dry-run=client -o yaml | kubectl apply -f -\n"
-            "kubectl -n cattle-system create secret tls tls-rancher-ingress"
-            " --cert=$SSL/tls.crt --key=$SSL/tls.key --dry-run=client -o yaml | kubectl apply -f -\n"
-        )
-        r = self._ssh_script(script, timeout=60)
-        if r.returncode != 0:
-            self.error = f"Cert generation failed: {r.stderr.strip()}"
-            yield LogLine(f"  ✗ {self.error}")
-            return False
-        return True
-
     def _install_rancher(self) -> Generator[DeployEvent, None, bool]:
         script = (
             "set -euo pipefail\n"
@@ -396,8 +357,6 @@ class RancherPhase:
             f' --set hostname="{self.rancher_hostname}"'
             ' --set bootstrapPassword="admin"'
             ' --set replicas=1'
-            ' --set ingress.tls.source=secret'
-            ' --set privateCA=true'
             ' --wait --timeout 600s\n'
         )
         yield LogLine("  Running helm upgrade --install rancher (up to 10 min)...")

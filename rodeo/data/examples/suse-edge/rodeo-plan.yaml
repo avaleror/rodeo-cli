@@ -58,6 +58,14 @@ ansible:
   path: null
   inventory: deployer/inventory.local
 
+# Rancher TLS: sslip.io hostname + Let's Encrypt cert via Traefik ingress.
+# The deploy phase detects the external IP of the Instruqt host at install time
+# and sets the Rancher hostname to rancher.<ext-ip>.sslip.io automatically.
+# Replace the email with a real address for ACME registration.
+rancher_tls:
+  source: letsEncrypt
+  email: "your-email@example.com"
+
 credentials:
   # ??placeholders resolved from ~/.rodeo/secrets.yaml at load time.
   rancher_admin_password: "??rancher_admin_password"

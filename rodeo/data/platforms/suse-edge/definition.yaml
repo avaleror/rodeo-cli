@@ -4,7 +4,7 @@
 #
 # Management cluster (rancher VM):
 #   K3s v1.35.3+k3s1 (lab simplification; production SUSE Edge uses RKE2 v1.35.3+rke2r3)
-#   Rancher Prime 2.14.1 + cert-manager v1.16.3
+#   Rancher Prime 2.14.1 + cert-manager v1.20.1
 #   Elemental Operator 1.9.0 (CRDs + operator Helm charts from registry.suse.com)
 #   Fleet (included in Rancher Prime)
 #
@@ -144,7 +144,7 @@ definition:
     # K3s is used here for the management cluster (lab simplification).
     # Production SUSE Edge 3.6 uses RKE2 v1.35.3+rke2r3 for the management cluster.
     k3s: "v1.35.3+k3s1"
-    cert_manager: "v1.16.3"
+    cert_manager: "v1.20.1"
     elemental_operator_crds: "1.9.0"
     elemental_operator: "1.9.0"
     eib: "1.3.3.1"

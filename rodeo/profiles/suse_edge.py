@@ -97,7 +97,7 @@ class SuseEdgeProfile(RodeoProfile):
 _VERSIONS = {
     "rancher":                "2.14.1",
     "k3s":                    "v1.35.3+k3s1",
-    "cert_manager":           "v1.16.3",
+    "cert_manager":           "v1.20.1",
     "elemental_operator_crds": "1.9.0",
     "elemental_operator":     "1.9.0",
     "eib":                    "1.3.3.1",

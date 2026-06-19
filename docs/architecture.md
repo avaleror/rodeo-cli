@@ -40,6 +40,34 @@ The tool runs on **cloud instances**, **Instruqt builder VMs**, **local VMs**, o
 
 ---
 
+## Two-dimension model
+
+rodeo-cli has two independent axes that combine to produce a lab deployment:
+
+```
+Tech platform  ×  Host context  =  lab deployment
+
+suse-edge          baremetal        SUSE Edge 3.6 on bare metal KVM
+suse-edge          instruqt         SUSE Edge 3.6 on Instruqt KVM
+suse-virt          instruqt         SUSE Virtualization on Instruqt KVM
+rancher            aws              Rancher on an AWS EC2 KVM host
+```
+
+**Tech platform** — what lab topology and software stack to deploy. Encoded in `rodeo/profiles/<name>.py` + `data/platforms/<name>/definition.yaml`. Platform code is host-agnostic; the same profile works on any host context.
+
+**Host context** — where the KVM host runs and what that implies for host-level setup. Encoded in `deployment_target` in `rodeo-plan.yaml`. Affects: guarded phases, firewall/DNAT configuration, external IP detection, success screen output. The underlying infrastructure is always KVM/libvirt regardless of host context.
+
+| `deployment_target` | Host type | Key differences |
+|---|---|---|
+| `baremetal` | Linux bare metal with KVM | full firewalld + DNAT |
+| `instruqt` | Instruqt managed KVM builder | `finalise` phase guarded; Instruqt-aware networking |
+| `aws` *(planned)* | EC2 instance with KVM | external IP via EC2 metadata; security groups |
+| `gcp` *(planned)* | GCP instance with KVM | external IP via GCE metadata; VPC firewall rules |
+
+Adding a new host context requires four touch points: `config.py` allowed list, `up_cmd.py` auto-detection, `runner.py` vars file, `success.py` output. See the Extension points table below.
+
+---
+
 ## High-level architecture
 
 ```
@@ -122,7 +150,9 @@ rodeo/
 ├── commands/              Thin CLI wrappers
 ├── widgets/               TUI panels
 └── data/
+    ├── platforms/         definition.yaml per tech platform (suse-virt, suse-edge, rancher)
     ├── ansible/           kvm_host + vms + pxe_server roles (bundled)
+    ├── examples/          reference rodeo-plan.yaml per platform (not workshop content)
     ├── deployer/          inventory.local + legacy examples
     └── templates/         init templates
 
@@ -344,10 +374,12 @@ Live KVM regression is still manual (or geekohive) before touching MAC/DHCP/ISO 
 
 | Add… | Where |
 |------|-------|
-| New workshop type | New `RodeoProfile` + register in `profiles/__init__.py` |
+| New tech platform | New `RodeoProfile` in `profiles/` + `definition.yaml` in `data/platforms/` + register in `profiles/__init__.py` |
+| New deployment_target | `config.py` allowed list + `up_cmd.py` auto-detect + `runner.py` vars + `success.py` output + `kvm_host` role conditionals |
 | New phase | Add to `profile.phases` + `run_phase()` dispatch |
 | New CLI command | `commands/*.py` + register in `cli.py` |
 | Host OS support | `install_deps.py` + possibly kvm_host role conditionals |
+| New workshop/demo | Separate repo: `rodeo-plan.yaml` (type + deployment_target) + lab guide + host setup docs |
 
 ---
 

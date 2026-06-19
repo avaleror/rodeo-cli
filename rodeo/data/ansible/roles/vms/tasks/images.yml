@@ -143,3 +143,63 @@
 - name: Provision the Rancher VM image + cloud-init
   ansible.builtin.include_tasks: rancher_image.yml
   when: (vm_nodes | selectattr('flavor', 'equalto', 'rancher') | list | length) > 0
+
+# --- EIB VM (Edge Image Builder): base image + cloud-init seed ---
+# Only for SUSE Edge labs that include an EIB node.
+- name: Provision the EIB VM image + cloud-init
+  ansible.builtin.include_tasks: eib_image.yml
+  when: (vm_nodes | selectattr('flavor', 'equalto', 'eib') | list | length) > 0
+
+# --- Edge nodes: OVMF vars + blank disks ---
+# Edge nodes boot from the Elemental OS ISO built on the EIB VM (lab exercise,
+# not automated). They need UEFI (OVMF vars) and an empty disk for Elemental to
+# install onto. No ISOs are attached at deploy time.
+
+- name: Copy OVMF variable store for each edge node (async)
+  ansible.builtin.command:
+    cmd: cp {{ ovmf_vars_template }} {{ image_dir }}/{{ item.name }}-ovmf-vars.fd
+    creates: "{{ image_dir }}/{{ item.name }}-ovmf-vars.fd"
+  loop: "{{ vm_nodes | selectattr('flavor', 'equalto', 'edge-node') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  async: 60
+  poll: 0
+  register: edge_ovmf_jobs
+
+- name: Create edge node blank disk images (async)
+  ansible.builtin.command: >
+    qemu-img create -f qcow2
+    {{ image_dir }}/{{ item.name }}-vda.qcow2
+    {{ libvirt_flavors['edge-node'].disk_gb }}G
+  args:
+    creates: "{{ image_dir }}/{{ item.name }}-vda.qcow2"
+  loop: "{{ vm_nodes | selectattr('flavor', 'equalto', 'edge-node') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  async: 300
+  poll: 0
+  register: edge_disk_jobs
+
+- name: Wait for edge node OVMF copies
+  ansible.builtin.async_status:
+    jid: "{{ item.ansible_job_id }}"
+  loop: "{{ edge_ovmf_jobs.results | selectattr('ansible_job_id', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  register: edge_ovmf_results
+  until: edge_ovmf_results.finished
+  retries: 12
+  delay: 5
+  when: (edge_ovmf_jobs.results | selectattr('ansible_job_id', 'defined') | list | length) > 0
+
+- name: Wait for edge node blank disks
+  ansible.builtin.async_status:
+    jid: "{{ item.ansible_job_id }}"
+  loop: "{{ edge_disk_jobs.results | selectattr('ansible_job_id', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  register: edge_disk_results
+  until: edge_disk_results.finished
+  retries: 30
+  delay: 10
+  when: (edge_disk_jobs.results | selectattr('ansible_job_id', 'defined') | list | length) > 0

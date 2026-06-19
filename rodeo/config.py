@@ -46,9 +46,7 @@ _BASE_DEFAULTS: dict[str, Any] = {
         "path": None,
         "inventory": "deployer/inventory.local",
     },
-    "credentials": {
-        "harvester_os_password": None,
-    },
+    "credentials": {},
 }
 
 _SECRETS_PATH = Path.home() / ".rodeo" / "secrets.yaml"
@@ -329,7 +327,7 @@ def validate_config(cfg: dict) -> None:
     if empty:
         raise ConfigError(
             f"Credentials are empty: {', '.join(empty)}\n"
-            "An empty password would be baked into the Harvester install config.\n"
+            "An empty password would be baked into the VM install config.\n"
             "Set values in rodeo-plan.yaml (??key) and ~/.rodeo/secrets.yaml, or run: rodeo init"
         )
     target = cfg.get("deployment_target", "baremetal")
@@ -337,6 +335,16 @@ def validate_config(cfg: dict) -> None:
         raise ConfigError(
             f"Invalid deployment_target '{target}' — use 'instruqt' or 'baremetal'."
         )
+
+    # Let's Encrypt email must be a real address — example.com is rejected by the ACME server.
+    tls = cfg.get("rancher_tls", {})
+    if tls.get("source") == "letsEncrypt":
+        email = tls.get("email", "")
+        if not email or "example.com" in email or email.endswith("@example.com"):
+            raise ConfigError(
+                "rancher_tls.email must be a real address for Let's Encrypt registration.\n"
+                "Set it in rodeo-plan.yaml under rancher_tls.email (or use ??key to load from secrets)."
+            )
 
     # Resource sanity — catch -P typos before they fail deep inside libvirt.
     for flavor, spec in cfg.get("resources", {}).items():

@@ -15,6 +15,7 @@ kvm_host_packages:
   - firewalld                # the firewall.yml tasks configure it; not guaranteed on a minimal image
   - python3-firewall         # required by the ansible.posix.firewalld module (imports `firewall`)
   - python3-libvirt-python   # required by the community.libvirt modules (virt/virt_net/virt_pool)
+  - swtpm                    # software TPM 2.0 emulator for edge-node VMs (SUSE Edge Elemental)
 
 # kubectl is not in the SUSE base repos, so the role adds the upstream Kubernetes
 # repo and installs it (used by the rancher phase for the cluster import). Channel
@@ -36,6 +37,9 @@ libvirt_network_cidr: "192.168.122.0/24"
 harvester_ui_port: 8443
 harvester_https_port: 443
 rancher_nodeport: 30002
+# Set to true for profiles that use Traefik ingress + Let's Encrypt (e.g. suse-edge).
+# Adds DNAT rules for ports 80 + 443 to the Rancher VM instead of the NodePort.
+rancher_ingress_enabled: false
 
 # --- Libvirt qemu hook: dynamic nftables NAT for the Harvester cluster ---
 # The hook adds/removes these DNAT rules based on whether any cluster node is

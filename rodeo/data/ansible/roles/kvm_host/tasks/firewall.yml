@@ -133,22 +133,41 @@
     mode: '0755'
     content: |
       #!/bin/sh
-      # rodeo: let DNAT'd inbound (host port-forwards) reach lab guests/VIP.
-      # libvirt's NAT network rejects new inbound to guests and rebuilds its nft
-      # table on each (re)start, so re-add an accept BEFORE the reject each time.
+      # rodeo: let DNAT'd inbound (host port-forwards) reach lab guests.
+      # libvirt rebuilds its nftables table on every network (re)start and adds a
+      # reject rule in guest_input AFTER this hook fires. We retry until the reject
+      # rule appears (up to 5 s), then insert `ct status dnat accept` before it.
       [ "$1" = "default" ] || exit 0
       case "$2" in started|plugged|updated) ;; *) exit 0 ;; esac
-      for h in $(nft -a list chain ip libvirt_network guest_input 2>/dev/null | awk '/ct status dnat accept/{print $NF}'); do
+
+      # Wait for libvirt to finish adding its reject rule to the chain (up to 5 s).
+      rh=""
+      for i in $(seq 1 10); do
+        rh=$(nft -a list chain ip libvirt_network guest_input 2>/dev/null \
+             | awk '/oif.*virbr0.*reject/{print $NF; exit}')
+        [ -z "$rh" ] && rh=$(nft -a list chain ip libvirt_network guest_input 2>/dev/null \
+             | awk '/\breject\b/{print $NF; exit}')
+        [ -n "$rh" ] && break
+        sleep 0.5
+      done
+
+      # Chain not ready or no reject found (non-NAT network or error) — skip.
+      [ -z "$rh" ] && exit 0
+
+      # Remove any stale ct status dnat accept rules left from a previous run.
+      for h in $(nft -a list chain ip libvirt_network guest_input 2>/dev/null \
+                 | awk '/ct status dnat accept/{print $NF}'); do
         nft delete rule ip libvirt_network guest_input handle "$h" 2>/dev/null
       done
-      # Find the reject rule handle. Some libvirt versions include "oif(name) virbr0"
-      # in the guest_input rule itself; others emit a bare "reject" with no interface
-      # condition (the oifname guard is on the jump in the forward chain). Try the
-      # specific match first, fall back to any reject so both formats are covered.
-      chain_out=$(nft -a list chain ip libvirt_network guest_input 2>/dev/null)
-      rh=$(echo "$chain_out" | awk '/oif.*virbr0.*reject/{print $NF; exit}')
-      [ -z "$rh" ] && rh=$(echo "$chain_out" | awk '/\breject\b/{print $NF; exit}')
-      [ -n "$rh" ] && nft insert rule ip libvirt_network guest_input handle "$rh" ct status dnat accept 2>/dev/null
+
+      # Re-read after deletions — handles may have shifted.
+      rh=$(nft -a list chain ip libvirt_network guest_input 2>/dev/null \
+           | awk '/oif.*virbr0.*reject/{print $NF; exit}')
+      [ -z "$rh" ] && rh=$(nft -a list chain ip libvirt_network guest_input 2>/dev/null \
+           | awk '/\breject\b/{print $NF; exit}')
+
+      [ -n "$rh" ] && nft insert rule ip libvirt_network guest_input handle "$rh" \
+        ct status dnat accept 2>/dev/null
       exit 0
   when: network_mode == 'nat'
 

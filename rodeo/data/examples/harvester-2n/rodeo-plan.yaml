@@ -1,0 +1,47 @@
+# rodeo-plan.yaml — 2-node Harvester HCI + Rancher Prime (harvester-2n profile)
+#
+# Like the 'harvester' profile minus one Harvester node.
+# Host requirement: ~56 GiB RAM free (2 × 16 GiB + 8 GiB + host overhead).
+# Good for testing the Rancher import flow on hosts without a full 128 GiB n2-standard-32.
+
+name: harvester-2n-rodeo
+deployment_target: baremetal   # change to instruqt if building an Instruqt image
+
+network:
+  mode: nat
+  vip: "192.168.122.10"
+  rancher_ip: "192.168.122.9"
+  gateway: "192.168.122.1"
+  dns_domain: "aerogrid.com"
+
+resources:
+  harvester:
+    memory_mib: 16384   # 16 GiB per Harvester node
+    vcpu: 8
+    disk_gb: 250        # 250 GB minimum — below this Longhorn fills the persistent partition
+  rancher:
+    memory_mib: 8192
+    vcpu: 4
+    disk_gb: 60
+
+versions:
+  harvester: "1.8.0"
+  rancher: "2.13.1"
+  k3s: "v1.31.4+k3s1"
+  cert_manager: "v1.16.2"
+
+storage:
+  image_dir: /var/lib/libvirt/images
+
+libvirt:
+  uri: qemu:///system
+
+ansible:
+  path: null
+  inventory: deployer/inventory.local
+
+credentials:
+  harvester_os_password: "??harvester_os_password"
+  harvester_admin_password: "??harvester_admin_password"
+  rancher_admin_password: "??rancher_admin_password"
+  harvester_token: "??harvester_token"

@@ -44,7 +44,7 @@ host_bridge: br0
 node_subnet_mask: "255.255.255.0"
 node_prefix: 24
 
-leap16_url: "https://download.opensuse.org/distribution/leap/16.0/appliances/Leap-16.0-Minimal-VM.x86_64-kvm-and-xen.qcow2"
+leap16_url: "https://download.opensuse.org/distribution/leap/16.0/appliances/Leap-16.0-Minimal-VM.x86_64-Cloud.qcow2"
 
 # SUSE Edge 3.6 — EIB VM base image (openSUSE Leap Micro 6.2, no SUSE credentials needed)
 leap_micro_62_url: "https://download.opensuse.org/distribution/leap-micro/6.2/appliances/openSUSE-Leap-Micro.x86_64-Default-qcow.qcow2"

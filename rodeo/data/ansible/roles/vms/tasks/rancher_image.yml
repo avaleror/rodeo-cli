@@ -3,26 +3,25 @@
 # topology actually has a Rancher node (see the guarded include there), so
 # Rancher-less labs like the 2-node 'test' profile skip all of this.
 
-- name: Download openSUSE Leap 16 KVM base image (kvm-and-xen variant; virtio drivers included)
+# The Cloud variant of the Leap 16 image ships with cloud-init pre-installed.
+# This avoids the virt-customize --install step which requires network access
+# from inside libguestfs (not reliable across all host configurations).
+- name: Download openSUSE Leap 16 Cloud image (cloud-init pre-installed)
   ansible.builtin.get_url:
     url: "{{ leap16_url }}"
-    dest: "{{ image_dir }}/Leap-16.0-kvm-and-xen.qcow2"
+    dest: "{{ image_dir }}/Leap-16.0-Cloud.qcow2"
     mode: '0644'
 
-# Leap 16 Minimal-VM images ship WITHOUT cloud-init, so the NoCloud seed ISO
-# (built below) would be ignored and the Rancher VM would never get its SSH key.
-# Inject cloud-init into the disk at build time with virt-customize (libguestfs).
-# Build to a temp file and move into place so the final disk only exists when
-# both steps succeed — keeps the `creates:` guard correct on re-runs.
-- name: Build Rancher VM disk (Leap base + inject cloud-init)
+# Ensure cloud-init services are enabled and resize the disk.
+# Build to a temp file so `creates:` guard is only satisfied on full success.
+- name: Build Rancher VM disk (enable cloud-init services)
   ansible.builtin.shell: |
     set -euo pipefail
     tmp='{{ image_dir }}/rancher-vda.qcow2.building'
     rm -f "$tmp"
     qemu-img convert -f qcow2 -O qcow2 -o preallocation=metadata \
-      '{{ image_dir }}/Leap-16.0-kvm-and-xen.qcow2' "$tmp"
+      '{{ image_dir }}/Leap-16.0-Cloud.qcow2' "$tmp"
     virt-customize -a "$tmp" \
-      --install cloud-init \
       --run-command 'systemctl enable cloud-init-local.service cloud-init.service cloud-config.service cloud-final.service'
     mv "$tmp" '{{ image_dir }}/rancher-vda.qcow2'
   args:

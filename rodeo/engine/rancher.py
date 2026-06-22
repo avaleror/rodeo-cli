@@ -87,11 +87,14 @@ class RancherPhase:
 
         # For letsEncrypt mode, rancher_hostname and rancher_api are updated at
         # install time once the external IP is known (_update_sslip_hostname).
+        # For self-signed NodePort mode, we use the sslip.io hostname (not raw IP)
+        # so that cattle-cluster-agent's TLS hostname verification passes — the cert
+        # is issued for the sslip.io hostname, not the IP.
         self.rancher_hostname = f"rancher.{self.rancher_ip.replace('.', '-')}.sslip.io"
         if self.tls_source == "letsEncrypt":
             self.rancher_api = f"https://{self.rancher_hostname}"
         else:
-            self.rancher_api = f"https://{self.rancher_ip}:{self.nodeport}"
+            self.rancher_api = f"https://{self.rancher_hostname}:{self.nodeport}"
 
         self.success      = False
         self.setup_done   = False  # True after K3s+Helm+Rancher ping complete
@@ -593,8 +596,10 @@ class RancherPhase:
     def _import_harvester(self) -> Generator[DeployEvent, None, bool]:
         # Use the provisioning.cattle.io/v1 Cluster API — the documented import path
         # per https://docs.harvesterhci.io/v1.8/rancher/virtualization-management
-        # CATTLE_INSECURE_TLS is injected via agentEnvVars at creation time so the
-        # agent trusts Rancher's self-signed cert on a NodePort (no ingress/traefik).
+        # agentEnvVars is included for future Rancher versions; in 2.13.x it does not
+        # propagate to cattle-cluster-agent for imported (generic) clusters. TLS is
+        # handled correctly because server-url uses the sslip.io hostname that matches
+        # the Rancher TLS cert's CN/SAN — no bypass needed.
         cluster_manifest = json.dumps({
             "apiVersion": "provisioning.cattle.io/v1",
             "kind": "Cluster",

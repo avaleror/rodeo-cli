@@ -207,7 +207,7 @@ class DeployRunner:
             t0 = time.monotonic()
 
             try:
-                yield from profile.run_phase(phase, self, vars_file)
+                yield from self._tee_phase(profile.run_phase(phase, self, vars_file))
             except Exception as exc:
                 self._last_rc = 1
                 yield LogLine(f"  ✗  {phase}: unexpected error: {exc}")
@@ -255,6 +255,14 @@ class DeployRunner:
         self._proc.wait()
         self._last_rc = self._proc.returncode
         self._proc = None
+
+    def _tee_phase(self, events: Iterator[DeployEvent]) -> Iterator[DeployEvent]:
+        """Yield events from a Python phase and mirror LogLine text to the log file."""
+        with open(self._log_file, "a", errors="replace") as lf:
+            for event in events:
+                if isinstance(event, LogLine):
+                    lf.write(event.line + "\n")
+                yield event
 
     # ---------- Phase runners (public API for profiles) ----------
 

@@ -87,14 +87,19 @@ class RancherPhase:
 
         # For letsEncrypt mode, rancher_hostname and rancher_api are updated at
         # install time once the external IP is known (_update_sslip_hostname).
-        # For self-signed NodePort mode, we use the sslip.io hostname (not raw IP)
-        # so that cattle-cluster-agent's TLS hostname verification passes — the cert
-        # is issued for the sslip.io hostname, not the IP.
         self.rancher_hostname = f"rancher.{self.rancher_ip.replace('.', '-')}.sslip.io"
         if self.tls_source == "letsEncrypt":
             self.rancher_api = f"https://{self.rancher_hostname}"
+            # rancher_server_url == rancher_api for letsEncrypt (both use the public hostname)
+            self.rancher_server_url = self.rancher_api
         else:
-            self.rancher_api = f"https://{self.rancher_hostname}:{self.nodeport}"
+            # rancher_api uses the raw VM IP — no DNS required; _ssl_ctx() already skips
+            # cert verification for rodeo-cli's own API calls.
+            self.rancher_api = f"https://{self.rancher_ip}:{self.nodeport}"
+            # rancher_server_url uses the sslip.io hostname — this is what cattle-cluster-agent
+            # reads from Rancher's server-url setting. The cert SAN is the sslip.io hostname,
+            # not the raw IP, so the agent's TLS hostname verification passes.
+            self.rancher_server_url = f"https://{self.rancher_hostname}:{self.nodeport}"
 
         self.success      = False
         self.setup_done   = False  # True after K3s+Helm+Rancher ping complete
@@ -278,6 +283,7 @@ class RancherPhase:
         dashed = ext_ip.replace(".", "-")
         self.rancher_hostname = f"rancher.{dashed}.sslip.io"
         self.rancher_api = f"https://{self.rancher_hostname}"
+        self.rancher_server_url = self.rancher_api
 
     def _http(
         self,
@@ -577,7 +583,7 @@ class RancherPhase:
             self._http(
                 "PUT",
                 "/v3/settings/server-url",
-                {"value": self.rancher_api},
+                {"value": self.rancher_server_url},
                 token=self._api_token,
             )
         except Exception as exc:

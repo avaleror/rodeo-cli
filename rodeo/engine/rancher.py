@@ -549,14 +549,17 @@ class RancherPhase:
 
         if on_bootstrap:
             try:
+                # Resolve admin user ID — required for the setpassword action.
+                user_resp = self._http("GET", "/v3/users?me=true", token=temp_token)
+                user_id = (user_resp.get("data") or [{}])[0].get("id", "")
+                if not user_id:
+                    raise ValueError("could not resolve admin user ID from /v3/users?me=true")
+                # setpassword clears mustChangePassword automatically; changepassword
+                # does not in Rancher 2.8+ and silently leaves the new password inactive.
                 self._http(
                     "POST",
-                    "/v3/users?action=changepassword",
-                    {
-                        "currentPassword": "admin",
-                        "newPassword": self.admin_password,
-                        "mustChangePassword": False,
-                    },
+                    f"/v3/users/{user_id}?action=setpassword",
+                    {"newPassword": self.admin_password},
                     token=temp_token,
                 )
             except Exception as exc:

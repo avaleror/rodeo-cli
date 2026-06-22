@@ -120,14 +120,7 @@ class RancherPhase:
         yield from self.stream_setup()
         if not self.setup_done:
             return
-        if not self.standalone:
-            yield LogLine("Setting Harvester dashboard admin password...")
-            yield from self._set_harvester_password()
-            yield LogLine("Ejecting installer ISOs from Harvester VMs...")
-            yield from self._eject_cdroms()
-        self._write_env_file()
-        yield LogLine(self._completion_summary())
-        self.success = True
+        yield from self.stream_import()
 
     def stream_setup(self) -> Iterator[DeployEvent]:
         """K3s + Helm + cert-manager + Rancher Prime + API config.
@@ -596,6 +589,11 @@ class RancherPhase:
         except Exception as exc:
             yield LogLine(f"  ⚠ server-url set: {exc}")
 
+        # Sync cacerts with the actual serving CA.  Each Helm upgrade can rotate
+        # tls-rancher-internal-ca while preserving the old cacerts Setting value,
+        # causing cattle-cluster-agent to fail TLS verification on the next import.
+        yield from self._sync_cacerts()
+
         try:
             pass_file = Path("/root/rancher-password")
             pass_file.write_text(self.admin_password)
@@ -605,6 +603,54 @@ class RancherPhase:
             pass
 
         return True
+
+    def _sync_cacerts(self) -> Iterator[DeployEvent]:
+        """Ensure the cacerts Setting matches the actual serving CA from K3s.
+
+        Rancher's Helm upgrade rotates tls-rancher-internal-ca but preserves the
+        existing cacerts Setting.  The mismatch causes cattle-cluster-agent to
+        fail TLS verification (ECDSA failure: old CA in manifest vs new CA on
+        the wire).  Fix: patch the Setting directly via kubectl when they diverge.
+        """
+        if self.standalone:
+            return
+
+        r = self._ssh_script(
+            "kubectl --kubeconfig=/etc/rancher/k3s/k3s.yaml"
+            " get secret tls-rancher-internal-ca -n cattle-system"
+            " -o jsonpath='{.data.tls\\.crt}' 2>/dev/null | base64 -d",
+            timeout=15,
+        )
+        if r.returncode != 0 or not r.stdout.strip():
+            return  # nothing to sync (self-signed cert or secret absent)
+
+        serving_ca = r.stdout.strip()
+
+        try:
+            current = self._http("GET", "/v3/settings/cacerts", token=self._api_token)
+            api_ca = (current.get("value") or "").strip()
+        except Exception:
+            return
+
+        if api_ca == serving_ca:
+            return  # already in sync
+
+        # cacerts is read-only via the REST API; patch the K8s resource directly.
+        patch_script = (
+            "set -euo pipefail\n"
+            "CA=$(kubectl --kubeconfig=/etc/rancher/k3s/k3s.yaml"
+            " get secret tls-rancher-internal-ca -n cattle-system"
+            " -o jsonpath='{.data.tls\\.crt}' | base64 -d)\n"
+            "VALUE=$(python3 -c \"import sys,json; print(json.dumps(sys.stdin.read().rstrip()))\" <<< \"$CA\")\n"
+            "kubectl --kubeconfig=/etc/rancher/k3s/k3s.yaml"
+            " patch setting cacerts"
+            " --type=merge -p \"{\\\"value\\\": $VALUE}\" 2>&1\n"
+        )
+        r2 = self._ssh_script(patch_script, timeout=20)
+        if r2.returncode == 0:
+            yield LogLine("  cacerts synced with serving CA.")
+        else:
+            yield LogLine(f"  ⚠ cacerts sync: {r2.stderr.strip()[:120]}")
 
     def _import_harvester(self) -> Generator[DeployEvent, None, bool]:
         # Use the provisioning.cattle.io/v1 Cluster API — the documented import path

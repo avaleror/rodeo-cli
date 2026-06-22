@@ -552,7 +552,11 @@ class RancherPhase:
                 self._http(
                     "POST",
                     "/v3/users?action=changepassword",
-                    {"currentPassword": "admin", "newPassword": self.admin_password},
+                    {
+                        "currentPassword": "admin",
+                        "newPassword": self.admin_password,
+                        "mustChangePassword": False,
+                    },
                     token=temp_token,
                 )
             except Exception as exc:

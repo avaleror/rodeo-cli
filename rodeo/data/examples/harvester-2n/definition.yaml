@@ -1,0 +1,230 @@
+# definition.yaml — declarative definition for the harvester-2n profile.
+#
+# 2-node Harvester HCI cluster + Rancher Prime on nested KVM.
+# Like the full 'harvester' profile minus one Harvester node.
+# Useful for testing the complete Rancher import flow on hosts with ~56–72 GiB RAM.
+# (2 × 16 GiB Harvester + 8 GiB Rancher = 40 GiB guest; leave ~16 GiB for host + KVM overhead)
+
+apiVersion: 1.0
+definition:
+  name: suse-virt
+  description: "2-node Harvester HCI cluster + Rancher Prime on nested KVM (slim profile)"
+
+  start_order:
+    - harvester1
+    - harvester2
+    - rancher
+
+  harvester_node_names:
+    - harvester1
+    - harvester2
+
+  harvester_ready_count: 2
+
+  # 90s gap before the 2nd node joins — same race prevention as the 3-node profile.
+  etcd_join_gap_seconds: 90
+
+  network:
+    name: default
+    bridge: virbr0
+    mode: nat
+    cidr: 192.168.122.0/24
+    gateway: 192.168.122.1
+    domain: aerogrid.com
+    dhcp_range:
+      start: 192.168.122.100
+      end: 192.168.122.254
+
+  node_templates:
+    harvester:
+      flavor: harvester
+      ssh_user: rancher
+      hostname_pattern: "{label}"
+      config_iso_name_pattern: "harvester-config-node{index}"
+      infra_type: harvester
+      interfaces:
+        - role: mgmt
+          model: e1000
+          pxe: true
+          ip_family: static
+        - role: storage
+          model: virtio
+        - role: migration
+          model: virtio
+        - role: service
+          model: virtio
+          count: 2
+    rancher:
+      flavor: rancher
+      ssh_user: root
+      infra_type: rancher
+      interfaces:
+        - role: mgmt
+          model: virtio
+          ip_family: static
+
+  exposed_services:
+    - name: harvester-ui
+      description: "Harvester dashboard + API"
+      host_port: 8443
+      guest_port: 443
+      target: vip
+      proto: tcp
+    - name: rancher
+      description: "Rancher Prime NodePort"
+      host_port: 30002
+      guest_port: 30002
+      target: rancher
+      proto: tcp
+
+  boot:
+    pxe:
+      http_port: 8080
+      http_bind: "{{ libvirt_network_gateway }}"
+      tftp_root: /var/lib/libvirt/dnsmasq
+      http_root: /srv/harvester-pxe
+      ipxe_efi_url: "https://boot.ipxe.org/x86_64-efi/ipxe.efi"
+    harvester:
+      vip: "{{ harvester_vip }}"
+
+  storage:
+    device: ""
+    mount_point: /var/lib/libvirt/images
+    fs_type: xfs
+    libvirt_pool_name: default
+    libvirt_pool_path: /var/lib/libvirt/images
+    image_dir: /var/lib/libvirt/images
+
+  components:
+    - name: harvester-cluster
+      description: "2-node Harvester HCI (RKE2 + Longhorn + KubeVirt + Kube-OVN)"
+      nodes: harvester_node_names
+      networks:
+        - mgmt
+        - storage
+        - migration
+        - service1
+        - service2
+      exposed:
+        - harvester-ui
+    - name: rancher
+      description: "Rancher Prime on K3s (imports the Harvester cluster)"
+      nodes: ["rancher"]
+      exposed:
+        - rancher
+    - name: pxe-server
+      description: "iPXE + HTTP server on the host for diskless Harvester node boot"
+      on_host: true
+    - name: host-network-prep
+      description: "libvirt network, firewalld DNAT, sysctls, SELinux for nested KVM lab"
+      on_host: true
+
+  harvester:
+    networks:
+      mgmt:
+        role: management
+        description: "PXE boot, VIP, Kubernetes API, etcd, RKE2"
+      storage:
+        role: storage
+        description: "Longhorn CSI traffic between nodes"
+      migration:
+        role: migration
+        description: "KubeVirt live migration"
+      service1:
+        role: service
+        description: "Kube-OVN primary uplink for VM networks"
+      service2:
+        role: service
+        description: "Kube-OVN secondary uplink"
+    ntp_servers:
+      - 0.pool.ntp.org
+      - 1.pool.ntp.org
+    installer_notes:
+      rke2: "RKE2 control plane on the 2 nodes; etcd join gap declared above for bootstrap race avoidance."
+      longhorn: "Storage on the dedicated storage + service NICs; Longhorn uses 2 replicas (lab only)."
+
+  rancher:
+    cloud_init:
+      packages: []
+      runcmd: []
+
+  host_prep:
+    sysctls:
+      - net.bridge.bridge-nf-call-iptables=0
+      - net.bridge.bridge-nf-call-ip6tables=0
+      - net.bridge.bridge-nf-call-arptables=0
+      - net.ipv4.conf.all.rp_filter=2
+      - net.ipv4.conf.default.rp_filter=2
+    selinux_mode: permissive
+    libvirt:
+      ovmf_code: /usr/share/qemu/ovmf-x86_64-4m-code.bin
+      ovmf_vars_template: /usr/share/qemu/ovmf-x86_64-4m-vars.bin
+      use_modular_daemons: true
+    network:
+      unmanaged_interfaces:
+        - virbr0
+      rp_filter_loose: true
+
+  nodes:
+    - name: harvester1
+      template: harvester
+      index: 1
+      hostname: alpha
+      uuid: "1c5e1f38-1fb8-4f03-9eaa-12838f70faa1"
+      ip: "192.168.122.11"
+      config_iso_name: "harvester-config-node1"
+      ssh_user: rancher
+      interfaces:
+        - role: mgmt
+          mac: "02:00:00:0D:62:E1"
+        - role: storage
+          mac: "02:00:00:0D:63:E1"
+        - role: migration
+          mac: "02:00:00:0D:64:E1"
+        - role: service
+          mac: "02:00:00:0D:65:E1"
+        - role: service
+          mac: "02:00:00:0D:66:E1"
+      mgmt_mac: "02:00:00:0D:62:E1"
+      storage_mac: "02:00:00:0D:63:E1"
+      migration_mac: "02:00:00:0D:64:E1"
+      service1_mac: "02:00:00:0D:65:E1"
+      service2_mac: "02:00:00:0D:66:E1"
+
+    - name: harvester2
+      template: harvester
+      index: 2
+      hostname: bravo
+      uuid: "4e156918-3e00-44c2-bf47-0b532b3807c1"
+      ip: "192.168.122.12"
+      config_iso_name: "harvester-config-node2"
+      ssh_user: rancher
+      interfaces:
+        - role: mgmt
+          mac: "02:00:00:0D:62:E2"
+        - role: storage
+          mac: "02:00:00:0D:63:E2"
+        - role: migration
+          mac: "02:00:00:0D:64:E2"
+        - role: service
+          mac: "02:00:00:0D:65:E2"
+        - role: service
+          mac: "02:00:00:0D:66:E2"
+      mgmt_mac: "02:00:00:0D:62:E2"
+      storage_mac: "02:00:00:0D:63:E2"
+      migration_mac: "02:00:00:0D:64:E2"
+      service1_mac: "02:00:00:0D:65:E2"
+      service2_mac: "02:00:00:0D:66:E2"
+
+    - name: rancher
+      template: rancher
+      index: 0
+      hostname: rancher
+      uuid: "77994fd6-7ebb-4ad3-baf4-55575b0ce265"
+      ip: "192.168.122.9"
+      config_iso_name: ""
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          mac: "02:00:00:0D:62:E9"
+      mgmt_mac: "02:00:00:0D:62:E9"

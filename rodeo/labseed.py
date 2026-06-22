@@ -21,6 +21,7 @@ PROFILE_EXAMPLE = {
     "rancher": "rancher-lab-config",        # 1 VM: Rancher Prime on K3s, no Harvester (smallest)
     "test": "harvester-lab-config",         # 2-node Harvester, no Rancher (modest hosts)
     "harvester-ha": "harvester-ha-config",  # 3-node Harvester, no Rancher (3-member etcd HA, lean sizing)
+    "harvester-2n": "harvester-2n",         # 2-node Harvester + Rancher Prime (slim profile, ~56 GiB RAM)
     "harvester": "harvester",               # full 3-node Harvester + Rancher Prime
     "suse-edge": "suse-edge",               # Rancher + Elemental + EIB + 3 edge nodes (SUSE Edge 3.6)
 }

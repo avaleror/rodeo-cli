@@ -71,22 +71,17 @@ remove_nft_rule() {
 }
 
 ensure_libvirt_accept() {
-    # Belt-and-braces alongside /etc/libvirt/hooks/network: always ensure
-    # `ct status dnat accept` is positioned BEFORE the reject in guest_input.
-    # We delete any existing instance first (it may be in the wrong position
-    # if the network hook fired before libvirt finished building its chain)
-    # and then reinsert anchored to the reject handle.
-    local chain_out rh h
+    # Ensure `ct status dnat accept` is at the TOP of guest_input (before the
+    # reject rule) so DNAT'd host port-forwards can reach guests.
+    # Insert without a handle = position 0 = chain start. Anchoring to the
+    # reject handle via `insert ... handle H` inserts after H on some nftables
+    # versions, so we avoid that and always insert at start instead.
+    local chain_out h
     chain_out=$(nft -a list chain ip libvirt_network guest_input 2>/dev/null) || return 0
     for h in $(echo "$chain_out" | awk '/ct status dnat accept/{print $NF}'); do
         nft delete rule ip libvirt_network guest_input handle "$h" 2>/dev/null
     done
-    chain_out=$(nft -a list chain ip libvirt_network guest_input 2>/dev/null) || return 0
-    # Some libvirt versions include oif(name) in the guest_input reject rule;
-    # others emit a bare reject. Try specific match first, fall back to any reject.
-    rh=$(echo "$chain_out" | awk '/oif.*virbr0.*reject/{print $NF; exit}')
-    [ -z "$rh" ] && rh=$(echo "$chain_out" | awk '/\breject\b/{print $NF; exit}')
-    [ -n "$rh" ] && nft insert rule ip libvirt_network guest_input handle "$rh" ct status dnat accept
+    nft insert rule ip libvirt_network guest_input ct status dnat accept 2>/dev/null
 }
 
 if is_any_vm_running; then

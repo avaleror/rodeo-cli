@@ -8,6 +8,7 @@ import click
 from rich.console import Console
 
 from ..config import find_ansible_root, load_config, validate_config
+from ..privilege import ensure_root, is_root
 from ..engine.runner import (
     DeployComplete,
     DeployRunner,
@@ -62,6 +63,8 @@ def deploy_cmd(
     ansible_verbose: int,
 ) -> None:
     """Deploy the full SUSE Virtualization Rodeo cluster."""
+    if not is_root():
+        ensure_root(sys.argv[1:])
     if config_dir is None:
         ctx = click.get_current_context()
         if ctx.obj:

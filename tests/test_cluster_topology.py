@@ -37,8 +37,8 @@ def test_three_node_topology_from_bundled_definition():
     cfg = _cfg(vms={f"harvester{i}": {} for i in (1, 2, 3)} | {"rancher": {}})
     cp = ClusterPhase(cfg)
     assert cp.ready_count == 3
-    assert cp.start_order[:3] == ["harvester1", "harvester2", "harvester3"]
-    assert "rancher" in cp.start_order
+    assert cp.start_order[0] == "rancher"
+    assert cp.start_order[1:] == ["harvester1", "harvester2", "harvester3"]
     assert "rancher" not in cp.harvester_nodes
 
 

@@ -8,9 +8,11 @@ Infra aware via same definition analysis as stop (infra_type logged, components 
 Fits general picture as part of lifecycle commands (with generate for entry, bootstrap for initial setup, deploy for up, stop, clean --all for reset/repurpose; all using definition as source per inventory.py). See clean.py for --hard integration (stop first unless hard), cli.py for registration, user-guide for "stop before clean; start after", architecture.md for role.
 """
 
+import ssl
 import subprocess
 import sys
 import time
+import urllib.request
 
 import click
 from rich.console import Console
@@ -22,6 +24,25 @@ from ._options import config_options
 from ..engine.libvirt import LibvirtDriver
 
 console = Console()
+
+
+def _wait_rancher_healthy(ip: str, port: int, timeout: int = 300) -> bool:
+    """Poll Rancher /healthz until it returns 'ok' or timeout expires."""
+    url = f"https://{ip}:{port}/healthz"
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        try:
+            with urllib.request.urlopen(url, context=ctx, timeout=5) as resp:
+                if b"ok" in resp.read():
+                    return True
+        except Exception:
+            pass
+        time.sleep(10)
+    return False
+
 
 # Mirror from stop.
 HOST_START_SERVICES = {
@@ -144,17 +165,28 @@ def start_cmd(config_path: str, config_dir: str | None, params: tuple[str, ...],
     try:
         with LibvirtDriver(uri) as lv:
             ordered = [v for v in start_order if v in vm_names] or vm_names
-            for name in ordered:
+            net = (cfg or {}).get("network", {})
+            for idx, name in enumerate(ordered):
                 if lv.is_running(name):
                     console.print(f"  [dim]skip (already running)[/dim] {name}")
-                    continue
-                console.print(f"  [dim]start[/dim] {name}")
-                lv.start(name)
-                # Basic wait for ready (per user request).
-                start_t = time.time()
-                while not lv.is_running(name) and time.time() - start_t < 30:
-                    time.sleep(1)
-                console.print(f"    [dim]started[/dim] {name}")
+                else:
+                    console.print(f"  [dim]start[/dim] {name}")
+                    lv.start(name)
+                    start_t = time.time()
+                    while not lv.is_running(name) and time.time() - start_t < 30:
+                        time.sleep(1)
+                    console.print(f"    [dim]started[/dim] {name}")
+                # After Rancher starts, wait for its API before booting Harvester nodes
+                # so the cattle-cluster-agent can connect on first try.
+                remaining = ordered[idx + 1:]
+                if "rancher" in name and any("harvester" in v for v in remaining):
+                    r_ip = net.get("rancher_ip", "192.168.122.9")
+                    r_port = int(net.get("rancher_nodeport", 30002))
+                    console.print(f"  [dim]waiting for Rancher API ({r_ip}:{r_port}) before starting Harvester nodes...[/dim]")
+                    if _wait_rancher_healthy(r_ip, r_port):
+                        console.print("    [dim]Rancher ready[/dim]")
+                    else:
+                        console.print("    [yellow]⚠  Rancher not ready after 5 min — Harvester cluster agent may need time to reconnect[/yellow]")
     except RuntimeError as exc:
         console.print(f"[yellow]⚠  {exc} — falling back to virsh[/yellow]")
         for name in ( [v for v in start_order if v in vm_names] or vm_names ):

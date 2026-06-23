@@ -9,6 +9,7 @@ See definition.yaml for infra_type addition (in node_templates) and components (
 """
 
 import subprocess
+import sys
 import time
 
 import click
@@ -16,6 +17,7 @@ from rich.console import Console
 
 from ..config import load_config
 from ..inventory import _load_topology
+from ..privilege import ensure_root, is_root
 from ._options import config_options
 from ..engine.libvirt import LibvirtDriver
 
@@ -144,6 +146,9 @@ def stop_cmd(config_path: str, config_dir: str | None, params: tuple[str, ...], 
     - Logical reason: Addresses need for "stop process that stops all in a timely and clean manner to be able to restart the lab if needed" (pre-clean for "clean process do it with all stopped"; reversible for restore). Old clean (pre-enhance) only did hard destroy/undefine + state reset (no gentle path, no definition analysis for order/infra_type, no host services stop). Without it, labs couldn't be paused gracefully (e.g. Harvester cluster nodes stop abruptly, no restart from defined state; host services like pxe left running). "Stop process needs to analyze the definition file to be infra aware" (uses infra_type added to templates, components, start_order/harvester_node_names; "pause things as they should" via reverse order). "In the definition file or definition structure would be good to indicate if a VM/host is going to run Kubernetes or harvester" (infra_type enables this for stop/start awareness, used in _stop_vms log and future logic; see definition.yaml updates and stop-design-options.md).
     - Outcomes of using: "Undo any VMs, networks [via clean after], specific plans" in gentle way (VMs off/defined, services stopped, state for resume); "runs before cleaning the host" (integrated: clean calls stop logic unless --hard; see clean.py pre-destroy logic and --hard flag). "rodeo stop --all" as requested. Enables "fresh testing can start or the node can be repurposed" (stop -> clean --all --secrets leaves clean host infra; restart via start/deploy). "to the clean process we can add also a force parameter that executes first the stop process" (--hard for bypass; default preconditions with stop). Fits general picture as part of declarative lifecycle (definition drives generate (for custom), bootstrap (initial), deploy (up), stop/start (pause/resume using infra), clean (reset); all via load_config/inventory for consistency; see architecture.md pipeline, user-guide for "stop before clean", clean.py for integration, cli.py registration). Any engineer reading docs + code (full docstrings here + in generate/stop helpers) understands: why (reversible infra pause from decl model), how (definition analysis + Libvirt + host stops), outcomes (restartable labs, clean resets).
     """
+    if not is_root():
+        ensure_root(sys.argv[1:])
+
     if config_dir is None:
         ctx = click.get_current_context()
         if ctx.obj:

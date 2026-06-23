@@ -9,6 +9,7 @@ Fits general picture as part of lifecycle commands (with generate for entry, boo
 """
 
 import subprocess
+import sys
 import time
 
 import click
@@ -16,6 +17,7 @@ from rich.console import Console
 
 from ..config import load_config
 from ..inventory import _load_topology
+from ..privilege import ensure_root, is_root
 from ._options import config_options
 from ..engine.libvirt import LibvirtDriver
 
@@ -95,6 +97,9 @@ def start_cmd(config_path: str, config_dir: str | None, params: tuple[str, ...],
     Fit in project:
     - Logical reason: Completes stop (pause) with resume path; "able to restart the lab if needed" after stop (or post-clean --all, using preserved definition state). Without, post-pause was manual virsh or full re-deploy (no "start process" symmetric to stop, no host services start, no definition-driven order/wait). Outcomes: "Clean" restart (services up, VMs started with wait for boot; clusters can re-join from paused state). "Stop process has to run when we run 'rodeo stop --all'" paired with start. "to the clean process we can add also a force parameter" ( --hard in clean skips stop, but start can follow clean for restore). "stop process needs to analyze the definition" mirrored in start (same infra_type/components/start_order for awareness/order). Fits general picture as the "start" in lifecycle (generate for entry point with infra_type, stop for pause, start for resume, clean for reset; all definition-driven via inventory/load; see runner for deploy up, stop_cmd for pair, clean.py for integration, user-guide for flows, architecture for declarative pipeline role). Engineer reading understands: why (reversible from decl model), how (analysis + Libvirt + services + wait), outcomes (restartable from stopped/ reset state).
     """
+    if not is_root():
+        ensure_root(sys.argv[1:])
+
     if config_dir is None:
         ctx = click.get_current_context()
         if ctx.obj:

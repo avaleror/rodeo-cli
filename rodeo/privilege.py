@@ -102,10 +102,12 @@ def ensure_tmux_session(session_name: str, argv: list[str] | None = None) -> Non
         f"  Re-attach (as the user who started rodeo up, no sudo):\n"
         f"    tmux attach -t {session_name}\n"
     )
+    # Keep the window open after the command exits so errors are readable.
     # new-session -A: attach if exists (race safety), run the full command
     os.execvp(  # noqa: S606
         "tmux",
-        ["tmux", "new-session", "-A", "-s", session_name, shell_cmd],
+        ["tmux", "new-session", "-A", "-s", session_name,
+         f"{shell_cmd}; echo; echo '[rodeo] done — press any key to close'; read -r _"],
     )
 
 

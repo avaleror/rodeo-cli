@@ -2,31 +2,31 @@
 # EIB VM disk + cloud-init seed for SUSE Edge labs.
 # The EIB VM hosts the Edge Image Builder container that builds Elemental OS images.
 #
-# Base OS: openSUSE Leap 16 Minimal-VM (kvm-and-xen variant).
-# cloud-init is injected via virt-customize — same pattern as the Rancher VM
-# (Leap 16 Minimal-VM ships without cloud-init pre-installed).
-# Podman is also injected so the EIB container can be pulled and run on first use.
+# Base OS: openSUSE Leap 16 Cloud variant (ships with cloud-init pre-installed).
+# virt-customize only enables cloud-init services — no package install inside guestfs
+# (guestfs has no network; packages install offline fail). podman installs at first
+# boot via cloud-init packages: in user-data, using the live NAT network.
 
-- name: Download openSUSE Leap 16 base image for EIB VM
+- name: Download openSUSE Leap 16 Cloud image for EIB VM
   ansible.builtin.shell: |
     set -euo pipefail
     curl -4 -fsSL --retry 3 --retry-delay 5 \
-      -o '{{ image_dir }}/Leap-16.0-kvm-and-xen.qcow2' \
+      -o '{{ image_dir }}/Leap-16.0-Cloud.qcow2' \
       '{{ leap16_url }}'
   args:
     executable: /bin/bash
-    creates: "{{ image_dir }}/Leap-16.0-kvm-and-xen.qcow2"
+    creates: "{{ image_dir }}/Leap-16.0-Cloud.qcow2"
 
-# Build to a temp file and move into place — same guard pattern as rancher_image.yml.
-- name: Build EIB VM disk (Leap 16 base + inject cloud-init + install podman)
+# Cloud variant ships with cloud-init pre-installed; only enable the services.
+# podman is installed at first boot via cloud-init packages: in user-data.
+- name: Build EIB VM disk (Leap 16 Cloud base + enable cloud-init services)
   ansible.builtin.shell: |
     set -euo pipefail
     tmp='{{ image_dir }}/eib-vda.qcow2.building'
     rm -f "$tmp"
     qemu-img convert -f qcow2 -O qcow2 -o preallocation=metadata \
-      '{{ image_dir }}/Leap-16.0-kvm-and-xen.qcow2' "$tmp"
+      '{{ image_dir }}/Leap-16.0-Cloud.qcow2' "$tmp"
     virt-customize -a "$tmp" \
-      --install cloud-init,podman \
       --run-command 'systemctl enable cloud-init-local.service cloud-init.service cloud-config.service cloud-final.service'
     mv "$tmp" '{{ image_dir }}/eib-vda.qcow2'
   args:

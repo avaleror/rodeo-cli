@@ -62,6 +62,7 @@ class RancherPhase:
         self.elemental_ui_version    = ver.get("elemental_ui_extension", "3.0.1")
 
         self.profile_type = cfg.get("type", "")
+        self.harvester_auto_import = cfg.get("harvester_auto_import", True)
 
         el_cfg = cfg.get("elemental", {})
         _plan_name = cfg.get("name", "suse-edge").lower().replace("_", "-")
@@ -202,13 +203,16 @@ class RancherPhase:
         yield LogLine("Installing Harvester UI Extension...")
         yield from self._install_ui_extension()
 
-        yield LogLine("Importing Harvester cluster into Rancher...")
-        if not (yield from self._import_harvester()):
-            return
-        yield LogLine("  Harvester cluster import started.")
+        if self.harvester_auto_import:
+            yield LogLine("Importing Harvester cluster into Rancher...")
+            if not (yield from self._import_harvester()):
+                return
+            yield LogLine("  Harvester cluster import started.")
 
-        yield LogLine("Setting Harvester dashboard admin password...")
-        yield from self._set_harvester_password()
+            yield LogLine("Setting Harvester dashboard admin password...")
+            yield from self._set_harvester_password()
+        else:
+            yield LogLine("  Skipping auto-import — students will import Harvester into Rancher manually.")
 
         yield LogLine("Ejecting installer ISOs from Harvester VMs...")
         yield from self._eject_cdroms()

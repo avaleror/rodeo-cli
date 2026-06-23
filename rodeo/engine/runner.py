@@ -290,6 +290,7 @@ class DeployRunner:
         target = self.cfg.get("deployment_target", "baremetal")
         yield LogLine(f"Starting firewalld (target: {target})...")
         subprocess.run(["systemctl", "unmask", "firewalld"], capture_output=True)
+        subprocess.run(["systemctl", "enable", "firewalld"], capture_output=True)
         subprocess.run(["systemctl", "start", "firewalld"], capture_output=True)
 
         if target == "instruqt":
@@ -434,6 +435,8 @@ class DeployRunner:
             yield LogLine(f"  ⚠  libvirt-guests enable: {r.stderr.strip()}")
         else:
             yield LogLine("  libvirt-guests enabled")
+
+        yield from self._start_firewalld()
 
         self._last_rc = 0
 

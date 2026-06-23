@@ -169,4 +169,5 @@ def init_cmd(force: bool, ask_password: bool, target_dir: str, profile: str | No
     env_file.write_text(env_content)
 
     console.print("\n[bold]Next:[/bold]")
-    console.print(f"  rodeo deploy --no-tui --config-dir {dest}")
+    console.print(f"  rodeo up --dir {dest}     # recommended: handles sudo + preflight")
+    console.print(f"  rodeo deploy --no-tui --config-dir {dest}  # or deploy directly")

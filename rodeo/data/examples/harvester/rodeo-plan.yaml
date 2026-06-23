@@ -48,6 +48,8 @@ ansible:
   path: null
   inventory: deployer/inventory.local
 
+harvester_auto_import: false   # students import Harvester into Rancher as lab challenge 1
+
 credentials:
   # ??placeholders are resolved at load time. Supported forms:
   #   ??key                  -> ~/.rodeo/secrets.yaml (rodeo init creates it)

@@ -106,38 +106,13 @@ def init_cmd(force: bool, ask_password: bool, target_dir: str, profile: str | No
                 console.print(f"[yellow]  ⚠ could not copy {item.name}: {exc}[/yellow]")
 
     # Plan handling: never blindly overwrite a seeded example plan with the generic template.
-    # Always ensure the three credential lines use the ??env: form (so source rodeo-secrets.env + sudo -E works).
     if plan_dest.exists() and not force and not example:
         console.print(f"[yellow]{plan_dest} already exists — use --force to overwrite.[/yellow]")
     else:
         if not plan_dest.exists() and not example:
-            # only fall back to generic template when nothing provided a plan
             shutil.copy(_TEMPLATES / "rodeo-plan.yaml", plan_dest)
-        # Rewrite (or ensure) env form on whatever plan we have now (template, example, or pre-existing under force)
         if plan_dest.exists():
-            plan_text = plan_dest.read_text()
-            orig_text = plan_text
-            plan_text = plan_text.replace(
-                'harvester_os_password: "??harvester_os_password"',
-                'harvester_os_password: "??env:HARVESTER_OS_PASSWORD"'
-            )
-            plan_text = plan_text.replace(
-                'harvester_admin_password: "??harvester_admin_password"',
-                'harvester_admin_password: "??env:HARVESTER_ADMIN_PASSWORD"'
-            )
-            plan_text = plan_text.replace(
-                'rancher_admin_password: "??rancher_admin_password"',
-                'rancher_admin_password: "??env:RANCHER_ADMIN_PASSWORD"'
-            )
-            plan_text = plan_text.replace(
-                'harvester_token: "??harvester_token"',
-                'harvester_token: "??env:HARVESTER_TOKEN"'
-            )
-            if plan_text != orig_text:
-                plan_dest.write_text(plan_text)
-                console.print(f"[green]✓[/green]  {plan_dest}  [dim](env-var ready)]")
-            else:
-                console.print(f"[green]✓[/green]  {plan_dest}  [dim](already env-var ready)]")
+            console.print(f"[green]✓[/green]  {plan_dest}")
 
     # Secrets + env file (robust: always produce a fresh rodeo-secrets.env even on re-init without --force)
     secrets_dest.parent.mkdir(parents=True, exist_ok=True)
@@ -183,7 +158,7 @@ def init_cmd(force: bool, ask_password: bool, target_dir: str, profile: str | No
             f"[green]✓[/green]  {secrets_dest}  [dim](chmod 600, password: {source})[/dim]"
         )
 
-    # Always (re)generate the sourceable env file next to the plan. Safe and what makes sudo -E flows easy.
+    # Generate the sourceable env file for CI / advanced use.
     env_file = dest / "rodeo-secrets.env"
     env_content = (
         f'export HARVESTER_OS_PASSWORD="{password}"\n'
@@ -192,26 +167,6 @@ def init_cmd(force: bool, ask_password: bool, target_dir: str, profile: str | No
         f'export HARVESTER_TOKEN="{token}"\n'
     )
     env_file.write_text(env_content)
-    console.print(f"[green]✓[/green]  {env_file}  [dim](source this for env-var mode)]")
 
-    # Richer, copy-paste friendly next steps. Helps cut the manual export / sudo -E dance.
-    rodeo_hint = os.environ.get("RODEO") or shutil.which("rodeo") or "$(pwd)/.venv/bin/rodeo"
-    console.print("\n[bold]Next steps:[/bold]")
-    console.print("  # Ensure you have a convenient RODEO var for sudo (sudo does not inherit PATH):")
-    console.print(f"  export RODEO={rodeo_hint}")
-    console.print(f"  source {env_file.name}                    # load the passwords into current shell")
-    console.print("  sudo -E $RODEO deploy --check            # preflight (uses the ??env: values)")
-    if example:
-        console.print("")
-        console.print("  # Your dir was seeded with the example — use --config-dir (or cd here and omit it):")
-        console.print("  $RODEO plan --config-dir .")
-        console.print("  sudo -E $RODEO deploy --config-dir .")
-    console.print(
-        "\nWhy the source + sudo -E pattern?"
-    )
-    console.print(
-        "A child process cannot mutate the parent's environment. Sourcing the generated .env + sudo -E is the"
-    )
-    console.print(
-        "least-surprise way that works for interactive tests, different shells, and CI without copying secrets to /root."
-    )
+    console.print("\n[bold]Next:[/bold]")
+    console.print(f"  rodeo deploy --no-tui --config-dir {dest}")

@@ -26,18 +26,19 @@ from ..engine.libvirt import LibvirtDriver
 console = Console()
 
 
-def _wait_rancher_healthy(ip: str, port: int, timeout: int = 300) -> bool:
-    """Poll Rancher /healthz until it returns 'ok' or timeout expires."""
-    url = f"https://{ip}:{port}/healthz"
+def _wait_vip_reachable(vip: str, port: int = 443, timeout: int = 600) -> bool:
+    """Poll the Harvester VIP until it accepts HTTPS connections or timeout expires."""
+    url = f"https://{vip}:{port}"
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
     t0 = time.time()
     while time.time() - t0 < timeout:
         try:
-            with urllib.request.urlopen(url, context=ctx, timeout=5) as resp:
-                if b"ok" in resp.read():
-                    return True
+            with urllib.request.urlopen(url, context=ctx, timeout=5):
+                return True
+        except urllib.error.HTTPError:
+            return True  # got a response — VIP is up
         except Exception:
             pass
         time.sleep(10)
@@ -176,17 +177,16 @@ def start_cmd(config_path: str, config_dir: str | None, params: tuple[str, ...],
                     while not lv.is_running(name) and time.time() - start_t < 30:
                         time.sleep(1)
                     console.print(f"    [dim]started[/dim] {name}")
-                # After Rancher starts, wait for its API before booting Harvester nodes
-                # so the cattle-cluster-agent can connect on first try.
+                # Before starting Rancher, wait for the Harvester VIP so the
+                # cattle-cluster-agent is ready to connect on Rancher's first boot.
                 remaining = ordered[idx + 1:]
-                if "rancher" in name and any("harvester" in v for v in remaining):
-                    r_ip = net.get("rancher_ip", "192.168.122.9")
-                    r_port = int(net.get("rancher_nodeport", 30002))
-                    console.print(f"  [dim]waiting for Rancher API ({r_ip}:{r_port}) before starting Harvester nodes...[/dim]")
-                    if _wait_rancher_healthy(r_ip, r_port):
-                        console.print("    [dim]Rancher ready[/dim]")
+                if "rancher" in remaining and "harvester" in name and not any("harvester" in v for v in remaining):
+                    vip = net.get("vip", "192.168.122.10")
+                    console.print(f"  [dim]waiting for Harvester VIP ({vip}) before starting Rancher...[/dim]")
+                    if _wait_vip_reachable(vip):
+                        console.print("    [dim]Harvester VIP up — starting Rancher[/dim]")
                     else:
-                        console.print("    [yellow]⚠  Rancher not ready after 5 min — Harvester cluster agent may need time to reconnect[/yellow]")
+                        console.print("    [yellow]⚠  Harvester VIP not ready after 10 min — Rancher cluster import may need manual reconnect[/yellow]")
     except RuntimeError as exc:
         console.print(f"[yellow]⚠  {exc} — falling back to virsh[/yellow]")
         for name in ( [v for v in start_order if v in vm_names] or vm_names ):

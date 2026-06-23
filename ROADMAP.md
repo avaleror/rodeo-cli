@@ -151,6 +151,65 @@ Attendees practice deploying and operating a telco workload on HCI infrastructur
 
 ---
 
+## Phase H — Air-gap / Disconnected environments (Hauler integration)
+
+Hauler (https://github.com/hauler-dev/hauler) is a single Go binary (~31 MB) from Rancher Government that collects container images, Helm charts, and files into a portable OCI bundle, then serves them via an embedded registry and fileserver. It is the standard SUSE/Rancher approach for disconnected deployments.
+
+Hauler manifest format (content.hauler.cattle.io/v1):
+- `kind: Images` — container images with optional platform and cosign verification
+- `kind: Charts` — Helm charts from HTTP repos or OCI registries
+- `kind: Files` — arbitrary files from URLs or local paths (ISOs, cloud images, install scripts)
+
+Workflow: `hauler store sync -f manifest.yaml` → `hauler store save -f haul.tar.zst` → transport → `hauler store load` → `hauler store serve registry` + `hauler store serve fileserver`.
+
+This phase has three levels of increasing scope. Each level is independent and can ship on its own.
+
+**Level 1 — Prefetch phase: cache binary artifacts (low effort, high return)**
+
+Use Hauler to pre-download the large binary artifacts (Harvester ISO, Leap 16 images) before the `vms` phase. The fileserver runs on localhost and the Ansible roles pull from there instead of the internet. This solves the IPv6/errno 101 download failures on Instruqt and avoids re-downloading 2+ GB on every `rodeo clean && rodeo up`.
+
+- [ ] Add `hauler` binary install to `install-deps` (or download in the phase itself)
+- [ ] Add a Hauler manifest template per platform in `rodeo/data/platforms/<name>/hauler-files.yaml` (Files kind only — ISOs and cloud images)
+- [ ] New `prefetch` phase (before `vms`): runs `hauler store sync`, `hauler store save`, starts `hauler store serve fileserver` as a background process
+- [ ] Parameterise `leap16_url` and `harvester_iso_url` in Ansible defaults to honour `http://localhost:8080/` when the fileserver is running
+- [ ] Guarded by a plan flag (`prefetch: true`) so existing deploys are unaffected by default
+- [ ] Live validation: `harvester` profile on Instruqt with `prefetch: true`; confirm ISO + image pulled from localhost
+
+**Level 2 — `deployment_target: airgap` (medium effort)**
+
+A new deployment target for environments with no external internet access. The operator pre-builds a `haul.tar.zst` on a connected machine and transfers it to the disconnected host. rodeo-cli loads it and serves all content locally before running the normal phase pipeline.
+
+Plan additions:
+```yaml
+deployment_target: airgap
+airgap:
+  haul_path: /path/to/haul.tar.zst
+  registry: localhost:5000
+  fileserver: http://localhost:8080
+```
+
+- [ ] Hauler manifest templates per platform covering all container images, Helm charts, and binary files needed end-to-end
+- [ ] `kvm_host` phase extended: install hauler, `hauler store load`, start registry + fileserver as systemd services
+- [ ] Ansible Rancher role: set `global.cattle.systemDefaultRegistry` to `localhost:5000`
+- [ ] Harvester config YAML: point containerd mirror to `localhost:5000` (registry mirrors config)
+- [ ] Harvester PXE / iPXE chain: ISO and kernel/initrd pulled from fileserver, not the internet — this is the hardest part; requires changes to `pxe_server` role and boot templates
+- [ ] `hauler store save` helper command (`rodeo bundle --profile harvester`) for the connected-side prep step
+- [ ] Live validation on bare metal: full `harvester` deploy with all external network blocked
+
+**Level 3 — Instruqt offline bake-in (medium effort, highest workshop value)**
+
+Bake a pre-loaded Hauler store into the geekohive snapshot (`suse-virt-rodeo-180`) so the builder run needs no external internet. This makes the builder faster (no 2 GB+ downloads during the 2-3 h build window) and immune to upstream outages or bandwidth throttling at venues.
+
+- [ ] Depends on Level 1 being validated
+- [ ] Add a `rodeo bundle` step to the builder track (`01-build/assignment.md`) that runs on a connected machine and produces `haul.tar.zst`
+- [ ] Builder step: load the haul into the geekohive image before the `vms` phase
+- [ ] Hauler bundle versioned alongside platform versions — bump both together when Harvester or Rancher version changes
+- [ ] Document the connected-side prep workflow for SUSE PTA team (Andres + Raul)
+
+**Dependencies:** Level 1 can start independently. Level 2 requires Level 1 validated. Level 3 requires Level 2. None of these start until the Instruqt validation queue (top of this file) is clear.
+
+---
+
 ## Standing constraints
 
 - Do not touch the Instruqt/PXE-sensitive files without a live regression: `roles/kvm_host/tasks/libvirt.yml`, `roles/vms/tasks/network_setup.yml`, `roles/vms/defaults/main.yml`, the `pxe_server` boot chain (generic `boot.ipxe` → MAC-named scripts, installer cmdline, config-YAML perms), the etcd join gap (applied before each additional Harvester join node), and the Rancher API call order. See CONTEXT.md.

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import glob
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from rich.console import Console
 from ..engine.libvirt import LibvirtDriver
 
 from ..config import load_config
+from ..privilege import ensure_root, is_root
 from ..profiles import get_profile
 from ..state import reset_from
 from ._options import config_options
@@ -44,6 +46,9 @@ def clean_cmd(
 
     Graceful stop integration: unless --hard, will first run stop logic (VMs via shutdown if running) for clean state before destroy. See stop_cmd.py and user docs.
     """
+    if not is_root():
+        ensure_root(sys.argv[1:])
+
     if config_dir is None:
         ctx = click.get_current_context()
         if ctx.obj:

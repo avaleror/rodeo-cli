@@ -124,7 +124,7 @@ def render_success(cfg: dict) -> None:
         if has_rancher:
             if tls_source == "letsEncrypt":
                 lines.append(f"  Rancher Prime  https://{rancher_hostname}")
-                lines.append(f"  [dim](Let's Encrypt cert via sslip.io — ports 80 + 443 must be reachable from internet)[/dim]")
+                lines.append("  [dim](Let's Encrypt cert via sslip.io — ports 80 + 443 must be reachable from internet)[/dim]")
             else:
                 lines.append(f"  Rancher Prime  https://{rancher_ip}:{rancher_nodeport}")
                 lines.append(f"  [dim](external: https://{host}:{rancher_nodeport})[/dim]")

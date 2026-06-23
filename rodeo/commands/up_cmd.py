@@ -80,8 +80,10 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
     Instruqt disconnects. Re-attach any time with: tmux attach -t rodeo-<profile>
     """
     # --- tmux self-wrap (first thing, before any side effects) ---
+    # Skip on Instruqt — the challenge terminal is managed by Instruqt itself.
     # Skip when: already in tmux, --no-tmux, --no-deploy (short-lived), --resume (root re-exec).
-    if not (no_tmux or no_deploy or resume or in_tmux()):
+    on_instruqt = _detect_target() == "instruqt"
+    if not (no_tmux or no_deploy or resume or in_tmux() or on_instruqt):
         session = f"rodeo-{profile or 'up'}"
         if tmux_available():
             ensure_tmux_session(session)  # does not return unless already in tmux

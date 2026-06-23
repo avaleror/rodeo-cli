@@ -40,10 +40,10 @@ definition:
   # The ordered list of VMs to start/provision. This replaces all hardcoded sequences.
   # ClusterPhase will use this instead of "harvester1 then harvester2..." etc.
   start_order:
-    - rancher
     - harvester1
     - harvester2
     - harvester3
+    - rancher
 
   # Nodes that are part of the Harvester cluster (affects VIP wait, etcd gap application, node Ready count, CDROM eject, etc.)
   # Replaces the listcomp `n for n in vms if n != "rancher"` and the fallback ["harvester1", ...]

@@ -444,32 +444,55 @@ class RancherPhase:
         return True
 
     def _install_ui_extension(self) -> Iterator[DeployEvent]:
-        # v1.7.x is the compatible branch for Rancher 2.13.x; v1.8.0 requires 2.14+.
-        # Version is configurable via versions.harvester_ui_extension in the plan.
-        script = (
-            "set -euo pipefail\n"
-            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
-            "helm repo add harvester-ui-extension https://harvester.github.io/harvester-ui-extension || true\n"
-            "helm repo update harvester-ui-extension\n"
-            f"helm upgrade --install harvester harvester-ui-extension/harvester"
-            f" --namespace cattle-ui-plugin-system --create-namespace"
-            f' --version "{self.ui_ext_version}"'
-            f" --wait --timeout 3m\n"
+        # Create the UIPlugin resource directly via the Rancher Steve API — no Helm,
+        # no SSH, no repo fetch. Endpoint URLs match the values.yaml from the official
+        # harvester-ui-extension chart (gh-pages branch, versioned path).
+        gh_base = (
+            "https://raw.githubusercontent.com/harvester/harvester-ui-extension"
+            f"/gh-pages/extensions/harvester/{self.ui_ext_version}"
         )
-        r = self._ssh_script(script, timeout=180)
-        for line in (r.stdout + r.stderr).splitlines():
-            if line.strip():
-                yield LogLine(f"  {line}")
-        if r.returncode != 0:
-            yield LogLine(
-                "  ⚠ Harvester UI Extension install failed (non-fatal — "
-                "install manually: Extensions > Add Repository > harvester-ui-extension)"
+        uiplugin = {
+            "apiVersion": "catalog.cattle.io/v1",
+            "kind": "UIPlugin",
+            "metadata": {
+                "name": "harvester",
+                "namespace": "cattle-ui-plugin-system",
+            },
+            "spec": {
+                "plugin": {
+                    "name": "harvester",
+                    "version": self.ui_ext_version,
+                    "endpoint": gh_base,
+                    "compressedEndpoint": f"{gh_base}.tgz",
+                    "noCache": False,
+                    "noAuth": False,
+                    "metadata": {
+                        "catalog.cattle.io/display-name": "Harvester",
+                        "catalog.cattle.io/kube-version": ">= 1.16.0-0",
+                        "catalog.cattle.io/rancher-version": ">= 2.13.0-0",
+                        "catalog.cattle.io/ui-extensions-version": ">= 3.0.0 < 4.0.0",
+                    },
+                }
+            },
+        }
+        try:
+            self._http(
+                "POST", "/v1/catalog.cattle.io.uiplugins",
+                data=uiplugin, token=self._api_token,
             )
-        else:
             yield LogLine(
-                f"  Harvester UI Extension {self.ui_ext_version} deployed "
-                "(pods start in ~1 min — refresh the Rancher UI if the Virtualization tab is missing)."
+                f"  Harvester UI Extension {self.ui_ext_version} registered via Rancher API "
+                "(Virtualization tab appears after the UI reloads)."
             )
+        except Exception as exc:
+            code = getattr(exc, "code", None)
+            if code == 409:
+                yield LogLine(f"  Harvester UI Extension {self.ui_ext_version} already present.")
+            else:
+                yield LogLine(
+                    f"  ⚠ Harvester UI Extension API call failed ({exc}) — "
+                    "install manually: Extensions > Available > Harvester > Install"
+                )
 
     def _expose_nodeport(self) -> Generator[DeployEvent, None, bool]:
         patch = json.dumps({

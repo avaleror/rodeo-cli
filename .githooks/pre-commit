@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Chain to the global pre-commit hook (gitleaks, etc.) so it keeps running
+# even when core.hooksPath points here instead of the global hooks directory.
+set -euo pipefail
+
+GLOBAL_HOOK="$(git config --global core.hooksPath 2>/dev/null)/pre-commit"
+if [[ -x "$GLOBAL_HOOK" ]]; then
+    exec "$GLOBAL_HOOK" "$@"
+fi

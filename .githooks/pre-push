@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Block push if ruff finds any warnings in the source or tests.
+# Run `ruff check --fix rodeo tests` to auto-fix most issues.
+set -euo pipefail
+
+echo "==> ruff check rodeo tests"
+if ! ruff check rodeo tests; then
+    echo ""
+    echo "  Push blocked: fix ruff warnings first."
+    echo "  Auto-fix most with: ruff check --fix rodeo tests"
+    exit 1
+fi

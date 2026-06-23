@@ -8,10 +8,14 @@
 # Podman is also injected so the EIB container can be pulled and run on first use.
 
 - name: Download openSUSE Leap 16 base image for EIB VM
-  ansible.builtin.get_url:
-    url: "{{ leap16_url }}"
-    dest: "{{ image_dir }}/Leap-16.0-kvm-and-xen.qcow2"
-    mode: '0644'
+  ansible.builtin.shell: |
+    set -euo pipefail
+    curl -4 -fsSL --retry 3 --retry-delay 5 \
+      -o '{{ image_dir }}/Leap-16.0-kvm-and-xen.qcow2' \
+      '{{ leap16_url }}'
+  args:
+    executable: /bin/bash
+    creates: "{{ image_dir }}/Leap-16.0-kvm-and-xen.qcow2"
 
 # Build to a temp file and move into place — same guard pattern as rancher_image.yml.
 - name: Build EIB VM disk (Leap 16 base + inject cloud-init + install podman)

@@ -7,10 +7,14 @@
 # This avoids the virt-customize --install step which requires network access
 # from inside libguestfs (not reliable across all host configurations).
 - name: Download openSUSE Leap 16 Cloud image (cloud-init pre-installed)
-  ansible.builtin.get_url:
-    url: "{{ leap16_url }}"
-    dest: "{{ image_dir }}/Leap-16.0-Cloud.qcow2"
-    mode: '0644'
+  ansible.builtin.shell: |
+    set -euo pipefail
+    curl -4 -fsSL --retry 3 --retry-delay 5 \
+      -o '{{ image_dir }}/Leap-16.0-Cloud.qcow2' \
+      '{{ leap16_url }}'
+  args:
+    executable: /bin/bash
+    creates: "{{ image_dir }}/Leap-16.0-Cloud.qcow2"
 
 # Ensure cloud-init services are enabled and resize the disk.
 # Build to a temp file so `creates:` guard is only satisfied on full success.

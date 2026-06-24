@@ -14,6 +14,7 @@ from typing import Iterator
 
 import yaml
 
+from ..ssh import ssh_opts
 from ..state import is_phase_done, mark_phase_done, mark_phase_failed, reset_from
 
 
@@ -403,6 +404,65 @@ class DeployRunner:
         self._last_rc = 0 if ok else 1
         if phase.error:
             yield LogLine(f"  ✗  elemental: {phase.error}")
+
+    def stream_apply(self) -> Iterator[DeployEvent]:
+        """Apply custom YAML manifests to VMs via SSH + kubectl apply.
+
+        Walks <config_dir>/<plan_name>/<hostname>/ for each hostname subdirectory,
+        SSHes into that VM, and runs 'kubectl apply -f -' for every *.yaml / *.yml
+        file found, in sorted order. Silent no-op when the directory is absent.
+        """
+        config_dir = self.cfg.get("config_dir", "")
+        if not config_dir:
+            self._last_rc = 0
+            return
+
+        manifests_root = Path(config_dir) / self._plan_name
+        if not manifests_root.is_dir():
+            self._last_rc = 0
+            return
+
+        key = self.cfg.get("ssh", {}).get("identity_file", "")
+        if not key:
+            key = "/root/.ssh/id_ed25519" if os.geteuid() == 0 else str(Path.home() / ".ssh" / "id_ed25519")
+
+        vm_cfg = self.cfg.get("vms", {})
+
+        for host_dir in sorted(d for d in manifests_root.iterdir() if d.is_dir()):
+            hostname = host_dir.name
+            files = sorted(
+                f for f in host_dir.iterdir()
+                if f.is_file() and f.suffix in (".yaml", ".yml")
+            )
+            if not files:
+                continue
+
+            vm = vm_cfg.get(hostname, {})
+            user = vm.get("user", "root")
+            host = vm.get("ip", hostname)  # fall back to bare hostname (libvirt DNS)
+
+            yield LogLine(f"Applying {len(files)} manifest(s) on {hostname} ({host})...")
+            for f in files:
+                yield LogLine(f"  {hostname}: applying {f.name}...")
+                try:
+                    r = subprocess.run(
+                        ["ssh", "-i", key, *ssh_opts(), f"{user}@{host}",
+                         "kubectl apply -f -"],
+                        input=f.read_text(),
+                        capture_output=True, text=True, timeout=120,
+                    )
+                except subprocess.TimeoutExpired:
+                    yield LogLine(f"  ⚠ {hostname}: {f.name} timed out after 120 s")
+                    continue
+                for line in (r.stdout + r.stderr).splitlines():
+                    if line.strip():
+                        yield LogLine(f"    {line}")
+                if r.returncode != 0:
+                    yield LogLine(f"  ⚠ {hostname}: {f.name} returned rc={r.returncode}")
+                else:
+                    yield LogLine(f"  ✓ {hostname}: {f.name} applied")
+
+        self._last_rc = 0
 
     def stream_finalise(self) -> Iterator[DeployEvent]:
         vm_names = list(self.cfg.get("vms", {}).keys())

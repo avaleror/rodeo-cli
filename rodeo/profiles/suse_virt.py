@@ -20,7 +20,7 @@ except ImportError:
 
 class SuseVirtProfile(RodeoProfile):
     name = "suse-virt"
-    phases = ["kvm_host", "vms", "pxe_server", "cluster", "rancher", "finalise"]
+    phases = ["kvm_host", "vms", "pxe_server", "cluster", "rancher", "apply", "finalise"]
     vm_names = ["harvester1", "harvester2", "harvester3", "rancher"]
     ansible_phases = frozenset(["kvm_host", "vms", "pxe_server"])
     guarded_phases = frozenset(["finalise"])
@@ -112,6 +112,8 @@ class SuseVirtProfile(RodeoProfile):
                 from ..engine.runner import LogLine
                 yield LogLine("No Rancher node in this topology — skipping rancher phase.")
                 runner._last_rc = 0
+        elif phase == "apply":
+            yield from runner.stream_apply()
         elif phase == "finalise":
             yield from runner.stream_finalise()
         else:

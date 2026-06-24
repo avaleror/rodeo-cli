@@ -94,9 +94,11 @@ def deploy_cmd(
         )
         raise SystemExit(1)
 
+    ok = run_preflight(cfg, root)
     if preflight_only:
-        ok = run_preflight(cfg, root)
         raise SystemExit(0 if ok else 1)
+    if not ok:
+        raise SystemExit(1)
 
     code = execute_deploy(
         cfg, root,

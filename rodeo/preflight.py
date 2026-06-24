@@ -165,15 +165,52 @@ def _print_checks(title: str, checks: list[tuple[str, bool, str, bool]]) -> bool
     return all_ok
 
 
+def _resource_needs(cfg: dict) -> tuple[int, int]:
+    """Compute (need_mib, need_gb) from the actual VM set in cfg.
+
+    Sums resources per VM by matching names to flavor keys in cfg["resources"].
+    Falls back to the legacy Harvester×3+Rancher formula when the vms dict is absent.
+    """
+    res = cfg.get("resources", {})
+    vms = cfg.get("vms", {})
+
+    if vms:
+        need_mib = need_gb = 0
+        for name in vms:
+            if name.startswith("harvester"):
+                r = res.get("harvester", {})
+            elif name == "rancher":
+                r = res.get("rancher", {})
+            elif name == "eib":
+                r = res.get("eib", {})
+            elif name.startswith("edge"):
+                r = res.get("edge-node", {})
+            else:
+                r = {}
+            need_mib += r.get("memory_mib", 0)
+            need_gb  += r.get("disk_gb", 0)
+        if need_mib > 0 or need_gb > 0:
+            return need_mib, need_gb + 20  # +20 GB headroom
+
+    # Legacy fallback: Harvester-only formula
+    return (
+        res.get("harvester", {}).get("memory_mib", 16384) * 3
+        + res.get("rancher", {}).get("memory_mib", 8192),
+        res.get("harvester", {}).get("disk_gb", 270) * 3
+        + res.get("rancher", {}).get("disk_gb", 60)
+        + 30,
+    )
+
+
 def run_preflight(cfg: dict, root: Path) -> bool:
     """Plan-sized preflight for ``deploy --check`` / ``up``. Prints results, returns ok.
 
     Core tools (ansible, kubectl) and host basics are hard requirements; virsh/ssh are
     warnings only (day-2 + fallbacks, libvirt-python is the primary path).
     """
-    res = cfg.get("resources", {})
     storage = cfg.get("storage", {})
     image_dir = storage.get("image_dir", DEFAULT_IMAGE_DIR)
+    need_mib, need_gb = _resource_needs(cfg)
 
     checks: list[tuple[str, bool, str, bool]] = []
     checks.append(("root", os.geteuid() == 0, "not running as root — some phases require root", False))
@@ -181,21 +218,12 @@ def run_preflight(cfg: dict, root: Path) -> bool:
     checks.append(("nested virt", _nested_enabled(), "nested virtualization not enabled in kvm module", False))
 
     avail_mib = _read_avail_mib()
-    need_mib = (
-        res.get("harvester", {}).get("memory_mib", 16384) * 3
-        + res.get("rancher", {}).get("memory_mib", 8192)
-    )
     if avail_mib > 0:
         checks.append(("RAM", avail_mib >= need_mib,
-                       f"need {need_mib // 1024} GB, have {avail_mib // 1024} GB available", False))
+                       f"need {need_mib // 1024} GiB, have {avail_mib // 1024} GiB available", False))
     else:
         checks.append(("RAM", True, "could not read /proc/meminfo", False))
 
-    need_gb = (
-        res.get("harvester", {}).get("disk_gb", 270) * 3
-        + res.get("rancher", {}).get("disk_gb", 60)
-        + 30
-    )
     free_gb = _free_gib(image_dir)
     if free_gb >= 0:
         checks.append(("disk", free_gb >= need_gb,

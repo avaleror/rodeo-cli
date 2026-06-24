@@ -64,6 +64,15 @@ class RancherPhase:
         self.profile_type = cfg.get("type", "")
         self.harvester_auto_import = cfg.get("harvester_auto_import", True)
 
+        eib_vm = cfg.get("vms", {}).get("eib", {})
+        self.eib_ip      = eib_vm.get("ip", "192.168.122.20")
+        self.image_dir   = cfg.get("storage", {}).get("image_dir", "/var/lib/libvirt/images")
+        eib_def          = cfg.get("eib", {})
+        self.eib_image   = eib_def.get("container_image", "registry.suse.com/edge/3.6/edge-image-builder:1.3.3.1")
+        self.hauler_version = cfg.get("versions", {}).get("hauler", "1.2.2")
+        _hauler_leap_url = "https://download.opensuse.org/distribution/leap-micro/6.2/appliances/openSUSE-Leap-Micro.x86_64-Default-qcow.qcow2"
+        self.hauler_base_url = eib_def.get("hauler_base_url", _hauler_leap_url)
+
         el_cfg = cfg.get("elemental", {})
         _plan_name = cfg.get("name", "suse-edge").lower().replace("_", "-")
         self.elemental_reg_count    = int(el_cfg.get("registrations", 1))
@@ -250,6 +259,12 @@ class RancherPhase:
     def _ssh_script(self, script: str, timeout: int = 120) -> subprocess.CompletedProcess:
         return self._run(
             ["ssh", "-i", str(self.ssh_key), *ssh_opts(), f"root@{self.rancher_ip}", "bash", "-s"],
+            timeout=timeout, input=script,
+        )
+
+    def _eib_ssh_script(self, script: str, timeout: int = 120) -> subprocess.CompletedProcess:
+        return self._run(
+            ["ssh", "-i", str(self.ssh_key), *ssh_opts(), f"root@{self.eib_ip}", "bash", "-s"],
             timeout=timeout, input=script,
         )
 
@@ -1083,6 +1098,8 @@ class RancherPhase:
                 return False
             if not (yield from self._create_machine_registrations()):
                 return False
+            if not (yield from self._populate_hauler()):
+                return False
         return True
 
     def _add_extension_repos(self) -> Generator[DeployEvent, None, bool]:
@@ -1214,6 +1231,83 @@ class RancherPhase:
             f"  MachineRegistration(s) created. "
             f"Retrieve URL: kubectl get machineregistration {prefix}-reg-1 "
             f"-n fleet-default -o jsonpath='{{.status.registrationURL}}'"
+        )
+        return True
+
+    def _populate_hauler(self) -> Generator[DeployEvent, None, bool]:
+        """Populate the Hauler store on the eib VM with SUSE Edge artifacts.
+
+        Runs after all Rancher/Elemental artifacts are fully downloaded so internet
+        bandwidth is free. Downloads into /var/lib/hauler on the eib VM, then
+        enables and starts the Hauler OCI registry (port 5000) and fileserver
+        (port 8080) so participants can build EIB images fully offline.
+
+        Also pre-stages the EIB image definition template at /home/eib-config/ with
+        a placeholder for the MachineRegistration URL that participants fill in.
+        """
+        prefix = self.elemental_reg_prefix
+        reg_name = f"{prefix}-reg-1"
+
+        script = (
+            "set -euo pipefail\n"
+            "STORE=/var/lib/hauler\n"
+            "HAULER=/usr/local/bin/hauler\n\n"
+            # Mirror the EIB container image into Hauler so participants can run
+            # EIB without internet access from the eib VM.
+            f'$HAULER store add image "{self.eib_image}" --store $STORE\n'
+            # Elemental register agent — EIB embeds this into the edge node image
+            # so nodes can phone home to the Elemental Operator on first boot.
+            f'$HAULER store add image "registry.suse.com/rancher/elemental-register:{self.elemental_op_version}" --store $STORE\n'
+            # openSUSE Leap Micro 6.2 base image — EIB input; served on port 8080
+            # so participants can download it with: curl http://localhost:8080/<filename>
+            f'$HAULER store add file "{self.hauler_base_url}" --store $STORE\n\n'
+            # Enable and start Hauler services (service units written by cloud-init)
+            "systemctl daemon-reload\n"
+            "systemctl enable --now hauler-registry.service hauler-fileserver.service\n\n"
+            # Pre-stage EIB definition template for participants
+            "mkdir -p /home/eib-config /home/eib-output\n"
+            f"cat > /home/eib-config/edge-definition.yaml << '__EIB_DEF__'\n"
+            "apiVersion: 1.0\n\n"
+            "image:\n"
+            "  imageType: raw\n"
+            "  arch: x86_64\n"
+            "  baseImage: openSUSE-Leap-Micro.x86_64-Default-qcow.qcow2\n\n"
+            "operatingSystem:\n"
+            "  kernelArgs:\n"
+            "    - net.ifnames=0\n\n"
+            "embeddedArtifacts:\n"
+            "  registries:\n"
+            "    urls:\n"
+            f"      - {self.eib_ip}:5000\n\n"
+            "elemental:\n"
+            "  config:\n"
+            "    elemental:\n"
+            "      registration:\n"
+            "        url: REPLACE_WITH_REGISTRATION_URL\n"
+            "      install:\n"
+            "        powerOff: true\n"
+            "__EIB_DEF__\n"
+        )
+        yield LogLine(
+            f"Populating Hauler store on eib VM ({self.eib_ip}) "
+            "with SUSE Edge artifacts (may take 15-30 min)..."
+        )
+        r = self._eib_ssh_script(script, timeout=2400)
+        for line in (r.stdout + r.stderr).splitlines():
+            if line.strip():
+                yield LogLine(f"  {line}")
+        if r.returncode != 0:
+            self.error = "Hauler store population failed"
+            yield LogLine(f"  ✗ {self.error}")
+            return False
+        yield LogLine(
+            "  Hauler store populated. Registry: "
+            f"http://{self.eib_ip}:5000  Fileserver: http://{self.eib_ip}:8080"
+        )
+        yield LogLine(
+            f"  EIB definition template: /home/eib-config/edge-definition.yaml\n"
+            f"  Set registration URL: kubectl get machineregistration {reg_name} "
+            f"-n fleet-default -o jsonpath='{{{{.status.registrationURL}}}}'"
         )
         return True
 

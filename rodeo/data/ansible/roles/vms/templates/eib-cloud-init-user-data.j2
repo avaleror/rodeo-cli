@@ -11,5 +11,53 @@ chpasswd:
     root:{{ rancher_vm_password }}
   expire: false
 ssh_pwauth: true
-packages:
-  - podman
+
+# Podman is pre-installed on Leap Micro 6.2 — no packages: block needed.
+# kubectl and helm are installed as binaries via runcmd to avoid transactional-update.
+
+write_files:
+  - path: /etc/systemd/system/hauler-registry.service
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=Hauler OCI registry (port 5000)
+      After=network-online.target
+      [Service]
+      Type=simple
+      ExecStart=/usr/local/bin/hauler store serve registry --port 5000 --store /var/lib/hauler
+      WorkingDirectory=/var/lib/hauler
+      Restart=on-failure
+      [Install]
+      WantedBy=multi-user.target
+  - path: /etc/systemd/system/hauler-fileserver.service
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=Hauler file server (port 8080)
+      After=network-online.target
+      [Service]
+      Type=simple
+      ExecStart=/usr/local/bin/hauler store serve fileserver --port 8080 --store /var/lib/hauler
+      WorkingDirectory=/var/lib/hauler
+      Restart=on-failure
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  # Install Hauler binary (single static binary, no transactional-update needed)
+  - |
+    set -euo pipefail
+    ver="{{ hauler_version }}"
+    curl -fsSL \
+      "https://github.com/hauler-dev/hauler/releases/download/v${ver}/hauler_${ver}_linux_amd64.tar.gz" \
+      | tar -xz -C /usr/local/bin hauler
+    chmod +x /usr/local/bin/hauler
+  # Hauler store directory (persistent across reboots, on writable /var)
+  - mkdir -p /var/lib/hauler
+  # EIB staging directories for participants
+  - mkdir -p /home/eib-config /home/eib-output
+  # Reload systemd so the Hauler service units are visible (not started yet;
+  # started by rodeo-cli after the Hauler store is populated in the elemental phase)
+  - systemctl daemon-reload
+  # Pre-pull the EIB container so the first 'podman run eib ...' is instant
+  - podman pull "{{ eib_container_image }}"

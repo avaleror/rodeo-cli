@@ -50,6 +50,8 @@ leap16_url: "https://download.opensuse.org/distribution/leap/16.0/appliances/Lea
 leap_micro_62_url: "https://download.opensuse.org/distribution/leap-micro/6.2/appliances/openSUSE-Leap-Micro.x86_64-Default-qcow.qcow2"
 # EIB container (pulled on the EIB VM at first use; requires registry.suse.com access)
 eib_container_image: "registry.suse.com/edge/3.6/edge-image-builder:1.3.3.1"
+# Hauler airgap tool installed on the EIB VM (single static binary)
+hauler_version: "1.2.2"
 
 # Sized to fit a ~64 GB / 32 vCPU host: 3x16 GiB + 8 GiB = 56 GiB for guests,
 # leaving ~8 GB for the host + QEMU overhead. Harvester meets its 16 GiB minimum.

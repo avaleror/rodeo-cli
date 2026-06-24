@@ -1142,7 +1142,7 @@ class RancherPhase:
             f"helm repo add elemental-ui-charts '{repo_url}' >/dev/null 2>&1 || true\n"
             "helm repo update elemental-ui-charts >/dev/null 2>&1\n"
             f"helm upgrade --install elemental-ui elemental-ui-charts/elemental"
-            f" --version {self.elemental_ui_version}"
+            f" --version {self.elemental_ui_version} --devel"
             f" --namespace cattle-ui-plugin-system --create-namespace"
             f" --wait --timeout 2m\n"
         )

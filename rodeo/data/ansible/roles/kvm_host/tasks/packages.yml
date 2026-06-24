@@ -50,6 +50,12 @@
     state: stopped
   failed_when: false
 
+- name: Enable Cockpit web console (socket-activated on port 9090)
+  ansible.builtin.systemd:
+    name: cockpit.socket
+    enabled: true
+    state: started
+
 - name: Verify nested virtualisation is active (Intel or AMD)
   ansible.builtin.shell: >
     set -o pipefail;

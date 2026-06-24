@@ -1,0 +1,38 @@
+---
+- name: Create NFS export directory (world-writable for lab use)
+  ansible.builtin.file:
+    path: /srv/nfs/lab
+    state: directory
+    owner: root
+    group: root
+    mode: '0777'
+
+- name: Configure NFS export for lab VM subnet
+  ansible.builtin.copy:
+    dest: /etc/exports.d/rodeo-lab.conf
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      /srv/nfs/lab {{ libvirt_network_cidr }}(rw,sync,no_subtree_check,no_root_squash)
+  notify: reload nfs exports
+
+- name: Create backups user for NFS access
+  ansible.builtin.user:
+    name: backups
+    comment: "NFS backup user"
+    shell: /bin/bash
+    home: /home/backups
+    create_home: true
+    state: present
+
+- name: Set password for backups user
+  ansible.builtin.shell: echo 'backups:weakestLink' | chpasswd
+  no_log: true
+  changed_when: false
+
+- name: Enable and start NFS server
+  ansible.builtin.systemd:
+    name: nfs-server
+    enabled: true
+    state: started

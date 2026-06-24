@@ -42,6 +42,7 @@ definition:
     - edge1
     - edge2
     - edge3
+    - edge4
 
   # No Harvester cluster in this profile.
   harvester_node_names: []
@@ -287,3 +288,16 @@ definition:
         - role: mgmt
           mac: "02:00:00:0E:62:A3"
       mgmt_mac: "02:00:00:0E:62:A3"
+
+    - name: edge4
+      template: edge-node
+      index: 4
+      hostname: edge4
+      uuid: "a1000006-e00e-4000-8000-000000000034"
+      ip: "192.168.122.34"
+      config_iso_name: ""
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          mac: "02:00:00:0E:62:A4"
+      mgmt_mac: "02:00:00:0E:62:A4"

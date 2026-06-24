@@ -1132,17 +1132,18 @@ class RancherPhase:
 
     def _install_elemental_ui(self) -> Generator[DeployEvent, None, bool]:
         """Install the Elemental UI extension into Rancher via Helm."""
-        # Use rancher/elemental-ui gh-pages repo: it carries the 3.0.2+ builds
-        # that fixed a JS load error present in 3.0.1 on Rancher 2.14.x
-        # (shell 3.0.7+ incompatibility). rancher/ui-plugin-charts only has 3.0.1.
-        repo_url = "https://rancher.github.io/elemental-ui"
+        # Install directly from the chart tarball URL: the rancher/elemental-ui
+        # gh-pages Helm index only publishes up to 1.2.0; 3.x builds are in the
+        # assets/ directory but not listed in the index. Direct URL avoids the
+        # repo + version lookup entirely and works for any version including RCs.
+        chart_url = (
+            f"https://raw.githubusercontent.com/rancher/elemental-ui"
+            f"/gh-pages/assets/elemental/elemental-{self.elemental_ui_version}.tgz"
+        )
         script = (
             "set -euo pipefail\n"
             "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
-            f"helm repo add elemental-ui-charts '{repo_url}' >/dev/null 2>&1 || true\n"
-            "helm repo update elemental-ui-charts >/dev/null 2>&1\n"
-            f"helm upgrade --install elemental-ui elemental-ui-charts/elemental"
-            f" --version {self.elemental_ui_version} --devel"
+            f"helm upgrade --install elemental-ui '{chart_url}'"
             f" --namespace cattle-ui-plugin-system --create-namespace"
             f" --wait --timeout 2m\n"
         )

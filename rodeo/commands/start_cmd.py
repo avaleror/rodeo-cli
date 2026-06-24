@@ -165,7 +165,15 @@ def start_cmd(config_path: str, config_dir: str | None, params: tuple[str, ...],
     # Start VMs in order.
     uri = (cfg or {"libvirt": {"uri": "qemu:///system"}})["libvirt"]["uri"]
     image_dir = Path((cfg or {}).get("storage", {}).get("image_dir", "/var/lib/libvirt/images"))
-    edge_node_names = set((cfg or {}).get("edge_node_names") or [])
+    # edge_node_names is in definition.yaml but not merged into cfg by default_cfg().
+    # Fall back to VMs whose name starts with "edge" on suse-edge type labs.
+    _cfg = cfg or {}
+    if _cfg.get("edge_node_names"):
+        edge_node_names = set(_cfg["edge_node_names"])
+    elif _cfg.get("type") == "suse-edge":
+        edge_node_names = {n for n in _cfg.get("vms", {}) if n.startswith("edge")}
+    else:
+        edge_node_names = set()
     try:
         with LibvirtDriver(uri) as lv:
             ordered = [v for v in start_order if v in vm_names] or vm_names

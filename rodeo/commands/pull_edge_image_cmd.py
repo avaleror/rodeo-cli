@@ -106,7 +106,7 @@ def pull_edge_image_cmd(
     # Check for existing clone disks
     existing = [image_dir / f"{n}-vda.qcow2" for n in edge_names if (image_dir / f"{n}-vda.qcow2").exists()]
     if existing and not yes:
-        console.print(f"\n[yellow]These edge disks already exist and will be replaced:[/yellow]")
+        console.print("\n[yellow]These edge disks already exist and will be replaced:[/yellow]")
         for p in existing:
             console.print(f"  {p}")
         click.confirm("\nOverwrite?", abort=True)

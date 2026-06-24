@@ -84,16 +84,38 @@ def _resolve_secrets_path() -> Path:
     return live
 
 
+_LAST_LAB_FILE = Path.home() / ".rodeo" / "last_lab"
+
+
+def _record_lab_dir(lab_dir: Path) -> None:
+    """Persist the last successfully used lab dir so commands work from anywhere."""
+    try:
+        _LAST_LAB_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _LAST_LAB_FILE.write_text(str(lab_dir))
+    except OSError:
+        pass
+
+
 def find_lab_dir(start: str | Path | None = None) -> Path | None:
     """Walk up from ``start`` (default cwd) for a lab dir, or None.
 
     A lab dir contains rodeo-plan.yaml or definition.yaml. Lets the user run
     `rodeo deploy` / `plan` / `up` from anywhere inside their lab.
+
+    Falls back to ~/.rodeo/last_lab when the walk-up finds nothing, so commands
+    like `rodeo ssh eib` work from any directory after the first deploy.
     """
     here = Path(start or Path.cwd()).resolve()
     for d in (here, *here.parents):
         if any((d / m).exists() for m in _LAB_MARKERS):
             return d
+    # Fall back to the last successfully loaded lab dir.
+    try:
+        last = Path(_LAST_LAB_FILE.read_text().strip())
+        if last.is_dir() and any((last / m).exists() for m in _LAB_MARKERS):
+            return last
+    except OSError:
+        pass
     return None
 
 
@@ -274,6 +296,7 @@ def load_config(
         )
         context.update({k: v for k, v in cli_params if "." not in k})
         plan = _render_plan(text, str(plan_path), context)
+        _record_lab_dir(plan_path.resolve().parent)
 
     # Determine type early so profile defaults can be merged before plan overrides.
     type_name = plan.get("type", _BASE_DEFAULTS["type"])

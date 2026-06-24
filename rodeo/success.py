@@ -140,12 +140,28 @@ def render_success(cfg: dict) -> None:
     lines.append("  [dim](also in ~/.rodeo/secrets.yaml and $HARVESTER_ADMIN_PASSWORD / $RANCHER_ADMIN_PASSWORD)[/dim]")
 
     lines.append("")
+    if is_suse_edge:
+        edge_nodes = [(n, v) for n, v in vms.items() if n.startswith("edge")]
+        if edge_nodes:
+            lines.append("[bold]Edge node reference[/bold]  (static DHCP — MAC determines IP)")
+            lines.append("  node    MAC                  IP")
+            for name, info in sorted(edge_nodes):
+                mac = info.get("mac", "—")
+                ip  = info.get("ip", "—")
+                lines.append(f"  {name:<7} {mac:<20} {ip}  (DHCP pre-assigned)")
+            lines.append("")
+
     lines.append("[bold]First things to try[/bold]")
     lines.append("  rodeo status                 # health + phase progress")
     if is_suse_edge:
         lines.append("  rodeo ssh eib            # shell into the EIB VM (build Elemental OS images here)")
-        lines.append("  In Rancher: open Elemental → Registration Endpoints → create a MachineRegistration")
-        lines.append("  Then use EIB to build an Elemental OS ISO, attach it to edge1/2/3, and start them")
+        lines.append("  On the eib VM: edit /home/eib-config/edge-definition.yaml")
+        lines.append("    → replace REPLACE_WITH_REGISTRATION_URL with the MachineRegistration URL")
+        lines.append("    → run EIB to build the Elemental OS image (base OS from Hauler: http://localhost:8080)")
+        lines.append("  From the KVM host: rodeo pull-edge-image   # seed edge1/2/3 boot disks")
+        lines.append("  rodeo start edge1 edge2 edge3              # boot edge nodes into Elemental")
+        lines.append("  In Rancher: Fleet → Git Repos → alien-geeko is waiting for edge clusters")
+        lines.append("    → label your edge cluster: demo=true  edge-type=x86-cluster")
     else:
         ssh_target = harvester_nodes[0] if has_harvester else next(iter(vms), "rancher")
         lines.append(f"  rodeo ssh {ssh_target}{' ' * max(1, 16 - len(ssh_target))}# shell into the VM")

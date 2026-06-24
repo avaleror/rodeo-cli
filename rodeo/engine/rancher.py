@@ -1100,6 +1100,8 @@ class RancherPhase:
                 return False
             if not (yield from self._populate_hauler()):
                 return False
+            if not (yield from self._create_alien_geeko_fleet()):
+                return False
         return True
 
     def _add_extension_repos(self) -> Generator[DeployEvent, None, bool]:
@@ -1258,14 +1260,40 @@ class RancherPhase:
             # Elemental register agent — EIB embeds this into the edge node image
             # so nodes can phone home to the Elemental Operator on first boot.
             f'$HAULER store add image "registry.suse.com/rancher/elemental-register:{self.elemental_op_version}" --store $STORE\n'
+            # Alien-Geeko demo app image — Fleet deploys this to edge clusters;
+            # edge nodes pull from Hauler via k3s registry mirror (docker.io → eib:5000).
+            '$HAULER store add image "docker.io/avaleror/alien-geeko:latest" --store $STORE\n'
             # openSUSE Leap Micro 6.2 base image — EIB input; served on port 8080
             # so participants can download it with: curl http://localhost:8080/<filename>
             f'$HAULER store add file "{self.hauler_base_url}" --store $STORE\n\n'
             # Enable and start Hauler services (service units written by cloud-init)
             "systemctl daemon-reload\n"
             "systemctl enable --now hauler-registry.service hauler-fileserver.service\n\n"
+            # Pre-stage EIB assets for participants: definition template + k3s registry mirror script
+            "mkdir -p /home/eib-config/scripts /home/eib-output\n"
+            # k3s registry mirror script — EIB runs this during image build to embed
+            # /etc/rancher/k3s/registries.yaml into the edge node OS so ALL container
+            # pulls (docker.io, registry.suse.com, ghcr.io) go through the Hauler
+            # registry at boot time, keeping edge nodes fully airgapped.
+            f"cat > /home/eib-config/scripts/99-k3s-registries.sh << 'K3S_REG'\n"
+            "#!/bin/bash\n"
+            "set -euo pipefail\n"
+            "mkdir -p /etc/rancher/k3s\n"
+            "cat > /etc/rancher/k3s/registries.yaml << 'EOF'\n"
+            "mirrors:\n"
+            '  "docker.io":\n'
+            "    endpoint:\n"
+            f'      - "http://{self.eib_ip}:5000"\n'
+            '  "registry.suse.com":\n'
+            "    endpoint:\n"
+            f'      - "http://{self.eib_ip}:5000"\n'
+            '  "ghcr.io":\n'
+            "    endpoint:\n"
+            f'      - "http://{self.eib_ip}:5000"\n'
+            "EOF\n"
+            "K3S_REG\n"
+            "chmod +x /home/eib-config/scripts/99-k3s-registries.sh\n\n"
             # Pre-stage EIB definition template for participants
-            "mkdir -p /home/eib-config /home/eib-output\n"
             f"cat > /home/eib-config/edge-definition.yaml << '__EIB_DEF__'\n"
             "apiVersion: 1.0\n\n"
             "image:\n"
@@ -1274,7 +1302,9 @@ class RancherPhase:
             "  baseImage: openSUSE-Leap-Micro.x86_64-Default-qcow.qcow2\n\n"
             "operatingSystem:\n"
             "  kernelArgs:\n"
-            "    - net.ifnames=0\n\n"
+            "    - net.ifnames=0\n"
+            "  scripts:\n"
+            "    - 99-k3s-registries.sh\n\n"
             "embeddedArtifacts:\n"
             "  registries:\n"
             "    urls:\n"
@@ -1308,6 +1338,55 @@ class RancherPhase:
             f"  EIB definition template: /home/eib-config/edge-definition.yaml\n"
             f"  Set registration URL: kubectl get machineregistration {reg_name} "
             f"-n fleet-default -o jsonpath='{{{{.status.registrationURL}}}}'"
+        )
+        return True
+
+    def _create_alien_geeko_fleet(self) -> Generator[DeployEvent, None, bool]:
+        """Create a Fleet GitRepo for the Alien-Geeko demo app.
+
+        Alien-Geeko (https://github.com/SUSE-Technical-Marketing/Alien-Geeko) is a
+        Node.js CRT terminal web app showing Kubernetes cluster vitals. Fleet deploys
+        it to any downstream cluster labelled demo=true + edge-type=x86-cluster.
+
+        Participants label their edge cluster after Elemental registers + provisions it.
+        The GitRepo is ready in advance so deployment kicks in the moment the label appears.
+        """
+        manifest = (
+            "apiVersion: fleet.cattle.io/v1alpha1\n"
+            "kind: GitRepo\n"
+            "metadata:\n"
+            "  name: alien-geeko\n"
+            "  namespace: fleet-default\n"
+            "spec:\n"
+            "  repo: https://github.com/SUSE-Technical-Marketing/Alien-Geeko.git\n"
+            "  branch: main\n"
+            "  targets:\n"
+            "    - name: x86-edge-clusters\n"
+            "      clusterSelector:\n"
+            "        matchLabels:\n"
+            '          demo: "true"\n'
+            "          edge-type: x86-cluster\n"
+        )
+        script = (
+            "set -euo pipefail\n"
+            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+            f"cat <<'__GITREPO__' | kubectl apply -f -\n"
+            f"{manifest}"
+            "__GITREPO__\n"
+        )
+        yield LogLine("Creating Fleet GitRepo for Alien-Geeko demo app...")
+        r = self._ssh_script(script, timeout=30)
+        for line in (r.stdout + r.stderr).splitlines():
+            if line.strip():
+                yield LogLine(f"  {line}")
+        if r.returncode != 0:
+            self.error = "Fleet GitRepo creation failed"
+            yield LogLine(f"  ✗ {self.error}")
+            return False
+        yield LogLine(
+            "  Fleet GitRepo 'alien-geeko' created in fleet-default.\n"
+            "  To deploy: label an edge cluster with  demo=true  edge-type=x86-cluster\n"
+            "  Image served from Hauler: http://192.168.122.20:5000 (docker.io mirror)"
         )
         return True
 

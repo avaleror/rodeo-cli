@@ -18,6 +18,7 @@ kvm_host_packages:
   - swtpm                    # software TPM 2.0 emulator for edge-node VMs (SUSE Edge Elemental)
   - cockpit                  # web-based host management UI (port 9090)
   - cockpit-machines         # KVM/libvirt VM management inside Cockpit
+  - nfs-kernel-server        # NFS server — shared /srv/nfs/lab is accessible to all lab VMs
 
 # kubectl is not in the SUSE base repos, so the role adds the upstream Kubernetes
 # repo and installs it (used by the rancher phase for the cluster import). Channel

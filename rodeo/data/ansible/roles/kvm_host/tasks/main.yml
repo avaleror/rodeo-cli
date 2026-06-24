@@ -5,4 +5,5 @@
 - import_tasks: networking.yml
 - import_tasks: libvirt-hook.yml
 - import_tasks: firewall.yml
+- import_tasks: nfs.yml
 - meta: flush_handlers

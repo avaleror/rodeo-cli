@@ -4,6 +4,10 @@
     name: "{{ libvirt_primary_service }}"
     state: restarted
 
+- name: reload nfs exports
+  ansible.builtin.command: exportfs -ra
+  changed_when: false
+
 - name: reload firewalld
   # firewalld is not started during the Ansible phase (see firewall.yml).
   # This handler is a no-op here; the rodeo cluster phase starts firewalld explicitly.

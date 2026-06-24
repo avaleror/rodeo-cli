@@ -20,7 +20,7 @@ class SuseEdgeProfile(RodeoProfile):
     # pxe_server and cluster phases are suse-virt specific — Edge uses cloud-init VMs.
     # elemental installs Elemental Operator (CRDs + Operator) on the management cluster
     # after Rancher Prime is up. Edge nodes then register via TPM + Elemental.
-    phases = ["kvm_host", "vms", "boot", "rancher", "elemental", "finalise"]
+    phases = ["kvm_host", "vms", "boot", "rancher", "elemental", "apply", "finalise"]
     vm_names = ["rancher", "eib", "edge1", "edge2", "edge3"]
     ansible_phases = frozenset(["kvm_host", "vms"])
     guarded_phases = frozenset(["finalise"])
@@ -37,7 +37,6 @@ class SuseEdgeProfile(RodeoProfile):
                     vms[node["name"]] = {
                         "ip": node["ip"],
                         "user": node.get("ssh_user", "root"),
-                        "mac": node.get("mgmt_mac", ""),
                     }
                 return {
                     "vms": vms,
@@ -53,11 +52,11 @@ class SuseEdgeProfile(RodeoProfile):
 
         return {
             "vms": {
-                "rancher": {"ip": "192.168.122.9",  "user": "root", "mac": "02:00:00:0E:62:E9"},
-                "eib":     {"ip": "192.168.122.20", "user": "root", "mac": "02:00:00:0E:62:EB"},
-                "edge1":   {"ip": "192.168.122.31", "user": "root", "mac": "02:00:00:0E:62:A1"},
-                "edge2":   {"ip": "192.168.122.32", "user": "root", "mac": "02:00:00:0E:62:A2"},
-                "edge3":   {"ip": "192.168.122.33", "user": "root", "mac": "02:00:00:0E:62:A3"},
+                "rancher": {"ip": "192.168.122.9",  "user": "root"},
+                "eib":     {"ip": "192.168.122.20", "user": "root"},
+                "edge1":   {"ip": "192.168.122.31", "user": "root"},
+                "edge2":   {"ip": "192.168.122.32", "user": "root"},
+                "edge3":   {"ip": "192.168.122.33", "user": "root"},
             },
             "resources": _RESOURCES,
             "versions": _VERSIONS,
@@ -91,6 +90,8 @@ class SuseEdgeProfile(RodeoProfile):
                 from ..engine.runner import LogLine
                 yield LogLine("No Rancher node in topology — skipping elemental phase.")
                 runner._last_rc = 0
+        elif phase == "apply":
+            yield from runner.stream_apply()
         elif phase == "finalise":
             yield from runner.stream_finalise()
         else:

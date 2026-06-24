@@ -168,9 +168,9 @@ definition:
   # EIB container image.
   eib:
     container_image: "registry.suse.com/edge/3.6/edge-image-builder:1.3.3.1"
-    # Base OS image for edge nodes. Hauler downloads this during deploy and serves it
-    # on port 8080 so participants fetch it offline:
-    # curl http://localhost:8080/openSUSE-Leap-Micro.x86_64-Default-qcow.qcow2 -o /home/eib-config/...
+    # Base OS image for edge nodes. Hauler downloads this QCOW2 during deploy and
+    # _populate_hauler converts it to RAW at /home/eib-config/base-images/*.raw
+    # before participants build EIB images. EIB 1.3.x guestfish requires a raw disk.
     base_image: "openSUSE-Leap-Micro.x86_64-Default-qcow.qcow2"
 
   # Alien-Geeko Fleet demo app.
@@ -198,9 +198,11 @@ definition:
   eib_vm:
     cloud_init:
       # Podman is pre-installed on Leap Micro. These runcmd steps pull the EIB
-      # container and confirm kubectl/helm are reachable from the host.
+      # container and install qemu-tools (provides qemu-img for QCOW2→RAW conversion,
+      # which is required because EIB 1.3.x guestfish expects a raw disk image as input).
       runcmd:
         - "podman pull registry.suse.com/edge/3.6/edge-image-builder:1.3.3.1"
+        - "zypper install -y qemu-tools"
 
   host_prep:
     sysctls:

@@ -268,16 +268,18 @@ def pull_edge_image_cmd(
         ssh_key = "/root/.ssh/id_ed25519" if os.geteuid() == 0 else str(Path.home() / ".ssh" / "id_ed25519")
 
     if not remote_image:
-        console.print(f"  Searching for RAW images in /home/eib-output on {eib_ip}...")
+        console.print(f"  Searching for RAW images on eib VM ({eib_ip})...")
+        # EIB 1.3.x writes the output image to the working dir (/home/eib-config).
+        # Also check /home/eib-output for images students may have moved there.
         r = subprocess.run(
             ["ssh", "-i", ssh_key, *ssh_opts(), f"root@{eib_ip}",
-             "find /home/eib-output -maxdepth 2 -name '*.raw' | head -1"],
+             "find /home/eib-config /home/eib-output -maxdepth 1 -name '*.raw' 2>/dev/null | head -1"],
             capture_output=True, text=True, timeout=20,
         )
         remote_image = r.stdout.strip()
         if not remote_image:
             console.print(
-                "[red]✗  No .raw file found in /home/eib-output on the eib VM.[/red]\n"
+                "[red]✗  No .raw file found on the eib VM.[/red]\n"
                 "   Complete the EIB image build exercise first, then re-run this command.\n"
                 "   Or use --local /path/to/image.raw to use a local image."
             )

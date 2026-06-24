@@ -1270,7 +1270,17 @@ class RancherPhase:
             "systemctl daemon-reload\n"
             "systemctl enable --now hauler-registry.service hauler-fileserver.service\n\n"
             # Pre-stage EIB assets for participants: definition template + k3s registry mirror script
-            "mkdir -p /home/eib-config/scripts /home/eib-output\n"
+            "mkdir -p /home/eib-config/scripts /home/eib-config/base-images /home/eib-output\n"
+            # qemu-img is needed to convert the QCOW2 base image to RAW before EIB can use it.
+            # EIB's modify-raw-image.sh calls guestfish with --format=raw, so it needs a true RAW input.
+            "zypper install -y qemu-tools 2>&1 | tail -3\n"
+            # Download the base QCOW2 from the Hauler fileserver (already running on port 8080)
+            # and convert it to RAW — EIB 1.3.x requires a raw disk image as input.
+            f"QCOW=/home/eib-config/base-images/openSUSE-Leap-Micro.x86_64-Default-qcow.qcow2\n"
+            f"RAW=/home/eib-config/base-images/openSUSE-Leap-Micro.x86_64-Default.raw\n"
+            f'curl -fsSL "http://localhost:8080/openSUSE-Leap-Micro.x86_64-Default-qcow.qcow2" -o "$QCOW"\n'
+            'qemu-img convert -f qcow2 -O raw "$QCOW" "$RAW"\n'
+            'rm -f "$QCOW"\n\n'
             # k3s registry mirror script — EIB runs this during image build to embed
             # /etc/rancher/k3s/registries.yaml into the edge node OS so ALL container
             # pulls (docker.io, registry.suse.com, ghcr.io) go through the Hauler
@@ -1293,13 +1303,16 @@ class RancherPhase:
             "EOF\n"
             "K3S_REG\n"
             "chmod +x /home/eib-config/scripts/99-k3s-registries.sh\n\n"
-            # Pre-stage EIB definition template for participants
+            # Pre-stage EIB definition template for participants.
+            # EIB 1.3.3 does NOT have a top-level elemental: key — Elemental registration
+            # is configured via embeddedArtifacts (checked at build time from the Hauler store).
             f"cat > /home/eib-config/edge-definition.yaml << '__EIB_DEF__'\n"
             "apiVersion: 1.0\n\n"
             "image:\n"
             "  imageType: raw\n"
             "  arch: x86_64\n"
-            "  baseImage: openSUSE-Leap-Micro.x86_64-Default-qcow.qcow2\n\n"
+            "  baseImage: openSUSE-Leap-Micro.x86_64-Default.raw\n"
+            "  outputImageName: elemental-edge.raw\n\n"
             "operatingSystem:\n"
             "  kernelArgs:\n"
             "    - net.ifnames=0\n"
@@ -1308,14 +1321,7 @@ class RancherPhase:
             "embeddedArtifacts:\n"
             "  registries:\n"
             "    urls:\n"
-            f"      - {self.eib_ip}:5000\n\n"
-            "elemental:\n"
-            "  config:\n"
-            "    elemental:\n"
-            "      registration:\n"
-            "        url: REPLACE_WITH_REGISTRATION_URL\n"
-            "      install:\n"
-            "        powerOff: true\n"
+            f"      - {self.eib_ip}:5000\n"
             "__EIB_DEF__\n"
         )
         yield LogLine(

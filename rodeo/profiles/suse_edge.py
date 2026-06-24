@@ -37,6 +37,7 @@ class SuseEdgeProfile(RodeoProfile):
                     vms[node["name"]] = {
                         "ip": node["ip"],
                         "user": node.get("ssh_user", "root"),
+                        "mac": node.get("mgmt_mac", ""),
                     }
                 return {
                     "vms": vms,
@@ -52,11 +53,11 @@ class SuseEdgeProfile(RodeoProfile):
 
         return {
             "vms": {
-                "rancher": {"ip": "192.168.122.9",  "user": "root"},
-                "eib":     {"ip": "192.168.122.20", "user": "root"},
-                "edge1":   {"ip": "192.168.122.31", "user": "root"},
-                "edge2":   {"ip": "192.168.122.32", "user": "root"},
-                "edge3":   {"ip": "192.168.122.33", "user": "root"},
+                "rancher": {"ip": "192.168.122.9",  "user": "root", "mac": "02:00:00:0E:62:E9"},
+                "eib":     {"ip": "192.168.122.20", "user": "root", "mac": "02:00:00:0E:62:EB"},
+                "edge1":   {"ip": "192.168.122.31", "user": "root", "mac": "02:00:00:0E:62:A1"},
+                "edge2":   {"ip": "192.168.122.32", "user": "root", "mac": "02:00:00:0E:62:A2"},
+                "edge3":   {"ip": "192.168.122.33", "user": "root", "mac": "02:00:00:0E:62:A3"},
             },
             "resources": _RESOURCES,
             "versions": _VERSIONS,

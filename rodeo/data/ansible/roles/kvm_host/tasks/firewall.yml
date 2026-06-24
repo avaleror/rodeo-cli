@@ -35,6 +35,14 @@
     immediate: false
     state: enabled
 
+- name: Allow Cockpit web console on the public zone (port 9090)
+  ansible.posix.firewalld:
+    zone: public
+    service: cockpit
+    permanent: true
+    immediate: false
+    state: enabled
+
 - name: Allow forwarding in the libvirt zone
   ansible.posix.firewalld:
     zone: libvirt

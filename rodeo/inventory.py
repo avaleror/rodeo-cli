@@ -17,6 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import hashlib
+import re
 import uuid
 
 import yaml
@@ -239,6 +240,23 @@ def _generate_uuid(plan_name: str, node_name: str) -> str:
     return str(uuid.uuid5(uuid.NAMESPACE_DNS, f"rodeo-{plan_name}-{node_name}"))
 
 
+_EDGE_NAME_RE = re.compile(r"^edge(\d+)$")
+
+
+def _mac_for_iface(node: dict, role: str, plan_name: str, index: int = 0) -> str:
+    """Return MAC for an interface, using pattern assignment for edge-node flavor.
+
+    edge-node flavor with edgeN naming gets 02:00:00:0E:62:A{N} for the mgmt
+    interface, keeping the ordering stable as new nodes are added (edge4 → A4,
+    edge5 → A5, ...). All other flavors fall back to the SHA-hash generator.
+    """
+    if role == "mgmt" and node.get("flavor") == "edge-node":
+        m = _EDGE_NAME_RE.match(node.get("name", ""))
+        if m:
+            return f"02:00:00:0E:62:A{int(m.group(1)):X}"
+    return _generate_mac(plan_name, node["name"], role, index)
+
+
 def _generate_hostname(node: dict, template: dict, index: int) -> str:
     """Generate hostname from pattern or sensible default."""
     pattern = template.get("hostname_pattern", "{name}")
@@ -281,6 +299,20 @@ def _render_node(raw_node: dict, node_templates: dict, plan_name: str, index: in
     if not node.get("uuid"):
         node["uuid"] = _generate_uuid(plan_name, node["name"])
 
+    # Pull flavor and ssh_user from template before interface generation
+    # (so _mac_for_iface can see the resolved flavor).
+    if "flavor" not in node:
+        node["flavor"] = template.get("flavor", template_name)
+    if "ssh_user" not in node:
+        node["ssh_user"] = template.get("ssh_user", "rancher" if node.get("flavor") == "harvester" else "root")
+
+    # edge-node IP convention: edgeN → 192.168.122.{30+N}
+    # Only applied when the node doesn't carry an explicit IP (e.g. hand-written edge4).
+    if node.get("flavor") == "edge-node" and not node.get("ip"):
+        _em = _EDGE_NAME_RE.match(node.get("name", ""))
+        if _em:
+            node["ip"] = f"192.168.122.{30 + int(_em.group(1))}"
+
     # Interfaces: this is the key evolution for "cables"
     # If the node doesn't declare interfaces, inherit blueprint from template and generate MACs.
     if "interfaces" not in node:
@@ -294,7 +326,7 @@ def _render_node(raw_node: dict, node_templates: dict, plan_name: str, index: in
                 iface_role = role if count == 1 else f"{role}{c+1}"
                 iface["role"] = iface_role
                 if "mac" not in iface or not iface.get("mac"):
-                    iface["mac"] = _generate_mac(plan_name, node["name"], iface_role, c)
+                    iface["mac"] = _mac_for_iface(node, iface_role, plan_name, c)
                 iface.pop("count", None)  # don't propagate count to final iface
                 # model, pxe etc. come from the template spec
                 generated.append(iface)
@@ -304,13 +336,7 @@ def _render_node(raw_node: dict, node_templates: dict, plan_name: str, index: in
         for i, iface in enumerate(node["interfaces"]):
             role = iface.get("role", f"nic{i}")
             if "mac" not in iface or not iface.get("mac"):
-                iface["mac"] = _generate_mac(plan_name, node["name"], role, i)
-
-    # Pull flavor and ssh_user from template if not on the node instance
-    if "flavor" not in node:
-        node["flavor"] = template.get("flavor", template_name)
-    if "ssh_user" not in node:
-        node["ssh_user"] = template.get("ssh_user", "rancher" if node.get("flavor") == "harvester" else "root")
+                iface["mac"] = _mac_for_iface(node, role, plan_name, i)
 
     return node
 

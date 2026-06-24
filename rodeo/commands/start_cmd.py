@@ -13,6 +13,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+from pathlib import Path
 
 import click
 from rich.console import Console
@@ -163,11 +164,22 @@ def start_cmd(config_path: str, config_dir: str | None, params: tuple[str, ...],
 
     # Start VMs in order.
     uri = (cfg or {"libvirt": {"uri": "qemu:///system"}})["libvirt"]["uri"]
+    image_dir = Path((cfg or {}).get("storage", {}).get("image_dir", "/var/lib/libvirt/images"))
+    edge_node_names = set((cfg or {}).get("edge_node_names") or [])
     try:
         with LibvirtDriver(uri) as lv:
             ordered = [v for v in start_order if v in vm_names] or vm_names
             net = (cfg or {}).get("network", {})
             for idx, name in enumerate(ordered):
+                if name in edge_node_names:
+                    disk = image_dir / f"{name}-vda.qcow2"
+                    if not disk.exists():
+                        console.print(
+                            f"  [red]✗  {name}: disk not found ({disk})[/red]\n"
+                            "     Build the EIB image on the eib VM first, then run:\n"
+                            "     [bold]rodeo pull-edge-image[/bold]"
+                        )
+                        continue
                 if lv.is_running(name):
                     console.print(f"  [dim]skip (already running)[/dim] {name}")
                 else:

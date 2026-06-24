@@ -25,6 +25,7 @@ from .commands.start_cmd import start_cmd
 from .commands.start_if_needed_cmd import start_if_needed_cmd
 from .commands.self_update_cmd import self_update_cmd
 from .commands.up_cmd import up_cmd
+from .commands.pull_edge_image_cmd import pull_edge_image_cmd
 from .commands.watch import watch_cmd
 from .config import ConfigError
 
@@ -87,4 +88,5 @@ cli.add_command(restart_cmd,      name="restart")
 cli.add_command(ssh_cmd,          name="ssh")
 cli.add_command(logs_cmd,         name="logs")
 cli.add_command(attach_cmd,       name="attach")
-cli.add_command(self_update_cmd,  name="self-update")
+cli.add_command(self_update_cmd,      name="self-update")
+cli.add_command(pull_edge_image_cmd,  name="pull-edge-image")

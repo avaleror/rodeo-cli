@@ -1,31 +1,32 @@
 ---
 # EIB VM disk + cloud-init seed for SUSE Edge labs.
-# The EIB VM hosts the Edge Image Builder container that builds Elemental OS images.
+# The EIB VM hosts the Edge Image Builder container and Hauler artifact cache.
 #
-# Base OS: openSUSE Leap 16 Cloud variant (ships with cloud-init pre-installed).
+# Base OS: openSUSE Leap Micro 6.2 Default qcow (ships with cloud-init + Podman
+# pre-installed; immutable root via btrfs snapshots managed by transactional-update).
 # virt-customize only enables cloud-init services — no package install inside guestfs
-# (guestfs has no network; packages install offline fail). podman installs at first
-# boot via cloud-init packages: in user-data, using the live NAT network.
+# (guestfs has no network; packages install offline fail on Leap Micro).
+# Hauler binary is installed at first boot via cloud-init runcmd.
 
-- name: Download openSUSE Leap 16 Cloud image for EIB VM
+- name: Download openSUSE Leap Micro 6.2 image for EIB VM
   ansible.builtin.shell: |
     set -euo pipefail
     curl -4 -fsSL --retry 3 --retry-delay 5 \
-      -o '{{ image_dir }}/Leap-16.0-Cloud.qcow2' \
-      '{{ leap16_url }}'
+      -o '{{ image_dir }}/Leap-Micro-6.2.qcow2' \
+      '{{ leap_micro_62_url }}'
   args:
     executable: /bin/bash
-    creates: "{{ image_dir }}/Leap-16.0-Cloud.qcow2"
+    creates: "{{ image_dir }}/Leap-Micro-6.2.qcow2"
 
-# Cloud variant ships with cloud-init pre-installed; only enable the services.
-# podman is installed at first boot via cloud-init packages: in user-data.
-- name: Build EIB VM disk (Leap 16 Cloud base + enable cloud-init services)
+# Leap Micro 6.2 Default qcow ships with cloud-init pre-installed; only enable services.
+# Podman is built-in; Hauler binary installs at first boot via cloud-init runcmd.
+- name: Build EIB VM disk (Leap Micro 6.2 base + enable cloud-init services)
   ansible.builtin.shell: |
     set -euo pipefail
     tmp='{{ image_dir }}/eib-vda.qcow2.building'
     rm -f "$tmp"
     qemu-img convert -f qcow2 -O qcow2 -o preallocation=metadata \
-      '{{ image_dir }}/Leap-16.0-Cloud.qcow2' "$tmp"
+      '{{ image_dir }}/Leap-Micro-6.2.qcow2' "$tmp"
     virt-customize -a "$tmp" \
       --run-command 'systemctl enable cloud-init-local.service cloud-init.service cloud-config.service cloud-final.service'
     mv "$tmp" '{{ image_dir }}/eib-vda.qcow2'

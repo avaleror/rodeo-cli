@@ -22,11 +22,13 @@ class RancherPhase:
     SSH_TIMEOUT     = 300    # wait for rancher VM SSH (5 min)
     K3S_TIMEOUT     = 600    # K3s node Ready (10 min)
     PING_TIMEOUT    = 600    # Rancher /ping (10 min)
+    LOGIN_TIMEOUT   = 300    # Rancher auth API ready after /ping (5 min)
     CLUSTER_TIMEOUT = 1800   # cluster Active in Rancher (30 min)
 
     SSH_POLL     = 10
     K3S_POLL     = 10
     PING_POLL    = 10
+    LOGIN_POLL   = 10
     CLUSTER_POLL = 30
 
     def __init__(self, cfg: dict, stop: threading.Event | None = None) -> None:
@@ -570,12 +572,28 @@ class RancherPhase:
             return ""
 
     def _configure_api(self) -> Generator[DeployEvent, None, bool]:
-        # Idempotent: a previous run may have already changed the admin password,
-        # so try the bootstrap password first, then the configured one.
-        temp_token = self._login("admin")
-        on_bootstrap = bool(temp_token)
-        if not temp_token:
+        # /ping comes up before the auth API is ready — wait for a working login.
+        # Idempotent: try bootstrap password first (fresh install), then the
+        # configured lab password (password already set on a previous run / upgrade).
+        temp_token = ""
+        on_bootstrap = False
+        t0 = time.monotonic()
+        while True:
+            temp_token = self._login("admin")
+            if temp_token:
+                on_bootstrap = True
+                break
             temp_token = self._login(self.admin_password)
+            if temp_token:
+                break
+            elapsed = time.monotonic() - t0
+            if elapsed >= self.LOGIN_TIMEOUT:
+                break
+            yield ProgressUpdate("Waiting for Rancher auth API", elapsed, self.LOGIN_TIMEOUT)
+            m, s = divmod(int(elapsed), 60)
+            yield LogLine(f"  {m:02d}:{s:02d} / {self.LOGIN_TIMEOUT // 60}:00 — auth API not ready yet...")
+            if self._sleep(self.LOGIN_POLL):
+                return False
 
         if not temp_token:
             self.error = "Rancher login failed (tried bootstrap and configured passwords)"

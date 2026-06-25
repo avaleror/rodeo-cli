@@ -1,6 +1,7 @@
 """RancherPhase — Python port of the retired setup-rancher.sh deployer script."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import ssl
@@ -716,9 +717,9 @@ class RancherPhase:
         # Use the provisioning.cattle.io/v1 Cluster API — the documented import path
         # per https://docs.harvesterhci.io/v1.8/rancher/virtualization-management
         # agentEnvVars is included for future Rancher versions; in 2.14.x it does not
-        # propagate to cattle-cluster-agent for imported (generic) clusters. TLS is
-        # handled correctly because server-url uses the sslip.io hostname that matches
-        # the Rancher TLS cert's CN/SAN — no bypass needed.
+        # propagate to cattle-cluster-agent for imported (generic) clusters.
+        # CATTLE_CA_CHECKSUM is patched post-deploy by _fix_cattle_ca_checksum because
+        # the rancher-agent binary appends '\n' before hashing, while Rancher does not.
         cluster_manifest = json.dumps({
             "apiVersion": "provisioning.cattle.io/v1",
             "kind": "Cluster",
@@ -865,6 +866,7 @@ class RancherPhase:
             yield LogLine(f"  ✗ {self.error}")
             return False
         yield LogLine("  Registration URL applied — Harvester will deploy the cluster agent.")
+        yield from self._fix_cattle_ca_checksum()
 
         try:
             kube_dir = Path("/root/.kube")
@@ -883,6 +885,64 @@ class RancherPhase:
             return False
 
         return True
+
+    def _fix_cattle_ca_checksum(self) -> Iterator[DeployEvent]:
+        """Patch CATTLE_CA_CHECKSUM in the cattle-cluster-agent deployment on Harvester.
+
+        The rancher-agent binary appends '\\n' to the downloaded cacerts PEM before
+        computing its sha256 checksum.  Rancher generates CATTLE_CA_CHECKSUM as
+        sha256(raw_value) but the binary verifies sha256(raw_value + '\\n').  This
+        one-byte difference causes a persistent mismatch.  We fix it by patching the
+        deployment after Harvester's controller creates it.
+        """
+        if self.standalone:
+            return
+
+        # Compute the checksum the Go binary will actually produce.
+        try:
+            resp = self._http("GET", "/v3/settings/cacerts", token=self._api_token)
+            raw_value = resp.get("value") or ""
+        except Exception:
+            return
+        if not raw_value.strip():
+            return
+        correct_checksum = hashlib.sha256((raw_value + "\n").encode()).hexdigest()
+        yield LogLine(f"  Correct CATTLE_CA_CHECKSUM (binary-compatible): {correct_checksum[:16]}...")
+
+        # Wait up to 90 s for Harvester's controller to create the deployment.
+        yield LogLine("  Waiting for cattle-cluster-agent deployment (up to 90 s)...")
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < 90:
+            r = self._run(
+                [
+                    "kubectl", "--kubeconfig", str(KUBECONFIG_PATH),
+                    "get", "deployment", "cattle-cluster-agent",
+                    "-n", "cattle-system", "--ignore-not-found",
+                    "-o", "jsonpath={.metadata.name}",
+                ],
+                timeout=10,
+            )
+            if r.returncode == 0 and r.stdout.strip() == "cattle-cluster-agent":
+                break
+            if self._sleep(5):
+                return
+        else:
+            yield LogLine("  ⚠ cattle-cluster-agent deployment not found in 90 s — skipping checksum patch.")
+            return
+
+        r = self._run(
+            [
+                "kubectl", "--kubeconfig", str(KUBECONFIG_PATH),
+                "set", "env", "deployment/cattle-cluster-agent",
+                "-n", "cattle-system",
+                f"CATTLE_CA_CHECKSUM={correct_checksum}",
+            ],
+            timeout=20,
+        )
+        if r.returncode == 0:
+            yield LogLine("  CATTLE_CA_CHECKSUM patched — agent will now pass checksum verification.")
+        else:
+            yield LogLine(f"  ⚠ checksum patch failed: {r.stderr.strip()[:80]}")
 
     def _patch_coredns(self) -> Iterator[DeployEvent]:
         dns_server = self.gateway

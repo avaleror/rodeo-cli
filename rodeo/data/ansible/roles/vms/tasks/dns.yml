@@ -9,5 +9,5 @@
     block: |
       {{ harvester_vip }}  virtualization.{{ lab_dns_domain }}
       {% for node in vm_nodes %}
-      {{ node.ip }}  {{ node.hostname }}.{{ lab_dns_domain }}
+      {{ node.ip }}  {{ node.hostname }}.{{ lab_dns_domain }}  {{ node.name }}
       {% endfor %}

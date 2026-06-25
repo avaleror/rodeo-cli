@@ -503,6 +503,24 @@ class RancherPhase:
             if self._sleep(self.PING_POLL):
                 return False
 
+    def _get_bootstrap_password(self) -> str:
+        """Read the real bootstrap password from cattle-system/bootstrap-secret.
+
+        Rancher 2.14+ (and fresh installs after a K3s state wipe) may use a
+        randomly generated password rather than the literal bootstrapPassword
+        Helm value.  Reading the secret is the only reliable way to find it.
+        Falls back to 'admin' when the secret is absent (older installs).
+        """
+        r = self._ssh_script(
+            "kubectl --kubeconfig=/etc/rancher/k3s/k3s.yaml"
+            " get secret bootstrap-secret -n cattle-system"
+            " -o jsonpath='{.data.bootstrapPassword}' 2>/dev/null"
+            " | base64 -d 2>/dev/null",
+            timeout=15,
+        )
+        pw = r.stdout.strip() if r.returncode == 0 else ""
+        return pw or "admin"
+
     def _login(self, password: str) -> tuple[str, str]:
         """Return (token, error). Token is '' on failure; error describes what happened."""
         try:
@@ -524,8 +542,9 @@ class RancherPhase:
         on_bootstrap = False
         t0 = time.monotonic()
         err_bootstrap = err_configured = ""
+        bootstrap_pw = self._get_bootstrap_password()
         while True:
-            temp_token, err_bootstrap = self._login("admin")
+            temp_token, err_bootstrap = self._login(bootstrap_pw)
             if temp_token:
                 on_bootstrap = True
                 break

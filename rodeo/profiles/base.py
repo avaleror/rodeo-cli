@@ -19,6 +19,8 @@ class RodeoProfile(ABC):
     # Phases skipped when deployment_target is "instruqt" (they break image save)
     # unless the user passes --finalise.
     guarded_phases: frozenset[str] = frozenset()
+    # Phases whose completion is never cached — they re-run on every rodeo up.
+    no_cache_phases: frozenset[str] = frozenset()
 
     @abstractmethod
     def default_cfg(self) -> dict:

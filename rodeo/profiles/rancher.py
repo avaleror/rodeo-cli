@@ -28,6 +28,7 @@ class RancherProfile(RodeoProfile):
     vm_names = ["rancher"]
     ansible_phases = frozenset(["kvm_host", "vms"])
     guarded_phases = frozenset(["finalise"])
+    no_cache_phases = frozenset(["apply"])
 
     def default_cfg(self, config_dir: str | None = None) -> dict:
         vms = {"rancher": {"ip": "192.168.122.9", "user": "root"}}

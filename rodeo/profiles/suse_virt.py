@@ -35,6 +35,7 @@ class SuseVirtProfile(RodeoProfile):
     vm_names = ["harvester1", "harvester2", "harvester3", "rancher"]
     ansible_phases = frozenset(["kvm_host", "vms", "pxe_server"])
     guarded_phases = frozenset(["finalise"])
+    no_cache_phases = frozenset(["apply"])
 
     def default_cfg(self, config_dir: str | None = None) -> dict:
         # Demonstration of loading from the new topology/inventory definition file

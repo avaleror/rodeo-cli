@@ -217,7 +217,8 @@ class DeployRunner:
             ok = self._last_rc == 0
 
             if ok:
-                mark_phase_done(phase, self._plan_name)
+                if phase not in getattr(profile, "no_cache_phases", frozenset()):
+                    mark_phase_done(phase, self._plan_name)
                 yield PhaseDone(phase, elapsed)
             else:
                 mark_phase_failed(phase, f"{phase} exited {self._last_rc}", self._plan_name)
@@ -408,16 +409,16 @@ class DeployRunner:
     def stream_apply(self) -> Iterator[DeployEvent]:
         """Apply custom YAML manifests to VMs via SSH + kubectl apply.
 
-        Walks <config_dir>/<plan_name>/<hostname>/ for each hostname subdirectory,
+        Walks <config_dir>/<hostname>/ for each hostname subdirectory,
         SSHes into that VM, and runs 'kubectl apply -f -' for every *.yaml / *.yml
-        file found, in sorted order. Silent no-op when the directory is absent.
+        file found, in sorted order. Silent no-op when no hostname dirs are present.
         """
         config_dir = self.cfg.get("config_dir", "")
         if not config_dir:
             self._last_rc = 0
             return
 
-        manifests_root = Path(config_dir) / self._plan_name
+        manifests_root = Path(config_dir)
         if not manifests_root.is_dir():
             self._last_rc = 0
             return

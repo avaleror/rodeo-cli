@@ -24,6 +24,7 @@ class SuseEdgeProfile(RodeoProfile):
     vm_names = ["rancher", "eib", "edge1", "edge2", "edge3"]
     ansible_phases = frozenset(["kvm_host", "vms"])
     guarded_phases = frozenset(["finalise"])
+    no_cache_phases = frozenset(["apply"])
 
     def default_cfg(self, config_dir: str | None = None) -> dict:
         if _inv is not None:

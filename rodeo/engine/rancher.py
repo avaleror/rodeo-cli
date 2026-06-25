@@ -560,38 +560,43 @@ class RancherPhase:
         # before the login loop so the rest of the flow is unaffected.
         self._clear_must_change_password()
 
-        # /ping comes up before the auth API is ready — wait for a working login.
-        # Idempotent: try bootstrap password first (fresh install), then the
-        # configured lab password (password already set on a previous run / upgrade).
+        # Try passwords in order: configured (secrets.yaml) first (succeeds on re-runs),
+        # then the value in bootstrap-secret (succeeds on fresh installs), then the
+        # literal 'admin' fallback (handles old deployments where bootstrap was hardcoded).
+        # 'on_bootstrap' means the password is not yet the configured one and must be set.
+        bootstrap_pw = self._get_bootstrap_password()
+        # dict.fromkeys preserves order and deduplicates (e.g. when bootstrap_pw == admin_pw)
+        candidates = list(dict.fromkeys([self.admin_password, bootstrap_pw, "admin"]))
+
         temp_token = ""
         on_bootstrap = False
         t0 = time.monotonic()
-        err_bootstrap = err_configured = ""
-        bootstrap_pw = self._get_bootstrap_password()
+        last_errors: dict[str, str] = {}
         while True:
-            temp_token, err_bootstrap = self._login(bootstrap_pw)
+            for pw in candidates:
+                token, err = self._login(pw)
+                if token:
+                    temp_token = token
+                    on_bootstrap = (pw != self.admin_password)
+                    break
+                last_errors[pw] = err
+
             if temp_token:
-                on_bootstrap = True
                 break
-            temp_token, err_configured = self._login(self.admin_password)
-            if temp_token:
-                break
+
             elapsed = time.monotonic() - t0
             if elapsed >= self.LOGIN_TIMEOUT:
                 break
             yield ProgressUpdate("Waiting for Rancher auth API", elapsed, self.LOGIN_TIMEOUT)
             m, s = divmod(int(elapsed), 60)
-            yield LogLine(
-                f"  {m:02d}:{s:02d} / {self.LOGIN_TIMEOUT // 60}:00"
-                f" — bootstrap: {err_bootstrap} | configured: {err_configured}"
-            )
+            errs = " | ".join(f"{pw[:8]}…: {e}" for pw, e in last_errors.items())
+            yield LogLine(f"  {m:02d}:{s:02d} / {self.LOGIN_TIMEOUT // 60}:00 — {errs}")
             if self._sleep(self.LOGIN_POLL):
                 return False
 
         if not temp_token:
-            self.error = (
-                f"Rancher login failed — bootstrap: {err_bootstrap} | configured: {err_configured}"
-            )
+            errs = " | ".join(f"{pw[:8]}…: {e}" for pw, e in last_errors.items())
+            self.error = f"Rancher login failed — {errs}"
             yield LogLine(f"  ✗ {self.error}")
             return False
 

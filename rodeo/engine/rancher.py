@@ -445,7 +445,7 @@ class RancherPhase:
             f' --version "{self.rancher_version}"'
             f' --set hostname="{self.rancher_hostname}"'
             f'{tls_flags}'
-            ' --set bootstrapPassword="admin"'
+            f' --set bootstrapPassword="{self.admin_password}"'
             ' --set replicas=1'
             ' --wait --timeout 600s\n'
         )

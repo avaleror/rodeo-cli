@@ -133,6 +133,11 @@ def build_inventory(cfg: dict) -> dict:
         # 3. The extended libvirt network definition (the "cables" + DHCP + TFTP/HTTP options)
         "libvirt_network": _compile_libvirt_network(topology, nodes),
 
+        # Component versions declared in definition (e.g. rancher, k3s, cert_manager, harvester).
+        # Profiles read this via inv.get("versions", fallback) so the definition is the single
+        # source of truth and changing it drives idempotent upgrades on re-run.
+        "versions": topology.get("versions", {}),
+
         # Storage config from definition (for multi-disk hosts, image_dir, pool, etc.)
         # This is now alongside the other components (network, boot, exposed_services, node_templates).
         # The renderer passes it through; it gets emitted to Ansible vars and can be used

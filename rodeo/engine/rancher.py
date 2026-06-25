@@ -22,7 +22,7 @@ class RancherPhase:
     SSH_TIMEOUT     = 300    # wait for rancher VM SSH (5 min)
     K3S_TIMEOUT     = 600    # K3s node Ready (10 min)
     PING_TIMEOUT    = 600    # Rancher /ping (10 min)
-    LOGIN_TIMEOUT   = 300    # Rancher auth API ready after /ping (5 min)
+    LOGIN_TIMEOUT   = 600    # Rancher auth API ready after /ping (10 min)
     CLUSTER_TIMEOUT = 1800   # cluster Active in Rancher (30 min)
 
     SSH_POLL     = 10
@@ -559,17 +559,18 @@ class RancherPhase:
             if self._sleep(self.PING_POLL):
                 return False
 
-    def _login(self, password: str) -> str:
-        """Return a login token for admin@<password>, or '' on failure."""
+    def _login(self, password: str) -> tuple[str, str]:
+        """Return (token, error). Token is '' on failure; error describes what happened."""
         try:
             resp = self._http(
                 "POST",
                 "/v3-public/localProviders/local?action=login",
                 {"username": "admin", "password": password},
             )
-            return resp.get("token", "")
-        except Exception:
-            return ""
+            token = resp.get("token", "")
+            return token, ("" if token else "200 OK but no token in response")
+        except Exception as exc:
+            return "", str(exc)
 
     def _configure_api(self) -> Generator[DeployEvent, None, bool]:
         # /ping comes up before the auth API is ready — wait for a working login.
@@ -578,12 +579,13 @@ class RancherPhase:
         temp_token = ""
         on_bootstrap = False
         t0 = time.monotonic()
+        err_bootstrap = err_configured = ""
         while True:
-            temp_token = self._login("admin")
+            temp_token, err_bootstrap = self._login("admin")
             if temp_token:
                 on_bootstrap = True
                 break
-            temp_token = self._login(self.admin_password)
+            temp_token, err_configured = self._login(self.admin_password)
             if temp_token:
                 break
             elapsed = time.monotonic() - t0
@@ -591,12 +593,17 @@ class RancherPhase:
                 break
             yield ProgressUpdate("Waiting for Rancher auth API", elapsed, self.LOGIN_TIMEOUT)
             m, s = divmod(int(elapsed), 60)
-            yield LogLine(f"  {m:02d}:{s:02d} / {self.LOGIN_TIMEOUT // 60}:00 — auth API not ready yet...")
+            yield LogLine(
+                f"  {m:02d}:{s:02d} / {self.LOGIN_TIMEOUT // 60}:00"
+                f" — bootstrap: {err_bootstrap} | configured: {err_configured}"
+            )
             if self._sleep(self.LOGIN_POLL):
                 return False
 
         if not temp_token:
-            self.error = "Rancher login failed (tried bootstrap and configured passwords)"
+            self.error = (
+                f"Rancher login failed — bootstrap: {err_bootstrap} | configured: {err_configured}"
+            )
             yield LogLine(f"  ✗ {self.error}")
             return False
 

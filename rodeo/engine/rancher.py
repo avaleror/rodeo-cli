@@ -60,7 +60,6 @@ class RancherPhase:
         self.cert_mgr_version        = ver.get("cert_manager", "v1.20.1")
         self.elemental_crds_version  = ver.get("elemental_operator_crds", "1.9.0")
         self.elemental_op_version    = ver.get("elemental_operator", "1.9.0")
-        self.elemental_ui_version    = ver.get("elemental_ui_extension", "3.0.2-rc.2")
 
         self.profile_type = cfg.get("type", "")
         self.harvester_auto_import = cfg.get("harvester_auto_import", True)
@@ -1064,8 +1063,6 @@ class RancherPhase:
         if self.profile_type == "suse-edge":
             if not (yield from self._add_extension_repos()):
                 return False
-            if not (yield from self._install_elemental_ui()):
-                return False
             if not (yield from self._create_machine_registrations()):
                 return False
             if not (yield from self._populate_hauler()):
@@ -1119,34 +1116,6 @@ class RancherPhase:
         yield LogLine("  Extension repositories added.")
         return True
 
-    def _install_elemental_ui(self) -> Generator[DeployEvent, None, bool]:
-        """Install the Elemental UI extension into Rancher via Helm."""
-        # Install directly from the chart tarball URL: the rancher/elemental-ui
-        # gh-pages Helm index only publishes up to 1.2.0; 3.x builds are in the
-        # assets/ directory but not listed in the index. Direct URL avoids the
-        # repo + version lookup entirely and works for any version including RCs.
-        chart_url = (
-            f"https://raw.githubusercontent.com/rancher/elemental-ui"
-            f"/gh-pages/assets/elemental/elemental-{self.elemental_ui_version}.tgz"
-        )
-        script = (
-            "set -euo pipefail\n"
-            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
-            f"helm upgrade --install elemental-ui '{chart_url}'"
-            f" --namespace cattle-ui-plugin-system --create-namespace"
-            f" --wait --timeout 2m\n"
-        )
-        yield LogLine(f"Installing Elemental UI extension {self.elemental_ui_version}...")
-        r = self._ssh_script(script, timeout=180)
-        for line in (r.stdout + r.stderr).splitlines():
-            if line.strip() and "elphelming" not in line.lower():
-                yield LogLine(f"  {line}")
-        if r.returncode != 0:
-            self.error = "Elemental UI extension install failed"
-            yield LogLine(f"  ✗ {self.error}")
-            return False
-        yield LogLine("  Elemental UI extension installed.")
-        return True
 
     def _create_machine_registrations(self) -> Generator[DeployEvent, None, bool]:
         """Create Elemental MachineRegistration CRs in fleet-default.

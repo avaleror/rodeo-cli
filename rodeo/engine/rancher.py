@@ -534,7 +534,32 @@ class RancherPhase:
         except Exception as exc:
             return "", str(exc)
 
+    def _clear_must_change_password(self) -> None:
+        """Patch the admin User to clear mustChangePassword.
+
+        Rancher 2.14+ sets mustChangePassword=true on fresh installs.
+        When that flag is set the /v3-public login endpoint returns 401
+        instead of a token, blocking every API call.  Clearing it via
+        kubectl before the login loop lets the normal flow proceed.
+        This is idempotent and safe to call on every deploy.
+        """
+        script = (
+            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+            "ADMIN=$(kubectl get users.management.cattle.io"
+            " -o jsonpath='{.items[?(@.username==\"admin\")].metadata.name}'"
+            " 2>/dev/null)\n"
+            '[ -z "$ADMIN" ] && exit 0\n'
+            'kubectl patch users.management.cattle.io "$ADMIN"'
+            " --type=merge -p '{\"mustChangePassword\": false}' 2>/dev/null\n"
+        )
+        self._ssh_script(script, timeout=15)
+
     def _configure_api(self) -> Generator[DeployEvent, None, bool]:
+        # Rancher 2.14+ sets mustChangePassword=true on fresh installs which
+        # causes the login endpoint to return 401 until cleared.  Do it here
+        # before the login loop so the rest of the flow is unaffected.
+        self._clear_must_change_password()
+
         # /ping comes up before the auth API is ready — wait for a working login.
         # Idempotent: try bootstrap password first (fresh install), then the
         # configured lab password (password already set on a previous run / upgrade).

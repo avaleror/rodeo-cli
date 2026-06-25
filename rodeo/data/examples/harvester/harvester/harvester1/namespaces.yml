@@ -1,0 +1,43 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: prod
+  annotations:
+    field.cattle.io/description: VMs running in Production
+    {}
+    #  key: string
+  labels:
+    stage: prod
+---
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: a-team
+  annotations:
+    field.cattle.io/description: VMs from A-Team
+  labels:
+    stage: dev
+
+---
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: b-team
+  annotations:
+    field.cattle.io/description: VMs from B-Team
+  labels:
+    stage: qa
+---
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: official-images
+  annotations:
+    field.cattle.io/description: Official Images and ISOs
+  labels:
+    stage: prod
+

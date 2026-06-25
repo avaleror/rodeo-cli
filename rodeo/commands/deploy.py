@@ -94,7 +94,14 @@ def deploy_cmd(
         )
         raise SystemExit(1)
 
-    ok = run_preflight(cfg, root)
+    # Compute which phases will actually run so preflight can skip resource
+    # checks that are irrelevant (e.g. RAM/disk when --from rancher skips vms).
+    if from_phase is not None and from_phase in profile.phases:
+        phases_to_run = profile.phases[profile.phases.index(from_phase):]
+    else:
+        phases_to_run = list(profile.phases)
+
+    ok = run_preflight(cfg, root, phases_to_run=phases_to_run)
     if preflight_only:
         raise SystemExit(0 if ok else 1)
     if not ok:

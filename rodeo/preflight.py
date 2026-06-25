@@ -202,34 +202,43 @@ def _resource_needs(cfg: dict) -> tuple[int, int]:
     )
 
 
-def run_preflight(cfg: dict, root: Path) -> bool:
+def run_preflight(cfg: dict, root: Path, phases_to_run: list[str] | None = None) -> bool:
     """Plan-sized preflight for ``deploy --check`` / ``up``. Prints results, returns ok.
 
     Core tools (ansible, kubectl) and host basics are hard requirements; virsh/ssh are
     warnings only (day-2 + fallbacks, libvirt-python is the primary path).
+
+    ``phases_to_run`` is the list of phases that will actually execute (e.g. when
+    ``--from rancher`` is used, only post-vms phases run). RAM and disk checks are
+    skipped when ``vms`` is not in that list — VMs are already allocated on the host
+    and checking free resources against full provisioning needs would always fail.
     """
     storage = cfg.get("storage", {})
     image_dir = storage.get("image_dir", DEFAULT_IMAGE_DIR)
-    need_mib, need_gb = _resource_needs(cfg)
+
+    # Resource checks only make sense when we are (re-)creating VMs.
+    check_resources = phases_to_run is None or "vms" in phases_to_run
 
     checks: list[tuple[str, bool, str, bool]] = []
     checks.append(("root", os.geteuid() == 0, "not running as root — some phases require root", False))
     checks.append(("/dev/kvm", Path("/dev/kvm").exists(), "/dev/kvm not found — is KVM enabled?", False))
     checks.append(("nested virt", _nested_enabled(), "nested virtualization not enabled in kvm module", False))
 
-    avail_mib = _read_avail_mib()
-    if avail_mib > 0:
-        checks.append(("RAM", avail_mib >= need_mib,
-                       f"need {need_mib // 1024} GiB, have {avail_mib // 1024} GiB available", False))
-    else:
-        checks.append(("RAM", True, "could not read /proc/meminfo", False))
+    if check_resources:
+        need_mib, need_gb = _resource_needs(cfg)
+        avail_mib = _read_avail_mib()
+        if avail_mib > 0:
+            checks.append(("RAM", avail_mib >= need_mib,
+                           f"need {need_mib // 1024} GiB, have {avail_mib // 1024} GiB available", False))
+        else:
+            checks.append(("RAM", True, "could not read /proc/meminfo", False))
 
-    free_gb = _free_gib(image_dir)
-    if free_gb >= 0:
-        checks.append(("disk", free_gb >= need_gb,
-                       f"need ~{need_gb} GB, have {free_gb} GB free in {image_dir}", False))
-    else:
-        checks.append(("disk", True, f"cannot stat {image_dir}", False))
+        free_gb = _free_gib(image_dir)
+        if free_gb >= 0:
+            checks.append(("disk", free_gb >= need_gb,
+                           f"need ~{need_gb} GB, have {free_gb} GB free in {image_dir}", False))
+        else:
+            checks.append(("disk", True, f"cannot stat {image_dir}", False))
 
     for tool in CORE_TOOLS:
         checks.append((tool, shutil.which(tool) is not None, f"{tool} not found in PATH", False))

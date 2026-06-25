@@ -61,9 +61,9 @@ class RancherProfile(RodeoProfile):
                 "rancher": {"memory_mib": 8192, "vcpu": 4, "disk_gb": 60},
             },
             "versions": {
-                "rancher":      "2.13.1",
-                "k3s":          "v1.31.4+k3s1",
-                "cert_manager": "v1.16.2",
+                "rancher":      "2.14.1",
+                "k3s":          "v1.35.3+k3s1",
+                "cert_manager": "v1.20.1",
             },
             "storage": storage,
         }

@@ -53,9 +53,9 @@ class RancherPhase:
         self.harvester_nodes  = real_harvester or ["harvester1", "harvester2", "harvester3"]
         self.libvirt_uri      = cfg.get("libvirt", {}).get("uri", "qemu:///system")
 
-        self.rancher_version         = ver.get("rancher", "2.13.1")
-        self.k3s_version             = ver.get("k3s", "v1.31.4+k3s1")
-        self.cert_mgr_version        = ver.get("cert_manager", "v1.16.2")
+        self.rancher_version         = ver.get("rancher", "2.14.1")
+        self.k3s_version             = ver.get("k3s", "v1.35.3+k3s1")
+        self.cert_mgr_version        = ver.get("cert_manager", "v1.20.1")
         self.ui_ext_version          = ver.get("harvester_ui_extension", "1.7.1")
         self.elemental_crds_version  = ver.get("elemental_operator_crds", "1.9.0")
         self.elemental_op_version    = ver.get("elemental_operator", "1.9.0")
@@ -488,7 +488,7 @@ class RancherPhase:
                     "metadata": {
                         "catalog.cattle.io/display-name": "Harvester",
                         "catalog.cattle.io/kube-version": ">= 1.16.0-0",
-                        "catalog.cattle.io/rancher-version": ">= 2.13.0-0",
+                        "catalog.cattle.io/rancher-version": ">= 2.14.0-0",
                         "catalog.cattle.io/ui-extensions-version": ">= 3.0.0 < 4.0.0",
                     },
                 }
@@ -697,7 +697,7 @@ class RancherPhase:
     def _import_harvester(self) -> Generator[DeployEvent, None, bool]:
         # Use the provisioning.cattle.io/v1 Cluster API — the documented import path
         # per https://docs.harvesterhci.io/v1.8/rancher/virtualization-management
-        # agentEnvVars is included for future Rancher versions; in 2.13.x it does not
+        # agentEnvVars is included for future Rancher versions; in 2.14.x it does not
         # propagate to cattle-cluster-agent for imported (generic) clusters. TLS is
         # handled correctly because server-url uses the sslip.io hostname that matches
         # the Rancher TLS cert's CN/SAN — no bypass needed.

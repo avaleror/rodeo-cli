@@ -196,6 +196,15 @@ definition:
     # Alias for image_dir (used in templates and preflight).
     image_dir: /var/lib/libvirt/images
 
+  # Component versions — all aligned with SUSE Edge 3.6.
+  # Rancher is the management cluster for Harvester; K3s is used here (lab simplification;
+  # production SUSE Edge 3.6 uses RKE2 v1.35.3+rke2r3 for the management cluster).
+  versions:
+    harvester:    "1.8.0"
+    rancher:      "2.14.1"
+    k3s:          "v1.35.3+k3s1"
+    cert_manager: "v1.20.1"
+
   # High-level components / recipe for this Harvester rodeo (recommended to document "what this rodeo is").
   # The renderer and roles use the detailed sections above; this is for humans and future introspection ("rodeo describe").
   components:

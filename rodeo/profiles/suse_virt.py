@@ -18,6 +18,17 @@ except ImportError:
     _inv = None  # type: ignore[assignment]
 
 
+# Fallback versions used when the definition file cannot be loaded.
+# Authoritative values live in rodeo/data/platforms/suse-virt/definition.yaml (versions: block).
+# Keep these in sync with that file — they should only be hit in dev/test without the package data.
+_FALLBACK_VERSIONS = {
+    "harvester":    "1.8.0",
+    "rancher":      "2.14.1",
+    "k3s":          "v1.35.3+k3s1",
+    "cert_manager": "v1.20.1",
+}
+
+
 class SuseVirtProfile(RodeoProfile):
     name = "suse-virt"
     phases = ["kvm_host", "vms", "pxe_server", "cluster", "rancher", "apply", "finalise"]
@@ -43,20 +54,16 @@ class SuseVirtProfile(RodeoProfile):
                         "ip": node["ip"],
                         "user": node.get("ssh_user", "rancher" if node["flavor"] == "harvester" else "root"),
                     }
-                # resources and versions stay in the profile for now (they are the other part
-                # of the old "hardcoded assumptions"). They will move into the definition too.
                 return {
                     "vms": vms,
                     "resources": {
                         "harvester": {"memory_mib": 16384, "vcpu": 8, "disk_gb": 270},
                         "rancher":   {"memory_mib": 8192,  "vcpu": 4, "disk_gb": 60},
                     },
-                    "versions": {
-                        "harvester":    "1.8.0",
-                        "rancher":      "2.13.1",
-                        "k3s":          "v1.31.4+k3s1",
-                        "cert_manager": "v1.16.2",
-                    },
+                    # Versions from definition.yaml (single source of truth).
+                    # Changing the definition drives idempotent upgrades on re-run
+                    # (helm upgrade --install for Rancher/cert-manager; K3s installer for K3s).
+                    "versions": inv.get("versions") or _FALLBACK_VERSIONS,
                     # Storage from definition (multi-disk disk selection, etc.)
                     "storage": inv.get("storage", {
                         "device": "",
@@ -79,12 +86,7 @@ class SuseVirtProfile(RodeoProfile):
                 "harvester": {"memory_mib": 16384, "vcpu": 8, "disk_gb": 270},
                 "rancher":   {"memory_mib": 8192,  "vcpu": 4, "disk_gb": 60},
             },
-            "versions": {
-                "harvester":    "1.8.0",
-                "rancher":      "2.13.1",
-                "k3s":          "v1.31.4+k3s1",
-                "cert_manager": "v1.16.2",
-            },
+            "versions": _FALLBACK_VERSIONS,
             # Storage default (will be overridden by definition when loaded)
             "storage": {
                 "device": "",

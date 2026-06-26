@@ -1536,13 +1536,134 @@ class RancherPhase:
             '  -H "Content-Type: application/json" \\\n'
             f'  -d \'{{"clone_addr":"{self.alien_geeko_fleet_repo}",'
             f'"repo_name":"alien-geeko","private":false,"mirror":false}}\'\n\n'
-            f'echo "  Gitea: http://{self.eib_ip}:{self.gitea_port}'
-            f'/$GITEA_USER/alien-geeko.git"\n'
+            f'echo "  alien-geeko: http://{self.eib_ip}:{self.gitea_port}/$GITEA_USER/alien-geeko.git"\n\n'
+            # ---- eib-config Gitea repo with EIB definition templates ----
+            # Install git (needed to create the initial commit and push the repo).
+            # Leap Micro 6.2 may not have git by default.
+            "command -v git >/dev/null 2>&1 || zypper install -y --no-recommends git 2>&1 | tail -5\n\n"
+            "curl -sf -X POST \"$GITEA_URL/api/v1/user/repos\" \\\n"
+            "  -H \"Authorization: token $TOKEN\" \\\n"
+            "  -H \"Content-Type: application/json\" \\\n"
+            "  -d '{\"name\":\"eib-config\",\"description\":\"AeroGrid EIB image definitions, network configs and combustion scripts\",\"private\":false,\"auto_init\":false}' >/dev/null\n\n"
+            "EIB_REPO=/tmp/eib-config-repo\n"
+            "rm -rf \"$EIB_REPO\"\n"
+            "mkdir -p \"$EIB_REPO/network-configs\" \"$EIB_REPO/scripts\" \"$EIB_REPO/elemental\" \"$EIB_REPO/network\"\n\n"
+            # .gitignore — keep build outputs and the transient network/ dir out of git
+            "cat > \"$EIB_REPO/.gitignore\" << 'GITIGNORE_EOF'\n"
+            "*.iso\n*.raw\n*.qcow2\nnetwork/\n.eib/\n"
+            "GITIGNORE_EOF\n\n"
+            # Copy the registry mirror script already written by _populate_hauler
+            "cp /home/eib-config/scripts/99-k3s-registries.sh \"$EIB_REPO/scripts/\"\n\n"
+            # Hostname combustion scripts (edge3 and edge4 standalone path)
+            "cat > \"$EIB_REPO/scripts/10-hostname-edge3.sh\" << 'HNAME3_EOF'\n"
+            "#!/bin/bash\nhostnamectl set-hostname edge3\nHNAME3_EOF\n"
+            "chmod +x \"$EIB_REPO/scripts/10-hostname-edge3.sh\"\n\n"
+            "cat > \"$EIB_REPO/scripts/10-hostname-edge4.sh\" << 'HNAME4_EOF'\n"
+            "#!/bin/bash\nhostnamectl set-hostname edge4\nHNAME4_EOF\n"
+            "chmod +x \"$EIB_REPO/scripts/10-hostname-edge4.sh\"\n\n"
+            # NMState network config templates — one per edge node
+            "cat > \"$EIB_REPO/network-configs/edge1.yaml\" << 'NM1_EOF'\n"
+            "interfaces:\n  - name: eth0\n    type: ethernet\n    state: up\n"
+            "    ipv4:\n      address:\n        - ip: 192.168.122.31\n          prefix-length: 24\n"
+            "      dhcp: false\n      enabled: true\n"
+            "routes:\n  config:\n    - destination: 0.0.0.0/0\n"
+            "      next-hop-address: 192.168.122.1\n      next-hop-interface: eth0\n"
+            "dns-resolver:\n  config:\n    servers:\n      - 192.168.122.1\n"
+            "NM1_EOF\n\n"
+            "cat > \"$EIB_REPO/network-configs/edge2.yaml\" << 'NM2_EOF'\n"
+            "interfaces:\n  - name: eth0\n    type: ethernet\n    state: up\n"
+            "    ipv4:\n      address:\n        - ip: 192.168.122.32\n          prefix-length: 24\n"
+            "      dhcp: false\n      enabled: true\n"
+            "routes:\n  config:\n    - destination: 0.0.0.0/0\n"
+            "      next-hop-address: 192.168.122.1\n      next-hop-interface: eth0\n"
+            "dns-resolver:\n  config:\n    servers:\n      - 192.168.122.1\n"
+            "NM2_EOF\n\n"
+            "cat > \"$EIB_REPO/network-configs/edge3.yaml\" << 'NM3_EOF'\n"
+            "interfaces:\n  - name: eth0\n    type: ethernet\n    state: up\n"
+            "    ipv4:\n      address:\n        - ip: 192.168.122.33\n          prefix-length: 24\n"
+            "      dhcp: false\n      enabled: true\n"
+            "routes:\n  config:\n    - destination: 0.0.0.0/0\n"
+            "      next-hop-address: 192.168.122.1\n      next-hop-interface: eth0\n"
+            "dns-resolver:\n  config:\n    servers:\n      - 192.168.122.1\n"
+            "NM3_EOF\n\n"
+            "cat > \"$EIB_REPO/network-configs/edge4.yaml\" << 'NM4_EOF'\n"
+            "interfaces:\n  - name: eth0\n    type: ethernet\n    state: up\n"
+            "    ipv4:\n      address:\n        - ip: 192.168.122.34\n          prefix-length: 24\n"
+            "      dhcp: false\n      enabled: true\n"
+            "routes:\n  config:\n    - destination: 0.0.0.0/0\n"
+            "      next-hop-address: 192.168.122.1\n      next-hop-interface: eth0\n"
+            "dns-resolver:\n  config:\n    servers:\n      - 192.168.122.1\n"
+            "NM4_EOF\n\n"
+            # Elemental registration config placeholder — filled in during Exercise 2
+            "cat > \"$EIB_REPO/elemental/elemental_config.yaml\" << 'ELEM_EOF'\n"
+            "# Filled in during Exercise 2, section 2.4.\n"
+            "# On the eib VM, after cloning this repo:\n"
+            "#   REGURL=$(ssh root@192.168.122.9 \\\n"
+            "#     \"kubectl get machineregistration suse-edge-reg-1 \\\n"
+            "#      -n fleet-default -o jsonpath='{.status.registrationURL}'\")\n"
+            "#   curl -k \"$REGURL\" > elemental/elemental_config.yaml\n"
+            "ELEM_EOF\n\n"
+            # EIB definition files — Elemental ISO path (edge1, edge2)
+            "cat > \"$EIB_REPO/elemental-edge1-definition.yaml\" << '__DEF1__'\n"
+            "apiVersion: 1.0\n\n"
+            "image:\n  imageType: iso\n  arch: x86_64\n"
+            "  baseImage: SL-Micro.x86_64-6.2-Base-SelfInstall-GM.install.iso\n"
+            "  outputImageName: elemental-edge1.iso\n\n"
+            "operatingSystem:\n  kernelArgs:\n    - net.ifnames=0\n  files:\n"
+            "    - sourcePath: elemental/elemental_config.yaml\n"
+            "      destinationPath: /oem/elemental.yaml\n\n"
+            "embeddedArtifacts:\n  registries:\n    urls:\n"
+            f"      - {self.eib_ip}:5000\n"
+            "__DEF1__\n\n"
+            "cat > \"$EIB_REPO/elemental-edge2-definition.yaml\" << '__DEF2__'\n"
+            "apiVersion: 1.0\n\n"
+            "image:\n  imageType: iso\n  arch: x86_64\n"
+            "  baseImage: SL-Micro.x86_64-6.2-Base-SelfInstall-GM.install.iso\n"
+            "  outputImageName: elemental-edge2.iso\n\n"
+            "operatingSystem:\n  kernelArgs:\n    - net.ifnames=0\n  files:\n"
+            "    - sourcePath: elemental/elemental_config.yaml\n"
+            "      destinationPath: /oem/elemental.yaml\n\n"
+            "embeddedArtifacts:\n  registries:\n    urls:\n"
+            f"      - {self.eib_ip}:5000\n"
+            "__DEF2__\n\n"
+            # EIB definition files — standalone cluster RAW path (edge3 RKE2, edge4 K3s)
+            "cat > \"$EIB_REPO/rke2-edge3-definition.yaml\" << '__DEF3__'\n"
+            "apiVersion: 1.0\n\n"
+            "image:\n  imageType: raw\n  arch: x86_64\n"
+            "  baseImage: SL-Micro.x86_64-6.2-Default.raw\n"
+            "  outputImageName: rke2-edge3.raw\n\n"
+            "operatingSystem:\n  kernelArgs:\n    - net.ifnames=0\n  scripts:\n"
+            "    - 10-hostname-edge3.sh\n    - 99-k3s-registries.sh\n\n"
+            "kubernetes:\n  version: v1.35.3+rke2r3\n\n"
+            "embeddedArtifacts:\n  registries:\n    urls:\n"
+            f"      - {self.eib_ip}:5000\n"
+            "__DEF3__\n\n"
+            "cat > \"$EIB_REPO/k3s-edge4-definition.yaml\" << '__DEF4__'\n"
+            "apiVersion: 1.0\n\n"
+            "image:\n  imageType: raw\n  arch: x86_64\n"
+            "  baseImage: SL-Micro.x86_64-6.2-Default.raw\n"
+            "  outputImageName: k3s-edge4.raw\n\n"
+            "operatingSystem:\n  kernelArgs:\n    - net.ifnames=0\n  scripts:\n"
+            "    - 10-hostname-edge4.sh\n    - 99-k3s-registries.sh\n\n"
+            "kubernetes:\n  version: v1.35.5+k3s1\n\n"
+            "embeddedArtifacts:\n  registries:\n    urls:\n"
+            f"      - {self.eib_ip}:5000\n"
+            "__DEF4__\n\n"
+            # Commit and push to local Gitea
+            "git -C \"$EIB_REPO\" init\n"
+            "git -C \"$EIB_REPO\" config user.email \"rodeo@aerogrid.local\"\n"
+            "git -C \"$EIB_REPO\" config user.name \"AeroGrid Lab\"\n"
+            "git -C \"$EIB_REPO\" add .\n"
+            "git -C \"$EIB_REPO\" commit -m \"initial EIB config templates for AeroGrid edge nodes\"\n"
+            f"git -C \"$EIB_REPO\" remote add origin \"http://$GITEA_USER:$GITEA_PASS@localhost:{self.gitea_port}/gitea/eib-config.git\"\n"
+            "git -C \"$EIB_REPO\" push -u origin HEAD:main\n"
+            "rm -rf \"$EIB_REPO\"\n\n"
+            f'echo "  eib-config: http://{self.eib_ip}:{self.gitea_port}/$GITEA_USER/eib-config.git"\n'
         )
         yield LogLine(
             f"Deploying Gitea {self.gitea_version} on eib VM ({self.eib_ip}:{self.gitea_port})..."
         )
-        r = self._eib_ssh_script(script, timeout=180)
+        r = self._eib_ssh_script(script, timeout=300)
         for line in (r.stdout + r.stderr).splitlines():
             if line.strip():
                 yield LogLine(f"  {line}")
@@ -1551,9 +1672,11 @@ class RancherPhase:
             yield LogLine(f"  ✗ {self.error}")
             return False
         yield LogLine(
-            f"  Gitea ready. alien-geeko mirrored from GitHub.\n"
+            f"  Gitea ready. alien-geeko and eib-config repos initialised.\n"
             f"  Fleet GitRepo: http://{self.eib_ip}:{self.gitea_port}"
-            f"/{self.gitea_user}/alien-geeko.git"
+            f"/{self.gitea_user}/alien-geeko.git\n"
+            f"  EIB workspace: http://{self.eib_ip}:{self.gitea_port}"
+            f"/{self.gitea_user}/eib-config.git"
         )
         return True
 

@@ -144,7 +144,7 @@ definition:
     rancher: "2.14.1"
     # K3s is used here for the management cluster (lab simplification).
     # Production SUSE Edge 3.6 uses RKE2 v1.35.3+rke2r3 for the management cluster.
-    k3s: "v1.35.3+k3s1"
+    k3s: "v1.35.5+k3s1"
     cert_manager: "v1.20.1"
     elemental_operator_crds: "1.9.0"
     elemental_operator: "1.9.0"
@@ -168,10 +168,13 @@ definition:
   # EIB container image.
   eib:
     container_image: "registry.suse.com/edge/3.6/edge-image-builder:1.3.3.1"
-    # Base OS image for edge nodes. Hauler downloads this QCOW2 during deploy and
-    # _populate_hauler converts it to RAW at /home/eib-config/base-images/*.raw
-    # before participants build EIB images. EIB 1.3.x guestfish requires a raw disk.
-    base_image: "openSUSE-Leap-Micro.x86_64-Default-qcow.qcow2"
+    # SL Micro 6.2 base images for edge nodes. Both are downloaded into Hauler during
+    # deploy and staged at /home/eib-config/base-images/ so participants can reference
+    # them by filename in EIB definitions without internet access.
+    # - SelfInstall ISO: EIB base for Elemental ISO builds (edge1/edge2)
+    # - Default RAW: EIB base for standalone K3s/RKE2 builds (edge3/edge4)
+    sl_micro_selfinstall_url: "https://download.suse.com/SL-Micro/6.2/SL-Micro.x86_64-6.2-Base-SelfInstall-GM.install.iso"
+    sl_micro_raw_url: "https://download.suse.com/SL-Micro/6.2/SL-Micro.x86_64-6.2-Default.raw"
 
   # Alien-Geeko Fleet demo app.
   # Node.js CRT terminal web app showing Kubernetes cluster vitals.

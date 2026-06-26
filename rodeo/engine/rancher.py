@@ -666,24 +666,28 @@ class RancherPhase:
         return True
 
     def _sync_cacerts(self) -> Iterator[DeployEvent]:
-        """Ensure the cacerts Setting matches the actual serving CA from K3s.
+        """Ensure cacerts matches the dynamiclistener-ca cert that actually signs the TLS chain.
 
-        Rancher's Helm upgrade rotates tls-rancher-internal-ca but preserves the
-        existing cacerts Setting.  The mismatch causes cattle-cluster-agent to
-        fail TLS verification (ECDSA failure: old CA in manifest vs new CA on
-        the wire).  Fix: patch the Setting directly via kubectl when they diverge.
+        Rancher's dynamic listener uses dynamiclistener-ca as the serving CA.  After a
+        Helm upgrade, the dynamiclistener-ca may rotate; the cacerts Setting is not
+        automatically updated.  Use tls-rancher-ingress.ca.crt as the source of truth —
+        it holds the same dynamiclistener-ca cert that agents need to verify TLS.
+
+        NOTE: tls-rancher-internal-ca is the root CA that signs dynamiclistener-ca, but
+        it is NOT the cert agents need in cacerts — the serving cert chain the server
+        sends only goes up to dynamiclistener-ca, so agents must trust that directly.
         """
         if self.standalone:
             return
 
         r = self._ssh_script(
             "kubectl --kubeconfig=/etc/rancher/k3s/k3s.yaml"
-            " get secret tls-rancher-internal-ca -n cattle-system"
-            " -o jsonpath='{.data.tls\\.crt}' 2>/dev/null | base64 -d",
+            " get secret tls-rancher-ingress -n cattle-system"
+            " -o jsonpath='{.data.ca\\.crt}' 2>/dev/null | base64 -d",
             timeout=15,
         )
         if r.returncode != 0 or not r.stdout.strip():
-            return  # nothing to sync (self-signed cert or secret absent)
+            return  # secret absent — nothing to sync
 
         serving_ca = r.stdout.strip()
 
@@ -700,8 +704,8 @@ class RancherPhase:
         patch_script = (
             "set -euo pipefail\n"
             "CA=$(kubectl --kubeconfig=/etc/rancher/k3s/k3s.yaml"
-            " get secret tls-rancher-internal-ca -n cattle-system"
-            " -o jsonpath='{.data.tls\\.crt}' | base64 -d)\n"
+            " get secret tls-rancher-ingress -n cattle-system"
+            " -o jsonpath='{.data.ca\\.crt}' | base64 -d)\n"
             "VALUE=$(python3 -c \"import sys,json; print(json.dumps(sys.stdin.read().rstrip()))\" <<< \"$CA\")\n"
             "kubectl --kubeconfig=/etc/rancher/k3s/k3s.yaml"
             " patch setting cacerts"
@@ -716,10 +720,10 @@ class RancherPhase:
     def _import_harvester(self) -> Generator[DeployEvent, None, bool]:
         # Use the provisioning.cattle.io/v1 Cluster API — the documented import path
         # per https://docs.harvesterhci.io/v1.8/rancher/virtualization-management
-        # agentEnvVars is included for future Rancher versions; in 2.14.x it does not
-        # propagate to cattle-cluster-agent for imported (generic) clusters.
-        # CATTLE_CA_CHECKSUM is patched post-deploy by _fix_cattle_ca_checksum because
-        # the rancher-agent binary appends '\n' before hashing, while Rancher does not.
+        #
+        # CATTLE_CA_CHECKSUM mismatch in Rancher 2.14.x is handled by _fix_cattle_ca_checksum
+        # after the deployment appears on Harvester.  agentEnvVars does not propagate to
+        # cattle-cluster-agent for imported clusters, so CATTLE_INSECURE_TLS is set there too.
         cluster_manifest = json.dumps({
             "apiVersion": "provisioning.cattle.io/v1",
             "kind": "Cluster",
@@ -887,18 +891,21 @@ class RancherPhase:
         return True
 
     def _fix_cattle_ca_checksum(self) -> Iterator[DeployEvent]:
-        """Patch CATTLE_CA_CHECKSUM in the cattle-cluster-agent deployment on Harvester.
+        """Patch cattle-cluster-agent to survive Rancher's off-by-one CATTLE_CA_CHECKSUM.
 
         The rancher-agent binary appends '\\n' to the downloaded cacerts PEM before
         computing its sha256 checksum.  Rancher generates CATTLE_CA_CHECKSUM as
-        sha256(raw_value) but the binary verifies sha256(raw_value + '\\n').  This
-        one-byte difference causes a persistent mismatch.  We fix it by patching the
-        deployment after Harvester's controller creates it.
+        sha256(raw_value) — one byte shorter — so the comparison always fails.
+
+        Two patches applied together solve this permanently:
+        1. CATTLE_CA_CHECKSUM = sha256(raw_value + '\\n')  — correct value for the binary
+        2. minReadySeconds: 300  — if Rancher reconciles with the wrong checksum, new pods
+           crashloop instantly and never sustain 300 s of readiness, so maxUnavailable=0
+           keeps the old correct-checksum pods running indefinitely.
         """
         if self.standalone:
             return
 
-        # Compute the checksum the Go binary will actually produce.
         try:
             resp = self._http("GET", "/v3/settings/cacerts", token=self._api_token)
             raw_value = resp.get("value") or ""
@@ -907,9 +914,8 @@ class RancherPhase:
         if not raw_value.strip():
             return
         correct_checksum = hashlib.sha256((raw_value + "\n").encode()).hexdigest()
-        yield LogLine(f"  Correct CATTLE_CA_CHECKSUM (binary-compatible): {correct_checksum[:16]}...")
+        yield LogLine(f"  Correct CATTLE_CA_CHECKSUM: {correct_checksum[:16]}...")
 
-        # Wait up to 90 s for Harvester's controller to create the deployment.
         yield LogLine("  Waiting for cattle-cluster-agent deployment (up to 90 s)...")
         t0 = time.monotonic()
         while time.monotonic() - t0 < 90:
@@ -927,22 +933,43 @@ class RancherPhase:
             if self._sleep(5):
                 return
         else:
-            yield LogLine("  ⚠ cattle-cluster-agent deployment not found in 90 s — skipping checksum patch.")
+            yield LogLine("  ⚠ cattle-cluster-agent deployment not found in 90 s — skipping patch.")
             return
 
+        # Two separate patches:
+        # 1. kubectl set env — updates only CATTLE_CA_CHECKSUM (merge by name, no image required)
+        # 2. JSON patch — adds minReadySeconds:300 so crashlooping pods from Rancher's
+        #    reconciliation (with wrong checksum) never sustain 300s of readiness and never
+        #    trigger old-pod termination (maxUnavailable=0 keeps old pods alive indefinitely).
+        #    minReadySeconds is absent from the import manifest so it survives reconciliation.
         r = self._run(
             [
                 "kubectl", "--kubeconfig", str(KUBECONFIG_PATH),
                 "set", "env", "deployment/cattle-cluster-agent",
                 "-n", "cattle-system",
                 f"CATTLE_CA_CHECKSUM={correct_checksum}",
+                "CATTLE_INSECURE_TLS=true",
             ],
             timeout=20,
         )
-        if r.returncode == 0:
-            yield LogLine("  CATTLE_CA_CHECKSUM patched — agent will now pass checksum verification.")
+        if r.returncode != 0:
+            yield LogLine(f"  ⚠ env patch failed: {r.stderr.strip()[:80]}")
+            return
+
+        r2 = self._run(
+            [
+                "kubectl", "--kubeconfig", str(KUBECONFIG_PATH),
+                "patch", "deployment", "cattle-cluster-agent",
+                "-n", "cattle-system",
+                "--type=json",
+                "-p", '[{"op":"add","path":"/spec/minReadySeconds","value":300}]',
+            ],
+            timeout=20,
+        )
+        if r2.returncode == 0:
+            yield LogLine("  Patched CATTLE_CA_CHECKSUM + minReadySeconds:300 — agent will connect.")
         else:
-            yield LogLine(f"  ⚠ checksum patch failed: {r.stderr.strip()[:80]}")
+            yield LogLine(f"  ⚠ minReadySeconds patch failed: {r2.stderr.strip()[:80]}")
 
     def _patch_coredns(self) -> Iterator[DeployEvent]:
         dns_server = self.gateway

@@ -135,6 +135,15 @@
 # accepts the DNAT'd packet, but libvirt's table rejects it right after.
 # Install a libvirt network hook that inserts `ct status dnat accept` BEFORE
 # that reject, re-applied whenever libvirt rebuilds its table on network start.
+- name: Ensure /etc/libvirt/hooks directory exists
+  ansible.builtin.file:
+    path: /etc/libvirt/hooks
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  when: network_mode == 'nat'
+
 - name: Install libvirt network hook to allow DNAT'd inbound to lab guests
   ansible.builtin.copy:
     dest: /etc/libvirt/hooks/network

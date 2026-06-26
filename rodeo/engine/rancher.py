@@ -71,8 +71,10 @@ class RancherPhase:
         eib_def          = cfg.get("eib", {})
         self.eib_image   = eib_def.get("container_image", "registry.suse.com/edge/3.6/edge-image-builder:1.3.3.1")
         self.hauler_version = cfg.get("versions", {}).get("hauler", "1.2.2")
-        _hauler_leap_url = "https://download.opensuse.org/distribution/leap-micro/6.2/appliances/openSUSE-Leap-Micro.x86_64-Default-qcow.qcow2"
-        self.hauler_base_url = eib_def.get("hauler_base_url", _hauler_leap_url)
+        _sl_micro_iso_default = "https://download.suse.com/SL-Micro/6.2/SL-Micro.x86_64-6.2-Base-SelfInstall-GM.install.iso"
+        _sl_micro_raw_default = "https://download.suse.com/SL-Micro/6.2/SL-Micro.x86_64-6.2-Default.raw"
+        self.sl_micro_iso_url = eib_def.get("sl_micro_selfinstall_url", _sl_micro_iso_default)
+        self.sl_micro_raw_url = eib_def.get("sl_micro_raw_url", _sl_micro_raw_default)
 
         el_cfg = cfg.get("elemental", {})
         _plan_name = cfg.get("name", "suse-edge").lower().replace("_", "-")
@@ -1324,6 +1326,8 @@ class RancherPhase:
         """
         prefix = self.elemental_reg_prefix
         reg_name = f"{prefix}-reg-1"
+        iso_fname = self.sl_micro_iso_url.split("/")[-1]
+        raw_fname = self.sl_micro_raw_url.split("/")[-1]
 
         script = (
             "set -euo pipefail\n"
@@ -1338,24 +1342,19 @@ class RancherPhase:
             # Alien-Geeko demo app image — Fleet deploys this to edge clusters;
             # edge nodes pull from Hauler via k3s registry mirror (docker.io → eib:5000).
             '$HAULER store add image "docker.io/avaleror/alien-geeko:latest" --store $STORE\n'
-            # openSUSE Leap Micro 6.2 base image — EIB input; served on port 8080
-            # so participants can download it with: curl http://localhost:8080/<filename>
-            f'$HAULER store add file "{self.hauler_base_url}" --store $STORE\n\n'
+            # SL Micro 6.2 SelfInstall ISO — EIB base for Elemental ISO builds (edge1/edge2)
+            f'$HAULER store add file "{self.sl_micro_iso_url}" --store $STORE\n'
+            # SL Micro 6.2 Default RAW — EIB base for standalone K3s/RKE2 builds (edge3/edge4)
+            f'$HAULER store add file "{self.sl_micro_raw_url}" --store $STORE\n\n'
             # Enable and start Hauler services (service units written by cloud-init)
             "systemctl daemon-reload\n"
             "systemctl enable --now hauler-registry.service hauler-fileserver.service\n\n"
-            # Pre-stage EIB assets for participants: definition template + k3s registry mirror script
+            # Stage SL Micro base images from Hauler fileserver into eib-config/base-images
+            # so participants can reference them by filename in EIB definition files without
+            # needing internet. The ISO is for Elemental builds; the RAW is for standalone builds.
             "mkdir -p /home/eib-config/scripts /home/eib-config/base-images /home/eib-output\n"
-            # qemu-img is needed to convert the QCOW2 base image to RAW before EIB can use it.
-            # EIB's modify-raw-image.sh calls guestfish with --format=raw, so it needs a true RAW input.
-            "zypper install -y qemu-tools 2>&1 | tail -3\n"
-            # Download the base QCOW2 from the Hauler fileserver (already running on port 8080)
-            # and convert it to RAW — EIB 1.3.x requires a raw disk image as input.
-            f"QCOW=/home/eib-config/base-images/openSUSE-Leap-Micro.x86_64-Default-qcow.qcow2\n"
-            f"RAW=/home/eib-config/base-images/openSUSE-Leap-Micro.x86_64-Default.raw\n"
-            f'curl -fsSL "http://localhost:8080/openSUSE-Leap-Micro.x86_64-Default-qcow.qcow2" -o "$QCOW"\n'
-            'qemu-img convert -f qcow2 -O raw "$QCOW" "$RAW"\n'
-            'rm -f "$QCOW"\n\n'
+            f'curl -fsSL "http://localhost:8080/{iso_fname}" -o "/home/eib-config/base-images/{iso_fname}"\n'
+            f'curl -fsSL "http://localhost:8080/{raw_fname}" -o "/home/eib-config/base-images/{raw_fname}"\n\n'
             # k3s registry mirror script — EIB runs this during image build to embed
             # /etc/rancher/k3s/registries.yaml into the edge node OS so ALL container
             # pulls (docker.io, registry.suse.com, ghcr.io) go through the Hauler
@@ -1386,7 +1385,7 @@ class RancherPhase:
             "image:\n"
             "  imageType: raw\n"
             "  arch: x86_64\n"
-            "  baseImage: openSUSE-Leap-Micro.x86_64-Default.raw\n"
+            f"  baseImage: {raw_fname}\n"
             "  outputImageName: elemental-edge.raw\n\n"
             "operatingSystem:\n"
             "  kernelArgs:\n"

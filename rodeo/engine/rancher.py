@@ -98,6 +98,16 @@ class RancherPhase:
         self.harvester_password = cred.get("harvester_admin_password", _fallback)
         self.admin_password     = self.rancher_password  # alias used by _configure_api
 
+        gitea_cfg = cfg.get("gitea", {})
+        self.gitea_port     = int(gitea_cfg.get("port", 3000))
+        self.gitea_user     = gitea_cfg.get("admin_user", "gitea")
+        self.gitea_version  = cfg.get("versions", {}).get("gitea", "1.22")
+        self.gitea_password = cred.get("gitea_admin_password", "gitea-lab")
+        _ag = cfg.get("alien_geeko", {})
+        self.alien_geeko_fleet_repo = _ag.get(
+            "fleet_repo", "https://github.com/SUSE-Technical-Marketing/Alien-Geeko.git"
+        )
+
         # For letsEncrypt mode, rancher_hostname and rancher_api are updated at
         # install time once the external IP is known (_update_sslip_hostname).
         self.rancher_hostname = f"rancher.{self.rancher_ip.replace('.', '-')}.sslip.io"
@@ -1205,6 +1215,8 @@ class RancherPhase:
                 return False
             if not (yield from self._populate_hauler()):
                 return False
+            if not (yield from self._deploy_gitea()):
+                return False
             if not (yield from self._create_alien_geeko_fleet()):
                 return False
         return True
@@ -1438,7 +1450,7 @@ class RancherPhase:
             "  name: alien-geeko\n"
             "  namespace: fleet-default\n"
             "spec:\n"
-            "  repo: https://github.com/SUSE-Technical-Marketing/Alien-Geeko.git\n"
+            f"  repo: http://{self.eib_ip}:{self.gitea_port}/{self.gitea_user}/alien-geeko.git\n"
             "  branch: main\n"
             "  targets:\n"
             "    - name: x86-edge-clusters\n"
@@ -1467,6 +1479,81 @@ class RancherPhase:
             "  Fleet GitRepo 'alien-geeko' created in fleet-default.\n"
             "  To deploy: label an edge cluster with  demo=true  edge-type=x86-cluster\n"
             "  Image served from Hauler: http://192.168.122.20:5000 (docker.io mirror)"
+        )
+        return True
+
+    def _deploy_gitea(self) -> Generator[DeployEvent, None, bool]:
+        """Deploy Gitea as a rootless Podman container on the EIB VM.
+
+        Gitea runs on port 3000 alongside Hauler (port 5000/8080). The Alien-Geeko
+        repo is mirrored from GitHub once at deploy time using Gitea's migration API
+        (no git binary needed on the host). After deploy, Fleet syncs exclusively from
+        local Gitea — no GitHub access needed during lab exercises.
+
+        Credentials: admin_user from definition.yaml, password from secrets.yaml.
+        """
+        image = f"docker.io/gitea/gitea:{self.gitea_version}-rootless"
+        gitea_url = f"http://localhost:{self.gitea_port}"
+        script = (
+            "set -euo pipefail\n"
+            f"GITEA_URL={gitea_url}\n"
+            f"GITEA_USER={self.gitea_user}\n"
+            f'GITEA_PASS="{self.gitea_password}"\n\n'
+            # Start Gitea container (rootless, no SSH, SQLite backend)
+            f"podman run -d --name gitea --restart=always \\\n"
+            f"  -p {self.gitea_port}:{self.gitea_port} \\\n"
+            "  -v gitea-data:/data \\\n"
+            f'  -e GITEA__security__INSTALL_LOCK=true \\\n'
+            f'  -e GITEA__server__ROOT_URL="http://{self.eib_ip}:{self.gitea_port}" \\\n'
+            f"  -e GITEA__server__HTTP_PORT={self.gitea_port} \\\n"
+            "  -e GITEA__server__DISABLE_SSH=true \\\n"
+            f'  "{image}"\n\n'
+            # Wait up to 60 s for the API to respond
+            'echo "Waiting for Gitea..."\n'
+            "for i in $(seq 1 30); do\n"
+            '  curl -sf "$GITEA_URL/api/v1/version" >/dev/null 2>&1 && break\n'
+            "  sleep 2\n"
+            "done\n"
+            'curl -sf "$GITEA_URL/api/v1/version" >/dev/null || '
+            '{ echo "Gitea did not start in time"; exit 1; }\n\n'
+            # Create admin user via the Gitea CLI inside the container
+            "podman exec --user git gitea /usr/local/bin/gitea admin user create \\\n"
+            '  --username "$GITEA_USER" --password "$GITEA_PASS" \\\n'
+            "  --email gitea@aerogrid.local --admin --must-change-password=false\n\n"
+            # Generate API token for setup calls
+            "TOKEN=$(curl -sf -X POST "
+            '"$GITEA_URL/api/v1/users/$GITEA_USER/tokens" \\\n'
+            '  -u "$GITEA_USER:$GITEA_PASS" \\\n'
+            '  -H "Content-Type: application/json" \\\n'
+            "  -d '{\"name\":\"setup\",\"scopes\":[\"write:repository\"]}' \\\n"
+            "  | python3 -c "
+            "\"import sys,json; print(json.load(sys.stdin)['sha1'])\")\n\n"
+            # Mirror Alien-Geeko from GitHub via Gitea's migration API.
+            # Gitea clones the repo internally — no git binary needed on the host.
+            # This is the one internet call that happens at deploy time.
+            "curl -sf -X POST \"$GITEA_URL/api/v1/repos/migrate\" \\\n"
+            '  -H "Authorization: token $TOKEN" \\\n'
+            '  -H "Content-Type: application/json" \\\n'
+            f'  -d \'{{"clone_addr":"{self.alien_geeko_fleet_repo}",'
+            f'"repo_name":"alien-geeko","private":false,"mirror":false}}\'\n\n'
+            f'echo "  Gitea: http://{self.eib_ip}:{self.gitea_port}'
+            f'/$GITEA_USER/alien-geeko.git"\n'
+        )
+        yield LogLine(
+            f"Deploying Gitea {self.gitea_version} on eib VM ({self.eib_ip}:{self.gitea_port})..."
+        )
+        r = self._eib_ssh_script(script, timeout=180)
+        for line in (r.stdout + r.stderr).splitlines():
+            if line.strip():
+                yield LogLine(f"  {line}")
+        if r.returncode != 0:
+            self.error = "Gitea deployment failed"
+            yield LogLine(f"  ✗ {self.error}")
+            return False
+        yield LogLine(
+            f"  Gitea ready. alien-geeko mirrored from GitHub.\n"
+            f"  Fleet GitRepo: http://{self.eib_ip}:{self.gitea_port}"
+            f"/{self.gitea_user}/alien-geeko.git"
         )
         return True
 

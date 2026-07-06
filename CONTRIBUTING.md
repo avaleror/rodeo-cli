@@ -76,7 +76,16 @@ Use the [Conventional Commits](https://www.conventionalcommits.org/) style:
 <optional body>
 ```
 
-Types: `fix`, `feat`, `docs`, `refactor`, `test`, `ci`, `chore`.
+Types: `fix`, `feat`, `perf`, `docs`, `refactor`, `build`, `ci`, `test`, `chore`.
+
+**PR titles matter.** PRs are squash-merged, so the **PR title** becomes the
+commit on `main`. It must be a valid Conventional Commit — a CI check enforces
+this — because [release-please](RELEASING.md) reads those commits to decide the
+next version and build the changelog. `fix:` → patch, `feat:` → minor,
+`feat!:` / `BREAKING CHANGE:` → major.
+
+Releases are fully automated from this history — see [RELEASING.md](RELEASING.md).
+You never bump a version or write release notes by hand.
 
 ## What we review for
 

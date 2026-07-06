@@ -2,7 +2,7 @@
 
 A CLI for deploying hands-on lab infrastructure. Point it at a Linux host with KVM, pick a profile, and it builds a working lab of nested VMs — Harvester HCI clusters, Rancher Prime, or a full SUSE Edge stack — without you writing a line of Ansible or touching libvirt directly.
 
-**Version:** 0.10.4 · **Python:** 3.10+ · **License:** Apache-2.0
+**Version:** 0.10.5 · **Python:** 3.10+ · **License:** Apache-2.0
 
 ---
 

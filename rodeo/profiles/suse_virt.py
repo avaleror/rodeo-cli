@@ -1,32 +1,13 @@
-"""SUSE Virtualization Rodeo profile — Harvester HCI + Rancher on KVM."""
+"""SUSE Virtualization Rodeo profile — Harvester HCI + Rancher on KVM.
+
+Topology and versions come from the declarative definition file
+(rodeo/data/platforms/suse-virt/definition.yaml); inventory.py renders it,
+generating MACs etc. when not explicit. The class attributes below are only a
+fallback for dev/test runs without the packaged definition.
+"""
 from __future__ import annotations
 
-from pathlib import Path
-from typing import TYPE_CHECKING, Iterator
-
-from .base import RodeoProfile
-
-if TYPE_CHECKING:
-    from ..engine.runner import DeployEvent, DeployRunner
-
-# Example of loading the Harvester/SUSE Virtualization topology from the declarative definition file
-# (rodeo/data/platforms/suse-virt/definition.yaml). The renderer in inventory.py handles generation
-# of MACs etc. when not explicit. This is our current focus for the Harvester rodeo.
-try:
-    from .. import inventory as _inv
-except ImportError:
-    _inv = None  # type: ignore[assignment]
-
-
-# Fallback versions used when the definition file cannot be loaded.
-# Authoritative values live in rodeo/data/platforms/suse-virt/definition.yaml (versions: block).
-# Keep these in sync with that file — they should only be hit in dev/test without the package data.
-_FALLBACK_VERSIONS = {
-    "harvester":    "1.8.0",
-    "rancher":      "2.14.1",
-    "k3s":          "v1.35.3+k3s1",
-    "cert_manager": "v1.20.1",
-}
+from .base import BASE_VERSIONS, RodeoProfile
 
 
 class SuseVirtProfile(RodeoProfile):
@@ -37,87 +18,23 @@ class SuseVirtProfile(RodeoProfile):
     guarded_phases = frozenset(["finalise"])
     no_cache_phases = frozenset(["apply"])
 
-    def default_cfg(self, config_dir: str | None = None) -> dict:
-        # Demonstration of loading from the new topology/inventory definition file
-        # (rodeo/data/platforms/suse-virt/definition.yaml).
-        # This replaces the previous hardcoded dict.
-        # Full version will come from inventory.build_inventory() which will also
-        # apply plan overrides and produce the vm_nodes list for Ansible.
-        if _inv is not None:
-            try:
-                inv_cfg = {"type": self.name}
-                if config_dir:
-                    inv_cfg["config_dir"] = config_dir
-                inv = _inv.build_inventory(inv_cfg)
-                vms = {}
-                for node in inv.get("vm_nodes", []):
-                    vms[node["name"]] = {
-                        "ip": node["ip"],
-                        "user": node.get("ssh_user", "rancher" if node["flavor"] == "harvester" else "root"),
-                    }
-                return {
-                    "vms": vms,
-                    "resources": {
-                        "harvester": {"memory_mib": 16384, "vcpu": 8, "disk_gb": 270},
-                        "rancher":   {"memory_mib": 8192,  "vcpu": 4, "disk_gb": 60},
-                    },
-                    # Versions from definition.yaml (single source of truth).
-                    # Changing the definition drives idempotent upgrades on re-run
-                    # (helm upgrade --install for Rancher/cert-manager; K3s installer for K3s).
-                    "versions": inv.get("versions") or _FALLBACK_VERSIONS,
-                    # Storage from definition (multi-disk disk selection, etc.)
-                    "storage": inv.get("storage", {
-                        "device": "",
-                        "mount_point": "/var/lib/libvirt/images",
-                        "image_dir": "/var/lib/libvirt/images",
-                    }),
-                }
-            except Exception:
-                pass  # fall back to static below if definition loading fails
+    # Versions are authoritative in definition.yaml; these are only hit without
+    # the packaged data. Changing the definition drives idempotent upgrades on
+    # re-run (helm upgrade --install for Rancher/cert-manager; K3s installer).
+    versions_from_definition = True
+    versions = {**BASE_VERSIONS, "harvester": "1.8.0"}
 
-        # Static fallback (identical to what was previously hardcoded directly in this file)
-        return {
-            "vms": {
-                "harvester1": {"ip": "192.168.122.11", "user": "rancher"},
-                "harvester2": {"ip": "192.168.122.12", "user": "rancher"},
-                "harvester3": {"ip": "192.168.122.13", "user": "rancher"},
-                "rancher":    {"ip": "192.168.122.9",  "user": "root"},
-            },
-            "resources": {
-                "harvester": {"memory_mib": 16384, "vcpu": 8, "disk_gb": 270},
-                "rancher":   {"memory_mib": 8192,  "vcpu": 4, "disk_gb": 60},
-            },
-            "versions": _FALLBACK_VERSIONS,
-            # Storage default (will be overridden by definition when loaded)
-            "storage": {
-                "device": "",
-                "mount_point": "/var/lib/libvirt/images",
-                "image_dir": "/var/lib/libvirt/images",
-            },
-        }
+    resources = {
+        "harvester": {"memory_mib": 16384, "vcpu": 8, "disk_gb": 270},
+        "rancher":   {"memory_mib": 8192,  "vcpu": 4, "disk_gb": 60},
+    }
 
-    def run_phase(
-        self,
-        phase: str,
-        runner: "DeployRunner",
-        vars_file: Path,
-    ) -> Iterator["DeployEvent"]:
-        if phase in ("kvm_host", "vms", "pxe_server"):
-            yield from runner.stream_ansible(phase, vars_file)
-        elif phase == "cluster":
-            yield from runner.stream_cluster()
-        elif phase == "rancher":
-            # Topologies without a Rancher node (e.g. the 2-node 'test' lab) skip
-            # the Rancher install/import entirely.
-            if "rancher" in runner.cfg.get("vms", {}):
-                yield from runner.stream_rancher()
-            else:
-                from ..engine.runner import LogLine
-                yield LogLine("No Rancher node in this topology — skipping rancher phase.")
-                runner._last_rc = 0
-        elif phase == "apply":
-            yield from runner.stream_apply()
-        elif phase == "finalise":
-            yield from runner.stream_finalise()
-        else:
-            runner._last_rc = 0
+    static_vms = {
+        "harvester1": {"ip": "192.168.122.11", "user": "rancher"},
+        "harvester2": {"ip": "192.168.122.12", "user": "rancher"},
+        "harvester3": {"ip": "192.168.122.13", "user": "rancher"},
+        "rancher":    {"ip": "192.168.122.9",  "user": "root"},
+    }
+
+    def _default_user(self, node: dict) -> str:
+        return "rancher" if node.get("flavor") == "harvester" else "root"

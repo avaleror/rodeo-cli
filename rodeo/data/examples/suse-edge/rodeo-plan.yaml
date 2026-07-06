@@ -3,7 +3,7 @@
 # What this deploys:
 #   - 1 Rancher Prime 2.14.1 VM (K3s + Elemental Operator + Fleet)
 #   - 1 Edge Image Builder 1.3.3.1 VM (openSUSE Leap Micro 6.2)
-#   - 3 edge node VMs (blank disk + virtual TPM 2.0, started as a lab exercise)
+#   - 4 edge node VMs (blank disk + virtual TPM 2.0, started as a lab exercise)
 #
 # Lab flow:
 #   1. rodeo deploy  ->  Rancher + EIB VMs come up; edge node VMs are created but not started.

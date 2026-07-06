@@ -1,6 +1,6 @@
 # definition.yaml — declarative definition for the SUSE Edge 3.6 rodeo.
 #
-# Topology: 1 Rancher Prime management cluster VM + 1 Edge Image Builder VM + 3 edge node VMs.
+# Topology: 1 Rancher Prime management cluster VM + 1 Edge Image Builder VM + 4 edge node VMs.
 #
 # Management cluster (rancher VM):
 #   K3s v1.35.3+k3s1 (lab simplification; production SUSE Edge uses RKE2 v1.35.3+rke2r3)
@@ -15,7 +15,8 @@
 #   Podman (pre-installed on Leap Micro) + kubectl + helm
 #   Lab exercise: students build an Elemental OS image here, then boot edge nodes from it.
 #
-# Edge nodes (edge1, edge2, edge3):
+# Edge nodes (edge1, edge2, edge3, edge4):
+#   edge1/edge2 boot from a SelfInstall ISO image; edge3/edge4 from a Default RAW image.
 #   Boot from Elemental OS image built on the EIB VM (lab exercise, not automated).
 #   Virtual TPM 2.0 (swtpm emulator) for Elemental secure registration.
 #   UEFI boot (required for TPM 2.0 + Elemental).
@@ -27,7 +28,7 @@
 apiVersion: 1.0
 definition:
   name: suse-edge
-  description: "SUSE Edge 3.6 rodeo: Rancher Prime + Elemental + EIB + 3 edge nodes on nested KVM"
+  description: "SUSE Edge 3.6 rodeo: Rancher Prime + Elemental + EIB + 4 edge nodes on nested KVM"
 
   # Boot order: management cluster first, then EIB, then edge nodes (edge nodes start
   # as part of lab exercises, not the automated deploy).
@@ -132,7 +133,7 @@ definition:
       description: "Edge Image Builder 1.3.3.1 on Leap Micro 6.2 — builds Elemental OS images for edge nodes"
       nodes: ["eib"]
     - name: edge-nodes
-      description: "3 Elemental-managed edge nodes (SL Micro 6.2) — onboarded via TPM registration"
+      description: "4 Elemental-managed edge nodes (SL Micro 6.2) — onboarded via TPM registration"
       nodes: edge_node_names
       note: "Nodes are created by the vms phase but started as a lab exercise, not automated deploy."
     - name: host-network-prep

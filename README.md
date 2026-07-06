@@ -1,8 +1,8 @@
 # rodeo-cli
 
-A CLI for deploying hands-on lab infrastructure. Point it at a Linux host with KVM, pick a profile, and it builds a working lab of nested VMs — Harvester HCI clusters, Rancher Prime, or both — without you writing a line of Ansible or touching libvirt directly.
+A CLI for deploying hands-on lab infrastructure. Point it at a Linux host with KVM, pick a profile, and it builds a working lab of nested VMs — Harvester HCI clusters, Rancher Prime, or a full SUSE Edge stack — without you writing a line of Ansible or touching libvirt directly.
 
-**Version:** 0.9.1 · **Python:** 3.10+ · **License:** Apache-2.0
+**Version:** 0.10.4 · **Python:** 3.10+ · **License:** Apache-2.0
 
 ---
 
@@ -13,13 +13,13 @@ A **profile** describes a lab: how many VMs, what they run, how much RAM, what p
 - `rodeo-plan.yaml` — resources, credentials, deployment target (bare metal or Instruqt)
 - `definition.yaml` — topology: nodes, network, exposed services, start order
 
-The CLI reads those files and drives a **phase pipeline** through Ansible roles on the target host:
+The CLI reads those files and drives a **phase pipeline** through Ansible roles on the target host. Not every phase runs in every profile — the engine `type` decides which ones apply:
 
 ```
-kvm_host → vms → [pxe_server → cluster] → [rancher] → finalise
+kvm_host → vms → [boot | pxe_server → cluster] → [rancher] → [elemental] → apply → finalise
 ```
 
-`kvm_host` prepares the hypervisor (packages, libvirt, firewall, storage). `vms` creates disk images and VM definitions. Harvester labs add `pxe_server` (nginx + TFTP + per-node iPXE scripts) and `cluster` (starts VMs, waits for Harvester to install via network boot). `rancher` installs Rancher Prime on K3s, exposes it on a NodePort, and configures the admin API — Harvester cluster import is left as a lab exercise. `finalise` enables VM autostart.
+`kvm_host` prepares the hypervisor (packages, libvirt, firewall, storage). `vms` creates disk images and VM definitions. Cloud-init labs (Rancher, SUSE Edge) then run `boot` to start the network and VMs directly; Harvester labs instead run `pxe_server` (nginx + TFTP + per-node iPXE scripts) and `cluster` (starts VMs, waits for Harvester to install via network boot). `rancher` installs Rancher Prime on K3s and configures the admin API. `elemental` (SUSE Edge only) installs the Elemental Operator so edge nodes can register over TPM. `apply` applies any extra manifests. `finalise` enables VM autostart.
 
 Credentials live in `~/.rodeo/secrets.yaml` (chmod 600, never committed). The plan references them with `??key` placeholders; `rodeo up` generates that file for you.
 
@@ -51,20 +51,23 @@ To pick a specific profile:
 rodeo up --profile rancher        # Rancher Prime only, ~10 GiB RAM
 rodeo up --profile harvester-ha   # 3-node Harvester HA, ~52 GiB RAM
 rodeo up --profile harvester      # full lab: 3-node Harvester + Rancher, ~60 GiB RAM
+rodeo up --profile suse-edge      # SUSE Edge: Rancher + Elemental + EIB + edge nodes
 ```
 
 ---
 
 ## Profiles
 
-| Profile | What it deploys | RAM needed |
-|---------|----------------|-----------|
-| `rancher` | 1 VM: Rancher Prime on K3s | ~10 GiB |
-| `test` | 2-node Harvester cluster, no Rancher | ~36 GiB |
-| `harvester-ha` | 3-node Harvester, no Rancher (3-member etcd HA) | ~52 GiB |
-| `harvester` | 3-node Harvester HCI + Rancher Prime | ~60 GiB |
+| Profile | Engine type | What it deploys | RAM needed |
+|---------|-------------|----------------|-----------|
+| `rancher` | `rancher` | 1 VM: Rancher Prime on K3s | ~10 GiB |
+| `test` | `suse-virt` | 2-node Harvester cluster, no Rancher | ~36 GiB |
+| `harvester-ha` | `suse-virt` | 3-node Harvester, no Rancher (3-member etcd HA) | ~52 GiB |
+| `harvester-2n` | `suse-virt` | 2-node Harvester + Rancher Prime | ~56 GiB |
+| `harvester` | `suse-virt` | 3-node Harvester HCI + Rancher Prime | ~60 GiB |
+| `suse-edge` | `suse-edge` | Rancher + Elemental + EIB + edge nodes (SUSE Edge 3.6) | ~40 GiB |
 
-`rodeo doctor` recommends the largest profile that fits available RAM. `rodeo profiles` lists all profiles including any you create yourself.
+`rodeo doctor` recommends the largest profile that fits available RAM. `rodeo profiles` lists all profiles including any you create yourself. Each profile picks one of three **engine types** (`rancher`, `suse-virt`, `suse-edge`) that decides which pipeline phases run.
 
 You can scaffold and customize your own:
 
@@ -126,7 +129,8 @@ Precedence: profile defaults < plan < paramfile < `-P`.
 | Guide | For |
 |-------|-----|
 | [Rancher profile guide](docs/guide-rancher.md) | Deploy Rancher Prime on K3s |
-| [Harvester profile guide](docs/guide-harvester.md) | Deploy Harvester HCI (2-node, 3-node, full lab) |
+| [Harvester profile guide](docs/guide-harvester.md) | Deploy Harvester HCI (2-node, 3-node, HA, full lab) |
+| [SUSE Edge profile guide](docs/guide-suse-edge.md) | Deploy the SUSE Edge 3.6 stack (Rancher + Elemental + EIB + edge nodes) |
 | [Bare metal example](docs/examples/bare-metal.md) | Full walkthrough on a physical or cloud host |
 | [Instruqt example](docs/examples/instruqt.md) | Build an Instruqt track image with a pre-deployed cluster |
 | [Testing and CI](docs/examples/testing.md) | Unit tests, integration tests, GitHub Actions |

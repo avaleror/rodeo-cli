@@ -2,7 +2,10 @@
 
 A CLI for deploying hands-on lab infrastructure. Point it at a Linux host with KVM, pick a profile, and it builds a working lab of nested VMs — Harvester HCI clusters, Rancher Prime, or a full SUSE Edge stack — without you writing a line of Ansible or touching libvirt directly.
 
-**Version:** 0.10.5 · **Python:** 3.10+ · **License:** Apache-2.0
+[![Release](https://img.shields.io/github/v/release/avaleror/rodeo-cli?sort=semver&label=release)](https://github.com/avaleror/rodeo-cli/releases)
+[![CI](https://github.com/avaleror/rodeo-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/avaleror/rodeo-cli/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+[![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
 
 ---
 

@@ -2,7 +2,7 @@
 
 Technical reference for contributors and maintainers. For deploying a workshop, see [User guide](user-guide.md).
 
-**Version:** 0.10.4
+**Version:** 0.10.5
 **License:** Apache-2.0
 
 ---

@@ -2,20 +2,22 @@
 
 Technical reference for contributors and maintainers. For deploying a workshop, see [User guide](user-guide.md).
 
-**Version:** 0.6.0
+**Version:** 0.10.4
 **License:** Apache-2.0
 
 ---
 
 ## What rodeo-cli is
 
-`rodeo-cli` deploys the **infrastructure for a rodeo**: a live, hands-on workshop where attendees work against real systems. The default profile (`suse-virt`) builds a nested KVM lab on a single Linux host:
+`rodeo-cli` deploys the **infrastructure for a rodeo**: a live, hands-on workshop where attendees work against real systems. It builds a lab of **nested KVM VMs** on a single Linux host, driven by a declarative plan — you pick a profile, it converges the host.
 
-- 3-node **Harvester HCI** cluster (nested VMs)
-- **Rancher Prime** on K3s (nested VM)
-- Host networking, firewalld DNAT, DNS, and phase orchestration
+The stack it builds depends on the chosen **engine type** (see [Engine types & profiles](#engine-types--profiles)):
 
-The tool runs on **cloud instances**, **Instruqt builder VMs**, **local VMs**, or **bare metal** — anywhere you have KVM and enough RAM/disk.
+- **`suse-virt`** — a 3-node Harvester HCI cluster (+ optional Rancher Prime)
+- **`rancher`** — a single VM running Rancher Prime on K3s
+- **`suse-edge`** — Rancher Prime + Elemental + Edge Image Builder + edge nodes
+
+Every profile shares the same foundation: host networking, firewalld DNAT, DNS, storage, and phase orchestration on nested KVM/libvirt. The tool runs on **cloud instances**, **Instruqt builder VMs**, **local VMs**, or **bare metal** — anywhere you have KVM and enough RAM/disk.
 
 ---
 
@@ -68,6 +70,40 @@ Adding a new host context requires four touch points: `config.py` allowed list, 
 
 ---
 
+## Engine types & profiles
+
+Two terms that sound alike but are different:
+
+- **Engine `type`** — the deploy *pipeline*: which phases run and how. Code lives in `rodeo/profiles/<name>.py` (a `RodeoProfile` subclass) + `data/platforms/<name>/definition.yaml`. There are **three** today.
+- **Profile** (`--profile`) — a named, runnable *lab* (a config-dir, bundled or under `~/.rodeo/profiles/`). Each profile picks one engine type. There are **six** bundled ones.
+
+Since PR #4 the three profile classes are thin: `RodeoProfile` (`profiles/base.py`) owns config assembly (`default_cfg()` — loads the definition with a static fallback) and phase dispatch (a table-driven `run_phase()` with a no-Rancher skip guard). Each subclass carries only its data and deltas — `static_vms`, `resources`, `versions`, and small hooks like `extra_cfg()` / `_default_user()`.
+
+### The three engine types
+
+| Engine type | Phase pipeline | Boot method | Stack |
+|-------------|----------------|-------------|-------|
+| `suse-virt` | `kvm_host → vms → pxe_server → cluster → rancher → apply → finalise` | iPXE network install (UEFI) | Harvester HCI cluster (+ optional Rancher Prime) |
+| `rancher` | `kvm_host → vms → boot → rancher → apply → finalise` | cloud-init image | 1 VM: Rancher Prime on K3s |
+| `suse-edge` | `kvm_host → vms → boot → rancher → elemental → apply → finalise` | cloud-init image | Rancher Prime + Elemental Operator + EIB + edge nodes |
+
+The Harvester path is the outlier: it needs `pxe_server` (iPXE/TFTP/HTTP) and a `cluster` phase that network-installs each node and waits for the VIP. The cloud-image profiles skip both — a single `boot` phase starts the network and VMs directly. `suse-edge` adds one phase, `elemental`, which installs the Elemental Operator after Rancher so edge nodes can register over TPM. `rancher`/`elemental` phases are skipped automatically when a topology has no Rancher node.
+
+### Bundled profiles
+
+| Profile | Engine type | Topology |
+|---------|-------------|----------|
+| `rancher` | `rancher` | 1 VM: Rancher Prime on K3s |
+| `test` | `suse-virt` | 2-node Harvester, no Rancher |
+| `harvester-ha` | `suse-virt` | 3-node Harvester, no Rancher (etcd HA) |
+| `harvester-2n` | `suse-virt` | 2-node Harvester + Rancher Prime |
+| `harvester` | `suse-virt` | 3-node Harvester HCI + Rancher Prime |
+| `suse-edge` | `suse-edge` | Rancher + Elemental + EIB + 4 edge nodes (SUSE Edge 3.6) |
+
+Per-profile topology tables (VMs, IPs, RAM) live in each [deployment guide](user-guide.md). The detailed suse-virt topology and iPXE boot chain are documented below as the reference implementation.
+
+---
+
 ## High-level architecture
 
 ```
@@ -90,9 +126,9 @@ Adding a new host context requires four touch points: `config.py` allowed list, 
         │                             │
         ▼                             ▼
 ┌───────────────────┐       ┌─────────────────────────────┐
-│ Ansible phases    │       │ Python phases               │
-│ kvm_host, vms,    │       │ cluster · rancher · finalise│
-│ pxe_server        │       │                             │
+│ Ansible phases    │       │ Python phases (per profile) │
+│ kvm_host, vms,    │       │ boot · cluster · rancher ·  │
+│ pxe_server        │       │ elemental · apply · finalise│
 │ ansible-playbook  │       │ ClusterPhase · RancherPhase │
 │ -e @vars-file     │       │ LibvirtDriver               │
 └───────────────────┘       └─────────────────────────────┘
@@ -145,8 +181,10 @@ rodeo/
 │   ├── rancher.py         RancherPhase
 │   └── libvirt.py         LibvirtDriver
 ├── profiles/
-│   ├── base.py            RodeoProfile ABC
-│   └── suse_virt.py       Default workshop profile
+│   ├── base.py            RodeoProfile — shared config assembly + phase dispatch
+│   ├── rancher.py         Rancher Prime on K3s (1 VM)
+│   ├── suse_virt.py       Harvester HCI + Rancher (default workshop profile)
+│   └── suse_edge.py       SUSE Edge 3.6 (Rancher + Elemental + EIB + edge nodes)
 ├── commands/              Thin CLI wrappers
 ├── widgets/               TUI panels
 └── data/
@@ -164,16 +202,21 @@ docs/                      architecture.md, user-guide.md, assets/diagrams/
 
 ## Deployment pipeline
 
-Six phases per `SuseVirtProfile`. State is per plan name (`cfg["name"]`).
+Each engine type runs a subset of the phase catalog below, in the order given by its profile's `phases` list (see [Engine types & profiles](#engine-types--profiles)). State is per plan name (`cfg["name"]`). The dispatch is generic: `RodeoProfile.run_phase()` sends Ansible phases to `stream_ansible` and the rest through a `phase → DeployRunner method` table.
 
-| Phase | Engine | Summary |
-|-------|--------|---------|
-| `kvm_host` | Ansible | KVM packages, modular libvirt, NM unmanaged conf, firewalld rules (not started), storage pool, sysctl |
-| `vms` | Ansible | Download ISOs/images, virbr0 + DHCP leases, qcow2 disks, config ISOs, define domains (not start); disk-first boot order |
-| `pxe_server` | Ansible | nginx on `virbr0:8080`, `ipxe.efi` TFTP, vmlinuz/initrd/rootfs, per-node iPXE scripts + config YAMLs, dnsmasq two-stage boot |
-| `cluster` | `ClusterPhase` | firewalld on; virbr0 up; start h1 → VIP → h2 → 90s → h3 → rancher; kubeconfig; 3 nodes Ready |
-| `rancher` | `RancherPhase` | K3s, Helm, cert-manager, Rancher Prime, NodePort, admin API, eject ISOs. Harvester import is a lab exercise. |
-| `finalise` | `DeployRunner` | VM autostart + `libvirt-guests` enable |
+| Phase | Engine | Used by | Summary |
+|-------|--------|---------|---------|
+| `kvm_host` | Ansible | all | KVM packages, modular libvirt, NM unmanaged conf, firewalld rules (not started), storage pool, sysctl |
+| `vms` | Ansible | all | Download ISOs/images, virbr0 + DHCP leases, qcow2 disks, config ISOs, define domains (not start); disk-first boot order |
+| `pxe_server` | Ansible | `suse-virt` | nginx on `virbr0:8080`, `ipxe.efi` TFTP, vmlinuz/initrd/rootfs, per-node iPXE scripts + config YAMLs, dnsmasq two-stage boot |
+| `boot` | `DeployRunner` | `rancher`, `suse-edge` | Start virbr0 + cloud-image VMs directly (no iPXE); wait for IPs |
+| `cluster` | `ClusterPhase` | `suse-virt` | firewalld on; virbr0 up; start h1 → VIP → h2 → 90s → h3 → rancher; kubeconfig; 3 nodes Ready |
+| `rancher` | `RancherPhase` | all | K3s, Helm, cert-manager, Rancher Prime, admin API. Skipped if no Rancher node. Harvester import is a lab exercise. |
+| `elemental` | `RancherPhase._install_elemental` | `suse-edge` | Install Elemental Operator (CRDs + operator) so edge nodes register over TPM |
+| `apply` | `DeployRunner` | all | Apply extra manifests (Fleet GitOps, demo workloads); never cached, re-runs each `up` |
+| `finalise` | `DeployRunner` | all | VM autostart + `libvirt-guests` enable |
+
+The `suse-virt` pipeline (the widest) is the reference implementation detailed in the sections below. `rancher` and `suse-edge` swap the `pxe_server`/`cluster` pair for a single `boot` phase on cloud images; `suse-edge` adds `elemental`.
 
 **Timeouts (nested KVM):** VIP ≤ 60 min, kubeconfig ≤ 30 min, nodes Ready ≤ 90 min.
 

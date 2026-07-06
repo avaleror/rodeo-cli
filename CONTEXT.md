@@ -20,7 +20,7 @@ It replaces `rodeo.sh`, a monolithic bash script in the parent repository. Desig
 
 **GitHub:** https://github.com/avaleror/rodeo-cli
 **Author:** Andres Valero, Principal Technology Advocate at SUSE
-**Version:** 0.6.0 (validated end-to-end on real SLES 16 for the `rancher` and 2-node `test` profiles)
+**Version:** 0.10.4 (bundled profiles live-validated on bare metal SLES 16; Instruqt validation pending — see ROADMAP)
 **Python:** 3.10+
 
 ---
@@ -238,7 +238,8 @@ Live SLES 16 testing has covered the `rancher` and 2-node `test` profiles end-to
 - **v0.5 (june-lifecycle tag)** — `generate` + `stop`/`start` (infra-aware from definition) + `clean --all/--hard/--secrets/--force-network` host reset + `bootstrap` + `--config-dir` (EIB-style) + `init --profile`. Versioning moved to git tags.
 - **v0.6** — **Beginner on-ramp**: `rodeo up` (doctor → fit a lab → file secrets → self-sudo → deploy → success), `rodeo doctor`, file-based secrets default, lab-dir auto-detect. **`rancher` profile** (Rancher Prime on K3s, single VM) + lightweight `boot` phase. **Declarative custom rodeos**: `rodeo new` / `rodeo profiles`, profiles resolve from `~/.rodeo/profiles/`; `docs/custom-rodeos.md`. **Phase C (topology-driven)**: ClusterPhase reads start_order/harvester_node_names/harvester_ready_count/etcd_gap from the definition; conditional rancher phase; 2/3/N-node works. **Hardened by live SLES 16 testing** (both profiles validated end-to-end): python3-lxml + preflight check; cloud-init injected into the Leap 16 image (`virt-customize`); MAC-based iPXE chain (per-host dnsmasq tags were silently ignored vs libvirt host entries); installer console logged to the serial file; Harvester config YAMLs 0644 (nginx 403); mgmt interface by MAC not eth0; **Harvester disk 250 GB** (100 GB filled → containerd no-space → no VIP); topology-aware success screen; RancherPhase tolerates empty API bodies + idempotent password.
 - **v0.9.0** — Harvester import dropped from automation (now an Instruqt lab exercise); custom TLS cert generation removed; Rancher setup ends after NodePort + admin API + ISO eject; `start-if-needed` idempotent boot guard; 20-min cap on background Rancher drain loop; OVMF async copy fix (`command: cp` instead of `copy` with async).
-- **v0.9.1 (current)** — `rodeo self-update` command (git pull + pip reinstall in one shot); `rodeo clean` auto-refreshes the CLI at the end of every run.
+- **v0.9.1** — `rodeo self-update` command (git pull + pip reinstall in one shot); `rodeo clean` auto-refreshes the CLI at the end of every run.
+- **v0.10.x (current)** — declarative inventory (Phase C) live-validated on bare metal; bundled `harvester-2n` + `suse-edge` profiles added (3 engine types: `rancher`, `suse-virt`, `suse-edge`); profile standardization — shared config assembly + phase dispatch centralized in `profiles/base.py`, the three profile classes reduced to data + deltas (PR #4); numerous Harvester-import and Rancher bootstrap fixes.
 - **planned** — full 3-node `harvester` live regression; `sudo rodeo` self-escalation for clean/stop/start; `rodeo diagnose` (Claude API log analysis); ansible-lint + ansible sync check in CI; `--output json`; finish wiring `vm_nodes` overrides + `nodes: N` shorthand; split `rancher.py` into api/remote.
 
 ---

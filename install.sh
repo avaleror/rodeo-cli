@@ -3,7 +3,7 @@
 #
 # Usage (production):
 #   curl -fsSL https://raw.githubusercontent.com/avaleror/rodeo-cli/main/install.sh | bash
-#   bash install.sh [--ref v0.7.0] [--dir /opt/rodeo-cli]
+#   bash install.sh [--ref v0.10.4] [--dir /opt/rodeo-cli]
 #
 # Usage (development):
 #   bash install.sh --dev [--dir /path/to/rodeo-cli]

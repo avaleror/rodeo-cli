@@ -51,7 +51,7 @@ Ownership tagging: mark libvirt objects with the plan that owns them, so the hyp
 - `rodeo/inventory.py` renders `vm_nodes` from `definition.yaml`: names, IPs, deterministic MACs, `uuid5` UUIDs
 - `ClusterPhase` derives start_order / harvester_node_names / harvester_ready_count / etcd_gap from the inventory — N-node works
 - `suse-virt` skips `rancher` phase when no Rancher node in the topology
-- Bundled profiles: `rancher` (1 VM), `test` (2-node), `harvester-ha` (3-node HA), `harvester` (3-node + Rancher)
+- Bundled profiles across 3 engine types (`rancher`, `suse-virt`, `suse-edge`): `rancher` (1 VM), `test` (2-node), `harvester-ha` (3-node HA), `harvester-2n` (2-node + Rancher), `harvester` (3-node + Rancher), `suse-edge` (Rancher + Elemental + EIB + 4 edge nodes)
 - [ ] Plan schema sugar `nodes: 3` shorthand (explicit node blocks already work; shorthand is the remaining piece)
 
 ## Phase D — Polish (ongoing)
@@ -67,6 +67,7 @@ Ownership tagging: mark libvirt objects with the plan that owns them, so the hyp
 - [x] Harvester install fix: ISO-seed config uses MAC-based NIC matching (`hwAddr`) instead of `name: eth0` — fixes hang on kernels with `net.ifnames=1`
 - [x] VIP enforcement — Harvester UI and kubeconfig always reference the cluster VIP, not individual node IPs
 - [x] `rodeo up` re-run: `--target` persisted to existing lab plan; no spurious interactive prompt when target is already known
+- [x] Profile standardization (PR #4, 2026-07-06): shared config assembly and phase dispatch centralized in `profiles/base.py` (`STORAGE_DEFAULT`, `BASE_VERSIONS`, table-driven `run_phase`, definition-load-with-fallback `default_cfg`); the three profile classes reduced to data + deltas (−103 lines). Fixed a latent aliasing bug — `default_cfg()` now deep-copies so in-place config merges can no longer corrupt shared class defaults. Deploy config verified byte-identical for all 6 bundled profiles.
 - [ ] `clean` / `stop` / `start` self-escalate with sudo (same as `up` — needed for SLES `secure_path`)
 - [ ] `--output json` for `plan` and `status` (machine-readable, CI-friendly)
 - [ ] Cache `ansible-galaxy collection install` (marker keyed on `requirements.yml` hash)
@@ -112,10 +113,10 @@ The rodeo deploys a management plane (Rancher + Rancher Prime) plus one or more 
 - Upgrade demo: Elemental OS upgrade shown live in the workshop
 
 **Milestones:**
-- [x] `suse-edge` profile skeleton in `rodeo/data/platforms/suse-edge/` (on `feature/suse-edge` branch)
-- [ ] Engine support for Elemental node boot (cloud image, not PXE)
-- [ ] `rancher` phase extended: install Elemental Operator via Helm after Rancher
-- [ ] `cluster` phase variant: wait for edge node registration, not iPXE install
+- [x] `suse-edge` profile shipped and merged to `main` — registered engine type sharing the standardized `RodeoProfile` base (`rodeo/data/platforms/suse-edge/`, `rodeo/profiles/suse_edge.py`)
+- [x] Engine support for Elemental node boot (cloud image, not PXE) — `boot` phase in place of the Harvester `pxe_server`/`cluster` phases
+- [x] `rancher` phase extended: dedicated `elemental` phase installs the Elemental Operator via Helm after Rancher
+- [ ] `cluster` phase variant: wait for edge node registration, not iPXE install (edge nodes are currently a started-by-hand lab exercise)
 - [ ] Live validation on a SLES 16 host before any Instruqt track
 
 **Dependency:** Phase C must be fully stable (including Instruqt validation) before this starts.

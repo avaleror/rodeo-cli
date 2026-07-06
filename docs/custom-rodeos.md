@@ -18,9 +18,10 @@ rodeo up --profile mylab              # deploy your edited lab
 | **engine `type`** | the deploy *pipeline* (which phases run) | `type:` in the plan; code in `rodeo/profiles/` |
 | **profile** (`--profile`) | a named, runnable *lab* you pick on the CLI | a config-dir (bundled or under `~/.rodeo/profiles/`) |
 
-There are two engine types today: `suse-virt` (Harvester HCI + Rancher) and `rancher`
-(Rancher Prime on K3s, no Harvester). Your custom labs pick one of these as their `type`
-and customize the rest. You are authoring topology, not a new pipeline.
+There are three engine types today: `suse-virt` (Harvester HCI + Rancher), `rancher`
+(Rancher Prime on K3s, no Harvester), and `suse-edge` (Rancher + Elemental + EIB + edge
+nodes). Your custom labs pick one of these as their `type` and customize the rest. You
+are authoring topology, not a new pipeline.
 
 List everything you can deploy:
 
@@ -32,8 +33,11 @@ rodeo profiles
 |---------|------|------|------------|
 | `rancher` | bundled | rancher | 1 VM, Rancher Prime on K3s (smallest) |
 | `test` | bundled | suse-virt | 2-node Harvester, no Rancher |
+| `harvester-ha` | bundled | suse-virt | 3-node Harvester, no Rancher (etcd HA) |
+| `harvester-2n` | bundled | suse-virt | 2-node Harvester + Rancher Prime |
 | `harvester` | bundled | suse-virt | 3-node Harvester HCI + Rancher Prime |
-| *(yours)* | custom | either | whatever you scaffold and edit |
+| `suse-edge` | bundled | suse-edge | Rancher + Elemental + EIB + edge nodes (SUSE Edge 3.6) |
+| *(yours)* | custom | any | whatever you scaffold and edit |
 
 ---
 
@@ -81,8 +85,9 @@ The declarative model. You describe the *logical* lab; the renderer compiles it 
 concrete MACs, DHCP leases, libvirt network, firewall rules, and PXE data. The bundled
 files are heavily commented — read them as the reference:
 
-- Harvester: `rodeo/data/profiles/suse-virt/definition.yaml`
-- Rancher: `rodeo/data/profiles/rancher/definition.yaml`
+- Harvester: `rodeo/data/platforms/suse-virt/definition.yaml`
+- Rancher: `rodeo/data/platforms/rancher/definition.yaml`
+- SUSE Edge: `rodeo/data/platforms/suse-edge/definition.yaml`
 
 Key sections:
 
@@ -167,8 +172,9 @@ copy instead, scaffold under a new name or pass `--dir`.
 
 ## Notes
 
-- `--from` must be a bundled base (`rancher`, `test`, `harvester`). Copy the closest
-  working lab and trim down — it is the lowest-risk path to a valid topology.
+- `--from` must be a bundled base (`rancher`, `test`, `harvester-ha`, `harvester-2n`,
+  `harvester`, `suse-edge`). Copy the closest working lab and trim down — it is the
+  lowest-risk path to a valid topology.
 - Credentials stay in `??key` form; `rodeo up`/`init` generate `~/.rodeo/secrets.yaml`
   for you. No `source` or `sudo -E` needed.
 - Deploying a Harvester topology touches the MAC ↔ DHCP ↔ config-ISO chain. After

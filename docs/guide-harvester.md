@@ -1,6 +1,6 @@
 # Harvester HCI — profile guide
 
-This guide covers the three Harvester profiles in rodeo-cli. All three deploy **SUSE Virtualization (Harvester HCI)** as nested KVM VMs on a single Linux host. Pick the one that fits your host and workshop goals.
+This guide covers the four Harvester profiles in rodeo-cli. All deploy **SUSE Virtualization (Harvester HCI)** as nested KVM VMs on a single Linux host. Pick the one that fits your host and workshop goals.
 
 ---
 
@@ -10,6 +10,7 @@ This guide covers the three Harvester profiles in rodeo-cli. All three deploy **
 |---------|-------|---------|------|-----------|----------|
 | `test` | 2 Harvester | No | 1 leader | ~36 GiB | Quick evaluation, tight host, no HA needed |
 | `harvester-ha` | 3 Harvester | No | 3-member HA | ~52 GiB | Harvester workshop with full etcd HA, no Rancher |
+| `harvester-2n` | 2 Harvester + 1 Rancher | Yes | 1 leader | ~56 GiB | HCI + Rancher on a mid-size host, no etcd HA |
 | `harvester` | 3 Harvester + 1 Rancher | Yes | 3-member HA | ~60 GiB | Full lab: HCI + multi-cluster management |
 
 Run `rodeo doctor` to see which profiles fit your host's available RAM.
@@ -26,9 +27,9 @@ Run `rodeo doctor` to see which profiles fit your host's available RAM.
 | Harvester UI via host | host IP | `https://<host>:8443` (DNAT, reachable from outside) |
 | harvester1 | 192.168.122.11 | `rodeo ssh harvester1` |
 | harvester2 | 192.168.122.12 | `rodeo ssh harvester2` |
-| harvester3 | 192.168.122.13 | `rodeo ssh harvester3` (not present in `test`) |
+| harvester3 | 192.168.122.13 | `rodeo ssh harvester3` (not present in `test` / `harvester-2n`) |
 
-### `harvester` profile adds
+### `harvester` and `harvester-2n` profiles add
 
 | Component | Default IP | Access |
 |-----------|-----------|--------|
@@ -72,7 +73,7 @@ Detach without stopping the deploy: `Ctrl+b  d`. If you run `rodeo up` again and
 
 ## What happens during deploy
 
-The `suse-virt` pipeline (used by all three Harvester profiles) runs these phases:
+The `suse-virt` pipeline (used by all four Harvester profiles) runs these phases:
 
 1. **kvm_host** — prepares the hypervisor: KVM packages, libvirt daemon, firewall rules (including the DNAT rule that makes `:8443` reach the Harvester VIP), and the image storage pool
 2. **vms** — downloads the Harvester ISO, creates virtual disks (250 GiB each), and writes libvirt XML definitions (VMs are defined but not started yet)

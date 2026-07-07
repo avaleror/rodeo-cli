@@ -528,8 +528,37 @@ class DeployRunner:
             return
 
         yield LogLine("Re-asserting DNAT-accept in libvirt guest_input (post-settle)...")
+
+        def _reject_handle() -> str | None:
+            r = subprocess.run(
+                ["nft", "-a", "list", "chain", "ip", "libvirt_network", "guest_input"],
+                capture_output=True, text=True,
+            )
+            for ln in r.stdout.splitlines():
+                if "reject" in ln and "handle" in ln:
+                    return ln.rsplit("handle", 1)[-1].strip()
+            return None
+
+        # The firewalld reload just above triggers an ASYNC libvirt rebuild of
+        # guest_input (it re-adds its reject on top). Inserting our accept before
+        # that rebuild lands just gets it buried again — which is exactly what a
+        # naive insert-and-retry did. So first let the rebuild start, then wait
+        # until libvirt is done: the chain is settled once the reject rule's
+        # handle stops changing across a few reads.
+        time.sleep(2)
+        prev, stable = None, 0
+        for _ in range(30):
+            h = _reject_handle()
+            stable = stable + 1 if (h is not None and h == prev) else 0
+            prev = h
+            if stable >= 3:  # reject handle unchanged ~3 s → libvirt has settled
+                break
+            time.sleep(1)
+
+        # Now insert the accept above the settled reject. Nothing rebuilds the
+        # chain after finalise, so this sticks.
         ok = False
-        for _ in range(6):
+        for _ in range(3):
             subprocess.run([str(hook), "default", "started"], capture_output=True, text=True)
             chk = subprocess.run(
                 ["nft", "-a", "list", "chain", "ip", "libvirt_network", "guest_input"],

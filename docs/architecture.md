@@ -316,7 +316,7 @@ VM IPs/user for Python-side ops (ssh, restart, status, cluster waits) come from 
 
 ### Harvester install via iPXE (not ISO-first boot)
 
-Harvester 1.8.0 requires UEFI; legacy BIOS PXE is not supported. The `pxe_server` role provisions network boot on `virbr0`:
+Harvester 1.8.1 requires UEFI; legacy BIOS PXE is not supported. The `pxe_server` role provisions network boot on `virbr0`:
 
 ```
 UEFI firmware (empty disk, no bootloader)

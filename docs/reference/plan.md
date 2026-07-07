@@ -67,7 +67,7 @@ storage:
 
 # Software versions. Pin these to reproduce a specific lab.
 versions:
-  harvester: "1.8.0"          # Harvester ISO version to download and install
+  harvester: "1.8.1"          # Harvester ISO version to download and install
   rancher: "2.13.1"           # Rancher Prime Helm chart version
   k3s: "v1.31.4+k3s1"        # K3s version for the Rancher VM
   cert_manager: "v1.16.2"     # cert-manager Helm chart version (Rancher dependency)
@@ -156,7 +156,7 @@ Most network topology (CIDR, gateway, DNS domain, per-node IPs) is in `definitio
 
 | Field | Default | Notes |
 |-------|---------|-------|
-| `harvester` | `"1.8.0"` | ISO version string. rodeo downloads the matching ISO from the Harvester release page. |
+| `harvester` | `"1.8.1"` | ISO version string. rodeo downloads the matching ISO from the Harvester release page. |
 | `rancher` | `"2.13.1"` | Rancher Prime Helm chart version. |
 | `k3s` | `"v1.31.4+k3s1"` | K3s version installed on the Rancher VM. |
 | `cert_manager` | `"v1.16.2"` | cert-manager Helm chart (Rancher dependency). |

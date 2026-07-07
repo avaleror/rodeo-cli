@@ -24,7 +24,7 @@ resources:
     disk_gb: 250
 
 versions:
-  harvester: "1.8.0"
+  harvester: "1.8.1"
   k3s: "v1.35.3+k3s1"
   cert_manager: "v1.20.1"
 

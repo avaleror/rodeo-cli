@@ -3,8 +3,8 @@ image_dir: /var/lib/libvirt/images
 config_dir: /root/harvester-configs
 serial_log_dir: /var/log/libvirt/qemu
 
-harvester_version: "1.8.0"
-harvester_iso_checksum: "sha512:dcbe2b2ba47e1f15854eb054f0cf5a5efe711db7aa86c4a4e50410e0f12aa5481085f99b85e62e89ddb53b95b61dc859b8568152f986be7d4168fd6b8ead026a"  # harvester-v1.8.0-amd64.iso from releases.rancher.com
+harvester_version: "1.8.1"
+harvester_iso_checksum: "sha512:b1950e7d0543b813711e1b5006eafe1bb042cc3625449180a987a21d31bc70de9111df270b7911fafbfbd53a86b834f7f8f3fbfcd2ad81ee86fa2d9f1bd8a5a0"  # harvester-v1.8.1-amd64.iso from releases.rancher.com
 # Floating kube-vip VIP — a free address, NOT any node IP (nodes are .11/.12/.13,
 # rancher .9). It migrates to a surviving node on failure. Outside the DHCP pool.
 harvester_vip: "192.168.122.10"

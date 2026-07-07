@@ -3,13 +3,20 @@
 # Called by libvirt as: qemu <domain> <action> <sub_action>
 #
 # Events handled:
-#   started  — VM fully up: add the DNAT rule if not present.
+#   started  — VM fully up: add the DNAT rule if needed and re-assert the
+#              guest_input DNAT-accept (see manage_nft_rules.sh).
 #   stopped  — VM fully down: remove the rule if no other cluster nodes running.
 #   migrate  — VM migrating away or arriving: re-evaluate the rule so the host
 #              that loses the VM removes the rule and the receiving host adds it.
 # All other events (prepare, release, reconnect, etc.) are ignored.
-
-MANAGED_VMS=({{ harvester_node_names | join(' ') }})
+#
+# MANAGED_VMS is EVERY lab VM, not just the Harvester cluster nodes. libvirt
+# rebuilds its guest_input chain (re-adding the reject that blocks DNAT'd
+# inbound) whenever ANY guest's NIC attaches — including the Rancher VM, which
+# often starts last. If it were not in this list, its start would bury the
+# DNAT-accept rule again and external access would break. The VIP DNAT itself
+# stays gated on the Harvester nodes inside manage_nft_rules.sh.
+MANAGED_VMS=({{ vm_nodes | default([]) | map(attribute='name') | join(' ') }})
 
 case "$2" in
     started|stopped|migrate) ;;

@@ -87,9 +87,16 @@ ensure_libvirt_accept() {
 if is_any_vm_running; then
     create_nft_structure
     add_nft_rule
-    ensure_libvirt_accept
 else
     if nft_chain_exists; then
         remove_nft_rule
     fi
 fi
+
+# Always re-assert the guest_input DNAT-accept, on every dispatched event and
+# regardless of which VMs are up. libvirt rebuilds guest_input (re-adding the
+# reject above our rule) on each guest NIC attach, so the rule must be pushed
+# back to the top of the chain after *any* lab VM starts — otherwise the last
+# VM to start (often the Rancher VM) leaves the reject in front and external
+# DNAT'd access breaks. Cheap and idempotent, so it is safe to run every time.
+ensure_libvirt_accept

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rodeo-cli"
-version = "0.10.6"
+version = "0.11.0"
 description = "Deploy and manage SUSE/Rancher learning labs (rodeos) on KVM"
 readme = "README.md"
 requires-python = ">=3.10"

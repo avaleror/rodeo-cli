@@ -500,7 +500,86 @@ class DeployRunner:
 
         yield from self._start_firewalld()
 
+        yield from self._reassert_dnat_accept()
+
         self._last_rc = 0
+
+    def _reassert_dnat_accept(self) -> Iterator[DeployEvent]:
+        """Final, post-settle re-assert of the libvirt guest_input DNAT-accept.
+
+        libvirt rebuilds its ``guest_input`` chain (re-adding the reject that
+        blocks new DNAT'd inbound) every time a guest NIC attaches or its
+        firewall is reapplied. During a long Harvester install this happens
+        repeatedly, and the last rebuild lands *after* the network/qemu hooks
+        have fired — leaving libvirt's reject in front of our ``ct status dnat
+        accept`` and silently breaking external access (Harvester UI :8443,
+        Rancher :30002). The hooks can't win that race because they only run on
+        VM/network events, not on the later rebuilds.
+
+        finalise is the last thing the deploy does, and the chain is stable once
+        it settles, so re-run the network hook here — last of all — and verify
+        the accept ends up above the reject, retrying briefly to ride out any
+        rebuild triggered by the firewalld reload just above.
+        """
+        if self.cfg.get("network", {}).get("mode", "nat") != "nat":
+            return
+        hook = Path("/etc/libvirt/hooks/network")
+        if not hook.exists():
+            return
+
+        yield LogLine("Re-asserting DNAT-accept in libvirt guest_input (post-settle)...")
+
+        def _reject_handle() -> str | None:
+            r = subprocess.run(
+                ["nft", "-a", "list", "chain", "ip", "libvirt_network", "guest_input"],
+                capture_output=True, text=True,
+            )
+            for ln in r.stdout.splitlines():
+                if "reject" in ln and "handle" in ln:
+                    return ln.rsplit("handle", 1)[-1].strip()
+            return None
+
+        # The firewalld reload just above triggers an ASYNC libvirt rebuild of
+        # guest_input (it re-adds its reject on top). Inserting our accept before
+        # that rebuild lands just gets it buried again — which is exactly what a
+        # naive insert-and-retry did. So first let the rebuild start, then wait
+        # until libvirt is done: the chain is settled once the reject rule's
+        # handle stops changing across a few reads.
+        time.sleep(2)
+        prev, stable = None, 0
+        for _ in range(30):
+            h = _reject_handle()
+            stable = stable + 1 if (h is not None and h == prev) else 0
+            prev = h
+            if stable >= 3:  # reject handle unchanged ~3 s → libvirt has settled
+                break
+            time.sleep(1)
+
+        # Now insert the accept above the settled reject. Nothing rebuilds the
+        # chain after finalise, so this sticks.
+        ok = False
+        for _ in range(3):
+            subprocess.run([str(hook), "default", "started"], capture_output=True, text=True)
+            chk = subprocess.run(
+                ["nft", "-a", "list", "chain", "ip", "libvirt_network", "guest_input"],
+                capture_output=True, text=True,
+            )
+            lines = chk.stdout.splitlines()
+            acc = next((i for i, ln in enumerate(lines) if "ct status dnat accept" in ln), None)
+            rej = next((i for i, ln in enumerate(lines) if "reject" in ln), None)
+            # Accept present and ahead of the reject (or no reject at all) = good.
+            if acc is not None and (rej is None or acc < rej):
+                ok = True
+                break
+            time.sleep(1)
+
+        if ok:
+            yield LogLine("  ✓  DNAT'd inbound allowed to lab guests")
+        else:
+            yield LogLine(
+                "  ⚠  Could not confirm DNAT-accept above libvirt's reject — "
+                "external access to guests may be blocked"
+            )
 
     # ---------- Config helpers ----------
 

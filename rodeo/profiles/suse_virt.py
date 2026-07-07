@@ -22,7 +22,7 @@ class SuseVirtProfile(RodeoProfile):
     # the packaged data. Changing the definition drives idempotent upgrades on
     # re-run (helm upgrade --install for Rancher/cert-manager; K3s installer).
     versions_from_definition = True
-    versions = {**BASE_VERSIONS, "harvester": "1.8.0"}
+    versions = {**BASE_VERSIONS, "harvester": "1.8.1"}
 
     resources = {
         "harvester": {"memory_mib": 16384, "vcpu": 8, "disk_gb": 270},

@@ -200,7 +200,7 @@ definition:
   # Rancher is the management cluster for Harvester; K3s is used here (lab simplification;
   # production SUSE Edge 3.6 uses RKE2 v1.35.3+rke2r3 for the management cluster).
   versions:
-    harvester:    "1.8.0"
+    harvester:    "1.8.1"
     rancher:      "2.14.1"
     k3s:          "v1.35.3+k3s1"
     cert_manager: "v1.20.1"

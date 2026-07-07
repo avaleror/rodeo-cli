@@ -87,8 +87,9 @@ class DeployComplete(DeployEvent):
 
 # Known Harvester ISO checksums (releases.rancher.com). When the plan pins a
 # version not listed here, the checksum is passed empty so get_url skips
-# verification instead of failing against the 1.8.0 role default.
+# verification instead of failing against the 1.8.1 role default.
 _HARVESTER_ISO_CHECKSUMS = {
+    "1.8.1": "sha512:b1950e7d0543b813711e1b5006eafe1bb042cc3625449180a987a21d31bc70de9111df270b7911fafbfbd53a86b834f7f8f3fbfcd2ad81ee86fa2d9f1bd8a5a0",
     "1.8.0": "sha512:dcbe2b2ba47e1f15854eb054f0cf5a5efe711db7aa86c4a4e50410e0f12aa5481085f99b85e62e89ddb53b95b61dc859b8568152f986be7d4168fd6b8ead026a",
 }
 
@@ -172,7 +173,7 @@ class DeployRunner:
 
         vars_file = self._write_vars_file()
 
-        version = self.cfg.get("versions", {}).get("harvester", "1.8.0")
+        version = self.cfg.get("versions", {}).get("harvester", "1.8.1")
         if version not in _HARVESTER_ISO_CHECKSUMS:
             yield LogLine(
                 f"  ⚠  No known ISO checksum for Harvester {version} — "
@@ -522,7 +523,7 @@ class DeployRunner:
         r_res = resources.get("rancher", {})
         storage = self.cfg.get("storage", {})
 
-        version = ver.get("harvester", "1.8.0")
+        version = ver.get("harvester", "1.8.1")
         vars_data = {
             "network_mode":          net.get("mode", "nat"),
             "host_bridge":           net.get("host_bridge", "br0"),

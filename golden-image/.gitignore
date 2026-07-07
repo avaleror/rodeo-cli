@@ -1,0 +1,13 @@
+# KIWI build outputs — never commit built images
+*.qcow2
+*.raw
+*.vhd
+*.vhdfixed
+*.vmdk
+*.box
+*.changes
+*.packages
+*.verified
+build/
+*-out/
+rodeo-golden-out/

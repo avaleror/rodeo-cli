@@ -73,12 +73,11 @@ platform (`gce`, `vhdfixed`, `vmdk`, `ova`).
 `feat/golden-image` is a long-lived branch, kept ready to merge into `main`.
 
 - A GitHub Action (`.github/workflows/sync-golden-image.yml`, once merged to
-  `main`) rebases this branch onto `main` on every push to `main` and
-  force-pushes the result. On a rebase conflict it stops and opens an issue
-  instead of leaving the branch broken.
-- Because sync uses rebase and force-push, after `main` moves update a local
-  checkout with `git fetch && git reset --hard origin/feat/golden-image` (or
-  `git pull --rebase`), not a plain `git pull`.
+  `main`) merges `main` into this branch on every push to `main`. On a merge
+  conflict it stops and opens an issue instead of leaving the branch broken.
+- Sync uses merge, not rebase, because the branch is squash-merged into `main`,
+  so a linear history buys nothing and merge avoids force-push. A plain
+  `git pull` on a local checkout always works.
 
 ## Next step
 

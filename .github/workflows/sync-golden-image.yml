@@ -1,0 +1,85 @@
+name: Keep golden-image branch synced with main
+
+# Rebases the long-lived feat/golden-image branch onto main whenever main
+# moves, so it stays ready to merge. On a rebase conflict it stops and opens
+# an issue instead of leaving the branch in a broken state.
+#
+# Rebase + force-push rewrites feat/golden-image. After main moves, refresh a
+# local checkout with:
+#   git fetch && git reset --hard origin/feat/golden-image
+# (not a plain git pull).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: sync-golden-image
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  rebase:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check golden-image branch exists
+        id: exists
+        run: |
+          if git ls-remote --exit-code --heads \
+               "https://github.com/${{ github.repository }}.git" feat/golden-image >/dev/null 2>&1; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "feat/golden-image not found — nothing to sync."
+          fi
+
+      - name: Checkout feat/golden-image
+        if: steps.exists.outputs.found == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: feat/golden-image
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git identity
+        if: steps.exists.outputs.found == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Rebase onto main
+        if: steps.exists.outputs.found == 'true'
+        id: rebase
+        run: |
+          git fetch origin main
+          if git rebase origin/main; then
+            echo "conflict=false" >> "$GITHUB_OUTPUT"
+          else
+            git rebase --abort || true
+            echo "conflict=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push rebased branch
+        if: steps.exists.outputs.found == 'true' && steps.rebase.outputs.conflict == 'false'
+        run: git push --force-with-lease origin feat/golden-image
+
+      - name: Open issue on conflict
+        if: steps.exists.outputs.found == 'true' && steps.rebase.outputs.conflict == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "golden-image branch needs a manual rebase onto main" \
+            --body "Auto-rebase of \`feat/golden-image\` onto \`main\` hit conflicts after ${{ github.sha }}. Rebase locally and force-push:
+
+          \`\`\`
+          git fetch origin
+          git checkout feat/golden-image
+          git rebase origin/main   # resolve conflicts
+          git push --force-with-lease
+          \`\`\`" \
+            || echo "issue create failed (non-fatal)"

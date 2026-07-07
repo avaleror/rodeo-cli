@@ -500,7 +500,57 @@ class DeployRunner:
 
         yield from self._start_firewalld()
 
+        yield from self._reassert_dnat_accept()
+
         self._last_rc = 0
+
+    def _reassert_dnat_accept(self) -> Iterator[DeployEvent]:
+        """Final, post-settle re-assert of the libvirt guest_input DNAT-accept.
+
+        libvirt rebuilds its ``guest_input`` chain (re-adding the reject that
+        blocks new DNAT'd inbound) every time a guest NIC attaches or its
+        firewall is reapplied. During a long Harvester install this happens
+        repeatedly, and the last rebuild lands *after* the network/qemu hooks
+        have fired — leaving libvirt's reject in front of our ``ct status dnat
+        accept`` and silently breaking external access (Harvester UI :8443,
+        Rancher :30002). The hooks can't win that race because they only run on
+        VM/network events, not on the later rebuilds.
+
+        finalise is the last thing the deploy does, and the chain is stable once
+        it settles, so re-run the network hook here — last of all — and verify
+        the accept ends up above the reject, retrying briefly to ride out any
+        rebuild triggered by the firewalld reload just above.
+        """
+        if self.cfg.get("network", {}).get("mode", "nat") != "nat":
+            return
+        hook = Path("/etc/libvirt/hooks/network")
+        if not hook.exists():
+            return
+
+        yield LogLine("Re-asserting DNAT-accept in libvirt guest_input (post-settle)...")
+        ok = False
+        for _ in range(6):
+            subprocess.run([str(hook), "default", "started"], capture_output=True, text=True)
+            chk = subprocess.run(
+                ["nft", "-a", "list", "chain", "ip", "libvirt_network", "guest_input"],
+                capture_output=True, text=True,
+            )
+            lines = chk.stdout.splitlines()
+            acc = next((i for i, ln in enumerate(lines) if "ct status dnat accept" in ln), None)
+            rej = next((i for i, ln in enumerate(lines) if "reject" in ln), None)
+            # Accept present and ahead of the reject (or no reject at all) = good.
+            if acc is not None and (rej is None or acc < rej):
+                ok = True
+                break
+            time.sleep(1)
+
+        if ok:
+            yield LogLine("  ✓  DNAT'd inbound allowed to lab guests")
+        else:
+            yield LogLine(
+                "  ⚠  Could not confirm DNAT-accept above libvirt's reject — "
+                "external access to guests may be blocked"
+            )
 
     # ---------- Config helpers ----------
 

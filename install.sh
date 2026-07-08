@@ -99,9 +99,23 @@ if [[ $DEV -eq 1 ]]; then
 else
   if [[ -d "$RODEO_DIR/.git" ]]; then
     echo "==> Updating $RODEO_DIR"
-    git -C "$RODEO_DIR" fetch --tags origin
-    git -C "$RODEO_DIR" checkout "$RODEO_REF"
-    git -C "$RODEO_DIR" pull --ff-only origin "$RODEO_REF" 2>/dev/null || true
+    # Self-heal the remote first. Hosts cloned single-branch (or pinned to a
+    # since-deleted branch) otherwise strand here: fetch/pull only ever touch
+    # that one branch and silently no-op, leaving the host on old code. Force a
+    # normal wildcard refspec and the canonical URL before fetching.
+    git -C "$RODEO_DIR" remote set-url origin "$RODEO_REPO"
+    git -C "$RODEO_DIR" config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
+    # Fetch everything (all branches + tags), forcing tracking-ref updates.
+    # No `|| true` — a failed update must be visible, not swallowed.
+    git -C "$RODEO_DIR" fetch --tags --prune --force origin
+    # Align deterministically to the requested ref. A branch is hard-reset to the
+    # remote tip; a tag or SHA is checked out detached.
+    if git -C "$RODEO_DIR" show-ref --verify --quiet "refs/remotes/origin/$RODEO_REF"; then
+      git -C "$RODEO_DIR" checkout -B "$RODEO_REF" "origin/$RODEO_REF"
+      git -C "$RODEO_DIR" reset --hard "origin/$RODEO_REF"
+    else
+      git -C "$RODEO_DIR" checkout --force "$RODEO_REF"
+    fi
   else
     echo "==> Cloning rodeo-cli to $RODEO_DIR"
     git clone "$RODEO_REPO" "$RODEO_DIR"

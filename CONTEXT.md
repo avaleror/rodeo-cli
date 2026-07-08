@@ -20,7 +20,7 @@ It replaces `rodeo.sh`, a monolithic bash script in the parent repository. Desig
 
 **GitHub:** https://github.com/avaleror/rodeo-cli
 **Author:** Andres Valero, Principal Technology Advocate at SUSE
-**Version:** 0.11.5 <!-- x-release-please-version --> (bundled profiles live-validated on bare metal SLES 16; Instruqt validation pending — see ROADMAP)
+**Version:** 0.11.6 <!-- x-release-please-version --> (bundled profiles live-validated on bare metal SLES 16; Instruqt validation pending — see ROADMAP)
 **Python:** 3.10+
 
 ---

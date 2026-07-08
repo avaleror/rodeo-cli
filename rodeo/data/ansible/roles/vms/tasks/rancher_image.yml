@@ -9,9 +9,19 @@
 - name: Download openSUSE Leap 16 Cloud image (cloud-init pre-installed)
   ansible.builtin.shell: |
     set -euo pipefail
-    curl -4 -fsSL --retry 3 --retry-delay 5 \
-      -o '{{ image_dir }}/Leap-16.0-Cloud.qcow2' \
-      '{{ leap16_url }}'
+    dest='{{ image_dir }}/Leap-16.0-Cloud.qcow2'
+    tmp="$dest.downloading"
+    # Force HTTP/1.1: download.opensuse.org's mirror redirects intermittently
+    # break HTTP/2 streams (curl error 92: "stream not closed cleanly:
+    # PROTOCOL_ERROR"). --retry-all-errors makes --retry cover that class of
+    # error (plain --retry does not); -C - resumes the partial temp file across
+    # retries instead of restarting the multi-hundred-MB download.
+    curl -4 --http1.1 -fsSL --retry 5 --retry-delay 10 --retry-all-errors \
+      -C - -o "$tmp" '{{ leap16_url }}'
+    # Only publish the final path on FULL success. A failed curl leaves the
+    # partial as $tmp, never as $dest — so the `creates:` guard below and the
+    # qemu-img convert step never see a truncated image and silently skip.
+    mv "$tmp" "$dest"
   args:
     executable: /bin/bash
     creates: "{{ image_dir }}/Leap-16.0-Cloud.qcow2"

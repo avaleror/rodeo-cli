@@ -88,15 +88,13 @@ def _pyproject_version() -> str:
     return "unknown"
 
 
-@click.command("self-update")
-@click.option("--branch", default=None, metavar="NAME",
-              help="Align to this branch instead of the remote default (main). For testing pre-release code.")
-def self_update_cmd(branch: str | None) -> None:
+def run_self_update(branch: str | None = None) -> None:
     """Update rodeo-cli to the latest upstream code and reinstall the CLI.
 
     Fetches the remote and hard-aligns the working tree to the tip of the
-    default branch (origin/main), then reinstalls. Fails loudly rather than
-    leaving the host on stale code.
+    default branch (origin/main), then reinstalls. Fails loudly (raises
+    SystemExit) rather than leaving the host on stale code. Shared by the
+    `self-update` command and `clean --refresh`.
     """
     if not (_REPO_ROOT / ".git").exists():
         console.print(
@@ -206,3 +204,16 @@ def self_update_cmd(branch: str | None) -> None:
             f"\n[bold green]✓  rodeo-cli updated to {version_after}[/bold green] "
             f"(was {version_before}, now at {target_ref} {target_sha[:8]})."
         )
+
+
+@click.command("self-update")
+@click.option("--branch", default=None, metavar="NAME",
+              help="Align to this branch instead of the remote default (main). For testing pre-release code.")
+def self_update_cmd(branch: str | None) -> None:
+    """Update rodeo-cli to the latest upstream code and reinstall the CLI.
+
+    Fetches the remote and hard-aligns the working tree to the tip of the
+    default branch (origin/main), then reinstalls. Fails loudly rather than
+    leaving the host on stale code.
+    """
+    run_self_update(branch)

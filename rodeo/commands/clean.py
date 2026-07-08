@@ -36,8 +36,9 @@ def _virsh(*args: str, uri: str | None = None) -> None:
 @click.option("--force-network", is_flag=True, help="Force destroy the libvirt 'default' network even if other non-rodeo VMs exist.")
 @click.option("--secrets", is_flag=True, help="Also remove ~/.rodeo/secrets.yaml (global passwords for the plan). Use with --all or --yes for host reset.")
 @click.option("--hard", is_flag=True, help="Hard destroy (skip graceful stop first). Default is to run stop logic for VMs if running, for clean stopped state before destroy/undefine.")
+@click.option("--refresh", is_flag=True, help="After cleaning, update rodeo-cli to the latest upstream code (same robust path as 'rodeo self-update'). Off by default so clean never changes the CLI version out from under you — important for pinned/Instruqt hosts.")
 def clean_cmd(
-    config_path: str, config_dir: str | None, params: tuple[str, ...], paramfile: str | None, yes: bool, all: bool, force_network: bool, secrets: bool, hard: bool
+    config_path: str, config_dir: str | None, params: tuple[str, ...], paramfile: str | None, yes: bool, all: bool, force_network: bool, secrets: bool, hard: bool, refresh: bool
 ) -> None:
     """Destroy rodeo VMs, disks, ISOs, the libvirt network (per-plan or --all host reset), reset phase state, and optionally secrets.
 
@@ -197,13 +198,18 @@ def clean_cmd(
     else:
         console.print("Run [bold]rodeo deploy[/bold] to start fresh.\n")
 
-    # Always refresh the CLI after a clean so the next deploy runs the latest code.
-    from .self_update_cmd import _REPO_ROOT, _VENV_PIP
-    import sys as _sys
-    if (_REPO_ROOT / ".git").exists():
+    # CLI refresh is OPT-IN only. Cleaning must never silently change the rodeo
+    # version — on a pinned or Instruqt host that makes "which version am I
+    # running" non-deterministic, and the old always-on fast-forward pull both
+    # no-op'd on a stale remote and misreported the version. When asked, route
+    # through the robust self-update path (fetch + hard-align + verify).
+    if refresh:
+        from .self_update_cmd import run_self_update
         console.print("Refreshing rodeo-cli...")
-        subprocess.run(["git", "-C", str(_REPO_ROOT), "pull", "--ff-only"], check=False)
-        pip = str(_VENV_PIP) if _VENV_PIP.exists() else _sys.executable.replace("rodeo", "pip")
-        subprocess.run([pip, "install", "--quiet", "-e", str(_REPO_ROOT)], check=False)
-        from rodeo import __version__
-        console.print(f"[dim]rodeo-cli {__version__}[/dim]\n")
+        try:
+            run_self_update()
+        except SystemExit as exc:
+            # The clean itself already succeeded; surface the refresh failure
+            # without pretending the whole command failed.
+            console.print(f"[yellow]⚠  clean succeeded, but --refresh failed (exit {exc.code}). "
+                          "Run 'rodeo self-update' to see why.[/yellow]")

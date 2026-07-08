@@ -10,7 +10,7 @@ from pathlib import Path
 import click
 from rich.console import Console
 
-from ..engine.libvirt import LibvirtDriver
+from ..engine.libvirt import LibvirtDriver, discover_rodeo_vm_names
 
 from ..config import load_config
 from ..privilege import ensure_root, is_root
@@ -65,28 +65,13 @@ def clean_cmd(
             cfg = {"name": "default", "storage": {"image_dir": "/var/lib/libvirt/images"} }
 
     image_dir = Path( (cfg or {}).get("storage", {}).get("image_dir", "/var/lib/libvirt/images") )
+    uri0 = (cfg or {"libvirt": {"uri": "qemu:///system"}})["libvirt"]["uri"]
     if all:
-        # Discover rodeo VMs by common patterns (harvester*, rancher*, etc.) across any plan.
-        vm_names = []
-        try:
-            with LibvirtDriver( (cfg or {"libvirt":{"uri":"qemu:///system"}})["libvirt"]["uri"] ) as lv:
-                all_doms = lv.list_all_domain_names()
-                vm_names = [n for n in all_doms if any(p in n for p in ("harvester", "rancher", "rodeo"))]
-        except Exception:
-            try:
-                u = (cfg or {"libvirt": {"uri": "qemu:///system"}})["libvirt"]["uri"]
-                res = subprocess.run(["virsh", "-c", u, "list", "--all", "--name"], capture_output=True, text=True, check=False)
-                all_doms = [n.strip() for n in res.stdout.splitlines() if n.strip()]
-                vm_names = [n for n in all_doms if any(p in n for p in ("harvester", "rancher", "rodeo"))]
-            except Exception:
-                pass
-        if not vm_names:
-            # Fallback patterns if libvirt not available yet
-            vm_names = ["harvester1", "harvester2", "harvester3", "rancher"]
+        # Discover rodeo VMs actually on the host (harvester*, rancher*, edge*,
+        # eib, rodeo*) across any plan — never assume a fixed node set.
+        vm_names = discover_rodeo_vm_names(uri0)
     else:
-        vm_names = list( (cfg or {}).get("vms", {}).keys() )
-        if not vm_names:
-            vm_names = ["harvester1", "harvester2", "harvester3", "rancher"]
+        vm_names = list( (cfg or {}).get("vms", {}).keys() ) or discover_rodeo_vm_names(uri0)
 
     # Confirmation: tailor message for --all vs normal per-plan clean.
     if not yes:

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import contextlib
+import subprocess
 from dataclasses import dataclass
 from typing import Optional
 
@@ -222,3 +223,31 @@ class LibvirtDriver:
                     dom.changeMediaFlags(target, "")
                 except _libvirt.libvirtError:
                     pass
+
+
+# Substrings identifying rodeo-managed guests across every profile. Lifecycle
+# commands (start/stop/clean --all) use these to discover the VMs actually on a
+# host instead of assuming a fixed node list — so no phantom "harvester3" is
+# invented on a 2-node, rancher-only or edge lab.
+RODEO_VM_HINTS = ("harvester", "rancher", "edge", "eib", "rodeo")
+
+
+def discover_rodeo_vm_names(uri: str = "qemu:///system") -> list[str]:
+    """Names of rodeo-managed domains on the host, empty if none/unreachable.
+
+    Tries the libvirt driver first, falls back to `virsh` when python-libvirt
+    isn't importable. Never invents names — an empty list means "nothing here",
+    which callers treat as "nothing to do" rather than acting on a guess.
+    """
+    try:
+        with LibvirtDriver(uri) as lv:
+            return [n for n in lv.list_all_domain_names()
+                    if any(p in n for p in RODEO_VM_HINTS)]
+    except Exception:
+        try:
+            res = subprocess.run(["virsh", "-c", uri, "list", "--all", "--name"],
+                                 capture_output=True, text=True, check=False)
+            return [n.strip() for n in res.stdout.splitlines()
+                    if n.strip() and any(p in n for p in RODEO_VM_HINTS)]
+        except Exception:
+            return []

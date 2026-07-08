@@ -22,7 +22,7 @@ from ..config import load_config
 from ..inventory import _load_topology
 from ..privilege import ensure_root, is_root
 from ._options import config_options
-from ..engine.libvirt import LibvirtDriver
+from ..engine.libvirt import LibvirtDriver, discover_rodeo_vm_names
 
 console = Console()
 
@@ -154,26 +154,14 @@ def start_cmd(config_path: str, config_dir: str | None, params: tuple[str, ...],
     components = topology.get("components", [])
 
     uri0 = (cfg or {"libvirt": {"uri": "qemu:///system"}})["libvirt"]["uri"]
+    # Discover the VMs actually defined on the host instead of assuming a fixed
+    # 3-node Harvester set. Without this, `start --all` invents a phantom
+    # "harvester3" on 2-node / rancher-only / edge labs and crashes with
+    # "Domain not found". A plan start uses the definition's VM list.
     if all:
-        # Discover the VMs actually defined on the host instead of assuming a
-        # fixed 3-node Harvester set. Without this, `start --all` invents a
-        # phantom "harvester3" on 2-node / rancher-only / edge labs and crashes
-        # with "Domain not found". Mirrors `clean --all` discovery.
-        vm_names = []
-        try:
-            with LibvirtDriver(uri0) as _lv:
-                vm_names = [n for n in _lv.list_all_domain_names()
-                            if any(p in n for p in ("harvester", "rancher", "edge", "eib", "rodeo"))]
-        except Exception:
-            try:
-                res = subprocess.run(["virsh", "-c", uri0, "list", "--all", "--name"],
-                                     capture_output=True, text=True, check=False)
-                vm_names = [n.strip() for n in res.stdout.splitlines()
-                            if n.strip() and any(p in n for p in ("harvester", "rancher", "edge", "eib", "rodeo"))]
-            except Exception:
-                pass
+        vm_names = discover_rodeo_vm_names(uri0)
     else:
-        vm_names = list((cfg or {}).get("vms", {}).keys()) or ["harvester1", "harvester2", "harvester3", "rancher"]
+        vm_names = list((cfg or {}).get("vms", {}).keys()) or discover_rodeo_vm_names(uri0)
 
     # Start host services first (forward).
     if components:

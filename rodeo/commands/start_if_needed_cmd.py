@@ -20,13 +20,12 @@ from rich.console import Console
 
 from ..config import load_config
 from ..inventory import _load_topology
-from ..engine.libvirt import LibvirtDriver
+from ..engine.libvirt import LibvirtDriver, discover_rodeo_vm_names
 from .start_cmd import _start_host_services
 
 console = Console()
 
 _NFT_SCRIPT = "/usr/local/bin/manage_nft_rules.sh"
-_DEFAULT_VMS = ["harvester1", "harvester2", "harvester3"]
 
 
 @click.command("start-if-needed")
@@ -65,8 +64,10 @@ def start_if_needed_cmd(config_dir: str | None, config_path: str) -> None:
 
     start_order = topology.get("start_order", [])
     components = topology.get("components", [])
-    vm_names = list((cfg or {}).get("vms", {}).keys()) or _DEFAULT_VMS
     uri = (cfg or {}).get("libvirt", {}).get("uri", "qemu:///system")
+    # Prefer the definition's VM list; fall back to discovering what's on the
+    # host rather than assuming a fixed 3-node Harvester set.
+    vm_names = list((cfg or {}).get("vms", {}).keys()) or discover_rodeo_vm_names(uri)
 
     if components:
         _start_host_services(components)

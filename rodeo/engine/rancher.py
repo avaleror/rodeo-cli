@@ -67,6 +67,26 @@ class RancherPhase:
 
         eib_vm = cfg.get("vms", {}).get("eib", {})
         self.eib_ip      = eib_vm.get("ip", "192.168.122.20")
+
+        # Edge nodes — derived from the definition, never hardcoded. Names come
+        # from edge_node_names (authoritative) or any VM whose name starts with
+        # "edge". IP, network prefix and gateway all flow through from the
+        # definition so changing the CIDR, gateway or a node's IP needs no code
+        # change here — the EIB network-configs regenerate to match.
+        _edge_names = cfg.get("edge_node_names") or [
+            n for n in cfg.get("vms", {}) if n.startswith("edge")
+        ]
+        self.edge_nodes = [
+            {"name": n, "ip": cfg.get("vms", {}).get(n, {}).get("ip", "")}
+            for n in _edge_names
+        ]
+        try:
+            self.net_prefix = int(str(net.get("cidr", "192.168.122.0/24")).split("/")[1])
+        except (ValueError, IndexError):
+            self.net_prefix = 24
+        # DNS resolver for edge nodes; falls back to the gateway (dnsmasq on the
+        # libvirt network answers there) when the definition doesn't set one.
+        self.dns_server = net.get("dns_server", self.gateway)
         self.image_dir   = cfg.get("storage", {}).get("image_dir", "/var/lib/libvirt/images")
         eib_def          = cfg.get("eib", {})
         self.eib_image   = eib_def.get("container_image", "registry.suse.com/edge/3.6/edge-image-builder:1.3.3.1")
@@ -1478,7 +1498,7 @@ class RancherPhase:
         yield LogLine(
             "  Fleet GitRepo 'alien-geeko' created in fleet-default.\n"
             "  To deploy: label an edge cluster with  demo=true  edge-type=x86-cluster\n"
-            "  Image served from Hauler: http://192.168.122.20:5000 (docker.io mirror)"
+            f"  Image served from Hauler: http://{self.eib_ip}:5000 (docker.io mirror)"
         )
         return True
 
@@ -1494,6 +1514,24 @@ class RancherPhase:
         """
         image = f"docker.io/gitea/gitea:{self.gitea_version}-rootless"
         gitea_url = f"http://localhost:{self.gitea_port}"
+
+        # NMState network-config, one file per edge node, generated from the
+        # definition (name + IP + prefix + gateway + DNS). No node names or IPs
+        # are hardcoded here — add/remove/renumber edge nodes in definition.yaml
+        # and these regenerate to match.
+        nmstate_blocks = ""
+        for e in self.edge_nodes:
+            nmstate_blocks += (
+                f"cat > \"$EIB_REPO/network-configs/{e['name']}.yaml\" << 'NM_EOF'\n"
+                "interfaces:\n  - name: eth0\n    type: ethernet\n    state: up\n"
+                f"    ipv4:\n      address:\n        - ip: {e['ip']}\n          prefix-length: {self.net_prefix}\n"
+                "      dhcp: false\n      enabled: true\n"
+                "routes:\n  config:\n    - destination: 0.0.0.0/0\n"
+                f"      next-hop-address: {self.gateway}\n      next-hop-interface: eth0\n"
+                f"dns-resolver:\n  config:\n    servers:\n      - {self.dns_server}\n"
+                "NM_EOF\n\n"
+            )
+
         script = (
             "set -euo pipefail\n"
             f"GITEA_URL={gitea_url}\n"
@@ -1561,44 +1599,14 @@ class RancherPhase:
             "cat > \"$EIB_REPO/scripts/10-hostname-edge4.sh\" << 'HNAME4_EOF'\n"
             "#!/bin/bash\nhostnamectl set-hostname edge4\nHNAME4_EOF\n"
             "chmod +x \"$EIB_REPO/scripts/10-hostname-edge4.sh\"\n\n"
-            # NMState network config templates — one per edge node
-            "cat > \"$EIB_REPO/network-configs/edge1.yaml\" << 'NM1_EOF'\n"
-            "interfaces:\n  - name: eth0\n    type: ethernet\n    state: up\n"
-            "    ipv4:\n      address:\n        - ip: 192.168.122.31\n          prefix-length: 24\n"
-            "      dhcp: false\n      enabled: true\n"
-            "routes:\n  config:\n    - destination: 0.0.0.0/0\n"
-            "      next-hop-address: 192.168.122.1\n      next-hop-interface: eth0\n"
-            "dns-resolver:\n  config:\n    servers:\n      - 192.168.122.1\n"
-            "NM1_EOF\n\n"
-            "cat > \"$EIB_REPO/network-configs/edge2.yaml\" << 'NM2_EOF'\n"
-            "interfaces:\n  - name: eth0\n    type: ethernet\n    state: up\n"
-            "    ipv4:\n      address:\n        - ip: 192.168.122.32\n          prefix-length: 24\n"
-            "      dhcp: false\n      enabled: true\n"
-            "routes:\n  config:\n    - destination: 0.0.0.0/0\n"
-            "      next-hop-address: 192.168.122.1\n      next-hop-interface: eth0\n"
-            "dns-resolver:\n  config:\n    servers:\n      - 192.168.122.1\n"
-            "NM2_EOF\n\n"
-            "cat > \"$EIB_REPO/network-configs/edge3.yaml\" << 'NM3_EOF'\n"
-            "interfaces:\n  - name: eth0\n    type: ethernet\n    state: up\n"
-            "    ipv4:\n      address:\n        - ip: 192.168.122.33\n          prefix-length: 24\n"
-            "      dhcp: false\n      enabled: true\n"
-            "routes:\n  config:\n    - destination: 0.0.0.0/0\n"
-            "      next-hop-address: 192.168.122.1\n      next-hop-interface: eth0\n"
-            "dns-resolver:\n  config:\n    servers:\n      - 192.168.122.1\n"
-            "NM3_EOF\n\n"
-            "cat > \"$EIB_REPO/network-configs/edge4.yaml\" << 'NM4_EOF'\n"
-            "interfaces:\n  - name: eth0\n    type: ethernet\n    state: up\n"
-            "    ipv4:\n      address:\n        - ip: 192.168.122.34\n          prefix-length: 24\n"
-            "      dhcp: false\n      enabled: true\n"
-            "routes:\n  config:\n    - destination: 0.0.0.0/0\n"
-            "      next-hop-address: 192.168.122.1\n      next-hop-interface: eth0\n"
-            "dns-resolver:\n  config:\n    servers:\n      - 192.168.122.1\n"
-            "NM4_EOF\n\n"
+            # NMState network config templates — one per edge node, generated
+            # above from the definition (see nmstate_blocks).
+            + nmstate_blocks +
             # Elemental registration config placeholder — filled in during Exercise 2
             "cat > \"$EIB_REPO/elemental/elemental_config.yaml\" << 'ELEM_EOF'\n"
             "# Filled in during Exercise 2, section 2.4.\n"
             "# On the eib VM, after cloning this repo:\n"
-            "#   REGURL=$(ssh root@192.168.122.9 \\\n"
+            f"#   REGURL=$(ssh root@{self.rancher_ip} \\\n"
             "#     \"kubectl get machineregistration suse-edge-reg-1 \\\n"
             "#      -n fleet-default -o jsonpath='{.status.registrationURL}'\")\n"
             "#   curl -k \"$REGURL\" > elemental/elemental_config.yaml\n"

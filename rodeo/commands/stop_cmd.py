@@ -19,7 +19,7 @@ from ..config import load_config
 from ..inventory import _load_topology
 from ..privilege import ensure_root, is_root
 from ._options import config_options
-from ..engine.libvirt import LibvirtDriver
+from ..engine.libvirt import LibvirtDriver, discover_rodeo_vm_names
 
 console = Console()
 
@@ -182,19 +182,13 @@ def stop_cmd(config_path: str, config_dir: str | None, params: tuple[str, ...], 
     components = topology.get("components", [])
     node_templates = topology.get("node_templates", {})
 
-    # VMs to stop.
+    # VMs to stop. --all discovers what's actually on the host; a plan stop uses
+    # the definition's VM list, falling back to discovery (never a hardcoded set).
+    uri0 = (cfg or {"libvirt": {"uri": "qemu:///system"}})["libvirt"]["uri"]
     if all:
-        vm_names = []
-        try:
-            with LibvirtDriver(((cfg or {"libvirt": {"uri": "qemu:///system"}})["libvirt"]["uri"])) as lv:
-                all_doms = lv.list_all_domain_names()
-                vm_names = [n for n in all_doms if any(p in n for p in ("harvester", "rancher", "rodeo"))]
-        except Exception:
-            vm_names = ["harvester1", "harvester2", "harvester3", "rancher"]
-        if not vm_names:
-            vm_names = ["harvester1", "harvester2", "harvester3", "rancher"]
+        vm_names = discover_rodeo_vm_names(uri0)
     else:
-        vm_names = list((cfg or {}).get("vms", {}).keys()) or ["harvester1", "harvester2", "harvester3", "rancher"]
+        vm_names = list((cfg or {}).get("vms", {}).keys()) or discover_rodeo_vm_names(uri0)
 
     # Infra aware log (using infra_type from templates if present).
     for v in vm_names:

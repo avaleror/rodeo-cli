@@ -443,13 +443,28 @@ class DeployRunner:
             user = vm.get("user", "root")
             host = vm.get("ip", hostname)  # fall back to bare hostname (libvirt DNS)
 
+            # Harvester nodes SSH in as the non-root `rancher` user, but the RKE2
+            # kubeconfig (/etc/rancher/rke2/rke2.yaml) is root-only (0600), so a
+            # plain `kubectl apply` fails with "permission denied". Run kubectl
+            # under sudo with whichever kubeconfig exists (RKE2 on Harvester, K3s
+            # on the Rancher node) and the rke2/k3s bin dirs on PATH — works on
+            # any node regardless of the login user.
+            remote_cmd = (
+                "sudo bash -c '"
+                "for f in /etc/rancher/rke2/rke2.yaml /etc/rancher/k3s/k3s.yaml; do "
+                "[ -f \"$f\" ] && export KUBECONFIG=\"$f\" && break; done; "
+                "export PATH=\"$PATH:/var/lib/rancher/rke2/bin:/var/lib/rancher/k3s/bin\"; "
+                "kubectl apply -f -"
+                "'"
+            )
+
             yield LogLine(f"Applying {len(files)} manifest(s) on {hostname} ({host})...")
             for f in files:
                 yield LogLine(f"  {hostname}: applying {f.name}...")
                 try:
                     r = subprocess.run(
                         ["ssh", "-i", key, *ssh_opts(), f"{user}@{host}",
-                         "kubectl apply -f -"],
+                         remote_cmd],
                         input=f.read_text(),
                         capture_output=True, text=True, timeout=120,
                     )

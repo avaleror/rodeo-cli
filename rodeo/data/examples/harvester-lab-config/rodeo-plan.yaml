@@ -27,6 +27,11 @@ resources:
     # → containerd "no space left on device" → RKE2 never converges → no VIP.
     disk_gb: 250
 
+# Pin the Harvester version explicitly so this profile never silently drifts to
+# a different tool default. All Harvester profiles pin the same version.
+versions:
+  harvester: "1.8.1"
+
 # credentials use ?? for secrets.yaml or env
 credentials:
   harvester_os_password: "??harvester_os_password"

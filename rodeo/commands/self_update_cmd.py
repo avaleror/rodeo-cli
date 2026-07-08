@@ -126,22 +126,34 @@ def self_update_cmd(branch: str | None) -> None:
         f"  target : [dim]{target_ref}[/dim]  (currently {version_before})"
     )
 
-    # 1. Fetch the target — loud on failure (offline, auth, unreachable remote).
-    fetch = _git("fetch", "--tags", "--prune", remote, target_branch, check=False)
+    # 1. Fetch the target with an EXPLICIT refspec so the remote-tracking ref
+    #    (refs/remotes/origin/<branch>) is always written — a plain
+    #    `git fetch origin main` leaves it stale on single-branch / custom-refspec
+    #    clones, which is exactly how install.sh sets a host up. A genuinely
+    #    missing branch (stale fork) fails here with "couldn't find remote ref".
+    refspec = f"+refs/heads/{target_branch}:refs/remotes/{remote}/{target_branch}"
+    fetch = _git("fetch", "--tags", "--prune", remote, refspec, check=False)
     if fetch.returncode != 0:
-        console.print(
-            f"[red]✗  git fetch {remote} {target_branch} failed:[/red]\n{fetch.stderr.strip()}"
-        )
+        err = fetch.stderr.strip()
+        if "couldn't find remote ref" in err or "not found" in err.lower():
+            console.print(
+                f"[red]✗  branch '{target_branch}' does not exist on {remote}.[/red]\n"
+                f"    The clone's origin ({origin_url}) may be a fork or stale mirror.\n"
+                "    Re-run install.sh against avaleror/rodeo-cli to reset the remote."
+            )
+        else:
+            console.print(f"[red]✗  git fetch {remote} {target_branch} failed:[/red]\n{err}")
         raise SystemExit(1)
 
-    # 2. Resolve the tip we must land on. If the branch doesn't exist on the
-    #    remote (e.g. a fork missing main), fail rather than silently staying put.
+    # 2. Resolve the tip we must land on. Prefer the tracking ref we just wrote;
+    #    fall back to FETCH_HEAD (the just-fetched commit) if it isn't readable.
     tip = _git("rev-parse", target_ref, check=False)
     if tip.returncode != 0:
+        tip = _git("rev-parse", "FETCH_HEAD", check=False)
+    if tip.returncode != 0 or not tip.stdout.strip():
         console.print(
-            f"[red]✗  {target_ref} not found on the remote.[/red]\n"
-            f"    The clone's origin ({origin_url}) may be a fork or stale mirror.\n"
-            "    Re-run install.sh against avaleror/rodeo-cli to reset the remote."
+            f"[red]✗  could not resolve {target_ref} after fetch — aborting rather than "
+            "risk leaving the host on stale code.[/red]"
         )
         raise SystemExit(1)
     target_sha = tip.stdout.strip()
@@ -153,11 +165,11 @@ def self_update_cmd(branch: str | None) -> None:
         dirty = _git("status", "--porcelain", check=False).stdout.strip()
         if dirty:
             console.print("[yellow]⚠  discarding local working-tree changes to align with the remote.[/yellow]")
-    reset = _git("checkout", "-B", target_branch, target_ref, check=False)
+    reset = _git("checkout", "-B", target_branch, target_sha, check=False)
     if reset.returncode != 0:
         console.print(f"[red]✗  could not check out {target_ref}:[/red]\n{reset.stderr.strip()}")
         raise SystemExit(1)
-    _git("reset", "--hard", target_ref, check=False)
+    _git("reset", "--hard", target_sha, check=False)
 
     # 4. Assert alignment BEFORE reinstalling — this is the anti-strand guarantee.
     head_after = _git("rev-parse", "HEAD", check=False).stdout.strip()

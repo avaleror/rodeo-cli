@@ -87,14 +87,18 @@ def test_already_up_to_date(repo, monkeypatch):
 
 
 def test_missing_remote_branch_fails(repo, monkeypatch):
-    """A fork missing origin/main must fail loudly, not no-op to success."""
-    class NoTip(FakeGit):
+    """A fork missing origin/main must fail loudly, not no-op to success.
+
+    The branch is absent on the remote, so `git fetch` reports "couldn't find
+    remote ref" — self-update must surface that, not report success.
+    """
+    class NoBranch(FakeGit):
         def __call__(self, *args, check=True):
-            if list(args)[:1] == ["rev-parse"] and "HEAD" not in args:
-                return _cp(returncode=128, stderr="unknown revision")
+            if list(args)[:1] == ["fetch"]:
+                return _cp(returncode=128, stderr="fatal: couldn't find remote ref refs/heads/main")
             return super().__call__(*args, check=check)
-    monkeypatch.setattr(su, "_git", NoTip(head="oldsha", target_sha="newsha", align=False))
+    monkeypatch.setattr(su, "_git", NoBranch(head="oldsha", target_sha="newsha", align=False))
     monkeypatch.setattr(su, "_installed_version", lambda: "0.10.3")
     result = CliRunner().invoke(su.self_update_cmd, [])
     assert result.exit_code == 1
-    assert "not found" in result.output.lower()
+    assert "does not exist" in result.output.lower()

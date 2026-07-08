@@ -5,8 +5,6 @@ metadata:
   name: prod
   annotations:
     field.cattle.io/description: VMs running in Production
-    {}
-    #  key: string
   labels:
     stage: prod
 ---

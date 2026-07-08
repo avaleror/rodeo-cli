@@ -153,8 +153,25 @@ def start_cmd(config_path: str, config_dir: str | None, params: tuple[str, ...],
     start_order = topology.get("start_order", [])
     components = topology.get("components", [])
 
+    uri0 = (cfg or {"libvirt": {"uri": "qemu:///system"}})["libvirt"]["uri"]
     if all:
-        vm_names = ["harvester1", "harvester2", "harvester3", "rancher"]  # fallback
+        # Discover the VMs actually defined on the host instead of assuming a
+        # fixed 3-node Harvester set. Without this, `start --all` invents a
+        # phantom "harvester3" on 2-node / rancher-only / edge labs and crashes
+        # with "Domain not found". Mirrors `clean --all` discovery.
+        vm_names = []
+        try:
+            with LibvirtDriver(uri0) as _lv:
+                vm_names = [n for n in _lv.list_all_domain_names()
+                            if any(p in n for p in ("harvester", "rancher", "edge", "eib", "rodeo"))]
+        except Exception:
+            try:
+                res = subprocess.run(["virsh", "-c", uri0, "list", "--all", "--name"],
+                                     capture_output=True, text=True, check=False)
+                vm_names = [n.strip() for n in res.stdout.splitlines()
+                            if n.strip() and any(p in n for p in ("harvester", "rancher", "edge", "eib", "rodeo"))]
+            except Exception:
+                pass
     else:
         vm_names = list((cfg or {}).get("vms", {}).keys()) or ["harvester1", "harvester2", "harvester3", "rancher"]
 
@@ -176,9 +193,15 @@ def start_cmd(config_path: str, config_dir: str | None, params: tuple[str, ...],
         edge_node_names = set()
     try:
         with LibvirtDriver(uri) as lv:
+            defined = set(lv.list_all_domain_names())
             ordered = [v for v in start_order if v in vm_names] or vm_names
             net = (cfg or {}).get("network", {})
             for idx, name in enumerate(ordered):
+                if name not in defined:
+                    # A name from start_order/vm_names that was never deployed
+                    # (e.g. harvester3 on a 2-node lab). Skip, do not crash.
+                    console.print(f"  [dim]skip (not defined on this host)[/dim] {name}")
+                    continue
                 if name in edge_node_names:
                     disk = image_dir / f"{name}-vda.qcow2"
                     if not disk.exists():

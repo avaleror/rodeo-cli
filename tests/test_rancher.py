@@ -72,6 +72,17 @@ def test_harvester_nodes_fallback_when_vms_missing(cfg):
     assert phase.harvester_nodes == ["harvester1", "harvester2", "harvester3"]
 
 
+def test_auto_import_defaults_off(cfg):
+    # The workshop model is manual import; nothing should auto-import unless the
+    # plan opts in explicitly.
+    assert RancherPhase(cfg).harvester_auto_import is False
+
+
+def test_auto_import_opt_in(cfg):
+    cfg["harvester_auto_import"] = True
+    assert RancherPhase(cfg).harvester_auto_import is True
+
+
 def test_import_fails_when_cluster_id_never_assigned(cfg, monkeypatch):
     """Provisioning API: if Rancher never assigns a cluster ID the import must fail."""
     phase = RancherPhase(cfg)

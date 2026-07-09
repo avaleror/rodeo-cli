@@ -40,6 +40,8 @@ ansible:
   path: null
   inventory: deployer/inventory.local
 
+harvester_auto_import: false   # students import Harvester into Rancher as lab challenge 1
+
 credentials:
   harvester_os_password: "??harvester_os_password"
   harvester_admin_password: "??harvester_admin_password"

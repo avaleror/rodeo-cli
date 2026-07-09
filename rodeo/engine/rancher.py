@@ -63,7 +63,10 @@ class RancherPhase:
         self.elemental_op_version    = ver.get("elemental_operator", "1.9.0")
 
         self.profile_type = cfg.get("type", "")
-        self.harvester_auto_import = cfg.get("harvester_auto_import", True)
+        # Default OFF: the rodeo/workshop model is that students import Harvester
+        # into Rancher themselves as a lab exercise. A plan opts in explicitly
+        # with `harvester_auto_import: true` when a fully-wired cluster is wanted.
+        self.harvester_auto_import = cfg.get("harvester_auto_import", False)
 
         eib_vm = cfg.get("vms", {}).get("eib", {})
         self.eib_ip      = eib_vm.get("ip", "192.168.122.20")

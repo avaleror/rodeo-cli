@@ -698,54 +698,63 @@ class RancherPhase:
         return True
 
     def _sync_cacerts(self) -> Iterator[DeployEvent]:
-        """Ensure cacerts matches the dynamiclistener-ca cert that actually signs the TLS chain.
+        """Ensure cacerts holds the CA that actually signs the served TLS chain.
 
-        Rancher's dynamic listener uses dynamiclistener-ca as the serving CA.  After a
-        Helm upgrade, the dynamiclistener-ca may rotate; the cacerts Setting is not
-        automatically updated.  Use tls-rancher-ingress.ca.crt as the source of truth —
-        it holds the same dynamiclistener-ca cert that agents need to verify TLS.
+        The cattle-cluster-agent verifies Rancher's TLS using the cacerts Setting.
+        It must contain the exact CA the server presents on the wire, or the agent
+        crashloops with "certificate signed by unknown authority (ECDSA
+        verification failure)".
 
-        NOTE: tls-rancher-internal-ca is the root CA that signs dynamiclistener-ca, but
-        it is NOT the cert agents need in cacerts — the serving cert chain the server
-        sends only goes up to dynamiclistener-ca, so agents must trust that directly.
+        Source of truth = the CA the server actually serves. We open a TLS
+        connection to the port agents connect on (the Rancher NodePort) and take
+        the issuer cert straight from the presented chain. This is deliberately
+        NOT read from a K8s secret: on NodePort deployments the dynamiclistener
+        serving CA differs from tls-rancher-ingress (same CN
+        "dynamiclistener-ca@<serial>", different key), and syncing the ingress CA
+        writes the WRONG cert — the agent then rejects the real chain. Pulling the
+        CA from the live handshake is version- and topology-independent.
         """
         if self.standalone:
             return
 
-        r = self._ssh_script(
-            "kubectl --kubeconfig=/etc/rancher/k3s/k3s.yaml"
-            " get secret tls-rancher-ingress -n cattle-system"
-            " -o jsonpath='{.data.ca\\.crt}' 2>/dev/null | base64 -d",
-            timeout=15,
+        # Extract the issuer (2nd) cert from the chain served on the agent-facing
+        # NodePort. `openssl s_client -showcerts` prints the full chain; the leaf
+        # is cert 1 and its signing dynamiclistener-ca is cert 2.
+        extract = (
+            "set -euo pipefail\n"
+            f"echo | openssl s_client -connect 127.0.0.1:{self.nodeport} -showcerts 2>/dev/null"
+            " | awk '/BEGIN CERT/{c++} c==2'\n"
         )
-        if r.returncode != 0 or not r.stdout.strip():
-            return  # secret absent — nothing to sync
-
-        serving_ca = r.stdout.strip()
+        r = self._ssh_script(extract, timeout=20)
+        served_ca = r.stdout.strip()
+        if r.returncode != 0 or "BEGIN CERTIFICATE" not in served_ca:
+            yield LogLine("  ⚠ cacerts sync: could not read served CA — skipping")
+            return
 
         try:
             current = self._http("GET", "/v3/settings/cacerts", token=self._api_token)
             api_ca = (current.get("value") or "").strip()
         except Exception:
-            return
+            api_ca = ""
 
-        if api_ca == serving_ca:
+        if api_ca == served_ca:
             return  # already in sync
 
         # cacerts is read-only via the REST API; patch the K8s resource directly.
+        # Re-extract inside the same shell so the exact bytes are patched (piping
+        # the PEM back through Python json.dumps preserves newlines safely).
         patch_script = (
             "set -euo pipefail\n"
-            "CA=$(kubectl --kubeconfig=/etc/rancher/k3s/k3s.yaml"
-            " get secret tls-rancher-ingress -n cattle-system"
-            " -o jsonpath='{.data.ca\\.crt}' | base64 -d)\n"
-            "VALUE=$(python3 -c \"import sys,json; print(json.dumps(sys.stdin.read().rstrip()))\" <<< \"$CA\")\n"
+            f"CA=$(echo | openssl s_client -connect 127.0.0.1:{self.nodeport} -showcerts 2>/dev/null"
+            " | awk '/BEGIN CERT/{c++} c==2')\n"
+            'VALUE=$(python3 -c "import sys,json; print(json.dumps(sys.stdin.read().rstrip()))" <<< "$CA")\n'
             "kubectl --kubeconfig=/etc/rancher/k3s/k3s.yaml"
-            " patch setting cacerts"
-            " --type=merge -p \"{\\\"value\\\": $VALUE}\" 2>&1\n"
+            ' patch setting cacerts'
+            ' --type=merge -p "{\\"value\\": $VALUE}" 2>&1\n'
         )
         r2 = self._ssh_script(patch_script, timeout=20)
         if r2.returncode == 0:
-            yield LogLine("  cacerts synced with serving CA.")
+            yield LogLine("  cacerts synced with the served CA.")
         else:
             yield LogLine(f"  ⚠ cacerts sync: {r2.stderr.strip()[:120]}")
 

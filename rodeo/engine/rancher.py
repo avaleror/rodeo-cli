@@ -62,6 +62,10 @@ class RancherPhase:
         self.elemental_crds_version  = ver.get("elemental_operator_crds", "1.9.0")
         self.elemental_op_version    = ver.get("elemental_operator", "1.9.0")
 
+        # Rancher Prime UI extensions to reconcile after import (declarative, from
+        # the definition's rancher.ui_extensions). Empty for profiles that declare none.
+        self.ui_extensions = cfg.get("rancher_ui_extensions", []) or []
+
         self.profile_type = cfg.get("type", "")
         # Default OFF: the rodeo/workshop model is that students import Harvester
         # into Rancher themselves as a lab exercise. A plan opts in explicitly
@@ -129,6 +133,12 @@ class RancherPhase:
         _ag = cfg.get("alien_geeko", {})
         self.alien_geeko_fleet_repo = _ag.get(
             "fleet_repo", "https://github.com/SUSE-Technical-Marketing/Alien-Geeko.git"
+        )
+        self.alien_geeko_image = _ag.get("image", "docker.io/avaleror/alien-geeko:latest")
+        self.alien_geeko_fleet_name = _ag.get("fleet_name", "alien-geeko")
+        self.alien_geeko_fleet_namespace = _ag.get("fleet_namespace", "fleet-default")
+        self.alien_geeko_target_labels = _ag.get(
+            "target_labels", {"demo": "true", "edge-type": "x86-cluster"}
         )
 
         # For letsEncrypt mode, rancher_hostname and rancher_api are updated at
@@ -258,6 +268,11 @@ class RancherPhase:
 
         yield LogLine("Ejecting installer ISOs from Harvester VMs...")
         yield from self._eject_cdroms()
+
+        # Reconcile declared Rancher UI extensions (e.g. the Harvester extension) to
+        # their pinned versions. Non-fatal: warnings only, never fails the phase.
+        if self.ui_extensions:
+            yield from self._reconcile_ui_extensions()
 
         yield LogLine(
             f"\n  Rancher URL  : {self.rancher_api}  (NodePort)"
@@ -1298,6 +1313,136 @@ class RancherPhase:
         yield LogLine("  Extension repositories added.")
         return True
 
+    # ---------- Rancher UI extensions (declarative reconcile) ----------
+
+    def _reconcile_ui_extensions(self) -> Generator[DeployEvent, None, bool]:
+        """Reconcile the UI extensions declared in the definition (rancher.ui_extensions).
+
+        For each extension: ensure its ClusterRepo exists, force-reindex it so the
+        pinned version is resolvable even from a stale cached index, then install it
+        (or upgrade an older release in place) via the Rancher catalog action, and
+        verify. Idempotent and non-fatal: a failure logs a warning and moves on so a
+        slow chart pull or a transient error never breaks the deploy.
+        """
+        ns = "cattle-ui-plugin-system"
+        for ext in self.ui_extensions:
+            name = ext.get("name")
+            version = str(ext.get("version", "")).strip()
+            repo = ext.get("repo", {}) or {}
+            repo_name = repo.get("name", "rancher")
+            git_repo = repo.get("git_repo", "")
+            git_branch = repo.get("git_branch", "main")
+            if not name or not version:
+                yield LogLine(f"  ⚠ skipping malformed ui_extension entry: {ext!r}")
+                continue
+
+            yield LogLine(f"Reconciling Rancher UI extension {name} -> {version}...")
+            current = self._ui_extension_version(name, ns)
+            if current == version:
+                yield LogLine(f"  {name} already at {version}.")
+                continue
+
+            if not (yield from self._ensure_ext_repo(repo_name, git_repo, git_branch)):
+                yield LogLine(f"  ⚠ {name}: could not prepare ClusterRepo {repo_name}; skipping.")
+                continue
+
+            action = "upgrade" if current else "install"
+            if not self._catalog_chart_action(action, repo_name, name, version, ns):
+                yield LogLine(f"  ⚠ {name}: catalog {action} request failed; skipping.")
+                continue
+
+            # The catalog action kicks off an async helm-operation; poll for the result.
+            deadline = time.monotonic() + 240
+            while time.monotonic() < deadline:
+                if self._ui_extension_version(name, ns) == version:
+                    break
+                time.sleep(10)
+            final = self._ui_extension_version(name, ns)
+            if final == version:
+                yield LogLine(f"  {name} reconciled to {version}.")
+            else:
+                yield LogLine(
+                    f"  ⚠ {name} not at {version} yet (is '{final or 'none'}'); "
+                    "check the Rancher Extensions page."
+                )
+        return True
+
+    def _ui_extension_version(self, name: str, ns: str) -> str:
+        """Installed UIPlugin version, or '' if the extension is not present."""
+        script = (
+            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+            f"kubectl -n {ns} get uiplugins.catalog.cattle.io {name} "
+            "-o jsonpath='{.spec.plugin.version}' 2>/dev/null || true\n"
+        )
+        return self._ssh_script(script, timeout=30).stdout.strip()
+
+    def _ensure_ext_repo(
+        self, repo_name: str, git_repo: str, git_branch: str
+    ) -> Generator[DeployEvent, None, bool]:
+        """Create the ClusterRepo if missing, then force a re-index."""
+        ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        create_block = ""
+        if git_repo:
+            create_block = (
+                f"if ! kubectl get clusterrepo {repo_name} >/dev/null 2>&1; then\n"
+                "  cat <<'__EXT_REPO__' | kubectl apply -f -\n"
+                "apiVersion: catalog.cattle.io/v1\n"
+                "kind: ClusterRepo\n"
+                "metadata:\n"
+                f"  name: {repo_name}\n"
+                "spec:\n"
+                f"  gitRepo: {git_repo}\n"
+                f"  gitBranch: {git_branch}\n"
+                "__EXT_REPO__\n"
+                "fi\n"
+            )
+        script = (
+            "set -e\n"
+            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+            f"{create_block}"
+            f"kubectl patch clusterrepo {repo_name} --type=merge "
+            f"-p '{{\"spec\":{{\"forceUpdate\":\"{ts}\"}}}}'\n"
+        )
+        r = self._ssh_script(script, timeout=60)
+        for line in (r.stdout + r.stderr).splitlines():
+            if line.strip():
+                yield LogLine(f"  {line}")
+        if r.returncode != 0:
+            return False
+        time.sleep(15)  # let the catalog controller download the index
+        return True
+
+    def _catalog_chart_action(
+        self, action: str, repo_name: str, chart: str, version: str, ns: str
+    ) -> bool:
+        """Drive the Rancher catalog install/upgrade action for one chart. True on success."""
+        body = {
+            "charts": [
+                {
+                    "chartName": chart,
+                    "version": version,
+                    "releaseName": chart,
+                    "annotations": {
+                        "catalog.cattle.io/ui-source-repo-type": "cluster",
+                        "catalog.cattle.io/ui-source-repo": repo_name,
+                    },
+                    "values": {},
+                }
+            ],
+            "namespace": ns,
+            "wait": True,
+            "timeout": "600s",
+        }
+        try:
+            self._http(
+                "POST",
+                f"/v1/catalog.cattle.io.clusterrepos/{repo_name}?action={action}",
+                data=body,
+                token=self._api_token,
+            )
+            return True
+        except Exception:
+            return False
 
     def _create_machine_registrations(self) -> Generator[DeployEvent, None, bool]:
         """Create Elemental MachineRegistration CRs in fleet-default.
@@ -1383,9 +1528,9 @@ class RancherPhase:
             # Elemental register agent — EIB embeds this into the edge node image
             # so nodes can phone home to the Elemental Operator on first boot.
             f'$HAULER store add image "registry.suse.com/rancher/elemental-register:{self.elemental_op_version}" --store $STORE\n'
-            # Alien-Geeko demo app image — Fleet deploys this to edge clusters;
+            # Demo app image (Fleet-deployed to edge clusters, from cfg["alien_geeko"]["image"]);
             # edge nodes pull from Hauler via k3s registry mirror (docker.io → eib:5000).
-            '$HAULER store add image "docker.io/avaleror/alien-geeko:latest" --store $STORE\n'
+            f'$HAULER store add image "{self.alien_geeko_image}" --store $STORE\n'
             # SL Micro 6.2 SelfInstall ISO — EIB base for Elemental ISO builds (edge1/edge2)
             f'$HAULER store add file "{self.sl_micro_iso_url}" --store $STORE\n'
             # SL Micro 6.2 Default RAW — EIB base for standalone K3s/RKE2 builds (edge3/edge4)
@@ -1466,30 +1611,36 @@ class RancherPhase:
         return True
 
     def _create_alien_geeko_fleet(self) -> Generator[DeployEvent, None, bool]:
-        """Create a Fleet GitRepo for the Alien-Geeko demo app.
+        """Create a Fleet GitRepo for the demo app declared in cfg["alien_geeko"].
 
-        Alien-Geeko (https://github.com/SUSE-Technical-Marketing/Alien-Geeko) is a
-        Node.js CRT terminal web app showing Kubernetes cluster vitals. Fleet deploys
-        it to any downstream cluster labelled demo=true + edge-type=x86-cluster.
+        Defaults to Alien-Geeko (https://github.com/SUSE-Technical-Marketing/Alien-Geeko), a
+        Node.js CRT terminal web app showing Kubernetes cluster vitals, but every name/label here
+        comes from self.alien_geeko_* (set from cfg["alien_geeko"] in __init__) so a rodeo-plan.yaml
+        override can point this at a different demo app entirely.
 
         Participants label their edge cluster after Elemental registers + provisions it.
         The GitRepo is ready in advance so deployment kicks in the moment the label appears.
         """
+        labels_yaml = "".join(
+            f'          {k}: "{v}"\n' for k, v in self.alien_geeko_target_labels.items()
+        )
+        selector_yaml = ", ".join(
+            f"{k}={v}" for k, v in self.alien_geeko_target_labels.items()
+        )
         manifest = (
             "apiVersion: fleet.cattle.io/v1alpha1\n"
             "kind: GitRepo\n"
             "metadata:\n"
-            "  name: alien-geeko\n"
-            "  namespace: fleet-default\n"
+            f"  name: {self.alien_geeko_fleet_name}\n"
+            f"  namespace: {self.alien_geeko_fleet_namespace}\n"
             "spec:\n"
-            f"  repo: http://{self.eib_ip}:{self.gitea_port}/{self.gitea_user}/alien-geeko.git\n"
+            f"  repo: http://{self.eib_ip}:{self.gitea_port}/{self.gitea_user}/{self.alien_geeko_fleet_name}.git\n"
             "  branch: main\n"
             "  targets:\n"
             "    - name: x86-edge-clusters\n"
             "      clusterSelector:\n"
             "        matchLabels:\n"
-            '          demo: "true"\n'
-            "          edge-type: x86-cluster\n"
+            f"{labels_yaml}"
         )
         script = (
             "set -euo pipefail\n"
@@ -1498,7 +1649,7 @@ class RancherPhase:
             f"{manifest}"
             "__GITREPO__\n"
         )
-        yield LogLine("Creating Fleet GitRepo for Alien-Geeko demo app...")
+        yield LogLine(f"Creating Fleet GitRepo for {self.alien_geeko_fleet_name} demo app...")
         r = self._ssh_script(script, timeout=30)
         for line in (r.stdout + r.stderr).splitlines():
             if line.strip():
@@ -1508,8 +1659,8 @@ class RancherPhase:
             yield LogLine(f"  ✗ {self.error}")
             return False
         yield LogLine(
-            "  Fleet GitRepo 'alien-geeko' created in fleet-default.\n"
-            "  To deploy: label an edge cluster with  demo=true  edge-type=x86-cluster\n"
+            f"  Fleet GitRepo '{self.alien_geeko_fleet_name}' created in {self.alien_geeko_fleet_namespace}.\n"
+            f"  To deploy: label an edge cluster with  {selector_yaml}\n"
             f"  Image served from Hauler: http://{self.eib_ip}:5000 (docker.io mirror)"
         )
         return True
@@ -1578,15 +1729,15 @@ class RancherPhase:
             "  -d '{\"name\":\"setup\",\"scopes\":[\"write:repository\"]}' \\\n"
             "  | python3 -c "
             "\"import sys,json; print(json.load(sys.stdin)['sha1'])\")\n\n"
-            # Mirror Alien-Geeko from GitHub via Gitea's migration API.
+            # Mirror the demo app repo from GitHub via Gitea's migration API.
             # Gitea clones the repo internally — no git binary needed on the host.
             # This is the one internet call that happens at deploy time.
             "curl -sf -X POST \"$GITEA_URL/api/v1/repos/migrate\" \\\n"
             '  -H "Authorization: token $TOKEN" \\\n'
             '  -H "Content-Type: application/json" \\\n'
             f'  -d \'{{"clone_addr":"{self.alien_geeko_fleet_repo}",'
-            f'"repo_name":"alien-geeko","private":false,"mirror":false}}\'\n\n'
-            f'echo "  alien-geeko: http://{self.eib_ip}:{self.gitea_port}/$GITEA_USER/alien-geeko.git"\n\n'
+            f'"repo_name":"{self.alien_geeko_fleet_name}","private":false,"mirror":false}}\'\n\n'
+            f'echo "  {self.alien_geeko_fleet_name}: http://{self.eib_ip}:{self.gitea_port}/$GITEA_USER/{self.alien_geeko_fleet_name}.git"\n\n'
             # ---- eib-config Gitea repo with EIB definition templates ----
             # Install git (needed to create the initial commit and push the repo).
             # Leap Micro 6.2 may not have git by default.
@@ -1692,9 +1843,9 @@ class RancherPhase:
             yield LogLine(f"  ✗ {self.error}")
             return False
         yield LogLine(
-            f"  Gitea ready. alien-geeko and eib-config repos initialised.\n"
+            f"  Gitea ready. {self.alien_geeko_fleet_name} and eib-config repos initialised.\n"
             f"  Fleet GitRepo: http://{self.eib_ip}:{self.gitea_port}"
-            f"/{self.gitea_user}/alien-geeko.git\n"
+            f"/{self.gitea_user}/{self.alien_geeko_fleet_name}.git\n"
             f"  EIB workspace: http://{self.eib_ip}:{self.gitea_port}"
             f"/{self.gitea_user}/eib-config.git"
         )

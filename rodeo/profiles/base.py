@@ -81,16 +81,21 @@ class RodeoProfile(ABC):
             vms = self._vms_from_inventory(inv) or self._static_vms_copy()
             storage = inv.get("storage", STORAGE_DEFAULT)
             versions = (inv.get("versions") or self.versions) if self.versions_from_definition else self.versions
+            ui_extensions = inv.get("rancher", {}).get("ui_extensions", [])
         else:
             vms = self._static_vms_copy()
             storage = STORAGE_DEFAULT
             versions = self.versions
+            ui_extensions = []
 
         cfg = {
             "vms": vms,
             "resources": self.resources,
             "versions": versions,
             "storage": storage,
+            # Rancher Prime UI extensions declared in the definition (rancher.ui_extensions).
+            # The RancherPhase reconciles these to their pinned versions after import.
+            "rancher_ui_extensions": ui_extensions,
         }
         cfg.update(self.extra_cfg())
         # Return a deep copy so callers that merge/mutate the config in place

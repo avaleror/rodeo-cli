@@ -35,7 +35,10 @@ def plan_cmd(config_path: str, config_dir: str | None, params: tuple[str, ...], 
     create, change, ok = _print_vms(cfg, actual)
     _print_network(actual)
     downloads = _print_storage(cfg)
-    pending = _print_phases(cfg, profile)
+    # A VM create/change the diff above just reported means the "vms" phase's
+    # cached "done" state no longer reflects the host — flag that instead of
+    # printing a plain checkmark that contradicts the diff a few lines up.
+    pending = _print_phases(cfg, profile, vms_drift=bool(create or change))
 
     console.print()
     if create or change or downloads or pending:
@@ -152,7 +155,7 @@ def _print_storage(cfg: dict) -> int:
     return downloads
 
 
-def _print_phases(cfg: dict, profile) -> int:
+def _print_phases(cfg: dict, profile, vms_drift: bool = False) -> int:
     plan_name = cfg.get("name", "default")
     state = load_state(plan_name).get("phases", {})
     guard = cfg.get("deployment_target") == "instruqt"
@@ -161,7 +164,12 @@ def _print_phases(cfg: dict, profile) -> int:
     pending = 0
     for phase in profile.phases:
         info = state.get(phase, {})
-        if info.get("completed"):
+        if info.get("completed") and phase == "vms" and vms_drift:
+            console.print(
+                f"    [yellow]~[/yellow]  {phase:<10} "
+                f"[yellow]done, but drift detected (see Virtual machines above)[/yellow]"
+            )
+        elif info.get("completed"):
             console.print(f"    [green]✓[/green]  {phase:<10} [dim]done[/dim]")
         elif guard and phase in profile.guarded_phases:
             console.print(

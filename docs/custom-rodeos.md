@@ -179,6 +179,33 @@ rodeo plan
 
 ---
 
+## Re-running after a deploy
+
+Idempotency here is **phase-level, not resource-level**. Each phase (`kvm_host`, `vms`,
+`pxe_server`, `cluster`, `rancher`, `finalise`) is marked done in
+`~/.rodeo/state/<name>.yaml` once it succeeds, and a plain re-run skips any phase already
+marked done — regardless of what you changed in `definition.yaml` or `rodeo-plan.yaml`.
+The `apply` phase is the one exception (it never caches, so node-manifest edits always
+take effect on the next run — see [Applying manifests to a node](#applying-manifests-to-a-node)).
+
+So after a lab has deployed once, editing `nodes`, `resources`, or `network` and
+re-running `rodeo up --profile mylab` **does nothing** — the phases that would apply the
+change are skipped. `rodeo plan` will still show the drift (a `~ change` on the affected
+VM, and that phase flagged `done, but drift detected` instead of a plain checkmark), but
+seeing it and fixing it are two different commands:
+
+```bash
+cd ~/.rodeo/profiles/mylab
+rodeo deploy --from vms     # resume from a specific phase, or
+rodeo deploy --force        # redo every phase, or
+rodeo clean --yes && rodeo up --profile mylab   # destroy this lab's VMs and redeploy
+```
+
+VM resource changes (memory, vCPU, disk) generally need the `clean` + redeploy path —
+libvirt won't resize a running domain's memory/vCPU in place from a `define`.
+
+---
+
 ## The loop, end to end
 
 ```bash
@@ -188,9 +215,12 @@ rodeo profiles                          # confirm it is listed (custom)
 rodeo up --profile edge-lab             # doctor → secrets → deploy → login info
 ```
 
-Custom profiles deploy **in place** from `~/.rodeo/profiles/<name>/`, so editing the
-files and re-running `rodeo up --profile <name>` picks up your changes. To start a fresh
-copy instead, scaffold under a new name or pass `--dir`.
+Custom profiles deploy **in place** from `~/.rodeo/profiles/<name>/`. Before the lab has
+deployed once, editing the files and re-running `rodeo up --profile <name>` just works —
+there's no state yet, so every phase runs fresh. Once it *has* deployed, re-running picks
+up file edits only for the `apply` phase; other phases need `--force` or `--from` (see
+[Re-running after a deploy](#re-running-after-a-deploy)) or they're silently skipped. To
+start a fresh copy instead of editing in place, scaffold under a new name or pass `--dir`.
 
 ---
 

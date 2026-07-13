@@ -10,8 +10,8 @@ It demonstrates the EIB-inspired model:
 - `definition.yaml` — (optional) your custom or override definition for the rodeo. If present, inventory prefers it over the bundled suse-virt one.
 - `rodeo-plan.yaml` — (optional) your plan overrides + parameters. If present and no --config, it is auto-used.
 - `certs/` — CA / cert files to make available on nodes or host.
-- `manifests/` — Kubernetes manifests to pre-apply to the Harvester clusters (future: auto image extraction for airgap like EIB embedded registry).
-- `helm/values/` — values.yaml files for pre-deployed helm charts.
+- `<hostname>/` — manifests to `kubectl apply` on that node, e.g. `harvester1/namespaces.yml` (see docs/custom-rodeos.md).
+- `manifests/`, `helm/values/` — reserved for a future phase (bulk-apply / pre-staged Helm values); nothing consumes them yet.
 - `custom/scripts/` — numbered scripts (e.g. 50-my-setup.sh) run in order for custom bootstrap or post-deploy steps.
 
 ## Quick start (preferred — minimal manual steps)

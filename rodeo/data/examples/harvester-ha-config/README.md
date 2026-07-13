@@ -34,4 +34,6 @@ sudo -E rodeo --config-dir ./harvester-ha-config deploy
 
 - `definition.yaml` — the topology (3 Harvester nodes; no Rancher node/components)
 - `rodeo-plan.yaml` — resources, network, credentials (`??key` from `~/.rodeo/secrets.yaml`)
-- `certs/`, `manifests/`, `helm/values/`, `custom/scripts/` — optional artifacts
+- `certs/`, `custom/scripts/` — optional artifacts
+- `<hostname>/` — manifests to `kubectl apply` on that node (see docs/custom-rodeos.md)
+- `manifests/`, `helm/values/` — reserved for a future phase; nothing consumes them yet

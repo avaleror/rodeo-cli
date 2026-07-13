@@ -6,33 +6,53 @@
 - name: Configure libvirt default network with static DHCP entries (NAT mode)
   when: network_mode == 'nat'
   block:
-    - name: Check for running domains before network redefinition
-      ansible.builtin.command: virsh list --name --state-running
-      register: running_domains
+    - name: Dump current network XML
+      ansible.builtin.command: virsh net-dumpxml {{ libvirt_network_name }}
+      register: _current_net_xml
       changed_when: false
       failed_when: false
 
-    - name: Fail if domains are running (network redefinition would drop guest connectivity)
-      ansible.builtin.fail:
-        msg: >
-          Cannot redefine the default network — the following domains are running:
-          {{ running_domains.stdout_lines }}.
-          Stop all VMs first: virsh destroy harvester1 harvester2 harvester3 rancher
-      when:
-        - running_domains.rc == 0
-        - running_domains.stdout | trim != ''
+    # Idempotency: only destroy and redefine if static DHCP host reservations
+    # are not already in the running network definition. Avoids unnecessary
+    # network flaps (and a brief DHCP/DNS drop) on re-runs — same pattern as
+    # pxe_server/tasks/network.yml, which redefines this same network again
+    # later to add PXE options.
+    #
+    # Known limitation: this only checks that *some* static reservation exists,
+    # not that every node in vm_nodes has one. Adding/removing/renumbering a
+    # node after the first successful `vms` phase run needs a forced redefine
+    # (`rodeo deploy --from vms` or `--force`) — full per-node drift detection
+    # is tracked as part of the auto-reconciliation work in ROADMAP.md.
+    - name: Redefine network with static DHCP entries (skipped if already present)
+      when: "'<host mac=' not in (_current_net_xml.stdout | default(''))"
+      block:
+        - name: Check for running domains before network redefinition
+          ansible.builtin.command: virsh list --name --state-running
+          register: running_domains
+          changed_when: false
+          failed_when: false
 
-    - name: Destroy default network to allow redefinition with static DHCP entries
-      community.libvirt.virt_net:
-        name: "{{ libvirt_network_name }}"
-        state: absent
-      failed_when: false
+        - name: Fail if domains are running (network redefinition would drop guest connectivity)
+          ansible.builtin.fail:
+            msg: >
+              Cannot redefine the default network — the following domains are running:
+              {{ running_domains.stdout_lines }}.
+              Stop all VMs first: virsh destroy harvester1 harvester2 harvester3 rancher
+          when:
+            - running_domains.rc == 0
+            - running_domains.stdout | trim != ''
 
-    - name: Define default network with static DHCP entries
-      community.libvirt.virt_net:
-        command: define
-        name: "{{ libvirt_network_name }}"
-        xml: "{{ lookup('template', 'network.xml.j2') }}"
+        - name: Destroy default network to allow redefinition with static DHCP entries
+          community.libvirt.virt_net:
+            name: "{{ libvirt_network_name }}"
+            state: absent
+          failed_when: false
+
+        - name: Define default network with static DHCP entries
+          community.libvirt.virt_net:
+            command: define
+            name: "{{ libvirt_network_name }}"
+            xml: "{{ lookup('template', 'network.xml.j2') }}"
 
     # autostart: false — if virtnetworkd socket-activates at boot (e.g. triggered by
     # libvirt-guests), it would bring up virbr0/dnsmasq before cloud-init finishes.

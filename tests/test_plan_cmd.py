@@ -6,7 +6,9 @@ import re
 from click.testing import CliRunner
 
 from rodeo import state
+from rodeo.commands import plan_cmd as plan_cmd_mod
 from rodeo.commands.plan_cmd import plan_cmd
+from rodeo.engine.libvirt import VMInfo
 
 # In the test environment libvirt-python is not installed, so the plan
 # command degrades to desired-state-only mode — itself a code path worth
@@ -52,6 +54,33 @@ def test_plan_shows_done_phases_and_instruqt_guard(tmp_path):
     assert result.exit_code == 0, result.output
     assert "done" in _flat(result.output)
     assert "guarded (instruqt)" in _flat(result.output)
+
+
+def test_plan_flags_drift_on_a_phase_already_marked_done(tmp_path, monkeypatch):
+    """A VM resource change the diff reports as '~ change' must not also read
+    as a plain checkmark under Phases — that combination is the exact
+    contradiction users hit after editing a plan post-deploy (state says
+    done, the diff says otherwise)."""
+    state.mark_phase_done("vms", "suse-virt-rodeo")
+    monkeypatch.setattr(
+        plan_cmd_mod, "_inspect_host",
+        lambda cfg: {
+            "vms": {"harvester1": VMInfo(name="harvester1", state="running",
+                                         memory_mib=16384, vcpus=8)},
+            "net_active": True,
+        },
+    )
+    result = CliRunner().invoke(
+        plan_cmd,
+        ["--config", str(tmp_path / "none.yaml"),
+         "-P", "resources.harvester.memory_mib=20480"],
+    )
+    out = _flat(result.output)
+    assert result.exit_code == 0, result.output
+    assert "memory 16384 → 20480 MiB" in out
+    assert "drift detected" in out
+    # The old, contradictory reading must be gone for this phase.
+    assert "✓ vms done" not in out
 
 
 def test_plan_warns_on_invalid_config_but_still_previews(tmp_path):

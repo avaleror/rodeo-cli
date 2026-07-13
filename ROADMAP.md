@@ -35,16 +35,71 @@ These items are done and live-validated on bare metal (SLES 16). None have been 
 - `clean` keeps shared `default` network unless `--force-network` or `--all`
 - Resource sanity validation (positive ints for memory/vcpu/disk)
 
-## Phase B — Resource ownership (next, ~2 days)
+## Phase B — Resource ownership + drift-aware reconciliation (next)
 
-Ownership tagging: mark libvirt objects with the plan that owns them, so the hypervisor is the source of truth, not a state file.
+Today, idempotency is **phase-level, not resource-level**: `DeployRunner.run()`
+skips any phase already marked `completed` in `~/.rodeo/state/<name>.yaml`
+(`runner.py:192`), regardless of whether the live host still matches the plan.
+`rodeo plan` already computes the real diff (VM memory/vcpu vs. live libvirt,
+network active/inactive, storage artifacts present) — `rodeo deploy`/`rodeo up`
+just never look at it. Closing that gap is the actual "Terraform apply" promise
+in the vision statement at the top of this file; B1 and B2 below are the concrete
+steps.
+
+### B1 — Ownership tagging (~2 days)
+
+Mark libvirt objects with the plan that owns them, so the hypervisor is the source of truth, not a state file.
 
 - [ ] Write `rodeo:plan=<name>` into domain XML (`<description>`) via `vm.xml.j2`
 - [ ] `LibvirtDriver.domains_owned_by(plan)` — query by marker
 - [ ] `rodeo list` — plans on this host and the VMs each owns
 - [ ] `rodeo destroy` — delete only owned domains + their disks (replaces `clean`'s glob patterns)
 - [ ] `rodeo plan` flags foreign VMs colliding with planned names
-- [ ] Phase-skip logic consults actual domain existence, not just phase state
+
+### B2 — Auto-reconciliation: phase-skip consults live state, not just the state file (~1 week, opt-in rollout)
+
+The gap: edit `resources.harvester.memory_mib` (or add a node) in an already-deployed
+custom profile, re-run `rodeo up --profile <name>` — nothing happens, because the `vms`
+phase is cached `completed: true` and `runner.run()` never checks whether the live VM
+still matches. `rodeo plan` shows the drift; `rodeo deploy` ignores it. See
+`docs/custom-rodeos.md#re-running-after-a-deploy` for the user-facing version of this gap
+and today's manual workaround (`--force` / `--from` / `clean` + redeploy).
+
+**Step 1 — extract the diff, don't duplicate it.** Pull the drift-detection logic
+currently living in `plan_cmd.py` (`_inspect_host`, `_print_vms`'s memory/vcpu compare,
+`_print_network`, `_print_storage`) into a shared module (e.g. `rodeo/drift.py`) that
+returns a structured `DriftReport` (which phases are affected and why), not print
+statements. `plan_cmd.py` becomes a renderer over that report — pure refactor, no
+behavior change, existing `test_plan_cmd.py` cases must still pass unmodified.
+
+**Step 2 — scope V1 narrowly: VM memory/vcpu drift on already-defined domains only.**
+This is the one case already diffed, tested, and well understood. Explicitly out of
+scope for V1: topology changes (add/remove a node — Harvester join/etcd-gap sequencing
+makes a safe partial re-run a much bigger problem, see Standing Constraints below) and
+anything touching `pxe_server`/`cluster` (the fragile, live-regression-only phases).
+Those stay on manual `--force`/`--from` until a V2 is scoped separately.
+
+**Step 3 — wire it into `DeployRunner.run()`, opt-in first.** Add `--reconcile` to
+`rodeo deploy`/`rodeo up`. When set, before the existing `is_phase_done()` skip check,
+consult the shared `DriftReport`; if it flags the `vms` phase, call the existing
+`state.reset_from("vms", plan_name, profile.phases)` instead of skipping — reuses
+machinery that already exists for `--from`, just triggered by drift instead of a flag.
+Print what was detected and what's about to re-run before doing it (never a silent
+surprise) — reuse the same rendering `plan` already has.
+
+**Step 4 — add `test_runner.py` coverage**: mock the shared drift module reporting VM
+memory drift and assert `DeployRunner.run()` re-runs `vms` (not skipped) while leaving
+unrelated already-done phases skipped, and that omitting `--reconcile` reproduces
+today's exact behavior (no regressions for anyone not opting in).
+
+**Step 5 — live-validate, then flip the default.** Run `--reconcile` through a real
+memory-resize-and-redeploy cycle on a bare-metal KVM host (matches this repo's existing
+"validate live before shipping" convention — see Standing Constraints). Only once that's
+proven: make reconciliation the default behavior and add `--no-reconcile` as the opt-out,
+matching the vision statement's "declare desired state ... converge" without a flag.
+
+**Step 6 — V2 (separate, later, own roadmap entry when scoped):** topology drift
+(new/removed nodes) and network/resource changes that touch `pxe_server`/`cluster`.
 
 ## Phase C — Declarative inventory ✅ (done 2026-06-15, live-validated on bare metal)
 
@@ -214,6 +269,7 @@ Bake a pre-loaded Hauler store into the geekohive snapshot (`suse-virt-rodeo-180
 ## Standing constraints
 
 - Do not touch the Instruqt/PXE-sensitive files without a live regression: `roles/kvm_host/tasks/libvirt.yml`, `roles/vms/tasks/network_setup.yml`, `roles/vms/defaults/main.yml`, the `pxe_server` boot chain (generic `boot.ipxe` → MAC-named scripts, installer cmdline, config-YAML perms), the etcd join gap (applied before each additional Harvester join node), and the Rancher API call order. See CONTEXT.md.
+  - `roles/vms/tasks/network_setup.yml` got a narrow, guard-only change (idempotency audit finding): the destroy+redefine of the default libvirt network used to run unconditionally on every `vms`-phase re-run; it's now skipped when static DHCP host reservations are already present (same marker-check pattern `pxe_server/tasks/network.yml` already used). No boot-order, template, or XML content changed. Still pending a live regression before it's fully trusted — the guard only checks that *some* reservation exists, not that every node in `vm_nodes` has one (see B2 above for the real fix).
 - No bash deploy scripts. Ansible stays for `kvm_host` / `vms` / `pxe_server`.
 - Wall time is dominated by nested-KVM Harvester install (20–60 min). Optimize UX and correctness first, CLI speed second.
 - Harvester nodes need at least 250 GiB disk. Smaller disks fill the persistent partition, containerd fails, VIP never comes up. Validated live.

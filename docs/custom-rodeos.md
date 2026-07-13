@@ -50,9 +50,14 @@ mylab/
 ├── rodeo-plan.yaml     # type, resources, credentials, deployment_target
 ├── definition.yaml     # the topology (nodes, network, exposed services, host prep)
 ├── certs/              # optional: CA certs to make available
-├── manifests/          # optional: k8s manifests
+├── <hostname>/         # optional: manifests to kubectl-apply on that node (see below)
 └── custom/scripts/     # optional: numbered scripts
 ```
+
+`manifests/` and `helm/values/` also show up in bundled examples and are recorded in
+inventory metadata, but nothing consumes them yet — they're reserved for a future
+phase. Don't put files there expecting them to be applied; use the per-hostname
+directories described next.
 
 `rodeo up`, `plan`, and `deploy` auto-detect this dir (walk up from the current
 directory), so inside a lab dir you can drop `--config-dir`.
@@ -124,6 +129,25 @@ definition:
 
 You can omit MACs, UUIDs, and hostnames — the renderer generates them deterministically
 from the plan name. Provide them only when you need exact values.
+
+---
+
+## Applying manifests to a node
+
+Drop `.yaml`/`.yml` files into a directory named after a node's hostname (matching a
+`name:` under `nodes:` in `definition.yaml`), for example:
+
+```
+mylab/
+└── harvester1/
+    └── namespaces.yaml
+```
+
+The `apply` phase SSHes into that node and runs `kubectl apply -f -` for every file
+found there, in sorted order — one directory per node, applied to that node only.
+`apply` is the one phase that always re-runs (it is never cached), so editing files
+here and re-running `rodeo up --profile mylab` picks up the change immediately,
+unlike edits to the topology or resources (see below).
 
 ---
 

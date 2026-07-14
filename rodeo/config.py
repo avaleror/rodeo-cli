@@ -334,14 +334,27 @@ def validate_config(cfg: dict) -> None:
             f"Invalid deployment_target '{target}' — use 'instruqt' or 'baremetal'."
         )
 
-    # Let's Encrypt email must be a real address — example.com is rejected by the ACME server.
+    # Let's Encrypt email must be a real address — example.com is rejected by the ACME
+    # server, and so (less obviously) is a leftover ??key placeholder: an unresolved
+    # secret has no `??` guard here (unlike the credentials{} loop above), so it was
+    # passing this check as a literal string and reaching Let's Encrypt as the account
+    # contact — which correctly rejects it ("contact email contains a question mark"),
+    # but only after the whole rancher phase had already spent 10+ min waiting on it.
     tls = cfg.get("rancher_tls", {})
     if tls.get("source") == "letsEncrypt":
         email = tls.get("email", "")
-        if not email or "example.com" in email or email.endswith("@example.com"):
+        if (
+            not email
+            or email.startswith("??")
+            or "example.com" in email
+            or email.endswith("@example.com")
+        ):
             raise ConfigError(
-                "rancher_tls.email must be a real address for Let's Encrypt registration.\n"
-                "Set it in rodeo-plan.yaml under rancher_tls.email (or use ??key to load from secrets)."
+                "rancher_tls.email must be a real address for Let's Encrypt registration "
+                f"(got {email!r}).\n"
+                "Set it in rodeo-plan.yaml under rancher_tls.email, or add "
+                "rancher_letsencrypt_email: <your address> to ~/.rodeo/secrets.yaml "
+                "if using the ??key form."
             )
 
     # Resource sanity — catch -P typos before they fail deep inside libvirt.

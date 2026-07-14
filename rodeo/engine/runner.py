@@ -356,13 +356,25 @@ class DeployRunner:
 
         The suse-virt pipeline starts VMs inside ClusterPhase (which also waits on the
         Harvester VIP, etcd join, and nodes Ready). Profiles without a Harvester cluster
-        (e.g. rancher) use this lighter step instead: start firewalld, activate the
-        libvirt network, and boot the defined VMs so the next phase can SSH to them.
+        (e.g. rancher, suse-edge) use this lighter step instead: start firewalld,
+        activate the libvirt network, and boot the defined VMs so the next phase can
+        SSH to them.
+
+        Edge nodes (suse-edge) are defined but deliberately left diskless until a
+        student builds + attaches an Elemental image via ``rodeo pull-edge-image`` —
+        they're skipped here the same way ``rodeo start`` already skips them
+        (start_cmd.py), instead of crashing the whole boot phase on a libvirt
+        "no such file" error for an intentionally-missing disk.
         """
         yield from self._start_firewalld()
 
         uri = self.cfg.get("libvirt", {}).get("uri", "qemu:///system")
         vm_names = list(self.cfg.get("vms", {}).keys())
+        edge_node_names = set(
+            self.cfg.get("edge_node_names")
+            or [n for n in vm_names if n.startswith("edge")]
+        )
+        image_dir = Path(self.cfg.get("storage", {}).get("image_dir", "/var/lib/libvirt/images"))
         try:
             from .libvirt import LibvirtDriver
             with LibvirtDriver(uri) as lv:
@@ -374,6 +386,12 @@ class DeployRunner:
                 except Exception as exc:
                     yield LogLine(f"  ⚠  network start: {exc}")
                 for name in vm_names:
+                    if name in edge_node_names and not (image_dir / f"{name}-vda.qcow2").exists():
+                        yield LogLine(
+                            f"  {name}: no disk yet — build + attach an Elemental image, "
+                            "then 'rodeo pull-edge-image' (skipping)."
+                        )
+                        continue
                     info = lv.get_vm(name)
                     if info.state == "not found":
                         yield LogLine(f"  ✗ {name}: domain not found — was the vms phase completed?")
@@ -382,8 +400,13 @@ class DeployRunner:
                     if info.state == "running":
                         yield LogLine(f"  {name}: already running.")
                     else:
-                        lv.start(name)
-                        yield LogLine(f"  {name}: started.")
+                        try:
+                            lv.start(name)
+                            yield LogLine(f"  {name}: started.")
+                        except Exception as exc:
+                            yield LogLine(f"  ✗ {name}: failed to start: {exc}")
+                            self._last_rc = 1
+                            return
         except Exception as exc:
             yield LogLine(f"  ✗  libvirt: {exc}")
             self._last_rc = 1

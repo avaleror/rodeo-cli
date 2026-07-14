@@ -29,13 +29,37 @@
 # --- Harvester ISO ---
 
 - name: Download Harvester {{ harvester_version }} ISO
-  ansible.builtin.get_url:
-    url: "https://releases.rancher.com/harvester/v{{ harvester_version }}/harvester-v{{ harvester_version }}-amd64.iso"
-    dest: "{{ image_dir }}/harvester-v{{ harvester_version }}-amd64.iso"
-    checksum: "{{ harvester_iso_checksum | default(omit) }}"
-    mode: '0644'
+  ansible.builtin.shell: |
+    set -euo pipefail
+    dest='{{ image_dir }}/harvester-v{{ harvester_version }}-amd64.iso'
+    tmp="$dest.downloading"
+    # curl -4: Instruqt and some cloud hosts have AAAA records but no IPv6 route
+    # (Python urllib tries v6 first → errno 101). --http1.1 avoids
+    # intermittent HTTP/2 PROTOCOL_ERROR on large release artifacts.
+    curl -4 --http1.1 -fsSL --retry 5 --retry-delay 10 --retry-all-errors \
+      -C - -o "$tmp" \
+      'https://releases.rancher.com/harvester/v{{ harvester_version }}/harvester-v{{ harvester_version }}-amd64.iso'
+    mv "$tmp" "$dest"
+    chmod 0644 "$dest"
+  args:
+    executable: /bin/bash
+    creates: "{{ image_dir }}/harvester-v{{ harvester_version }}-amd64.iso"
   # Skip on Rancher-only labs (no Harvester nodes) so they stay small/fast.
   when: vm_nodes | selectattr('flavor', 'equalto', 'harvester') | list | length > 0
+
+- name: Verify Harvester {{ harvester_version }} ISO checksum
+  ansible.builtin.shell: |
+    set -euo pipefail
+    dest='{{ image_dir }}/harvester-v{{ harvester_version }}-amd64.iso'
+    expected='{{ harvester_iso_checksum | regex_replace("^sha512:", "") }}'
+    actual=$(sha512sum "$dest" | awk '{print $1}')
+    [ "$actual" = "$expected" ]
+  args:
+    executable: /bin/bash
+  changed_when: false
+  when:
+    - vm_nodes | selectattr('flavor', 'equalto', 'harvester') | list | length > 0
+    - harvester_iso_checksum | default('') | length > 0
 
 # --- Harvester node disks and OVMF vars (fired in parallel) ---
 # qemu-img and OVMF copy are independent per node — fire all at once and

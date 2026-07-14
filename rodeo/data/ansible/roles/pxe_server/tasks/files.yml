@@ -15,23 +15,20 @@
     state: link
     force: true
 
-- name: Download Harvester {{ harvester_version }} vmlinuz
-  ansible.builtin.get_url:
-    url: "{{ pxe_harvester_base_url }}/harvester-v{{ harvester_version }}-vmlinuz-amd64"
-    dest: "{{ pxe_http_root }}/harvester/harvester-v{{ harvester_version }}-vmlinuz-amd64"
-    mode: '0644'
-
-- name: Download Harvester {{ harvester_version }} initrd
-  ansible.builtin.get_url:
-    url: "{{ pxe_harvester_base_url }}/harvester-v{{ harvester_version }}-initrd-amd64"
-    dest: "{{ pxe_http_root }}/harvester/harvester-v{{ harvester_version }}-initrd-amd64"
-    mode: '0644'
-
-# rootfs.squashfs (~1.5 GB) is the live root filesystem. The installer mounts it
-# from HTTP; it does not need to be present on disk at install time. Download last
-# because it is by far the largest file.
-- name: Download Harvester {{ harvester_version }} rootfs squashfs
-  ansible.builtin.get_url:
-    url: "{{ pxe_harvester_base_url }}/harvester-v{{ harvester_version }}-rootfs-amd64.squashfs"
-    dest: "{{ pxe_http_root }}/harvester/harvester-v{{ harvester_version }}-rootfs-amd64.squashfs"
-    mode: '0644'
+- name: Download Harvester {{ harvester_version }} PXE boot artifacts
+  ansible.builtin.shell: |
+    set -euo pipefail
+    dest='{{ pxe_http_root }}/harvester/{{ item }}'
+    tmp="$dest.downloading"
+    curl -4 --http1.1 -fsSL --retry 5 --retry-delay 10 --retry-all-errors \
+      -C - -o "$tmp" '{{ pxe_harvester_base_url }}/{{ item }}'
+    mv "$tmp" "$dest"
+    chmod 0644 "$dest"
+  args:
+    executable: /bin/bash
+    creates: "{{ pxe_http_root }}/harvester/{{ item }}"
+  loop:
+    - "harvester-v{{ harvester_version }}-vmlinuz-amd64"
+    - "harvester-v{{ harvester_version }}-initrd-amd64"
+    # rootfs.squashfs (~1.5 GB) last in the loop — largest PXE artifact.
+    - "harvester-v{{ harvester_version }}-rootfs-amd64.squashfs"

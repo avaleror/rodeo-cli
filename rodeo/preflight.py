@@ -212,12 +212,26 @@ def run_preflight(cfg: dict, root: Path, phases_to_run: list[str] | None = None)
     ``--from rancher`` is used, only post-vms phases run). RAM and disk checks are
     skipped when ``vms`` is not in that list — VMs are already allocated on the host
     and checking free resources against full provisioning needs would always fail.
+
+    They are also skipped when ``vms`` *is* in that list but this plan's ``vms``
+    phase already completed once (per ``~/.rodeo/state``) — a re-run against an
+    already-deployed lab (idempotency check, node-count-preserving edit, resumed
+    ``--from vms``) doesn't need fresh capacity, the VMs already hold their RAM/disk.
+    A first-time deploy always starts with empty state, so this never masks the
+    real check for genuinely new provisioning.
     """
     storage = cfg.get("storage", {})
     image_dir = storage.get("image_dir", DEFAULT_IMAGE_DIR)
 
-    # Resource checks only make sense when we are (re-)creating VMs.
-    check_resources = phases_to_run is None or "vms" in phases_to_run
+    # Resource checks only make sense when we are (re-)creating VMs that don't
+    # already exist.
+    from .state import is_phase_done
+
+    plan_name = cfg.get("name", "rodeo")
+    vms_already_deployed = is_phase_done("vms", plan_name)
+    check_resources = (
+        (phases_to_run is None or "vms" in phases_to_run) and not vms_already_deployed
+    )
 
     checks: list[tuple[str, bool, str, bool]] = []
     checks.append(("root", os.geteuid() == 0, "not running as root — some phases require root", False))

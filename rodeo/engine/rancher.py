@@ -12,7 +12,7 @@ import urllib.request
 from pathlib import Path
 from typing import Generator, Iterator
 
-from .cluster import KUBECONFIG_PATH
+from ..paths import harvester_kubeconfig_path
 from .runner import DeployEvent, LogLine, ProgressUpdate
 from ..ssh import ssh_opts
 
@@ -244,7 +244,7 @@ class RancherPhase:
     def stream_import(self) -> Iterator[DeployEvent]:
         """UI Extension + Harvester cluster import + password + CDROM eject.
 
-        Requires all Harvester nodes Ready and KUBECONFIG_PATH to exist.
+        Requires all Harvester nodes Ready and the Harvester kubeconfig to exist.
         Requires setup_done (self._api_token must be set by stream_setup).
         """
         if self.standalone:
@@ -272,7 +272,8 @@ class RancherPhase:
         # Reconcile declared Rancher UI extensions (e.g. the Harvester extension) to
         # their pinned versions. Non-fatal: warnings only, never fails the phase.
         if self.ui_extensions:
-            yield from self._reconcile_ui_extensions()
+            if not (yield from self._reconcile_ui_extensions()):
+                return
 
         yield LogLine(
             f"\n  Rancher URL  : {self.rancher_api}  (NodePort)"
@@ -899,9 +900,9 @@ class RancherPhase:
             yield LogLine(f"  ✗ {self.error}")
             return False
 
-        if not KUBECONFIG_PATH.exists():
+        if not harvester_kubeconfig_path().exists():
             self.error = (
-                f"Harvester kubeconfig not found at {KUBECONFIG_PATH} — "
+                f"Harvester kubeconfig not found at {harvester_kubeconfig_path()} — "
                 "run the cluster phase first"
             )
             yield LogLine(f"  ✗ {self.error}")
@@ -920,7 +921,7 @@ class RancherPhase:
         })
         # Pass JSON via stdin — avoids all shell quoting issues (no bash -c / echo).
         r = self._run(
-            ["kubectl", "--kubeconfig", str(KUBECONFIG_PATH), "apply", "-f", "-"],
+            ["kubectl", "--kubeconfig", str(harvester_kubeconfig_path()), "apply", "-f", "-"],
             timeout=30,
             input=setting_manifest,
         )
@@ -935,7 +936,7 @@ class RancherPhase:
             kube_dir = Path("/root/.kube")
             kube_dir.mkdir(parents=True, exist_ok=True)
             dest = kube_dir / "harvester.yaml"
-            dest.write_text(KUBECONFIG_PATH.read_text())
+            dest.write_text(harvester_kubeconfig_path().read_text())
             dest.chmod(0o600)
             yield LogLine(f"  Harvester kubeconfig saved to {dest}")
         except Exception as exc:
@@ -980,7 +981,7 @@ class RancherPhase:
         while time.monotonic() - t0 < 90:
             r = self._run(
                 [
-                    "kubectl", "--kubeconfig", str(KUBECONFIG_PATH),
+                    "kubectl", "--kubeconfig", str(harvester_kubeconfig_path()),
                     "get", "deployment", "cattle-cluster-agent",
                     "-n", "cattle-system", "--ignore-not-found",
                     "-o", "jsonpath={.metadata.name}",
@@ -1003,7 +1004,7 @@ class RancherPhase:
         #    minReadySeconds is absent from the import manifest so it survives reconciliation.
         r = self._run(
             [
-                "kubectl", "--kubeconfig", str(KUBECONFIG_PATH),
+                "kubectl", "--kubeconfig", str(harvester_kubeconfig_path()),
                 "set", "env", "deployment/cattle-cluster-agent",
                 "-n", "cattle-system",
                 f"CATTLE_CA_CHECKSUM={correct_checksum}",
@@ -1017,7 +1018,7 @@ class RancherPhase:
 
         r2 = self._run(
             [
-                "kubectl", "--kubeconfig", str(KUBECONFIG_PATH),
+                "kubectl", "--kubeconfig", str(harvester_kubeconfig_path()),
                 "patch", "deployment", "cattle-cluster-agent",
                 "-n", "cattle-system",
                 "--type=json",
@@ -1036,7 +1037,7 @@ class RancherPhase:
         for candidate in ("rke2-coredns-rke2-coredns", "coredns"):
             r = self._run(
                 [
-                    "kubectl", "--kubeconfig", str(KUBECONFIG_PATH),
+                    "kubectl", "--kubeconfig", str(harvester_kubeconfig_path()),
                     "get", "cm", candidate, "-n", "kube-system", "--ignore-not-found",
                 ],
                 timeout=30,
@@ -1051,7 +1052,7 @@ class RancherPhase:
 
         r = self._run(
             [
-                "kubectl", "--kubeconfig", str(KUBECONFIG_PATH),
+                "kubectl", "--kubeconfig", str(harvester_kubeconfig_path()),
                 "get", "cm", cm_name, "-n", "kube-system", "-o", "json",
             ],
             timeout=30,
@@ -1081,7 +1082,7 @@ class RancherPhase:
         cm["data"]["Corefile"] = corefile + zone
 
         r2 = self._run(
-            ["kubectl", "--kubeconfig", str(KUBECONFIG_PATH), "apply", "-f", "-"],
+            ["kubectl", "--kubeconfig", str(harvester_kubeconfig_path()), "apply", "-f", "-"],
             timeout=30,
             input=json.dumps(cm),
         )
@@ -1343,6 +1344,8 @@ class RancherPhase:
                 continue
 
             if not (yield from self._ensure_ext_repo(repo_name, git_repo, git_branch)):
+                if self.error == "cancelled":
+                    return False
                 yield LogLine(f"  ⚠ {name}: could not prepare ClusterRepo {repo_name}; skipping.")
                 continue
 
@@ -1356,7 +1359,8 @@ class RancherPhase:
             while time.monotonic() < deadline:
                 if self._ui_extension_version(name, ns) == version:
                     break
-                time.sleep(10)
+                if self._sleep(10):
+                    return False
             final = self._ui_extension_version(name, ns)
             if final == version:
                 yield LogLine(f"  {name} reconciled to {version}.")
@@ -1409,7 +1413,8 @@ class RancherPhase:
                 yield LogLine(f"  {line}")
         if r.returncode != 0:
             return False
-        time.sleep(15)  # let the catalog controller download the index
+        if self._sleep(15):  # let the catalog controller download the index
+            return False
         return True
 
     def _catalog_chart_action(
@@ -1874,7 +1879,9 @@ class RancherPhase:
             Path("/etc/profile.d/rodeo.sh").write_text(content)
         except Exception:
             # Non-root or read-only fs — write to ~/.rodeo/ as fallback
-            fallback = Path.home() / ".rodeo" / "rodeo.env"
+            from ..paths import rodeo_dir
+
+            fallback = rodeo_dir() / "rodeo.env"
             try:
                 fallback.write_text(content)
             except Exception:

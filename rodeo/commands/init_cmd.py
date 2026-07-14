@@ -68,7 +68,9 @@ def init_cmd(force: bool, ask_password: bool, target_dir: str, profile: str | No
     dest = Path(target_dir).resolve()
     dest.mkdir(parents=True, exist_ok=True)
     plan_dest = dest / "rodeo-plan.yaml"
-    secrets_dest = Path.home() / ".rodeo" / "secrets.yaml"
+    from ..paths import rodeo_secrets_path
+
+    secrets_dest = rodeo_secrets_path()
 
     if profile:
         from ..labseed import PROFILE_EXAMPLE

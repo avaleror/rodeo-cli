@@ -6,7 +6,6 @@ from typing import Iterator
 
 import pytest
 
-from rodeo import state
 from rodeo.engine.runner import DeployEvent
 from rodeo.profiles import _REGISTRY
 from rodeo.profiles.base import RodeoProfile
@@ -17,12 +16,6 @@ def isolated_env(tmp_path, monkeypatch):
     """Keep ~/.rodeo state/vars and secrets inside tmp_path for every test."""
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.delenv("RODEO_PASSWORD", raising=False)
-    monkeypatch.setattr(state, "_STATE_DIR", tmp_path / "state")
-    # _LAST_LAB_FILE is a module-level constant evaluated at import time, so
-    # patching HOME above does not redirect it. Patch directly so find_lab_dir()
-    # and _record_lab_dir() stay isolated from real ~/.rodeo/last_lab on disk.
-    import rodeo.config as _cfg_mod
-    monkeypatch.setattr(_cfg_mod, "_LAST_LAB_FILE", tmp_path / ".rodeo" / "last_lab")
     return tmp_path
 
 

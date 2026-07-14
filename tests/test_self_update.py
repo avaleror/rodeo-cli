@@ -14,6 +14,8 @@ from click.testing import CliRunner
 
 from rodeo.commands import self_update_cmd as su
 
+from tests._util import plain_output
+
 
 def _cp(stdout: str = "", returncode: int = 0, stderr: str = "") -> subprocess.CompletedProcess:
     return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr=stderr)
@@ -74,8 +76,9 @@ def test_successful_update_reports_fresh_version(repo, monkeypatch):
     monkeypatch.setattr(su, "_installed_version", lambda: next(versions))
     result = CliRunner().invoke(su.self_update_cmd, [])
     assert result.exit_code == 0
-    assert "0.11.2" in result.output
-    assert "updated" in result.output.lower()
+    out = plain_output(result.output)
+    assert "0.11.2" in out
+    assert "updated" in out.lower()
 
 
 def test_already_up_to_date(repo, monkeypatch):

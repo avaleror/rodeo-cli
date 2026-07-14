@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yaml
 
-_STATE_DIR = Path.home() / ".rodeo" / "state"
+from .paths import rodeo_state_dir
 
 
 def _now() -> str:
@@ -14,7 +14,7 @@ def _now() -> str:
 
 
 def _state_path(plan_name: str) -> Path:
-    return _STATE_DIR / f"{plan_name}.yaml"
+    return rodeo_state_dir() / f"{plan_name}.yaml"
 
 
 def load_state(plan_name: str = "default") -> dict:

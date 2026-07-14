@@ -458,6 +458,54 @@ def _compile_host_prep(topology: dict) -> dict:
     return topology.get("host_prep", {})
 
 
+def _fallback_flavor_name(vm_name: str) -> str:
+    """Heuristic resources key when inventory cannot be rendered."""
+    if vm_name == "rancher":
+        return "rancher"
+    if vm_name == "eib":
+        return "eib"
+    if vm_name.startswith("edge"):
+        return "edge-node"
+    return "harvester"
+
+
+def plan_vm_rows(cfg: dict) -> list[tuple[str, dict]]:
+    """VM name/spec pairs for plan display — definition order, cfg overrides.
+
+    Uses ``vm_nodes`` from the rendered inventory so ``rodeo plan`` shows the
+    topology for ``cfg["type"]`` even when ``cfg["vms"]`` was merged from the
+    wrong profile (e.g. ``-P type=suse-edge`` on a suse-virt plan file).
+    """
+    vms_cfg = cfg.get("vms", {})
+    try:
+        inv = build_inventory(cfg)
+        rows: list[tuple[str, dict]] = []
+        for node in inv.get("vm_nodes", []):
+            name = node["name"]
+            spec = dict(vms_cfg.get(name, {}))
+            if not spec.get("ip") and node.get("ip"):
+                spec["ip"] = node["ip"]
+            rows.append((name, spec))
+        if rows:
+            return rows
+    except Exception:
+        pass
+    return list(vms_cfg.items())
+
+
+def vm_flavor_map(cfg: dict) -> dict[str, str]:
+    """Map VM name → ``resources`` flavor key from the topology definition.
+
+    Primary source: ``build_inventory()`` (definition.yaml + node_templates).
+    Falls back to name heuristics only when inventory rendering fails.
+    """
+    try:
+        inv = build_inventory(cfg)
+        return {n["name"]: n["flavor"] for n in inv.get("vm_nodes", [])}
+    except Exception:
+        return {name: _fallback_flavor_name(name) for name in cfg.get("vms", {})}
+
+
 def get_node(cfg: dict, name: str) -> dict:
     """Convenience accessor used by plan_cmd etc."""
     inv = build_inventory(cfg)

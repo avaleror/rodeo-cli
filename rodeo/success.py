@@ -40,10 +40,11 @@ def _host_ip() -> str:
 
 def _read_passwords() -> tuple[str, str]:
     """Return (harvester_admin_password, rancher_admin_password) from secrets file."""
+    from .paths import rodeo_secrets_path
+
     harvester_pw = rancher_pw = ""
     try:
-        from pathlib import Path
-        for line in (Path.home() / ".rodeo" / "secrets.yaml").read_text().splitlines():
+        for line in rodeo_secrets_path().read_text().splitlines():
             if line.startswith("harvester_admin_password:"):
                 harvester_pw = line.split(":", 1)[1].strip().strip("\"'")
             elif line.startswith("rancher_admin_password:"):

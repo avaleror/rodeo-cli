@@ -11,13 +11,12 @@ import stat
 import string
 from pathlib import Path
 
+from .paths import rodeo_secrets_path
+
+
 def secrets_path() -> Path:
-    """Default secrets location, resolved live from HOME (test- and sudo-friendly)."""
-    return Path.home() / ".rodeo" / "secrets.yaml"
-
-
-# Back-compat constant; prefer secrets_path() so HOME changes are honored.
-SECRETS_PATH = secrets_path()
+    """Default secrets location (invoking user's ~/.rodeo, sudo-safe)."""
+    return rodeo_secrets_path()
 
 
 def random_password(length: int = 16) -> str:

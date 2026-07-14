@@ -31,7 +31,9 @@ _LAB_MARKERS = ("rodeo-plan.yaml", "definition.yaml")
 
 def custom_profiles_root() -> Path:
     """Where user-created profiles live (resolved live so HOME/sudo are honored)."""
-    return Path.home() / ".rodeo" / "profiles"
+    from .paths import rodeo_profiles_dir
+
+    return rodeo_profiles_dir()
 
 
 def custom_profile_dir(name: str) -> Path:

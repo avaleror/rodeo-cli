@@ -41,13 +41,17 @@ from ..privilege import (
     sudo_prefix,
     tmux_available,
 )
+from ..paths import invoking_home
 from ..secretgen import ensure_secrets_file
 from .deploy import execute_deploy
 
 console = Console()
 
 _VALID_TARGETS = ("baremetal", "instruqt")
-DEFAULT_LABS_ROOT = Path.home() / "rodeo-labs"
+
+
+def _default_labs_root() -> Path:
+    return invoking_home() / "rodeo-labs"
 
 
 @click.command("up")
@@ -166,7 +170,7 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
         else:
             lab_name = name or (lab.name if lab else chosen)
             if lab is None:
-                lab = DEFAULT_LABS_ROOT / lab_name
+                lab = _default_labs_root() / lab_name
             console.print(f"\n[bold]Setting up the '{chosen}' lab[/bold] at [cyan]{lab}[/cyan] "
                           f"([dim]{profile_label(chosen)}[/dim])")
             seed_lab(chosen, lab, force=False, deployment_target=deployment_target)

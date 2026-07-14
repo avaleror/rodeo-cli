@@ -38,6 +38,52 @@ def test_missing_core_tools():
     assert preflight.missing_core_tools(host) == ["kubectl"]
 
 
+def test_in_libvirt_group_true_when_gid_present(monkeypatch):
+    monkeypatch.setattr(
+        "grp.getgrnam", lambda name: type("Grp", (), {"gr_gid": 108})()
+    )
+    monkeypatch.setattr(preflight.os, "getgroups", lambda: [1000, 108])
+    assert preflight._in_libvirt_group() is True
+
+
+def test_in_libvirt_group_false_when_gid_absent(monkeypatch):
+    monkeypatch.setattr(
+        "grp.getgrnam", lambda name: type("Grp", (), {"gr_gid": 108})()
+    )
+    monkeypatch.setattr(preflight.os, "getgroups", lambda: [1000])
+    assert preflight._in_libvirt_group() is False
+
+
+def test_in_libvirt_group_true_when_no_libvirt_group_on_host(monkeypatch):
+    import grp as grp_mod
+
+    def _raise(name):
+        raise KeyError(name)
+
+    monkeypatch.setattr(grp_mod, "getgrnam", _raise)
+    assert preflight._in_libvirt_group() is True
+
+
+def test_run_preflight_warns_non_root_user_not_in_libvirt_group(tmp_path, monkeypatch, capsys):
+    """Optional/warning check: must render with a ⚠, never a ✗ (that would fail the run)."""
+    monkeypatch.setattr(preflight.os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(preflight, "_in_libvirt_group", lambda: False)
+    cfg = {"name": "t", "storage": {"image_dir": str(tmp_path)}}
+    preflight.run_preflight(cfg, tmp_path, phases_to_run=["rancher"])
+    out = capsys.readouterr().out
+    libvirt_lines = [line for line in out.splitlines() if "libvirt group" in line]
+    assert len(libvirt_lines) == 1
+    assert "⚠" in libvirt_lines[0]
+
+
+def test_run_preflight_skips_libvirt_group_check_for_root(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(preflight.os, "geteuid", lambda: 0)
+    cfg = {"name": "t", "storage": {"image_dir": str(tmp_path)}}
+    preflight.run_preflight(cfg, tmp_path, phases_to_run=["rancher"])
+    out = capsys.readouterr().out
+    assert "libvirt group" not in out
+
+
 def test_run_preflight_returns_bool(tmp_path, capsys):
     cfg = {
         "name": "t",

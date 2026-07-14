@@ -43,8 +43,20 @@ def relaunch_as_root(argv: list[str]) -> None:
 
 
 def ensure_root(argv: list[str]) -> None:
-    """If not already root, re-exec under sudo with ``argv``. Returns only when root."""
+    """If not already root, re-exec under sudo with ``argv``. Returns only when root.
+
+    When this *is* the escalated (or manually ``sudo``'d) root process, register
+    an atexit hook to hand ``~/.rodeo`` back to the invoking user on the way out —
+    otherwise every file this run writes stays root-owned and read-only commands
+    need ``sudo`` again afterward. See :func:`paths.fix_invoking_ownership`.
+    """
     if is_root():
+        if os.environ.get("SUDO_USER"):
+            import atexit
+
+            from .paths import fix_invoking_ownership
+
+            atexit.register(fix_invoking_ownership)
         return
     relaunch_as_root(argv)
 

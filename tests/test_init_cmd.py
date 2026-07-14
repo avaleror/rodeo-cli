@@ -27,6 +27,12 @@ def test_init_writes_random_secrets(tmp_path):
     content = secrets.read_text()
     assert "Foobar" not in content and "CHANGE_ME" not in content
     assert "harvester_token:" in content
+    # Regression: init_cmd used to hand-roll this file (drifted from secretgen.py
+    # and never wrote rancher_vm_password, so `??rancher_vm_password` in the
+    # suse-edge profile's plan failed closed on every fresh init).
+    assert "rancher_vm_password:" in content
+    env_content = (tmp_path / "work" / "rodeo-secrets.env").read_text()
+    assert "RANCHER_VM_PASSWORD=" in env_content
     assert (tmp_path / "work" / "rodeo-plan.yaml").exists()
 
 

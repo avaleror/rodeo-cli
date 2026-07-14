@@ -14,9 +14,9 @@ def _write_plan(tmp_path, data):
 
 
 def _write_secrets(tmp_path, monkeypatch, data):
-    secrets = tmp_path / "secrets.yaml"
+    secrets = tmp_path / ".rodeo" / "secrets.yaml"
+    secrets.parent.mkdir(parents=True, exist_ok=True)
     secrets.write_text(yaml.dump(data))
-    monkeypatch.setattr(config, "_SECRETS_PATH", secrets)
     return secrets
 
 

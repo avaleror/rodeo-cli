@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -25,6 +26,19 @@ def cfg():
             "harvester1": {}, "harvester2": {}, "harvester3": {}, "rancher": {},
         },
     }
+
+
+def test_rancher_phase_has_no_raw_time_sleep():
+    """Poll loops must use _sleep() so TUI quit / runner.stop cancels promptly."""
+    source = Path(rancher_mod.__file__).read_text()
+    assert "time.sleep" not in source
+
+
+def test_sleep_reports_cancelled(cfg):
+    phase = RancherPhase(cfg)
+    phase._stop.set()
+    assert phase._sleep(1) is True
+    assert phase.error == "cancelled"
 
 
 def test_ssh_script_timeout_returns_failed_result(cfg, monkeypatch):
@@ -133,7 +147,7 @@ def test_import_fails_when_cluster_never_active(cfg, monkeypatch, tmp_path):
 
     kube = tmp_path / "harvester-kubeconfig"
     kube.write_text("dummy")
-    monkeypatch.setattr(rancher_mod, "KUBECONFIG_PATH", kube)
+    monkeypatch.setattr(rancher_mod, "harvester_kubeconfig_path", lambda: kube)
 
     # _wait_cluster_active returns an empty iterator → None return value → falsy
     monkeypatch.setattr(RancherPhase, "_wait_cluster_active", lambda self: iter(()))

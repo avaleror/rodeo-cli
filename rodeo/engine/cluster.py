@@ -15,9 +15,14 @@ from typing import Generator, Iterator
 
 from .libvirt import LibvirtDriver
 from .runner import DeployEvent, LogLine, ProgressUpdate
+from ..paths import harvester_kubeconfig_path, rodeo_logs_dir
 from ..ssh import ssh_opts
 
-KUBECONFIG_PATH = Path.home() / ".rodeo" / "harvester-kubeconfig"
+
+def _kubeconfig_path() -> Path:
+    return harvester_kubeconfig_path()
+
+
 # Legacy location used by instruqt-virtualization challenge scripts —
 # kept as a symlink to the real file.
 LEGACY_KUBECONFIG_PATH = Path("/tmp/harvester-kubeconfig")
@@ -151,7 +156,7 @@ class ClusterPhase:
             if not (yield from self._fetch_kubeconfig()):
                 self.error = f"Timed out after {self.KUBECONFIG_TIMEOUT // 60} min fetching kubeconfig"
                 return
-            yield LogLine(f"  Kubeconfig saved to {KUBECONFIG_PATH} (127.0.0.1 rewritten to VIP).")
+            yield LogLine(f"  Kubeconfig saved to {_kubeconfig_path()} (127.0.0.1 rewritten to VIP).")
 
             # If the topology has a Rancher VM, start K3s + Helm + Rancher Prime
             # in a background thread while we wait for all Harvester nodes Ready.
@@ -319,12 +324,13 @@ class ClusterPhase:
                     rf'\g<1>{self.vip}',
                     result.stdout,
                 )
-                KUBECONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-                KUBECONFIG_PATH.write_text(content)
-                KUBECONFIG_PATH.chmod(0o600)
+                kubeconfig = _kubeconfig_path()
+                kubeconfig.parent.mkdir(parents=True, exist_ok=True)
+                kubeconfig.write_text(content)
+                kubeconfig.chmod(0o600)
                 try:
                     LEGACY_KUBECONFIG_PATH.unlink(missing_ok=True)
-                    LEGACY_KUBECONFIG_PATH.symlink_to(KUBECONFIG_PATH)
+                    LEGACY_KUBECONFIG_PATH.symlink_to(kubeconfig)
                 except OSError:
                     pass  # compat link only — not worth failing the phase
                 yield ProgressUpdate("Fetching kubeconfig", elapsed, self.KUBECONFIG_TIMEOUT)
@@ -398,7 +404,7 @@ class ClusterPhase:
     def _count_ready_nodes(self) -> int:
         try:
             result = subprocess.run(
-                ["kubectl", "--kubeconfig", str(KUBECONFIG_PATH),
+                ["kubectl", "--kubeconfig", str(_kubeconfig_path()),
                  "get", "nodes", "--no-headers"],
                 capture_output=True, text=True, timeout=30,
             )
@@ -452,7 +458,7 @@ class ClusterPhase:
             lines.append(f"    {name:<14}  {state}")
 
         lab_name = self.cfg.get("name", "rodeo")
-        heartbeat = Path.home() / ".rodeo" / "logs" / f"{lab_name}-heartbeat.txt"
+        heartbeat = rodeo_logs_dir() / f"{lab_name}-heartbeat.txt"
         try:
             heartbeat.parent.mkdir(parents=True, exist_ok=True)
             heartbeat.write_text("\n".join(lines) + "\n")

@@ -188,7 +188,9 @@ def clean_cmd(
     # Reset state. For --all we nuke all plan state files (for repurposing / fresh start).
     # For normal per-plan we reset from kvm_host for the specific plan (as before).
     if all:
-        state_dir = Path.home() / ".rodeo" / "state"
+        from ..paths import rodeo_state_dir
+
+        state_dir = rodeo_state_dir()
         if state_dir.exists():
             for f in state_dir.glob("*.yaml"):
                 console.print(f"  [dim]delete[/dim]   state {f}")
@@ -199,7 +201,9 @@ def clean_cmd(
 
     # Secrets (global ~/.rodeo/secrets.yaml ). Only if --secrets (or --all + --secrets).
     if secrets:
-        secrets_path = Path.home() / ".rodeo" / "secrets.yaml"
+        from ..paths import rodeo_secrets_path
+
+        secrets_path = rodeo_secrets_path()
         if secrets_path.exists():
             console.print(f"  [dim]delete[/dim]   {secrets_path}")
             secrets_path.unlink(missing_ok=True)

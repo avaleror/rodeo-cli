@@ -6,6 +6,8 @@ from click.testing import CliRunner
 
 from rodeo.commands import up_cmd as up_mod
 
+from tests._util import plain_output
+
 
 def _ready_host():
     return {
@@ -139,10 +141,10 @@ def test_up_with_custom_profile_deploys_in_place(tmp_path, monkeypatch):
         up_mod.up_cmd, ["--no-deploy", "--yes", "--profile", "mycustom"]
     )
     assert result.exit_code == 0, result.output
-    assert "custom profile 'mycustom'" in result.output
+    out = plain_output(result.output)
+    assert "custom profile 'mycustom'" in out
     # In-place: the profile dir under ~/.rodeo/profiles is the lab.
-    # (de-wrap: rich may line-break the long path in rendered output)
-    unwrapped = result.output.replace("\n", "")
+    unwrapped = out.replace("\n", "")
     assert str(tmp_path / ".rodeo" / "profiles" / "mycustom") in unwrapped
 
 

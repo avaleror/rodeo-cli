@@ -232,7 +232,9 @@ class DeployRunner:
 
     @property
     def _log_file(self) -> Path:
-        log_dir = Path.home() / ".rodeo" / "logs"
+        from ..paths import rodeo_logs_dir
+
+        log_dir = rodeo_logs_dir()
         log_dir.mkdir(parents=True, exist_ok=True)
         return log_dir / f"{self._plan_name}.log"
 
@@ -697,13 +699,15 @@ class DeployRunner:
             # Fall back to role defaults (the old behavior). The definition load is resilient.
             pass
 
-        rodeo_dir = Path.home() / ".rodeo"
-        rodeo_dir.mkdir(parents=True, exist_ok=True)
+        from ..paths import rodeo_dir as rodeo_data_dir
+
+        data_dir = rodeo_data_dir()
+        data_dir.mkdir(parents=True, exist_ok=True)
         # Sweep vars files left behind by a previous SIGKILL'd run.
-        for stale in rodeo_dir.glob("rodeo-vars-*.yaml"):
+        for stale in data_dir.glob("rodeo-vars-*.yaml"):
             stale.unlink(missing_ok=True)
         fd, path_str = tempfile.mkstemp(
-            prefix="rodeo-vars-", suffix=".yaml", dir=rodeo_dir
+            prefix="rodeo-vars-", suffix=".yaml", dir=data_dir
         )
         os.chmod(path_str, 0o600)
         os.close(fd)

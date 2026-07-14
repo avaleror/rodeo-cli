@@ -39,9 +39,9 @@ What the deployment creates on the KVM host:
 
 | VM | Role | IP | MAC (mgmt) | Memory |
 |---|---|---|---|---|
-| harvester1 | Harvester bootstrap node (alpha) | 192.168.122.11 | 02:00:00:0D:62:E1 | 16 GiB |
-| harvester2 | Harvester join node (bravo) | 192.168.122.12 | 02:00:00:0D:62:E2 | 16 GiB |
-| harvester3 | Harvester join node (charlie) | 192.168.122.13 | 02:00:00:0D:62:E3 | 16 GiB |
+| harvester1 | Harvester bootstrap node (alpha) | 192.168.122.11 | 02:00:00:0D:62:E1 | 20 GiB |
+| harvester2 | Harvester join node (bravo) | 192.168.122.12 | 02:00:00:0D:62:E2 | 20 GiB |
+| harvester3 | Harvester join node (charlie) | 192.168.122.13 | 02:00:00:0D:62:E3 | 20 GiB |
 | rancher | Rancher Prime on K3s (root) | 192.168.122.9 | 02:00:00:0D:62:E9 | 8 GiB |
 
 - **VIP:** `192.168.122.10` — kube-vip floating IP for the Harvester cluster API/UI

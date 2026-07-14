@@ -297,9 +297,9 @@ DeployRunner.run() yields:
 
 | VM | Role | IP | Default RAM |
 |----|------|-----|-------------|
-| harvester1 | Bootstrap (alpha) | 192.168.122.11 | 16 GiB |
-| harvester2 | Join (bravo) | 192.168.122.12 | 16 GiB |
-| harvester3 | Join (charlie) | 192.168.122.13 | 16 GiB |
+| harvester1 | Bootstrap (alpha) | 192.168.122.11 | 20 GiB |
+| harvester2 | Join (bravo) | 192.168.122.12 | 20 GiB |
+| harvester3 | Join (charlie) | 192.168.122.13 | 20 GiB |
 | rancher | Rancher Prime / K3s | 192.168.122.9 | 8 GiB |
 
 - **VIP:** 192.168.122.10 (Harvester API/UI via kube-vip)

@@ -35,7 +35,15 @@ def gen_token() -> str:
 
 
 def write_secrets_file(path: Path, password: str, token: str) -> None:
-    """Write ~/.rodeo/secrets.yaml (chmod 600) with explicit per-service passwords + token."""
+    """Write ~/.rodeo/secrets.yaml (chmod 600) with explicit per-service passwords + token.
+
+    One shared ``password`` covers every VM-console/admin credential across all
+    profiles (harvester-* and suse-edge alike) — same convention as
+    ``harvester_os_password``/``harvester_admin_password``/``rancher_admin_password``.
+    ``rancher_vm_password`` is suse-edge's OS console password for the Rancher/EIB
+    VMs; without it here, ``??rancher_vm_password`` in that profile's plan never
+    resolves and the deploy fails closed on a missing secret.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         "# ~/.rodeo/secrets.yaml — kept out of version control\n"
@@ -43,10 +51,12 @@ def write_secrets_file(path: Path, password: str, token: str) -> None:
         "# harvester_os_password    — OS console (rancher user SSH/TTY)\n"
         "# harvester_admin_password — Harvester web UI admin account\n"
         "# rancher_admin_password   — Rancher web UI admin account\n"
+        "# rancher_vm_password      — OS console for suse-edge's Rancher/EIB VMs\n"
         "# harvester_token          — cluster join token (shared by all nodes)\n"
         f'harvester_os_password: "{password}"\n'
         f'harvester_admin_password: "{password}"\n'
         f'rancher_admin_password: "{password}"\n'
+        f'rancher_vm_password: "{password}"\n'
         f'harvester_token: "{token}"\n'
     )
     path.chmod(stat.S_IRUSR | stat.S_IWUSR)  # 0600

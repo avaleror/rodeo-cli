@@ -37,3 +37,13 @@ def test_read_secrets_file_roundtrip(tmp_path):
 
 def test_read_secrets_file_missing(tmp_path):
     assert secretgen.read_secrets_file(tmp_path / "nope.yaml") == (None, None)
+
+
+def test_write_secrets_file_includes_suse_edge_vm_password(tmp_path):
+    """rancher_vm_password (suse-edge's Rancher/EIB VM console password) must be
+    written alongside the harvester-profile keys — its absence is a fail-closed
+    deploy blocker for the suse-edge profile (??rancher_vm_password never resolves)."""
+    path = tmp_path / "secrets.yaml"
+    secretgen.write_secrets_file(path, "Password1234", "tok-abc")  # gitleaks:allow
+    text = path.read_text()
+    assert 'rancher_vm_password: "Password1234"' in text  # gitleaks:allow

@@ -8,9 +8,14 @@ data that makes them different — see rancher.py for the minimal example.
 from __future__ import annotations
 
 import copy
+import logging
 from abc import ABC
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator
+
+from ..config import ConfigError
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ..engine.runner import DeployEvent, DeployRunner
@@ -83,6 +88,10 @@ class RodeoProfile(ABC):
             versions = (inv.get("versions") or self.versions) if self.versions_from_definition else self.versions
             ui_extensions = inv.get("rancher", {}).get("ui_extensions", [])
         else:
+            logger.warning(
+                "Profile %s: falling back to static VM inventory — definition was not loaded",
+                self.name,
+            )
             vms = self._static_vms_copy()
             storage = STORAGE_DEFAULT
             versions = self.versions
@@ -122,7 +131,15 @@ class RodeoProfile(ABC):
             if config_dir:
                 inv_cfg["config_dir"] = config_dir
             return _inv.build_inventory(inv_cfg)
-        except Exception:
+        except (ConfigError, FileNotFoundError, ValueError):
+            raise
+        except Exception as exc:
+            logger.warning(
+                "Failed to load inventory for profile %s (%s: %s)",
+                self.name,
+                type(exc).__name__,
+                exc,
+            )
             return None
 
     def _vms_from_inventory(self, inv: dict) -> dict:

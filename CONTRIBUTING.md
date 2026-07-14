@@ -50,7 +50,7 @@ Unit tests live in `tests/`. They do not require KVM and run on any OS.
 
 For changes that touch the Ansible roles (`rodeo/data/ansible/`), the PXE boot chain, or the phase pipeline, a live KVM regression is required before merge. See [ROADMAP.md — Standing constraints](ROADMAP.md#standing-constraints) for the fragile files list.
 
-The integration test workflow (`.github/workflows/integration.yml`) runs on a self-hosted SLES 16 runner. Maintainers trigger it manually for PRs that touch the deploy path.
+CI (`.github/workflows/ci.yml`) runs `ruff check` and `pytest` on Ubuntu for Python 3.10 and 3.12. It does not require KVM. For changes that touch the Ansible roles, PXE boot chain, or phase pipeline, a live KVM regression on SLES 16 is required before merge — see [ROADMAP.md — Standing constraints](ROADMAP.md#standing-constraints).
 
 ## Submitting a pull request
 

@@ -43,7 +43,7 @@ Run `rodeo doctor` to see which profiles fit your host's available RAM.
 |---------|-----|------|-----|
 | `test` | ~36 GiB | ~600 GiB in `/var/lib/libvirt/images` | ~16 vCPU |
 | `harvester-ha` | ~52 GiB | ~800 GiB | ~20 vCPU |
-| `harvester` | ~60 GiB | ~900 GiB | ~28 vCPU |
+| `harvester` | ~72 GiB | ~900 GiB | ~34 vCPU |
 
 **OS:** Linux with KVM. SLES 16 or Leap 16 recommended; Ubuntu and Fedora work via `install-deps`. Nested virtualization must be enabled if the host is itself a VM (cloud, Instruqt).
 

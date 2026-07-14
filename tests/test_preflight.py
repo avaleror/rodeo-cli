@@ -22,7 +22,7 @@ def _host(ram_avail):
 
 
 def test_recommend_largest_that_fits():
-    assert preflight.recommend_profile(_host(64)) == ("harvester", True)
+    assert preflight.recommend_profile(_host(80)) == ("harvester", True)
     assert preflight.recommend_profile(_host(40)) == ("test", True)
     assert preflight.recommend_profile(_host(16)) == ("rancher", True)
 

@@ -137,6 +137,10 @@ class DeployRunner:
             except (ProcessLookupError, OSError):
                 self._proc.terminate()
 
+    def _sleep(self, seconds: float) -> bool:
+        """Sleep, but wake early on cancellation. Returns True if cancelled."""
+        return self.stop.wait(seconds)
+
     def run(self) -> Iterator[DeployEvent]:
         """Yield deploy events for all phases. Stops after first failure."""
         from ..profiles import get_profile
@@ -157,19 +161,20 @@ class DeployRunner:
             len(profile.phases),
         )
         if self.install_collections and start_idx <= first_ansible:
+            from ..galaxy_collections import ensure_collections
+
             req_file = self.root / "ansible" / "requirements.yml"
             if req_file.exists():
-                yield LogLine("Installing Ansible collections...")
-                result = subprocess.run(
-                    ["ansible-galaxy", "collection", "install", "-r", str(req_file)],
-                    capture_output=True,
-                    text=True,
-                )
-                if result.returncode != 0:
-                    yield LogLine(f"  ✗  ansible-galaxy failed: {result.stderr.strip()}")
-                    yield PhaseFailed("setup", result.returncode, "collection install failed")
-                    return
-                yield LogLine("  ✓  collections installed")
+                ran, result = ensure_collections(req_file)
+                if not ran:
+                    yield LogLine("  ✓  Ansible collections up to date")
+                else:
+                    yield LogLine("Installing Ansible collections...")
+                    if result is not None and result.returncode != 0:
+                        yield LogLine(f"  ✗  ansible-galaxy failed: {result.stderr.strip()}")
+                        yield PhaseFailed("setup", result.returncode, "collection install failed")
+                        return
+                    yield LogLine("  ✓  collections installed")
 
         vars_file = self._write_vars_file()
 
@@ -562,7 +567,8 @@ class DeployRunner:
         # naive insert-and-retry did. So first let the rebuild start, then wait
         # until libvirt is done: the chain is settled once the reject rule's
         # handle stops changing across a few reads.
-        time.sleep(2)
+        if self._sleep(2):
+            return
         prev, stable = None, 0
         for _ in range(30):
             h = _reject_handle()
@@ -570,7 +576,8 @@ class DeployRunner:
             prev = h
             if stable >= 3:  # reject handle unchanged ~3 s → libvirt has settled
                 break
-            time.sleep(1)
+            if self._sleep(1):
+                return
 
         # Now insert the accept above the settled reject. Nothing rebuilds the
         # chain after finalise, so this sticks.
@@ -588,7 +595,8 @@ class DeployRunner:
             if acc is not None and (rej is None or acc < rej):
                 ok = True
                 break
-            time.sleep(1)
+            if self._sleep(1):
+                return
 
         if ok:
             yield LogLine("  ✓  DNAT'd inbound allowed to lab guests")

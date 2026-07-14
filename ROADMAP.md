@@ -125,7 +125,7 @@ matching the vision statement's "declare desired state ... converge" without a f
 - [x] Profile standardization (PR #4, 2026-07-06): shared config assembly and phase dispatch centralized in `profiles/base.py` (`STORAGE_DEFAULT`, `BASE_VERSIONS`, table-driven `run_phase`, definition-load-with-fallback `default_cfg`); the three profile classes reduced to data + deltas (−103 lines). Fixed a latent aliasing bug — `default_cfg()` now deep-copies so in-place config merges can no longer corrupt shared class defaults. Deploy config verified byte-identical for all 6 bundled profiles.
 - [ ] `clean` / `stop` / `start` self-escalate with sudo (same as `up` — needed for SLES `secure_path`)
 - [ ] `--output json` for `plan` and `status` (machine-readable, CI-friendly)
-- [ ] Cache `ansible-galaxy collection install` (marker keyed on `requirements.yml` hash)
+- [x] Cache `ansible-galaxy collection install` (marker keyed on `requirements.yml` hash)
 - [ ] Stream Helm/K3s SSH installer output (removes the long blind windows in the TUI)
 - [ ] `PhaseResult` return type instead of mutating `runner._last_rc`
 - [ ] ansible-lint in CI

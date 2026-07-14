@@ -79,6 +79,23 @@ def _module_present(name: str) -> bool:
         return False
 
 
+def _in_libvirt_group() -> bool:
+    """Whether the current process's groups include 'libvirt'.
+
+    Checks the live session's supplementary groups (not just /etc/group
+    membership) so a user just added via usermod still correctly shows False
+    until they start a new session — matching reality (group changes need a
+    fresh login).
+    """
+    try:
+        import grp
+
+        libvirt_gid = grp.getgrnam("libvirt").gr_gid
+    except KeyError:
+        return True  # no libvirt group on this host — nothing to warn about
+    return libvirt_gid in os.getgroups()
+
+
 def detect_pkg_mgr() -> str:
     """Best-effort package manager: zypper | apt | dnf | unknown."""
     for tool, mgr in (("zypper", "zypper"), ("apt-get", "apt"), ("dnf", "dnf")):
@@ -264,6 +281,12 @@ def run_preflight(cfg: dict, root: Path, phases_to_run: list[str] | None = None)
     for tool in OPTIONAL_TOOLS:
         checks.append((tool, shutil.which(tool) is not None,
                        f"{tool} not found in PATH (needed for 'attach', 'ssh', and some fallbacks)", True))
+
+    if os.geteuid() != 0:
+        checks.append(("libvirt group", _in_libvirt_group(),
+                        "not in the 'libvirt' group — 'status'/'plan' will need sudo "
+                        "to open the libvirt socket. Fix: sudo usermod -aG libvirt "
+                        f"{os.environ.get('USER', '$USER')} (then log out/in)", True))
 
     title = f"Preflight — {cfg.get('name', 'rodeo')}"
     all_ok = _print_checks(title, checks)

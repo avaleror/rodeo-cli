@@ -172,6 +172,49 @@ def _install_ansible_collections() -> None:
         )
 
 
+def _ensure_invoking_user_in_libvirt_group() -> None:
+    """Add the real (non-root) user to the ``libvirt`` group.
+
+    rodeo's privileged deploy phases self-escalate via sudo (see privilege.py),
+    but read-only commands (``status``, ``plan``) only need to open the libvirt
+    socket — they should never require root. Without ``libvirt`` group
+    membership, a non-root ``qemu:///system`` connection fails outright
+    ("no polkit agent available"), forcing every user to reach for sudo just to
+    check status. Most distros ship a default polkit rule granting
+    ``libvirt`` group members that access, so group membership alone is
+    normally enough.
+
+    Uses ``SUDO_USER`` (set by the ``sudo rodeo install-deps`` invocation this
+    command already requires) rather than any hardcoded name, so this benefits
+    whoever actually runs it. No-op when genuinely root with no invoking user
+    (nothing to grant access to) or when the host has no ``libvirt`` group.
+    """
+    user = os.environ.get("SUDO_USER")
+    if not user or user == "root":
+        return
+    if subprocess.run(["getent", "group", "libvirt"], capture_output=True).returncode != 0:
+        console.print("[yellow]  ⚠  no 'libvirt' group on this host — skipping unprivileged libvirt access setup[/yellow]")
+        return
+    current_groups = subprocess.run(
+        ["id", "-nG", user], capture_output=True, text=True
+    ).stdout.split()
+    if "libvirt" in current_groups:
+        console.print(f"[green]  ✓  {user} already in the libvirt group[/green]")
+        return
+    r = _run(["usermod", "-aG", "libvirt", user], check=False)
+    if r.returncode == 0:
+        console.print(
+            f"[green]  ✓  Added {user} to the libvirt group[/green] "
+            "[dim](log out/in, or run `newgrp libvirt`, for it to take effect — "
+            "then 'rodeo status'/'rodeo plan' work without sudo)[/dim]"
+        )
+    else:
+        console.print(
+            f"[yellow]  ⚠  Could not add {user} to the libvirt group (usermod exit {r.returncode}) "
+            "— read-only commands will need sudo[/yellow]"
+        )
+
+
 @click.command("install-deps")
 @click.option("--skip-ansible", is_flag=True, help="Skip ansible-core pip install.")
 @click.option("--link", is_flag=True, help="Create/update /usr/local/bin/rodeo symlink to this invocation (so plain 'rodeo' and 'sudo rodeo' work without exports or full paths).")
@@ -207,6 +250,8 @@ def install_deps_cmd(skip_ansible: bool, link: bool, force_link: bool) -> None:
         raise SystemExit(exc.returncode or 1)
 
     console.print("\n[bold green]✓  Dependencies installed.[/bold green]")
+
+    _ensure_invoking_user_in_libvirt_group()
 
     # Verify critical Python bindings (especially for SLES where libvirt-python
     # is a system package that venvs need --system-site-packages to see).

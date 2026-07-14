@@ -157,6 +157,37 @@ def test_rancher_ip_mismatch_rejected():
         config.validate_config(cfg)
 
 
+def test_letsencrypt_unresolved_email_rejected():
+    """Regression: an unresolved ??key in rancher_tls.email isn't in the credentials{}
+    loop's fail-closed check, so it used to sail through as a literal string all the
+    way to Let's Encrypt's ACME server (which rejects it: "contact email contains a
+    question mark") — only surfacing after the rancher phase burned 10+ minutes."""
+    cfg = {
+        "credentials": {"harvester_os_password": "Secret123"},
+        "rancher_tls": {"source": "letsEncrypt", "email": "??rancher_letsencrypt_email"},
+    }
+    with pytest.raises(ValueError, match="real address"):
+        config.validate_config(cfg)
+
+
+@pytest.mark.parametrize("bad_email", ["", "admin@example.com", "someone@sub.example.com"])
+def test_letsencrypt_placeholder_email_rejected(bad_email):
+    cfg = {
+        "credentials": {"harvester_os_password": "Secret123"},
+        "rancher_tls": {"source": "letsEncrypt", "email": bad_email},
+    }
+    with pytest.raises(ValueError, match="real address"):
+        config.validate_config(cfg)
+
+
+def test_letsencrypt_real_email_accepted():
+    cfg = {
+        "credentials": {"harvester_os_password": "Secret123"},
+        "rancher_tls": {"source": "letsEncrypt", "email": "andres@suse.com"},
+    }
+    config.validate_config(cfg)  # must not raise
+
+
 def test_default_config_is_self_consistent():
     """The shipped defaults must pass their own network validation."""
     cfg = config.load_config("/nonexistent/plan.yaml")

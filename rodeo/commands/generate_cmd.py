@@ -350,7 +350,9 @@ def generate_cmd(output_dir: str, name: str | None, advanced: bool):
     env_file.write_text(env_content)
     console.print(f"[green]Created {env_file}[/green] (use with source + sudo -E)")
 
-    secrets_dest = Path.home() / ".rodeo" / "secrets.yaml"
+    from ..paths import rodeo_secrets_path
+
+    secrets_dest = rodeo_secrets_path()
     secrets_dest.parent.mkdir(parents=True, exist_ok=True)
     if secrets_dest.exists():
         console.print(f"[yellow]{secrets_dest} exists — not overwriting (delete to refresh on next generate)[/yellow]")

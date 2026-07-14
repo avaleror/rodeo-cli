@@ -83,6 +83,45 @@ def test_plan_flags_drift_on_a_phase_already_marked_done(tmp_path, monkeypatch):
     assert "✓ vms done" not in out
 
 
+def test_plan_suse_edge_uses_definition_flavors(tmp_path):
+    """edge/eib VMs must not inherit harvester sizing in the plan diff."""
+    plan = tmp_path / "rodeo-plan.yaml"
+    plan.write_text("type: suse-edge\nname: suse-edge-test\n")
+    result = CliRunner().invoke(plan_cmd, ["--config", str(plan)])
+    out = _flat(result.output)
+    assert result.exit_code == 0, result.output
+    assert "4096 MiB / 2 vcpu" in out
+    assert "12288 MiB / 4 vcpu" in out
+    assert "8192 MiB / 4 vcpu" in out  # rancher
+    # edge1 would wrongly show harvester sizing (16384/8) before fix #4
+    assert "edge1" in out
+    edge_idx = out.index("edge1")
+    assert "16384 MiB / 8 vcpu" not in out[edge_idx : edge_idx + 80]
+
+
+def test_plan_suse_edge_drift_uses_edge_node_resources(tmp_path, monkeypatch):
+    plan = tmp_path / "rodeo-plan.yaml"
+    plan.write_text("type: suse-edge\nname: suse-edge-test\n")
+    state.mark_phase_done("vms", "suse-edge-test")
+    monkeypatch.setattr(
+        plan_cmd_mod, "_inspect_host",
+        lambda cfg: {
+            "vms": {
+                "edge1": VMInfo(name="edge1", state="running", memory_mib=4096, vcpus=2),
+            },
+            "net_active": True,
+        },
+    )
+    result = CliRunner().invoke(
+        plan_cmd,
+        ["--config", str(plan), "-P", "resources.edge-node.memory_mib=8192"],
+    )
+    out = _flat(result.output)
+    assert result.exit_code == 0, result.output
+    assert "memory 4096 → 8192 MiB" in out
+    assert "drift detected" in out
+
+
 def test_plan_warns_on_invalid_config_but_still_previews(tmp_path):
     result = CliRunner().invoke(
         plan_cmd,

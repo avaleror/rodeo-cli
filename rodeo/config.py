@@ -22,6 +22,8 @@ from typing import Any
 
 import yaml
 
+from .paths import rodeo_last_lab_file, rodeo_secrets_path
+
 
 class ConfigError(ValueError):
     """User-facing configuration problem (bad YAML, bad values, bad params)."""
@@ -49,49 +51,22 @@ _BASE_DEFAULTS: dict[str, Any] = {
     "credentials": {},
 }
 
-_SECRETS_PATH = Path.home() / ".rodeo" / "secrets.yaml"
-
 # Markers that identify a lab directory, so commands can be run from anywhere
 # inside it without passing --config-dir (like git/terraform finding their root).
 _LAB_MARKERS = ("rodeo-plan.yaml", "definition.yaml")
 
 
-def _invoking_home() -> Path:
-    """Real user's home even under plain ``sudo`` (uses SUDO_USER)."""
-    sudo_user = os.environ.get("SUDO_USER")
-    if sudo_user:
-        try:
-            import pwd
-            return Path(pwd.getpwnam(sudo_user).pw_dir)
-        except (KeyError, ImportError):
-            pass
-    return Path.home()
-
-
 def _resolve_secrets_path() -> Path:
-    """Secrets file to read, resolved live so HOME/SUDO_USER are honored.
-
-    Order: the invoking user's ~/.rodeo/secrets.yaml (correct under plain ``sudo``,
-    where HOME is /root but SUDO_USER points back at the user), then the module
-    constant (which tests monkeypatch). Lets ``rodeo up`` write secrets as the user
-    and have the escalated deploy still find them — no ``sudo -E`` needed.
-    """
-    live = _invoking_home() / ".rodeo" / "secrets.yaml"
-    if live.exists():
-        return live
-    if _SECRETS_PATH.exists():
-        return _SECRETS_PATH
-    return live
-
-
-_LAST_LAB_FILE = Path.home() / ".rodeo" / "last_lab"
+    """Secrets file to read, resolved live so HOME/SUDO_USER are honored."""
+    return rodeo_secrets_path()
 
 
 def _record_lab_dir(lab_dir: Path) -> None:
     """Persist the last successfully used lab dir so commands work from anywhere."""
     try:
-        _LAST_LAB_FILE.parent.mkdir(parents=True, exist_ok=True)
-        _LAST_LAB_FILE.write_text(str(lab_dir))
+        last_lab = rodeo_last_lab_file()
+        last_lab.parent.mkdir(parents=True, exist_ok=True)
+        last_lab.write_text(str(lab_dir))
     except OSError:
         pass
 
@@ -111,7 +86,7 @@ def find_lab_dir(start: str | Path | None = None) -> Path | None:
             return d
     # Fall back to the last successfully loaded lab dir.
     try:
-        last = Path(_LAST_LAB_FILE.read_text().strip())
+        last = Path(rodeo_last_lab_file().read_text().strip())
         if last.is_dir() and any((last / m).exists() for m in _LAB_MARKERS):
             return last
     except OSError:

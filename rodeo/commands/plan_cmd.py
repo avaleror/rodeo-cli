@@ -7,6 +7,7 @@ import click
 from rich.console import Console
 
 from ..config import ConfigError, load_config, validate_config
+from ..inventory import _fallback_flavor_name, plan_vm_rows, vm_flavor_map
 from ..profiles import get_profile
 from ..state import load_state
 from ._options import config_options
@@ -32,7 +33,9 @@ def plan_cmd(config_path: str, config_dir: str | None, params: tuple[str, ...], 
     profile = get_profile(cfg.get("type", "suse-virt"))
 
     actual = _inspect_host(cfg)
-    create, change, ok = _print_vms(cfg, actual)
+    vm_rows = plan_vm_rows(cfg)
+    flavors = vm_flavor_map(cfg)
+    create, change, ok = _print_vms(cfg, actual, vm_rows, flavors)
     _print_network(actual)
     downloads = _print_storage(cfg)
     # A VM create/change the diff above just reported means the "vms" phase's
@@ -62,8 +65,9 @@ def _inspect_host(cfg: dict) -> dict | None:
     try:
         from ..engine.libvirt import LibvirtDriver
 
+        vm_names = [name for name, _ in plan_vm_rows(cfg)]
         with LibvirtDriver(cfg["libvirt"]["uri"]) as lv:
-            infos = lv.list_vms(list(cfg.get("vms", {}).keys()))
+            infos = lv.list_vms(vm_names)
             return {
                 "vms": {vm.name: vm for vm in infos},
                 "net_active": lv.net_is_active("default"),
@@ -75,16 +79,21 @@ def _inspect_host(cfg: dict) -> dict | None:
         return None
 
 
-def _flavor_of(cfg: dict, vm: str) -> dict:
-    flavor = "rancher" if vm == "rancher" else "harvester"
-    return cfg.get("resources", {}).get(flavor, {})
+def _flavor_of(cfg: dict, vm: str, flavors: dict[str, str]) -> dict:
+    key = flavors.get(vm, _fallback_flavor_name(vm))
+    return cfg.get("resources", {}).get(key, {})
 
 
-def _print_vms(cfg: dict, actual: dict | None) -> tuple[int, int, int]:
+def _print_vms(
+    cfg: dict,
+    actual: dict | None,
+    vm_rows: list[tuple[str, dict]],
+    flavors: dict[str, str],
+) -> tuple[int, int, int]:
     console.print("\n[bold]  Virtual machines[/bold]")
     create = change = ok = 0
-    for name, spec in cfg.get("vms", {}).items():
-        res = _flavor_of(cfg, name)
+    for name, spec in vm_rows:
+        res = _flavor_of(cfg, name, flavors)
         desired = f"{res.get('memory_mib', '?')} MiB / {res.get('vcpu', '?')} vcpu"
         line = f"    {name:<12} {desired:<22} {spec.get('ip', ''):<16}"
 

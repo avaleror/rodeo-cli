@@ -4,9 +4,16 @@
 #
 # Base OS: openSUSE Leap Micro 6.2 Default qcow (ships with cloud-init + Podman
 # pre-installed; immutable root via btrfs snapshots managed by transactional-update).
-# virt-customize only enables cloud-init services — no package install inside guestfs
-# (guestfs has no network; packages install offline fail on Leap Micro).
-# Hauler binary is installed at first boot via cloud-init runcmd.
+# No virt-customize step: the root filesystem is a read-only btrfs snapshot
+# (transactional-update), so ANY offline write — even virt-customize's own
+# --firstboot-command installer under /usr/lib/virt-sysprep — fails with
+# "Read-only file system". This isn't needed anyway: cloud-init.target is
+# wired in dynamically at boot by cloud-init's own systemd generator
+# (`# cloud-init.target is enabled by cloud-init-generator`, see the unit file),
+# not by static `.wants` symlinks — so there's nothing to "systemctl enable"
+# here regardless. Confirmed live (2026-07-14): cloud-config/cloud-final/
+# cloud-init-local are already present under cloud-init.target.wants/ in the
+# base image. Hauler binary installs at first boot via cloud-init runcmd.
 
 - name: Download openSUSE Leap Micro 6.2 image for EIB VM
   ansible.builtin.shell: |
@@ -23,23 +30,20 @@
     executable: /bin/bash
     creates: "{{ image_dir }}/Leap-Micro-6.2.qcow2"
 
-# Leap Micro 6.2 Default qcow ships with cloud-init pre-installed; only enable services.
+# Leap Micro 6.2 ships cloud-init already active via its boot-time generator
+# (see comment above) — just convert the disk, no virt-customize needed.
 # Podman is built-in; Hauler binary installs at first boot via cloud-init runcmd.
-- name: Build EIB VM disk (Leap Micro 6.2 base + enable cloud-init services)
+- name: Build EIB VM disk (Leap Micro 6.2 base)
   ansible.builtin.shell: |
     set -euo pipefail
     tmp='{{ image_dir }}/eib-vda.qcow2.building'
     rm -f "$tmp"
     qemu-img convert -f qcow2 -O qcow2 -o preallocation=metadata \
       '{{ image_dir }}/Leap-Micro-6.2.qcow2' "$tmp"
-    virt-customize -a "$tmp" \
-      --run-command 'systemctl enable cloud-init-local.service cloud-init.service cloud-config.service cloud-final.service'
     mv "$tmp" '{{ image_dir }}/eib-vda.qcow2'
   args:
     executable: /bin/bash
     creates: "{{ image_dir }}/eib-vda.qcow2"
-  environment:
-    LIBGUESTFS_BACKEND: direct
 
 - name: Copy OVMF variable store for EIB VM
   ansible.builtin.command:

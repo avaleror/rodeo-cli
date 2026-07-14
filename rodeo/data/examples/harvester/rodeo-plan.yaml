@@ -22,8 +22,8 @@ network:
 
 resources:
   harvester:
-    memory_mib: 16384    # 16 GiB — meets Harvester minimum
-    vcpu: 8
+    memory_mib: 20480    # 20 GiB
+    vcpu: 10
     disk_gb: 270         # Longhorn needs room; 270 GB works for nested KVM
   rancher:
     memory_mib: 8192

@@ -187,3 +187,47 @@ def test_wait_ssh_cancellable(cfg, monkeypatch):
     _, ok = drain(phase._wait_ssh())
     assert ok is False
     assert phase.error == "cancelled"
+
+
+def test_install_rancher_uses_values_file_not_set_bootstrap(cfg, monkeypatch):
+    """bootstrapPassword must not appear on helm argv (quoting + process-list risk)."""
+    cfg["credentials"]["rancher_admin_password"] = 'p@ss"word$xyz'
+    scripts: list[str] = []
+
+    def fake_ssh(self, script, timeout=120):
+        scripts.append(script)
+        return subprocess.CompletedProcess([], 0, stdout="deployed", stderr="")
+
+    monkeypatch.setattr(RancherPhase, "_ssh_script", fake_ssh)
+    phase = RancherPhase(cfg)
+    _, ok = drain(phase._install_rancher())
+    assert ok is True
+    assert len(scripts) == 1
+    script = scripts[0]
+    assert "--set bootstrapPassword" not in script
+    assert "--set hostname=" not in script
+    assert "-f /root/rancher-helm-values.yaml" in script
+    assert "chmod 600 /root/rancher-helm-values.yaml" in script
+    assert "rm -f /root/rancher-helm-values.yaml" in script
+    assert "bootstrapPassword:" in script
+    assert 'p@ss"word$xyz' in script
+
+
+def test_install_rancher_letsencrypt_in_values_file(cfg, monkeypatch):
+    cfg["rancher_tls"] = {"source": "letsEncrypt", "email": "ops@example.com"}
+    scripts: list[str] = []
+
+    def fake_ssh(self, script, timeout=120):
+        scripts.append(script)
+        return subprocess.CompletedProcess([], 0, stdout="", stderr="")
+
+    monkeypatch.setattr(RancherPhase, "_ssh_script", fake_ssh)
+    phase = RancherPhase(cfg)
+    assert phase.tls_source == "letsEncrypt"
+    _, ok = drain(phase._install_rancher())
+    assert ok is True
+    script = scripts[0]
+    assert "--set letsEncrypt" not in script
+    assert "--set ingress.tls" not in script
+    assert "letsEncrypt:" in script
+    assert "ops@example.com" in script

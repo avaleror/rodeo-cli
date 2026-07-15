@@ -196,13 +196,15 @@ seeing it and fixing it are two different commands:
 
 ```bash
 cd ~/.rodeo/profiles/mylab
+rodeo deploy --reconcile   # opt-in: reset from vms when memory/vCPU drifted
 rodeo deploy --from vms     # resume from a specific phase, or
 rodeo deploy --force        # redo every phase, or
 rodeo clean --yes && rodeo up --profile mylab   # destroy this lab's VMs and redeploy
 ```
 
-VM resource changes (memory, vCPU, disk) generally need the `clean` + redeploy path —
-libvirt won't resize a running domain's memory/vCPU in place from a `define`.
+`--reconcile` clears the cached `vms` (and later) phase state when live memory/vCPU
+differs from the plan. For **running** domains, libvirt still will not live-resize —
+prefer `clean` + redeploy when you need the new sizes applied for real.
 
 ---
 

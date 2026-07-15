@@ -117,6 +117,7 @@ class RodeoApp(App):
         force: bool = False,
         include_guarded: bool = False,
         ansible_verbose: int = 0,
+        reconcile: bool = False,
     ) -> None:
         super().__init__()
         self.cfg = cfg
@@ -127,6 +128,7 @@ class RodeoApp(App):
         self.force = force
         self.include_guarded = include_guarded
         self.ansible_verbose = ansible_verbose
+        self.reconcile = reconcile
         self.exit_code: int = 0
         self._runner: DeployRunner | None = None
         self._stop_tailers = threading.Event()
@@ -165,6 +167,7 @@ class RodeoApp(App):
             from_phase=self.from_phase,
             install_collections=self.install_collections,
             force=self.force,
+            reconcile=self.reconcile,
             include_guarded=self.include_guarded,
             ansible_verbose=self.ansible_verbose,
         )

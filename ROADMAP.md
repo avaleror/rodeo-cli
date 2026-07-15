@@ -65,21 +65,21 @@ still matches. `rodeo plan` shows the drift; `rodeo deploy` ignores it. See
 `docs/custom-rodeos.md#re-running-after-a-deploy` for the user-facing version of this gap
 and today's manual workaround (`--force` / `--from` / `clean` + redeploy).
 
-**Step 1 — extract the diff, don't duplicate it.** Pull the drift-detection logic
+**Step 1 — extract the diff, don't duplicate it.** ✅ Pull the drift-detection logic
 currently living in `plan_cmd.py` (`_inspect_host`, `_print_vms`'s memory/vcpu compare,
 `_print_network`, `_print_storage`) into a shared module (e.g. `rodeo/drift.py`) that
 returns a structured `DriftReport` (which phases are affected and why), not print
 statements. `plan_cmd.py` becomes a renderer over that report — pure refactor, no
 behavior change, existing `test_plan_cmd.py` cases must still pass unmodified.
 
-**Step 2 — scope V1 narrowly: VM memory/vcpu drift on already-defined domains only.**
+**Step 2 — scope V1 narrowly: VM memory/vcpu drift on already-defined domains only.** ✅
 This is the one case already diffed, tested, and well understood. Explicitly out of
 scope for V1: topology changes (add/remove a node — Harvester join/etcd-gap sequencing
 makes a safe partial re-run a much bigger problem, see Standing Constraints below) and
 anything touching `pxe_server`/`cluster` (the fragile, live-regression-only phases).
 Those stay on manual `--force`/`--from` until a V2 is scoped separately.
 
-**Step 3 — wire it into `DeployRunner.run()`, opt-in first.** Add `--reconcile` to
+**Step 3 — wire it into `DeployRunner.run()`, opt-in first.** ✅ Add `--reconcile` to
 `rodeo deploy`/`rodeo up`. When set, before the existing `is_phase_done()` skip check,
 consult the shared `DriftReport`; if it flags the `vms` phase, call the existing
 `state.reset_from("vms", plan_name, profile.phases)` instead of skipping — reuses
@@ -87,7 +87,7 @@ machinery that already exists for `--from`, just triggered by drift instead of a
 Print what was detected and what's about to re-run before doing it (never a silent
 surprise) — reuse the same rendering `plan` already has.
 
-**Step 4 — add `test_runner.py` coverage**: mock the shared drift module reporting VM
+**Step 4 — add `test_runner.py` coverage**: ✅ mock the shared drift module reporting VM
 memory drift and assert `DeployRunner.run()` re-runs `vms` (not skipped) while leaving
 unrelated already-done phases skipped, and that omitting `--reconcile` reproduces
 today's exact behavior (no regressions for anyone not opting in).

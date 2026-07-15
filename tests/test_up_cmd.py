@@ -118,8 +118,9 @@ def test_up_deploys_when_root(tmp_path, monkeypatch):
 
     captured = {}
 
-    def fake_exec(cfg, root):
+    def fake_exec(cfg, root, **kwargs):
         captured["name"] = cfg["name"]
+        captured["reconcile"] = kwargs.get("reconcile", False)
         return 0
 
     monkeypatch.setattr(up_mod, "execute_deploy", fake_exec)

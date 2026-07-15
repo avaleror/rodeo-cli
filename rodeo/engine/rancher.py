@@ -98,10 +98,17 @@ class RancherPhase:
         eib_def          = cfg.get("eib", {})
         self.eib_image   = eib_def.get("container_image", "registry.suse.com/edge/3.6/edge-image-builder:1.3.3.1")
         self.hauler_version = cfg.get("versions", {}).get("hauler", "1.2.2")
-        _sl_micro_iso_default = "https://download.suse.com/SL-Micro/6.2/SL-Micro.x86_64-6.2-Base-SelfInstall-GM.install.iso"
-        _sl_micro_raw_default = "https://download.suse.com/SL-Micro/6.2/SL-Micro.x86_64-6.2-Default.raw"
-        self.sl_micro_iso_url = eib_def.get("sl_micro_selfinstall_url", _sl_micro_iso_default)
-        self.sl_micro_raw_url = eib_def.get("sl_micro_raw_url", _sl_micro_raw_default)
+        # download.suse.com's SL Micro path is stale (redirects to a marketing page,
+        # not the file — confirmed live: hauler happily "added" the 302 redirect
+        # chain's tiny HTML body as if it were the real multi-GB image, only
+        # failing checksum verification later when actually served). Using
+        # openSUSE Leap Micro 6.2 instead — freely downloadable, no SCC/registration
+        # gate, confirmed live via HEAD request (real Content-Length, not a redirect
+        # to a webpage).
+        _leap_micro_iso_default = "https://download.opensuse.org/distribution/leap-micro/6.2/appliances/iso/openSUSE-Leap-Micro.x86_64-Default-SelfInstall.iso"
+        _leap_micro_raw_default = "https://download.opensuse.org/distribution/leap-micro/6.2/appliances/openSUSE-Leap-Micro.x86_64-Default.raw.xz"
+        self.leap_micro_iso_url = eib_def.get("leap_micro_iso_url", _leap_micro_iso_default)
+        self.leap_micro_raw_url = eib_def.get("leap_micro_raw_url", _leap_micro_raw_default)
 
         el_cfg = cfg.get("elemental", {})
         _plan_name = cfg.get("name", "suse-edge").lower().replace("_", "-")
@@ -1520,8 +1527,16 @@ class RancherPhase:
         """
         prefix = self.elemental_reg_prefix
         reg_name = f"{prefix}-reg-1"
-        iso_fname = self.sl_micro_iso_url.split("/")[-1]
-        raw_fname = self.sl_micro_raw_url.split("/")[-1]
+        iso_fname = self.leap_micro_iso_url.split("/")[-1]
+        raw_fname_dl = self.leap_micro_raw_url.split("/")[-1]
+        # openSUSE ships the raw appliance .xz-compressed; EIB needs a plain .raw
+        # baseImage, so it gets decompressed after staging (see the curl/xz block
+        # below). raw_fname is the name EIB definitions actually reference.
+        raw_fname = raw_fname_dl[:-3] if raw_fname_dl.endswith(".xz") else raw_fname_dl
+        raw_decompress_cmd = (
+            f'xz -d -f "/home/eib-config/base-images/{raw_fname_dl}"\n'
+            if raw_fname_dl.endswith(".xz") else ""
+        )
 
         script = (
             "set -euo pipefail\n"
@@ -1542,10 +1557,10 @@ class RancherPhase:
             # Demo app image (Fleet-deployed to edge clusters, from cfg["alien_geeko"]["image"]);
             # edge nodes pull from Hauler via k3s registry mirror (docker.io → eib:5000).
             f'$HAULER store add image "{self.alien_geeko_image}" --store $STORE\n'
-            # SL Micro 6.2 SelfInstall ISO — EIB base for Elemental ISO builds (edge1/edge2)
-            f'$HAULER store add file "{self.sl_micro_iso_url}" --store $STORE\n'
-            # SL Micro 6.2 Default RAW — EIB base for standalone K3s/RKE2 builds (edge3/edge4)
-            f'$HAULER store add file "{self.sl_micro_raw_url}" --store $STORE\n\n'
+            # Leap Micro 6.2 SelfInstall ISO — EIB base for Elemental ISO builds (edge1/edge2)
+            f'$HAULER store add file "{self.leap_micro_iso_url}" --store $STORE\n'
+            # Leap Micro 6.2 Default RAW (.xz) — EIB base for standalone K3s/RKE2 builds (edge3/edge4)
+            f'$HAULER store add file "{self.leap_micro_raw_url}" --store $STORE\n\n'
             # Enable and start Hauler services (service units written by cloud-init)
             "systemctl daemon-reload\n"
             "systemctl enable --now hauler-registry.service hauler-fileserver.service\n\n"
@@ -1558,12 +1573,13 @@ class RancherPhase:
             '  curl -sS -o /dev/null "http://localhost:8080/" 2>/dev/null && break\n'
             "  sleep 1\n"
             "done\n\n"
-            # Stage SL Micro base images from Hauler fileserver into eib-config/base-images
+            # Stage Leap Micro base images from Hauler fileserver into eib-config/base-images
             # so participants can reference them by filename in EIB definition files without
             # needing internet. The ISO is for Elemental builds; the RAW is for standalone builds.
             "mkdir -p /home/eib-config/scripts /home/eib-config/base-images /home/eib-output\n"
             f'curl -fsSL "http://localhost:8080/{iso_fname}" -o "/home/eib-config/base-images/{iso_fname}"\n'
-            f'curl -fsSL "http://localhost:8080/{raw_fname}" -o "/home/eib-config/base-images/{raw_fname}"\n\n'
+            f'curl -fsSL "http://localhost:8080/{raw_fname_dl}" -o "/home/eib-config/base-images/{raw_fname_dl}"\n'
+            f"{raw_decompress_cmd}\n"
             # k3s registry mirror script — EIB runs this during image build to embed
             # /etc/rancher/k3s/registries.yaml into the edge node OS so ALL container
             # pulls (docker.io, registry.suse.com, ghcr.io) go through the Hauler
@@ -1697,6 +1713,11 @@ class RancherPhase:
         """
         image = f"docker.io/gitea/gitea:{self.gitea_version}-rootless"
         gitea_url = f"http://localhost:{self.gitea_port}"
+        # Same filenames _populate_hauler stages onto the eib VM — the .raw (not
+        # .raw.xz) is what actually lands in base-images/ after decompression.
+        iso_fname = self.leap_micro_iso_url.split("/")[-1]
+        raw_fname_dl = self.leap_micro_raw_url.split("/")[-1]
+        raw_fname = raw_fname_dl[:-3] if raw_fname_dl.endswith(".xz") else raw_fname_dl
 
         # NMState network-config, one file per edge node, generated from the
         # definition (name + IP + prefix + gateway + DNS). No node names or IPs
@@ -1798,7 +1819,7 @@ class RancherPhase:
             "cat > \"$EIB_REPO/elemental-edge1-definition.yaml\" << '__DEF1__'\n"
             "apiVersion: 1.0\n\n"
             "image:\n  imageType: iso\n  arch: x86_64\n"
-            "  baseImage: SL-Micro.x86_64-6.2-Base-SelfInstall-GM.install.iso\n"
+            f"  baseImage: {iso_fname}\n"
             "  outputImageName: elemental-edge1.iso\n\n"
             "operatingSystem:\n  kernelArgs:\n    - net.ifnames=0\n  files:\n"
             "    - sourcePath: elemental/elemental_config.yaml\n"
@@ -1809,7 +1830,7 @@ class RancherPhase:
             "cat > \"$EIB_REPO/elemental-edge2-definition.yaml\" << '__DEF2__'\n"
             "apiVersion: 1.0\n\n"
             "image:\n  imageType: iso\n  arch: x86_64\n"
-            "  baseImage: SL-Micro.x86_64-6.2-Base-SelfInstall-GM.install.iso\n"
+            f"  baseImage: {iso_fname}\n"
             "  outputImageName: elemental-edge2.iso\n\n"
             "operatingSystem:\n  kernelArgs:\n    - net.ifnames=0\n  files:\n"
             "    - sourcePath: elemental/elemental_config.yaml\n"
@@ -1821,7 +1842,7 @@ class RancherPhase:
             "cat > \"$EIB_REPO/rke2-edge3-definition.yaml\" << '__DEF3__'\n"
             "apiVersion: 1.0\n\n"
             "image:\n  imageType: raw\n  arch: x86_64\n"
-            "  baseImage: SL-Micro.x86_64-6.2-Default.raw\n"
+            f"  baseImage: {raw_fname}\n"
             "  outputImageName: rke2-edge3.raw\n\n"
             "operatingSystem:\n  kernelArgs:\n    - net.ifnames=0\n  scripts:\n"
             "    - 10-hostname-edge3.sh\n    - 99-k3s-registries.sh\n\n"
@@ -1832,7 +1853,7 @@ class RancherPhase:
             "cat > \"$EIB_REPO/k3s-edge4-definition.yaml\" << '__DEF4__'\n"
             "apiVersion: 1.0\n\n"
             "image:\n  imageType: raw\n  arch: x86_64\n"
-            "  baseImage: SL-Micro.x86_64-6.2-Default.raw\n"
+            f"  baseImage: {raw_fname}\n"
             "  outputImageName: k3s-edge4.raw\n\n"
             "operatingSystem:\n  kernelArgs:\n    - net.ifnames=0\n  scripts:\n"
             "    - 10-hostname-edge4.sh\n    - 99-k3s-registries.sh\n\n"

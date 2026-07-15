@@ -39,7 +39,7 @@ class SuseEdgeProfile(RodeoProfile):
         "rancher":    {"memory_mib": 8192,  "vcpu": 4, "disk_gb": 60},
         # EIB VM: needs room for the EIB container + base OS images + built artifacts.
         "eib":        {"memory_mib": 12288, "vcpu": 4, "disk_gb": 100},
-        # Edge nodes: minimum for SL Micro 6.2 + Elemental agent.
+        # Edge nodes: minimum for Leap Micro 6.2 + Elemental agent.
         "edge-node":  {"memory_mib": 4096,  "vcpu": 2, "disk_gb": 20},
     }
 

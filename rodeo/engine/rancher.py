@@ -1549,6 +1549,15 @@ class RancherPhase:
             # Enable and start Hauler services (service units written by cloud-init)
             "systemctl daemon-reload\n"
             "systemctl enable --now hauler-registry.service hauler-fileserver.service\n\n"
+            # enable --now returns once systemd has forked the unit, not once the
+            # fileserver is actually bound and listening — curling immediately here
+            # raced the startup and failed "Could not connect to server". Poll until
+            # it answers (fileserver has no dedicated health path; a bare GET 404
+            # still proves the socket is up) before staging the base images below.
+            "for i in $(seq 1 30); do\n"
+            '  curl -sS -o /dev/null "http://localhost:8080/" 2>/dev/null && break\n'
+            "  sleep 1\n"
+            "done\n\n"
             # Stage SL Micro base images from Hauler fileserver into eib-config/base-images
             # so participants can reference them by filename in EIB definition files without
             # needing internet. The ISO is for Elemental builds; the RAW is for standalone builds.

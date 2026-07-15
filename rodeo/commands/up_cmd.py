@@ -75,9 +75,11 @@ def _default_labs_root() -> Path:
 )
 @click.option("--resume", is_flag=True, hidden=True,
               help="Internal: continue after sudo re-exec.")
+@click.option("--reconcile", is_flag=True, default=False,
+              help="Pass --reconcile to deploy (re-run vms when VM memory/vCPU drifts).")
 def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
            assume_yes: bool, no_deploy: bool, no_tmux: bool,
-           deployment_target: str | None, resume: bool) -> None:
+           deployment_target: str | None, resume: bool, reconcile: bool) -> None:
     """Bring up a SUSE/Rancher learning lab in one command.
 
     Runs inside a tmux session automatically so the deploy survives SSH or
@@ -114,7 +116,7 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
         if lab is None:
             console.print("[red]✗  --resume needs --dir.[/red]")
             raise SystemExit(2)
-        _deploy(lab, assume_yes=True)
+        _deploy(lab, assume_yes=True, reconcile=reconcile)
         return
 
     # Resolve deployment target: explicit flag > existing plan > auto-detect > prompt.
@@ -204,10 +206,13 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
 
     if not is_root():
         console.print("\n[bold]Switching to root for the install[/bold] (sudo)…")
-        ensure_root(["up", "--resume", "--dir", str(lab), "--yes",
-                     "--target", deployment_target])  # does not return
+        resume_args = ["up", "--resume", "--dir", str(lab), "--yes",
+                       "--target", deployment_target]
+        if reconcile:
+            resume_args.append("--reconcile")
+        ensure_root(resume_args)  # does not return
 
-    _deploy(lab, assume_yes=assume_yes)
+    _deploy(lab, assume_yes=assume_yes, reconcile=reconcile)
 
 
 # --------------------------------------------------------------------------- #
@@ -289,7 +294,7 @@ def _choose_profile(host: dict, assume_yes: bool) -> str:
     return choice
 
 
-def _deploy(lab: Path, assume_yes: bool) -> None:
+def _deploy(lab: Path, assume_yes: bool, reconcile: bool = False) -> None:
     """Load the lab, preflight, and run the pipeline (called as root)."""
     try:
         cfg = load_config("rodeo-plan.yaml", config_dir=str(lab))
@@ -310,5 +315,5 @@ def _deploy(lab: Path, assume_yes: bool) -> None:
         if not Confirm.ask("Preflight reported problems. Deploy anyway?", default=False):
             raise SystemExit(1)
 
-    code = execute_deploy(cfg, root)
+    code = execute_deploy(cfg, root, reconcile=reconcile)
     raise SystemExit(code)

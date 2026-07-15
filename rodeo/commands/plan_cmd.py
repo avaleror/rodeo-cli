@@ -7,7 +7,7 @@ import click
 from rich.console import Console
 
 from ..config import ConfigError, load_config, validate_config
-from ..inventory import _fallback_flavor_name, plan_vm_rows, vm_flavor_map
+from ..drift import DriftReport, collect_drift, inspect_host
 from ..profiles import get_profile
 from ..state import load_state
 from ._options import config_options
@@ -33,15 +33,16 @@ def plan_cmd(config_path: str, config_dir: str | None, params: tuple[str, ...], 
     profile = get_profile(cfg.get("type", "suse-virt"))
 
     actual = _inspect_host(cfg)
-    vm_rows = plan_vm_rows(cfg)
-    flavors = vm_flavor_map(cfg)
-    create, change, ok = _print_vms(cfg, actual, vm_rows, flavors)
-    _print_network(actual)
+    if actual is None:
+        console.print("\n[yellow]⚠  libvirt not reachable on host — showing desired state only.[/yellow]")
+    report = collect_drift(cfg, actual=actual)
+    create, change, ok = _print_vms(report)
+    _print_network(report)
     downloads = _print_storage(cfg)
     # A VM create/change the diff above just reported means the "vms" phase's
     # cached "done" state no longer reflects the host — flag that instead of
     # printing a plain checkmark that contradicts the diff a few lines up.
-    pending = _print_phases(cfg, profile, vms_drift=bool(create or change))
+    pending = _print_phases(cfg, profile, vms_drift=report.vms_plan_drift)
 
     console.print()
     if create or change or downloads or pending:
@@ -61,69 +62,36 @@ def plan_cmd(config_path: str, config_dir: str | None, params: tuple[str, ...], 
 
 
 def _inspect_host(cfg: dict) -> dict | None:
-    """Return {vms: {name: VMInfo}, net_active: bool} or None if libvirt is unreachable."""
-    try:
-        from ..engine.libvirt import LibvirtDriver
-
-        vm_names = [name for name, _ in plan_vm_rows(cfg)]
-        with LibvirtDriver(cfg["libvirt"]["uri"]) as lv:
-            infos = lv.list_vms(vm_names)
-            return {
-                "vms": {vm.name: vm for vm in infos},
-                "net_active": lv.net_is_active("default"),
-            }
-    except Exception:
-        # Always fall back gracefully on any libvirt issue (missing module or daemon not up).
-        # This is normal on a clean host before install-deps has run.
-        console.print("\n[yellow]⚠  libvirt not reachable on host — showing desired state only.[/yellow]")
-        return None
+    """Shim so tests can monkeypatch plan_cmd._inspect_host (delegates to drift)."""
+    return inspect_host(cfg)
 
 
-def _flavor_of(cfg: dict, vm: str, flavors: dict[str, str]) -> dict:
-    key = flavors.get(vm, _fallback_flavor_name(vm))
-    return cfg.get("resources", {}).get(key, {})
-
-
-def _print_vms(
-    cfg: dict,
-    actual: dict | None,
-    vm_rows: list[tuple[str, dict]],
-    flavors: dict[str, str],
-) -> tuple[int, int, int]:
+def _print_vms(report: DriftReport) -> tuple[int, int, int]:
     console.print("\n[bold]  Virtual machines[/bold]")
-    create = change = ok = 0
-    for name, spec in vm_rows:
-        res = _flavor_of(cfg, name, flavors)
-        desired = f"{res.get('memory_mib', '?')} MiB / {res.get('vcpu', '?')} vcpu"
-        line = f"    {name:<12} {desired:<22} {spec.get('ip', ''):<16}"
-
-        if actual is None:
-            console.print(f"{line} [dim]desired[/dim]")
-            continue
-
-        info = actual["vms"].get(name)
-        if info is None or info.state == "not found":
+    for c in report.vm_changes:
+        line = f"    {c.name:<12} {c.desired:<22} {c.ip:<16}"
+        if c.kind == "create":
             console.print(f"{line} [green]+ create[/green]")
-            create += 1
-        elif info.memory_mib and res.get("memory_mib") and info.memory_mib != res["memory_mib"]:
+        elif c.kind == "memory":
             console.print(
-                f"{line} [yellow]~ memory {info.memory_mib} → {res['memory_mib']} MiB[/yellow]"
+                f"{line} [yellow]~ memory {c.from_value} → {c.to_value} MiB[/yellow]"
             )
-            change += 1
-        elif info.vcpus and res.get("vcpu") and info.vcpus != res["vcpu"]:
-            console.print(f"{line} [yellow]~ vcpu {info.vcpus} → {res['vcpu']}[/yellow]")
-            change += 1
+        elif c.kind == "vcpu":
+            console.print(f"{line} [yellow]~ vcpu {c.from_value} → {c.to_value}[/yellow]")
+    for name, desired, ip, state in report.vm_ok:
+        line = f"    {name:<12} {desired:<22} {ip:<16}"
+        if state == "desired":
+            console.print(f"{line} [dim]desired[/dim]")
         else:
-            console.print(f"{line} [dim]✓ {info.state}[/dim]")
-            ok += 1
-    return create, change, ok
+            console.print(f"{line} [dim]✓ {state}[/dim]")
+    return report.create_count, report.change_count, report.ok_count
 
 
-def _print_network(actual: dict | None) -> None:
+def _print_network(report: DriftReport) -> None:
     console.print("\n[bold]  Network[/bold]")
-    if actual is None:
+    if not report.reachable:
         console.print("    default (virbr0)  [dim]desired[/dim]")
-    elif actual["net_active"]:
+    elif report.net_active:
         console.print("    default (virbr0)  [dim]✓ active[/dim]")
     else:
         console.print(

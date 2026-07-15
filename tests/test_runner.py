@@ -158,3 +158,64 @@ def test_stale_vars_files_are_swept(fake_profile, fake_cfg, tmp_path):
     stale.write_text("old: true\n")
     DeployRunner(fake_cfg, tmp_path)._write_vars_file()
     assert not stale.exists()
+
+
+def test_reconcile_reruns_vms_on_memory_drift(fake_profile, fake_cfg, tmp_path, monkeypatch):
+    """--reconcile + VM memory drift clears vms cache; unrelated done phases stay skipped."""
+    from rodeo.drift import DriftReport, VmChange
+
+    fake_profile.phases = ["alpha", "vms", "gamma"]
+    for p in fake_profile.phases:
+        state.mark_phase_done(p, "test-plan")
+
+    monkeypatch.setattr(
+        "rodeo.drift.collect_drift",
+        lambda cfg, actual=None: DriftReport(
+            reachable=True,
+            vm_changes=[
+                VmChange(
+                    name="vm1",
+                    kind="memory",
+                    desired="16384 MiB / 8 vcpu",
+                    from_value=8192,
+                    to_value=16384,
+                )
+            ],
+        ),
+    )
+
+    events = _events(DeployRunner(fake_cfg, tmp_path, reconcile=True))
+    assert "vms" in fake_profile.ran
+    assert "gamma" in fake_profile.ran
+    # alpha stays completed and is skipped (reset_from starts at vms)
+    skipped_done = [e for e in _of_type(events, PhaseSkipped) if e.reason == "done"]
+    assert [e.phase for e in skipped_done] == ["alpha"]
+    assert any("drift:" in e.line for e in _of_type(events, LogLine))
+    assert any("--reconcile" in e.line for e in _of_type(events, LogLine))
+
+
+def test_without_reconcile_skips_despite_drift(fake_profile, fake_cfg, tmp_path, monkeypatch):
+    from rodeo.drift import DriftReport, VmChange
+
+    fake_profile.phases = ["alpha", "vms", "gamma"]
+    for p in fake_profile.phases:
+        state.mark_phase_done(p, "test-plan")
+
+    called = {"n": 0}
+
+    def boom(cfg, actual=None):
+        called["n"] += 1
+        return DriftReport(
+            reachable=True,
+            vm_changes=[
+                VmChange(name="vm1", kind="memory", desired="x", from_value=1, to_value=2)
+            ],
+        )
+
+    monkeypatch.setattr("rodeo.drift.collect_drift", boom)
+
+    events = _events(DeployRunner(fake_cfg, tmp_path, reconcile=False))
+    assert called["n"] == 0  # drift not consulted without --reconcile
+    assert fake_profile.ran == []
+    skipped = [e for e in _of_type(events, PhaseSkipped) if e.reason == "done"]
+    assert [e.phase for e in skipped] == ["alpha", "vms", "gamma"]

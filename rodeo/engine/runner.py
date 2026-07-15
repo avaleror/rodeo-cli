@@ -114,6 +114,7 @@ class DeployRunner:
         force: bool = False,
         include_guarded: bool = False,
         ansible_verbose: int = 0,
+        reconcile: bool = False,
     ) -> None:
         self.cfg = cfg
         self.root = root
@@ -122,6 +123,7 @@ class DeployRunner:
         self.force = force
         self.include_guarded = include_guarded
         self.ansible_verbose = ansible_verbose
+        self.reconcile = reconcile
         self._plan_name = cfg.get("name", "default")
         self._proc: subprocess.Popen | None = None
         self._last_rc: int = 0
@@ -154,6 +156,23 @@ class DeployRunner:
             if self.from_phase and self.from_phase in profile.phases
             else 0
         )
+
+        # Opt-in drift reconcile (ROADMAP B2 V1): memory/vcpu mismatch clears
+        # the vms phase cache so deploy re-enters it instead of skipping.
+        if self.reconcile and not self.force and "vms" in profile.phases:
+            from ..drift import collect_drift
+
+            report = collect_drift(self.cfg)
+            if "vms" in report.phases_affected:
+                for line in report.resource_change_lines():
+                    yield LogLine(f"  ~ drift: {line}")
+                yield LogLine(
+                    "  ⚠  --reconcile: resetting from 'vms' due to VM resource drift. "
+                    "Running domains may still need `rodeo clean` + redeploy to apply "
+                    "memory/vCPU (libvirt redefine alone is not enough)."
+                )
+                reset_from("vms", self._plan_name, profile.phases)
+                start_idx = min(start_idx, profile.phases.index("vms"))
 
         # Install Ansible collections if any ansible phase will run
         first_ansible = next(

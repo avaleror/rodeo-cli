@@ -6,22 +6,22 @@ Design pillars: plan/apply/destroy lifecycle, tfvars-style override files, inlin
 
 ---
 
-## Validation queue — Instruqt (current priority)
+## Validation queue — Instruqt ✅ (validated 2026-07-15)
 
-These items are done and live-validated on bare metal (SLES 16). None have been tested on an Instruqt builder instance yet. This is the gate before any Instruqt track ships.
+Live-validated on bare metal (SLES 16) and on an **Instruqt builder** with `deployment_target: instruqt`. Deploy converges end-to-end (iPXE / DNAT / firewalld guard / nested KVM). Nested performance is slow as expected — size hosts generously (≈40 host vCPU helps) and keep guest vCPU sum under ~70% of the host.
 
-| Item | Status | Risk |
+| Item | Status | Notes |
 |------|--------|------|
-| `test` profile end-to-end on Instruqt builder (2-node Harvester, `deployment_target: instruqt`) | pending | medium — iPXE chain + Instruqt cloud-init layout differ from bare metal |
-| `harvester` profile on Instruqt (full lab: 3-node + Rancher) | pending | high — 90+ min deploy inside Instruqt's nested KVM limit; RAM ceiling is tight |
-| `harvester-ha` profile on Instruqt | pending | medium — same chain as test but 3 nodes |
-| `rancher` profile on Instruqt | pending | low — no PXE, fast deploy, but cloud-init inject on Leap 16 image needs verification |
-| libvirt network hook (DNAT fix, b5c1421) on Instruqt's nftables stack | pending | high — Instruqt manages `eth0` via NM; hook may conflict with their network setup |
-| `rodeo deploy --from finalise --finalise` after Instruqt snapshot | pending | medium — core of the Instruqt workflow; not tested since the finalise refactor |
-| Student tab routing (:90, :91, :92 via `cloud-client` nginx proxy) | pending | medium — lives in `instruqt-virtualization`, not rodeo-cli; depends on VIP being reachable |
-| `deployment_target: instruqt` firewalld-disabled guard on SLES 16 Instruqt image | pending | low — logic exists, not validated on current Instruqt SLES 16 image variant |
+| `test` profile end-to-end on Instruqt builder (2-node Harvester, `deployment_target: instruqt`) | ✅ done | Nested KVM; same iPXE chain as fuller Harvester labs |
+| `harvester` profile on Instruqt (full lab: 3-node + Rancher) | ✅ done | Validated; tune `resources.harvester` (e.g. 10 vCPU / 20 GiB) on larger builders |
+| `harvester-ha` profile on Instruqt | ✅ done | Same install chain as `test` / `harvester` (3-node HA) |
+| `rancher` profile on Instruqt | ✅ done | No PXE; cloud-init path verified on current Instruqt SLES/Leap layout |
+| libvirt network hook (DNAT fix, b5c1421) on Instruqt's nftables stack | ✅ done | Works with Instruqt-managed `eth0` / NM |
+| `rodeo deploy --from finalise --finalise` after Instruqt snapshot | ✅ done | Core snapshot → attendee autostart path |
+| Student tab routing (:90, :91, :92 via `cloud-client` nginx proxy) | follow-up | Lives in `instruqt-virtualization`, not rodeo-cli; confirm per track when publishing |
+| `deployment_target: instruqt` firewalld-disabled guard on SLES 16 Instruqt image | ✅ done | Guard holds on current Instruqt SLES 16 image |
 
-**What to do:** Run a full builder deploy for each profile on Instruqt, take a snapshot, boot an attendee instance, and verify the cluster is reachable from student tabs. Fix whatever breaks before marking complete.
+**Remaining workshop polish:** confirm student tabs in the sibling Instruqt track repo when a track ships; keep an eye on nested install wall-clock (prefetch / disk-cache knobs — see Phase H).
 
 ---
 
@@ -172,9 +172,9 @@ The rodeo deploys a management plane (Rancher + Rancher Prime) plus one or more 
 - [x] Engine support for Elemental node boot (cloud image, not PXE) — `boot` phase in place of the Harvester `pxe_server`/`cluster` phases
 - [x] `rancher` phase extended: dedicated `elemental` phase installs the Elemental Operator via Helm after Rancher
 - [ ] `cluster` phase variant: wait for edge node registration, not iPXE install (edge nodes are currently a started-by-hand lab exercise)
-- [ ] Live validation on a SLES 16 host before any Instruqt track
+- [ ] Live validation on a SLES 16 host before any Instruqt track (`suse-edge` specifically — base Instruqt queue is clear)
 
-**Dependency:** Phase C must be fully stable (including Instruqt validation) before this starts.
+**Dependency:** Phase C and the Instruqt builder queue (top of file) are clear; remaining gate is `suse-edge` live validation above.
 
 ---
 
@@ -262,7 +262,7 @@ Bake a pre-loaded Hauler store into the geekohive snapshot (`suse-virt-rodeo-180
 - [ ] Hauler bundle versioned alongside platform versions — bump both together when Harvester or Rancher version changes
 - [ ] Document the connected-side prep workflow for SUSE PTA team (Andres + Raul)
 
-**Dependencies:** Level 1 can start independently. Level 2 requires Level 1 validated. Level 3 requires Level 2. None of these start until the Instruqt validation queue (top of this file) is clear.
+**Dependencies:** Level 1 can start independently. Level 2 requires Level 1 validated. Level 3 requires Level 2. Instruqt builder validation (top of this file) is clear as of 2026-07-15.
 
 ---
 
@@ -273,4 +273,4 @@ Bake a pre-loaded Hauler store into the geekohive snapshot (`suse-virt-rodeo-180
 - No bash deploy scripts. Ansible stays for `kvm_host` / `vms` / `pxe_server`.
 - Wall time is dominated by nested-KVM Harvester install (20–60 min). Optimize UX and correctness first, CLI speed second.
 - Harvester nodes need at least 250 GiB disk. Smaller disks fill the persistent partition, containerd fails, VIP never comes up. Validated live.
-- Phases E–G (cloud targets, new rodeos) do not start until the Instruqt validation queue is clear and the current profiles are proven stable.
+- Phases E–G (cloud targets, new rodeos) may proceed now that Instruqt builder validation is clear; still prefer proving each new platform on bare metal before an Instruqt track ships.

@@ -179,6 +179,7 @@ def clean_cmd(
         # base images + interrupted curl downloads
         "harvester-v*-amd64.iso", "Leap-*.qcow2", "Leap-*.qcow2.downloading",
         "SL-Micro*.iso", "SL-Micro*.raw",
+        "openSUSE-Leap-Micro*.iso", "openSUSE-Leap-Micro*.raw*",
     ]
     for pat in patterns:
         for f in glob.glob(str(image_dir / pat)):

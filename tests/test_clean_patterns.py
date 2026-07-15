@@ -31,6 +31,8 @@ ARTIFACTS = [
     # base images
     "harvester-v1.8.1-amd64.iso", "Leap-16.0-Cloud.qcow2", "Leap-Micro-6.2.qcow2",
     "SL-Micro.x86_64-6.2-Default.raw",
+    "openSUSE-Leap-Micro.x86_64-Default-SelfInstall.iso",
+    "openSUSE-Leap-Micro.x86_64-Default.raw", "openSUSE-Leap-Micro.x86_64-Default.raw.xz",
     # interrupted-transfer temp files from a failed run
     "Leap-16.0-Cloud.qcow2.downloading", "rancher-vda.qcow2.building",
 ]

@@ -133,7 +133,7 @@ definition:
       description: "Edge Image Builder 1.3.3.1 on Leap Micro 6.2 — builds Elemental OS images for edge nodes"
       nodes: ["eib"]
     - name: edge-nodes
-      description: "4 Elemental-managed edge nodes (SL Micro 6.2) — onboarded via TPM registration"
+      description: "4 Elemental-managed edge nodes (Leap Micro 6.2) — onboarded via TPM registration"
       nodes: edge_node_names
       note: "Nodes are created by the vms phase but started as a lab exercise, not automated deploy."
     - name: host-network-prep
@@ -153,7 +153,7 @@ definition:
     # present in 3.0.1 when running on Rancher 2.14.1 (shell 3.0.9-rc.6).
     elemental_ui_extension: "3.0.2-rc.2"
     eib: "1.3.3.1"
-    sl_micro: "6.2"
+    leap_micro: "6.2"
     gitea: "1.22"
 
   # Helm chart registry sources (registry.suse.com OCI charts for SUSE Edge 3.6).
@@ -170,13 +170,17 @@ definition:
   # EIB container image.
   eib:
     container_image: "registry.suse.com/edge/3.6/edge-image-builder:1.3.3.1"
-    # SL Micro 6.2 base images for edge nodes. Both are downloaded into Hauler during
-    # deploy and staged at /home/eib-config/base-images/ so participants can reference
-    # them by filename in EIB definitions without internet access.
+    # openSUSE Leap Micro 6.2 base images for edge nodes (SLE Micro would need SCC
+    # registration; download.suse.com's static SL-Micro path is also stale — it
+    # redirects to a marketing page instead of the file, confirmed live 2026-07-15).
+    # Both are downloaded into Hauler during deploy and staged at
+    # /home/eib-config/base-images/ so participants can reference them by filename
+    # in EIB definitions without internet access.
     # - SelfInstall ISO: EIB base for Elemental ISO builds (edge1/edge2)
-    # - Default RAW: EIB base for standalone K3s/RKE2 builds (edge3/edge4)
-    sl_micro_selfinstall_url: "https://download.suse.com/SL-Micro/6.2/SL-Micro.x86_64-6.2-Base-SelfInstall-GM.install.iso"
-    sl_micro_raw_url: "https://download.suse.com/SL-Micro/6.2/SL-Micro.x86_64-6.2-Default.raw"
+    # - Default RAW (.xz — decompressed after staging, EIB needs a plain .raw):
+    #   EIB base for standalone K3s/RKE2 builds (edge3/edge4)
+    leap_micro_iso_url: "https://download.opensuse.org/distribution/leap-micro/6.2/appliances/iso/openSUSE-Leap-Micro.x86_64-Default-SelfInstall.iso"
+    leap_micro_raw_url: "https://download.opensuse.org/distribution/leap-micro/6.2/appliances/openSUSE-Leap-Micro.x86_64-Default.raw.xz"
 
   # Alien-Geeko Fleet demo app.
   # Node.js CRT terminal web app showing Kubernetes cluster vitals.

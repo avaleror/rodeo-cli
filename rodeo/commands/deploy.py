@@ -215,7 +215,12 @@ def _deploy_plain(
                     status.start()
                     status_started = True
         elif isinstance(event, LogLine):
-            console.print(event.line)
+            # markup=False: this is raw ansible/hauler/kubectl stdout, not Rich-
+            # formatted text — arbitrary "[...]" in tool output (e.g. hauler's own
+            # "adding file [/tmp/foo]" logging) crashes Rich's markup parser
+            # otherwise (confirmed live: MarkupError, "closing tag '[/tmp/...]'
+            # doesn't match any open tag", killed the whole deploy mid-run).
+            console.print(event.line, markup=False)
         elif isinstance(event, PhaseDone):
             _stop_status()
             m, s = divmod(int(event.elapsed), 60)

@@ -44,6 +44,14 @@ def test_vm_boot_order_disk_before_nic():
     assert "boot order='2'" in xml
 
 
+def test_vm_disk_driver_uses_ansible_vars():
+    """Disk cache/io must be templated so Instruqt can override O_DIRECT defaults."""
+    xml = (_ANSIBLE / "roles" / "vms" / "templates" / "vm.xml.j2").read_text()
+    assert "cache='{{ libvirt_disk_cache }}'" in xml
+    assert "io='{{ libvirt_disk_io }}'" in xml
+    assert "cache='none'" not in xml
+
+
 def test_join_config_omits_vip():
     tpl = (_ANSIBLE / "roles" / "pxe_server" / "templates" / "config-node.yaml.j2").read_text()
     assert "first_harvester.name" in tpl

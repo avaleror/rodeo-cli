@@ -61,3 +61,22 @@ def test_git_dash_c_calls_reference_the_same_mounted_path():
     assert 'podman run --rm --network host -v "$EIB_REPO:$EIB_REPO:Z"' in script
     assert 'git -C "$EIB_REPO" init' in script
     assert 'git -C "$EIB_REPO" push -u origin HEAD:main' in script
+
+
+def test_gitea_container_replace_and_idempotent_setup_calls():
+    """Regression: a retry after a later step fails (e.g. the git push) leaves
+    the gitea container running under the same name — confirmed live
+    ("container name 'gitea' is already in use"). gitea-data is a named
+    volume, so a --replace'd container keeps prior state (admin user, migrated
+    repos), meaning admin-user-create and the two repo-creation calls also
+    need to tolerate "already exists" rather than aborting the whole script."""
+    script = _captured_gitea_script()
+    assert "podman run -d --name gitea --replace" in script
+    assert 'admin user create \\\n  --username "$GITEA_USER" --password "$GITEA_PASS" \\\n  --email gitea@aerogrid.local --admin --must-change-password=false \\\n  || echo' in script
+    assert '"repo_name":"alien-geeko"' in script
+    lines = script.splitlines()
+    migrate_idx = next(i for i, line in enumerate(lines) if "repos/migrate" in line)
+    migrate_block = "\n".join(lines[migrate_idx:migrate_idx + 6])
+    assert "|| echo" in migrate_block
+    eib_repo_create_line = next(line for line in lines if '"name":"eib-config"' in line)
+    assert "|| echo" in eib_repo_create_line

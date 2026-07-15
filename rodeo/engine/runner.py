@@ -654,6 +654,24 @@ class DeployRunner:
 
     # ---------- Config helpers ----------
 
+    def _disk_driver_vars(self) -> dict[str, str]:
+        """Guest qcow2 cache/io for Ansible/vm.xml.j2.
+
+        baremetal keeps O_DIRECT (none/native). Instruqt nested cloud disks
+        default to writeback/threads — still overridable via plan
+        ``libvirt.disk_cache`` / ``libvirt.disk_io``.
+        """
+        libvirt = self.cfg.get("libvirt", {})
+        target = self.cfg.get("deployment_target", "baremetal")
+        if target == "instruqt":
+            default_cache, default_io = "writeback", "threads"
+        else:
+            default_cache, default_io = "none", "native"
+        return {
+            "libvirt_disk_cache": libvirt.get("disk_cache", default_cache),
+            "libvirt_disk_io": libvirt.get("disk_io", default_io),
+        }
+
     def _write_vars_file(self) -> Path:
         """Write all plan values to a tempfile (mode 600) for Ansible -e @file.
 
@@ -720,6 +738,7 @@ class DeployRunner:
             "libvirt_storage_mount_point": storage.get("mount_point", storage.get("image_dir", "/var/lib/libvirt/images")),
             # True for profiles using Traefik ingress + Let's Encrypt (suse-edge).
             "rancher_ingress_enabled": self.cfg.get("rancher_tls", {}).get("source") == "letsEncrypt",
+            **self._disk_driver_vars(),
         }
         # Only override the role-default join token when the plan provides one.
         if creds.get("harvester_token"):

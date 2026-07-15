@@ -1532,7 +1532,13 @@ class RancherPhase:
             f'$HAULER store add image "{self.eib_image}" --store $STORE\n'
             # Elemental register agent — EIB embeds this into the edge node image
             # so nodes can phone home to the Elemental Operator on first boot.
-            f'$HAULER store add image "registry.suse.com/rancher/elemental-register:{self.elemental_op_version}" --store $STORE\n'
+            # There is no standalone "elemental-register" image at registry.suse.com
+            # (confirmed live: NAME_UNKNOWN) — the register binary ships inside the
+            # elemental-operator image itself, same tag as the operator Deployment
+            # (confirmed live: registry.suse.com/rancher/elemental-operator:1.9.0
+            # pulls fine; this is the exact image already deployed by the elemental
+            # phase's own Helm install a few steps earlier).
+            f'$HAULER store add image "registry.suse.com/rancher/elemental-operator:{self.elemental_op_version}" --store $STORE\n'
             # Demo app image (Fleet-deployed to edge clusters, from cfg["alien_geeko"]["image"]);
             # edge nodes pull from Hauler via k3s registry mirror (docker.io → eib:5000).
             f'$HAULER store add image "{self.alien_geeko_image}" --store $STORE\n'

@@ -53,6 +53,16 @@ def test_git_wrapper_runs_containerized_with_host_networking():
     assert "--network host" in wrapper_line
 
 
+def test_git_wrapper_does_not_double_up_the_entrypoint():
+    """Regression: docker.io/alpine/git's own image config sets
+    ENTRYPOINT ["git"] (confirmed live via the registry API) — passing "git" a
+    second time as the first arg makes the container run `git git -C ... init`,
+    which fails ("'git' is not a git command. See 'git --help'.")."""
+    script = _captured_gitea_script()
+    wrapper_line = next(line for line in script.splitlines() if "docker.io/alpine/git" in line)
+    assert wrapper_line.rstrip().endswith('docker.io/alpine/git:latest "$@"')
+
+
 def test_git_dash_c_calls_reference_the_same_mounted_path():
     """The EIB_REPO volume must be mounted at the identical host path so the
     existing `git -C "$EIB_REPO" ...` calls need no changes to work inside

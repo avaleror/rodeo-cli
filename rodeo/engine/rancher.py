@@ -1822,8 +1822,12 @@ class RancherPhase:
             # (Gitea on the host's own network namespace) — without this the
             # container gets its own network namespace and "localhost" would
             # resolve to itself, not the host, and the push would fail to connect.
+            # No literal "git" before "$@": docker.io/alpine/git's own image
+            # config sets ENTRYPOINT ["git"] (confirmed live via the registry
+            # API) — passing "git" again here means the container actually runs
+            # `git git -C ... init`, which fails ("'git' is not a git command").
             "git() {\n"
-            '  podman run --rm --network host -v "$EIB_REPO:$EIB_REPO:Z" docker.io/alpine/git:latest git "$@"\n'
+            '  podman run --rm --network host -v "$EIB_REPO:$EIB_REPO:Z" docker.io/alpine/git:latest "$@"\n'
             "}\n\n"
             # Tolerate "already exists" (see the --replace note above).
             "curl -sf -X POST \"$GITEA_URL/api/v1/user/repos\" \\\n"

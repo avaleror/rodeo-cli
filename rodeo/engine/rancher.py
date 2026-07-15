@@ -1785,25 +1785,37 @@ class RancherPhase:
             '  --username "$GITEA_USER" --password "$GITEA_PASS" \\\n'
             "  --email gitea@aerogrid.local --admin --must-change-password=false \\\n"
             '  || echo "  (admin user already exists, continuing)"\n\n'
-            # Generate API token for setup calls
+            # Generate API token for setup calls. write:repository alone covers
+            # the /api/v1/repos/migrate call (alien-geeko) but NOT
+            # /api/v1/user/repos (eib-config, further down) — confirmed live:
+            # that endpoint 403s with "token does not have at least one of
+            # required scope(s): [write:user]" without it.
             "TOKEN=$(curl -sf -X POST "
             '"$GITEA_URL/api/v1/users/$GITEA_USER/tokens" \\\n'
             '  -u "$GITEA_USER:$GITEA_PASS" \\\n'
             '  -H "Content-Type: application/json" \\\n'
-            "  -d '{\"name\":\"setup\",\"scopes\":[\"write:repository\"]}' \\\n"
+            "  -d '{\"name\":\"setup\",\"scopes\":[\"write:repository\",\"write:user\"]}' \\\n"
             "  | python3 -c "
             "\"import sys,json; print(json.load(sys.stdin)['sha1'])\")\n\n"
             # Mirror the demo app repo from GitHub via Gitea's migration API.
             # Gitea clones the repo internally — no git binary needed on the host.
             # This is the one internet call that happens at deploy time.
-            # Tolerate "already exists" (a prior attempt may have migrated it
-            # successfully before failing at a later step).
-            "curl -sf -X POST \"$GITEA_URL/api/v1/repos/migrate\" \\\n"
+            # Tolerate a genuine 409 "already exists" (a prior attempt may have
+            # migrated it successfully before failing at a later step) but fail
+            # loud on anything else — see the eib-config creation below for why
+            # a blanket `|| echo` is the wrong tool here.
+            "RC=$(curl -s -o /tmp/alien-geeko-migrate.json -w '%{http_code}' "
+            '-X POST "$GITEA_URL/api/v1/repos/migrate" \\\n'
             '  -H "Authorization: token $TOKEN" \\\n'
             '  -H "Content-Type: application/json" \\\n'
             f'  -d \'{{"clone_addr":"{self.alien_geeko_fleet_repo}",'
-            f'"repo_name":"{self.alien_geeko_fleet_name}","private":false,"mirror":false}}\' \\\n'
-            f'  || echo "  ({self.alien_geeko_fleet_name} repo already exists, continuing)"\n\n'
+            f'"repo_name":"{self.alien_geeko_fleet_name}","private":false,"mirror":false}}\')\n'
+            'if [ "$RC" = "409" ]; then\n'
+            f'  echo "  ({self.alien_geeko_fleet_name} repo already exists, continuing)"\n'
+            'elif [ "$RC" != "200" ] && [ "$RC" != "201" ]; then\n'
+            f'  echo "  {self.alien_geeko_fleet_name} migrate failed (HTTP $RC): $(cat /tmp/alien-geeko-migrate.json)"\n'
+            "  exit 1\n"
+            "fi\n\n"
             f'echo "  {self.alien_geeko_fleet_name}: http://{self.eib_ip}:{self.gitea_port}/$GITEA_USER/{self.alien_geeko_fleet_name}.git"\n\n'
             # ---- eib-config Gitea repo with EIB definition templates ----
             # Leap Micro 6.2's transactional-update model means `zypper install
@@ -1829,12 +1841,23 @@ class RancherPhase:
             "git() {\n"
             '  podman run --rm --network host -v "$EIB_REPO:$EIB_REPO:Z" docker.io/alpine/git:latest "$@"\n'
             "}\n\n"
-            # Tolerate "already exists" (see the --replace note above).
-            "curl -sf -X POST \"$GITEA_URL/api/v1/user/repos\" \\\n"
+            # Tolerate a genuine 409 "already exists" (see the --replace note
+            # above) but fail loud on anything else — a blanket `|| echo` here
+            # previously masked a real 403 (missing write:user token scope,
+            # fixed above) as if it were a harmless already-exists, so the
+            # actual error only surfaced several steps later as a confusing
+            # git-push 403 instead of at its real source.
+            "RC=$(curl -s -o /tmp/eib-config-create.json -w '%{http_code}' "
+            '-X POST "$GITEA_URL/api/v1/user/repos" \\\n'
             "  -H \"Authorization: token $TOKEN\" \\\n"
             "  -H \"Content-Type: application/json\" \\\n"
-            "  -d '{\"name\":\"eib-config\",\"description\":\"AeroGrid EIB image definitions, network configs and combustion scripts\",\"private\":false,\"auto_init\":false}' "
-            '>/dev/null || echo "  (eib-config repo already exists, continuing)"\n\n'
+            "  -d '{\"name\":\"eib-config\",\"description\":\"AeroGrid EIB image definitions, network configs and combustion scripts\",\"private\":false,\"auto_init\":false}')\n"
+            'if [ "$RC" = "409" ]; then\n'
+            '  echo "  (eib-config repo already exists, continuing)"\n'
+            'elif [ "$RC" != "200" ] && [ "$RC" != "201" ]; then\n'
+            '  echo "  eib-config repo creation failed (HTTP $RC): $(cat /tmp/eib-config-create.json)"\n'
+            "  exit 1\n"
+            "fi\n\n"
             "EIB_REPO=/tmp/eib-config-repo\n"
             "rm -rf \"$EIB_REPO\"\n"
             "mkdir -p \"$EIB_REPO/network-configs\" \"$EIB_REPO/scripts\" \"$EIB_REPO/elemental\" \"$EIB_REPO/network\"\n\n"

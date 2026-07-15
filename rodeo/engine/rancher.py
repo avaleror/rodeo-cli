@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shlex
 import ssl
 import subprocess
 import threading
@@ -11,6 +12,8 @@ import time
 import urllib.request
 from pathlib import Path
 from typing import Generator, Iterator
+
+import yaml
 
 from ..paths import harvester_kubeconfig_path
 from .runner import DeployEvent, LogLine, ProgressUpdate
@@ -487,26 +490,52 @@ class RancherPhase:
             return False
         return True
 
-    def _install_rancher(self) -> Generator[DeployEvent, None, bool]:
+    def _rancher_helm_values(self) -> dict:
+        """Helm values for rancher-prime; secrets go here so they never appear on argv."""
+        values: dict = {
+            "hostname": self.rancher_hostname,
+            "bootstrapPassword": self.admin_password,
+            "replicas": 1,
+        }
         if self.tls_source == "letsEncrypt":
-            tls_flags = (
-                f' --set ingress.tls.source=letsEncrypt'
-                f' --set letsEncrypt.email="{self.letsencrypt_email}"'
-                f' --set letsEncrypt.environment=production'
-            )
-        else:
-            tls_flags = ""
+            values["ingress"] = {"tls": {"source": "letsEncrypt"}}
+            values["letsEncrypt"] = {
+                "email": self.letsencrypt_email,
+                "environment": "production",
+            }
+        return values
+
+    def _install_rancher(self) -> Generator[DeployEvent, None, bool]:
+        # Write values via a quoted heredoc so bootstrapPassword (and email/hostname)
+        # never land on the helm process argv or in shell word-splitting.
+        values_yaml = yaml.safe_dump(
+            self._rancher_helm_values(),
+            default_flow_style=False,
+            sort_keys=False,
+        )
+        remote_values = "/root/rancher-helm-values.yaml"
+        marker = "RODEO_HELM_VALUES_EOF"
+        # Fail closed if the password somehow contains the heredoc marker
+        # (would truncate the values file). Practically impossible for random secrets.
+        if marker in values_yaml:
+            self.error = "Rancher Helm values contain blocked heredoc marker"
+            yield LogLine(f"  ✗ {self.error}")
+            return False
+        version = shlex.quote(str(self.rancher_version))
         script = (
             "set -euo pipefail\n"
             "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
-            f'helm upgrade --install rancher rancher-prime/rancher'
-            f' --namespace cattle-system --create-namespace'
-            f' --version "{self.rancher_version}"'
-            f' --set hostname="{self.rancher_hostname}"'
-            f'{tls_flags}'
-            f' --set bootstrapPassword="{self.admin_password}"'
-            ' --set replicas=1'
-            ' --wait --timeout 600s\n'
+            "umask 077\n"
+            f"cat > {remote_values} <<'{marker}'\n"
+            f"{values_yaml}"
+            f"{marker}\n"
+            f"chmod 600 {remote_values}\n"
+            f"helm upgrade --install rancher rancher-prime/rancher"
+            f" --namespace cattle-system --create-namespace"
+            f" --version {version}"
+            f" -f {remote_values}"
+            " --wait --timeout 600s\n"
+            f"rm -f {remote_values}\n"
         )
         yield LogLine("  Running helm upgrade --install rancher (up to 10 min)...")
         r = self._ssh_script(script, timeout=720)

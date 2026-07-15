@@ -41,6 +41,10 @@ console = Console()
               help="Run ansible-galaxy install before Ansible phases.")
 @click.option("--force", is_flag=True, default=False,
               help="Re-run all phases, ignoring phase state.")
+@click.option("--reconcile", is_flag=True, default=False,
+              help="If VMs drift from the plan (memory/vCPU), reset from the vms "
+                   "phase instead of skipping it. Opt-in (ROADMAP B2); still may "
+                   "need clean+redeploy for running domains.")
 @click.option("--finalise", "include_guarded", is_flag=True, default=False,
               help="Run finalise even when deployment_target is 'instruqt' "
                    "(only after the Instruqt image snapshot).")
@@ -58,6 +62,7 @@ def deploy_cmd(
     tui: bool | None,
     install_collections: bool,
     force: bool,
+    reconcile: bool,
     include_guarded: bool,
     preflight_only: bool,
     ansible_verbose: int,
@@ -112,6 +117,7 @@ def deploy_cmd(
         from_phase=from_phase,
         install_collections=install_collections,
         force=force,
+        reconcile=reconcile,
         include_guarded=include_guarded,
         ansible_verbose=ansible_verbose,
         tui=tui,
@@ -126,6 +132,7 @@ def execute_deploy(
     from_phase: str | None = None,
     install_collections: bool = True,
     force: bool = False,
+    reconcile: bool = False,
     include_guarded: bool = False,
     ansible_verbose: int = 0,
     tui: bool | None = None,
@@ -146,6 +153,7 @@ def execute_deploy(
                 from_phase=from_phase,
                 install_collections=install_collections,
                 force=force,
+                reconcile=reconcile,
                 include_guarded=include_guarded,
                 ansible_verbose=ansible_verbose,
             )
@@ -154,10 +162,10 @@ def execute_deploy(
         except ImportError:
             console.print("[yellow]⚠  textual not installed — falling back to plain output[/yellow]")
             code = _deploy_plain(cfg, root, from_phase, install_collections, force,
-                                 include_guarded, ansible_verbose)
+                                 reconcile, include_guarded, ansible_verbose)
     else:
         code = _deploy_plain(cfg, root, from_phase, install_collections, force,
-                             include_guarded, ansible_verbose)
+                             reconcile, include_guarded, ansible_verbose)
 
     if code == 0:
         render_success(cfg)
@@ -170,6 +178,7 @@ def _deploy_plain(
     from_phase: str | None,
     install_collections: bool,
     force: bool = False,
+    reconcile: bool = False,
     include_guarded: bool = False,
     ansible_verbose: int = 0,
 ) -> int:
@@ -179,6 +188,7 @@ def _deploy_plain(
         from_phase=from_phase,
         install_collections=install_collections,
         force=force,
+        reconcile=reconcile,
         include_guarded=include_guarded,
         ansible_verbose=ansible_verbose,
     )

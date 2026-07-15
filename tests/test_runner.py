@@ -1,11 +1,14 @@
 """DeployRunner event flow, state integration, guard, and vars file."""
 from __future__ import annotations
 
+import logging
 import stat
 
+import pytest
 import yaml
 
 from rodeo import state
+from rodeo.config import ConfigError
 from rodeo.engine.runner import (
     DeployComplete,
     DeployRunner,
@@ -14,6 +17,21 @@ from rodeo.engine.runner import (
     PhaseFailed,
     PhaseSkipped,
 )
+
+
+@pytest.fixture(autouse=True)
+def _stub_inventory_for_fake_runner_tests(monkeypatch):
+    """The fake test profile has no definition.yaml; stub inventory for runner tests."""
+    from rodeo import inventory as inv_mod
+
+    real_build = inv_mod.build_inventory
+
+    def _build(cfg):
+        if cfg.get("type") == "fake":
+            return {}
+        return real_build(cfg)
+
+    monkeypatch.setattr(inv_mod, "build_inventory", _build)
 
 
 def _events(runner):
@@ -219,3 +237,26 @@ def test_without_reconcile_skips_despite_drift(fake_profile, fake_cfg, tmp_path,
     assert fake_profile.ran == []
     skipped = [e for e in _of_type(events, PhaseSkipped) if e.reason == "done"]
     assert [e.phase for e in skipped] == ["alpha", "vms", "gamma"]
+
+
+def test_write_vars_file_raises_on_config_error(fake_profile, fake_cfg, tmp_path, monkeypatch):
+    def _raise(_cfg):
+        raise ConfigError("bad topology")
+
+    monkeypatch.setattr("rodeo.inventory.build_inventory", _raise)
+    with pytest.raises(ConfigError, match="bad topology"):
+        DeployRunner(fake_cfg, tmp_path)._write_vars_file()
+
+
+def test_write_vars_file_warns_on_unexpected_inventory_error(
+    fake_profile, fake_cfg, tmp_path, monkeypatch, caplog,
+):
+    def _raise(_cfg):
+        raise RuntimeError("transient render failure")
+
+    monkeypatch.setattr("rodeo.inventory.build_inventory", _raise)
+    with caplog.at_level(logging.WARNING):
+        vars_file = DeployRunner(fake_cfg, tmp_path)._write_vars_file()
+    assert "using role defaults" in caplog.text
+    data = yaml.safe_load(vars_file.read_text())
+    assert "vm_nodes" not in data

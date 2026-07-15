@@ -1527,16 +1527,18 @@ class RancherPhase:
         """
         prefix = self.elemental_reg_prefix
         reg_name = f"{prefix}-reg-1"
-        iso_fname = self.leap_micro_iso_url.split("/")[-1]
-        raw_fname_dl = self.leap_micro_raw_url.split("/")[-1]
+        # Fixed lowercase names, not derived from the upstream URL: hauler's `store
+        # add file` reference-name parser rejects uppercase (confirmed live —
+        # "could not parse reference" with no name given; works once --name is
+        # lowercase), and openSUSE's filenames ("openSUSE-Leap-Micro...") are
+        # uppercase. Deterministic names also decouple us from upstream renames.
+        iso_fname = "leap-micro-selfinstall.iso"
+        raw_fname_dl = "leap-micro-default.raw.xz"
         # openSUSE ships the raw appliance .xz-compressed; EIB needs a plain .raw
         # baseImage, so it gets decompressed after staging (see the curl/xz block
         # below). raw_fname is the name EIB definitions actually reference.
-        raw_fname = raw_fname_dl[:-3] if raw_fname_dl.endswith(".xz") else raw_fname_dl
-        raw_decompress_cmd = (
-            f'xz -d -f "/home/eib-config/base-images/{raw_fname_dl}"\n'
-            if raw_fname_dl.endswith(".xz") else ""
-        )
+        raw_fname = "leap-micro-default.raw"
+        raw_decompress_cmd = f'xz -d -f "/home/eib-config/base-images/{raw_fname_dl}"\n'
 
         script = (
             "set -euo pipefail\n"
@@ -1557,10 +1559,22 @@ class RancherPhase:
             # Demo app image (Fleet-deployed to edge clusters, from cfg["alien_geeko"]["image"]);
             # edge nodes pull from Hauler via k3s registry mirror (docker.io → eib:5000).
             f'$HAULER store add image "{self.alien_geeko_image}" --store $STORE\n'
-            # Leap Micro 6.2 SelfInstall ISO — EIB base for Elemental ISO builds (edge1/edge2)
-            f'$HAULER store add file "{self.leap_micro_iso_url}" --store $STORE\n'
+            # Leap Micro 6.2 SelfInstall ISO — EIB base for Elemental ISO builds (edge1/edge2).
+            # Download via curl, not hauler's own HTTP client: opensuse.org's
+            # redirector picks a rotating mirror, and at least one observed mirror
+            # (pkg.adfinis-on-exoscale.ch) fails hauler's Go TLS client outright
+            # ("tls: protocol version not supported") — curl (used everywhere else
+            # in this codebase for large downloads) negotiates it fine. Then add the
+            # already-downloaded local file with an explicit lowercase --name.
+            f'curl -4 --http1.1 -fsSL --retry 5 --retry-delay 10 --retry-all-errors '
+            f'-o "/tmp/{iso_fname}" "{self.leap_micro_iso_url}"\n'
+            f'$HAULER store add file "/tmp/{iso_fname}" --name "{iso_fname}" --store $STORE\n'
+            f'rm -f "/tmp/{iso_fname}"\n'
             # Leap Micro 6.2 Default RAW (.xz) — EIB base for standalone K3s/RKE2 builds (edge3/edge4)
-            f'$HAULER store add file "{self.leap_micro_raw_url}" --store $STORE\n\n'
+            f'curl -4 --http1.1 -fsSL --retry 5 --retry-delay 10 --retry-all-errors '
+            f'-o "/tmp/{raw_fname_dl}" "{self.leap_micro_raw_url}"\n'
+            f'$HAULER store add file "/tmp/{raw_fname_dl}" --name "{raw_fname_dl}" --store $STORE\n'
+            f'rm -f "/tmp/{raw_fname_dl}"\n\n'
             # Enable and start Hauler services (service units written by cloud-init)
             "systemctl daemon-reload\n"
             "systemctl enable --now hauler-registry.service hauler-fileserver.service\n\n"

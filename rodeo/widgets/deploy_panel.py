@@ -55,7 +55,13 @@ class DeployPanel(Vertical):
         yield DataTable(id="phases-table", show_header=True, cursor_type="none")
         yield Label("", id="phase-sep")
         yield ProgressBar(id="phase-progress", total=100.0, show_eta=False)
-        yield RichLog(id="ansible-log", highlight=True, markup=True, wrap=True, auto_scroll=True)
+        # markup=False: this log streams raw ansible/hauler/kubectl stdout, not
+        # Rich-formatted text — arbitrary "[...]" in tool output (e.g. hauler's own
+        # "adding file [/tmp/foo]" logging) crashes Rich's markup parser otherwise
+        # (confirmed live: MarkupError, "closing tag '[/tmp/...]' doesn't match any
+        # open tag", killed the whole deploy). Same fix already applied to the
+        # plain-mode console.print() path and to the VM-serial RichLog below.
+        yield RichLog(id="ansible-log", highlight=True, markup=False, wrap=True, auto_scroll=True)
 
     def on_mount(self) -> None:
         self._deploy_start = time.monotonic()

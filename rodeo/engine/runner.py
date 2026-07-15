@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import atexit
+import logging
 import os
 import signal
 import subprocess
@@ -14,8 +15,11 @@ from typing import Iterator
 
 import yaml
 
+from ..config import ConfigError
 from ..ssh import ssh_opts
 from ..state import is_phase_done, mark_phase_done, mark_phase_failed, reset_from
+
+logger = logging.getLogger(__name__)
 
 
 # ---------- Networking helpers ----------
@@ -745,9 +749,14 @@ class DeployRunner:
                 lp = host_prep.get("libvirt", {})
                 vars_data["libvirt_ovmf_code"] = lp.get("ovmf_code", "")
                 vars_data["libvirt_ovmf_vars_template"] = lp.get("ovmf_vars_template", "")
-        except Exception:
-            # Fall back to role defaults (the old behavior). The definition load is resilient.
-            pass
+        except (ConfigError, FileNotFoundError, ValueError):
+            raise
+        except Exception as exc:
+            logger.warning(
+                "Failed to load inventory for Ansible vars (%s: %s); using role defaults",
+                type(exc).__name__,
+                exc,
+            )
 
         from ..paths import rodeo_dir as rodeo_data_dir
 

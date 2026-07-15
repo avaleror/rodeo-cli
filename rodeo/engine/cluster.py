@@ -1,6 +1,7 @@
 """ClusterPhase — Python port of the retired start-vms.sh deployer script."""
 from __future__ import annotations
 
+import logging
 import os
 import queue
 import re
@@ -13,10 +14,13 @@ import urllib.request
 from pathlib import Path
 from typing import Generator, Iterator
 
+from ..config import ConfigError
 from .libvirt import LibvirtDriver
 from .runner import DeployEvent, LogLine, ProgressUpdate
 from ..paths import harvester_kubeconfig_path, rodeo_logs_dir
 from ..ssh import ssh_opts
+
+logger = logging.getLogger(__name__)
 
 
 def _kubeconfig_path() -> Path:
@@ -87,8 +91,14 @@ class ClusterPhase:
                 self.ready_count = int(inv["harvester_ready_count"])
             if inv.get("etcd_join_gap_seconds") is not None:
                 self.etcd_gap = int(inv["etcd_join_gap_seconds"])
-        except Exception:
-            pass  # keep the cfg-derived fallback
+        except (ConfigError, FileNotFoundError, ValueError):
+            raise
+        except Exception as exc:
+            logger.warning(
+                "Failed to load inventory for cluster phase (%s: %s); using cfg fallback",
+                type(exc).__name__,
+                exc,
+            )
 
     def _sleep(self, seconds: float) -> bool:
         """Sleep, but wake early on cancellation. Returns True if cancelled."""

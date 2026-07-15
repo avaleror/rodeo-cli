@@ -34,6 +34,26 @@ def test_rancher_phase_has_no_raw_time_sleep():
     assert "time.sleep" not in source
 
 
+def test_leap_micro_urls_default_to_opensuse_not_stale_suse_com(cfg):
+    """Regression: download.suse.com's SL-Micro path redirects to a marketing page,
+    not the file (confirmed live) — defaults must point at opensuse.org instead."""
+    phase = RancherPhase(cfg)
+    assert phase.leap_micro_iso_url.startswith("https://download.opensuse.org/")
+    assert phase.leap_micro_raw_url.startswith("https://download.opensuse.org/")
+    assert "download.suse.com" not in phase.leap_micro_iso_url
+    assert "download.suse.com" not in phase.leap_micro_raw_url
+
+
+def test_leap_micro_urls_overridable_via_eib_config(cfg):
+    cfg["eib"] = {
+        "leap_micro_iso_url": "https://example.internal/custom.iso",
+        "leap_micro_raw_url": "https://example.internal/custom.raw.xz",
+    }
+    phase = RancherPhase(cfg)
+    assert phase.leap_micro_iso_url == "https://example.internal/custom.iso"
+    assert phase.leap_micro_raw_url == "https://example.internal/custom.raw.xz"
+
+
 def test_sleep_reports_cancelled(cfg):
     phase = RancherPhase(cfg)
     phase._stop.set()

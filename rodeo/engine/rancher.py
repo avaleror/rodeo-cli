@@ -1755,8 +1755,15 @@ class RancherPhase:
             f"GITEA_URL={gitea_url}\n"
             f"GITEA_USER={self.gitea_user}\n"
             f'GITEA_PASS="{self.gitea_password}"\n\n'
-            # Start Gitea container (rootless, no SSH, SQLite backend)
-            f"podman run -d --name gitea --restart=always \\\n"
+            # Start Gitea container (rootless, no SSH, SQLite backend).
+            # --replace: a retry after a failure further down this same script
+            # (e.g. the git-push step) leaves this container running under the
+            # same name — confirmed live ("container name 'gitea' is already in
+            # use"). gitea-data is a named volume, so replacing the container
+            # keeps all prior state (users, repos) intact; every step below that
+            # creates something already-created-by-a-prior-attempt tolerates that
+            # for the same reason.
+            f"podman run -d --name gitea --replace --restart=always \\\n"
             f"  -p {self.gitea_port}:{self.gitea_port} \\\n"
             "  -v gitea-data:/data \\\n"
             f'  -e GITEA__security__INSTALL_LOCK=true \\\n'
@@ -1772,10 +1779,12 @@ class RancherPhase:
             "done\n"
             'curl -sf "$GITEA_URL/api/v1/version" >/dev/null || '
             '{ echo "Gitea did not start in time"; exit 1; }\n\n'
-            # Create admin user via the Gitea CLI inside the container
+            # Create admin user via the Gitea CLI inside the container. Tolerate
+            # "already exists" (persisted in gitea-data from a prior attempt).
             "podman exec --user git gitea /usr/local/bin/gitea admin user create \\\n"
             '  --username "$GITEA_USER" --password "$GITEA_PASS" \\\n'
-            "  --email gitea@aerogrid.local --admin --must-change-password=false\n\n"
+            "  --email gitea@aerogrid.local --admin --must-change-password=false \\\n"
+            '  || echo "  (admin user already exists, continuing)"\n\n'
             # Generate API token for setup calls
             "TOKEN=$(curl -sf -X POST "
             '"$GITEA_URL/api/v1/users/$GITEA_USER/tokens" \\\n'
@@ -1787,11 +1796,14 @@ class RancherPhase:
             # Mirror the demo app repo from GitHub via Gitea's migration API.
             # Gitea clones the repo internally — no git binary needed on the host.
             # This is the one internet call that happens at deploy time.
+            # Tolerate "already exists" (a prior attempt may have migrated it
+            # successfully before failing at a later step).
             "curl -sf -X POST \"$GITEA_URL/api/v1/repos/migrate\" \\\n"
             '  -H "Authorization: token $TOKEN" \\\n'
             '  -H "Content-Type: application/json" \\\n'
             f'  -d \'{{"clone_addr":"{self.alien_geeko_fleet_repo}",'
-            f'"repo_name":"{self.alien_geeko_fleet_name}","private":false,"mirror":false}}\'\n\n'
+            f'"repo_name":"{self.alien_geeko_fleet_name}","private":false,"mirror":false}}\' \\\n'
+            f'  || echo "  ({self.alien_geeko_fleet_name} repo already exists, continuing)"\n\n'
             f'echo "  {self.alien_geeko_fleet_name}: http://{self.eib_ip}:{self.gitea_port}/$GITEA_USER/{self.alien_geeko_fleet_name}.git"\n\n'
             # ---- eib-config Gitea repo with EIB definition templates ----
             # Leap Micro 6.2's transactional-update model means `zypper install
@@ -1813,10 +1825,12 @@ class RancherPhase:
             "git() {\n"
             '  podman run --rm --network host -v "$EIB_REPO:$EIB_REPO:Z" docker.io/alpine/git:latest git "$@"\n'
             "}\n\n"
+            # Tolerate "already exists" (see the --replace note above).
             "curl -sf -X POST \"$GITEA_URL/api/v1/user/repos\" \\\n"
             "  -H \"Authorization: token $TOKEN\" \\\n"
             "  -H \"Content-Type: application/json\" \\\n"
-            "  -d '{\"name\":\"eib-config\",\"description\":\"AeroGrid EIB image definitions, network configs and combustion scripts\",\"private\":false,\"auto_init\":false}' >/dev/null\n\n"
+            "  -d '{\"name\":\"eib-config\",\"description\":\"AeroGrid EIB image definitions, network configs and combustion scripts\",\"private\":false,\"auto_init\":false}' "
+            '>/dev/null || echo "  (eib-config repo already exists, continuing)"\n\n'
             "EIB_REPO=/tmp/eib-config-repo\n"
             "rm -rf \"$EIB_REPO\"\n"
             "mkdir -p \"$EIB_REPO/network-configs\" \"$EIB_REPO/scripts\" \"$EIB_REPO/elemental\" \"$EIB_REPO/network\"\n\n"

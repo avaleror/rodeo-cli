@@ -75,6 +75,19 @@ def doctor_cmd() -> None:
         console.print(f"[yellow]No profile fully fits {avail} GiB RAM.[/yellow] "
                       f"Smallest is '{rec}' ({PROFILE_SIZING[0]['ram_gib']} GiB). "
                       "Add RAM or try a bigger host.")
+
+    from ..sizing import INSTRUQT_VCPU_BUDGET_RATIO, instruqt_vcpu_budget
+
+    cpus = host.get("cpus") or 0
+    if cpus:
+        budget = instruqt_vcpu_budget(cpus)
+        pct = int(INSTRUQT_VCPU_BUDGET_RATIO * 100)
+        console.print()
+        console.print(
+            f"[dim]Instruqt tip:[/dim] keep Σ guest vCPU ≤ ~{pct}% of host "
+            f"(≤ {budget} on this {cpus}-vCPU machine). "
+            f"`rodeo up` applies presets when deployment_target is instruqt."
+        )
     console.print()
 
 

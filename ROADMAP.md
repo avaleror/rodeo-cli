@@ -21,7 +21,7 @@ Live-validated on bare metal (SLES 16) and on an **Instruqt builder** with `depl
 | Student tab routing (:90, :91, :92 via `cloud-client` nginx proxy) | follow-up | Lives in `instruqt-virtualization`, not rodeo-cli; confirm per track when publishing |
 | `deployment_target: instruqt` firewalld-disabled guard on SLES 16 Instruqt image | ✅ done | Guard holds on current Instruqt SLES 16 image |
 
-**Remaining workshop polish:** confirm student tabs in the sibling Instruqt track repo when a track ships; keep an eye on nested install wall-clock (prefetch / disk-cache knobs — see Phase H).
+**Remaining workshop polish:** confirm student tabs in the sibling Instruqt track repo when a track ships; nested wall-clock: disk-cache defaults (done) + Instruqt resource presets on seed (done) — Hauler prefetch still Phase H.
 
 ---
 

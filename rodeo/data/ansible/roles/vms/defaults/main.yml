@@ -27,6 +27,11 @@ libvirt_pool_path: /var/lib/libvirt/images
 libvirt_network_name: default
 libvirt_network_gateway: "192.168.122.1"
 
+# Guest qcow2 disk driver. baremetal / local NVMe: none+native (O_DIRECT).
+# Instruqt nested cloud disks: runner overrides to writeback+threads.
+libvirt_disk_cache: none
+libvirt_disk_io: native
+
 # Lab DNS domain served by libvirt's built-in dnsmasq on virbr0 (and written
 # to /etc/hosts on the host for geekohive scripts + cloud-client).
 lab_dns_domain: "aerogrid.com"

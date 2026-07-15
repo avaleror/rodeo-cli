@@ -281,6 +281,15 @@ def test_resource_sanity_rejected():
         config.validate_config(cfg)
 
 
+def test_bad_libvirt_disk_cache_rejected():
+    cfg = {
+        "credentials": {"harvester_os_password": "Secret123"},
+        "libvirt": {"disk_cache": "turbo"},
+    }
+    with pytest.raises(config.ConfigError, match="disk_cache"):
+        config.validate_config(cfg)
+
+
 def test_find_ansible_root_prefers_explicit(tmp_path):
     explicit = tmp_path / "custom"
     (explicit / "ansible").mkdir(parents=True)

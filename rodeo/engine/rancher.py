@@ -1794,9 +1794,25 @@ class RancherPhase:
             f'"repo_name":"{self.alien_geeko_fleet_name}","private":false,"mirror":false}}\'\n\n'
             f'echo "  {self.alien_geeko_fleet_name}: http://{self.eib_ip}:{self.gitea_port}/$GITEA_USER/{self.alien_geeko_fleet_name}.git"\n\n'
             # ---- eib-config Gitea repo with EIB definition templates ----
-            # Install git (needed to create the initial commit and push the repo).
-            # Leap Micro 6.2 may not have git by default.
-            "command -v git >/dev/null 2>&1 || zypper install -y --no-recommends git 2>&1 | tail -5\n\n"
+            # Leap Micro 6.2's transactional-update model means `zypper install
+            # git` silently no-ops (exit 0, "please use transactional-update to
+            # update or modify the system", git still absent — confirmed live:
+            # every subsequent `git` call below then failed "command not found",
+            # aborting the whole script under set -e with no clear error surfaced
+            # up top, since stdout/stderr get concatenated and reordered by the
+            # time this method's caller prints them). Installing via
+            # transactional-update needs a reboot mid-deploy, so run git in a
+            # throwaway container instead — podman is already required and
+            # working here for the Gitea container itself. Mounting $EIB_REPO at
+            # the *same* path means every existing `git -C "$EIB_REPO" ...` call
+            # below needs no changes.
+            # --network host: the git push below targets http://localhost:3000/...
+            # (Gitea on the host's own network namespace) — without this the
+            # container gets its own network namespace and "localhost" would
+            # resolve to itself, not the host, and the push would fail to connect.
+            "git() {\n"
+            '  podman run --rm --network host -v "$EIB_REPO:$EIB_REPO:Z" docker.io/alpine/git:latest git "$@"\n'
+            "}\n\n"
             "curl -sf -X POST \"$GITEA_URL/api/v1/user/repos\" \\\n"
             "  -H \"Authorization: token $TOKEN\" \\\n"
             "  -H \"Content-Type: application/json\" \\\n"

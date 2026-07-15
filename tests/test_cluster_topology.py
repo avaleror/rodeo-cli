@@ -1,8 +1,12 @@
 """ClusterPhase derives start order / ready count / etcd gap from the definition."""
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
+import pytest
+
+from rodeo.config import ConfigError
 from rodeo.engine.cluster import ClusterPhase
 from rodeo.profiles.suse_virt import SuseVirtProfile
 
@@ -67,3 +71,35 @@ def test_rancher_phase_runs_with_rancher_node():
     runner = _FakeRunner({"vms": {"harvester1": {}, "rancher": {}}})
     list(profile.run_phase("rancher", runner, Path("/tmp/x")))
     assert runner.rancher_called is True
+
+
+def test_load_topology_raises_on_missing_definition(monkeypatch):
+    def _raise(_cfg):
+        raise FileNotFoundError("definition.yaml missing")
+
+    monkeypatch.setattr("rodeo.inventory.build_inventory", _raise)
+    with pytest.raises(FileNotFoundError, match="definition.yaml missing"):
+        ClusterPhase(_cfg(vms={"harvester1": {}}))
+
+
+def test_load_topology_raises_on_config_error(monkeypatch):
+    def _raise(_cfg):
+        raise ConfigError("bad topology")
+
+    monkeypatch.setattr("rodeo.inventory.build_inventory", _raise)
+    with pytest.raises(ConfigError, match="bad topology"):
+        ClusterPhase(_cfg(vms={"harvester1": {}}))
+
+
+def test_load_topology_warns_on_unexpected_inventory_error(monkeypatch, caplog):
+    cfg = _cfg(vms={"harvester1": {}, "harvester2": {}})
+
+    def _raise(_cfg):
+        raise RuntimeError("transient render failure")
+
+    monkeypatch.setattr("rodeo.inventory.build_inventory", _raise)
+    with caplog.at_level(logging.WARNING):
+        cp = ClusterPhase(cfg)
+    assert "using cfg fallback" in caplog.text
+    assert cp.harvester_nodes == ["harvester1", "harvester2"]
+    assert cp.ready_count == 2

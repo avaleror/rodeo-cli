@@ -86,7 +86,22 @@ def test_gitea_container_replace_and_idempotent_setup_calls():
     assert '"repo_name":"alien-geeko"' in script
     lines = script.splitlines()
     migrate_idx = next(i for i, line in enumerate(lines) if "repos/migrate" in line)
-    migrate_block = "\n".join(lines[migrate_idx:migrate_idx + 6])
-    assert "|| echo" in migrate_block
-    eib_repo_create_line = next(line for line in lines if '"name":"eib-config"' in line)
-    assert "|| echo" in eib_repo_create_line
+    migrate_block = "\n".join(lines[migrate_idx:migrate_idx + 12])
+    assert 'if [ "$RC" = "409" ]' in migrate_block
+    assert "exit 1" in migrate_block
+    eib_idx = next(i for i, line in enumerate(lines) if '"name":"eib-config"' in line)
+    eib_block = "\n".join(lines[eib_idx:eib_idx + 10])
+    assert 'if [ "$RC" = "409" ]' in eib_block
+    assert "exit 1" in eib_block
+
+
+def test_repo_creation_only_tolerates_409_not_every_error():
+    """Regression: the blanket `|| echo "already exists"` on eib-config
+    creation masked a real 403 (missing write:user token scope) as if it were
+    a harmless conflict — the actual error only surfaced several steps later
+    as a confusing git-push 403 instead of at its real source. Both
+    repo-creation calls must check the HTTP status explicitly and exit 1 on
+    anything that isn't 200/201/409 — not just any nonzero curl exit."""
+    script = _captured_gitea_script()
+    assert "write:user" in script
+    assert script.count('if [ "$RC" = "409" ]') == 2

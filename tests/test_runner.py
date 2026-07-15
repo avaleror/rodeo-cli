@@ -260,3 +260,29 @@ def test_write_vars_file_warns_on_unexpected_inventory_error(
     assert "using role defaults" in caplog.text
     data = yaml.safe_load(vars_file.read_text())
     assert "vm_nodes" not in data
+
+
+def test_disk_driver_defaults_baremetal(fake_profile, fake_cfg, tmp_path):
+    fake_cfg["deployment_target"] = "baremetal"
+    data = yaml.safe_load(DeployRunner(fake_cfg, tmp_path)._write_vars_file().read_text())
+    assert data["libvirt_disk_cache"] == "none"
+    assert data["libvirt_disk_io"] == "native"
+
+
+def test_disk_driver_defaults_instruqt(fake_profile, fake_cfg, tmp_path):
+    fake_cfg["deployment_target"] = "instruqt"
+    data = yaml.safe_load(DeployRunner(fake_cfg, tmp_path)._write_vars_file().read_text())
+    assert data["libvirt_disk_cache"] == "writeback"
+    assert data["libvirt_disk_io"] == "threads"
+
+
+def test_disk_driver_plan_override(fake_profile, fake_cfg, tmp_path):
+    fake_cfg["deployment_target"] = "instruqt"
+    fake_cfg["libvirt"] = {
+        "uri": "qemu:///system",
+        "disk_cache": "none",
+        "disk_io": "native",
+    }
+    data = yaml.safe_load(DeployRunner(fake_cfg, tmp_path)._write_vars_file().read_text())
+    assert data["libvirt_disk_cache"] == "none"
+    assert data["libvirt_disk_io"] == "native"

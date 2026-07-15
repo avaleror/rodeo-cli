@@ -152,6 +152,20 @@ Most network topology (CIDR, gateway, DNS domain, per-node IPs) is in `definitio
 | `device` | `""` | Leave empty for single-disk hosts. Set to `/dev/nvme1n1` (or similar) to dedicate a second disk. Confirm with `lsblk`. |
 | `image_dir` | `/var/lib/libvirt/images` | Where libvirt stores VM disks and ISOs. Must have 600–900 GiB free for a full lab. |
 
+### `libvirt`
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| `uri` | `qemu:///system` | libvirt connection URI. |
+| `disk_cache` | target-dependent | Guest qcow2 `cache=` mode. Default `none` on baremetal, `writeback` when `deployment_target: instruqt` (better nested cloud I/O). Allowed: `none`, `writethrough`, `writeback`, `unsafe`, `directsync`. |
+| `disk_io` | target-dependent | Guest qcow2 `io=` mode. Default `native` on baremetal, `threads` on Instruqt. Allowed: `native`, `threads`, `io_uring`. |
+
+Override at deploy time without editing the plan:
+
+```bash
+rodeo deploy -P libvirt.disk_cache=writeback -P libvirt.disk_io=threads
+```
+
 ### `versions`
 
 | Field | Default | Notes |

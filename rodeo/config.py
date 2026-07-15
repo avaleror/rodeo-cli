@@ -43,6 +43,9 @@ _BASE_DEFAULTS: dict[str, Any] = {
         "dns_domain": "aerogrid.com",
     },
     "storage": {"image_dir": "/var/lib/libvirt/images"},
+    # disk_cache / disk_io: unset by default — DeployRunner picks
+    # none/native (baremetal) or writeback/threads (instruqt). Override
+    # via plan or -P libvirt.disk_cache=... / libvirt.disk_io=...
     "libvirt": {"uri": "qemu:///system"},
     "ansible": {
         "path": None,
@@ -332,6 +335,24 @@ def validate_config(cfg: dict) -> None:
     if target not in ("instruqt", "baremetal"):
         raise ConfigError(
             f"Invalid deployment_target '{target}' — use 'instruqt' or 'baremetal'."
+        )
+
+    libvirt = cfg.get("libvirt", {})
+    if not isinstance(libvirt, dict):
+        raise ConfigError("libvirt must be a mapping")
+    _ALLOWED_DISK_CACHE = ("none", "writethrough", "writeback", "unsafe", "directsync")
+    _ALLOWED_DISK_IO = ("native", "threads", "io_uring")
+    cache = libvirt.get("disk_cache")
+    if cache is not None and cache not in _ALLOWED_DISK_CACHE:
+        raise ConfigError(
+            f"Invalid libvirt.disk_cache '{cache}' — "
+            f"use one of: {', '.join(_ALLOWED_DISK_CACHE)}."
+        )
+    disk_io = libvirt.get("disk_io")
+    if disk_io is not None and disk_io not in _ALLOWED_DISK_IO:
+        raise ConfigError(
+            f"Invalid libvirt.disk_io '{disk_io}' — "
+            f"use one of: {', '.join(_ALLOWED_DISK_IO)}."
         )
 
     # Let's Encrypt email must be a real address — example.com is rejected by the ACME

@@ -31,7 +31,7 @@
   <devices>
     <emulator>/usr/bin/qemu-system-x86_64</emulator>
     <disk type='file' device='disk'>
-      <driver name='qemu' type='qcow2' cache='none' io='native'/>
+      <driver name='qemu' type='qcow2' cache='{{ libvirt_disk_cache }}' io='{{ libvirt_disk_io }}'/>
       <source file='{{ image_dir }}/{{ item.name }}-vda.qcow2'/>
       <target dev='vda' bus='virtio'/>
       <boot order='1'/>

@@ -4,10 +4,17 @@
 # via D-Bus, NM reports the zone for each connected interface. If the NM connection
 # for eth0 has no zone set (which cloud-init typically does not set), firewalld can
 # leave eth0 in an undefined zone state or reassign it in a way that drops the
-# Instruqt management connection after a save/restart. We therefore keep firewalld
-# disabled and stopped during the build phase. rodeo.sh phase 5 starts it right
-# before the final image save, at which point the VMs are fully running and no more
-# intermediate saves/reboots will occur.
+# Instruqt management connection. We therefore keep firewalld disabled and stopped
+# here, during early host prep, before any VM exists.
+#
+# DeployRunner._start_firewalld() (engine/runner.py) unmasks and starts firewalld
+# later, at the top of the cluster phase — well before any Instruqt snapshot, not
+# gated behind finalise. On deployment_target: instruqt it also pins the detected
+# external interface to the public zone with `--permanent`, which writes the
+# interface→zone mapping into firewalld's own persisted config. That's what actually
+# closes the race described above: a fresh attendee boot from the snapshot reads the
+# pinned zone directly instead of renegotiating it with NetworkManager over D-Bus.
+# firewalld being enabled and running in the snapshot is therefore expected and safe.
 # On bare-metal deployer runs, deploy.sh starts it explicitly after the Ansible phase.
 # firewalld is stopped at the end of packages.yml (before libvirt sockets start)
 # to close the window where the kvm_server post-install scripts can start it and

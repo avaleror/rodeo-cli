@@ -127,9 +127,19 @@ If VMs do not start automatically, the `finalise` step may have been skipped or 
 
 ## The firewalld timing constraint
 
-The `kvm_host` Ansible role **disables and stops firewalld** during the build phase. This is intentional: on SLES 16, firewalld integrates with NetworkManager via D-Bus. If it starts and integrates with the `eth0` zone during an Instruqt build save/restart, it can drop the Instruqt management connection.
+The `kvm_host` Ansible role **disables, stops, and masks firewalld** during host prep (early in the build, before any VM exists). This is intentional: on SLES 16, firewalld integrates with NetworkManager via D-Bus, and cloud-init doesn't assign a zone to the external NIC — starting firewalld before that's sorted out can drop the Instruqt management connection.
 
-The `finalise` phase re-enables firewalld. Do not enable it manually before snapshotting.
+firewalld itself is unmasked and started later, in the `cluster` phase — well before the snapshot, not by `finalise`. This is safe because that same step also runs, on Instruqt:
+
+```
+firewall-cmd --zone=public --change-interface=<ext-iface> --permanent
+```
+
+The `--permanent` flag writes the interface→zone mapping into firewalld's own persisted config. On a fresh attendee boot, firewalld reads that mapping directly instead of negotiating a live zone assignment with NetworkManager over D-Bus — which is what removes the race in the first place. So firewalld being enabled and running in the snapshot is expected and fine.
+
+What actually matters before you snapshot: confirm this pinning step ran and picked the right interface. Check the deploy log for `Instruqt: pinning <iface> to public zone...`, and confirm with `firewall-cmd --get-active-zones` that your real management NIC shows under `public`. Re-check the same command on the first attendee boot from the snapshot — that's the actual test that the pinning held.
+
+`finalise` still must not run before the snapshot, but for an unrelated reason: it enables `libvirt-guests` autostart, which races VM boot against the Instruqt agent's own connection setup on a fresh attendee boot if baked into the image too early.
 
 ## Credentials in the snapshot
 

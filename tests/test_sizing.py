@@ -62,7 +62,7 @@ def test_seed_lab_instruqt_applies_presets(tmp_path, monkeypatch):
     assert data["resources"]["harvester"]["memory_mib"] == 20480
     assert data["resources"]["rancher"]["vcpu"] == 4
     # disk left alone from the bundled example
-    assert data["resources"]["harvester"]["disk_gb"] == 270
+    assert data["resources"]["harvester"]["disk_gb"] == 320
 
 
 def test_seed_lab_baremetal_keeps_example_vcpu(tmp_path):

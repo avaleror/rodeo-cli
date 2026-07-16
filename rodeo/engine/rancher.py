@@ -43,7 +43,7 @@ class RancherPhase:
         self.rancher_ip       = net.get("rancher_ip", "192.168.122.9")
         self.vip              = net.get("vip", "")   # empty for profiles without Harvester
         self.nodeport         = int(net.get("rancher_nodeport", 30002))
-        self.dns_domain       = net.get("dns_domain", "aerogrid.com")
+        self.dns_domain       = net.get("dns_domain", "rodeo.lab")
         self.gateway          = net.get("gateway", "192.168.122.1")
 
         # Standalone = a Rancher-only lab (no Harvester cluster to manage).
@@ -1812,7 +1812,7 @@ class RancherPhase:
             # "already exists" (persisted in gitea-data from a prior attempt).
             "podman exec --user git gitea /usr/local/bin/gitea admin user create \\\n"
             '  --username "$GITEA_USER" --password "$GITEA_PASS" \\\n'
-            "  --email gitea@aerogrid.local --admin --must-change-password=false \\\n"
+            "  --email gitea@rodeo.local --admin --must-change-password=false \\\n"
             '  || echo "  (admin user already exists, continuing)"\n\n'
             # Generate API token for setup calls. write:repository alone covers
             # the /api/v1/repos/migrate call (alien-geeko) but NOT
@@ -1963,7 +1963,7 @@ class RancherPhase:
             "__DEF4__\n\n"
             # Commit and push to local Gitea
             "git -C \"$EIB_REPO\" init\n"
-            "git -C \"$EIB_REPO\" config user.email \"rodeo@aerogrid.local\"\n"
+            "git -C \"$EIB_REPO\" config user.email \"rodeo@rodeo.local\"\n"
             "git -C \"$EIB_REPO\" config user.name \"AeroGrid Lab\"\n"
             "git -C \"$EIB_REPO\" add .\n"
             "git -C \"$EIB_REPO\" commit -m \"initial EIB config templates for AeroGrid edge nodes\"\n"

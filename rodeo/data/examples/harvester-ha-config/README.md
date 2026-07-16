@@ -17,7 +17,7 @@ sudo -E rodeo --config-dir ./harvester-ha-config deploy
 ## What it deploys
 
 - 3 Harvester nodes (`harvester1/2/3`), all control-plane + etcd
-- 16 GiB RAM / 6 vCPU / 250 GB disk per node (lean "test" sizing)
+- 16 GiB RAM / 6 vCPU / 320 GB disk per node
 - No Rancher VM — the `suse-virt` profile skips the rancher phase automatically
   because the topology has no Rancher node
 
@@ -25,10 +25,12 @@ sudo -E rodeo --config-dir ./harvester-ha-config deploy
 
 - **CPU:** 3 × 6 = 18 vCPU. Mild overcommit on a 16-thread host is fine
   (validated live; load stayed ~5 after bootstrap).
-- **Disk:** 250 GB per node is Harvester's documented minimum and it matters —
-  the persistent partition holds ~19 GB of container images; smaller disks fill
-  up and containerd fails ("no space") so the cluster never converges.
-- **Host:** ~50 GiB RAM + ~750 GB free disk for the three nodes.
+- **Disk:** 320 GB per node. Harvester's Elemental installer always carves a
+  fixed 150 GiB persistent partition (container images, etc.) regardless of
+  disk size — going much smaller starves it and containerd fails ("no space")
+  so the cluster never converges; going bigger leaves Longhorn's own partition
+  more room (~165 GB at 320 GB, vs ~95 GB at the old 250 GB).
+- **Host:** ~50 GiB RAM + ~1000 GB free disk for the three nodes.
 
 ## Files
 

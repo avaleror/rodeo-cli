@@ -22,7 +22,7 @@ definition:
     mode: nat
     cidr: 192.168.122.0/24
     gateway: 192.168.122.1
-    domain: aerogrid.com
+    domain: rodeo.lab
     dhcp_range:
       start: 192.168.122.100
       end: 192.168.122.254

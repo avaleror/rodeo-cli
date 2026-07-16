@@ -303,7 +303,7 @@ DeployRunner.run() yields:
 | rancher | Rancher Prime / K3s | 192.168.122.9 | 8 GiB |
 
 - **VIP:** 192.168.122.10 (Harvester API/UI via kube-vip)
-- **DNS domain:** `aerogrid.com` (libvirt dnsmasq + `/etc/hosts`)
+- **DNS domain:** `rodeo.lab` (libvirt dnsmasq + `/etc/hosts`)
 - **Host DNAT:** :8443 → Harvester VIP :443, :30002 → Rancher NodePort
 
 ![Network and ports (Instruqt → host → nested VMs)](assets/diagrams/rodeo-network-ports.png)

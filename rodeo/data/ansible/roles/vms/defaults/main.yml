@@ -34,7 +34,7 @@ libvirt_disk_io: native
 
 # Lab DNS domain served by libvirt's built-in dnsmasq on virbr0 (and written
 # to /etc/hosts on the host for geekohive scripts + cloud-client).
-lab_dns_domain: "aerogrid.com"
+lab_dns_domain: "rodeo.lab"
 
 # network_mode and host_bridge are set in ansible/group_vars/all.yml.
 # Values below are role-default fallbacks only — group_vars takes precedence.
@@ -66,7 +66,7 @@ libvirt_flavors:
   harvester:
     memory_mib: 16384
     vcpu: 8
-    disk_gb: 270
+    disk_gb: 320
   rancher:
     memory_mib: 8192
     vcpu: 4
@@ -95,7 +95,7 @@ libvirt_flavors:
 vm_nodes:
   - name: harvester1
     flavor: harvester
-    hostname: alpha          # alpha.aerogrid.com — Harvester node 1 (cluster bootstrap)
+    hostname: alpha          # alpha.rodeo.lab — Harvester node 1 (cluster bootstrap)
     uuid: "1c5e1f38-1fb8-4f03-9eaa-12838f70faa1"
     mgmt_mac: "02:00:00:0D:62:E1"
     storage_mac: "02:00:00:0D:63:E1"
@@ -106,7 +106,7 @@ vm_nodes:
     config_iso_name: "harvester-config-node1"
   - name: harvester2
     flavor: harvester
-    hostname: bravo           # bravo.aerogrid.com — Harvester node 2
+    hostname: bravo           # bravo.rodeo.lab — Harvester node 2
     uuid: "4e156918-3e00-44c2-bf47-0b532b3807c1"
     mgmt_mac: "02:00:00:0D:62:E2"
     storage_mac: "02:00:00:0D:63:E2"
@@ -117,7 +117,7 @@ vm_nodes:
     config_iso_name: "harvester-config-node2"
   - name: harvester3
     flavor: harvester
-    hostname: charlie         # charlie.aerogrid.com — Harvester node 3
+    hostname: charlie         # charlie.rodeo.lab — Harvester node 3
     uuid: "4541177c-c6b7-4ab3-b418-e2a0b17beb9d"
     mgmt_mac: "02:00:00:0D:62:E3"
     storage_mac: "02:00:00:0D:63:E3"
@@ -128,7 +128,7 @@ vm_nodes:
     config_iso_name: "harvester-config-node3"
   - name: rancher
     flavor: rancher
-    hostname: rancher         # rancher.aerogrid.com — Rancher Prime
+    hostname: rancher         # rancher.rodeo.lab — Rancher Prime
     uuid: "77994fd6-7ebb-4ad3-baf4-55575b0ce265"
     mgmt_mac: "02:00:00:0D:62:E9"
     ip: "192.168.122.9"

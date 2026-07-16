@@ -21,7 +21,7 @@ def test_harvester_ha_profile(tmp_path):
     assert "rancher" not in defn["start_order"]
     assert defn["harvester_ready_count"] == 3
     plan = yaml.safe_load((lab / "rodeo-plan.yaml").read_text())
-    assert plan["resources"]["harvester"]["disk_gb"] == 250
+    assert plan["resources"]["harvester"]["disk_gb"] == 320
     assert "rancher" not in plan.get("resources", {})
 
 

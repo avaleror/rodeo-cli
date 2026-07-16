@@ -12,16 +12,16 @@ network:
   mode: nat              # nat | bridge
   vip: "192.168.122.10"   # kube-vip floating IP — must not be a node IP
   gateway: "192.168.122.1"
-  dns_domain: "aerogrid.com"
+  dns_domain: "rodeo.lab"
 
 resources:
   harvester:
     memory_mib: 16384    # 16 GiB per node
     vcpu: 6              # 3 x 6 = 18 vCPU (overcommit fine on a 16-thread host)
-    # 250 GB is Harvester's documented minimum and it matters: the persistent
-    # partition holds ~19 GB of container images; smaller disks fill up and
-    # containerd hits "no space" → RKE2 never converges → no VIP.
-    disk_gb: 250
+    # 150 GB persistent partition is a fixed Harvester floor (Elemental installer
+    # minimum — container images, kubelet, logs); 320 GB leaves Longhorn's own
+    # partition ~165 GB of real room instead of the ~95 GB a 250 GB disk left.
+    disk_gb: 320
 
 versions:
   harvester: "1.8.1"

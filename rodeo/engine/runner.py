@@ -697,7 +697,7 @@ class DeployRunner:
             "host_bridge":           net.get("host_bridge", "br0"),
             "harvester_vip":         net.get("vip", "192.168.122.10"),
             "rancher_ip":            net.get("rancher_ip", "192.168.122.9"),
-            "lab_dns_domain":        net.get("dns_domain", "aerogrid.com"),
+            "lab_dns_domain":        net.get("dns_domain", "rodeo.lab"),
             "libvirt_network_gateway": net.get("gateway", "192.168.122.1"),
             "harvester_os_password": creds.get("harvester_os_password", ""),
             "rancher_vm_password":   creds.get("harvester_os_password", ""),

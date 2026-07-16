@@ -40,7 +40,7 @@ _BASE_DEFAULTS: dict[str, Any] = {
         "vip": "192.168.122.10",
         "rancher_ip": "192.168.122.9",
         "gateway": "192.168.122.1",
-        "dns_domain": "aerogrid.com",
+        "dns_domain": "rodeo.lab",
     },
     "storage": {"image_dir": "/var/lib/libvirt/images"},
     # disk_cache / disk_io: unset by default — DeployRunner picks
@@ -275,6 +275,14 @@ def load_config(
         context.update({k: v for k, v in cli_params if "." not in k})
         plan = _render_plan(text, str(plan_path), context)
         _record_lab_dir(plan_path.resolve().parent)
+
+    # A lab dir found directly in cwd (plan_path already existed, so the
+    # find_lab_dir()/config_dir auto-detect above never ran) still needs its
+    # definition.yaml picked up — otherwise default_cfg() never loads the real
+    # node topology and preflight/resource sizing silently falls back to the
+    # generic 3-node formula, even for e.g. a 2-node profile.
+    if config_dir is None and (plan_path.parent / "definition.yaml").exists():
+        config_dir = str(plan_path.parent)
 
     # Determine type early so profile defaults can be merged before plan overrides.
     type_name = plan.get("type", _BASE_DEFAULTS["type"])

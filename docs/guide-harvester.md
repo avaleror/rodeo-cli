@@ -42,12 +42,12 @@ Run `rodeo doctor` to see which profiles fit your host's available RAM.
 | Profile | RAM | Disk | CPU |
 |---------|-----|------|-----|
 | `test` | ~36 GiB | ~600 GiB in `/var/lib/libvirt/images` | ~16 vCPU |
-| `harvester-ha` | ~52 GiB | ~800 GiB | ~20 vCPU |
-| `harvester` | ~72 GiB | ~900 GiB | ~34 vCPU |
+| `harvester-ha` | ~52 GiB | ~1000 GiB | ~20 vCPU |
+| `harvester` | ~72 GiB | ~1050 GiB | ~34 vCPU |
 
 **OS:** Linux with KVM. SLES 16 or Leap 16 recommended; Ubuntu and Fedora work via `install-deps`. Nested virtualization must be enabled if the host is itself a VM (cloud, Instruqt).
 
-Harvester installs via **iPXE network boot** (the `pxe_server` phase serves boot scripts and config over HTTP). This is why the disk requirement is high — each node gets a 250 GiB virtual disk (Harvester needs at least that for its persistent partition and image storage).
+Harvester installs via **iPXE network boot** (the `pxe_server` phase serves boot scripts and config over HTTP). This is why the disk requirement is high — each node gets a 320 GiB virtual disk (Harvester's Elemental installer carves a fixed 150 GiB persistent partition regardless of disk size, so the rest goes to Longhorn's own partition).
 
 ---
 
@@ -76,7 +76,7 @@ Detach without stopping the deploy: `Ctrl+b  d`. If you run `rodeo up` again and
 The `suse-virt` pipeline (used by all four Harvester profiles) runs these phases:
 
 1. **kvm_host** — prepares the hypervisor: KVM packages, libvirt daemon, firewall rules (including the DNAT rule that makes `:8443` reach the Harvester VIP), and the image storage pool
-2. **vms** — downloads the Harvester ISO, creates virtual disks (250 GiB each), and writes libvirt XML definitions (VMs are defined but not started yet)
+2. **vms** — downloads the Harvester ISO, creates virtual disks (size varies by profile — see Host requirements above), and writes libvirt XML definitions (VMs are defined but not started yet)
 3. **pxe_server** — sets up nginx + TFTP + dnsmasq on the host's `virbr0` (192.168.122.1). Generates a `boot.ipxe` that chains to a per-node MAC script, and a Harvester config YAML for each node
 4. **cluster** — starts VMs in order (`harvester1` first, then a gap for etcd, then the rest). Waits for each node to install Harvester via iPXE, join the cluster, and become `Ready`. Watches the VIP (192.168.122.10) for the cluster to converge
 5. **rancher** — (`harvester` profile only) installs K3s + Rancher Prime on the `rancher` VM, exposes it on NodePort 30002, and configures the admin API. Harvester cluster import is intentionally left as a lab exercise — students do it via the Rancher UI as the first challenge
@@ -194,7 +194,7 @@ rodeo logs harvester1    # check the install log — is it still installing?
 rodeo ssh harvester1     # if the node is up, check: kubectl get nodes
 ```
 
-Common causes: disk too small (must be 250 GiB — smaller causes "no space" errors in containerd), nested virt not enabled, not enough RAM.
+Common causes: disk too small (Harvester's Elemental installer always carves a fixed 150 GiB persistent partition — a smaller disk starves it and causes "no space" errors in containerd), nested virt not enabled, not enough RAM.
 
 ### UI reachable but host:8443 not working
 
@@ -255,10 +255,10 @@ rodeo deploy -P resources.harvester.vcpu=10
 
 ### Change the disk size
 
-The default is 250 GiB per Harvester node. Do not go below 250 — smaller disks fill the persistent partition and prevent container images from pulling.
+The default is 320 GiB per Harvester node. Do not go below ~250 — Harvester's Elemental installer always carves a fixed 150 GiB persistent partition regardless of disk size, so smaller disks starve it and prevent container images from pulling, and leave little room for Longhorn itself.
 
 ```bash
-rodeo deploy -P resources.harvester.disk_gb=300
+rodeo deploy -P resources.harvester.disk_gb=400
 ```
 
 ### Build a custom Harvester lab

@@ -1,6 +1,7 @@
 """ClusterPhase — Python port of the retired start-vms.sh deployer script."""
 from __future__ import annotations
 
+import json
 import logging
 import os
 import queue
@@ -46,6 +47,17 @@ class ClusterPhase:
     NODES_POLL         = 20
     NODES_LOG_EVERY    = 120    # log node count at most once per 2 min
     ETCD_JOIN_GAP      = 90     # gap between harvester2 and harvester3 prevents etcd join race
+
+    # Longhorn's default 25% reserved-space floor is sized for disks shared with
+    # the OS. HARV_LH_DEFAULT is Harvester's own dedicated partition (carved out
+    # of the 150 GB-persistent-partition-floor guest disk), so the lower 10%
+    # Longhorn documents for dedicated disks applies. Setting this via Harvester's
+    # own install-time config.yaml (install.harvester.longhorn.defaultSettings)
+    # does not reliably thread through rancherd's bootstrap on 1.8.1 (verified
+    # live: correct camelCase config lands on the install ISO, but the resulting
+    # ManagedChart still showed the chart's untouched default) — patching the
+    # mutable Longhorn Setting CRD once the cluster is up is the reliable path.
+    LONGHORN_STORAGE_RESERVED_PCT = 10
 
     def __init__(self, cfg: dict, stop: threading.Event | None = None) -> None:
         self.cfg      = cfg
@@ -239,6 +251,8 @@ class ClusterPhase:
                         self._background_rancher = None
 
             yield LogLine(f"All {self.ready_count} Harvester nodes Ready. Cluster is up.")
+            if self.harvester_nodes:
+                yield from self._apply_longhorn_settings()
             self.success = True
 
     # ---------- VM start ----------
@@ -425,6 +439,37 @@ class ClusterPhase:
             1 for line in result.stdout.splitlines()
             if len(line.split()) >= 2 and line.split()[1].split(",")[0] == "Ready"
         )
+
+    def _apply_longhorn_settings(self) -> Generator[DeployEvent, None, None]:
+        """Best-effort: lower Longhorn's reserved-disk-space floor for this lab's
+        dedicated HARV_LH_DEFAULT partition. See LONGHORN_STORAGE_RESERVED_PCT.
+
+        Patches the ``harvester`` ManagedChart's declared values, not the
+        downstream ``settings.longhorn.io`` object directly — verified live that
+        patching the Setting gets silently reverted within ~1-2 min by Fleet's
+        reconciliation (it re-applies the chart's declared "0" over any direct
+        edit). The ManagedChart is Fleet's actual source of truth; patching it
+        propagates down to the Setting and sticks."""
+        pct = self.LONGHORN_STORAGE_RESERVED_PCT
+        patch = json.dumps({
+            "spec": {"values": {"longhorn": {"defaultSettings": {
+                "storageReservedPercentageForDefaultDisk": str(pct),
+            }}}},
+        })
+        try:
+            result = subprocess.run(
+                ["kubectl", "--kubeconfig", str(_kubeconfig_path()),
+                 "patch", "managedchart", "harvester", "-n", "fleet-local",
+                 "--type", "merge", "-p", patch],
+                capture_output=True, text=True, timeout=30,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            yield LogLine(f"  ⚠ could not set Longhorn reserved-% (kubectl error: {exc})")
+            return
+        if result.returncode == 0:
+            yield LogLine(f"  Longhorn storage-reserved-percentage-for-default-disk set to {pct}%.")
+        else:
+            yield LogLine(f"  ⚠ could not set Longhorn reserved-%: {result.stderr.strip()}")
 
     # ---------- Helpers ----------
 

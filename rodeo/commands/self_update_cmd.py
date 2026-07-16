@@ -129,8 +129,16 @@ def run_self_update(branch: str | None = None) -> None:
     #    `git fetch origin main` leaves it stale on single-branch / custom-refspec
     #    clones, which is exactly how install.sh sets a host up. A genuinely
     #    missing branch (stale fork) fails here with "couldn't find remote ref".
+    #
+    #    --force applies to tags too: a rewritten upstream history (e.g. after
+    #    stripping bad commit metadata) reassigns every tag to a new SHA, and a
+    #    plain `--tags` fetch then rejects each one as "would clobber existing
+    #    tag" — git still reports a non-zero exit even though the branch itself
+    #    fetched fine, so self-update fails outright on any host with stale local
+    #    tags. Self-update's whole point is hard-aligning to the remote, so tags
+    #    should always defer to it, same as the branch reset below already does.
     refspec = f"+refs/heads/{target_branch}:refs/remotes/{remote}/{target_branch}"
-    fetch = _git("fetch", "--tags", "--prune", remote, refspec, check=False)
+    fetch = _git("fetch", "--force", "--tags", "--prune", remote, refspec, check=False)
     if fetch.returncode != 0:
         err = fetch.stderr.strip()
         if "couldn't find remote ref" in err or "not found" in err.lower():

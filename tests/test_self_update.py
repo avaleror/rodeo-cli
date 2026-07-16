@@ -89,6 +89,30 @@ def test_already_up_to_date(repo, monkeypatch):
     assert "up to date" in result.output.lower()
 
 
+def test_fetch_forces_tags(repo, monkeypatch):
+    """Regression: a rewritten upstream history reassigns every tag to a new
+    SHA. A plain `--tags` fetch then rejects each pre-existing local tag as
+    'would clobber existing tag' — git reports a non-zero exit even though the
+    branch itself fetched fine, so self-update must force tags through rather
+    than fail outright on any host with stale local tags."""
+    calls: list[list[str]] = []
+
+    class RecordingGit(FakeGit):
+        def __call__(self, *args, check=True):
+            a = list(args)
+            if a[:1] == ["fetch"]:
+                calls.append(a)
+            return super().__call__(*args, check=check)
+
+    monkeypatch.setattr(su, "_git", RecordingGit(head="oldsha", target_sha="newsha", align=True))
+    monkeypatch.setattr(su, "_installed_version", lambda: "0.11.2")
+    result = CliRunner().invoke(su.self_update_cmd, [])
+    assert result.exit_code == 0
+    assert len(calls) == 1
+    assert "--force" in calls[0]
+    assert "--tags" in calls[0]
+
+
 def test_missing_remote_branch_fails(repo, monkeypatch):
     """A fork missing origin/main must fail loudly, not no-op to success.
 

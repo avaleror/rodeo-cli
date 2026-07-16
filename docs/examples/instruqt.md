@@ -10,16 +10,25 @@ The key difference from bare metal: the `finalise` phase (which enables VM autos
 
 ## Host sizing on Instruqt
 
-Use a `n2-standard-32` (or equivalent) instance with nested virtualization enabled:
+Use a generous builder (`n2-standard-32` or ~40 vCPU) with nested virtualization enabled:
 
 | Resource | Value |
 |----------|-------|
 | RAM | 128 GiB |
-| CPU | 32 vCPU |
+| CPU | 32–40 vCPU |
 | Disk | 1–2 TB |
 | Nested virt | Required |
 
 Request the `geekohive` machine type in the Instruqt sandbox config if you are using SUSE's Instruqt organization.
+
+**Guest vCPU budget:** keep Σ guest vCPU ≤ ~70% of host logical CPUs. When you seed with
+`deployment_target: instruqt` (`rodeo up` on an Instruqt host, or
+`rodeo up --deployment-target instruqt`), rodeo applies host-aware presets — typically
+**6–8 vCPU / 20 GiB** per Harvester node and **4 vCPU / 8 GiB** for Rancher on a
+32–40 vCPU builder. Override anytime with `-P resources.harvester.vcpu=…`.
+
+Guest disk cache defaults to `writeback`/`threads` on Instruqt (see `libvirt.disk_cache`
+in the plan reference) — better nested cloud I/O than bare-metal `none`/`native`.
 
 ## Step 1: install rodeo-cli on the builder
 

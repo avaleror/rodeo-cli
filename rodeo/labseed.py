@@ -171,6 +171,8 @@ def normalize_plan(
 
     A round-trip through YAML drops the example's comments, which is fine for a
     generated lab. Keeps ``??key`` (file) credential form, never ``??env:``.
+    When ``deployment_target`` is ``instruqt``, also apply host-aware resource
+    presets so new labs do not oversubscribe nested KVM by default.
     """
     if not plan_path.exists():
         return
@@ -194,5 +196,17 @@ def normalize_plan(
             val = creds[key]
             if isinstance(val, str) and val.startswith("??env:"):
                 creds[key] = f"??{key}"
+
+    if deployment_target == "instruqt":
+        import os
+
+        from .sizing import apply_instruqt_resource_presets, flavor_counts_from_definition
+
+        counts = flavor_counts_from_definition(plan_path.parent / "definition.yaml")
+        apply_instruqt_resource_presets(
+            data,
+            host_cpus=os.cpu_count() or 0,
+            flavor_counts=counts,
+        )
 
     plan_path.write_text(yaml.safe_dump(data, sort_keys=False, default_flow_style=False))

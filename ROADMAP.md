@@ -21,7 +21,12 @@ Live-validated on bare metal (SLES 16) and on an **Instruqt builder** with `depl
 | Student tab routing (:90, :91, :92 via `cloud-client` nginx proxy) | follow-up | Lives in `instruqt-virtualization`, not rodeo-cli; confirm per track when publishing |
 | `deployment_target: instruqt` firewalld-disabled guard on SLES 16 Instruqt image | ✅ done | Guard holds on current Instruqt SLES 16 image |
 
-**Remaining workshop polish:** confirm student tabs in the sibling Instruqt track repo when a track ships; nested wall-clock: disk-cache defaults (done) + Instruqt resource presets on seed (done) — Hauler prefetch still Phase H.
+**Instruqt performance (nested-KVM wall-clock):**
+- ✅ Guest disk cache defaults keyed on target — `writeback`/`threads` on instruqt, `none`/`native` on baremetal, plan-overridable (`libvirt.disk_cache` / `disk_io`). Merged #42.
+- ✅ Host-aware guest resource presets on seed — keeps Σ guest vCPU ≈ 70% of host so nested installs don't thrash; soft warning in `doctor`/preflight (#43).
+- ⏳ Hauler prefetch (skip multi-GB re-downloads) — still Phase H below.
+
+**Remaining workshop polish:** confirm student tabs in the sibling Instruqt track repo when a track ships.
 
 ---
 

@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.14.0](https://github.com/avaleror/rodeo-cli/compare/v0.13.0...v0.14.0) (2026-07-16)
+
+
+### Features
+
+* **deploy:** opt-in --reconcile for VM memory/vCPU drift ([#38](https://github.com/avaleror/rodeo-cli/issues/38)) ([3887012](https://github.com/avaleror/rodeo-cli/commit/38870122d4c9201a6a461bede3863371df70dc04))
+* **sizing:** Instruqt host-aware guest resource presets ([#43](https://github.com/avaleror/rodeo-cli/issues/43)) ([db75772](https://github.com/avaleror/rodeo-cli/commit/db757726d14ac0a7d3abef7093d6deb78e888525))
+* **vms:** Instruqt-friendly guest disk cache defaults ([#42](https://github.com/avaleror/rodeo-cli/issues/42)) ([1b18387](https://github.com/avaleror/rodeo-cli/commit/1b1838702442e90e51be6c8f3c8fa7b25e0baff2))
+
+
+### Bug Fixes
+
+* **config:** fail closed on an unresolved ??key in rancher_tls.email ([49275c9](https://github.com/avaleror/rodeo-cli/commit/49275c98d99f64cef11bb2a27f263f811454495c))
+* **deploy:** stop raw tool output from crashing the deploy via Rich markup ([74dca9f](https://github.com/avaleror/rodeo-cli/commit/74dca9fc29cb7ade3c79e9ed5225312740d5cd3a))
+* **engine:** fail loud on inventory errors in runner and cluster ([#41](https://github.com/avaleror/rodeo-cli/issues/41)) ([e527fa6](https://github.com/avaleror/rodeo-cli/commit/e527fa64f6f72528ef1498f186bdfbce8a60d4c7))
+* **harvester:** bump node disk to 320GB, fix Longhorn stability, neutral domain ([630e1a0](https://github.com/avaleror/rodeo-cli/commit/630e1a0194e9caf2a9fd1fe3beeac99fbaaaa07d))
+* **rancher:** correct nonexistent elemental-register Hauler image reference ([615a955](https://github.com/avaleror/rodeo-cli/commit/615a9558e1fe925833ac825c7471118287ed4cec))
+* **rancher:** download Leap Micro files via curl, add to hauler with lowercase names ([fe5672f](https://github.com/avaleror/rodeo-cli/commit/fe5672f6025247eefbb8a83e0dc1e545cca4055b))
+* **rancher:** drop the redundant "git" arg in the git-in-container wrapper ([ed556fc](https://github.com/avaleror/rodeo-cli/commit/ed556fccab448e83d24c15beac7f2558a940af28))
+* **rancher:** grant write:user token scope; fail loud on real repo-create errors ([0165700](https://github.com/avaleror/rodeo-cli/commit/016570081b07a1d2461cf472c382cc0ba430c7f9))
+* **rancher:** make _deploy_gitea retry-safe (container name + already-exists) ([a09e29c](https://github.com/avaleror/rodeo-cli/commit/a09e29c2cc5c01a570b8215664db756e81929775))
+* **rancher:** pass Helm bootstrapPassword via values file ([#40](https://github.com/avaleror/rodeo-cli/issues/40)) ([bf6f8d1](https://github.com/avaleror/rodeo-cli/commit/bf6f8d177949ba0b73031a20f1d610b06e01bb6e))
+* **rancher:** run git via a container on the eib VM instead of zypper install ([efcb6f8](https://github.com/avaleror/rodeo-cli/commit/efcb6f83ce90f9b3d162572a63bc9194ddf65b03))
+* **rancher:** wait for hauler-fileserver to actually listen before curling it ([de2732e](https://github.com/avaleror/rodeo-cli/commit/de2732ec8aeb73d16f94191ac860ac04064ae9a0))
+* **runner:** skip diskless edge nodes in stream_boot instead of crashing ([3f19250](https://github.com/avaleror/rodeo-cli/commit/3f1925086206a545f9d110f9897b23523b99a008))
+* **secrets:** add rancher_vm_password, dedupe init_cmd's own secrets writer ([c0de3f9](https://github.com/avaleror/rodeo-cli/commit/c0de3f9dbc455ab3d3f35bc25e64319e0bda0be8))
+* **self-update:** force-fetch tags so a rewritten history can't strand a host ([f77d5bf](https://github.com/avaleror/rodeo-cli/commit/f77d5bf9e4337d2b20c51b41096d2b4524ba9854))
+* **suse-edge:** switch edge-node base images from SLE Micro to openSUSE Leap Micro 6.2 ([757af39](https://github.com/avaleror/rodeo-cli/commit/757af396182abced37b97c70ec2ef5e510f653dc))
+* **vms:** drop unfixable+unnecessary virt-customize step from eib_image.yml ([48072c3](https://github.com/avaleror/rodeo-cli/commit/48072c30c8193ce96175032c2e780ad6ca4f724b))
+
+
+### Documentation
+
+* **roadmap:** mark Instruqt builder validation complete ([#39](https://github.com/avaleror/rodeo-cli/issues/39)) ([fba7337](https://github.com/avaleror/rodeo-cli/commit/fba7337cdd56d255b4d87eb37618a0bb35ff28f8))
+
 ## [0.13.0](https://github.com/avaleror/rodeo-cli/compare/v0.12.0...v0.13.0) (2026-07-14)
 
 

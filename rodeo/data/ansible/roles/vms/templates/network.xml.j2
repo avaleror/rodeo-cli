@@ -6,7 +6,7 @@
     </nat>
   </forward>
   <bridge name='virbr0' stp='on' delay='0'/>
-  <!-- aerogrid.com served locally by libvirt's built-in dnsmasq on virbr0 -->
+  <!-- rodeo.lab served locally by libvirt's built-in dnsmasq on virbr0 -->
   <domain name='{{ lab_dns_domain }}' localOnly='yes'/>
   <dns>
     <!-- Harvester floating VIP — cluster API + UI -->

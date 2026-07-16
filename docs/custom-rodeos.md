@@ -70,7 +70,7 @@ name: mylab                  # used for state + libvirt object names
 deployment_target: baremetal # baremetal | instruqt
 
 resources:
-  harvester: { memory_mib: 16384, vcpu: 8, disk_gb: 270 }
+  harvester: { memory_mib: 16384, vcpu: 8, disk_gb: 320 }
   rancher:   { memory_mib: 8192,  vcpu: 4, disk_gb: 60 }
 
 credentials:                 # ??key resolves from ~/.rodeo/secrets.yaml
@@ -106,7 +106,7 @@ definition:
   network:
     cidr: 192.168.122.0/24
     gateway: 192.168.122.1
-    domain: aerogrid.com
+    domain: rodeo.lab
 
   node_templates:        # the "blueprint" per node flavor
     harvester:

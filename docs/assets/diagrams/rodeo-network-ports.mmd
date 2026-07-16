@@ -5,7 +5,7 @@ flowchart LR
         p90[":90 nginx → Harvester tab"]
         p91[":91 nginx → Rancher tab"]
         p92[":92 kubectl port-forward → NOC tab"]
-        p443[":443 nginx vhosts<br/>*.aerogrid.com"]
+        p443[":443 nginx vhosts<br/>*.rodeo.lab"]
     end
 
     subgraph gh["geekohive — SLES 16 KVM host"]
@@ -26,8 +26,8 @@ flowchart LR
 
     p90 -->|"https"| d8443
     p91 -->|"https"| d30002
-    p443 -->|"virtualization.aerogrid.com"| d8443
-    p443 -->|"rancher.aerogrid.com"| d30002
+    p443 -->|"virtualization.rodeo.lab"| d8443
+    p443 -->|"rancher.rodeo.lab"| d30002
 
     d8443 -->|":443 Harvester UI"| vip
     d30002 -->|":30002 Rancher UI"| rancher

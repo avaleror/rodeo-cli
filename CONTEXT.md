@@ -45,12 +45,12 @@ What the deployment creates on the KVM host:
 | rancher | Rancher Prime on K3s (root) | 192.168.122.9 | 02:00:00:0D:62:E9 | 8 GiB |
 
 - **VIP:** `192.168.122.10` — kube-vip floating IP for the Harvester cluster API/UI
-- **Network:** libvirt NAT (virbr0), dnsmasq on 192.168.122.1, DNS domain `aerogrid.com`
-- **Disk:** 270 GiB per Harvester node (Longhorn storage), 60 GiB for Rancher
+- **Network:** libvirt NAT (virbr0), dnsmasq on 192.168.122.1, DNS domain `rodeo.lab`
+- **Disk:** 320 GiB per Harvester node (Longhorn storage), 60 GiB for Rancher
 - **UEFI:** OVMF 4MB non-SecureBoot (`/usr/share/qemu/ovmf-x86_64-4m-{code,vars}.bin`)
 - **Harvester NICs per node:** eth0 management, eth1 storage, eth2 migration, eth3/eth4 service (Kube-OVN)
 
-Host sizing for the default config: ~64 GB RAM, ~32 vCPU, ~900 GB free disk in `/var/lib/libvirt/images`.
+Host sizing for the default config: ~64 GB RAM, ~32 vCPU, ~1050 GB free disk in `/var/lib/libvirt/images`.
 
 ---
 
@@ -178,7 +178,7 @@ These are the non-obvious things that burned time during development:
 7. **kubectl** comes from the upstream repo `pkgs.k8s.io/core:/stable:/v1.36/` (channel duplicated in `install_deps.py` and `roles/kvm_host/defaults/main.yml` — bump both).
 8. **`python3-lxml` is required** — the `community.libvirt` Ansible modules (vms phase) import it. In install-deps; checked in preflight/doctor.
 9. **`guestfs-tools` (`virt-customize`) is required** — the Leap 16 Minimal-VM cloud image ships **without cloud-init**, so the vms role injects it into the Rancher disk at build time. (The rancher VM's NoCloud seed ISO is otherwise ignored.)
-10. **Harvester disk ≥ 250 GB.** The elemental install carves the disk into OS + a ~50 GB Longhorn partition + the persistent partition that holds container images (~19 GB). At 100 GB the persistent partition is only ~27 GB → containerd "no space left on device" → RKE2 never converges → no VIP. The `test` profile uses 250 GB; the full profile 270 GB.
+10. **Harvester disk ≥ 250 GB.** The Elemental installer always carves a **fixed 150 GiB `COS_PERSISTENT` partition** (container images, kubelet, logs) out of the disk regardless of its size — this is a hard floor, not a percentage. Everything left over goes to Longhorn's own `HARV_LH_DEFAULT` partition. At 100 GB total, the persistent partition alone barely fits → containerd "no space left on device" → RKE2 never converges → no VIP. The `harvester`/`harvester-2n`/`harvester-ha` profiles use 320 GB (~165 GB left for Longhorn, live-verified); the `test` profile still uses 250 GB (~95 GB for Longhorn).
 11. **Installer console logging.** The VM's file-backed serial is `ttyS1`; the Harvester installer cmdline sets `console=ttyS1 console=ttyS0` so the kernel/dracut output is captured in `*_serial.log` (and a console-only `ttyS0` pty can block kernel writes → boot hang).
 12. **`sudo rodeo` caveat (unfixed):** SLES sudo `secure_path` excludes `/usr/local/bin`, so `sudo rodeo <cmd>` fails "command not found". `rodeo up` self-escalates with the absolute path; day-2 root commands (clean/stop/start) should do the same (backlog).
 

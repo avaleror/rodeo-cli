@@ -16,7 +16,7 @@ network:
   vip: "192.168.122.10"   # kube-vip floating IP — must not be a node IP
   rancher_ip: "192.168.122.9"
   gateway: "192.168.122.1"
-  dns_domain: "aerogrid.com"
+  dns_domain: "rodeo.lab"
   # bridge mode only:
   # host_bridge: br0
 
@@ -24,7 +24,8 @@ resources:
   harvester:
     memory_mib: 20480    # 20 GiB
     vcpu: 10
-    disk_gb: 270         # Longhorn needs room; 270 GB works for nested KVM
+    disk_gb: 320         # 150 GB persistent partition is a fixed Harvester floor;
+                         # 320 GB leaves Longhorn ~165 GB of real room
   rancher:
     memory_mib: 8192
     vcpu: 4

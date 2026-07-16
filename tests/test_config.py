@@ -1,6 +1,8 @@
 """Config loading, secret resolution, and validation."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 import yaml
 
@@ -303,3 +305,25 @@ def test_find_ansible_root_falls_back_to_bundled():
     root = config.find_ansible_root(cfg)
     assert root is not None
     assert (root / "ansible" / "playbook.yml").exists()
+
+
+def test_cwd_lab_dir_picks_up_local_definition(tmp_path, monkeypatch):
+    """Regression: running from inside a lab dir (no --config-dir) must still use
+    that dir's definition.yaml, not silently substitute the bundled 3-node one.
+
+    Previously, find_lab_dir()/config_dir auto-detection only fired when
+    plan_path.exists() was False (i.e. it had to be located by walking up from
+    elsewhere). Running directly inside a lab dir found rodeo-plan.yaml via a
+    plain relative path, skipping that block entirely — config_dir stayed None,
+    default_cfg() fell back to the bundled 3-node definition, and preflight's
+    resource math silently assumed 3 Harvester nodes instead of the real 2."""
+    import shutil
+
+    example = Path(__file__).parent.parent / "rodeo" / "data" / "examples" / "harvester-2n"
+    shutil.copy(example / "rodeo-plan.yaml", tmp_path / "rodeo-plan.yaml")
+    shutil.copy(example / "definition.yaml", tmp_path / "definition.yaml")
+
+    monkeypatch.chdir(tmp_path)
+    cfg = config.load_config("rodeo-plan.yaml")
+    harvester_nodes = [n for n in cfg["vms"] if n.startswith("harvester")]
+    assert len(harvester_nodes) == 2

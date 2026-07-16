@@ -66,7 +66,7 @@ definition:
     mode: nat              # nat | bridge (nat is standard for nested KVM)
     cidr: 192.168.122.0/24
     gateway: 192.168.122.1
-    domain: aerogrid.com   # DNS domain for all lab VMs
+    domain: rodeo.lab   # DNS domain for all lab VMs
     dhcp_range:
       start: 192.168.122.100
       end: 192.168.122.254  # static leases (.9–.13, .10 VIP) are outside this range
@@ -195,7 +195,7 @@ definition:
     - name: harvester1
       template: harvester      # references node_templates.harvester above
       index: 1
-      hostname: alpha           # alpha.aerogrid.com
+      hostname: alpha           # alpha.rodeo.lab
       uuid: "1c5e1f38-1fb8-4f03-9eaa-12838f70faa1"
       ip: "192.168.122.11"
       config_iso_name: "harvester-config-node1"

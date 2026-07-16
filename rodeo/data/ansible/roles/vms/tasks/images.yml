@@ -64,7 +64,7 @@
 # --- Harvester node disks and OVMF vars (fired in parallel) ---
 # qemu-img and OVMF copy are independent per node — fire all at once and
 # collect results after. The disk creation (preallocation=metadata on a
-# 270 GiB image) is the bottleneck; running 3 in parallel saves ~2x disk time.
+# 320 GiB image) is the bottleneck; running 3 in parallel saves ~2x disk time.
 
 - name: Create Harvester node qcow2 disk images (async)
   ansible.builtin.command: >

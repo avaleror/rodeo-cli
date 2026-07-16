@@ -25,7 +25,7 @@ class SuseVirtProfile(RodeoProfile):
     versions = {**BASE_VERSIONS, "harvester": "1.8.1"}
 
     resources = {
-        "harvester": {"memory_mib": 16384, "vcpu": 8, "disk_gb": 270},
+        "harvester": {"memory_mib": 16384, "vcpu": 8, "disk_gb": 320},
         "rancher":   {"memory_mib": 8192,  "vcpu": 4, "disk_gb": 60},
     }
 

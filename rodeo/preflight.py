@@ -213,7 +213,7 @@ def _resource_needs(cfg: dict) -> tuple[int, int]:
     return (
         res.get("harvester", {}).get("memory_mib", 16384) * 3
         + res.get("rancher", {}).get("memory_mib", 8192),
-        res.get("harvester", {}).get("disk_gb", 270) * 3
+        res.get("harvester", {}).get("disk_gb", 320) * 3
         + res.get("rancher", {}).get("disk_gb", 60)
         + 30,
     )

@@ -141,7 +141,7 @@ def test_vars_file_wires_plan_and_is_private(fake_profile, fake_cfg, tmp_path):
     assert data["libvirt_flavors"]["harvester"]["memory_mib"] == 4096
     assert data["libvirt_flavors"]["harvester"]["vcpu"] == 2
     assert data["libvirt_flavors"]["rancher"]["memory_mib"] == 8192  # default kept
-    assert data["lab_dns_domain"] == "aerogrid.com"
+    assert data["lab_dns_domain"] == "rodeo.lab"
     assert data["harvester_version"] == "1.8.1"
     assert data["harvester_iso_checksum"].startswith("sha512:")
     assert data["libvirt_network_gateway"] == "192.168.122.1"

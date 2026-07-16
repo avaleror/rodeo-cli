@@ -79,7 +79,7 @@ definition:
     mode: nat
     cidr: 192.168.122.0/24
     gateway: 192.168.122.1
-    domain: aerogrid.com
+    domain: rodeo.lab
     # DHCP range for dynamic + the static leases we will add for our nodes
     dhcp_range:
       start: 192.168.122.100
@@ -301,7 +301,7 @@ definition:
     - name: harvester1
       template: harvester
       index: 1
-      hostname: alpha          # alpha.aerogrid.com — Harvester node 1 (cluster bootstrap)
+      hostname: alpha          # alpha.rodeo.lab — Harvester node 1 (cluster bootstrap)
       uuid: "1c5e1f38-1fb8-4f03-9eaa-12838f70faa1"
       ip: "192.168.122.11"
       config_iso_name: "harvester-config-node1"
@@ -327,7 +327,7 @@ definition:
     - name: harvester2
       template: harvester
       index: 2
-      hostname: bravo           # bravo.aerogrid.com — Harvester node 2
+      hostname: bravo           # bravo.rodeo.lab — Harvester node 2
       uuid: "4e156918-3e00-44c2-bf47-0b532b3807c1"
       ip: "192.168.122.12"
       config_iso_name: "harvester-config-node2"
@@ -352,7 +352,7 @@ definition:
     - name: harvester3
       template: harvester
       index: 3
-      hostname: charlie         # charlie.aerogrid.com — Harvester node 3
+      hostname: charlie         # charlie.rodeo.lab — Harvester node 3
       uuid: "4541177c-c6b7-4ab3-b418-e2a0b17beb9d"
       ip: "192.168.122.13"
       config_iso_name: "harvester-config-node3"

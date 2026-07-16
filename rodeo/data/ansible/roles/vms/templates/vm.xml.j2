@@ -3,6 +3,7 @@
   <uuid>{{ item.uuid }}</uuid>
   <memory unit='MiB'>{{ libvirt_flavors[item.flavor].memory_mib }}</memory>
   <vcpu placement='static'>{{ libvirt_flavors[item.flavor].vcpu }}</vcpu>
+  <iothreads>1</iothreads>
   <cpu mode='host-passthrough' check='none' migratable='on'/>
   <os>
     <type arch='x86_64' machine='q35'>hvm</type>
@@ -31,7 +32,7 @@
   <devices>
     <emulator>/usr/bin/qemu-system-x86_64</emulator>
     <disk type='file' device='disk'>
-      <driver name='qemu' type='qcow2' cache='{{ libvirt_disk_cache }}' io='{{ libvirt_disk_io }}'/>
+      <driver name='qemu' type='qcow2' cache='{{ libvirt_disk_cache }}' io='{{ libvirt_disk_io }}' iothread='1'/>
       <source file='{{ image_dir }}/{{ item.name }}-vda.qcow2'/>
       <target dev='vda' bus='virtio'/>
       <boot order='1'/>

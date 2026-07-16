@@ -31,7 +31,7 @@ resources:
   harvester:
     memory_mib: 16384   # RAM per Harvester node in MiB (16 GiB)
     vcpu: 8             # vCPUs per Harvester node
-    disk_gb: 250        # disk per Harvester node — do not go below 250 (see note)
+    disk_gb: 320        # disk per Harvester node — do not go below ~250 (see note)
 
   rancher:
     memory_mib: 8192    # RAM for the Rancher VM in MiB (8 GiB)
@@ -125,7 +125,7 @@ Per-VM sizing. All fields are per-node (not total).
 |-------|------|---------|-------|
 | `memory_mib` | MiB | 12288 (12 GiB) for Harvester | Harvester requires at least 12 GiB; 16 GiB recommended |
 | `vcpu` | threads | 4 | On hyper-threaded hosts, each thread counts |
-| `disk_gb` | GiB | **250 for Harvester** | Below 250 the persistent partition fills with container images; containerd fails; VIP never comes up |
+| `disk_gb` | GiB | **320 for Harvester** | Elemental's persistent partition is a fixed 150 GiB floor regardless of disk size; below ~250 it starves and containerd fails; the rest goes to Longhorn's own partition, so bigger leaves Longhorn more room |
 
 The `rancher` block is only used when the topology includes a Rancher VM (see `definition.yaml`).
 

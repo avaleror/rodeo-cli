@@ -82,7 +82,7 @@ def test_gitea_container_replace_and_idempotent_setup_calls():
     need to tolerate "already exists" rather than aborting the whole script."""
     script = _captured_gitea_script()
     assert "podman run -d --name gitea --replace" in script
-    assert 'admin user create \\\n  --username "$GITEA_USER" --password "$GITEA_PASS" \\\n  --email gitea@aerogrid.local --admin --must-change-password=false \\\n  || echo' in script
+    assert 'admin user create \\\n  --username "$GITEA_USER" --password "$GITEA_PASS" \\\n  --email gitea@rodeo.local --admin --must-change-password=false \\\n  || echo' in script
     assert '"repo_name":"alien-geeko"' in script
     lines = script.splitlines()
     migrate_idx = next(i for i, line in enumerate(lines) if "repos/migrate" in line)

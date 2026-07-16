@@ -102,6 +102,21 @@ This enables `libvirt-guests` and sets all lab VMs to autostart. The builder ins
 
 Start a fresh attendee instance from the snapshot. The VMs should come up automatically and the cluster should be reachable within a few minutes of boot.
 
+**Wire `rodeo start-if-needed` into the track's attendee boot/setup script** (whatever
+runs when Instruqt starts a new instance from the snapshot). This is not optional: the
+libvirt qemu hook that reapplies the DNAT + `guest_input`-accept nftables rules only
+fires on a genuine VM start event — it does not reliably fire when `libvirt-guests`
+brings VMs back on a resumed/snapshotted boot. Without an explicit
+`rodeo start-if-needed` call, the cluster comes up internally but stays unreachable
+from outside (Harvester UI / Rancher UI both silently broken) even though `finalise`
+ran correctly on the builder. `start-if-needed` is idempotent — safe to call even if
+the VMs are already up — so it's the right thing to run unconditionally on every
+attendee boot, not just as a recovery step:
+
+```bash
+rodeo start-if-needed
+```
+
 Check from inside the instance:
 
 ```bash
@@ -131,9 +146,13 @@ cat ~/.rodeo/secrets.yaml
 ### Cluster not reachable after attendee instance boots
 
 1. Check if VMs started: `virsh list --all`
-2. If VMs are defined but not running, `finalise` did not enable autostart before the snapshot.
-3. Start them manually to recover: `rodeo start --all --yes`
-4. Re-snapshot with `finalise` running post-snapshot next time.
+2. If VMs are defined but not running, `finalise` did not enable autostart before the snapshot — re-snapshot from a builder where `finalise` ran post-snapshot.
+3. If VMs **are** running but the Harvester/Rancher UI is still unreachable, this is almost always the nftables rules, not the VMs: the qemu hook that reapplies the DNAT + `guest_input`-accept rules doesn't reliably fire when `libvirt-guests` resumes VMs on boot (see Step 6). Run:
+   ```bash
+   rodeo start-if-needed
+   ```
+   `rodeo start --all --yes` is **not** a substitute here — it starts VMs but does not touch nftables, so it won't fix this specific failure mode.
+4. Going forward, wire `rodeo start-if-needed` into the attendee boot/setup script so this self-heals on every instance start instead of needing manual recovery.
 
 ### iPXE install hangs during build
 

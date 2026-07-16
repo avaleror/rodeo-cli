@@ -112,6 +112,11 @@ Must be unique per host. Changing `name` after deploy creates orphaned resources
 
 **Required.** Defaults to `baremetal` when omitted.
 
+On **instruqt**, `rodeo up` / lab seeding also applies host-aware `resources` presets so
+Σ guest vCPU stays near ~70% of the builder (Harvester typically 6–8 vCPU / 20 GiB).
+Existing plans are not rewritten on re-deploy; only seeded plans get the presets.
+`rodeo doctor` / `rodeo deploy --check` warn (non-fatal) when a plan still exceeds the budget.
+
 ### `resources`
 
 Per-VM sizing. All fields are per-node (not total).

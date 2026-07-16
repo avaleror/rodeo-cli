@@ -22,6 +22,8 @@ def test_doctor_recommends_when_fits(monkeypatch):
     assert result.exit_code == 0, result.output
     assert "Recommended" in result.output
     assert "harvester" in result.output
+    assert "Instruqt tip" in result.output
+    assert "guest vCPU" in result.output
 
 
 def test_doctor_warns_when_too_small(monkeypatch):

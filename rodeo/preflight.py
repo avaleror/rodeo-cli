@@ -271,6 +271,13 @@ def run_preflight(cfg: dict, root: Path, phases_to_run: list[str] | None = None)
         else:
             checks.append(("disk", True, f"cannot stat {image_dir}", False))
 
+        # Soft: Instruqt nested KVM hates guest vCPU ≈ host vCPU.
+        from .sizing import vcpu_overcommit_detail
+
+        over = vcpu_overcommit_detail(cfg, os.cpu_count() or 0)
+        if over:
+            checks.append(("guest vCPU budget", False, over, True))
+
     for tool in CORE_TOOLS:
         checks.append((tool, shutil.which(tool) is not None, f"{tool} not found in PATH", False))
     for mod in CORE_PY_MODULES:

@@ -47,3 +47,44 @@ def test_write_secrets_file_includes_suse_edge_vm_password(tmp_path):
     secretgen.write_secrets_file(path, "Password1234", "tok-abc")  # gitleaks:allow
     text = path.read_text()
     assert 'rancher_vm_password: "Password1234"' in text  # gitleaks:allow
+
+
+def test_update_admin_passwords_preserves_untouched_fields(tmp_path):
+    """rodeo set-password only rotates the dashboard admin passwords — it must not
+    disturb harvester_os_password, rancher_vm_password, harvester_token, or
+    gitea_admin_password (write_secrets_file would silently drop the latter, since
+    it doesn't know about that key at all)."""
+    path = tmp_path / "secrets.yaml"
+    path.write_text(
+        'harvester_os_password: "OsPass1234"\n'
+        'harvester_admin_password: "OldPass1234"\n'
+        'rancher_admin_password: "OldPass1234"\n'
+        'rancher_vm_password: "OsPass1234"\n'
+        'harvester_token: "tok-abc"\n'
+        'gitea_admin_password: "GiteaPass1234"\n'
+    )  # gitleaks:allow
+
+    secretgen.update_admin_passwords(path, "NewPass5678", {"harvester_admin_password", "rancher_admin_password"})  # gitleaks:allow
+
+    text = path.read_text()
+    assert 'harvester_admin_password: "NewPass5678"' in text  # gitleaks:allow
+    assert 'rancher_admin_password: "NewPass5678"' in text  # gitleaks:allow
+    assert 'harvester_os_password: "OsPass1234"' in text  # gitleaks:allow
+    assert 'rancher_vm_password: "OsPass1234"' in text  # gitleaks:allow
+    assert 'harvester_token: "tok-abc"' in text
+    assert 'gitea_admin_password: "GiteaPass1234"' in text  # gitleaks:allow
+
+
+def test_update_admin_passwords_scoped_to_given_keys(tmp_path):
+    """--target harvester (or rancher) must leave the other service's password alone."""
+    path = tmp_path / "secrets.yaml"
+    path.write_text(
+        'harvester_admin_password: "OldPass1234"\n'
+        'rancher_admin_password: "OldPass1234"\n'
+    )  # gitleaks:allow
+
+    secretgen.update_admin_passwords(path, "NewPass5678", {"harvester_admin_password"})  # gitleaks:allow
+
+    text = path.read_text()
+    assert 'harvester_admin_password: "NewPass5678"' in text  # gitleaks:allow
+    assert 'rancher_admin_password: "OldPass1234"' in text  # gitleaks:allow

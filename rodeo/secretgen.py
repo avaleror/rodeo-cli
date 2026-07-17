@@ -62,6 +62,28 @@ def write_secrets_file(path: Path, password: str, token: str) -> None:
     path.chmod(stat.S_IRUSR | stat.S_IWUSR)  # 0600
 
 
+def update_admin_passwords(path: Path, new_password: str, keys: set[str]) -> None:
+    """Rewrite only the given service-password keys in an existing secrets.yaml.
+
+    Used by 'rodeo set-password' to rotate the Harvester/Rancher dashboard
+    passwords without touching harvester_os_password, rancher_vm_password,
+    harvester_token, gitea_admin_password, or any comments/custom lines —
+    write_secrets_file() rewrites the whole file to one shared password and
+    would silently drop fields like gitea_admin_password that it doesn't know
+    about.
+    """
+    lines = path.read_text().splitlines(keepends=True)
+    out = []
+    for line in lines:
+        key = line.split(":", 1)[0].strip()
+        if key in keys:
+            out.append(f'{key}: "{new_password}"\n')
+        else:
+            out.append(line if line.endswith("\n") else line + "\n")
+    path.write_text("".join(out))
+    path.chmod(stat.S_IRUSR | stat.S_IWUSR)  # 0600
+
+
 def read_secrets_file(path: Path | None = None) -> tuple[str | None, str | None]:
     """Return (password, token) parsed from an existing secrets file, or (None, None)."""
     path = path or secrets_path()

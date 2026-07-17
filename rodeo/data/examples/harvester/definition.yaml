@@ -251,6 +251,20 @@ definition:
 
   # Rancher VM cloud-init / bootstrap data (what gets baked into the rancher-cloud-init.iso).
   rancher:
+    # Rancher Prime UI extensions to install on the management (local) cluster.
+    # rodeo-cli reconciles each entry on every deploy: it ensures the ClusterRepo
+    # exists, force-reindexes it, then installs (or upgrades an older release in
+    # place) the chart to the pinned version via the Rancher catalog action.
+    # This is the declarative way to say "which extensions this rodeo needs" —
+    # other rodeo types just list their own here. Reconcile is idempotent and
+    # non-fatal (a failed extension logs a warning, never breaks the deploy).
+    ui_extensions:
+      - name: harvester              # chart name in the repo + UIPlugin name
+        version: "1.8.1"             # keep in step with the Harvester server version
+        repo:
+          name: rancher             # ClusterRepo name (reused if it already exists)
+          git_repo: https://github.com/rancher/ui-plugin-charts
+          git_branch: main
     # This drives the cloud-init-user-data.j2 and network config for the rancher VM.
     # The actual k3s + helm + rancher install commands are in the RancherPhase / scripts.
     cloud_init:

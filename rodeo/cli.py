@@ -11,6 +11,7 @@ from .commands.deploy import deploy_cmd
 from .commands.doctor_cmd import doctor_cmd
 from .commands.init_cmd import init_cmd
 from .commands.install_deps import install_deps_cmd
+from .commands.install_extensions_cmd import install_extensions_cmd
 from .commands.bootstrap_cmd import bootstrap_cmd
 from .commands.generate_cmd import generate_cmd
 from .commands.logs import logs_cmd
@@ -62,7 +63,7 @@ def cli(config_dir: str | None) -> None:
     Make your own:  rodeo new <name> --from harvester  →  edit  →  rodeo up --profile <name>
     List profiles:  rodeo profiles
     \b
-    Day-2:  rodeo status · stop · start · start-if-needed · clean · ssh · logs · self-update · set-password
+    Day-2:  rodeo status · stop · start · start-if-needed · clean · ssh · logs · self-update · set-password · install-extensions
     """
     # Store for subcommands that don't get it from their own decorator
     ctx = click.get_current_context()
@@ -92,5 +93,6 @@ cli.add_command(logs_cmd,         name="logs")
 cli.add_command(attach_cmd,       name="attach")
 cli.add_command(self_update_cmd,      name="self-update")
 cli.add_command(set_password_cmd,     name="set-password")
+cli.add_command(install_extensions_cmd, name="install-extensions")
 cli.add_command(pull_edge_image_cmd,  name="pull-edge-image")
 cli.add_command(eject_iso_cmd,        name="eject-iso")

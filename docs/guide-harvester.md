@@ -148,6 +148,8 @@ The kubeconfig is also at `/root/.rodeo/harvester-kubeconfig` on the host after 
 | Destroy the lab | `rodeo clean --yes` |
 | Full host reset | `rodeo clean --all --yes --secrets` |
 | Support bundle | `rodeo logs --bundle -o rodeo-bundle.tar.gz` |
+| Rotate the admin password | `rodeo set-password` |
+| Install/reconcile Rancher UI extensions | `rodeo install-extensions` |
 
 ### Resume a failed deploy
 
@@ -157,6 +159,31 @@ rodeo deploy --from cluster       # resume from that phase
 ```
 
 The deploy pipeline is idempotent within a phase. If the `cluster` phase times out waiting for a node, check the serial log (`rodeo logs harvester1`) for the root cause before resuming.
+
+### Rancher UI extensions
+
+Extensions (e.g. the SUSE Virtualization / Harvester extension) are declared once
+under `rancher.ui_extensions` in `definition.yaml` — see the [full field
+reference](reference/definition.md#rancherui_extensions) for the format. Every
+deploy reconciles the declared list automatically; to install or upgrade one on an
+already-deployed lab without redeploying, run:
+
+```bash
+rodeo install-extensions --yes
+```
+
+It talks straight to the running Rancher Prime over SSH/API, so it's safe to run
+against a live cluster. Check what's actually installed first:
+
+```bash
+rodeo ssh rancher
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+kubectl -n cattle-ui-plugin-system get uiplugins.catalog.cattle.io harvester \
+  -o jsonpath='{.spec.plugin.version}'
+```
+
+An empty result (or `NotFound`) means it isn't installed yet; a version string
+that doesn't match `definition.yaml` means it's due for reconcile.
 
 ---
 

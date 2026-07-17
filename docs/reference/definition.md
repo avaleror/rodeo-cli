@@ -24,6 +24,7 @@ definition:
   storage:                 # lab storage layout
   components:              # high-level recipe description
   harvester:               # Harvester-specific cluster config
+  rancher:                 # Rancher VM cloud-init + UI extensions to reconcile
   host_prep:               # host OS requirements (sysctls, SELinux, libvirt)
   nodes:                   # concrete VM declarations
 ```
@@ -334,6 +335,53 @@ Each node is a concrete VM. Fields:
 **MACs:** must be unique per lab, start with `02:` (locally administered), and match the static DHCP leases. If you omit a MAC, the renderer generates one deterministically from the plan name and node name. Provide explicit values when you need exact, reproducible identities.
 
 **Legacy flat MAC fields** (`mgmt_mac`, `storage_mac`, etc.) are kept alongside the `interfaces` list for Ansible role compatibility during the transition to full inventory-driven provisioning. They must stay in sync with the `interfaces` entries.
+
+### `rancher.ui_extensions`
+
+Declares which Rancher Prime UI extensions (e.g. the SUSE Virtualization / Harvester
+extension) this rodeo needs, each pinned to a version. Only meaningful for profiles
+that have a Rancher VM — omit the key (or leave the list empty) for a Harvester-only
+profile with no Rancher, or a profile that doesn't need any extension.
+
+On every deploy — and any time you run `rodeo install-extensions` — rodeo-cli
+reconciles each declared entry against the live cluster: it makes sure the chart
+repo (`ClusterRepo`) exists, force-reindexes it so the pinned version is resolvable
+even from a stale cached index, then installs the chart (or upgrades an older
+release in place) via the Rancher catalog API. Already-current extensions are left
+alone. Reconcile is non-fatal: a failed entry logs a warning and the deploy
+continues — it never blocks the rest of the pipeline over one bad chart pull.
+
+```yaml
+definition:
+  rancher:
+    ui_extensions:
+      - name: harvester              # chart name in the repo, and the UIPlugin name
+        version: "1.8.1"             # keep in step with the Harvester server version
+        repo:
+          name: rancher              # ClusterRepo name (reused if it already exists)
+          git_repo: https://github.com/rancher/ui-plugin-charts
+          git_branch: main
+```
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `name` | yes | Chart name in the repo. Also becomes the installed `UIPlugin` resource's name. |
+| `version` | yes | Pinned chart version. Reconcile upgrades/downgrades to match exactly. |
+| `repo.name` | yes | `ClusterRepo` name. Reused across entries that share a repo — declare it once. |
+| `repo.git_repo` | only if the repo doesn't already exist | Git URL for the chart repo. Skipped if `repo.name` already exists as a `ClusterRepo` (e.g. declared by an earlier entry, or pre-existing on the cluster). |
+| `repo.git_branch` | no | Defaults to `main`. |
+
+`ui_extensions` is a list — declare more than one entry to reconcile several
+extensions from the same or different repos.
+
+**Where this actually has to live:** `rodeo up --profile <name>` and `rodeo new
+--from <name>` deploy from `rodeo/data/examples/<name>/definition.yaml` (the
+bundled example gets copied into your lab dir), **not** from
+`rodeo/data/platforms/suse-virt/definition.yaml`. If you're adding this to a
+bundled profile rather than a custom one, edit the example's own
+`definition.yaml`, or it will silently never take effect — see [`rodeo
+install-extensions`](../guide-harvester.md#day-2-operations) for how to check
+and install after the fact.
 
 ---
 

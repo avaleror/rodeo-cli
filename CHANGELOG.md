@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.14.1](https://github.com/avaleror/rodeo-cli/compare/v0.14.0...v0.14.1) (2026-07-17)
+
+
+### Bug Fixes
+
+* **instruqt:** open agent ports 15778/15779, fixing console stuck on "Please Wait" ([b4b425e](https://github.com/avaleror/rodeo-cli/commit/b4b425e433e3a723d1504f7051380a5ba78d2b5d))
+
+
+### Documentation
+
+* **instruqt:** correct stale firewalld-timing guidance ([2099ba4](https://github.com/avaleror/rodeo-cli/commit/2099ba43ce3433c8592568d3585bb6b5a5afa422))
+* **instruqt:** document rodeo start-if-needed for attendee instance boot ([45663b2](https://github.com/avaleror/rodeo-cli/commit/45663b25fe159ddd78f416bc60602be7b89070c0))
+
 ## [0.14.0](https://github.com/avaleror/rodeo-cli/compare/v0.13.0...v0.14.0) (2026-07-16)
 
 

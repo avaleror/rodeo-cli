@@ -338,6 +338,17 @@ class DeployRunner:
                 ["firewall-cmd", "--zone=public", f"--change-interface={ext}", "--permanent"],
                 capture_output=True,
             )
+            # Instruqt agent (Terminal / Editor tabs, lifecycle scripts). Required on
+            # custom hostimages; without these, a cold boot after Save sticks on
+            # "Please Wait" even though SSH may still work via other paths.
+            # Permanent rules are also staged in kvm_host/tasks/firewall.yml; re-assert
+            # here so cluster/boot/finalise heal older images that re-run this path.
+            yield LogLine("  Instruqt: allowing agent ports 15778/15779...")
+            for port in ("15778", "15779"):
+                subprocess.run(
+                    ["firewall-cmd", "--zone=public", f"--add-port={port}/tcp", "--permanent"],
+                    capture_output=True,
+                )
 
         r = subprocess.run(["firewall-cmd", "--reload"], capture_output=True, text=True)
         if r.returncode != 0:
@@ -699,6 +710,8 @@ class DeployRunner:
             "rancher_ip":            net.get("rancher_ip", "192.168.122.9"),
             "lab_dns_domain":        net.get("dns_domain", "rodeo.lab"),
             "libvirt_network_gateway": net.get("gateway", "192.168.122.1"),
+            # Consumed by kvm_host firewall.yml (Instruqt agent ports 15778/15779).
+            "deployment_target":     self.cfg.get("deployment_target", "baremetal"),
             "harvester_os_password": creds.get("harvester_os_password", ""),
             "rancher_vm_password":   creds.get("harvester_os_password", ""),
             "harvester_version":     version,

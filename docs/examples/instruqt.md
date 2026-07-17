@@ -153,6 +153,30 @@ cat ~/.rodeo/secrets.yaml
 
 ## Troubleshooting Instruqt-specific issues
 
+### Console stuck on "Please Wait" after Save / start hostimage
+
+The Instruqt terminal and editor tabs talk to the **agent on the host** (TCP
+**15778** and **15779**), not to SSH alone. After `cluster` (or `boot`) unmasks
+and starts firewalld, those ports must be open on the public zone — otherwise a
+cold boot of the saved hostimage leaves the UI on **Please Wait** even when the
+OS is up.
+
+rodeo opens them when `deployment_target: instruqt` (Ansible `kvm_host` firewall
+tasks + re-assert in `_start_firewalld`). On an older image that was built before
+that fix, recover once then re-Save:
+
+```bash
+sudo firewall-cmd --permanent --zone=public --add-port=15778/tcp
+sudo firewall-cmd --permanent --zone=public --add-port=15779/tcp
+sudo firewall-cmd --reload
+# or re-run: rodeo deploy --from cluster   # re-asserts ports for instruqt target
+```
+
+Also confirm you did **not** bake `finalise` into the image before Save
+(`libvirt-guests` enabled + VM autostart can stall `network-online.target` and
+block the agent). Prefer `deployment_target: instruqt` and
+`rodeo start-if-needed` on attendee boot instead of finalise-in-image.
+
 ### Cluster not reachable after attendee instance boots
 
 1. Check if VMs started: `virsh list --all`

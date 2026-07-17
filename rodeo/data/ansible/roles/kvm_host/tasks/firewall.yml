@@ -42,6 +42,24 @@
     immediate: false
     state: enabled
 
+# Instruqt agent (Terminal / Editor tabs + lifecycle scripts). Without these,
+# a cold boot of a saved hostimage with firewalld enabled leaves the console
+# stuck on "Please Wait" — the agent listens on 15778/15779 and platform traffic
+# never reaches it. Bare metal leaves them closed (not used).
+# immediate: false — firewalld is masked/stopped during kvm_host; rules apply
+# when DeployRunner._start_firewalld() starts + reloads it in cluster/boot.
+- name: Allow Instruqt agent ports on the public zone
+  ansible.posix.firewalld:
+    zone: public
+    port: "{{ item }}/tcp"
+    permanent: true
+    immediate: false
+    state: enabled
+  loop:
+    - "15778"
+    - "15779"
+  when: deployment_target | default('baremetal') == 'instruqt'
+
 - name: Allow Cockpit web console on the public zone (port 9090)
   ansible.posix.firewalld:
     zone: public

@@ -145,7 +145,9 @@ def test_vars_file_wires_plan_and_is_private(fake_profile, fake_cfg, tmp_path):
     assert data["harvester_version"] == "1.8.1"
     assert data["harvester_iso_checksum"].startswith("sha512:")
     assert data["libvirt_network_gateway"] == "192.168.122.1"
-    assert "harvester_token" not in data  # role default applies when plan has none
+    # No hardcoded role-default fallback exists anymore — the token must come
+    # from credentials (secrets.yaml), verbatim.
+    assert data["harvester_token"] == "test-token-123"
     # Flat per-flavor keys are not consumed by Ansible — must not reappear.
     assert "harvester_memory_mb" not in data
     assert "dns_domain" not in data
@@ -246,6 +248,39 @@ def test_write_vars_file_raises_on_config_error(fake_profile, fake_cfg, tmp_path
     monkeypatch.setattr("rodeo.inventory.build_inventory", _raise)
     with pytest.raises(ConfigError, match="bad topology"):
         DeployRunner(fake_cfg, tmp_path)._write_vars_file()
+
+
+def test_write_vars_file_fails_loud_on_missing_harvester_os_password(fake_profile, fake_cfg, tmp_path):
+    """No hardcoded role-default password exists anymore — a plan missing this
+    credential must fail the deploy, not silently fall back to a committed secret."""
+    del fake_cfg["credentials"]["harvester_os_password"]
+    with pytest.raises(RuntimeError, match="harvester_os_password"):
+        DeployRunner(fake_cfg, tmp_path)._write_vars_file()
+
+
+def test_write_vars_file_fails_loud_on_missing_harvester_token(fake_profile, fake_cfg, tmp_path):
+    del fake_cfg["credentials"]["harvester_token"]
+    with pytest.raises(RuntimeError, match="harvester_token"):
+        DeployRunner(fake_cfg, tmp_path)._write_vars_file()
+
+
+def test_write_vars_file_fails_loud_on_missing_rancher_vm_password(fake_profile, fake_cfg, tmp_path):
+    """rancher_vm_password falls back to harvester_os_password when unset — but a
+    profile with a rancher/eib VM and neither key present must still fail loud."""
+    fake_cfg["vms"] = {"rancher": {"ip": "10.0.0.9", "user": "root"}}
+    del fake_cfg["credentials"]["harvester_os_password"]
+    fake_cfg["credentials"]["harvester_token"] = ""  # not needed — no harvester nodes
+    with pytest.raises(RuntimeError, match="rancher_vm_password"):
+        DeployRunner(fake_cfg, tmp_path)._write_vars_file()
+
+
+def test_write_vars_file_uses_rancher_vm_password_when_set_directly(fake_profile, fake_cfg, tmp_path):
+    """suse-edge sets rancher_vm_password without harvester_os_password — the real
+    value must flow through, not get discarded in favor of harvester_os_password."""
+    fake_cfg["vms"] = {"rancher": {"ip": "10.0.0.9", "user": "root"}, "eib": {"ip": "10.0.0.20", "user": "root"}}
+    fake_cfg["credentials"] = {"rancher_vm_password": "EdgeSecret123", "rancher_admin_password": "Secret123"}
+    data = yaml.safe_load(DeployRunner(fake_cfg, tmp_path)._write_vars_file().read_text())
+    assert data["rancher_vm_password"] == "EdgeSecret123"
 
 
 def test_write_vars_file_warns_on_unexpected_inventory_error(

@@ -702,6 +702,49 @@ class DeployRunner:
         r_res = resources.get("rancher", {})
         storage = self.cfg.get("storage", {})
 
+        # No hardcoded fallback passwords/tokens live in the Ansible role defaults
+        # (rodeo/data/ansible/roles/vms/defaults/main.yml) — every VM-facing secret
+        # must come from here, generated at 'rodeo init'/'rodeo up' time into
+        # secrets.yaml. Fail loud instead of silently deploying an empty or
+        # committed-to-git credential when a plan is missing one a VM needs.
+        vms = self.cfg.get("vms", {})
+        harvester_node_names = self.cfg.get("harvester_node_names")
+        if harvester_node_names is not None:
+            needs_harvester = any(n in vms for n in harvester_node_names)
+        else:
+            needs_harvester = any(n not in ("rancher", "eib") and not n.startswith("edge") for n in vms)
+        needs_rancher_vm = "rancher" in vms or "eib" in vms
+
+        harvester_os_password = creds.get("harvester_os_password", "")
+        if needs_harvester and not harvester_os_password:
+            raise RuntimeError(
+                "credentials.harvester_os_password is missing or empty — refusing to "
+                "deploy with an undefined Harvester OS console password. Set "
+                "'??harvester_os_password' in rodeo-plan.yaml (resolved from "
+                "~/.rodeo/secrets.yaml — run 'rodeo init' to generate one)."
+            )
+
+        # rancher_vm_password is its own credential (suse-edge sets it directly);
+        # profiles that only define harvester_os_password share that value instead
+        # (secretgen.py writes both to the same random password) — never derive
+        # it by discarding whatever the plan actually resolved for this key.
+        rancher_vm_password = creds.get("rancher_vm_password") or harvester_os_password
+        if needs_rancher_vm and not rancher_vm_password:
+            raise RuntimeError(
+                "credentials.rancher_vm_password is missing or empty — refusing to "
+                "deploy with an undefined Rancher/EIB VM console password. Set "
+                "'??rancher_vm_password' (or '??harvester_os_password' as the shared "
+                "fallback) in rodeo-plan.yaml, or run 'rodeo init'."
+            )
+
+        harvester_token = creds.get("harvester_token", "")
+        if needs_harvester and not harvester_token:
+            raise RuntimeError(
+                "credentials.harvester_token is missing or empty — refusing to deploy "
+                "without a cluster join token. Set '??harvester_token' in "
+                "rodeo-plan.yaml, or run 'rodeo init'."
+            )
+
         version = ver.get("harvester", "1.8.1")
         vars_data = {
             "network_mode":          net.get("mode", "nat"),
@@ -712,8 +755,8 @@ class DeployRunner:
             "libvirt_network_gateway": net.get("gateway", "192.168.122.1"),
             # Consumed by kvm_host firewall.yml (Instruqt agent ports 15778/15779).
             "deployment_target":     self.cfg.get("deployment_target", "baremetal"),
-            "harvester_os_password": creds.get("harvester_os_password", ""),
-            "rancher_vm_password":   creds.get("harvester_os_password", ""),
+            "harvester_os_password": harvester_os_password,
+            "rancher_vm_password":   rancher_vm_password,
             "harvester_version":     version,
             "harvester_iso_checksum": _HARVESTER_ISO_CHECKSUMS.get(version, ""),
             # Nested structure matches what roles/vms actually consumes
@@ -753,9 +796,8 @@ class DeployRunner:
             "rancher_ingress_enabled": self.cfg.get("rancher_tls", {}).get("source") == "letsEncrypt",
             **self._disk_driver_vars(),
         }
-        # Only override the role-default join token when the plan provides one.
-        if creds.get("harvester_token"):
-            vars_data["harvester_token"] = creds["harvester_token"]
+        if harvester_token:
+            vars_data["harvester_token"] = harvester_token
 
         # Wire the full vm_nodes (with MACs, UUIDs, interfaces, etc.) from the centralized
         # definition (rodeo/data/profiles/suse-virt/topology.yaml via inventory.py).

@@ -59,7 +59,12 @@ def fake_cfg():
         "name": "test-plan",
         "deployment_target": "baremetal",
         "network": {"vip": "10.0.0.10", "rancher_ip": "10.0.0.9"},
-        "credentials": {"harvester_os_password": "Secret123", "harvester_admin_password": "Secret123", "rancher_admin_password": "Secret123"},
+        "credentials": {
+            "harvester_os_password": "Secret123",
+            "harvester_admin_password": "Secret123",
+            "rancher_admin_password": "Secret123",
+            "harvester_token": "test-token-123",
+        },
         "ansible": {"inventory": "deployer/inventory.local"},
         "vms": {"vm1": {"ip": "10.0.0.1", "user": "root"}},
     }

@@ -148,6 +148,8 @@ The kubeconfig is also at `/root/.rodeo/harvester-kubeconfig` on the host after 
 | Destroy the lab | `rodeo clean --yes` |
 | Full host reset | `rodeo clean --all --yes --secrets` |
 | Support bundle | `rodeo logs --bundle -o rodeo-bundle.tar.gz` |
+| Rotate the admin password | `rodeo set-password` |
+| Install/reconcile Rancher UI extensions | `rodeo install-extensions` |
 
 ### Resume a failed deploy
 
@@ -157,6 +159,31 @@ rodeo deploy --from cluster       # resume from that phase
 ```
 
 The deploy pipeline is idempotent within a phase. If the `cluster` phase times out waiting for a node, check the serial log (`rodeo logs harvester1`) for the root cause before resuming.
+
+### Rancher UI extensions
+
+Extensions (e.g. the SUSE Virtualization / Harvester extension) are declared once
+under `rancher.ui_extensions` in `definition.yaml` — see the [full field
+reference](reference/definition.md#rancherui_extensions) for the format. Every
+deploy reconciles the declared list automatically; to install or upgrade one on an
+already-deployed lab without redeploying, run:
+
+```bash
+rodeo install-extensions --yes
+```
+
+It talks straight to the running Rancher Prime over SSH/API, so it's safe to run
+against a live cluster. Check what's actually installed first:
+
+```bash
+rodeo ssh rancher
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+kubectl -n cattle-ui-plugin-system get uiplugins.catalog.cattle.io harvester \
+  -o jsonpath='{.spec.plugin.version}'
+```
+
+An empty result (or `NotFound`) means it isn't installed yet; a version string
+that doesn't match `definition.yaml` means it's due for reconcile.
 
 ---
 
@@ -231,6 +258,59 @@ systemctl restart rke2-server
 ```
 
 The cluster token is `harvester_token` in `~/.rodeo/secrets.yaml`.
+
+### Admin password unknown (not in secrets.yaml, not the persisted file, not admin/admin)
+
+`rodeo set-password` recovers the admin password by trying known candidates — the
+configured `secrets.yaml` value, the last one it persisted on the host, and the
+`admin`/`admin` bootstrap. If none of those match (e.g. someone changed it by hand
+outside of rodeo-cli and forgot), there's nothing left for it to log in *with*, so
+it can't roll the password forward. Recover directly via `kubectl` instead — this
+is the same technique Rancher documents for "locked out, don't know the current
+password," and it applies here because Harvester's dashboard embeds the same
+`users.management.cattle.io` user-management CRD (confirmed live: `cattle-system`
+runs a full 3-replica `rancher` deployment fronting the Harvester UI/API).
+
+```bash
+# 1. Find the admin user's object name
+export KUBECONFIG=/root/.rodeo/harvester-kubeconfig
+kubectl get users.management.cattle.io \
+  -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.username}{"\n"}{end}'
+# -> e.g. user-4wwtk admin
+
+# 2. Generate a bcrypt hash of the new password (Go's bcrypt accepts $2a$/$2b$/$2y$ alike)
+python3 -m pip install --quiet bcrypt
+python3 -c "import bcrypt; print(bcrypt.hashpw(b'YourNewPassword123', bcrypt.gensalt(10)).decode())"
+
+# 3. Patch the user object directly — sets the password hash and clears the
+#    "must change password" flag in one shot
+kubectl patch users.management.cattle.io <user-object-name> --type=merge \
+  -p '{"password":"<hash-from-step-2>","mustChangePassword":false}'
+
+# 4. Restart Rancher so all 3 replicas drop their stale in-memory cache of the
+#    old hash — without this, kube-vip round-robins your login attempts across
+#    replicas and you'll see intermittent 401s even though the patch landed in
+#    etcd cleanly. Only touches cattle-system — no VM/storage/network impact.
+kubectl -n cattle-system rollout restart deployment/rancher
+kubectl -n cattle-system rollout status deployment/rancher --timeout=180s
+```
+
+Verify, then bring `secrets.yaml` and the persisted-candidate file back in sync so
+this doesn't happen again on the next rotation:
+
+```bash
+curl -sk -X POST https://192.168.122.10/v3-public/localProviders/local?action=login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"YourNewPassword123"}'
+# -> a JSON body with a "token" field means it worked
+
+# Update ~/.rodeo/secrets.yaml's harvester_admin_password to match, then:
+echo -n 'YourNewPassword123' > /root/harvester-password
+chmod 600 /root/harvester-password
+```
+
+If `htpasswd` (part of `apache2-utils`) is available instead of Python, `htpasswd
+-bnBC 10 "" 'YourNewPassword123' | tr -d ':\n'` produces an equivalent hash.
 
 ---
 

@@ -144,6 +144,16 @@ definition:
       longhorn: "Storage on the dedicated storage + service NICs; Longhorn uses 2 replicas (lab only)."
 
   rancher:
+    # Rancher Prime UI extensions to install on the management (local) cluster.
+    # rodeo-cli reconciles each entry on every deploy — see the harvester
+    # profile's definition.yaml for the full explanation of this block.
+    ui_extensions:
+      - name: harvester
+        version: "1.8.1"
+        repo:
+          name: rancher
+          git_repo: https://github.com/rancher/ui-plugin-charts
+          git_branch: main
     cloud_init:
       packages: []
       runcmd: []

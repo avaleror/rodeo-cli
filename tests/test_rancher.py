@@ -231,3 +231,102 @@ def test_install_rancher_letsencrypt_in_values_file(cfg, monkeypatch):
     assert "--set ingress.tls" not in script
     assert "letsEncrypt:" in script
     assert "ops@example.com" in script
+
+
+def test_set_harvester_password_runs_regardless_of_auto_import(cfg, monkeypatch):
+    """Harvester's own dashboard password must be set even when auto-import is off
+    (the workshop default) — it's independent of whether the cluster gets imported
+    into Rancher. Previously this step was skipped entirely in that case."""
+    cfg["harvester_auto_import"] = False
+    phase = RancherPhase(cfg)
+    phase.standalone = False
+    calls: list[str] = []
+    monkeypatch.setattr(RancherPhase, "_set_harvester_password", lambda self: calls.append("called") or iter(()))
+    monkeypatch.setattr(RancherPhase, "_eject_cdroms", lambda self: iter(()))
+    drain(phase.stream_import())
+    assert calls == ["called"]
+
+
+def test_set_harvester_password_uses_persisted_file_as_fallback_credential(cfg, monkeypatch, tmp_path):
+    """A redeploy after secrets.yaml is regenerated must still authenticate — using
+    the last password this tool set (persisted on the host) — and roll the live
+    password forward to the newly configured one."""
+    pw_file = tmp_path / "harvester-password"
+    pw_file.write_text("OldPassword1")
+    monkeypatch.setattr(RancherPhase, "HARVESTER_PW_FILE", pw_file)
+
+    phase = RancherPhase(cfg)  # cfg's harvester_admin_password is "Secret123"
+    state = {"live_password": "OldPassword1"}
+    attempted: list[str] = []
+
+    def fake_harvester_login(self, password):
+        attempted.append(password)
+        if password == state["live_password"]:
+            return "tok", ""
+        return "", "invalid credentials"
+
+    class FakeResp:
+        def read(self):
+            return b"{}"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req, context=None, timeout=None):
+        import json as _json
+        body = _json.loads(req.data)
+        assert body["currentPassword"] == "OldPassword1"
+        state["live_password"] = body["newPassword"]
+        return FakeResp()
+
+    monkeypatch.setattr(RancherPhase, "_harvester_login", fake_harvester_login)
+    monkeypatch.setattr(rancher_mod.urllib.request, "urlopen", fake_urlopen)
+
+    events, _ = drain(phase._set_harvester_password())
+    assert phase.harvester_password_error == ""
+    assert "Secret123" in attempted  # tried the configured password first
+    assert "OldPassword1" in attempted  # fell back to the persisted one
+    assert state["live_password"] == "Secret123"
+    assert pw_file.read_text() == "Secret123"
+
+
+def test_configure_api_uses_persisted_file_as_fallback_credential(cfg, monkeypatch, tmp_path):
+    """Same self-heal as Harvester, on the Rancher side: a stale live password
+    (from before secrets.yaml was regenerated) must still let a redeploy in."""
+    pw_file = tmp_path / "rancher-password"
+    pw_file.write_text("OldPassword1")
+    monkeypatch.setattr(RancherPhase, "RANCHER_PW_FILE", pw_file)
+
+    phase = RancherPhase(cfg)  # cfg's rancher_admin_password is "Secret123"
+    monkeypatch.setattr(RancherPhase, "_clear_must_change_password", lambda self: None)
+    monkeypatch.setattr(RancherPhase, "_get_bootstrap_password", lambda self: "admin")
+    monkeypatch.setattr(RancherPhase, "_sync_cacerts", lambda self: iter(()))
+
+    state = {"live_password": "OldPassword1"}
+    attempted: list[str] = []
+
+    def fake_http(self, method, path, data=None, token=""):
+        if path == "/v3-public/localProviders/local?action=login":
+            attempted.append(data["password"])
+            if data["password"] != state["live_password"]:
+                raise RuntimeError("invalid credentials")
+            return {"token": "tok"}
+        if path == "/v3/users?me=true":
+            return {"data": [{"id": "user-abc"}]}
+        if path.endswith("action=setpassword"):
+            state["live_password"] = data["newPassword"]
+            return {}
+        return {}
+
+    monkeypatch.setattr(RancherPhase, "_http", fake_http)
+
+    events, ok = drain(phase._configure_api())
+    assert ok is True
+    assert phase.error == ""
+    assert "Secret123" in attempted
+    assert "OldPassword1" in attempted
+    assert state["live_password"] == "Secret123"
+    assert pw_file.read_text() == "Secret123"

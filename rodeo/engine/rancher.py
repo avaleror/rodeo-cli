@@ -28,12 +28,21 @@ class RancherPhase:
     PING_TIMEOUT    = 600    # Rancher /ping (10 min)
     LOGIN_TIMEOUT   = 600    # Rancher auth API ready after /ping (10 min)
     CLUSTER_TIMEOUT = 1800   # cluster Active in Rancher (30 min)
+    HARVESTER_PW_TIMEOUT = 300   # Harvester dashboard API ready for password set (5 min)
 
     SSH_POLL     = 10
     K3S_POLL     = 10
     PING_POLL    = 10
     LOGIN_POLL   = 10
     CLUSTER_POLL = 30
+    HARVESTER_PW_POLL = 10
+
+    # Last password each side actually accepted. Read as an extra login candidate
+    # (so a redeploy after secrets.yaml is regenerated can still authenticate with
+    # the previous password to set the new one) and rewritten on every successful
+    # change so it always reflects live state.
+    RANCHER_PW_FILE   = Path("/root/rancher-password")
+    HARVESTER_PW_FILE = Path("/root/harvester-password")
 
     def __init__(self, cfg: dict, stop: threading.Event | None = None) -> None:
         net  = cfg["network"]
@@ -170,6 +179,11 @@ class RancherPhase:
         self.success      = False
         self.setup_done   = False  # True after K3s+Helm+Rancher ping complete
         self.error        = ""
+        # _set_harvester_password() is intentionally non-fatal for the deploy
+        # pipeline (self.error/self.success are untouched on failure — cluster
+        # import still counts as a success). This flag lets standalone callers
+        # (e.g. the set-password command) still detect and report a failure.
+        self.harvester_password_error = ""
         self._api_token   = ""
         self._cluster_id  = ""
         self._stop        = stop if stop is not None else threading.Event()
@@ -180,6 +194,13 @@ class RancherPhase:
             self.error = "cancelled"
             return True
         return False
+
+    @staticmethod
+    def _read_persisted_password(path: Path) -> str:
+        try:
+            return path.read_text().strip()
+        except OSError:
+            return ""
 
     def stream(self) -> Iterator[DeployEvent]:
         """Yield events. Check self.success after exhaustion."""
@@ -270,11 +291,15 @@ class RancherPhase:
             if not (yield from self._import_harvester()):
                 return
             yield LogLine("  Harvester cluster import started.")
-
-            yield LogLine("Setting Harvester dashboard admin password...")
-            yield from self._set_harvester_password()
         else:
             yield LogLine("  Skipping auto-import — students will import Harvester into Rancher manually.")
+
+        # Independent of auto-import: the Harvester dashboard itself is always up
+        # once nodes are Ready, so always move it off the admin/admin bootstrap
+        # and onto the secrets.yaml password — otherwise the success screen shows
+        # a password that was never actually applied.
+        yield LogLine("Setting Harvester dashboard admin password...")
+        yield from self._set_harvester_password()
 
         yield LogLine("Ejecting installer ISOs from Harvester VMs...")
         yield from self._eject_cdroms()
@@ -649,12 +674,15 @@ class RancherPhase:
         self._clear_must_change_password()
 
         # Try passwords in order: configured (secrets.yaml) first (succeeds on re-runs),
-        # then the value in bootstrap-secret (succeeds on fresh installs), then the
-        # literal 'admin' fallback (handles old deployments where bootstrap was hardcoded).
+        # then the last password we know we set (handles a redeploy after secrets.yaml
+        # was regenerated — the live password is still the old one), then the value in
+        # bootstrap-secret (succeeds on fresh installs), then the literal 'admin'
+        # fallback (handles old deployments where bootstrap was hardcoded).
         # 'on_bootstrap' means the password is not yet the configured one and must be set.
+        persisted_pw = self._read_persisted_password(self.RANCHER_PW_FILE)
         bootstrap_pw = self._get_bootstrap_password()
         # dict.fromkeys preserves order and deduplicates (e.g. when bootstrap_pw == admin_pw)
-        candidates = list(dict.fromkeys([self.admin_password, bootstrap_pw, "admin"]))
+        candidates = [pw for pw in dict.fromkeys([self.admin_password, persisted_pw, bootstrap_pw, "admin"]) if pw]
 
         temp_token = ""
         on_bootstrap = False
@@ -743,10 +771,9 @@ class RancherPhase:
         yield from self._sync_cacerts()
 
         try:
-            pass_file = Path("/root/rancher-password")
-            pass_file.write_text(self.admin_password)
-            pass_file.chmod(0o600)
-            yield LogLine("  Admin password saved to /root/rancher-password")
+            self.RANCHER_PW_FILE.write_text(self.admin_password)
+            self.RANCHER_PW_FILE.chmod(0o600)
+            yield LogLine(f"  Admin password saved to {self.RANCHER_PW_FILE}")
         except Exception:
             pass
 
@@ -1155,61 +1182,116 @@ class RancherPhase:
             if self._sleep(self.CLUSTER_POLL):
                 return False
 
-    def _set_harvester_password(self) -> Iterator[DeployEvent]:
-        ctx = self._ssl_ctx()
-        bootstrap_token = ""
+    def _harvester_login(self, password: str) -> tuple[str, str]:
+        """Return (token, error) logging into the Harvester dashboard API at self.vip."""
         try:
             req = urllib.request.Request(
                 f"https://{self.vip}/v3-public/localProviders/local?action=login",
-                data=json.dumps({"username": "admin", "password": "admin"}).encode(),
+                data=json.dumps({"username": "admin", "password": password}).encode(),
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
-            with urllib.request.urlopen(req, context=ctx, timeout=30) as resp:
-                bootstrap_token = json.loads(resp.read()).get("token", "")
-        except Exception:
-            pass
+            with urllib.request.urlopen(req, context=self._ssl_ctx(), timeout=30) as resp:
+                token = json.loads(resp.read()).get("token", "")
+            return token, ("" if token else "200 OK but no token in response")
+        except Exception as exc:
+            return "", str(exc)
 
-        if bootstrap_token:
+    def _set_harvester_password(self) -> Iterator[DeployEvent]:
+        """Move Harvester's dashboard admin off the admin/admin bootstrap and onto
+        harvester_admin_password (secrets.yaml), polling until the API answers.
+
+        Right after nodes go Ready (and, if auto-import ran, right after the
+        cluster-registration-url import) the Harvester API server can still be
+        mid-restart for a short window — a single immediate attempt is not
+        reliable, especially on slower nested-KVM hosts like Instruqt.
+        """
+        # Try passwords in order: configured (secrets.yaml) first (succeeds on
+        # re-runs), then the last password we know we set (handles a redeploy after
+        # secrets.yaml was regenerated — the live password is still the old one),
+        # then the admin/admin bootstrap default. Poll all of them until one responds.
+        self.harvester_password_error = ""
+        persisted_pw = self._read_persisted_password(self.HARVESTER_PW_FILE)
+        candidates = [pw for pw in dict.fromkeys([self.harvester_password, persisted_pw, "admin"]) if pw]
+
+        token = ""
+        current_pw = ""
+        last_errors: dict[str, str] = {}
+        t0 = time.monotonic()
+        while True:
+            for pw in candidates:
+                token, err = self._harvester_login(pw)
+                if token:
+                    current_pw = pw
+                    break
+                last_errors[pw] = err
+
+            if token:
+                break
+
+            elapsed = time.monotonic() - t0
+            if elapsed >= self.HARVESTER_PW_TIMEOUT:
+                break
+            m, s = divmod(int(elapsed), 60)
+            errs = " | ".join(f"{pw[:8]}…: {e}" for pw, e in last_errors.items())
+            yield LogLine(
+                f"  {m:02d}:{s:02d} / {self.HARVESTER_PW_TIMEOUT // 60}:00 "
+                f"— waiting for Harvester dashboard API — {errs}"
+            )
+            if self._sleep(self.HARVESTER_PW_POLL):
+                self.harvester_password_error = "cancelled"
+                return
+
+        if not token:
+            errs = " | ".join(f"{pw[:8]}…: {e}" for pw, e in last_errors.items())
+            self.harvester_password_error = f"login failed after {self.HARVESTER_PW_TIMEOUT // 60} min — {errs}"
+            yield LogLine(f"  ⚠ Harvester login failed after {self.HARVESTER_PW_TIMEOUT // 60} min — {errs}")
+            return
+
+        on_bootstrap = (current_pw != self.harvester_password)
+        if on_bootstrap:
             try:
                 req = urllib.request.Request(
                     f"https://{self.vip}/v3/users?action=changepassword",
                     data=json.dumps({
-                        "currentPassword": "admin",
+                        "currentPassword": current_pw,
                         "newPassword": self.harvester_password,
                     }).encode(),
                     headers={
                         "Content-Type": "application/json",
-                        "Authorization": f"Bearer {bootstrap_token}",
+                        "Authorization": f"Bearer {token}",
                     },
                     method="POST",
                 )
-                urllib.request.urlopen(req, context=ctx, timeout=30)
+                urllib.request.urlopen(req, context=self._ssl_ctx(), timeout=30)
                 yield LogLine("  Harvester admin password set.")
             except Exception as exc:
+                self.harvester_password_error = f"password change failed: {exc}"
                 yield LogLine(f"  ⚠ Harvester password change: {exc}")
+                return
+            # Re-login with the new password to fetch the API token below.
+            token, err = self._harvester_login(self.harvester_password)
+            if not token:
+                self.harvester_password_error = f"re-login after password change failed: {err}"
+                yield LogLine(f"  ⚠ Re-login after password change failed: {err}")
+                return
         else:
-            yield LogLine("  Bootstrap admin/admin returned no token — password may already be set.")
+            yield LogLine("  Harvester admin password already set — skipping change.")
 
         try:
-            req = urllib.request.Request(
-                f"https://{self.vip}/v3-public/localProviders/local?action=login",
-                data=json.dumps({
-                    "username": "admin",
-                    "password": self.harvester_password,
-                }).encode(),
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            with urllib.request.urlopen(req, context=ctx, timeout=30) as resp:
-                hv_token = json.loads(resp.read()).get("token", "")
-            if hv_token:
-                token_file = Path("/root/harvester-token")
-                token_file.write_text(hv_token)
-                token_file.chmod(0o600)
-                yield LogLine("  Harvester API token saved to /root/harvester-token")
+            self.HARVESTER_PW_FILE.write_text(self.harvester_password)
+            self.HARVESTER_PW_FILE.chmod(0o600)
+            yield LogLine(f"  Admin password saved to {self.HARVESTER_PW_FILE}")
+        except Exception:
+            pass
+
+        try:
+            token_file = Path("/root/harvester-token")
+            token_file.write_text(token)
+            token_file.chmod(0o600)
+            yield LogLine("  Harvester API token saved to /root/harvester-token")
         except Exception as exc:
-            yield LogLine(f"  ⚠ Harvester token fetch: {exc}")
+            yield LogLine(f"  ⚠ Harvester token save: {exc}")
 
     def _eject_cdroms(self) -> Iterator[DeployEvent]:
         """Eject installer/config ISOs from Harvester VMs (best effort, respects cancellation).

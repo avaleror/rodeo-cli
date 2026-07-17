@@ -8,13 +8,13 @@ harvester_iso_checksum: "sha512:b1950e7d0543b813711e1b5006eafe1bb042cc3625449180
 # Floating kube-vip VIP — a free address, NOT any node IP (nodes are .11/.12/.13,
 # rancher .9). It migrates to a surviving node on failure. Outside the DHCP pool.
 harvester_vip: "192.168.122.10"
-harvester_token: "HarvesterRodeoBootstrapToken2024"
-# Single lab password. Used for the Harvester node OS console, the Rancher VM root
-# console, and (via setup-rancher.sh) the Harvester and Rancher dashboard admins.
-# Lab-grade only — do not reuse anywhere real.
-harvester_os_password: "Foobar12345$"
-
-rancher_vm_password: "Foobar12345$"
+# harvester_token, harvester_os_password, and rancher_vm_password have no
+# default here on purpose. Every VM-facing secret is generated at
+# 'rodeo init'/'rodeo up' time into ~/.rodeo/secrets.yaml and passed in via
+# '-e @<vars-file>' by rodeo/engine/runner.py::_write_vars_file(), which fails
+# loud before this playbook ever runs if one is missing. A hardcoded fallback
+# here would mean every rodeo-cli lab that skips that step silently gets the
+# same publicly-known password/token committed to this repo.
 
 # OVMF/UEFI firmware from the qemu-ovmf-x86_64 package (202602+, SLES 16 / Leap 16).
 # The 202602 build dropped the old 2MB images; these are the plain 4MB non-SecureBoot

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.2](https://github.com/avaleror/rodeo-cli/compare/v0.14.1...v0.14.2) (2026-07-17)
+
+
+### Bug Fixes
+
+* **instruqt:** print hostimage checklist on success, correct Save-timing docs ([1eaf7f9](https://github.com/avaleror/rodeo-cli/commit/1eaf7f93be90ab579956f5346f73b2536156f12d))
+
 ## [0.14.1](https://github.com/avaleror/rodeo-cli/compare/v0.14.0...v0.14.1) (2026-07-17)
 
 

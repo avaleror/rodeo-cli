@@ -140,6 +140,25 @@ def render_success(cfg: dict) -> None:
         lines.append(f"  Rancher password    {rancher_pw}")
     lines.append("  [dim](also in ~/.rodeo/secrets.yaml and $HARVESTER_ADMIN_PASSWORD / $RANCHER_ADMIN_PASSWORD)[/dim]")
 
+    if target == "instruqt":
+        lines.append("")
+        lines.append("[bold]Instruqt hostimage checklist[/bold] (before Save)")
+        lines.append("  • Do [bold]not[/bold] run:  rodeo deploy --finalise")
+        lines.append(
+            "    [dim]libvirt-guests + VM autostart in the image can stall boot "
+            "and leave the console on \"Please Wait\".[/dim]"
+        )
+        lines.append("  • Confirm agent ports:  firewall-cmd --list-ports")
+        lines.append(
+            "    [dim]expect 15778/tcp and 15779/tcp (Instruqt terminal/editor agent).[/dim]"
+        )
+        lines.append("  • On every hostimage / attendee boot (track setup script):")
+        lines.append("      rodeo start-if-needed")
+        lines.append(
+            "    [dim]starts VMs if needed and re-applies DNAT/nft — "
+            "do not rely on finalise-in-image.[/dim]"
+        )
+
     lines.append("")
     if is_suse_edge:
         edge_nodes = [(n, v) for n, v in vms.items() if n.startswith("edge")]

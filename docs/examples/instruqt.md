@@ -4,9 +4,9 @@ This example shows how to build an Instruqt track with a pre-deployed Harvester 
 
 ## How it works
 
-Instruqt gives you a **builder instance** where you deploy the lab. You then take a snapshot. When an attendee starts a challenge, they get a copy of that snapshot with the cluster already running.
+Instruqt gives you a **builder instance** where you deploy the lab. You then **Save** a hostimage (snapshot). When an attendee starts a challenge, they get a copy of that image.
 
-The key difference from bare metal: the `finalise` phase (which enables VM autostart) must run **after** the snapshot, not before. If autostart is enabled on the snapshot, the next boot can hang before the Instruqt agent connects.
+The key difference from bare metal: **do not bake `finalise` into the hostimage.** That phase enables VM autostart + `libvirt-guests`. If those are on when the image boots, nested KVM / virbr0 can race cloud-init and leave the Instruqt console on **Please Wait**. With `deployment_target: instruqt`, rodeo skips `finalise` automatically. Bring the lab up on every instance with **`rodeo start-if-needed`** in the track setup script instead.
 
 ## Host sizing on Instruqt
 
@@ -49,7 +49,7 @@ rodeo new mylab --from harvester
 Edit `~/.rodeo/profiles/mylab/rodeo-plan.yaml`:
 
 ```yaml
-deployment_target: instruqt   # critical — skip finalise until after snapshot
+deployment_target: instruqt   # critical — skip finalise (never bake it into the hostimage)
 ```
 
 Or use the bundled `harvester` profile directly and override at deploy time:
@@ -74,9 +74,9 @@ tmux attach -t rodeo-harvester
 
 Detach without stopping the deploy: `Ctrl+b  d`.
 
-The `finalise` phase is skipped automatically when `deployment_target: instruqt`. The pipeline stops after `rancher`.
+The `finalise` phase is skipped automatically when `deployment_target: instruqt`. That is what you want for a hostimage.
 
-Verify the cluster is healthy before snapshotting:
+Verify the cluster is healthy before Save:
 
 ```bash
 rodeo status
@@ -84,34 +84,32 @@ rodeo status
 
 Expected: all 3 Harvester nodes Ready, VIP reachable, Rancher UI accessible.
 
-## Step 4: take the Instruqt snapshot
+## Step 4: hostimage checklist (before Save)
 
-Use the Instruqt UI or API to snapshot the builder instance. At this point the cluster is running but VMs do not autostart on reboot — which is correct for the snapshot.
+The success screen after deploy prints the same checklist. Confirm before you click **Save**:
 
-## Step 5: enable autostart (post-snapshot)
+| Check | Why |
+|-------|-----|
+| Do **not** run `rodeo deploy --finalise` | Bakes `libvirt-guests` + VM autostart → can hang boot / **Please Wait** |
+| `firewall-cmd --list-ports` includes **15778/tcp** and **15779/tcp** | Instruqt terminal/editor agent ports |
+| `systemctl is-enabled libvirt-guests` is **disabled** | Must stay off in the image |
+| Track setup will run `rodeo start-if-needed` | Starts VMs + re-applies DNAT/nft on every boot |
 
-After the snapshot is saved, run `finalise` on the builder:
+Optional: `rodeo stop --all --yes` before Save for cleaner nested guest disks (etcd/FS). Not required for agent connectivity.
 
-```bash
-rodeo deploy --from finalise --finalise
-```
+**Save captures disk state at click time.** Running `finalise` *after* Save only changes the live builder; it does **not** update an already-saved hostimage. Re-Saving after finalise is how images get poisoned — don't do that for workshop hostimages.
 
-This enables `libvirt-guests` and sets all lab VMs to autostart. The builder instance is now done.
+## Step 5: take the Instruqt snapshot
 
-## Step 6: verify on an attendee instance
+Use the Instruqt UI (**Save** hostimage) or API. At this point the cluster may still be running on the builder, but VMs must **not** be set to autostart in the image — which is correct.
 
-Start a fresh attendee instance from the snapshot. The VMs should come up automatically and the cluster should be reachable within a few minutes of boot.
+## Step 6: track setup + verify on an attendee instance
 
-**Wire `rodeo start-if-needed` into the track's attendee boot/setup script** (whatever
-runs when Instruqt starts a new instance from the snapshot). This is not optional: the
-libvirt qemu hook that reapplies the DNAT + `guest_input`-accept nftables rules only
-fires on a genuine VM start event — it does not reliably fire when `libvirt-guests`
-brings VMs back on a resumed/snapshotted boot. Without an explicit
-`rodeo start-if-needed` call, the cluster comes up internally but stays unreachable
-from outside (Harvester UI / Rancher UI both silently broken) even though `finalise`
-ran correctly on the builder. `start-if-needed` is idempotent — safe to call even if
-the VMs are already up — so it's the right thing to run unconditionally on every
-attendee boot, not just as a recovery step:
+**Wire `rodeo start-if-needed` into the track's attendee boot/setup script** (whatever runs when Instruqt starts a new instance from the hostimage). This is not optional for a healthy lab:
+
+- Nested VMs do not autostart (by design — no finalise in image).
+- The libvirt qemu hook that reapplies DNAT + `guest_input` accept only fires reliably on a genuine VM start — not on a cold hostimage boot with VMs left "as was."
+- `start-if-needed` is idempotent: starts host services + VMs if needed, then enforces nft rules.
 
 ```bash
 rodeo start-if-needed
@@ -123,7 +121,7 @@ Check from inside the instance:
 rodeo status
 ```
 
-If VMs do not start automatically, the `finalise` step may have been skipped or run before the snapshot. Re-snapshot from a builder where `finalise` ran after the snapshot.
+If VMs are shut off or UIs are unreachable after boot, the setup script likely omitted `start-if-needed` — add it and re-test; do **not** "fix" by baking finalise into a new Save.
 
 ## The firewalld timing constraint
 
@@ -139,7 +137,7 @@ The `--permanent` flag writes the interface→zone mapping into firewalld's own 
 
 What actually matters before you snapshot: confirm this pinning step ran and picked the right interface. Check the deploy log for `Instruqt: pinning <iface> to public zone...`, and confirm with `firewall-cmd --get-active-zones` that your real management NIC shows under `public`. Re-check the same command on the first attendee boot from the snapshot — that's the actual test that the pinning held.
 
-`finalise` still must not run before the snapshot, but for an unrelated reason: it enables `libvirt-guests` autostart, which races VM boot against the Instruqt agent's own connection setup on a fresh attendee boot if baked into the image too early.
+`finalise` must never be baked into the hostimage: it enables `libvirt-guests` + VM autostart, which races nested boot against the Instruqt agent and can leave the console on **Please Wait**.
 
 ## Credentials in the snapshot
 
@@ -180,13 +178,13 @@ block the agent). Prefer `deployment_target: instruqt` and
 ### Cluster not reachable after attendee instance boots
 
 1. Check if VMs started: `virsh list --all`
-2. If VMs are defined but not running, `finalise` did not enable autostart before the snapshot — re-snapshot from a builder where `finalise` ran post-snapshot.
-3. If VMs **are** running but the Harvester/Rancher UI is still unreachable, this is almost always the nftables rules, not the VMs: the qemu hook that reapplies the DNAT + `guest_input`-accept rules doesn't reliably fire when `libvirt-guests` resumes VMs on boot (see Step 6). Run:
+2. If VMs are defined but not running, the track setup script probably did not run `rodeo start-if-needed` — run it now and add it to setup permanently. Do **not** bake `finalise` into a re-Save just to get autostart.
+3. If VMs **are** running but the Harvester/Rancher UI is still unreachable, this is almost always the nftables rules, not the VMs: the qemu hook that reapplies the DNAT + `guest_input`-accept rules does not reliably fire on hostimage boot. Run:
    ```bash
    rodeo start-if-needed
    ```
    `rodeo start --all --yes` is **not** a substitute here — it starts VMs but does not touch nftables, so it won't fix this specific failure mode.
-4. Going forward, wire `rodeo start-if-needed` into the attendee boot/setup script so this self-heals on every instance start instead of needing manual recovery.
+4. Wire `rodeo start-if-needed` into the attendee boot/setup script so this self-heals on every instance start.
 
 ### iPXE install hangs during build
 
@@ -205,11 +203,8 @@ If you accidentally enabled firewalld before the snapshot and the builder instan
 - Run: `systemctl stop firewalld`
 - Restore connectivity, then re-snapshot with firewalld stopped
 
-### `rodeo deploy --from finalise --finalise` fails after snapshot
+### Should I run `rodeo deploy --finalise` on Instruqt?
 
-If the builder instance was recycled and the venv is gone, re-install rodeo-cli first:
+**For hostimages: no.** Keep finalise out of the image and use `rodeo start-if-needed` on boot.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/avaleror/rodeo-cli/main/install.sh | bash
-rodeo deploy --from finalise --finalise
-```
+`finalise` remains available for bare metal (and rare advanced cases with `--finalise`). If you enable it on a builder and then Save, you risk the next hostimage start sticking on **Please Wait**.

@@ -56,7 +56,7 @@ The pipeline runs these phases in order:
 2. **vms** — downloads the cloud image, injects cloud-init, creates the VM disk and libvirt definition
 3. **boot** — starts the libvirt network and the VM (no PXE wait needed)
 4. **rancher** — waits for the VM to get an IP, installs K3s, deploys Rancher Prime via Helm, waits for the UI to become healthy
-5. **finalise** — enables VM autostart on host reboot (skipped on Instruqt until you run `--finalise`)
+5. **finalise** — enables VM autostart on host reboot (skipped on Instruqt; use `rodeo start-if-needed` on hostimage boot instead of baking finalise into the image)
 
 Total time: **5–15 minutes** on a typical host.
 
@@ -102,13 +102,7 @@ rodeo deploy --from rancher     # resume from that phase
 
 ## Instruqt workflow
 
-Set `deployment_target: instruqt` in `rodeo-plan.yaml` before deploying. The `finalise` phase is then skipped automatically until you run it after taking the Instruqt snapshot:
-
-```bash
-rodeo deploy --from finalise --finalise
-```
-
-This prevents the VM from trying to autostart before the Instruqt agent is ready on the attendee instance.
+Set `deployment_target: instruqt` in `rodeo-plan.yaml` before deploying so `finalise` is skipped. **Do not** bake `finalise` into a hostimage (autostart can hang the Instruqt agent / console). After deploy, follow the success-screen checklist, Save the hostimage, and put **`rodeo start-if-needed`** in the track setup script so the lab comes up on every boot. See [Instruqt example](examples/instruqt.md).
 
 ---
 

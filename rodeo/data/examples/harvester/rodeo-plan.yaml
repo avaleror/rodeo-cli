@@ -6,9 +6,9 @@
 
 name: suse-virt-rodeo
 
-# instruqt: the finalise phase (VM autostart + libvirt-guests) is skipped unless
-# you pass --finalise. Running it before the Instruqt image snapshot breaks
-# instance boot. Use baremetal for normal hosts.
+# instruqt: finalise (VM autostart + libvirt-guests) is skipped — do not bake
+# it into a hostimage (can hang boot / Instruqt "Please Wait"). Use
+# `rodeo start-if-needed` on every hostimage boot instead. baremetal: finalise runs.
 deployment_target: instruqt   # instruqt | baremetal
 
 network:

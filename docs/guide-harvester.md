@@ -80,7 +80,7 @@ The `suse-virt` pipeline (used by all four Harvester profiles) runs these phases
 3. **pxe_server** — sets up nginx + TFTP + dnsmasq on the host's `virbr0` (192.168.122.1). Generates a `boot.ipxe` that chains to a per-node MAC script, and a Harvester config YAML for each node
 4. **cluster** — starts VMs in order (`harvester1` first, then a gap for etcd, then the rest). Waits for each node to install Harvester via iPXE, join the cluster, and become `Ready`. Watches the VIP (192.168.122.10) for the cluster to converge
 5. **rancher** — (`harvester` profile only) installs K3s + Rancher Prime on the `rancher` VM, exposes it on NodePort 30002, and configures the admin API. Harvester cluster import is intentionally left as a lab exercise — students do it via the Rancher UI as the first challenge
-6. **finalise** — enables VM autostart on host reboot (skipped on Instruqt until you run `--finalise`)
+6. **finalise** — enables VM autostart on host reboot (skipped on Instruqt; use `rodeo start-if-needed` on hostimage boot instead of baking finalise into the image)
 
 ### Time estimates
 
@@ -162,24 +162,16 @@ The deploy pipeline is idempotent within a phase. If the `cluster` phase times o
 
 ## Instruqt workflow
 
-This is the workflow for building an **Instruqt track image** with a pre-deployed Harvester cluster.
+This is the workflow for building an **Instruqt hostimage** with a pre-deployed Harvester cluster. Full detail: [Instruqt example](examples/instruqt.md).
 
-1. Set `deployment_target: instruqt` in `rodeo-plan.yaml`
-2. Deploy the lab:
-   ```bash
-   rodeo deploy
-   ```
-3. Verify the cluster is healthy:
-   ```bash
-   rodeo status
-   ```
-4. Take the Instruqt snapshot via the Instruqt UI or API
-5. After the snapshot, enable VM autostart for attendee instances:
-   ```bash
-   rodeo deploy --from finalise --finalise
-   ```
+1. Set `deployment_target: instruqt` in `rodeo-plan.yaml` (skips `finalise` — keep it that way)
+2. Deploy the lab (`rodeo up --profile harvester --yes` or `rodeo deploy`)
+3. Verify: `rodeo status`
+4. **Before Save:** do **not** run `rodeo deploy --finalise`; confirm agent ports `15778`/`15779` and that `libvirt-guests` is disabled (the success screen prints this checklist)
+5. Save the hostimage in the Instruqt UI
+6. Wire **`rodeo start-if-needed`** into the track setup script so every attendee boot starts VMs and re-applies DNAT/nft
 
-Without step 5, VMs do not autostart when an attendee instance boots, and the cluster will not be available.
+Do not bake `finalise` into the hostimage — nested VM autostart races the Instruqt agent and can leave the console on **Please Wait**.
 
 ---
 

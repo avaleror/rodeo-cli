@@ -48,6 +48,24 @@ def test_instruqt_shows_tab_hint(capsys):
     assert ":8443" not in out
 
 
+def test_instruqt_shows_hostimage_checklist(capsys):
+    cfg = {
+        "deployment_target": "instruqt",
+        "network": {"vip": "192.168.122.10", "rancher_ip": "192.168.122.9"},
+        "vms": {
+            "harvester1": {"ip": "192.168.122.11"},
+            "rancher": {"ip": "192.168.122.9"},
+        },
+    }
+    out = _render(cfg, capsys)
+    assert "Instruqt hostimage checklist" in out
+    assert "rodeo deploy --finalise" in out
+    assert "15778/tcp" in out
+    assert "15779/tcp" in out
+    assert "rodeo start-if-needed" in out
+    assert "Please Wait" in out
+
+
 def test_baremetal_shows_dnat_url(capsys, monkeypatch):
     monkeypatch.setattr(success, "_host_ip", lambda: "10.1.2.3")
     cfg = {
@@ -64,3 +82,5 @@ def test_baremetal_shows_dnat_url(capsys, monkeypatch):
     assert "10.1.2.3:8443" in out   # DNAT note still present
     assert "10.1.2.3:30002" in out
     assert "Instruqt" not in out
+    assert "hostimage checklist" not in out
+    assert "start-if-needed" not in out

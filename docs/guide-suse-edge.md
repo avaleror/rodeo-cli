@@ -60,7 +60,7 @@ The pipeline runs these phases in order:
 4. **rancher** — installs K3s, deploys Rancher Prime via Helm, and configures cert-manager + Traefik for the Let's Encrypt certificate
 5. **elemental** — installs the Elemental Operator (CRDs + Operator) and creates the MachineRegistration so edge nodes can register over TPM
 6. **apply** — applies any extra manifests (Fleet GitOps, demo workloads)
-7. **finalise** — enables VM autostart on host reboot (skipped on Instruqt until you run `--finalise`)
+7. **finalise** — enables VM autostart on host reboot (skipped on Instruqt; use `rodeo start-if-needed` on hostimage boot instead of baking finalise into the image)
 
 Total time: **20–40 minutes** on a typical host, depending on image download speed.
 
@@ -119,13 +119,7 @@ rodeo deploy --from elemental     # resume from that phase
 
 ## Instruqt workflow
 
-Set `deployment_target: instruqt` in `rodeo-plan.yaml` before deploying. The `finalise` phase is then skipped automatically until you run it after taking the Instruqt snapshot:
-
-```bash
-rodeo deploy --from finalise --finalise
-```
-
-This prevents the VMs from trying to autostart before the Instruqt agent is ready on the attendee instance.
+Set `deployment_target: instruqt` in `rodeo-plan.yaml` before deploying so `finalise` is skipped. **Do not** bake `finalise` into a hostimage (autostart can hang the Instruqt agent / console). After deploy, follow the success-screen checklist, Save the hostimage, and put **`rodeo start-if-needed`** in the track setup script so the lab comes up on every boot. See [Instruqt example](examples/instruqt.md).
 
 ---
 

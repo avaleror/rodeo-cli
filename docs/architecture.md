@@ -31,7 +31,7 @@ Every profile shares the same foundation: host networking, firewalld DNAT, DNS, 
 | One orchestrator | `DeployRunner` — no duplicated TUI/plain/bash paths |
 | Host setup is idempotent | Ansible roles `kvm_host` + `vms` + `pxe_server` |
 | Long waits are cancellable | `threading.Event` + process groups in poll loops |
-| Instruqt-safe builds | `deployment_target: instruqt` skips `finalise` until snapshot |
+| Instruqt-safe builds | `deployment_target: instruqt` skips `finalise`; hostimage boot uses `start-if-needed` |
 | Self-contained install | Ansible roles bundled in `rodeo/data/ansible/` |
 | Minimal first-phase friction | `scripts/bootstrap-sles.sh` (curl | bash) + `rodeo bootstrap` subcommand + `install-deps --link` for global binary + `init --example` for pre-seeded declarative labs. See visual in user-guide. |
 | Graceful stop/restart + host reset | `rodeo stop`/`start` (infra-aware from definition: infra_type, components, start_order; graceful ACPI + host services; restartable). `clean --all --hard --secrets --force-network` for full reset (VMs/networks/states/passwords; no package removal). Clean runs stop first unless --hard. |
@@ -220,7 +220,7 @@ The `suse-virt` pipeline (the widest) is the reference implementation detailed i
 
 **Timeouts (nested KVM):** VIP ≤ 60 min, kubeconfig ≤ 30 min, nodes Ready ≤ 90 min.
 
-**Instruqt guard:** `finalise` is in `guarded_phases`. Skipped when `deployment_target: instruqt` unless `--finalise`. Running finalise before image save breaks instance boot.
+**Instruqt guard:** `finalise` is in `guarded_phases`. Skipped when `deployment_target: instruqt` unless `--finalise`. Do not bake finalise into a hostimage (agent / boot hang); use `rodeo start-if-needed` on track setup. See `docs/examples/instruqt.md`.
 
 ---
 

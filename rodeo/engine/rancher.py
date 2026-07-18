@@ -667,6 +667,25 @@ class RancherPhase:
         )
         self._ssh_script(script, timeout=15)
 
+    def _clear_first_login(self) -> None:
+        """Patch the first-login Setting to false.
+
+        Rancher's dashboard shows the "create your password" wizard whenever
+        this Setting is true. It's normally cleared as a side effect of the
+        bootstrap admin completing the setpassword action — but when the
+        configured password already matches bootstrapPassword (the common
+        case here, since bootstrapPassword is seeded from secrets.yaml),
+        login succeeds immediately, setpassword is never called, and the
+        wizard stays stuck on even though the credentials already work.
+        Idempotent and safe to call on every deploy.
+        """
+        script = (
+            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+            "kubectl patch settings.management.cattle.io first-login"
+            " --type=merge -p '{\"value\":\"false\"}' 2>/dev/null\n"
+        )
+        self._ssh_script(script, timeout=15)
+
     def _configure_api(self) -> Generator[DeployEvent, None, bool]:
         # Rancher 2.14+ sets mustChangePassword=true on fresh installs which
         # causes the login endpoint to return 401 until cleared.  Do it here
@@ -754,6 +773,8 @@ class RancherPhase:
             self.error = "Re-login returned no token"
             yield LogLine(f"  ✗ {self.error}")
             return False
+
+        self._clear_first_login()
 
         try:
             self._http(

@@ -302,6 +302,7 @@ def test_configure_api_uses_persisted_file_as_fallback_credential(cfg, monkeypat
 
     phase = RancherPhase(cfg)  # cfg's rancher_admin_password is "Secret123"
     monkeypatch.setattr(RancherPhase, "_clear_must_change_password", lambda self: None)
+    monkeypatch.setattr(RancherPhase, "_clear_first_login", lambda self: None)
     monkeypatch.setattr(RancherPhase, "_get_bootstrap_password", lambda self: "admin")
     monkeypatch.setattr(RancherPhase, "_sync_cacerts", lambda self: iter(()))
 
@@ -330,3 +331,53 @@ def test_configure_api_uses_persisted_file_as_fallback_credential(cfg, monkeypat
     assert "OldPassword1" in attempted
     assert state["live_password"] == "Secret123"
     assert pw_file.read_text() == "Secret123"
+
+
+def test_clear_first_login_patches_setting_false(cfg, monkeypatch):
+    phase = RancherPhase(cfg)
+    scripts: list[str] = []
+
+    def fake_ssh(self, script, timeout=15):
+        scripts.append(script)
+        return subprocess.CompletedProcess([], 0, stdout="", stderr="")
+
+    monkeypatch.setattr(RancherPhase, "_ssh_script", fake_ssh)
+    phase._clear_first_login()
+
+    assert len(scripts) == 1
+    assert "settings.management.cattle.io first-login" in scripts[0]
+    assert '"value":"false"' in scripts[0]
+
+
+def test_configure_api_clears_first_login_even_when_already_set(cfg, monkeypatch):
+    """Regression: when secrets.yaml's password already matches bootstrapPassword,
+    login succeeds on the first try and setpassword (which would otherwise clear
+    first-login as a side effect) is never called — first-login must still be
+    cleared explicitly, or the dashboard gets stuck on the "create your password"
+    wizard despite the credentials already being correct."""
+    phase = RancherPhase(cfg)  # cfg's rancher_admin_password is "Secret123"
+    monkeypatch.setattr(RancherPhase, "_clear_must_change_password", lambda self: None)
+    monkeypatch.setattr(RancherPhase, "_get_bootstrap_password", lambda self: "Secret123")
+    monkeypatch.setattr(RancherPhase, "_sync_cacerts", lambda self: iter(()))
+
+    cleared = {"n": 0}
+    monkeypatch.setattr(RancherPhase, "_clear_first_login", lambda self: cleared.__setitem__("n", cleared["n"] + 1))
+
+    setpassword_calls = {"n": 0}
+
+    def fake_http(self, method, path, data=None, token=""):
+        if path == "/v3-public/localProviders/local?action=login":
+            return {"token": "tok"}
+        if path == "/v3/users?me=true":
+            return {"data": [{"id": "user-abc"}]}
+        if path.endswith("action=setpassword"):
+            setpassword_calls["n"] += 1
+            return {}
+        return {}
+
+    monkeypatch.setattr(RancherPhase, "_http", fake_http)
+
+    events, ok = drain(phase._configure_api())
+    assert ok is True
+    assert setpassword_calls["n"] == 0  # confirms this is the "already set" branch
+    assert cleared["n"] == 1  # first-login must still be cleared

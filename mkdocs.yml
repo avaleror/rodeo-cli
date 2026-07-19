@@ -1,0 +1,79 @@
+site_name: rodeo-cli
+site_description: Terraform-for-labs — a declarative CLI that deploys hands-on lab infrastructure (Harvester HCI, Rancher Prime, SUSE Edge) on KVM.
+site_url: https://avaleror.github.io/rodeo-cli/
+repo_url: https://github.com/avaleror/rodeo-cli
+repo_name: avaleror/rodeo-cli
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+  font: false
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - content.code.copy
+    - content.code.annotate
+    - toc.follow
+    - search.suggest
+    - search.highlight
+
+extra_css:
+  - stylesheets/custom.css
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Get started: get-started.md
+  - Profiles:
+    - Rancher Prime: guide-rancher.md
+    - Harvester HCI: guide-harvester.md
+    - SUSE Edge: guide-suse-edge.md
+  - Create your own rodeo: custom-rodeos.md
+  - Reference:
+    - rodeo-plan.yaml: reference/plan.md
+    - definition.yaml: reference/definition.md
+  - Examples:
+    - Bare metal: examples/bare-metal.md
+    - Instruqt track: examples/instruqt.md
+    - Testing & CI: examples/testing.md
+  - Troubleshooting: runbook.md
+  - Architecture: architecture.md

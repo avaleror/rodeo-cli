@@ -7,6 +7,8 @@ A CLI for deploying hands-on lab infrastructure. Point it at a Linux host with K
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 [![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
 
+**[📖 Docs & user guide](https://avaleror.github.io/rodeo-cli/)**
+
 ---
 
 ## How it works

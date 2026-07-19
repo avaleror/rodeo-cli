@@ -19,7 +19,7 @@ title: rodeo-cli
 <div class="rc-stat"><div class="rc-stat-num">6</div><div class="rc-stat-label">Bundled profiles</div></div>
 <div class="rc-stat"><div class="rc-stat-num">318</div><div class="rc-stat-label">Tests passing</div></div>
 <div class="rc-stat"><div class="rc-stat-num">1</div><div class="rc-stat-label">Command to deploy</div></div>
-<div class="rc-stat"><div class="rc-stat-num">Apache-2.0</div><div class="rc-stat-label">License</div></div>
+<div class="rc-stat"><div class="rc-stat-num rc-stat-num--text">Apache-2.0</div><div class="rc-stat-label">License</div></div>
 </div>
 
 ## Why it exists

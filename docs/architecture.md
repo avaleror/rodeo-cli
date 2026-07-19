@@ -1,6 +1,6 @@
 # rodeo-cli — Architecture & design
 
-Technical reference for contributors and maintainers. For deploying a workshop, see [User guide](user-guide.md).
+Technical reference for contributors and maintainers. For deploying a workshop, see [User guide](get-started.md).
 
 **Version:** 0.14.2 <!-- x-release-please-version -->
 **License:** Apache-2.0
@@ -11,7 +11,7 @@ Technical reference for contributors and maintainers. For deploying a workshop, 
 
 `rodeo-cli` deploys the **infrastructure for a rodeo**: a live, hands-on workshop where attendees work against real systems. It builds a lab of **nested KVM VMs** on a single Linux host, driven by a declarative plan — you pick a profile, it converges the host.
 
-The stack it builds depends on the chosen **engine type** (see [Engine types & profiles](#engine-types--profiles)):
+The stack it builds depends on the chosen **engine type** (see [Engine types & profiles](#engine-types-profiles)):
 
 - **`suse-virt`** — a 3-node Harvester HCI cluster (+ optional Rancher Prime)
 - **`rancher`** — a single VM running Rancher Prime on K3s
@@ -38,7 +38,7 @@ Every profile shares the same foundation: host networking, firewalld DNAT, DNS, 
 | Interactive definition generation | `rodeo generate` (templates base via parameter collection for hybrid customization, produces full config-dir yaml skeleton with project conventions like infra_type; post-validation via load_config; next steps for bootstrap/deploy/stop/start/clean lifecycle). Enables consistent entry to declarative model (definition as source for inventory/renderer/phases). |
 
 
-**Vision (roadmap):** Terraform-for-labs — declare desired state, preview diff, converge, destroy what you own. See [ROADMAP.md](../ROADMAP.md).
+**Vision (roadmap):** Terraform-for-labs — declare desired state, preview diff, converge, destroy what you own. See [ROADMAP.md](https://github.com/avaleror/rodeo-cli/blob/main/ROADMAP.md).
 
 ---
 
@@ -100,7 +100,7 @@ The Harvester path is the outlier: it needs `pxe_server` (iPXE/TFTP/HTTP) and a 
 | `harvester` | `suse-virt` | 3-node Harvester HCI + Rancher Prime |
 | `suse-edge` | `suse-edge` | Rancher + Elemental + EIB + 4 edge nodes (SUSE Edge 3.6) |
 
-Per-profile topology tables (VMs, IPs, RAM) live in each [deployment guide](user-guide.md). The detailed suse-virt topology and iPXE boot chain are documented below as the reference implementation.
+Per-profile topology tables (VMs, IPs, RAM) live in each [deployment guide](get-started.md). The detailed suse-virt topology and iPXE boot chain are documented below as the reference implementation.
 
 ---
 
@@ -195,14 +195,14 @@ rodeo/
     └── templates/         init templates
 
 tests/                     pytest (config, runner, cluster, ansible contract, …)
-docs/                      architecture.md, user-guide.md, assets/diagrams/
+docs/                      architecture.md, get-started.md, assets/diagrams/
 ```
 
 ---
 
 ## Deployment pipeline
 
-Each engine type runs a subset of the phase catalog below, in the order given by its profile's `phases` list (see [Engine types & profiles](#engine-types--profiles)). State is per plan name (`cfg["name"]`). The dispatch is generic: `RodeoProfile.run_phase()` sends Ansible phases to `stream_ansible` and the rest through a `phase → DeployRunner method` table.
+Each engine type runs a subset of the phase catalog below, in the order given by its profile's `phases` list (see [Engine types & profiles](#engine-types-profiles)). State is per plan name (`cfg["name"]`). The dispatch is generic: `RodeoProfile.run_phase()` sends Ansible phases to `stream_ansible` and the rest through a `phase → DeployRunner method` table.
 
 | Phase | Engine | Used by | Summary |
 |-------|--------|---------|---------|
@@ -351,7 +351,7 @@ Ref: [Harvester v1.8 PXE boot install](https://docs.harvesterhci.io/v1.8/install
 
 ## SLES 16 / Instruqt constraints (do not break)
 
-Documented in role comments and [CONTEXT.md](../CONTEXT.md).
+Documented in role comments and [CONTEXT.md](https://github.com/avaleror/rodeo-cli/blob/main/CONTEXT.md).
 
 1. **NetworkManager only** — wicked removed; virbr0/vnet* marked unmanaged
 2. **Modular libvirt** — disable monolithic `libvirtd`; enable socket-activated daemons
@@ -430,6 +430,6 @@ Live KVM regression is still manual (or geekohive) before touching MAC/DHCP/ISO 
 
 | Document | Audience |
 |----------|----------|
-| [User guide](user-guide.md) | Workshop operators deploying labs |
-| [ROADMAP.md](../ROADMAP.md) | Planned Terraform-for-labs features |
-| [CONTEXT.md](../CONTEXT.md) | Full project context for AI/developers |
+| [User guide](get-started.md) | Workshop operators deploying labs |
+| [ROADMAP.md](https://github.com/avaleror/rodeo-cli/blob/main/ROADMAP.md) | Planned Terraform-for-labs features |
+| [CONTEXT.md](https://github.com/avaleror/rodeo-cli/blob/main/CONTEXT.md) | Full project context for AI/developers |

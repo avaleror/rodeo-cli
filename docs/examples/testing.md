@@ -111,7 +111,7 @@ gh workflow run integration.yml -f profile=test
 
 ### Setting up a self-hosted runner
 
-See [CONTRIBUTING.md](../../CONTRIBUTING.md) or the [GitHub Actions runner docs](https://docs.github.com/en/actions/hosting-your-own-runners/adding-self-hosted-runners) for setup steps. The runner must have:
+See [CONTRIBUTING.md](https://github.com/avaleror/rodeo-cli/blob/main/CONTRIBUTING.md) or the [GitHub Actions runner docs](https://docs.github.com/en/actions/hosting-your-own-runners/adding-self-hosted-runners) for setup steps. The runner must have:
 
 - `rodeo install-deps` run once (KVM, libvirt, ansible, kubectl)
 - `rodeo` binary on PATH (via `install-deps --link`)

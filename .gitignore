@@ -32,3 +32,6 @@ CLAUDE.md
 
 # Rodeo runtime state (stays local)
 .rodeo/
+
+# mkdocs build output (deployed to gh-pages branch, not committed to main)
+/site/

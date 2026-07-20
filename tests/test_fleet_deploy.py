@@ -2,8 +2,12 @@
 from __future__ import annotations
 
 import json
+import shlex
+import shutil
+import subprocess
 import textwrap
 
+import pytest
 from click.testing import CliRunner
 
 from rodeo.fleet.deploy import (
@@ -12,9 +16,9 @@ from rodeo.fleet.deploy import (
     fleet_deploy,
     tmux_session_name,
 )
-from rodeo.fleet.inventory import load_inventory, require_deploy_config
+from rodeo.fleet.inventory import FleetHost, load_inventory, require_deploy_config
 from rodeo.fleet.job import job_path_for, load_job, new_job, save_job
-from rodeo.fleet.ssh_exec import RemoteResult
+from rodeo.fleet.ssh_exec import RemoteResult, ssh_argv
 from rodeo.fleet.sync import normalize_git_url, sync_script
 
 
@@ -60,6 +64,80 @@ def test_sync_and_deploy_scripts(tmp_path):
     assert "install.sh" in script or "command -v rodeo" in script
     assert "tmux new-session" in script
     assert "rodeo up --yes --no-tmux" in script
+
+
+def _workshop_git(tmp_path, name="demo"):
+    path = tmp_path / "workshop.yaml"
+    path.write_text(
+        textwrap.dedent(
+            f"""
+            name: {name}
+            lab:
+              dir: /root/lab
+              source: git:https://github.com/avaleror/suse-virt-workshop.git
+              branch: main
+              target: baremetal
+            hosts:
+              - id: h1
+                ssh: 10.0.0.1
+            """
+        )
+    )
+    return path
+
+
+def _workshop_profile(tmp_path, name="demo"):
+    path = tmp_path / "workshop.yaml"
+    path.write_text(
+        textwrap.dedent(
+            f"""
+            name: {name}
+            lab:
+              dir: /root/lab
+              profile: harvester
+              target: instruqt
+            hosts:
+              - id: h1
+                ssh: 10.0.0.1
+            """
+        )
+    )
+    return path
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="bash not on PATH")
+@pytest.mark.parametrize("build_inventory", [_workshop_git, _workshop_profile])
+def test_deploy_remote_script_is_valid_bash(tmp_path, build_inventory):
+    """Regression guard: deploy_remote_script hand-assembles bootstrap + sync
+    + tmux-start by nesting shlex.quote()'d fragments inside each other. A
+    quoting bug here silently breaks every remote deploy — this can't be
+    caught by substring assertions, only by actually parsing the result."""
+    path = build_inventory(tmp_path)
+    inv = load_inventory(path)
+    require_deploy_config(inv)
+    session = tmux_session_name(inv.name, "h1")
+    script = deploy_remote_script(inv, session)
+
+    proc = subprocess.run(["bash", "-n", "-c", script], capture_output=True, text=True)
+    assert proc.returncode == 0, f"invalid bash syntax: {proc.stderr}\n\nscript:\n{script}"
+
+
+def test_deploy_remote_script_survives_full_ssh_quoting_roundtrip(tmp_path):
+    """The script above is itself wrapped in shlex.quote() twice more (once
+    for `bash -lc <script>`, once for the outer ssh argv) before it ever
+    reaches a shell — verify the fully-wrapped command still parses back to
+    exactly the same tokens, i.e. nothing was lost or corrupted in transit."""
+    path = _workshop(tmp_path)
+    inv = load_inventory(path)
+    session = tmux_session_name(inv.name, "h1")
+    script = deploy_remote_script(inv, session)
+
+    inner_argv = ["bash", "-lc", script]
+    remote_command = " ".join(shlex.quote(a) for a in inner_argv)
+    assert shlex.split(remote_command) == inner_argv
+
+    full_argv = ssh_argv(inv, FleetHost(id="h1", ssh="10.0.0.1"), remote_command)
+    assert full_argv[-1] == remote_command
 
 
 def test_fleet_deploy_writes_job(monkeypatch, tmp_path):

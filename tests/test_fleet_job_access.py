@@ -48,3 +48,21 @@ def test_access_urls():
     assert rows[1].harvester_url == "https://10.0.0.5:8443"
     payload = access_payload("demo", rows)
     assert payload["hosts"][0]["id"] == "s1"
+
+
+def test_access_urls_filtered_by_lab_components():
+    """A harvester-only workshop shouldn't advertise a Rancher URL that
+    doesn't exist on the host — lab.components lets the operator say so."""
+    inv = FleetInventory(
+        name="demo",
+        lab_dir="/root/lab",
+        defaults={},
+        hosts=[],
+        harvester_ui_port=8443,
+        rancher_ui_port=30002,
+        lab_components=["harvester"],
+    )
+    host = FleetHost(id="s1", ssh="root@203.0.113.10", public_ip="203.0.113.10")
+    row = fleet_access(inv, [host])[0]
+    assert row.harvester_url == "https://203.0.113.10:8443"
+    assert row.rancher_url is None

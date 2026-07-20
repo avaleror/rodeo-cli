@@ -53,6 +53,8 @@ lab:
   ports:
     harvester: 8443                 # DNAT on host public IP
     rancher: 30002
+  # components: [harvester]         # optional — see "Access sheet" below.
+  #                                  # Omit to show every URL fleet knows how to build.
 defaults:
   ssh_user: root
   # identity_file: /home/you/.ssh/id_ed25519
@@ -154,6 +156,13 @@ rodeo fleet access -f workshop.yaml
 Nested VIP stays `192.168.122.10` inside each host; students use **host public IP +
 DNAT**. Passwords are **never** printed — they live on each host in
 `~/.rodeo/secrets.yaml`.
+
+By default `access` prints both URLs for every host — fleet has no reliable
+local signal for which UIs a given lab actually exposes (a bundled profile
+name doesn't map 1:1 to components: e.g. the `test` profile's example dir has
+no Rancher node at all). Set `lab.components: [harvester]` or
+`[rancher]` in the inventory to suppress the URL(s) that don't apply to your
+workshop.
 
 ---
 

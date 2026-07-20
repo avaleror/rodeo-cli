@@ -42,6 +42,14 @@ class FleetInventory:
     install_url: str = (
         "https://raw.githubusercontent.com/avaleror/rodeo-cli/main/install.sh"
     )
+    # None = unknown (git-source labs, or profile not declared here) — fleet
+    # access shows every URL it knows how to build. Set explicitly when a
+    # profile doesn't expose one of the UIs, e.g. ["harvester"] for
+    # harvester-ha (no Rancher node). Deliberately NOT inferred from
+    # lab.profile — bundled profile -> component mapping isn't stable enough
+    # to hardcode (e.g. the "test" profile's example dir is named
+    # harvester-lab-config and has no Rancher component at all).
+    lab_components: list[str] | None = None
 
     @property
     def ssh_user(self) -> str:
@@ -107,6 +115,15 @@ def load_inventory(path: str | Path) -> FleetInventory:
         or "https://raw.githubusercontent.com/avaleror/rodeo-cli/main/install.sh"
     ).strip()
 
+    components_raw = lab.get("components")
+    lab_components: list[str] | None = None
+    if components_raw is not None:
+        if not isinstance(components_raw, list) or not all(
+            isinstance(c, str) for c in components_raw
+        ):
+            raise ConfigError("lab.components must be a list of strings")
+        lab_components = [c.strip().lower() for c in components_raw]
+
     defaults = raw.get("defaults") or {}
     if not isinstance(defaults, dict):
         raise ConfigError("defaults: must be a mapping")
@@ -157,6 +174,7 @@ def load_inventory(path: str | Path) -> FleetInventory:
         harvester_ui_port=harvester_port,
         rancher_ui_port=rancher_port,
         install_url=install_url,
+        lab_components=lab_components,
     )
 
 

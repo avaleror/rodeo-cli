@@ -26,13 +26,14 @@ def access_for_host(inventory: FleetInventory, host: FleetHost) -> HostAccess:
             rancher_url=None,
             note="set public_ip (or use a resolvable ssh host) in workshop.yaml",
         )
-    h_port = inventory.harvester_ui_port
-    r_port = inventory.rancher_ui_port
+    components = inventory.lab_components
+    show_harvester = components is None or "harvester" in components
+    show_rancher = components is None or "rancher" in components
     return HostAccess(
         id=host.id,
         public_ip=ip,
-        harvester_url=f"https://{ip}:{h_port}",
-        rancher_url=f"https://{ip}:{r_port}",
+        harvester_url=f"https://{ip}:{inventory.harvester_ui_port}" if show_harvester else None,
+        rancher_url=f"https://{ip}:{inventory.rancher_ui_port}" if show_rancher else None,
         note="passwords on the host in ~/.rodeo/secrets.yaml — not printed here",
     )
 

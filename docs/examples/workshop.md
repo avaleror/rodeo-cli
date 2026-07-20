@@ -29,5 +29,6 @@ hosts:
 rodeo fleet doctor -f workshop.yaml
 rodeo fleet deploy -f workshop.yaml -j 4
 rodeo fleet status -f workshop.yaml
+rodeo fleet diagnose -f workshop.yaml
 rodeo fleet access -f workshop.yaml
 ```

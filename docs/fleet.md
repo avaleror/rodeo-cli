@@ -13,6 +13,7 @@ See also: [Get started](get-started.md) (single host), [Architecture](architectu
 | **F0** | Machine-readable host CLI | `rodeo doctor --output json`, `rodeo status --output json` |
 | **F1** | Inventory + read-only fan-out | `rodeo fleet doctor`, `rodeo fleet status` |
 | **F2** | Deploy / retry / access sheet | `rodeo fleet deploy`, `retry`, `access` |
+| **F2.1** | Failure forensics | `rodeo fleet diagnose` |
 | **F3** | MCP (not yet) | — |
 
 Host prerequisites (after [`install.sh`](https://github.com/avaleror/rodeo-cli/blob/main/install.sh) on each lab machine):
@@ -102,6 +103,7 @@ rodeo fleet status -f workshop.yaml --host student-01 -j 4
 rodeo fleet doctor -f workshop.yaml -j 8
 rodeo fleet deploy -f workshop.yaml -j 4
 rodeo fleet status -f workshop.yaml          # poll until phases complete
+rodeo fleet diagnose -f workshop.yaml        # pull logs for failed hosts
 rodeo fleet retry -f workshop.yaml --failed-only
 rodeo fleet access -f workshop.yaml --output json
 ```
@@ -142,6 +144,31 @@ rodeo fleet retry -f workshop.yaml --all-selected  # ignore job failures; use --
 
 Refreshes job state from live `status`, then re-starts deploy with `--force` on
 the chosen hosts.
+
+### Diagnose (failure forensics)
+
+`fleet status` / the job file tell you *which* host and phase failed. To see
+*why*, pull logs onto the laptop:
+
+```bash
+rodeo fleet diagnose -f workshop.yaml                  # failed hosts (default)
+rodeo fleet diagnose -f workshop.yaml --all-selected   # every selected host
+rodeo fleet diagnose -f workshop.yaml -o /tmp/diag --output json
+```
+
+Per host, under `<inventory>.diagnose-<utc>/<host-id>/` (or `-o`):
+
+| Artifact | Source |
+|----------|--------|
+| `status.json` | remote `rodeo status --output json` |
+| `logs/*.log` | tails of `~/.rodeo/logs/` (incl. `fleet-up.log`) |
+| `meta/state/` | `~/.rodeo/state/*.yaml` phase cache |
+| `meta/tmux-pane.txt` | tmux pane capture when the job session still exists |
+| `summary.json` | short failure digest for that host |
+| `index.json` | workshop-wide index (also printed with `--output json`) |
+
+Does not print or collect secrets. Exit `0` when collection succeeds; `1` if SSH
+or archive extract fails for any host.
 
 ### Access sheet
 

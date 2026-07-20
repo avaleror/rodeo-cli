@@ -11,6 +11,12 @@ from rich.table import Table
 from ..config import ConfigError
 from ..fleet.access import access_payload, fleet_access
 from ..fleet.deploy import fleet_deploy, refresh_job_from_status, results_payload
+from ..fleet.diagnose import (
+    diagnose_outdir,
+    diagnose_payload,
+    fleet_diagnose,
+    select_diagnose_hosts,
+)
 from ..fleet.doctor import fleet_doctor
 from ..fleet.inventory import (
     load_inventory,
@@ -422,3 +428,117 @@ def fleet_access_cmd(
         console.print(
             "\n  [dim]Passwords stay on each host in ~/.rodeo/secrets.yaml[/dim]\n"
         )
+
+
+@fleet_cmd.command("diagnose")
+@_output_opt
+@_concurrency_opt(8)
+@click.option(
+    "--failed-only/--all-selected",
+    default=True,
+    help="Collect only failed/problematic hosts (default), or every selected host.",
+)
+@click.option(
+    "-o",
+    "--outdir",
+    "outdir_opt",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+    help="Local directory for artifacts (default: <inventory>.diagnose-<utc>).",
+)
+@click.option(
+    "--lines",
+    default=500,
+    show_default=True,
+    type=click.IntRange(50, 20000),
+    help="Tail lines per remote log file.",
+)
+@_file_label_host
+def fleet_diagnose_cmd(
+    inventory_path: Path,
+    labels: tuple[str, ...],
+    host_ids: tuple[str, ...],
+    concurrency: int,
+    output_fmt: str,
+    failed_only: bool,
+    outdir_opt: Path | None,
+    lines: int,
+) -> None:
+    """Collect remote status JSON + log tails onto the laptop for forensics.
+
+    Pulls ``rodeo status --output json``, ``~/.rodeo/logs/*.log`` tails,
+    phase state YAML, and optional tmux pane capture. Writes one directory
+    per host under ``-o`` / the default diagnose folder.
+    """
+    try:
+        inventory, hosts = _load_selection(inventory_path, labels, host_ids)
+        hosts, job, _ = select_diagnose_hosts(
+            hosts,
+            inventory=inventory,
+            inventory_path=inventory_path,
+            failed_only=failed_only,
+            concurrency=concurrency,
+            timeout=120.0,
+        )
+    except ConfigError as exc:
+        console.print(f"[red]✗  {exc}[/red]")
+        raise SystemExit(1)
+
+    if not hosts:
+        console.print("[green]No hosts need diagnose (nothing failed).[/green]")
+        if output_fmt == "json":
+            click.echo(
+                json.dumps(
+                    {
+                        "workshop": inventory.name,
+                        "outdir": None,
+                        "hosts": [],
+                    },
+                    indent=2,
+                )
+            )
+        raise SystemExit(0)
+
+    outdir = diagnose_outdir(inventory_path, outdir_opt)
+    results, outdir = fleet_diagnose(
+        inventory,
+        hosts,
+        inventory_path=inventory_path,
+        outdir=outdir,
+        concurrency=concurrency,
+        lines=lines,
+        job=job,
+    )
+    payload = diagnose_payload(inventory.name, outdir, results)
+
+    if output_fmt == "json":
+        click.echo(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        table = Table(title=f"Fleet diagnose — {inventory.name}", show_header=True)
+        table.add_column("id", style="bold")
+        table.add_column("collect")
+        table.add_column("attention")
+        table.add_column("phases", overflow="fold")
+        table.add_column("detail", overflow="fold")
+        for r in results:
+            phases = ",".join(r.failed_phases) if r.failed_phases else "—"
+            detail = r.error or r.job_error or r.status_error or ""
+            table.add_row(
+                r.id,
+                "[green]ok[/green]" if r.ok else "[red]fail[/red]",
+                "[yellow]yes[/yellow]" if r.needs_attention else "no",
+                phases,
+                detail[:100],
+            )
+        console.print()
+        console.print(table)
+        console.print(f"\n  Artifacts: [cyan]{outdir}[/cyan]")
+        console.print(
+            "  Per host: status.json, logs/, meta/ "
+            "(state YAML, tmux pane), summary.json\n"
+        )
+
+    # Exit 1 only when collection itself failed; phase errors are the
+    # forensic payload (needs_attention) and still count as a successful pull.
+    if any(not r.ok for r in results):
+        raise SystemExit(1)

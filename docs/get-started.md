@@ -78,7 +78,7 @@ Once a lab is up, it's something you operate, not a one-shot script:
 
 To deploy the **same** lab on a list of remote KVM hosts from your laptop (Equinix,
 bare metal, etc.), use `rodeo fleet` with a `workshop.yaml` inventory — doctor,
-status, deploy, retry, and an access URL sheet. See [Fleet](fleet.md).
+status, deploy, diagnose, retry, and an access URL sheet. See [Fleet](fleet.md).
 
 ## Something not working?
 

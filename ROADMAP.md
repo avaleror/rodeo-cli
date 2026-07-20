@@ -129,7 +129,7 @@ matching the vision statement's "declare desired state ... converge" without a f
 - [x] `rodeo up` re-run: `--target` persisted to existing lab plan; no spurious interactive prompt when target is already known
 - [x] Profile standardization (PR #4, 2026-07-06): shared config assembly and phase dispatch centralized in `profiles/base.py` (`STORAGE_DEFAULT`, `BASE_VERSIONS`, table-driven `run_phase`, definition-load-with-fallback `default_cfg`); the three profile classes reduced to data + deltas (−103 lines). Fixed a latent aliasing bug — `default_cfg()` now deep-copies so in-place config merges can no longer corrupt shared class defaults. Deploy config verified byte-identical for all 6 bundled profiles.
 - [ ] `clean` / `stop` / `start` self-escalate with sudo (same as `up` — needed for SLES `secure_path`)
-- [ ] `--output json` for `plan` and `status` (machine-readable, CI-friendly)
+- [x] `--output json` for `doctor` and `status` (machine-readable; fleet F0) — `plan` JSON still open
 - [x] Cache `ansible-galaxy collection install` (marker keyed on `requirements.yml` hash)
 - [ ] Stream Helm/K3s SSH installer output (removes the long blind windows in the TUI)
 - [ ] `PhaseResult` return type instead of mutating `runner._last_rc`
@@ -268,6 +268,19 @@ Bake a pre-loaded Hauler store into the geekohive snapshot (`suse-virt-rodeo-180
 - [ ] Document the connected-side prep workflow for SUSE PTA team (Andres + Raul)
 
 **Dependencies:** Level 1 can start independently. Level 2 requires Level 1 validated. Level 3 requires Level 2. Instruqt builder validation (top of this file) is clear as of 2026-07-15.
+
+---
+
+## Phase I — Fleet / workshop fan-out
+
+Laptop-side orchestration that runs the same single-host `rodeo` on many KVM hosts
+over OpenSSH (workshop inventory). Engine/phases stay single-host. See [docs/fleet.md](docs/fleet.md).
+
+- [x] F0 — `rodeo doctor|status --output json` via `rodeo/service/`
+- [x] F1 — `workshop.yaml` + `rodeo fleet doctor|status` (OpenSSH fan-out, labels, concurrency)
+- [ ] F2 — `rodeo fleet deploy|retry` (remote `rodeo up --yes` in tmux, failed-only retry, access URL sheet)
+- [ ] F3 — MCP tools on top of fleet (after F2)
+- [ ] Optional host-acquire helpers (Equinix/AWS → inventory) — separate from converge
 
 ---
 

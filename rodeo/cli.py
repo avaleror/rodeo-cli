@@ -30,6 +30,7 @@ from .commands.up_cmd import up_cmd
 from .commands.pull_edge_image_cmd import pull_edge_image_cmd
 from .commands.eject_iso_cmd import eject_iso_cmd
 from .commands.watch import watch_cmd
+from .commands.fleet_cmd import fleet_cmd
 from .config import ConfigError
 
 
@@ -96,3 +97,4 @@ cli.add_command(set_password_cmd,     name="set-password")
 cli.add_command(install_extensions_cmd, name="install-extensions")
 cli.add_command(pull_edge_image_cmd,  name="pull-edge-image")
 cli.add_command(eject_iso_cmd,        name="eject-iso")
+cli.add_command(fleet_cmd,            name="fleet")

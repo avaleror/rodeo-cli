@@ -6,6 +6,8 @@ that fits. ``rodeo up`` runs the same checks automatically.
 """
 from __future__ import annotations
 
+import json
+
 import click
 from rich.console import Console
 from rich.table import Table
@@ -19,23 +21,42 @@ from ..preflight import (
     profile_label,
     recommend_profile,
 )
+from ..service.doctor import doctor_report
 
 console = Console()
 
 
 @click.command("doctor")
-def doctor_cmd() -> None:
+@click.option(
+    "--output",
+    "output_fmt",
+    type=click.Choice(["text", "json"], case_sensitive=False),
+    default="text",
+    show_default=True,
+    help="Output format.",
+)
+def doctor_cmd(output_fmt: str) -> None:
     """Check host readiness and recommend a lab that fits."""
+    if output_fmt == "json":
+        click.echo(json.dumps(doctor_report(), indent=2, sort_keys=True))
+        return
+
     host = detect_host()
 
     facts = Table(title="Host", show_header=False, box=None)
     facts.add_column(style="dim")
     facts.add_column()
     ram = host["ram_total_gib"]
-    facts.add_row("RAM", f"{ram} GiB total, {host['ram_avail_gib']} GiB available" if ram else "unknown")
+    facts.add_row(
+        "RAM",
+        f"{ram} GiB total, {host['ram_avail_gib']} GiB available" if ram else "unknown",
+    )
     facts.add_row("CPUs", str(host["cpus"]) if host["cpus"] else "unknown")
     disk = host["disk_free_gib"]
-    facts.add_row("Disk", f"{disk} GiB free in {host['image_dir']}" if disk >= 0 else "unknown")
+    facts.add_row(
+        "Disk",
+        f"{disk} GiB free in {host['image_dir']}" if disk >= 0 else "unknown",
+    )
     facts.add_row("Package mgr", host["pkg_mgr"])
     console.print()
     console.print(facts)
@@ -43,18 +64,32 @@ def doctor_cmd() -> None:
     checks = Table(title="Requirements", show_header=False, box=None)
     checks.add_column()
     checks.add_column(style="dim")
-    checks.add_row(_mark(host["has_kvm"], "/dev/kvm"), "" if host["has_kvm"] else "KVM not available")
-    checks.add_row(_mark(host["nested"], "nested virtualization"),
-                   "" if host["nested"] else "enable in the kvm_intel/kvm_amd module")
+    checks.add_row(
+        _mark(host["has_kvm"], "/dev/kvm"),
+        "" if host["has_kvm"] else "KVM not available",
+    )
+    checks.add_row(
+        _mark(host["nested"], "nested virtualization"),
+        "" if host["nested"] else "enable in the kvm_intel/kvm_amd module",
+    )
     for tool in CORE_TOOLS:
         ok = host["core_tools"][tool]
-        checks.add_row(_mark(ok, tool), "" if ok else "required — run: sudo rodeo install-deps")
+        checks.add_row(
+            _mark(ok, tool),
+            "" if ok else "required — run: sudo rodeo install-deps",
+        )
     for mod in CORE_PY_MODULES:
         ok = host.get("py_modules", {}).get(mod, False)
-        checks.add_row(_mark(ok, f"python: {mod}"), "" if ok else "required — run: sudo rodeo install-deps")
+        checks.add_row(
+            _mark(ok, f"python: {mod}"),
+            "" if ok else "required — run: sudo rodeo install-deps",
+        )
     for tool in OPTIONAL_TOOLS:
         ok = host["optional_tools"][tool]
-        checks.add_row(_warn_mark(ok, tool), "" if ok else "optional (ssh/attach/fallbacks)")
+        checks.add_row(
+            _warn_mark(ok, tool),
+            "" if ok else "optional (ssh/attach/fallbacks)",
+        )
     console.print()
     console.print(checks)
 
@@ -64,17 +99,25 @@ def doctor_cmd() -> None:
     console.print("[bold]Lab profiles[/bold]")
     for tier in PROFILE_SIZING:
         marker = "[green]→[/green]" if tier["name"] == rec else " "
-        ok = "[green]fits[/green]" if avail >= tier["ram_gib"] else f"[yellow]needs {tier['ram_gib']} GiB[/yellow]"
+        ok = (
+            "[green]fits[/green]"
+            if avail >= tier["ram_gib"]
+            else f"[yellow]needs {tier['ram_gib']} GiB[/yellow]"
+        )
         console.print(f"  {marker} [bold]{tier['name']}[/bold]  {tier['label']}  ({ok})")
 
     console.print()
     if fits:
-        console.print(f"[bold green]Recommended:[/bold green] [bold]{rec}[/bold] "
-                      f"({profile_label(rec)}).  Start it with: [bold]rodeo up[/bold]")
+        console.print(
+            f"[bold green]Recommended:[/bold green] [bold]{rec}[/bold] "
+            f"({profile_label(rec)}).  Start it with: [bold]rodeo up[/bold]"
+        )
     else:
-        console.print(f"[yellow]No profile fully fits {avail} GiB RAM.[/yellow] "
-                      f"Smallest is '{rec}' ({PROFILE_SIZING[0]['ram_gib']} GiB). "
-                      "Add RAM or try a bigger host.")
+        console.print(
+            f"[yellow]No profile fully fits {avail} GiB RAM.[/yellow] "
+            f"Smallest is '{rec}' ({PROFILE_SIZING[0]['ram_gib']} GiB). "
+            "Add RAM or try a bigger host."
+        )
 
     from ..sizing import INSTRUQT_VCPU_BUDGET_RATIO, instruqt_vcpu_budget
 

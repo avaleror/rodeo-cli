@@ -68,6 +68,7 @@ nav:
     - Harvester HCI: guide-harvester.md
     - SUSE Edge: guide-suse-edge.md
   - Create your own rodeo: custom-rodeos.md
+  - Fleet (multi-host workshops): fleet.md
   - Reference:
     - rodeo-plan.yaml: reference/plan.md
     - definition.yaml: reference/definition.md

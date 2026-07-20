@@ -1,4 +1,4 @@
-"""rodeo fleet — fan-out doctor/status across a workshop host inventory."""
+"""rodeo fleet — fan-out doctor/status/deploy across workshop KVM hosts."""
 from __future__ import annotations
 
 import json
@@ -9,8 +9,16 @@ from rich.console import Console
 from rich.table import Table
 
 from ..config import ConfigError
+from ..fleet.access import access_payload, fleet_access
+from ..fleet.deploy import fleet_deploy, refresh_job_from_status, results_payload
 from ..fleet.doctor import fleet_doctor
-from ..fleet.inventory import load_inventory, parse_label_opts, select_hosts
+from ..fleet.inventory import (
+    load_inventory,
+    parse_label_opts,
+    require_deploy_config,
+    select_hosts,
+)
+from ..fleet.job import job_path_for, load_job
 from ..fleet.status import fleet_status
 
 console = Console()
@@ -18,11 +26,10 @@ console = Console()
 
 @click.group("fleet")
 def fleet_cmd() -> None:
-    """Fan-out read-only checks across workshop KVM hosts (OpenSSH)."""
+    """Fan-out checks and deploys across workshop KVM hosts (OpenSSH)."""
 
 
-def _inventory_options(fn):
-    """Shared -f / --label / --host / -j / --output (applied closest-first)."""
+def _file_label_host(fn):
     fn = click.option(
         "-f",
         "--file",
@@ -45,15 +52,11 @@ def _inventory_options(fn):
         metavar="ID",
         help="Limit to host id (repeatable).",
     )(fn)
-    fn = click.option(
-        "-j",
-        "--concurrency",
-        default=8,
-        show_default=True,
-        type=click.IntRange(1, 64),
-        help="Max parallel SSH sessions.",
-    )(fn)
-    fn = click.option(
+    return fn
+
+
+def _output_opt(fn):
+    return click.option(
         "--output",
         "output_fmt",
         type=click.Choice(["text", "json"], case_sensitive=False),
@@ -61,26 +64,51 @@ def _inventory_options(fn):
         show_default=True,
         help="Output format.",
     )(fn)
-    return fn
+
+
+def _concurrency_opt(default: int | None = 8):
+    def deco(fn):
+        return click.option(
+            "-j",
+            "--concurrency",
+            default=default,
+            show_default=default is not None,
+            type=click.IntRange(1, 64),
+            help="Max parallel SSH sessions "
+            + ("(default: lab.concurrency or 4 for deploy)." if default is None else ""),
+        )(fn)
+
+    return deco
+
+
+def _load_selection(
+    inventory_path: Path,
+    labels: tuple[str, ...],
+    host_ids: tuple[str, ...],
+):
+    inventory = load_inventory(inventory_path)
+    hosts = select_hosts(
+        inventory,
+        ids=list(host_ids) or None,
+        labels=parse_label_opts(labels) or None,
+    )
+    return inventory, hosts
 
 
 @fleet_cmd.command("doctor")
-@_inventory_options
+@_output_opt
+@_concurrency_opt(8)
+@_file_label_host
 def fleet_doctor_cmd(
-    output_fmt: str,
-    concurrency: int,
-    host_ids: tuple[str, ...],
-    labels: tuple[str, ...],
     inventory_path: Path,
+    labels: tuple[str, ...],
+    host_ids: tuple[str, ...],
+    concurrency: int,
+    output_fmt: str,
 ) -> None:
     """Run ``rodeo doctor --output json`` on each selected host."""
     try:
-        inventory = load_inventory(inventory_path)
-        hosts = select_hosts(
-            inventory,
-            ids=list(host_ids) or None,
-            labels=parse_label_opts(labels) or None,
-        )
+        inventory, hosts = _load_selection(inventory_path, labels, host_ids)
     except ConfigError as exc:
         console.print(f"[red]✗  {exc}[/red]")
         raise SystemExit(1)
@@ -89,12 +117,7 @@ def fleet_doctor_cmd(
     payload = {
         "workshop": inventory.name,
         "hosts": [
-            {
-                "id": r.id,
-                "ok": r.ok,
-                "error": r.error,
-                "report": r.report,
-            }
+            {"id": r.id, "ok": r.ok, "error": r.error, "report": r.report}
             for r in results
         ],
     }
@@ -119,13 +142,7 @@ def fleet_doctor_cmd(
                     "fits" if r.report.get("profile_fits") else "undersized",
                 )
             else:
-                table.add_row(
-                    r.id,
-                    "[red]no[/red]",
-                    "—",
-                    "—",
-                    (r.error or "")[:120],
-                )
+                table.add_row(r.id, "[red]no[/red]", "—", "—", (r.error or "")[:120])
         console.print()
         console.print(table)
         console.print()
@@ -135,37 +152,44 @@ def fleet_doctor_cmd(
 
 
 @fleet_cmd.command("status")
-@_inventory_options
+@_output_opt
+@_concurrency_opt(8)
+@_file_label_host
 def fleet_status_cmd(
-    output_fmt: str,
-    concurrency: int,
-    host_ids: tuple[str, ...],
-    labels: tuple[str, ...],
     inventory_path: Path,
+    labels: tuple[str, ...],
+    host_ids: tuple[str, ...],
+    concurrency: int,
+    output_fmt: str,
 ) -> None:
     """Run ``rodeo status --output json`` on each selected host (in lab.dir)."""
     try:
-        inventory = load_inventory(inventory_path)
-        hosts = select_hosts(
-            inventory,
-            ids=list(host_ids) or None,
-            labels=parse_label_opts(labels) or None,
-        )
+        inventory, hosts = _load_selection(inventory_path, labels, host_ids)
     except ConfigError as exc:
         console.print(f"[red]✗  {exc}[/red]")
         raise SystemExit(1)
 
     results = fleet_status(inventory, hosts, concurrency=concurrency)
+    # Refresh job file if present so retry sees current states
+    job_file = job_path_for(inventory_path)
+    if job_file.is_file():
+        try:
+            job = load_job(job_file)
+            refresh_job_from_status(
+                inventory,
+                hosts,
+                job,
+                inventory_path=inventory_path,
+                concurrency=concurrency,
+            )
+        except ConfigError:
+            pass
+
     payload = {
         "workshop": inventory.name,
         "lab_dir": inventory.lab_dir,
         "hosts": [
-            {
-                "id": r.id,
-                "ok": r.ok,
-                "error": r.error,
-                "report": r.report,
-            }
+            {"id": r.id, "ok": r.ok, "error": r.error, "report": r.report}
             for r in results
         ],
     }
@@ -198,12 +222,7 @@ def fleet_status_cmd(
                 )
             else:
                 table.add_row(
-                    r.id,
-                    "[red]no[/red]",
-                    "—",
-                    "—",
-                    "—",
-                    (r.error or "")[:120],
+                    r.id, "[red]no[/red]", "—", "—", "—", (r.error or "")[:120]
                 )
         console.print()
         console.print(table)
@@ -211,3 +230,195 @@ def fleet_status_cmd(
 
     if any(not r.ok for r in results):
         raise SystemExit(1)
+
+
+@fleet_cmd.command("deploy")
+@_output_opt
+@_concurrency_opt(None)
+@click.option(
+    "--force",
+    is_flag=True,
+    default=False,
+    help="Re-start even when remote phases are already complete.",
+)
+@_file_label_host
+def fleet_deploy_cmd(
+    inventory_path: Path,
+    labels: tuple[str, ...],
+    host_ids: tuple[str, ...],
+    concurrency: int | None,
+    output_fmt: str,
+    force: bool,
+) -> None:
+    """Bootstrap, sync lab, and start ``rodeo up`` in tmux on each host.
+
+    Returns after starts succeed; use ``rodeo fleet status`` to poll convergence.
+    Writes ``<inventory>.job.yaml`` beside the inventory file.
+    """
+    try:
+        inventory, hosts = _load_selection(inventory_path, labels, host_ids)
+        require_deploy_config(inventory)
+    except ConfigError as exc:
+        console.print(f"[red]✗  {exc}[/red]")
+        raise SystemExit(1)
+
+    results, _job, job_path = fleet_deploy(
+        inventory,
+        hosts,
+        inventory_path=inventory_path,
+        concurrency=concurrency,
+        force=force,
+    )
+    payload = results_payload(inventory.name, results, job_path)
+
+    if output_fmt == "json":
+        click.echo(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        table = Table(title=f"Fleet deploy — {inventory.name}", show_header=True)
+        table.add_column("id", style="bold")
+        table.add_column("state")
+        table.add_column("tmux")
+        table.add_column("detail", overflow="fold")
+        for r in results:
+            style = {
+                "running": "cyan",
+                "skipped": "green",
+                "failed": "red",
+            }.get(r.state, "white")
+            table.add_row(
+                r.id,
+                f"[{style}]{r.state}[/{style}]",
+                r.tmux or "—",
+                (r.error or r.detail or "")[:120],
+            )
+        console.print()
+        console.print(table)
+        console.print(f"\n  Job file: [cyan]{job_path}[/cyan]")
+        console.print(
+            "  Poll: [bold]rodeo fleet status -f "
+            f"{inventory_path}[/bold]\n"
+        )
+
+    if any(not r.ok for r in results):
+        raise SystemExit(1)
+
+
+@fleet_cmd.command("retry")
+@_output_opt
+@_concurrency_opt(None)
+@click.option(
+    "--failed-only/--all-selected",
+    default=True,
+    help="Retry only hosts marked failed in the job file (default), "
+    "or all hosts matching --label/--host.",
+)
+@_file_label_host
+def fleet_retry_cmd(
+    inventory_path: Path,
+    labels: tuple[str, ...],
+    host_ids: tuple[str, ...],
+    concurrency: int | None,
+    output_fmt: str,
+    failed_only: bool,
+) -> None:
+    """Re-run deploy for failed (or selected) hosts; updates the job file."""
+    try:
+        inventory, selected = _load_selection(inventory_path, labels, host_ids)
+        require_deploy_config(inventory)
+        job_file = job_path_for(inventory_path)
+        job = load_job(job_file)
+        # Refresh states from live status before choosing failures
+        refresh_job_from_status(
+            inventory,
+            selected,
+            job,
+            inventory_path=inventory_path,
+            concurrency=concurrency or inventory.deploy_concurrency,
+        )
+        job = load_job(job_file)
+    except ConfigError as exc:
+        console.print(f"[red]✗  {exc}[/red]")
+        raise SystemExit(1)
+
+    if failed_only:
+        failed = set(job.failed_ids())
+        hosts = [h for h in selected if h.id in failed]
+        if not hosts:
+            console.print("[green]No failed hosts to retry.[/green]")
+            if output_fmt == "json":
+                click.echo(
+                    json.dumps(
+                        {"workshop": inventory.name, "hosts": [], "job_file": str(job_file)},
+                        indent=2,
+                    )
+                )
+            raise SystemExit(0)
+    else:
+        hosts = selected
+
+    results, _job, job_path = fleet_deploy(
+        inventory,
+        hosts,
+        inventory_path=inventory_path,
+        concurrency=concurrency,
+        force=True,
+        merge_job=job,
+    )
+    payload = results_payload(inventory.name, results, job_path)
+
+    if output_fmt == "json":
+        click.echo(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        table = Table(title=f"Fleet retry — {inventory.name}", show_header=True)
+        table.add_column("id", style="bold")
+        table.add_column("state")
+        table.add_column("detail", overflow="fold")
+        for r in results:
+            table.add_row(r.id, r.state, (r.error or r.detail or "")[:120])
+        console.print()
+        console.print(table)
+        console.print(f"\n  Job file: [cyan]{job_path}[/cyan]\n")
+
+    if any(not r.ok for r in results):
+        raise SystemExit(1)
+
+
+@fleet_cmd.command("access")
+@_output_opt
+@_file_label_host
+def fleet_access_cmd(
+    inventory_path: Path,
+    labels: tuple[str, ...],
+    host_ids: tuple[str, ...],
+    output_fmt: str,
+) -> None:
+    """Print student UI URLs (Harvester / Rancher DNAT). Never prints passwords."""
+    try:
+        inventory, hosts = _load_selection(inventory_path, labels, host_ids)
+    except ConfigError as exc:
+        console.print(f"[red]✗  {exc}[/red]")
+        raise SystemExit(1)
+
+    rows = fleet_access(inventory, hosts)
+    payload = access_payload(inventory.name, rows)
+
+    if output_fmt == "json":
+        click.echo(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        table = Table(title=f"Fleet access — {inventory.name}", show_header=True)
+        table.add_column("id", style="bold")
+        table.add_column("Harvester")
+        table.add_column("Rancher")
+        table.add_column("note", overflow="fold")
+        for r in rows:
+            table.add_row(
+                r.id,
+                r.harvester_url or "—",
+                r.rancher_url or "—",
+                (r.note or "")[:80],
+            )
+        console.print()
+        console.print(table)
+        console.print(
+            "\n  [dim]Passwords stay on each host in ~/.rodeo/secrets.yaml[/dim]\n"
+        )

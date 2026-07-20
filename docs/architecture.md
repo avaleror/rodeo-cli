@@ -186,6 +186,8 @@ rodeo/
 │   ├── suse_virt.py       Harvester HCI + Rancher (default workshop profile)
 │   └── suse_edge.py       SUSE Edge 3.6 (Rancher + Elemental + EIB + edge nodes)
 ├── commands/              Thin CLI wrappers
+├── service/               JSON report helpers (doctor, status) for CLI + fleet
+├── fleet/                 Laptop→host workshop fan-out (OpenSSH; see docs/fleet.md)
 ├── widgets/               TUI panels
 └── data/
     ├── platforms/         definition.yaml per tech platform (suse-virt, suse-edge, rancher)
@@ -194,8 +196,8 @@ rodeo/
     ├── deployer/          inventory.local + legacy examples
     └── templates/         init templates
 
-tests/                     pytest (config, runner, cluster, ansible contract, …)
-docs/                      architecture.md, get-started.md, assets/diagrams/
+tests/                     pytest (config, runner, cluster, ansible contract, fleet, …)
+docs/                      architecture.md, get-started.md, fleet.md, …
 ```
 
 ---
@@ -423,6 +425,16 @@ Live KVM regression is still manual (or geekohive) before touching MAC/DHCP/ISO 
 | New CLI command | `commands/*.py` + register in `cli.py` |
 | Host OS support | `install_deps.py` + possibly kvm_host role conditionals |
 | New workshop/demo | Separate repo: `rodeo-plan.yaml` (type + deployment_target) + lab guide + host setup docs |
+| Multi-host workshop fan-out | `rodeo/fleet/` + `workshop.yaml` — see [Fleet](fleet.md); do not multi-host the phase engine |
+
+---
+
+## Fleet (multi-host workshops)
+
+For N identical student/instructor KVM hosts, the laptop runs `rodeo fleet` over
+OpenSSH. Each remote still executes single-host `rodeo up` / `doctor` / `status`.
+Phases F0–F2: JSON reports → read-only fan-out → deploy/retry/access. Details and
+inventory schema: [Fleet](fleet.md). MCP is Phase F3 (ROADMAP).
 
 ---
 
@@ -431,5 +443,6 @@ Live KVM regression is still manual (or geekohive) before touching MAC/DHCP/ISO 
 | Document | Audience |
 |----------|----------|
 | [User guide](get-started.md) | Workshop operators deploying labs |
+| [Fleet](fleet.md) | Multi-host workshop orchestration (F0–F2) |
 | [ROADMAP.md](https://github.com/avaleror/rodeo-cli/blob/main/ROADMAP.md) | Planned Terraform-for-labs features |
 | [CONTEXT.md](https://github.com/avaleror/rodeo-cli/blob/main/CONTEXT.md) | Full project context for AI/developers |

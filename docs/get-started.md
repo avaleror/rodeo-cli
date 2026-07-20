@@ -74,6 +74,12 @@ Once a lab is up, it's something you operate, not a one-shot script:
 
 <code>rodeo new mylab --from harvester</code> scaffolds an editable profile under `~/.rodeo/profiles/mylab`. Edit the YAML, run `rodeo up --profile mylab`, and the lab converges to match. See [Create your own rodeo](custom-rodeos.md).
 
+## Many hosts (workshop fleet)
+
+To deploy the **same** lab on a list of remote KVM hosts from your laptop (Equinix,
+bare metal, etc.), use `rodeo fleet` with a `workshop.yaml` inventory — doctor,
+status, deploy, retry, and an access URL sheet. See [Fleet](fleet.md).
+
 ## Something not working?
 
 Check the [Troubleshooting runbook](runbook.md) — it covers stuck deploys, timed-out Harvester installs, unreachable VIPs, and a handful of other issues hit on real hosts.

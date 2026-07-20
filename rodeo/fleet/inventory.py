@@ -9,6 +9,8 @@ import yaml
 
 from ..config import ConfigError
 
+_VALID_TARGETS = frozenset({"baremetal", "instruqt"})
+
 
 @dataclass(frozen=True)
 class FleetHost:
@@ -29,6 +31,17 @@ class FleetInventory:
     lab_dir: str
     defaults: dict[str, Any]
     hosts: list[FleetHost]
+    # F2 deploy fields (optional for doctor/status)
+    lab_source: str | None = None  # git URL (optional git: prefix)
+    lab_branch: str | None = None
+    lab_profile: str | None = None  # bundled/custom profile to seed
+    lab_target: str = "baremetal"
+    deploy_concurrency: int = 4
+    harvester_ui_port: int = 8443
+    rancher_ui_port: int = 30002
+    install_url: str = (
+        "https://raw.githubusercontent.com/avaleror/rodeo-cli/main/install.sh"
+    )
 
     @property
     def ssh_user(self) -> str:
@@ -65,7 +78,34 @@ def load_inventory(path: str | Path) -> FleetInventory:
         raise ConfigError("lab: must be a mapping")
     lab_dir = str(lab.get("dir") or "").strip()
     if not lab_dir:
-        raise ConfigError("lab.dir is required (remote path for status)")
+        raise ConfigError("lab.dir is required (remote path for status/deploy)")
+
+    lab_source = lab.get("source")
+    lab_source_s = str(lab_source).strip() if lab_source else None
+    lab_branch = lab.get("branch")
+    lab_branch_s = str(lab_branch).strip() if lab_branch else None
+    lab_profile = lab.get("profile")
+    lab_profile_s = str(lab_profile).strip() if lab_profile else None
+    lab_target = str(lab.get("target") or "baremetal").strip().lower()
+    if lab_target not in _VALID_TARGETS:
+        raise ConfigError(
+            f"lab.target must be one of {sorted(_VALID_TARGETS)}, got: {lab_target}"
+        )
+
+    concurrency = int(lab.get("concurrency") or 4)
+    if concurrency < 1 or concurrency > 64:
+        raise ConfigError("lab.concurrency must be between 1 and 64")
+
+    ports = lab.get("ports") or {}
+    if ports and not isinstance(ports, dict):
+        raise ConfigError("lab.ports must be a mapping")
+    harvester_port = int(ports.get("harvester") or 8443)
+    rancher_port = int(ports.get("rancher") or 30002)
+
+    install_url = str(
+        lab.get("install_url")
+        or "https://raw.githubusercontent.com/avaleror/rodeo-cli/main/install.sh"
+    ).strip()
 
     defaults = raw.get("defaults") or {}
     if not isinstance(defaults, dict):
@@ -104,7 +144,28 @@ def load_inventory(path: str | Path) -> FleetInventory:
             )
         )
 
-    return FleetInventory(name=name, lab_dir=lab_dir, defaults=dict(defaults), hosts=hosts)
+    return FleetInventory(
+        name=name,
+        lab_dir=lab_dir,
+        defaults=dict(defaults),
+        hosts=hosts,
+        lab_source=lab_source_s,
+        lab_branch=lab_branch_s,
+        lab_profile=lab_profile_s,
+        lab_target=lab_target,
+        deploy_concurrency=concurrency,
+        harvester_ui_port=harvester_port,
+        rancher_ui_port=rancher_port,
+        install_url=install_url,
+    )
+
+
+def require_deploy_config(inventory: FleetInventory) -> None:
+    """Fail closed when neither git source nor profile is set (needed for deploy)."""
+    if not inventory.lab_source and not inventory.lab_profile:
+        raise ConfigError(
+            "fleet deploy requires lab.source (git URL) or lab.profile in workshop.yaml"
+        )
 
 
 def select_hosts(
@@ -141,3 +202,16 @@ def parse_label_opts(raw: tuple[str, ...] | list[str]) -> dict[str, str]:
             raise ConfigError(f"label key empty in: {item}")
         out[key] = value
     return out
+
+
+def host_public_ip(host: FleetHost) -> str | None:
+    """Return public_ip or best-effort host part of ssh target."""
+    if host.public_ip:
+        return host.public_ip
+    target = host.ssh
+    if "@" in target:
+        target = target.split("@", 1)[1]
+    # strip optional :port
+    if target.count(":") == 1 and not target.startswith("["):
+        target = target.rsplit(":", 1)[0]
+    return target or None

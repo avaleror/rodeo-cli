@@ -1,82 +1,178 @@
-# Fleet — workshop fan-out
+# Fleet — multi-host workshop orchestration
 
-Laptop-side control plane that runs the same single-host `rodeo` checks on many
-KVM hosts over **OpenSSH**. Remotes still converge labs independently; fleet only
-orchestrates.
+Laptop-side control plane that drives **many remote KVM hosts** over OpenSSH.
+Each host still runs normal single-host `rodeo`; fleet only fans out and tracks
+jobs. Engine phases, Ansible roles, and nested networking are unchanged.
 
-## Status (v1 / F1)
+See also: [Get started](get-started.md) (single host), [Architecture](architecture.md).
 
-| Command | What it does |
-|---------|----------------|
-| `rodeo fleet doctor -f workshop.yaml` | Remote `rodeo doctor --output json` on each host |
-| `rodeo fleet status -f workshop.yaml` | Remote `rodeo status --output json` in `lab.dir` |
+## Capabilities by phase
 
-**Not in F1:** `fleet deploy` / `retry`, MCP, cloud host provisioning.
+| Phase | What shipped | Commands |
+|-------|----------------|----------|
+| **F0** | Machine-readable host CLI | `rodeo doctor --output json`, `rodeo status --output json` |
+| **F1** | Inventory + read-only fan-out | `rodeo fleet doctor`, `rodeo fleet status` |
+| **F2** | Deploy / retry / access sheet | `rodeo fleet deploy`, `retry`, `access` |
+| **F3** | MCP (not yet) | — |
 
-Host CLI prerequisites (already on each lab machine after `install.sh`):
+Host prerequisites (after [`install.sh`](https://github.com/avaleror/rodeo-cli/blob/main/install.sh) on each lab machine):
 
 ```bash
 rodeo doctor --output json
-rodeo status --output json   # from the lab directory
+# from the lab directory:
+rodeo status --output json
 ```
+
+---
+
+## F0 — JSON on a single host
+
+Structured reports live in `rodeo/service/` so CLI and fleet share one shape.
+
+```bash
+rodeo doctor --output json
+rodeo status --output json   # requires a lab (cwd or --config-dir)
+```
+
+Default `--output text` keeps the existing Rich tables.
+
+---
 
 ## Inventory (`workshop.yaml`)
 
 ```yaml
 name: suse-virt-rodeo-emea
 lab:
-  dir: /root/suse-virt-workshop   # remote cwd for fleet status
+  dir: /root/suse-virt-workshop     # remote path (status + deploy cwd)
+  # F2 — one of:
+  source: git:https://github.com/avaleror/suse-virt-workshop.git
+  # profile: harvester              # alternative: seed bundled/custom profile
+  branch: main                      # optional (git only)
+  target: baremetal                 # baremetal | instruqt
+  concurrency: 4                    # default -j for deploy/retry
+  ports:
+    harvester: 8443                 # DNAT on host public IP
+    rancher: 30002
 defaults:
   ssh_user: root
   # identity_file: /home/you/.ssh/id_ed25519
   # ssh_options: ["ProxyJump=bastion.example"]
 hosts:
   - id: student-01
-    ssh: 203.0.113.11            # host or user@host
-    public_ip: 203.0.113.11      # reserved for a future access sheet
+    ssh: 203.0.113.11               # host or user@host
+    public_ip: 203.0.113.11         # used by fleet access
     labels: { room: a }
   - id: student-02
     ssh: root@lab-02.example
+    public_ip: 203.0.113.12
     labels: { room: b }
 ```
 
 Validation is fail-closed: unique `id`, required `ssh`, required `lab.dir`.
+`lab.source` or `lab.profile` is required only for **deploy** / **retry**.
 
-## Usage
+---
+
+## F1 — doctor and status
 
 ```bash
-# All hosts
 rodeo fleet doctor -f workshop.yaml
 rodeo fleet status -f workshop.yaml --output json
 
-# Selectors
 rodeo fleet doctor -f workshop.yaml --label room=a
-rodeo fleet status -f workshop.yaml --host student-01 --host student-02
-
-# Parallelism (default 8)
-rodeo fleet doctor -f workshop.yaml -j 4
+rodeo fleet status -f workshop.yaml --host student-01 -j 4
 ```
 
-Exit code `0` only when every selected host succeeds. Partial results are still
-printed (table or JSON). For `fleet doctor`, "succeeds" means the host is
-actually workshop-ready (KVM present, nested virt on, required tools present,
-a bundled profile fits available RAM) — not just that SSH connected and
-`rodeo doctor` returned. Local `rodeo doctor` is a read-only advisory command
-and always exits 0 on its own, so this readiness check is computed fleet-side
-from the JSON report (`rodeo/fleet/doctor.py::_readiness_problems`).
+- Exit `0` only when every selected host succeeds.
+- **doctor:** remote process exit is not enough — fleet also checks KVM, nested
+  virt, core tools, and that a bundled profile fits RAM
+  (`rodeo/fleet/doctor.py::_readiness_problems`).
+- **status:** runs in `lab.dir` on each host. If `workshop.job.yaml` exists,
+  status refreshes per-host job states for later retry.
+
+---
+
+## F2 — deploy, retry, access
+
+### Instructor flow
+
+```bash
+rodeo fleet doctor -f workshop.yaml -j 8
+rodeo fleet deploy -f workshop.yaml -j 4
+rodeo fleet status -f workshop.yaml          # poll until phases complete
+rodeo fleet retry -f workshop.yaml --failed-only
+rodeo fleet access -f workshop.yaml --output json
+```
+
+### What `fleet deploy` does on each host
+
+1. Ensure `rodeo` is on PATH (runs `install.sh` if missing).
+2. Sync lab: `git clone` / `git pull --ff-only`, or `rodeo up --no-deploy` for a profile.
+3. Start **detached tmux** running `rodeo up --yes --no-tmux` in `lab.dir`
+   (session name `rodeo-fleet-<workshop>-<host-id>`).
+4. Return immediately — does **not** wait for the 90–150 minute install.
+5. Write **`workshop.job.yaml`** beside the inventory (chmod 600).
+
+Hosts whose phases are already all `completed` are **skipped** unless `--force`.
+
+Secrets: generated **per host** by remote `rodeo up` — fleet never scp’s a shared
+`secrets.yaml`.
+
+### Job file
+
+```yaml
+workshop: suse-virt-rodeo-emea
+hosts:
+  student-01:
+    state: running    # pending | running | ok | failed
+    tmux: rodeo-fleet-suse-virt-rodeo-emea-student-01
+  student-02:
+    state: failed
+    last_error: "..."
+```
+
+### Retry
+
+```bash
+rodeo fleet retry -f workshop.yaml --failed-only   # default
+rodeo fleet retry -f workshop.yaml --all-selected  # ignore job failures; use --host/--label
+```
+
+Refreshes job state from live `status`, then re-starts deploy with `--force` on
+the chosen hosts.
+
+### Access sheet
+
+```bash
+rodeo fleet access -f workshop.yaml
+```
+
+| id | Harvester | Rancher |
+|----|-----------|---------|
+| student-01 | `https://203.0.113.11:8443` | `https://203.0.113.11:30002` |
+
+Nested VIP stays `192.168.122.10` inside each host; students use **host public IP +
+DNAT**. Passwords are **never** printed — they live on each host in
+`~/.rodeo/secrets.yaml`.
+
+---
 
 ## OpenSSH requirements
 
 - Key-based auth with `BatchMode=yes` (no password prompts).
-- Host keys are not verified (`StrictHostKeyChecking=no`, `UserKnownHostsFile=/dev/null`) — same trade-off `rodeo/ssh.py` already makes for host→VM connections. Workshop hosts are treated as ephemeral lab machines, not long-lived trusted infrastructure; nothing needs pre-accepting in `known_hosts` before the first run.
+- Host keys are not verified (`StrictHostKeyChecking=no`,
+  `UserKnownHostsFile=/dev/null`) — same trade-off as host→VM `rodeo/ssh.py`.
+  Workshop hosts are treated as ephemeral lab machines.
 - `ssh` on the laptop PATH; Agent / `ProxyJump` / `identity_file` work as usual.
-- On each remote: `rodeo` on PATH for the SSH user (same as workshop install).
+- On each remote: `rodeo` + `tmux` on PATH for the SSH user; typically `root@`.
 
-Fleet does **not** sudo-re-exec on the laptop. If remote `status` fails for
-libvirt permissions, the host row shows the remote stderr — fix access on that
-host (run as root or libvirt group), then re-run.
+Fleet does **not** sudo-re-exec on the laptop.
 
-## Design note
+## Design notes
 
-`rodeo/ssh.py` remains host→VM lab options. Laptop→host SSH lives in
-`rodeo/fleet/ssh_exec.py` so the two layers stay separate.
+- `rodeo/ssh.py` = host→VM lab connections.
+- `rodeo/fleet/ssh_exec.py` = laptop→KVM host.
+- Concurrency defaults: doctor/status `-j 8`; deploy/retry use `lab.concurrency`
+  (default 4) unless `-j` is set. Prefer low concurrency for deploy (ISO/network).
+- Not in scope yet: MCP (F3), Equinix/AWS host provisioning, shared secrets,
+  changing the phase pipeline.

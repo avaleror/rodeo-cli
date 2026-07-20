@@ -68,6 +68,12 @@ Credentials live in `~/.rodeo/secrets.yaml`, chmod 600, referenced from plans wi
 `rodeo status`, `rodeo stop`/`start`, `rodeo set-password`, `rodeo install-extensions`, `rodeo clean` — the lab is a thing you operate, not a one-shot script.
 </div>
 
+<div class="rc-card" markdown>
+<div class="rc-card-label">Workshops</div>
+### Fleet fan-out
+`rodeo fleet` drives the same lab across many remote KVM hosts over SSH — doctor, deploy, retry, and student URL sheets. See [Fleet](fleet.md).
+</div>
+
 </div>
 
 ## See it in one command

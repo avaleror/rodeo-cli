@@ -278,7 +278,7 @@ over OpenSSH (workshop inventory). Engine/phases stay single-host. See [docs/fle
 
 - [x] F0 — `rodeo doctor|status --output json` via `rodeo/service/`
 - [x] F1 — `workshop.yaml` + `rodeo fleet doctor|status` (OpenSSH fan-out, labels, concurrency)
-- [ ] F2 — `rodeo fleet deploy|retry` (remote `rodeo up --yes` in tmux, failed-only retry, access URL sheet)
+- [x] F2 — `rodeo fleet deploy|retry|access` (tmux start, job file, failed-only retry, URL sheet)
 - [ ] F3 — MCP tools on top of fleet (after F2)
 - [ ] Optional host-acquire helpers (Equinix/AWS → inventory) — separate from converge
 

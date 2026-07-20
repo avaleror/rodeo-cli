@@ -75,6 +75,7 @@ nav:
   - Examples:
     - Bare metal: examples/bare-metal.md
     - Instruqt track: examples/instruqt.md
+    - Workshop fleet inventory: examples/workshop.md
     - Testing & CI: examples/testing.md
   - Troubleshooting: runbook.md
   - Architecture: architecture.md

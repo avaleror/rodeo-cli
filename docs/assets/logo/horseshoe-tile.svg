@@ -4,8 +4,14 @@
       <path d="M 81 31.63 A 42 42 0 1 1 39 31.63"
             fill="none" stroke="#00ff9d" stroke-width="10"
             stroke-linecap="round" />
-      <circle cx="23.63" cy="47" r="3" fill="#0a0a0f" />
-      <circle cx="96.37" cy="47" r="3" fill="#0a0a0f" />
+      <circle cx="89.7" cy="38.3" r="2.5" fill="#0a0a0f" />
+      <circle cx="101.84" cy="64.34" r="2.5" fill="#0a0a0f" />
+      <circle cx="94.4" cy="92.09" r="2.5" fill="#0a0a0f" />
+      <circle cx="70.87" cy="108.57" r="2.5" fill="#0a0a0f" />
+      <circle cx="30.3" cy="38.3" r="2.5" fill="#0a0a0f" />
+      <circle cx="18.16" cy="64.34" r="2.5" fill="#0a0a0f" />
+      <circle cx="25.6" cy="92.09" r="2.5" fill="#0a0a0f" />
+      <circle cx="49.13" cy="108.57" r="2.5" fill="#0a0a0f" />
       <path d="M 46 60 L 60 70 L 46 80" fill="none" stroke="#00ff9d"
             stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
       <rect x="66" y="74" width="16" height="10" rx="2" fill="#00ff9d" />

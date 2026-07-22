@@ -1,4 +1,7 @@
-# rodeo-cli
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo/wordmark-dark.png">
+  <img alt="rodeo-cli" src="docs/assets/logo/wordmark-light.png" height="60">
+</picture>
 
 A CLI for deploying hands-on lab infrastructure. Point it at a Linux host with KVM, pick a profile, and it builds a working lab of nested VMs — Harvester HCI clusters, Rancher Prime, or a full SUSE Edge stack — without you writing a line of Ansible or touching libvirt directly.
 

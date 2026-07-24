@@ -29,6 +29,9 @@ hosts:
 rodeo fleet doctor -f workshop.yaml
 rodeo fleet deploy -f workshop.yaml -j 4
 rodeo fleet status -f workshop.yaml
-rodeo fleet diagnose -f workshop.yaml
+rodeo fleet diagnose -f workshop.yaml   # pull logs if a host fails
+rodeo fleet retry -f workshop.yaml --failed-only
 rodeo fleet access -f workshop.yaml
 ```
+
+Cloud host-acquire (`fleet provision`) is on the [Fleet roadmap](../fleet.md#roadmap) (F4).

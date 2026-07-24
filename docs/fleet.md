@@ -4,18 +4,19 @@ Laptop-side control plane that drives **many remote KVM hosts** over OpenSSH.
 Each host still runs normal single-host `rodeo`; fleet only fans out and tracks
 jobs. Engine phases, Ansible roles, and nested networking are unchanged.
 
-See also: [Get started](get-started.md) (single host), [Architecture](architecture.md).
+See also: [Get started](get-started.md) (single host), [Architecture](architecture.md),
+[ROADMAP.md](https://github.com/avaleror/rodeo-cli/blob/main/ROADMAP.md) (Phase I).
 
 ## Capabilities by phase
 
-| Phase | What shipped | Commands |
-|-------|----------------|----------|
-| **F0** | Machine-readable host CLI | `rodeo doctor --output json`, `rodeo status --output json` |
-| **F1** | Inventory + read-only fan-out | `rodeo fleet doctor`, `rodeo fleet status` |
-| **F2** | Deploy / retry / access sheet | `rodeo fleet deploy`, `retry`, `access` |
-| **F2.1** | Failure forensics | `rodeo fleet diagnose` |
-| **F3** | MCP (not yet) | — |
-| **F4** | Host-acquire (planned) | `fleet provision` / `deprovision` — AWS first, then GCP, then Hetzner Cloud |
+| Phase | Status | What | Commands |
+|-------|--------|------|----------|
+| **F0** | Shipped | Machine-readable host CLI | `rodeo doctor --output json`, `rodeo status --output json` |
+| **F1** | Shipped | Inventory + read-only fan-out | `rodeo fleet doctor`, `rodeo fleet status` |
+| **F2** | Shipped | Deploy / retry / access sheet | `rodeo fleet deploy`, `retry`, `access` |
+| **F2.1** | Shipped | Failure forensics | `rodeo fleet diagnose` |
+| **F3** | Roadmap | MCP tools on top of fleet | — |
+| **F4** | Roadmap | Host-acquire (cloud → inventory) | `fleet provision` / `deprovision` (planned) |
 
 Host prerequisites (after [`install.sh`](https://github.com/avaleror/rodeo-cli/blob/main/install.sh) on each lab machine):
 
@@ -24,6 +25,52 @@ rodeo doctor --output json
 # from the lab directory:
 rodeo status --output json
 ```
+
+---
+
+## Roadmap
+
+What is **not** shipped yet for Fleet. Full checklist: [ROADMAP Phase I](https://github.com/avaleror/rodeo-cli/blob/main/ROADMAP.md#phase-i--fleet--workshop-fan-out).
+
+### F3 — MCP (planned)
+
+Thin MCP tools that wrap existing fleet commands (`doctor`, `status`, `deploy`,
+`diagnose`, `retry`, `access`) so an IDE or agent can drive a workshop without
+reimplementing OpenSSH fan-out. No new provision logic inside MCP — that stays
+CLI-first under F4.
+
+### F4 — Host-acquire (planned)
+
+Today you must already have KVM hosts with SSH in `workshop.yaml`. F4 adds
+**create those hosts from the laptop**, merge them into the inventory, then run
+the normal converge loop.
+
+| Order | Provider | Approach |
+|-------|----------|----------|
+| **F4a** | **AWS** (primary) | Python + `boto3` (`pip install 'rodeo-cli[aws]'`) |
+| **F4b** | **GCP** | Python + `google-cloud-compute` — same `HostProvider` interface |
+| **F4c** | **Hetzner Cloud** | Python + `hcloud` — after GCP; nested KVM must be validated for labs |
+
+**Out of scope:** Equinix Metal (service sunset). Shared secrets across hosts.
+Changing the nested phase engine for multi-host.
+
+Sketch once implemented:
+
+```bash
+rodeo fleet provision -f workshop.yaml    # create/reuse → write hosts[]
+rodeo fleet doctor -f workshop.yaml
+rodeo fleet deploy -f workshop.yaml
+rodeo fleet deprovision -f workshop.yaml --yes
+```
+
+Providers stop at inventory. Deploy / diagnose / retry stay OpenSSH-only.
+Design draft for the shared `HostProvider` Protocol and `provider:` YAML schema:
+[Host-acquire design](#f4-host-acquire-design) below.
+
+### Related (not Fleet-only)
+
+Single-host `deployment_target: aws|gcp` (ROADMAP Phase E) should share the same
+`rodeo/providers/` adapters as Fleet F4 where possible.
 
 ---
 
@@ -213,34 +260,17 @@ Fleet does **not** sudo-re-exec on the laptop.
 - `rodeo/fleet/ssh_exec.py` = laptop→KVM host.
 - Concurrency defaults: doctor/status `-j 8`; deploy/retry use `lab.concurrency`
   (default 4) unless `-j` is set. Prefer low concurrency for deploy (ISO/network).
-- Not in scope yet: MCP (F3); host-acquire F4 beyond the AWS→GCP→Hetzner sequence;
-  Equinix (out of scope); shared secrets; changing the phase pipeline.
+- See [Roadmap](#roadmap) for F3 MCP and F4 host-acquire. Equinix is out of scope.
+  Shared secrets and changing the phase pipeline stay out of Fleet.
 
 ---
 
-## F4 — Host-acquire (planned)
+## F4 host-acquire design
 
-Provision KVM-capable hosts from the laptop, merge them into `workshop.yaml`, then
-use the normal fleet converge loop. **Not implemented yet.**
+Detailed design draft for the planned F4 work (not implemented). Summary in
+[Roadmap](#roadmap).
 
-| Order | Provider | Approach |
-|-------|----------|----------|
-| **F4a** | AWS | Python + `boto3` (`pip install 'rodeo-cli[aws]'`) — primary |
-| **F4b** | GCP | Python + `google-cloud-compute` — same `HostProvider` interface |
-| **F4c** | Hetzner Cloud | Python + `hcloud` — after GCP; nested KVM must be validated for labs |
-
-Equinix Metal is **out of scope** (service sunset).
-
-```bash
-rodeo fleet provision -f workshop.yaml    # create/reuse → write hosts[]
-rodeo fleet doctor -f workshop.yaml
-rodeo fleet deploy -f workshop.yaml
-rodeo fleet deprovision -f workshop.yaml --yes
-```
-
-Providers stop at inventory. Deploy/diagnose/retry stay OpenSSH-only.
-
-### Design: `HostProvider` Protocol (no code yet)
+### `HostProvider` Protocol
 
 Shared contract in planned `rodeo/providers/`. Fleet CLI never imports boto3/GCP/hcloud
 directly — only the registry + this surface.
@@ -286,7 +316,7 @@ GCP uses labels (DNS-1123); normalize keys to lowercase where the cloud requires
 - No shared secrets / AMI publishing pipeline in F4.
 - No Libcloud / OpenTofu required for the default path.
 
-### Design: `workshop.yaml` `provider:` schema
+### `workshop.yaml` `provider:` schema
 
 Top-level `provider:` is optional. Absent → today’s behavior (static `hosts:` only).
 Present → `fleet provision` / `deprovision` are valid; `type` selects the adapter.

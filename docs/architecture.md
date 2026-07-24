@@ -433,9 +433,9 @@ Live KVM regression is still manual (or geekohive) before touching MAC/DHCP/ISO 
 
 For N identical student/instructor KVM hosts, the laptop runs `rodeo fleet` over
 OpenSSH. Each remote still executes single-host `rodeo up` / `doctor` / `status`.
-Phases F0–F2.1: JSON reports → fan-out → deploy/retry/access/diagnose. Planned F4
-host-acquire: **AWS first** (boto3), then **GCP**, then **Hetzner Cloud** — no
-Equinix. Details: [Fleet](fleet.md). MCP is Phase F3 (ROADMAP).
+**Shipped F0–F2.1:** JSON reports → fan-out → deploy/retry/access/diagnose.  
+**Roadmap:** F3 MCP; F4 host-acquire (**AWS** first, then GCP, then Hetzner Cloud).
+Equinix is out of scope. See [Fleet](fleet.md#roadmap).
 
 ---
 
@@ -444,6 +444,6 @@ Equinix. Details: [Fleet](fleet.md). MCP is Phase F3 (ROADMAP).
 | Document | Audience |
 |----------|----------|
 | [User guide](get-started.md) | Workshop operators deploying labs |
-| [Fleet](fleet.md) | Multi-host workshop orchestration (F0–F2.1; F4 AWS→GCP→Hetzner planned) |
+| [Fleet](fleet.md) | Multi-host workshops (F0–F2.1 shipped; [roadmap](fleet.md#roadmap) F3–F4) |
 | [ROADMAP.md](https://github.com/avaleror/rodeo-cli/blob/main/ROADMAP.md) | Planned Terraform-for-labs features |
 | [CONTEXT.md](https://github.com/avaleror/rodeo-cli/blob/main/CONTEXT.md) | Full project context for AI/developers |

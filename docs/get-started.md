@@ -77,9 +77,13 @@ Once a lab is up, it's something you operate, not a one-shot script:
 ## Many hosts (workshop fleet)
 
 To deploy the **same** lab on a list of remote KVM hosts from your laptop (bare
-metal today; AWS / GCP / Hetzner Cloud host-acquire planned), use `rodeo fleet`
-with a `workshop.yaml` inventory — doctor, status, deploy, diagnose, retry, and
-an access URL sheet. See [Fleet](fleet.md).
+metal today), use `rodeo fleet` with a `workshop.yaml` inventory — doctor, status,
+deploy, diagnose, retry, and an access URL sheet.
+
+**Shipped:** F0–F2.1 (JSON reports, fan-out, deploy/retry/access/diagnose).  
+**Roadmap:** MCP (F3); cloud host-acquire AWS → GCP → Hetzner (F4).
+
+See [Fleet](fleet.md) and [Fleet roadmap](fleet.md#roadmap).
 
 ## Something not working?
 

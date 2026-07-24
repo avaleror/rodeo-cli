@@ -71,9 +71,10 @@ Credentials live in `~/.rodeo/secrets.yaml`, chmod 600, referenced from plans wi
 <div class="rc-card" markdown>
 <div class="rc-card-label">Workshops</div>
 ### Fleet fan-out
-`rodeo fleet` drives the same lab across many remote KVM hosts over SSH — doctor,
-deploy, diagnose, retry, and student URL sheets. Host-acquire (AWS → GCP → Hetzner)
-is planned. See [Fleet](fleet.md).
+`rodeo fleet` runs the same lab across many remote KVM hosts over SSH — doctor,
+deploy, diagnose, retry, and student URL sheets. **Shipped through F2.1.** Next on
+the roadmap: MCP (F3) and cloud host-acquire AWS → GCP → Hetzner (F4). See
+[Fleet](fleet.md) and [Fleet roadmap](fleet.md#roadmap).
 </div>
 
 </div>

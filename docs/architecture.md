@@ -433,8 +433,9 @@ Live KVM regression is still manual (or geekohive) before touching MAC/DHCP/ISO 
 
 For N identical student/instructor KVM hosts, the laptop runs `rodeo fleet` over
 OpenSSH. Each remote still executes single-host `rodeo up` / `doctor` / `status`.
-Phases F0–F2: JSON reports → read-only fan-out → deploy/retry/access. Details and
-inventory schema: [Fleet](fleet.md). MCP is Phase F3 (ROADMAP).
+Phases F0–F2.1: JSON reports → fan-out → deploy/retry/access/diagnose. Planned F4
+host-acquire: **AWS first** (boto3), then **GCP**, then **Hetzner Cloud** — no
+Equinix. Details: [Fleet](fleet.md). MCP is Phase F3 (ROADMAP).
 
 ---
 
@@ -443,6 +444,6 @@ inventory schema: [Fleet](fleet.md). MCP is Phase F3 (ROADMAP).
 | Document | Audience |
 |----------|----------|
 | [User guide](get-started.md) | Workshop operators deploying labs |
-| [Fleet](fleet.md) | Multi-host workshop orchestration (F0–F2) |
+| [Fleet](fleet.md) | Multi-host workshop orchestration (F0–F2.1; F4 AWS→GCP→Hetzner planned) |
 | [ROADMAP.md](https://github.com/avaleror/rodeo-cli/blob/main/ROADMAP.md) | Planned Terraform-for-labs features |
 | [CONTEXT.md](https://github.com/avaleror/rodeo-cli/blob/main/CONTEXT.md) | Full project context for AI/developers |

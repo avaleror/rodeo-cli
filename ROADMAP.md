@@ -152,6 +152,8 @@ Approach: the KVM host itself becomes an EC2 / GCE instance. rodeo provisions it
 - [ ] `rodeo destroy` terminates the instance (opt-in; off by default to prevent accidents)
 - [ ] GCP equivalent: Compute Engine with `--enable-nested-virtualization` on N2 / C3
 
+**Share with Fleet F4:** the same `rodeo/providers/aws` (and later `gcp`) adapters should back both single-host `rodeo up --target aws` and multi-host `rodeo fleet provision`. Fleet host-acquire order is AWS → GCP → Hetzner Cloud (see Phase I). Equinix is out of scope.
+
 **Prerequisite for AWS:** Phase B (ownership tagging) must land first so `destroy` can clean up cloud resources safely.
 
 ---
@@ -281,8 +283,11 @@ over OpenSSH (workshop inventory). Engine/phases stay single-host. See [docs/fle
 - [x] F2 — `rodeo fleet deploy|retry|access` (tmux start, job file, failed-only retry, URL sheet)
 - [x] F2.1 — `rodeo fleet diagnose` (central log/status collect for failure forensics)
 - [ ] F3 — MCP tools on top of fleet (after F2)
-
-- [ ] Optional host-acquire helpers (Equinix/AWS → inventory) — separate from converge
+- [ ] F4 — Host-acquire → `workshop.yaml` (separate from converge); Python native SDKs behind `rodeo/providers/`
+  - [ ] F4a — **AWS** (`boto3`, optional `[aws]` extra) — primary
+  - [ ] F4b — **GCP** (`google-cloud-compute`) — after AWS
+  - [ ] F4c — **Hetzner Cloud** (`hcloud`) — after GCP; nested-KVM must be validated for labs
+  - Equinix Metal: **out of scope** (service sunset)
 
 ---
 

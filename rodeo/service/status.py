@@ -9,6 +9,37 @@ from typing import Any
 from ..profiles import get_profile
 from ..state import load_state
 
+# Fallback when remote status JSON predates ``no_cache`` on phase entries.
+# All bundled profiles put ``apply`` in ``no_cache_phases`` (never marked done).
+_DEFAULT_NO_CACHE_PHASES = frozenset({"apply"})
+
+
+def phase_is_no_cache(name: str, info: dict[str, Any]) -> bool:
+    """True when a phase must not block converge / fleet 'complete' checks."""
+    if info.get("no_cache"):
+        return True
+    return name in _DEFAULT_NO_CACHE_PHASES
+
+
+def cacheable_phases_complete(phases: dict[str, Any] | None) -> bool:
+    """Return True when every *cacheable* phase reports completed.
+
+    ``apply`` (and any phase marked ``no_cache``) is re-run every local deploy and
+    is never stored as completed — requiring it made fleet skip/ok detection dead.
+    """
+    if not phases:
+        return False
+    saw_cacheable = False
+    for name, info in phases.items():
+        if not isinstance(info, dict):
+            return False
+        if phase_is_no_cache(name, info):
+            continue
+        saw_cacheable = True
+        if not info.get("completed"):
+            return False
+    return saw_cacheable
+
 
 def vip_reachable(vip: str) -> bool:
     """Return True when HTTPS to the VIP answers (any HTTP status counts)."""
@@ -30,6 +61,7 @@ def status_report(cfg: dict) -> dict[str, Any]:
     plan_name = cfg.get("name", "default")
     state = load_state(plan_name)
     vip = cfg.get("network", {}).get("vip", "")
+    no_cache = getattr(profile, "no_cache_phases", frozenset()) or frozenset()
 
     vm_names = list(cfg.get("vms", {}).keys()) or list(profile.vm_names)
     vms: list[dict[str, Any]] = []
@@ -55,6 +87,8 @@ def status_report(cfg: dict) -> dict[str, Any]:
     for phase in profile.phases:
         info = stored.get(phase) or {}
         entry: dict[str, Any] = {"completed": bool(info.get("completed"))}
+        if phase in no_cache:
+            entry["no_cache"] = True
         if info.get("timestamp"):
             entry["timestamp"] = info["timestamp"]
         if info.get("last_error"):
@@ -67,6 +101,7 @@ def status_report(cfg: dict) -> dict[str, Any]:
         "vip_reachable": vip_reachable(vip) if vip else False,
         "vms": vms,
         "phases": phases_out,
+        "phases_complete": cacheable_phases_complete(phases_out),
     }
     if libvirt_error:
         report["libvirt_error"] = libvirt_error

@@ -118,7 +118,9 @@ rodeo fleet access -f workshop.yaml --output json
 4. Return immediately — does **not** wait for the 90–150 minute install.
 5. Write **`workshop.job.yaml`** beside the inventory (chmod 600).
 
-Hosts whose phases are already all `completed` are **skipped** unless `--force`.
+Hosts whose **cacheable** phases are already all `completed` are **skipped**
+unless `--force`. The `apply` phase is never cached (re-run every local deploy)
+and does not block this check.
 
 Secrets: generated **per host** by remote `rodeo up` — fleet never scp’s a shared
 `secrets.yaml`.

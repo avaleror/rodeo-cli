@@ -193,6 +193,65 @@ def test_fleet_deploy_skips_complete(monkeypatch, tmp_path):
     assert job.hosts["h1"].state == "ok"
 
 
+def test_fleet_deploy_skips_when_apply_incomplete(monkeypatch, tmp_path):
+    """apply is no_cache and never completed — must not block fleet skip/ok."""
+    path = _workshop(tmp_path)
+    inv = load_inventory(path)
+
+    def fake_run(inventory, host, argv, *, timeout=120.0):
+        remote = argv[-1] if argv else ""
+        if "status --output json" in remote:
+            body = {
+                "name": "lab",
+                "phases": {
+                    "kvm_host": {"completed": True},
+                    "vms": {"completed": True},
+                    "pxe_server": {"completed": True},
+                    "cluster": {"completed": True},
+                    "rancher": {"completed": True},
+                    "apply": {"completed": False, "no_cache": True},
+                    "finalise": {"completed": True},
+                },
+            }
+            return RemoteResult(host.id, 0, json.dumps(body), "")
+        raise AssertionError("deploy should not start when cacheable phases done")
+
+    monkeypatch.setattr("rodeo.fleet.deploy.run_remote", fake_run)
+    results, job, _ = fleet_deploy(
+        inv, [inv.hosts[0]], inventory_path=path, concurrency=1, force=False
+    )
+    assert results[0].state == "skipped"
+    assert job.hosts["h1"].state == "ok"
+
+
+def test_fleet_deploy_skips_legacy_status_without_no_cache_flag(monkeypatch, tmp_path):
+    """Older remotes omit no_cache; apply by name must still be ignored."""
+    path = _workshop(tmp_path)
+    inv = load_inventory(path)
+
+    def fake_run(inventory, host, argv, *, timeout=120.0):
+        remote = argv[-1] if argv else ""
+        if "status --output json" in remote:
+            body = {
+                "name": "lab",
+                "phases": {
+                    "kvm_host": {"completed": True},
+                    "vms": {"completed": True},
+                    "rancher": {"completed": True},
+                    "apply": {"completed": False},
+                    "finalise": {"completed": True},
+                },
+            }
+            return RemoteResult(host.id, 0, json.dumps(body), "")
+        raise AssertionError("deploy should not start")
+
+    monkeypatch.setattr("rodeo.fleet.deploy.run_remote", fake_run)
+    results, _, _ = fleet_deploy(
+        inv, [inv.hosts[0]], inventory_path=path, concurrency=1, force=False
+    )
+    assert results[0].state == "skipped"
+
+
 def test_fleet_deploy_cli(monkeypatch, tmp_path):
     path = _workshop(tmp_path)
 

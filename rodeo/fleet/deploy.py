@@ -11,6 +11,7 @@ from typing import Any
 
 from .bootstrap import bootstrap_script
 from .fanout import fanout
+from ..service.status import cacheable_phases_complete, phase_is_no_cache
 from .inventory import FleetHost, FleetInventory, require_deploy_config
 from .job import FleetJob, HostJobRecord, job_path_for, new_job, save_job
 from .ssh_exec import run_remote
@@ -128,7 +129,10 @@ def _maybe_skip_complete(
     *,
     timeout: float,
 ) -> HostDeployResult | None:
-    """Return a skipped result when remote status shows all phases completed."""
+    """Return a skipped result when remote cacheable phases are all completed.
+
+    Ignores ``no_cache`` phases such as ``apply`` (never marked completed).
+    """
     lab = shlex.quote(inventory.lab_dir)
     result = run_remote(
         inventory,
@@ -144,10 +148,9 @@ def _maybe_skip_complete(
         return None
     if not isinstance(report, dict):
         return None
-    phases = report.get("phases") or {}
-    if not phases:
-        return None
-    if all(isinstance(p, dict) and p.get("completed") for p in phases.values()):
+    if report.get("phases_complete") is True or cacheable_phases_complete(
+        report.get("phases")
+    ):
         return HostDeployResult(
             id=host.id,
             ok=True,
@@ -251,8 +254,8 @@ def refresh_job_from_status(
                 )
             continue
         phases = sr.report.get("phases") or {}
-        if phases and all(
-            isinstance(p, dict) and p.get("completed") for p in phases.values()
+        if sr.report.get("phases_complete") is True or cacheable_phases_complete(
+            phases
         ):
             job.set_host(
                 sr.id,
@@ -262,12 +265,14 @@ def refresh_job_from_status(
                 detail="phases complete",
             )
         else:
-            # still converging
+            # still converging — ignore errors on no_cache phases (e.g. apply)
             failed_phase = next(
                 (
                     name
                     for name, p in phases.items()
-                    if isinstance(p, dict) and p.get("last_error")
+                    if isinstance(p, dict)
+                    and p.get("last_error")
+                    and not phase_is_no_cache(name, p)
                 ),
                 None,
             )

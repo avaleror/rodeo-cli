@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from rodeo.service.status import status_report
+from rodeo.service.status import cacheable_phases_complete, status_report
 
 
 @dataclass
@@ -59,7 +59,63 @@ def test_status_report_shape(monkeypatch):
     assert report["vms"][0]["autostart"] is True
     assert report["phases"]["kvm_host"]["completed"] is True
     assert report["phases"]["vms"]["last_error"] == "boom"
+    assert report["phases"]["apply"]["no_cache"] is True
+    assert report["phases"]["apply"]["completed"] is False
+    assert report["phases_complete"] is False
     assert "libvirt_error" not in report
+
+
+def test_cacheable_phases_complete_ignores_apply():
+    phases = {
+        "kvm_host": {"completed": True},
+        "vms": {"completed": True},
+        "rancher": {"completed": True},
+        "apply": {"completed": False, "no_cache": True},
+        "finalise": {"completed": True},
+    }
+    assert cacheable_phases_complete(phases) is True
+    phases["rancher"] = {"completed": False}
+    assert cacheable_phases_complete(phases) is False
+    # Legacy remotes: no no_cache flag, still ignore apply by name
+    assert (
+        cacheable_phases_complete(
+            {
+                "kvm_host": {"completed": True},
+                "apply": {"completed": False},
+            }
+        )
+        is True
+    )
+
+
+def test_status_report_phases_complete_when_cacheable_done(monkeypatch):
+    monkeypatch.setattr(
+        "rodeo.service.status.load_state",
+        lambda name: {
+            "phases": {
+                "kvm_host": {"completed": True},
+                "vms": {"completed": True},
+                "boot": {"completed": True},
+                "rancher": {"completed": True},
+                "finalise": {"completed": True},
+            }
+        },
+    )
+    monkeypatch.setattr("rodeo.service.status.vip_reachable", lambda vip: False)
+    monkeypatch.setattr(
+        "rodeo.engine.libvirt.LibvirtDriver",
+        lambda uri: _FakeLV(),
+    )
+    cfg = {
+        "name": "lab",
+        "type": "rancher",
+        "network": {"vip": "192.168.122.10"},
+        "libvirt": {"uri": "qemu:///system"},
+        "vms": {"rancher": {}},
+    }
+    report = status_report(cfg)
+    assert report["phases"]["apply"]["no_cache"] is True
+    assert report["phases_complete"] is True
 
 
 def test_status_report_libvirt_error(monkeypatch):

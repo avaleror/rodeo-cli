@@ -22,7 +22,7 @@ from rich.console import Console
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
-from ..config import find_ansible_root, find_lab_dir, load_config, validate_config
+from ..config import ConfigError, find_ansible_root, find_lab_dir, load_config, validate_config
 from ..labseed import custom_profile_dir, profile_kind, seed_lab
 from ..preflight import (
     PROFILE_SIZING,
@@ -42,12 +42,13 @@ from ..privilege import (
     tmux_available,
 )
 from ..paths import invoking_home
+from ..providers.remote_up import execute_aws_up, on_ec2
 from ..secretgen import ensure_secrets_file
 from .deploy import execute_deploy
 
 console = Console()
 
-_VALID_TARGETS = ("baremetal", "instruqt")
+_VALID_TARGETS = ("baremetal", "instruqt", "aws")
 
 
 def _default_labs_root() -> Path:
@@ -71,7 +72,8 @@ def _default_labs_root() -> Path:
     "deployment_target",
     default=None,
     type=click.Choice(list(_VALID_TARGETS), case_sensitive=False),
-    help="Where this lab runs: 'baremetal' or 'instruqt' (default: auto-detect).",
+    help="Where this lab runs: 'baremetal', 'instruqt', or 'aws' "
+         "(aws = provision EC2 then remote deploy; default: auto-detect).",
 )
 @click.option("--resume", is_flag=True, hidden=True,
               help="Internal: continue after sudo re-exec.")
@@ -145,19 +147,36 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
             )
 
     console.print("\n[bold]rodeo up[/bold] — let's get a lab running.\n")
-    _print_host(host)
 
-    # 1. Host dependencies.
-    if not _ensure_host_ready(host, assume_yes):
-        raise SystemExit(1)
-    host = detect_host()  # re-read after any install
+    # AWS from a laptop = control plane: provision EC2, then remote-run up.
+    # On the EC2 guest itself (IMDS), fall through to a normal local deploy
+    # with baremetal phase behaviour.
+    aws_control_plane = (
+        deployment_target == "aws" and not resume and not on_ec2()
+    )
+
+    if not aws_control_plane:
+        _print_host(host)
+        # 1. Host dependencies.
+        if not _ensure_host_ready(host, assume_yes):
+            raise SystemExit(1)
+        host = detect_host()  # re-read after any install
+    else:
+        console.print(
+            "[dim]AWS control plane — will provision EC2 and remote-run "
+            "rodeo up --target baremetal on the instance.[/dim]\n"
+        )
 
     # 2. A lab to deploy.
     lab_ready = lab is not None and (
         (lab / "rodeo-plan.yaml").exists() or (lab / "definition.yaml").exists()
     )
     if not lab_ready:
-        chosen = profile or _choose_profile(host, assume_yes)
+        if aws_control_plane:
+            # Laptop has no nested-KVM sizing; require an explicit profile.
+            chosen = profile or "harvester"
+        else:
+            chosen = profile or _choose_profile(host, assume_yes)
         kind = profile_kind(chosen)
         if kind is None:
             console.print(
@@ -199,20 +218,64 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
         console.print("  rodeo up")
         return
 
-    # 4. Confirm + deploy (escalating to root for the privileged phases).
+    # 4. Confirm + deploy.
     if not assume_yes and not Confirm.ask("\nDeploy now? (takes ~1-2 h on nested KVM)", default=True):
         console.print("Nothing deployed. Re-run [bold]rodeo up[/bold] when ready.")
         return
 
+    if aws_control_plane:
+        assert lab is not None
+        _aws_control_plane_deploy(lab, profile=profile)
+        return
+
+    # On EC2 with deployment_target aws: run local phases as baremetal.
+    local_target = "baremetal" if deployment_target == "aws" else deployment_target
+    if deployment_target == "aws" and lab is not None:
+        _plan_path = lab / "rodeo-plan.yaml"
+        if _plan_path.exists():
+            import yaml as _yaml
+            _plan_data = _yaml.safe_load(_plan_path.read_text()) or {}
+            # Keep aws in the plan for destroy --cloud; phases use baremetal below.
+            if _plan_data.get("deployment_target") != "aws":
+                _plan_data["deployment_target"] = "aws"
+                _plan_path.write_text(_yaml.dump(_plan_data, default_flow_style=False))
+
     if not is_root():
         console.print("\n[bold]Switching to root for the install[/bold] (sudo)…")
         resume_args = ["up", "--resume", "--dir", str(lab), "--yes",
-                       "--target", deployment_target]
+                       "--target", local_target if deployment_target != "aws" else "baremetal"]
         if reconcile:
             resume_args.append("--reconcile")
         ensure_root(resume_args)  # does not return
 
     _deploy(lab, assume_yes=assume_yes, reconcile=reconcile)
+
+
+def _aws_control_plane_deploy(lab: Path, *, profile: str | None) -> None:
+    """Provision EC2 + remote ``rodeo up --target baremetal`` from the laptop."""
+    try:
+        cfg = load_config("rodeo-plan.yaml", config_dir=str(lab))
+        validate_config(cfg)
+    except ValueError as exc:
+        console.print(f"[red]✗  {exc}[/red]")
+        raise SystemExit(1)
+
+    console.print("\n[bold]Provisioning AWS KVM host[/bold]…")
+    try:
+        provisioned = execute_aws_up(cfg, profile=profile)
+    except ConfigError as exc:
+        console.print(f"[red]✗  {exc}[/red]")
+        raise SystemExit(1)
+
+    ip = provisioned.public_ip
+    console.print(
+        f"\n[green]✓[/green]  Remote deploy started on [cyan]{ip}[/cyan] "
+        f"(instance {provisioned.provider_id or '—'}).\n"
+        f"  Harvester UI (when ready):  https://{ip}:8443\n"
+        f"  Rancher UI (when ready):    https://{ip}:30002\n"
+        f"  Tear down host:             rodeo destroy --cloud --yes "
+        f"(from this lab dir)\n"
+    )
 
 
 # --------------------------------------------------------------------------- #

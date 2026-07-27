@@ -1,0 +1,16 @@
+---
+description: Commit message style, no AI attribution, what never to commit
+alwaysApply: true
+---
+
+# Git and commits
+
+- Messages: short, imperative, factual — e.g. `fix(vms): curl -4 for IPv6-broken hosts`
+- No trailing summaries in the commit body unless the user asks
+- **Never** add `Co-Authored-By: Claude`, `Co-Authored-By: Cursor`, or any AI attribution
+- Never commit `CLAUDE.md`, `.DS_Store`, `secrets.yaml`, or credential files
+- Only commit when the user explicitly asks
+- No force-push / hard reset / amend unless the user explicitly requests it
+- Never mention kcli in commits, docs, code, or comments
+
+Credentials live in `~/.rodeo/secrets.yaml` (chmod 600). Plans use `??key`. Never put real credentials in the repo.

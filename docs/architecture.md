@@ -63,7 +63,7 @@ rancher            aws              Rancher on an AWS EC2 KVM host
 |---|---|---|
 | `baremetal` | Linux bare metal with KVM | full firewalld + DNAT |
 | `instruqt` | Instruqt managed KVM builder | `finalise` phase guarded; Instruqt-aware networking |
-| `aws` *(planned)* | EC2 instance with KVM | external IP via EC2 metadata; security groups |
+| `aws` | Laptop provisions EC2; lab runs on the instance as baremetal | shared `provider:` + `rodeo destroy --cloud` |
 | `gcp` *(planned)* | GCP instance with KVM | external IP via GCE metadata; VPC firewall rules |
 
 Adding a new host context requires four touch points: `config.py` allowed list, `up_cmd.py` auto-detection, `runner.py` vars file, `success.py` output. See the Extension points table below.
@@ -434,7 +434,8 @@ Live KVM regression is still manual (or geekohive) before touching MAC/DHCP/ISO 
 For N identical student/instructor KVM hosts, the laptop runs `rodeo fleet` over
 OpenSSH. Each remote still executes single-host `rodeo up` / `doctor` / `status`.
 **Shipped F0–F2.1:** JSON reports → fan-out → deploy/retry/access/diagnose.  
-**Roadmap:** F3 MCP; F4 host-acquire (**AWS** first, then GCP, then Hetzner Cloud).
+**Roadmap:** F3 MCP; F4a AWS + Phase E single-host `rodeo up --target aws` MVP;
+next **GCP** → **Vultr Bare Metal** → Hetzner Cloud.
 Equinix is out of scope. See [Fleet](fleet.md#roadmap).
 
 ---
@@ -444,6 +445,6 @@ Equinix is out of scope. See [Fleet](fleet.md#roadmap).
 | Document | Audience |
 |----------|----------|
 | [User guide](get-started.md) | Workshop operators deploying labs |
-| [Fleet](fleet.md) | Multi-host workshops (F0–F2.1 shipped; [roadmap](fleet.md#roadmap) F3–F4) |
+| [Fleet](fleet.md) | Multi-host workshops (F0–F2.1 + F4a AWS MVP; [roadmap](fleet.md#roadmap) F3, F4b–d) |
 | [ROADMAP.md](https://github.com/avaleror/rodeo-cli/blob/main/ROADMAP.md) | Planned Terraform-for-labs features |
 | [CONTEXT.md](https://github.com/avaleror/rodeo-cli/blob/main/CONTEXT.md) | Full project context for AI/developers |

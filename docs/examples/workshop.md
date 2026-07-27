@@ -34,4 +34,60 @@ rodeo fleet retry -f workshop.yaml --failed-only
 rodeo fleet access -f workshop.yaml
 ```
 
-Cloud host-acquire (`fleet provision`) is on the [Fleet roadmap](../fleet.md#roadmap) (F4).
+### AWS host-acquire (F4a MVP)
+
+```yaml
+# workshop.yaml — hosts: [] until provision fills them
+name: demo
+lab:
+  dir: /root/lab
+  profile: harvester
+defaults:
+  ssh_user: ec2-user
+  identity_file: ~/.ssh/rodeo-workshop.pem
+provider:
+  type: aws
+  count: 2
+  region: eu-central-1
+  instance_type: m7i.metal-24xl   # or nested-virt Nitro + nested_virtualization: true
+  ami: ami-…
+  key_name: rodeo-workshop
+  subnet_id: subnet-…
+  security_group_ids: [sg-…]
+hosts: []
+```
+
+```bash
+pip install 'rodeo-cli[aws]'
+rodeo fleet provision -f workshop.yaml
+rodeo fleet doctor -f workshop.yaml
+rodeo fleet deprovision -f workshop.yaml --yes
+```
+
+See [Fleet F4](../fleet.md#f4-host-acquire).
+
+### Single-host AWS (`rodeo up --target aws`)
+
+Same `provider:` shape in `rodeo-plan.yaml`:
+
+```yaml
+deployment_target: aws
+provider:
+  type: aws
+  region: eu-central-1
+  instance_type: m7i.metal-24xl
+  ami: ami-…
+  key_name: rodeo-workshop
+  subnet_id: subnet-…
+  security_group_ids: [sg-…]
+  identity_file: ~/.ssh/rodeo-workshop.pem
+  ssh_user: ec2-user
+  volume_size_gib: 500
+```
+
+```bash
+pip install 'rodeo-cli[aws]'
+rodeo up --yes --profile harvester --target aws
+# tear down the EC2 host (not nested VMs alone):
+rodeo destroy --cloud --yes
+```

@@ -16,7 +16,8 @@ See also: [Get started](get-started.md) (single host), [Architecture](architectu
 | **F2** | Shipped | Deploy / retry / access sheet | `rodeo fleet deploy`, `retry`, `access` |
 | **F2.1** | Shipped | Failure forensics | `rodeo fleet diagnose` |
 | **F3** | Roadmap | MCP tools on top of fleet | — |
-| **F4** | Roadmap | Host-acquire (cloud → inventory) | `fleet provision` / `deprovision` (planned) |
+| **F4a** | Shipped (MVP) | AWS host-acquire | `rodeo fleet provision`, `deprovision` |
+| **F4b–d** | Roadmap | GCP → Vultr BM → Hetzner | — |
 
 Host prerequisites (after [`install.sh`](https://github.com/avaleror/rodeo-cli/blob/main/install.sh) on each lab machine):
 
@@ -39,38 +40,43 @@ Thin MCP tools that wrap existing fleet commands (`doctor`, `status`, `deploy`,
 reimplementing OpenSSH fan-out. No new provision logic inside MCP — that stays
 CLI-first under F4.
 
-### F4 — Host-acquire (planned)
+### F4 — Host-acquire
 
-Today you must already have KVM hosts with SSH in `workshop.yaml`. F4 adds
-**create those hosts from the laptop**, merge them into the inventory, then run
-the normal converge loop.
+**Create KVM hosts from the laptop**, merge into `workshop.yaml`, then run the
+normal converge loop. Providers stop at inventory; deploy / diagnose / retry stay
+OpenSSH-only.
 
-| Order | Provider | Approach |
-|-------|----------|----------|
-| **F4a** | **AWS** (primary) | Python + `boto3` (`pip install 'rodeo-cli[aws]'`) |
-| **F4b** | **GCP** | Python + `google-cloud-compute` — same `HostProvider` interface |
-| **F4c** | **Hetzner Cloud** | Python + `hcloud` — after GCP; nested KVM must be validated for labs |
+| Order | Provider | Status |
+|-------|----------|--------|
+| **F4a** | **AWS** (`boto3`, `pip install 'rodeo-cli[aws]'`) | **MVP shipped** — create/reuse by tags, wait running + SSH, write `hosts[]`, terminate tagged only |
+| **F4b** | **GCP** (`google-cloud-compute`) | Planned |
+| **F4c** | **Vultr Bare Metal** (`[vultr]` extra) | Planned — after GCP; real metal for nested KVM |
+| **F4d** | **Hetzner Cloud** (`hcloud`) | Planned — after Vultr; nested KVM must be validated |
 
 **Out of scope:** Equinix Metal (service sunset). Shared secrets across hosts.
 Changing the nested phase engine for multi-host.
 
-Sketch once implemented:
+**MVP gaps (AWS):** no `plan` dry-run yet; `deprovision` does not rewrite `hosts[]`
+(terminate only — edit or re-provision to refresh YAML); AMI/name filters and
+auto SG later.
 
 ```bash
+pip install 'rodeo-cli[aws]'   # once, on the laptop
+# AWS creds via standard boto3 chain (env / profile / instance role) — not in YAML
 rodeo fleet provision -f workshop.yaml    # create/reuse → write hosts[]
 rodeo fleet doctor -f workshop.yaml
 rodeo fleet deploy -f workshop.yaml
 rodeo fleet deprovision -f workshop.yaml --yes
 ```
 
-Providers stop at inventory. Deploy / diagnose / retry stay OpenSSH-only.
-Design draft for the shared `HostProvider` Protocol and `provider:` YAML schema:
+Shared `HostProvider` Protocol and `provider:` YAML schema:
 [Host-acquire design](#f4-host-acquire-design) below.
 
 ### Related (not Fleet-only)
 
-Single-host `deployment_target: aws|gcp` (ROADMAP Phase E) should share the same
-`rodeo/providers/` adapters as Fleet F4 where possible.
+Single-host `deployment_target: aws` (Phase E MVP) shares the same
+`rodeo/providers/aws` adapter and `provider:` YAML schema as Fleet F4a.
+On the EC2 guest the lab still runs as `baremetal`.
 
 ---
 
@@ -97,7 +103,7 @@ lab:
   source: git:https://github.com/avaleror/suse-virt-workshop.git
   # profile: harvester              # alternative: seed bundled/custom profile
   branch: main                      # optional (git only)
-  target: baremetal                 # baremetal | instruqt
+  target: baremetal                 # baremetal | instruqt (use baremetal for AWS hosts)
   concurrency: 4                    # default -j for deploy/retry
   ports:
     harvester: 8443                 # DNAT on host public IP
@@ -267,8 +273,14 @@ Fleet does **not** sudo-re-exec on the laptop.
 
 ## F4 host-acquire design
 
-Detailed design draft for the planned F4 work (not implemented). Summary in
-[Roadmap](#roadmap).
+Shared Protocol / schema for host-acquire. **AWS (F4a) MVP is implemented** in
+`rodeo/providers/` for both Fleet and single-host `deployment_target: aws`.
+GCP / Vultr / Hetzner remain stubs. Summary in [Roadmap](#roadmap).
+
+**Important:** AWS-provisioned workshop hosts run the lab as
+`lab.target: baremetal` (full firewalld / DNAT / `finalise`). `deployment_target: aws`
+is the laptop control-plane mode (`rodeo up --target aws`); do not set
+`lab.target: aws` in `workshop.yaml`.
 
 ### `HostProvider` Protocol
 
@@ -288,7 +300,7 @@ directly — only the registry + this surface.
 
 | Method | Behavior |
 |--------|----------|
-| `name` | Stable id: `aws` \| `gcp` \| `hetzner` |
+| `name` | Stable id: `aws` \| `gcp` \| `vultr` \| `hetzner` |
 | `validate(config) → None` | Fail closed (`ConfigError`) on missing/invalid fields **for that type only** |
 | `plan(spec, config) → list[action]` | Optional dry-run: create / reuse / noop per desired host id (nice-to-have for F4a) |
 | `provision(spec, config) → list[ProvisionedHost]` | Idempotent: reuse instances tagged for this workshop+host id; create the rest; wait until **running** + **SSH BatchMode** succeeds |
@@ -298,15 +310,15 @@ directly — only the registry + this surface.
 
 - SSH wait / probe via existing `rodeo/fleet/ssh_exec.py` (no paramiko).
 - Inventory merge: write/update `hosts[]` by `id`; do not delete static hosts unless `--prune`.
-- Optional extras: `[aws]`, `[gcp]`, `[hetzner]` so core install stays light.
+- Optional extras: `[aws]`, `[gcp]`, `[vultr]`, `[hetzner]` so core install stays light.
 
 **Ownership tags** (every created instance; same keys on all clouds)
 
 | Tag / label key | Value |
 |-----------------|-------|
-| `ManagedBy` | `rodeo-fleet` |
-| `rodeo-workshop` | `workshop.yaml` `name:` |
-| `rodeo-host-id` | inventory host `id` (e.g. `student-01`) |
+| `ManagedBy` | `rodeo` |
+| `rodeo-workshop` | plan `name:` / workshop `name:` |
+| `rodeo-host-id` | inventory host `id` (e.g. `student-01`) or `primary` for single-host |
 
 GCP uses labels (DNS-1123); normalize keys to lowercase where the cloud requires it, but keep the same logical names.
 
@@ -334,7 +346,7 @@ defaults:
   identity_file: ~/.ssh/rodeo-workshop.pem
   # ssh_options: ["ProxyJump=bastion"]
 provider:
-  type: aws                         # aws | gcp | hetzner  (required if provider: present)
+  type: aws                         # aws | gcp | vultr | hetzner  (required if provider: present)
   count: 12                         # how many hosts to ensure when hosts: [] or undersized
   # host_id_prefix: student-        # default "student-"; ids student-01 … student-N
   # Optional overrides applied to every provisioned host:
@@ -344,12 +356,16 @@ hosts: []                           # empty → provision creates; or pre-seed s
 
 Validation rules (fail closed):
 
-- `provider.type` ∈ `{aws, gcp, hetzner}`.
+- `provider.type` ∈ `{aws, gcp, vultr, hetzner}`.
 - `provider.count` integer 1–64 when set; if `hosts:` non-empty and count omitted, ensure exactly those ids (reuse/create by `rodeo-host-id`).
 - `defaults.identity_file` (or equivalent key material) required for provision SSH wait.
 - Type-specific required keys enforced by that adapter’s `validate()` only.
 
 #### `provider.type: aws` (F4a)
+
+Prefer **metal** or large Nitro nested-virt types (≥128 GiB RAM for full Harvester /
+Edge). Set `volume_size_gib: 500` (or larger) so nested Harvester disks fit.
+Tiny / burstable types are rejected at validate.
 
 ```yaml
 provider:
@@ -364,7 +380,7 @@ provider:
     - sg-0abc…
   # associate_public_ip: true       # default true
   # nested_virtualization: true     # if using Nitro nested-virt types instead of metal
-  # volume_size_gib: 500            # optional root / data disk
+  # volume_size_gib: 500            # recommended ≥500 for Harvester
 ```
 
 #### `provider.type: gcp` (F4b)
@@ -386,7 +402,25 @@ provider:
 
 Auth: Application Default Credentials / service account — not stored in `workshop.yaml`.
 
-#### `provider.type: hetzner` (F4c)
+#### `provider.type: vultr` (F4c)
+
+```yaml
+provider:
+  type: vultr
+  count: 12
+  region: ewr                       # required (Vultr location id)
+  plan: vbm-8c-128gb                # required — use ≥128 GiB for full Harvester labs
+  os_id: 2284                       # required (or snapshot_id / iPXE)
+  # sshkey_id: ["…"]                # Vultr SSH key ids
+  # firewall_group_id: "…"          # must allow 22 / UI ports for access sheet
+  # label_prefix: rodeo-            # optional
+```
+
+Auth: `VULTR_API_KEY` (API key may require IP allowlisting). Prefer REST `/v2/bare-metals`
+or the OpenAPI client over a thin community wrapper. **Bare metal only** for nested KVM —
+not Vultr Cloud VPS. Gate plans by RAM for the chosen profile (`rodeo doctor`).
+
+#### `provider.type: hetzner` (F4d)
 
 ```yaml
 provider:
@@ -401,7 +435,7 @@ provider:
 ```
 
 Auth: `HCLOUD_TOKEN` (or future `??` secret key) — not in plaintext in the inventory.
-**Gate:** do not mark F4c complete until `fleet doctor` shows nested KVM on a real
+**Gate:** do not mark F4d complete until `fleet doctor` shows nested KVM on a real
 Hetzner Cloud type used for workshops.
 
 #### Merge semantics

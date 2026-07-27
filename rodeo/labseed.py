@@ -180,7 +180,7 @@ def normalize_plan(
 
     if name:
         data["name"] = name
-    if deployment_target not in ("baremetal", "instruqt"):
+    if deployment_target not in ("baremetal", "instruqt", "aws"):
         raise ValueError(f"Unknown deployment_target: {deployment_target!r}")
     data["deployment_target"] = deployment_target
 

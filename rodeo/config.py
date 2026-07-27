@@ -34,7 +34,7 @@ class ConfigError(ValueError):
 _BASE_DEFAULTS: dict[str, Any] = {
     "type": "suse-virt",
     "name": "suse-virt-rodeo",
-    "deployment_target": "baremetal",  # instruqt | baremetal
+    "deployment_target": "baremetal",  # instruqt | baremetal | aws
     "network": {
         "mode": "nat",
         "vip": "192.168.122.10",
@@ -340,10 +340,12 @@ def validate_config(cfg: dict) -> None:
             "Set values in rodeo-plan.yaml (??key) and ~/.rodeo/secrets.yaml, or run: rodeo init"
         )
     target = cfg.get("deployment_target", "baremetal")
-    if target not in ("instruqt", "baremetal"):
+    if target not in ("instruqt", "baremetal", "aws"):
         raise ConfigError(
-            f"Invalid deployment_target '{target}' — use 'instruqt' or 'baremetal'."
+            f"Invalid deployment_target '{target}' — use 'instruqt', 'baremetal', or 'aws'."
         )
+    if target == "aws":
+        _validate_aws_provider(cfg)
 
     libvirt = cfg.get("libvirt", {})
     if not isinstance(libvirt, dict):
@@ -423,6 +425,24 @@ def validate_config(cfg: dict) -> None:
 
 
 _BUNDLED_DATA = Path(__file__).parent / "data"
+
+
+def _validate_aws_provider(cfg: dict) -> None:
+    """Require a valid shared provider: block when deployment_target is aws."""
+    provider = cfg.get("provider")
+    if not isinstance(provider, dict):
+        raise ConfigError(
+            "deployment_target: aws requires a provider: block "
+            "(same shape as workshop.yaml — type, region, ami, …)."
+        )
+    ptype = str(provider.get("type") or "").strip().lower()
+    if ptype != "aws":
+        raise ConfigError(
+            f"deployment_target: aws requires provider.type: aws (got {ptype!r})"
+        )
+    from .providers.aws import AwsHostProvider
+
+    AwsHostProvider(sleep=lambda _s: None).validate(dict(provider))
 
 
 def find_ansible_root(cfg: dict) -> Path | None:

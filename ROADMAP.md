@@ -141,20 +141,21 @@ matching the vision statement's "declare desired state ... converge" without a f
 
 Add `deployment_target: aws` and `deployment_target: gcp` so rodeo-cli can provision a KVM host automatically, not just consume one that is already set up.
 
-Approach: the KVM host itself becomes an EC2 / GCE instance. rodeo provisions it (or reuses an existing one), installs KVM + rodeo deps via `install-deps`, then runs the normal lab pipeline on top. The nested VMs are the same — only the outer host changes.
+Approach: the KVM host itself becomes an EC2 / GCE instance. From the laptop, `rodeo up --target aws` provisions (or reuses) it, waits for SSH, then remote-runs `rodeo up --target baremetal` on the instance. Nested VMs are unchanged — only the outer host is cloud-acquired.
 
-- [ ] `aws` provider in a new `rodeo/providers/` layer: create/reuse a metal or nitro-virt EC2 instance with KVM enabled
+- [x] `aws` provider in `rodeo/providers/` — create/reuse by ownership tags (`ManagedBy=rodeo`)
+- [x] Shared `provider:` block in `rodeo-plan.yaml` (same shape as Fleet `workshop.yaml`)
+- [x] `rodeo up --target aws` — provision + SSH + remote deploy (MVP)
+- [x] `rodeo destroy --cloud --yes` — terminate ownership-tagged single-host instance
 - [ ] `install-deps` support for Amazon Linux 2023 (dnf path already exists, needs testing)
-- [ ] Security group rules mirror the firewalld rules (ports 8443, 30002, 22)
+- [ ] Security group rules mirror the firewalld rules (ports 8443, 30002, 22) — still operator-supplied SG
 - [ ] `storage.device` detection on NVMe instance store (`/dev/nvme1n1`)
-- [ ] `rodeo up --target aws --instance-type m7i.metal-24xl` as the front door
 - [ ] Cost guard: `rodeo plan` estimates on-demand hourly cost for the selected instance type
-- [ ] `rodeo destroy` terminates the instance (opt-in; off by default to prevent accidents)
 - [ ] GCP equivalent: Compute Engine with `--enable-nested-virtualization` on N2 / C3
 
-**Share with Fleet F4:** the same `rodeo/providers/aws` (and later `gcp`) adapters should back both single-host `rodeo up --target aws` and multi-host `rodeo fleet provision`. Fleet host-acquire order is AWS → GCP → Hetzner Cloud (see Phase I). Equinix is out of scope.
+**Share with Fleet F4:** same `rodeo/providers/aws` backs `rodeo fleet provision` and single-host `rodeo up --target aws`. Remaining providers: GCP → Vultr Bare Metal → Hetzner Cloud (see Phase I). Equinix is out of scope.
 
-**Prerequisite for AWS:** Phase B (ownership tagging) must land first so `destroy` can clean up cloud resources safely.
+**Sizing:** prefer metal (e.g. `m7i.metal-24xl`) or large Nitro nested-virt (≥128 GiB RAM) for full Harvester/Edge; tiny instance types are rejected at validate.
 
 ---
 
@@ -284,9 +285,10 @@ over OpenSSH (workshop inventory). Engine/phases stay single-host. See [docs/fle
 - [x] F2.1 — `rodeo fleet diagnose` (central log/status collect for failure forensics)
 - [ ] F3 — MCP tools on top of fleet (after F2)
 - [ ] F4 — Host-acquire → `workshop.yaml` (separate from converge); Python native SDKs behind `rodeo/providers/`
-  - [ ] F4a — **AWS** (`boto3`, optional `[aws]` extra) — primary
+  - [x] F4a — **AWS** MVP (`boto3`, optional `[aws]` extra): `fleet provision|deprovision`, ownership tags, inventory merge — gaps: no plan dry-run; deprovision does not clear `hosts[]`
   - [ ] F4b — **GCP** (`google-cloud-compute`) — after AWS
-  - [ ] F4c — **Hetzner Cloud** (`hcloud`) — after GCP; nested-KVM must be validated for labs
+  - [ ] F4c — **Vultr Bare Metal** (API `/v2/bare-metals`, optional `[vultr]` extra) — after GCP
+  - [ ] F4d — **Hetzner Cloud** (`hcloud`) — after Vultr; nested-KVM must be validated for labs
   - Equinix Metal: **out of scope** (service sunset)
 
 ---

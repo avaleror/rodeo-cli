@@ -50,6 +50,8 @@ class FleetInventory:
     # to hardcode (e.g. the "test" profile's example dir is named
     # harvester-lab-config and has no Rancher component at all).
     lab_components: list[str] | None = None
+    # F4 host-acquire (optional)
+    provider: dict[str, Any] | None = None
 
     @property
     def ssh_user(self) -> str:
@@ -128,9 +130,34 @@ def load_inventory(path: str | Path) -> FleetInventory:
     if not isinstance(defaults, dict):
         raise ConfigError("defaults: must be a mapping")
 
+    provider_raw = raw.get("provider")
+    provider: dict[str, Any] | None = None
+    if provider_raw is not None:
+        if not isinstance(provider_raw, dict):
+            raise ConfigError("provider: must be a mapping")
+        ptype = str(provider_raw.get("type") or "").strip().lower()
+        if not ptype:
+            raise ConfigError("provider.type is required when provider: is set")
+        provider = dict(provider_raw)
+        provider["type"] = ptype
+        if "count" in provider and provider["count"] is not None:
+            try:
+                c = int(provider["count"])
+            except (TypeError, ValueError) as exc:
+                raise ConfigError("provider.count must be an integer") from exc
+            if c < 1 or c > 64:
+                raise ConfigError("provider.count must be between 1 and 64")
+            provider["count"] = c
+
     hosts_raw = raw.get("hosts")
-    if not isinstance(hosts_raw, list) or not hosts_raw:
-        raise ConfigError("hosts: must be a non-empty list")
+    if hosts_raw is None:
+        hosts_raw = []
+    if not isinstance(hosts_raw, list):
+        raise ConfigError("hosts: must be a list")
+    if not hosts_raw and provider is None:
+        raise ConfigError(
+            "hosts: must be a non-empty list (or set provider: for fleet provision)"
+        )
 
     seen: set[str] = set()
     hosts: list[FleetHost] = []
@@ -175,6 +202,7 @@ def load_inventory(path: str | Path) -> FleetInventory:
         rancher_ui_port=rancher_port,
         install_url=install_url,
         lab_components=lab_components,
+        provider=provider,
     )
 
 
@@ -233,3 +261,88 @@ def host_public_ip(host: FleetHost) -> str | None:
     if target.count(":") == 1 and not target.startswith("["):
         target = target.rsplit(":", 1)[0]
     return target or None
+
+
+def require_provider(inventory: FleetInventory) -> dict[str, Any]:
+    """Return provider config or fail closed."""
+    if not inventory.provider:
+        raise ConfigError(
+            "fleet provision requires provider: in workshop.yaml (e.g. type: aws)"
+        )
+    return inventory.provider
+
+
+def desired_host_ids(
+    inventory: FleetInventory,
+    *,
+    host_ids: list[str] | None = None,
+) -> list[str]:
+    """Resolve which host ids provision should ensure."""
+    if host_ids:
+        return list(host_ids)
+    if inventory.hosts:
+        return [h.id for h in inventory.hosts]
+    provider = require_provider(inventory)
+    count = int(provider.get("count") or 0)
+    if count < 1:
+        raise ConfigError(
+            "provider.count is required when hosts: is empty "
+            "(or pass --host / list hosts in workshop.yaml)"
+        )
+    prefix = str(provider.get("host_id_prefix") or "student-")
+    width = max(2, len(str(count)))
+    return [f"{prefix}{i:0{width}d}" for i in range(1, count + 1)]
+
+
+def merge_provisioned_hosts(
+    inventory_path: Path,
+    provisioned: list[Any],
+) -> list[dict[str, Any]]:
+    """Merge ProvisionedHost-like objects into workshop.yaml hosts[]; return written entries."""
+    from ..providers.base import ProvisionedHost
+
+    p = Path(inventory_path).expanduser().resolve()
+    raw = yaml.safe_load(p.read_text()) or {}
+    if not isinstance(raw, dict):
+        raise ConfigError(f"Workshop inventory must be a mapping: {p}")
+
+    existing = raw.get("hosts") or []
+    if not isinstance(existing, list):
+        raise ConfigError("hosts: must be a list")
+    by_id: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+    for entry in existing:
+        if isinstance(entry, dict) and entry.get("id"):
+            hid = str(entry["id"])
+            by_id[hid] = dict(entry)
+            order.append(hid)
+
+    written: list[dict[str, Any]] = []
+    for item in provisioned:
+        if not isinstance(item, ProvisionedHost):
+            raise ConfigError("merge_provisioned_hosts expects ProvisionedHost values")
+        labels = dict(item.labels)
+        if item.provider_id:
+            labels["provider_id"] = item.provider_id
+        # drop ephemeral provision_action from persisted YAML
+        labels.pop("provision_action", None)
+        entry = {
+            "id": item.id,
+            "ssh": item.ssh,
+            "public_ip": item.public_ip,
+            "labels": labels,
+        }
+        if item.id in by_id:
+            prev = by_id[item.id]
+            # preserve ssh_user if set
+            if prev.get("ssh_user") and "ssh_user" not in entry:
+                entry["ssh_user"] = prev["ssh_user"]
+            by_id[item.id] = entry
+        else:
+            by_id[item.id] = entry
+            order.append(item.id)
+        written.append(entry)
+
+    raw["hosts"] = [by_id[hid] for hid in order if hid in by_id]
+    p.write_text(yaml.dump(raw, default_flow_style=False, sort_keys=False))
+    return written

@@ -24,6 +24,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=7", "pytest-cov", "ruff==0.15.16"]
+aws = ["boto3>=1.34"]
 
 [project.scripts]
 rodeo = "rodeo.cli:cli"

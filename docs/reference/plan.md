@@ -20,9 +20,11 @@ type: suse-virt
 # Must be unique per host if you run multiple labs.
 name: my-lab
 
-# Where this lab runs. Controls whether the finalise phase is deferred.
+# Where this lab runs. Controls whether the finalise phase is deferred,
+# and (for aws) whether the laptop provisions an EC2 host then remote-deploys.
 # baremetal: full deploy including VM autostart on host reboot
 # instruqt:  skips finalise until you run `rodeo deploy --from finalise --finalise`
+# aws:       laptop control plane — provision EC2, then remote `rodeo up --target baremetal`
 deployment_target: baremetal
 
 # Virtual machine resource allocation.
@@ -109,6 +111,7 @@ Must be unique per host. Changing `name` after deploy creates orphaned resources
 |-------|-----------|
 | `baremetal` | Full deploy. `finalise` enables VM autostart on host reboot. |
 | `instruqt` | `finalise` is skipped automatically. Run it after the Instruqt snapshot: `rodeo deploy --from finalise --finalise` |
+| `aws` | Laptop control plane: require a `provider:` block, provision/reuse one EC2 KVM host, wait for SSH, remote-run `rodeo up --target baremetal` on that host. Tear down with `rodeo destroy --cloud --yes`. |
 
 **Required.** Defaults to `baremetal` when omitted.
 
@@ -116,6 +119,32 @@ On **instruqt**, `rodeo up` / lab seeding also applies host-aware `resources` pr
 Σ guest vCPU stays near ~70% of the builder (Harvester typically 6–8 vCPU / 20 GiB).
 Existing plans are not rewritten on re-deploy; only seeded plans get the presets.
 `rodeo doctor` / `rodeo deploy --check` warn (non-fatal) when a plan still exceeds the budget.
+
+### `provider` (when `deployment_target: aws`)
+
+Same shape as Fleet [`workshop.yaml` provider](../fleet.md#workshopyaml-provider-schema).
+Required fields for AWS: `type`, `region`, `instance_type`, `ami`, `key_name`,
+`subnet_id`, `security_group_ids`, plus `identity_file` (SSH private key path) for
+the remote deploy. Prefer metal / large nested-virt (≥128 GiB) and `volume_size_gib: 500+`.
+
+```yaml
+deployment_target: aws
+provider:
+  type: aws
+  region: eu-central-1
+  instance_type: m7i.metal-24xl
+  ami: ami-…
+  key_name: rodeo-workshop
+  subnet_id: subnet-…
+  security_group_ids: [sg-…]
+  identity_file: ~/.ssh/rodeo-workshop.pem
+  ssh_user: ec2-user
+  # nested_virtualization: true
+  # volume_size_gib: 500
+```
+
+Credentials use the standard boto3 chain (env / profile / role) — never store AWS
+keys in the plan.
 
 ### `resources`
 
@@ -211,7 +240,7 @@ rodeo deploy --paramfile big-lab.yaml
 |-----------------------------|----------------------------|
 | VM resource sizing (RAM, CPU, disk) | Node names, IPs, MACs |
 | Credentials and secret references | Network CIDR, gateway, DNS domain |
-| Deployment target (baremetal/instruqt) | Start order and etcd join gap |
+| Deployment target (baremetal/instruqt/aws) | Start order and etcd join gap |
 | Software versions | Exposed services and port mapping |
 | Storage device path | Node templates (interface roles) |
 | Jinja2 parameters | Host prep requirements (sysctls, SELinux) |

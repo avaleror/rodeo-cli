@@ -72,8 +72,8 @@ Credentials live in `~/.rodeo/secrets.yaml`, chmod 600, referenced from plans wi
 <div class="rc-card-label">Workshops</div>
 ### Fleet fan-out
 `rodeo fleet` runs the same lab across many remote KVM hosts over SSH — doctor,
-deploy, diagnose, retry, and student URL sheets. **Shipped through F2.1.** Next on
-the roadmap: MCP (F3) and cloud host-acquire AWS → GCP → Hetzner (F4). See
+deploy, diagnose, retry, student URL sheets, and **AWS provision** (F4a MVP).
+Next: MCP (F3); GCP → Vultr Bare Metal → Hetzner (F4b–d). See
 [Fleet](fleet.md) and [Fleet roadmap](fleet.md#roadmap).
 </div>
 

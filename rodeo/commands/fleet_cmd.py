@@ -25,6 +25,12 @@ from ..fleet.inventory import (
     select_hosts,
 )
 from ..fleet.job import job_path_for, load_job
+from ..fleet.provision import (
+    deprovision_payload,
+    fleet_deprovision,
+    fleet_provision,
+    provision_payload,
+)
 from ..fleet.status import fleet_status
 
 console = Console()
@@ -540,5 +546,153 @@ def fleet_diagnose_cmd(
 
     # Exit 1 only when collection itself failed; phase errors are the
     # forensic payload (needs_attention) and still count as a successful pull.
+    if any(not r.ok for r in results):
+        raise SystemExit(1)
+
+
+@fleet_cmd.command("provision")
+@_output_opt
+@click.option(
+    "--no-wait-ssh",
+    is_flag=True,
+    default=False,
+    help="Do not wait for SSH after instances are running.",
+)
+@click.option(
+    "--no-write",
+    is_flag=True,
+    default=False,
+    help="Do not merge hosts into workshop.yaml.",
+)
+@click.option(
+    "--host",
+    "host_ids",
+    multiple=True,
+    metavar="ID",
+    help="Limit to host id (repeatable). Default: hosts: or provider.count.",
+)
+@click.option(
+    "-f",
+    "--file",
+    "inventory_path",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Path to workshop.yaml inventory.",
+)
+def fleet_provision_cmd(
+    inventory_path: Path,
+    host_ids: tuple[str, ...],
+    output_fmt: str,
+    no_wait_ssh: bool,
+    no_write: bool,
+) -> None:
+    """Create or reuse cloud KVM hosts (F4); merge into workshop.yaml.
+
+    Requires ``provider:`` in the inventory (AWS F4a). Install optional deps:
+    ``pip install 'rodeo-cli[aws]'``.
+    """
+    try:
+        inventory = load_inventory(inventory_path)
+        hosts = fleet_provision(
+            inventory,
+            inventory_path,
+            host_ids=list(host_ids) or None,
+            wait_ssh=not no_wait_ssh,
+            write_inventory=not no_write,
+        )
+    except ConfigError as exc:
+        console.print(f"[red]✗  {exc}[/red]")
+        raise SystemExit(1)
+
+    payload = provision_payload(inventory.name, hosts, inventory_path=inventory_path)
+    if output_fmt == "json":
+        click.echo(json.dumps(payload, indent=2, sort_keys=True))
+        return
+
+    table = Table(title=f"Fleet provision — {inventory.name}", show_header=True)
+    table.add_column("id", style="bold")
+    table.add_column("action")
+    table.add_column("ip")
+    table.add_column("instance")
+    for h in hosts:
+        table.add_row(
+            h.id,
+            h.labels.get("provision_action", "—"),
+            h.public_ip,
+            h.provider_id or "—",
+        )
+    console.print()
+    console.print(table)
+    if not no_write:
+        console.print(f"\n  Updated: [cyan]{inventory_path}[/cyan]")
+    console.print("  Next: [bold]rodeo fleet doctor -f …[/bold] then [bold]deploy[/bold]\n")
+
+
+@fleet_cmd.command("deprovision")
+@_output_opt
+@click.option(
+    "--yes",
+    is_flag=True,
+    default=False,
+    help="Required — refuse to terminate without explicit confirmation.",
+)
+@click.option(
+    "--host",
+    "host_ids",
+    multiple=True,
+    metavar="ID",
+    help="Limit to host id (repeatable).",
+)
+@click.option(
+    "-f",
+    "--file",
+    "inventory_path",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Path to workshop.yaml inventory.",
+)
+def fleet_deprovision_cmd(
+    inventory_path: Path,
+    host_ids: tuple[str, ...],
+    output_fmt: str,
+    yes: bool,
+) -> None:
+    """Terminate ownership-tagged cloud instances for this workshop (F4)."""
+    if not yes:
+        console.print(
+            "[red]✗  Refusing to deprovision without --yes "
+            "(destroys tagged cloud instances).[/red]"
+        )
+        raise SystemExit(1)
+    try:
+        inventory = load_inventory(inventory_path)
+        results = fleet_deprovision(
+            inventory,
+            host_ids=list(host_ids) or None,
+        )
+    except ConfigError as exc:
+        console.print(f"[red]✗  {exc}[/red]")
+        raise SystemExit(1)
+
+    payload = deprovision_payload(inventory.name, results)
+    if output_fmt == "json":
+        click.echo(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        table = Table(title=f"Fleet deprovision — {inventory.name}", show_header=True)
+        table.add_column("id", style="bold")
+        table.add_column("ok")
+        table.add_column("instance")
+        table.add_column("detail", overflow="fold")
+        for r in results:
+            table.add_row(
+                r.id,
+                "[green]yes[/green]" if r.ok else "[red]no[/red]",
+                r.provider_id or "—",
+                (r.error or r.detail or "")[:100],
+            )
+        console.print()
+        console.print(table)
+        console.print()
+
     if any(not r.ok for r in results):
         raise SystemExit(1)

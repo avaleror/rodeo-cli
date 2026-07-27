@@ -269,11 +269,11 @@ def _aws_control_plane_deploy(lab: Path, *, profile: str | None) -> None:
 
     ip = provisioned.public_ip
     console.print(
-        f"\n[green]✓[/green]  Remote deploy started on [cyan]{ip}[/cyan] "
+        f"\n[green]✓[/green]  Remote deploy finished on [cyan]{ip}[/cyan] "
         f"(instance {provisioned.provider_id or '—'}).\n"
-        f"  Harvester UI (when ready):  https://{ip}:8443\n"
-        f"  Rancher UI (when ready):    https://{ip}:30002\n"
-        f"  Tear down host:             rodeo destroy --cloud --yes "
+        f"  Harvester UI:  https://{ip}:8443\n"
+        f"  Rancher UI:    https://{ip}:30002\n"
+        f"  Tear down host:  rodeo destroy --cloud --yes "
         f"(from this lab dir)\n"
     )
 

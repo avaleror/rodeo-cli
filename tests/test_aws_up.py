@@ -84,6 +84,59 @@ def test_remote_up_script_uses_baremetal():
     assert "--target baremetal" in script
     assert "--profile harvester" in script
     assert "install.sh" in script
+    assert "PIPESTATUS[0]" in script
+    assert "AWS_UP_EXIT:$ec" in script
+
+
+def test_on_ec2_imdsv2(monkeypatch):
+    from rodeo.providers import remote_up as mod
+
+    calls: list[str] = []
+
+    class _Resp:
+        def __init__(self, body: bytes = b"", status: int = 200):
+            self._body = body
+            self.status = status
+
+        def read(self):
+            return self._body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req, timeout=None):
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        calls.append(url)
+        if url.endswith("/api/token"):
+            return _Resp(b"tok-123")
+        if "meta-data" in url:
+            assert req.headers.get("X-aws-ec2-metadata-token") == "tok-123"
+            return _Resp(b"ami-id\n")
+        raise AssertionError(url)
+
+    monkeypatch.setattr(mod.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(mod, "_on_ec2_dmi", lambda: False)
+    assert mod.on_ec2(timeout=0.1) is True
+    assert any("/api/token" in c for c in calls)
+
+
+def test_on_ec2_dmi_fallback(monkeypatch):
+    from pathlib import Path
+
+    from rodeo.providers import remote_up as mod
+
+    monkeypatch.setattr(mod, "_on_ec2_imds", lambda timeout=0.4: False)
+
+    def fake_read(self, *a, **k):
+        if str(self).endswith("product_uuid"):
+            return "EC2deadbeef\n"
+        raise OSError("missing")
+
+    monkeypatch.setattr(Path, "read_text", fake_read)
+    assert mod.on_ec2() is True
 
 
 def test_provision_primary_and_execute(tmp_path, monkeypatch):

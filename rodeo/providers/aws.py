@@ -160,9 +160,6 @@ class AwsHostProvider:
                 "Values": ["pending", "running", "stopping", "stopped"],
             },
         ]
-        if spec.host_ids:
-            # describe all owned, then filter — AWS tag filter is OR within Values
-            pass
         resp = ec2.describe_instances(Filters=filters)
         targets: list[tuple[str, str]] = []  # host_id, instance_id
         want = set(spec.host_ids) if spec.host_ids else None

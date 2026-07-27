@@ -23,16 +23,62 @@ _DEFAULT_LAB_DIR = "/root/rodeo-lab"
 
 
 def on_ec2(*, timeout: float = 0.4) -> bool:
-    """True when running on an EC2 instance (IMDS reachable)."""
+    """True when running on an EC2 instance (IMDSv2, IMDSv1, or DMI fallback)."""
+    if _on_ec2_imds(timeout=timeout):
+        return True
+    return _on_ec2_dmi()
+
+
+def _on_ec2_imds(*, timeout: float) -> bool:
+    """Probe instance metadata; prefer IMDSv2 token, fall back to IMDSv1."""
     try:
-        req = urllib.request.Request(
-            "http://169.254.169.254/latest/meta-data/",
-            method="GET",
+        token_req = urllib.request.Request(
+            "http://169.254.169.254/latest/api/token",
+            method="PUT",
+            headers={"X-aws-ec2-metadata-token-ttl-seconds": "60"},
         )
+        with urllib.request.urlopen(token_req, timeout=timeout) as token_resp:
+            token = token_resp.read().decode("utf-8", errors="replace").strip()
+        if token:
+            meta_req = urllib.request.Request(
+                "http://169.254.169.254/latest/meta-data/",
+                headers={"X-aws-ec2-metadata-token": token},
+            )
+            with urllib.request.urlopen(meta_req, timeout=timeout) as resp:
+                return int(getattr(resp, "status", 200) or 200) < 400
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+        pass
+    try:
+        req = urllib.request.Request("http://169.254.169.254/latest/meta-data/")
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return int(getattr(resp, "status", 200) or 200) < 400
     except (urllib.error.URLError, TimeoutError, OSError):
         return False
+
+
+def _on_ec2_dmi() -> bool:
+    """Best-effort EC2 detection via DMI / sysfs when IMDS is unreachable."""
+    for path in (
+        Path("/sys/devices/virtual/dmi/id/product_uuid"),
+        Path("/sys/hypervisor/uuid"),
+    ):
+        try:
+            val = path.read_text().strip().lower()
+        except OSError:
+            continue
+        if val.startswith("ec2"):
+            return True
+    for path in (
+        Path("/sys/devices/virtual/dmi/id/bios_vendor"),
+        Path("/sys/devices/virtual/dmi/id/sys_vendor"),
+    ):
+        try:
+            val = path.read_text().strip().lower()
+        except OSError:
+            continue
+        if "amazon" in val:
+            return True
+    return False
 
 
 def aws_host_state_path(plan_name: str) -> Path:
@@ -160,10 +206,13 @@ def remote_up_script(
         "fi; "
         "command -v rodeo >/dev/null; "
         f"mkdir -p {lab}; "
+        "set +e; "
         f"rodeo up --yes --no-tmux {profile_bits}"
         f"--dir {lab} --target baremetal "
         f"2>&1 | tee -a \"$HOME/.rodeo/logs/aws-up.log\"; "
-        'echo AWS_UP_EXIT:$?'
+        'ec=${PIPESTATUS[0]}; set -e; '
+        'echo AWS_UP_EXIT:$ec; '
+        "exit \"$ec\""
     )
 
 

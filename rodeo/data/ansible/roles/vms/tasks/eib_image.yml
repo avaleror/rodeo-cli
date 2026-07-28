@@ -16,19 +16,12 @@
 # base image. Hauler binary installs at first boot via cloud-init runcmd.
 
 - name: Download openSUSE Leap Micro 6.2 image for EIB VM
-  ansible.builtin.shell: |
-    set -euo pipefail
-    dest='{{ image_dir }}/Leap-Micro-6.2.qcow2'
-    tmp="$dest.downloading"
-    # HTTP/1.1 + retry-all-errors + resume: download.opensuse.org intermittently
-    # breaks HTTP/2 streams (curl error 92 PROTOCOL_ERROR); atomic move so a
-    # partial never satisfies the `creates:` guard as a truncated image.
-    curl -4 --http1.1 -fsSL --retry 5 --retry-delay 10 --retry-all-errors \
-      -C - -o "$tmp" '{{ leap_micro_62_url }}'
-    mv "$tmp" "$dest"
-  args:
-    executable: /bin/bash
-    creates: "{{ image_dir }}/Leap-Micro-6.2.qcow2"
+  ansible.builtin.include_role:
+    name: common
+    tasks_from: curl_fetch
+  vars:
+    curl_fetch_url: "{{ leap_micro_62_url }}"
+    curl_fetch_dest: "{{ image_dir }}/Leap-Micro-6.2.qcow2"
 
 # Leap Micro 6.2 ships cloud-init already active via its boot-time generator
 # (see comment above) — just convert the disk, no virt-customize needed.
@@ -54,14 +47,13 @@
   ansible.builtin.command: qemu-img info --output=json '{{ image_dir }}/eib-vda.qcow2'
   register: eib_disk_info
   changed_when: false
-  failed_when: false
 
 - name: Resize EIB VM disk to {{ libvirt_flavors.eib.disk_gb }}G
   ansible.builtin.command: >
     qemu-img resize '{{ image_dir }}/eib-vda.qcow2' {{ libvirt_flavors.eib.disk_gb }}G
-  when:
-    - eib_disk_info.rc == 0
-    - (eib_disk_info.stdout | from_json)['virtual-size'] | int < (libvirt_flavors.eib.disk_gb | int * 1073741824)
+  when: >
+    (eib_disk_info.stdout | from_json)['virtual-size'] | int
+    < (libvirt_flavors.eib.disk_gb | int * 1073741824)
 
 - name: Create EIB cloud-init staging directory
   ansible.builtin.file:

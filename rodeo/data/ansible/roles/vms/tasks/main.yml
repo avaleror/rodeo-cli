@@ -1,6 +1,15 @@
 ---
-- import_tasks: storage_setup.yml
-- import_tasks: network_setup.yml
-- import_tasks: images.yml
-- import_tasks: vm_setup.yml
-- import_tasks: dns.yml
+- name: Include storage pool tasks
+  ansible.builtin.import_tasks: storage_setup.yml
+
+- name: Include network setup tasks
+  ansible.builtin.import_tasks: network_setup.yml
+
+- name: Include image and disk tasks
+  ansible.builtin.import_tasks: images.yml
+
+- name: Include VM define tasks
+  ansible.builtin.import_tasks: vm_setup.yml
+
+- name: Include DNS / hosts tasks
+  ansible.builtin.import_tasks: dns.yml

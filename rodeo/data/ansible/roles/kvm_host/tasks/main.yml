@@ -1,9 +1,24 @@
 ---
-- import_tasks: selinux.yml
-- import_tasks: packages.yml
-- import_tasks: libvirt.yml
-- import_tasks: networking.yml
-- import_tasks: libvirt-hook.yml
-- import_tasks: firewall.yml
-- import_tasks: nfs.yml
-- meta: flush_handlers
+- name: Include SELinux tasks
+  ansible.builtin.import_tasks: selinux.yml
+
+- name: Include package tasks
+  ansible.builtin.import_tasks: packages.yml
+
+- name: Include libvirt tasks
+  ansible.builtin.import_tasks: libvirt.yml
+
+- name: Include networking tasks
+  ansible.builtin.import_tasks: networking.yml
+
+- name: Include libvirt hook tasks
+  ansible.builtin.import_tasks: libvirt-hook.yml
+
+- name: Include firewall tasks
+  ansible.builtin.import_tasks: firewall.yml
+
+- name: Include NFS tasks
+  ansible.builtin.import_tasks: nfs.yml
+
+- name: Flush handlers
+  ansible.builtin.meta: flush_handlers

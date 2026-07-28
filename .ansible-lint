@@ -1,0 +1,26 @@
+---
+# ansible-lint for bundled roles under rodeo/data/ansible/
+# Profile: catch real problems (FQCN, schema, deprecations) without forcing a
+# full rewrite of shared var names that the Python vars file also feeds.
+profile: basic
+
+exclude_paths:
+  - .ansible/
+  - .git/
+  - .venv/
+  - site/
+
+# Skip noise we accept for lab roles today. Track separately; do not silently
+# expand this list without a ROADMAP note.
+skip_list:
+  - var-naming  # role-prefix clash with shared plan/runner vars (harvester_vip, …)
+  - name[template]  # version/size in task names is intentional readability
+  - name[casing]
+  - key-order
+  - risky-file-permissions  # lab staging files; tighten later
+  - no-changed-when  # virsh/qemu probes and intentional rebuilds
+  - command-instead-of-module  # curl -4 / virt-customize / systemctl daemon-reload
+  - risky-shell-pipe  # NFS chpasswd; pipefail covered where it matters
+  - yaml[line-length]
+
+offline: false

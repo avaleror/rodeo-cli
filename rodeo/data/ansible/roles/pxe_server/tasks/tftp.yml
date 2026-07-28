@@ -4,17 +4,12 @@
 # "boot file: ipxe.efi" and serves it over TFTP from this directory.
 
 - name: Download ipxe.efi to libvirt TFTP root
-  ansible.builtin.shell: |
-    set -euo pipefail
-    dest='{{ pxe_tftp_root }}/ipxe.efi'
-    tmp="$dest.downloading"
-    curl -4 --http1.1 -fsSL --retry 5 --retry-delay 10 --retry-all-errors \
-      -C - -o "$tmp" '{{ ipxe_efi_url }}'
-    mv "$tmp" "$dest"
-    chmod 0644 "$dest"
-  args:
-    executable: /bin/bash
-    creates: "{{ pxe_tftp_root }}/ipxe.efi"
+  ansible.builtin.include_role:
+    name: common
+    tasks_from: curl_fetch
+  vars:
+    curl_fetch_url: "{{ ipxe_efi_url }}"
+    curl_fetch_dest: "{{ pxe_tftp_root }}/ipxe.efi"
 
 - name: Stat ipxe.efi
   ansible.builtin.stat:

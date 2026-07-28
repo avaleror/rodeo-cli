@@ -19,6 +19,10 @@ Run on any OS — no KVM, no libvirt, no sudo needed:
 pip install -e ".[dev]"
 ruff check rodeo tests
 pytest tests/ -v
+# Ansible roles (optional locally; required in CI):
+pip install "ansible-lint>=25" "ansible-core>=2.16,<2.19"
+ansible-galaxy collection install -r rodeo/data/ansible/requirements.yml
+ansible-lint rodeo/data/ansible
 ```
 
 What the unit tests cover:

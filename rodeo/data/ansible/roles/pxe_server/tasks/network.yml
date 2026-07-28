@@ -15,33 +15,48 @@
 # edits to the dnsmasq options namespace. The same guard as vms/network_setup.yml
 # prevents destruction while VMs are running.
 
-# Idempotency: only destroy and redefine if the PXE dnsmasq options are not
-# already present in the running network definition. Avoids unnecessary network
-# flaps on re-runs and prevents DNS/DHCP interruption for any running guest.
+# Idempotency: redefine when PXE dnsmasq options are missing OR any planned
+# DHCP host (mac+name+ip) drifted — keeps node add/renumber from sticking on
+# a stale virbr0 definition after vms already added hosts without PXE opts.
 - name: Dump current network XML
   ansible.builtin.command: virsh net-dumpxml {{ libvirt_network_name }}
   register: _current_net_xml
   changed_when: false
   failed_when: false
 
-- name: Redefine network with PXE options (skipped if already present)
-  when: "'dnsmasq:options' not in (_current_net_xml.stdout | default(''))"
+- name: Compute whether PXE network XML matches plan
+  ansible.builtin.set_fact:
+    _pxe_net_needs_redefine: >-
+      {%- set xml = _current_net_xml.stdout | default('') -%}
+      {%- set ns = namespace(need=('dnsmasq:options' not in xml)) -%}
+      {%- for node in vm_nodes -%}
+      {%- set frag = "mac='" ~ node.mgmt_mac ~ "' name='" ~ node.name ~ "' ip='" ~ node.ip ~ "'" -%}
+      {%- if frag not in xml -%}
+      {%- set ns.need = true -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {{ ns.need }}
+
+- name: Redefine network with PXE options (skipped if plan matches)
+  when: _pxe_net_needs_redefine | bool
   block:
     - name: Check for running domains before network redefinition
       ansible.builtin.command: virsh list --name --state-running
       register: _pxe_running_domains
       changed_when: false
-      failed_when: false
 
-    - name: Fail if any domain is running (network teardown would drop guest traffic)
+    - name: Fail if virsh list failed or any domain is running
       ansible.builtin.fail:
-        msg: >
+        msg: >-
+          {% if _pxe_running_domains.rc != 0 -%}
+          Cannot redefine the default network with PXE options — virsh list failed
+          (rc={{ _pxe_running_domains.rc }}). Fix libvirt before re-running.
+          {%- else -%}
           Cannot redefine the default network with PXE options — domains are running:
           {{ _pxe_running_domains.stdout_lines }}.
           Stop all VMs first: virsh destroy harvester1 harvester2 harvester3 rancher
-      when:
-        - _pxe_running_domains.rc == 0
-        - _pxe_running_domains.stdout | trim != ''
+          {%- endif %}
+      when: _pxe_running_domains.rc != 0 or (_pxe_running_domains.stdout | trim != '')
 
     - name: Destroy default network to allow redefinition
       community.libvirt.virt_net:

@@ -177,6 +177,14 @@ class LibvirtDriver:
         except _libvirt.libvirtError:
             return False
 
+    def net_xml(self, name: str = "default") -> str | None:
+        """Inactive/active network XML, or None if the network is missing."""
+        try:
+            net = self.conn.networkLookupByName(name)
+            return net.XMLDesc()
+        except _libvirt.libvirtError:
+            return None
+
     def net_start(self, name: str = "default") -> None:
         with contextlib.suppress(_libvirt.libvirtError):
             net = self.conn.networkLookupByName(name)

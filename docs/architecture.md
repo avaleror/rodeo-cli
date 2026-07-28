@@ -409,7 +409,7 @@ pytest tests/ -v
 | `test_cluster.py` / `test_rancher.py` | Poll loops, timeouts, parsing |
 | `test_plan_cmd.py` | Plan diff command |
 
-GitHub Actions: `.github/workflows/ci.yml` — Python 3.10 + 3.12, ruff, pytest.
+GitHub Actions: `.github/workflows/ci.yml` — Python 3.10 + 3.12 (ruff, pytest); ansible-lint job on 3.12.
 
 Live KVM regression is still manual (or geekohive) before touching MAC/DHCP/ISO chain.
 

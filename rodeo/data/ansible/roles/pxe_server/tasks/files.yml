@@ -16,17 +16,12 @@
     force: true
 
 - name: Download Harvester {{ harvester_version }} PXE boot artifacts
-  ansible.builtin.shell: |
-    set -euo pipefail
-    dest='{{ pxe_http_root }}/harvester/{{ item }}'
-    tmp="$dest.downloading"
-    curl -4 --http1.1 -fsSL --retry 5 --retry-delay 10 --retry-all-errors \
-      -C - -o "$tmp" '{{ pxe_harvester_base_url }}/{{ item }}'
-    mv "$tmp" "$dest"
-    chmod 0644 "$dest"
-  args:
-    executable: /bin/bash
-    creates: "{{ pxe_http_root }}/harvester/{{ item }}"
+  ansible.builtin.include_role:
+    name: common
+    tasks_from: curl_fetch
+  vars:
+    curl_fetch_url: "{{ pxe_harvester_base_url }}/{{ item }}"
+    curl_fetch_dest: "{{ pxe_http_root }}/harvester/{{ item }}"
   loop:
     - "harvester-v{{ harvester_version }}-vmlinuz-amd64"
     - "harvester-v{{ harvester_version }}-initrd-amd64"

@@ -22,3 +22,17 @@ jobs:
         run: ruff check rodeo tests
       - name: Test
         run: pytest tests/ -v
+
+  ansible-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ansible-lint
+        run: pip install "ansible-lint>=25.0" "ansible-core>=2.16,<2.19"
+      - name: Install collections
+        run: ansible-galaxy collection install -r rodeo/data/ansible/requirements.yml
+      - name: Lint Ansible roles
+        run: ansible-lint rodeo/data/ansible

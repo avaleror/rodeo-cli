@@ -12,38 +12,21 @@
 # --- SSH key (must exist before the Harvester config + Rancher cloud-init are
 #     rendered, so its public key can be baked into both) ---
 
-- name: Generate the host SSH key used to reach the guest VMs
-  ansible.builtin.command: ssh-keygen -t ed25519 -f /root/.ssh/id_ed25519 -N ""
-  args:
-    creates: /root/.ssh/id_ed25519
-
-- name: Read the SSH public key
-  ansible.builtin.slurp:
-    src: /root/.ssh/id_ed25519.pub
-  register: ssh_pubkey_b64
-
-- name: Expose the public key as a fact for the templates
-  ansible.builtin.set_fact:
-    ssh_public_key: "{{ ssh_pubkey_b64.content | b64decode | trim }}"
+- name: Ensure host SSH key for guest access
+  ansible.builtin.include_role:
+    name: common
+    tasks_from: ensure_ssh_key
 
 # --- Harvester ISO ---
 
 - name: Download Harvester {{ harvester_version }} ISO
-  ansible.builtin.shell: |
-    set -euo pipefail
-    dest='{{ image_dir }}/harvester-v{{ harvester_version }}-amd64.iso'
-    tmp="$dest.downloading"
-    # curl -4: Instruqt and some cloud hosts have AAAA records but no IPv6 route
-    # (Python urllib tries v6 first → errno 101). --http1.1 avoids
-    # intermittent HTTP/2 PROTOCOL_ERROR on large release artifacts.
-    curl -4 --http1.1 -fsSL --retry 5 --retry-delay 10 --retry-all-errors \
-      -C - -o "$tmp" \
-      'https://releases.rancher.com/harvester/v{{ harvester_version }}/harvester-v{{ harvester_version }}-amd64.iso'
-    mv "$tmp" "$dest"
-    chmod 0644 "$dest"
-  args:
-    executable: /bin/bash
-    creates: "{{ image_dir }}/harvester-v{{ harvester_version }}-amd64.iso"
+  ansible.builtin.include_role:
+    name: common
+    tasks_from: curl_fetch
+  vars:
+    curl_fetch_url: >-
+      https://releases.rancher.com/harvester/v{{ harvester_version }}/harvester-v{{ harvester_version }}-amd64.iso
+    curl_fetch_dest: "{{ image_dir }}/harvester-v{{ harvester_version }}-amd64.iso"
   # Skip on Rancher-only labs (no Harvester nodes) so they stay small/fast.
   when: vm_nodes | selectattr('flavor', 'equalto', 'harvester') | list | length > 0
 

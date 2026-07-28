@@ -161,8 +161,8 @@ class DeployRunner:
             else 0
         )
 
-        # Opt-in drift reconcile (ROADMAP B2 V1): memory/vcpu mismatch clears
-        # the vms phase cache so deploy re-enters it instead of skipping.
+        # Opt-in drift reconcile: memory/vcpu/DHCP-host mismatch clears the
+        # vms phase cache so deploy re-enters it instead of skipping.
         if self.reconcile and not self.force and "vms" in profile.phases:
             from ..drift import collect_drift
 
@@ -171,9 +171,10 @@ class DeployRunner:
                 for line in report.resource_change_lines():
                     yield LogLine(f"  ~ drift: {line}")
                 yield LogLine(
-                    "  ⚠  --reconcile: resetting from 'vms' due to VM resource drift. "
+                    "  ⚠  --reconcile: resetting from 'vms' due to resource drift. "
                     "Running domains may still need `rodeo clean` + redeploy to apply "
-                    "memory/vCPU (libvirt redefine alone is not enough)."
+                    "memory/vCPU (libvirt redefine alone is not enough); DHCP host "
+                    "redefine also requires VMs stopped."
                 )
                 reset_from("vms", self._plan_name, profile.phases)
                 start_idx = min(start_idx, profile.phases.index("vms"))

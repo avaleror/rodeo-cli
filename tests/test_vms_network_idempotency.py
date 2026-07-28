@@ -1,7 +1,7 @@
 """vms/tasks/network_setup.yml must not destroy+redefine the default libvirt
 network on every re-run — that flaps DHCP/DNS on virbr0 needlessly and, unlike
 pxe_server/tasks/network.yml (which guards the same destroy+redefine), used to
-run unconditionally. This pins the guard so it can't regress.
+run unconditionally. This pins the per-node DHCP host guard so it can't regress.
 """
 from __future__ import annotations
 
@@ -27,15 +27,32 @@ def test_network_xml_is_dumped_before_any_redefinition():
     assert block[0]["changed_when"] is False
 
 
-def test_destroy_and_redefine_are_guarded_not_unconditional():
+def test_destroy_and_redefine_are_guarded_per_node_not_unconditional():
     block = _outer_block()
-    guarded = block[1]
-    assert guarded["name"] == "Redefine network with static DHCP entries (skipped if already present)"
-    assert "_current_net_xml" in guarded["when"]
+    compute = block[1]
+    assert compute["name"] == "Compute whether planned DHCP hosts match the live network"
+    assert "_net_needs_redefine" in compute["ansible.builtin.set_fact"]
+    fact = compute["ansible.builtin.set_fact"]["_net_needs_redefine"]
+    assert "mgmt_mac" in fact
+    assert "node.ip" in fact
+
+    guarded = block[2]
+    assert guarded["name"] == "Redefine network with static DHCP entries (skipped if plan matches)"
+    assert "_net_needs_redefine" in guarded["when"]
 
     inner_names = [t["name"] for t in guarded["block"]]
     assert "Destroy default network to allow redefinition with static DHCP entries" in inner_names
     assert "Define default network with static DHCP entries" in inner_names
+
+
+def test_running_domain_check_fails_closed_on_virsh_errors():
+    """virsh list failure must block redefine (no failed_when: false)."""
+    block = _outer_block()
+    inner = block[2]["block"]
+    check = next(t for t in inner if t["name"].startswith("Check for running domains"))
+    assert "failed_when" not in check
+    fail = next(t for t in inner if t["name"].startswith("Fail if virsh"))
+    assert "running_domains.rc != 0" in fail["when"]
 
 
 def test_network_start_remains_unconditional():

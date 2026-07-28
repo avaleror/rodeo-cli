@@ -104,7 +104,10 @@ proven: make reconciliation the default behavior and add `--no-reconcile` as the
 matching the vision statement's "declare desired state ... converge" without a flag.
 
 **Step 6 — V2 (separate, later, own roadmap entry when scoped):** topology drift
-(new/removed nodes) and network/resource changes that touch `pxe_server`/`cluster`.
+(new/removed nodes) that needs Harvester join/etcd-gap sequencing, and broader
+pxe/cluster reconcile. **Partial progress:** NAT DHCP host reservations
+(`mac+name+ip`) are now checked in Ansible guards and in ``--reconcile`` via
+`rodeo/drift.py` (still requires VMs stopped to redefine the network).
 
 ## Phase C — Declarative inventory ✅ (done 2026-06-15, live-validated on bare metal)
 
@@ -133,7 +136,7 @@ matching the vision statement's "declare desired state ... converge" without a f
 - [x] Cache `ansible-galaxy collection install` (marker keyed on `requirements.yml` hash)
 - [ ] Stream Helm/K3s SSH installer output (removes the long blind windows in the TUI)
 - [ ] `PhaseResult` return type instead of mutating `runner._last_rc`
-- [ ] ansible-lint in CI
+- [x] ansible-lint in CI
 
 ---
 
@@ -296,7 +299,12 @@ over OpenSSH (workshop inventory). Engine/phases stay single-host. See [docs/fle
 ## Standing constraints
 
 - Do not touch the Instruqt/PXE-sensitive files without a live regression: `roles/kvm_host/tasks/libvirt.yml`, `roles/vms/tasks/network_setup.yml`, `roles/vms/defaults/main.yml`, the `pxe_server` boot chain (generic `boot.ipxe` → MAC-named scripts, installer cmdline, config-YAML perms), the etcd join gap (applied before each additional Harvester join node), and the Rancher API call order. See CONTEXT.md.
-  - `roles/vms/tasks/network_setup.yml` got a narrow, guard-only change (idempotency audit finding): the destroy+redefine of the default libvirt network used to run unconditionally on every `vms`-phase re-run; it's now skipped when static DHCP host reservations are already present (same marker-check pattern `pxe_server/tasks/network.yml` already used). No boot-order, template, or XML content changed. Still pending a live regression before it's fully trusted — the guard only checks that *some* reservation exists, not that every node in `vm_nodes` has one (see B2 above for the real fix).
+  - `roles/vms/tasks/network_setup.yml` / `pxe_server/tasks/network.yml`: redefine is
+    guarded on a **per-node** DHCP host marker (`mac+name+ip`), not merely “some
+    `<host mac=` exists”. `--reconcile` also consults live network XML for the same
+    marker (see `rodeo/drift.py`). Still prefer a live regression after touching
+    PXE boot-chain files (generic `boot.ipxe` → MAC-named scripts, installer cmdline,
+    config-YAML perms).
 - No bash deploy scripts. Ansible stays for `kvm_host` / `vms` / `pxe_server`.
 - Wall time is dominated by nested-KVM Harvester install (20–60 min). Optimize UX and correctness first, CLI speed second.
 - Harvester nodes need at least 250 GiB disk. Smaller disks fill the persistent partition, containerd fails, VIP never comes up. Validated live.

@@ -12,35 +12,41 @@
       changed_when: false
       failed_when: false
 
-    # Idempotency: only destroy and redefine if static DHCP host reservations
-    # are not already in the running network definition. Avoids unnecessary
-    # network flaps (and a brief DHCP/DNS drop) on re-runs — same pattern as
-    # pxe_server/tasks/network.yml, which redefines this same network again
-    # later to add PXE options.
-    #
-    # Known limitation: this only checks that *some* static reservation exists,
-    # not that every node in vm_nodes has one. Adding/removing/renumbering a
-    # node after the first successful `vms` phase run needs a forced redefine
-    # (`rodeo deploy --from vms` or `--force`) — full per-node drift detection
-    # is tracked as part of the auto-reconciliation work in ROADMAP.md.
-    - name: Redefine network with static DHCP entries (skipped if already present)
-      when: "'<host mac=' not in (_current_net_xml.stdout | default(''))"
+    # Idempotency: redefine only when any planned DHCP host (mac+name+ip) is
+    # missing or drifted — same per-node marker idea as Python drift / --reconcile.
+    - name: Compute whether planned DHCP hosts match the live network
+      ansible.builtin.set_fact:
+        _net_needs_redefine: >-
+          {%- set xml = _current_net_xml.stdout | default('') -%}
+          {%- set ns = namespace(need=false) -%}
+          {%- for node in vm_nodes -%}
+          {%- set frag = "mac='" ~ node.mgmt_mac ~ "' name='" ~ node.name ~ "' ip='" ~ node.ip ~ "'" -%}
+          {%- if frag not in xml -%}
+          {%- set ns.need = true -%}
+          {%- endif -%}
+          {%- endfor -%}
+          {{ ns.need }}
+
+    - name: Redefine network with static DHCP entries (skipped if plan matches)
+      when: _net_needs_redefine | bool
       block:
         - name: Check for running domains before network redefinition
           ansible.builtin.command: virsh list --name --state-running
           register: running_domains
           changed_when: false
-          failed_when: false
 
-        - name: Fail if domains are running (network redefinition would drop guest connectivity)
+        - name: Fail if virsh list failed or domains are running
           ansible.builtin.fail:
-            msg: >
+            msg: >-
+              {% if running_domains.rc != 0 -%}
+              Cannot redefine the default network — virsh list failed
+              (rc={{ running_domains.rc }}). Fix libvirt before re-running.
+              {%- else -%}
               Cannot redefine the default network — the following domains are running:
               {{ running_domains.stdout_lines }}.
               Stop all VMs first: virsh destroy harvester1 harvester2 harvester3 rancher
-          when:
-            - running_domains.rc == 0
-            - running_domains.stdout | trim != ''
+              {%- endif %}
+          when: running_domains.rc != 0 or (running_domains.stdout | trim != '')
 
         - name: Destroy default network to allow redefinition with static DHCP entries
           community.libvirt.virt_net:

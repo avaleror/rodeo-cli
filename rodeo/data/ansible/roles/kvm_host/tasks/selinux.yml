@@ -1,12 +1,15 @@
 ---
-- name: Set SELinux to permissive at runtime (no-op if not present)
-  ansible.builtin.command: setenforce 0
-  changed_when: false
-  failed_when: false
+# Lab workshops run permissive. Skip entirely when SELinux is not mounted
+# (fail closed when it is present but the module cannot set the mode).
+- name: Check whether SELinux is available on this host
+  ansible.builtin.stat:
+    path: /sys/fs/selinux
+  register: _selinux_fs
 
-- name: Set SELinux to permissive permanently in config
-  ansible.builtin.replace:
-    path: /etc/selinux/config
-    regexp: '^SELINUX=.*'
-    replace: 'SELINUX=permissive'
-  ignore_errors: true
+- name: Set SELinux to permissive
+  ansible.posix.selinux:
+    policy: targeted
+    state: permissive
+  when:
+    - _selinux_fs.stat.exists | default(false)
+    - (selinux_mode | default('permissive')) == 'permissive'

@@ -1,0 +1,16 @@
+---
+# Single owner for /root/.ssh/id_ed25519 used by Harvester config + cloud-init.
+# Safe to include from both vms and pxe_server (creates: + re-slurp).
+- name: Generate the host SSH key used to reach the guest VMs
+  ansible.builtin.command: ssh-keygen -t ed25519 -f /root/.ssh/id_ed25519 -N ""
+  args:
+    creates: /root/.ssh/id_ed25519
+
+- name: Read the SSH public key
+  ansible.builtin.slurp:
+    src: /root/.ssh/id_ed25519.pub
+  register: _rodeo_ssh_pubkey_b64
+
+- name: Expose the public key as a fact for the templates
+  ansible.builtin.set_fact:
+    ssh_public_key: "{{ _rodeo_ssh_pubkey_b64.content | b64decode | trim }}"

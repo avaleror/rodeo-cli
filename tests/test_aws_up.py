@@ -145,10 +145,14 @@ def test_provision_primary_and_execute(tmp_path, monkeypatch):
     validate_config(cfg)
     fake = _FakeEC2()
     provider = AwsHostProvider(ec2_client=fake, sleep=lambda s: None)
+    ssh_dir = tmp_path / "managed-ssh"
+    monkeypatch.setattr("rodeo.paths.rodeo_ssh_dir", lambda: ssh_dir)
+    monkeypatch.setattr("rodeo.ssh_key.rodeo_ssh_dir", lambda: ssh_dir)
     monkeypatch.setattr(
         "rodeo.providers.aws.AwsHostProvider._wait_ssh",
         lambda *a, **k: None,
     )
+    monkeypatch.setattr("rodeo.providers.aws.plant_rodeo_ssh_key", lambda *a, **k: None)
     monkeypatch.setattr(
         "rodeo.providers.remote_up.run_remote",
         lambda *a, **k: type(
@@ -191,6 +195,9 @@ def test_destroy_cli_yes(tmp_path, monkeypatch):
     lab = _aws_plan(tmp_path)
     fake = _FakeEC2()
     provider = AwsHostProvider(ec2_client=fake, sleep=lambda s: None)
+    ssh_dir = tmp_path / "managed-ssh"
+    monkeypatch.setattr("rodeo.paths.rodeo_ssh_dir", lambda: ssh_dir)
+    monkeypatch.setattr("rodeo.ssh_key.rodeo_ssh_dir", lambda: ssh_dir)
     monkeypatch.setattr(
         "rodeo.providers.remote_up.get_provider",
         lambda name: provider,
@@ -201,6 +208,7 @@ def test_destroy_cli_yes(tmp_path, monkeypatch):
         "rodeo.providers.aws.AwsHostProvider._wait_ssh",
         lambda *a, **k: None,
     )
+    monkeypatch.setattr("rodeo.providers.aws.plant_rodeo_ssh_key", lambda *a, **k: None)
     monkeypatch.setattr(
         "rodeo.providers.remote_up.rodeo_state_dir",
         lambda: tmp_path / "state",

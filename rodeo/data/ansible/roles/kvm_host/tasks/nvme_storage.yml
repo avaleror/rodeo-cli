@@ -1,0 +1,113 @@
+---
+# Instance-store NVMe → shared image_dir pool (AWS i7i / similar).
+# Performance-first: one shared XFS under image_dir (no per-node volumes).
+# Idempotent: skip when image_dir is already a non-root mount; never reformat
+# a device that already has a filesystem (blkid guard).
+
+- name: Probe whether image_dir is already a dedicated mount
+  ansible.builtin.command: findmnt -n -o SOURCE --target {{ image_dir }}
+  register: _image_dir_src
+  changed_when: false
+  failed_when: false
+
+- name: Probe root mount source
+  ansible.builtin.command: findmnt -n -o SOURCE /
+  register: _root_src
+  changed_when: false
+  failed_when: false
+
+- name: List NVMe namespace devices with sizes
+  ansible.builtin.shell: |
+    set -euo pipefail
+    shopt -s nullglob
+    for d in /dev/nvme*n1; do
+      [ -b "$d" ] || continue
+      bytes=$(blockdev --getsize64 "$d" 2>/dev/null || echo 0)
+      echo "${bytes} ${d}"
+    done | sort -nr
+  args:
+    executable: /bin/bash
+  register: _nvme_sized
+  changed_when: false
+
+- name: Resolve root disk path
+  ansible.builtin.set_fact:
+    _root_disk: >-
+      {{
+        (_root_src.stdout | default('') | trim)
+        | regex_replace('p[0-9]+$', '')
+      }}
+
+- name: Pick largest non-root NVMe device
+  ansible.builtin.set_fact:
+    _nvme_pool_device: >-
+      {%- set ns = namespace(dev='') -%}
+      {%- for line in (_nvme_sized.stdout_lines | default([])) -%}
+      {%- set parts = line.split() -%}
+      {%- if parts | length >= 2 -%}
+      {%- set cand = parts[1] -%}
+      {%- if cand != _root_disk and ns.dev == '' -%}
+      {%- set ns.dev = cand -%}
+      {%- endif -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {{ ns.dev }}
+
+- name: Decide whether NVMe pool setup is needed
+  ansible.builtin.set_fact:
+    _nvme_pool_needed: >-
+      {{
+        (_nvme_pool_device | length) > 0
+        and (
+          (_image_dir_src.rc | default(1) != 0)
+          or ((_image_dir_src.stdout | default('') | trim) == '')
+          or (
+            (_image_dir_src.stdout | default('') | trim)
+            == (_root_src.stdout | default('') | trim)
+          )
+        )
+      }}
+
+- name: Skip NVMe pool when none available
+  ansible.builtin.debug:
+    msg: >-
+      host_storage_backend=nvme but no non-root NVMe devices found —
+      leaving image_dir on the root volume ({{ image_dir }}).
+  when: (_nvme_pool_device | default('') | length) == 0
+
+- name: Prepare NVMe pool for image_dir
+  when: _nvme_pool_needed | bool
+  block:
+    - name: Read filesystem on pool device
+      ansible.builtin.command: blkid -o value -s TYPE {{ _nvme_pool_device }}
+      register: _pool_fstype
+      changed_when: false
+      failed_when: false
+
+    - name: Format pool device as XFS when empty
+      ansible.builtin.filesystem:
+        fstype: xfs
+        dev: "{{ _nvme_pool_device }}"
+      when: (_pool_fstype.stdout | default('') | trim) == ''
+
+    - name: Ensure image_dir exists
+      ansible.builtin.file:
+        path: "{{ image_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Mount NVMe pool on image_dir
+      ansible.posix.mount:
+        path: "{{ image_dir }}"
+        src: "{{ _nvme_pool_device }}"
+        fstype: xfs
+        opts: defaults,nofail
+        state: mounted
+
+    - name: Persist NVMe pool mount in fstab
+      ansible.posix.mount:
+        path: "{{ image_dir }}"
+        src: "{{ _nvme_pool_device }}"
+        fstype: xfs
+        opts: defaults,nofail
+        state: present

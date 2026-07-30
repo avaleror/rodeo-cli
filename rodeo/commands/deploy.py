@@ -82,6 +82,20 @@ def deploy_cmd(
         console.print(f"[red]✗  {exc}[/red]")
         raise SystemExit(1)
 
+    from ..host_context import apply_host_context, persist_host_context_notes
+    from ..preflight import detect_host
+
+    host = detect_host()
+    cfg, hc_notes = apply_host_context(
+        cfg,
+        host_facts={
+            "cpus": host.get("cpus") or 0,
+            "disk_free_gib": host.get("disk_free_gib"),
+            "image_dir": host.get("image_dir"),
+        },
+    )
+    persist_host_context_notes(cfg, hc_notes)
+
     if from_phase is not None and from_phase not in profile.phases:
         console.print(
             f"[red]✗  Unknown phase '{from_phase}'. "
@@ -142,6 +156,25 @@ def execute_deploy(
     Shared by ``rodeo deploy`` and ``rodeo up`` so both get identical behavior and
     the same success screen. Prints :func:`render_success` on a clean run (code 0).
     """
+    from ..host_context import apply_host_context, persist_host_context_notes
+    from ..preflight import detect_host
+
+    host = detect_host()
+    cfg, hc_notes = apply_host_context(
+        cfg,
+        host_facts={
+            "cpus": host.get("cpus") or 0,
+            "disk_free_gib": host.get("disk_free_gib"),
+            "image_dir": host.get("image_dir"),
+        },
+    )
+    persist_host_context_notes(cfg, hc_notes)
+    for line in hc_notes:
+        if line.startswith("warn:"):
+            console.print(f"[yellow]⚠  host-context: {line[5:].strip()}[/yellow]")
+        else:
+            console.print(f"[dim]host-context: {line}[/dim]")
+
     use_tui = sys.stdout.isatty() if tui is None else tui
     code = 0
     if use_tui:

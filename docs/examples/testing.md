@@ -86,6 +86,28 @@ Run in this order to fail fast on smaller profiles before investing time in bigg
 3. `harvester-ha` (~90 min) — 3-node Harvester; validates 3-member etcd HA
 4. `harvester` (~120 min) — full lab; validates Rancher import on top of Harvester
 
+### AWS live smoke (`i7i.8xlarge` + NVMe)
+
+Manual checklist for infra-adaptive host context (provision or BYO). Needs AWS creds
+and a SLES 16 / Leap 16 AMI with nested virt.
+
+```bash
+pip install 'rodeo-cli[aws]'
+# Provision path (recommended tier → i7i.8xlarge for harvester; region capacity checked first):
+rodeo up --yes --profile harvester --target aws --instance-tier recommended
+# Or BYO: SSH to an existing i7i.8xlarge, set deployment_target: aws, then:
+#   rodeo up --yes --profile harvester
+```
+
+Verify on the KVM host after `kvm_host`:
+
+1. `resources.harvester.disk_gb` is **1200** (plan / vars)
+2. `storage.backend: nvme` and `image_dir` is mounted on instance-store NVMe (`findmnt`, `lsblk`)
+3. Guest disks live under that `image_dir` (not root EBS alone)
+4. Harvester VIP / `rodeo status` healthy; tear down with `rodeo destroy --cloud --yes` if provisioned
+
+Unit coverage: `tests/test_host_context.py`, `tests/test_kvm_host_nvme_storage.py`.
+
 ## Integration tests — GitHub Actions (self-hosted runner)
 
 The integration workflow is at `.github/workflows/integration.yml`. It runs on a self-hosted runner with the labels `self-hosted`, `kvm`, `sles16`.

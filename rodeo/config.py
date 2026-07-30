@@ -433,7 +433,7 @@ def _validate_aws_provider(cfg: dict) -> None:
     if not isinstance(provider, dict):
         raise ConfigError(
             "deployment_target: aws requires a provider: block "
-            "(same shape as workshop.yaml — type, region, ami, …)."
+            "(same shape as workshop.yaml — type, region, ami or Leap filter, …)."
         )
     ptype = str(provider.get("type") or "").strip().lower()
     if ptype != "aws":

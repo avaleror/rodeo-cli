@@ -13,6 +13,7 @@ from ..config import ConfigError
 from ..fleet.inventory import FleetHost, FleetInventory
 from ..fleet.ssh_exec import run_remote
 from ..paths import rodeo_state_dir
+from ..ssh_key import resolve_ssh_identity
 from .base import SINGLE_HOST_ID, ProvisionSpec, ProvisionedHost
 from .registry import get_provider
 
@@ -136,10 +137,9 @@ def provision_primary(
 ) -> ProvisionedHost:
     """Create or reuse the single EC2 host for this plan."""
     provider_cfg = _provider_cfg(cfg)
-    identity = str(provider_cfg.get("identity_file") or "").strip()
-    if not identity:
-        raise ConfigError("provider.identity_file is required")
-    identity = str(Path(identity).expanduser())
+    identity = resolve_ssh_identity(str(provider_cfg.get("identity_file") or "") or None)
+    provider_cfg = dict(provider_cfg)
+    provider_cfg["identity_file"] = identity
     ssh_user = str(provider_cfg.get("ssh_user") or "ec2-user")
     plan_name = str(cfg.get("name") or "rodeo")
     spec = ProvisionSpec(
@@ -165,7 +165,7 @@ def _fleet_inventory_for(
     host: ProvisionedHost,
 ) -> tuple[FleetInventory, FleetHost]:
     provider_cfg = _provider_cfg(cfg)
-    identity = str(Path(str(provider_cfg["identity_file"]).strip()).expanduser())
+    identity = resolve_ssh_identity(str(provider_cfg.get("identity_file") or "") or None)
     ssh_user = str(provider_cfg.get("ssh_user") or "ec2-user")
     plan_name = str(cfg.get("name") or "rodeo")
     inv = FleetInventory(
@@ -236,12 +236,15 @@ def run_remote_up(
     result = run_remote(
         inv,
         fh,
-        ["bash", "-lc", script],
+        ["sudo", "-n", "bash", "-lc", script],
         timeout=timeout,
     )
     if not result.ok:
         msg = (result.stderr or result.stdout or f"exit {result.rc}").strip()
-        raise ConfigError(f"remote rodeo up failed on {host.public_ip}: {msg[:500]}")
+        raise ConfigError(
+            f"remote rodeo up failed on {host.public_ip} "
+            f"(need passwordless sudo): {msg[:500]}"
+        )
     out = result.stdout or ""
     if "AWS_UP_EXIT:" in out:
         for line in reversed(out.splitlines()):
@@ -263,9 +266,7 @@ def destroy_primary(
     """Terminate the ownership-tagged single-host instance for this plan."""
     provider_cfg = _provider_cfg(cfg)
     plan_name = str(cfg.get("name") or "rodeo")
-    identity = str(provider_cfg.get("identity_file") or "").strip() or None
-    if identity:
-        identity = str(Path(identity).expanduser())
+    identity = resolve_ssh_identity(str(provider_cfg.get("identity_file") or "") or None)
     ssh_user = str(provider_cfg.get("ssh_user") or "ec2-user")
     spec = ProvisionSpec(
         workshop=plan_name,

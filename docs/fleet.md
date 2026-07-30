@@ -57,12 +57,14 @@ OpenSSH-only.
 Changing the nested phase engine for multi-host.
 
 **MVP gaps (AWS):** no `plan` dry-run yet; `deprovision` does not rewrite `hosts[]`
-(terminate only — edit or re-provision to refresh YAML); AMI/name filters and
-auto SG later.
+(terminate only — edit or re-provision to refresh YAML); auto SG later.
 
 ```bash
 pip install 'rodeo-cli[aws]'   # once, on the laptop
-# AWS creds via standard boto3 chain (env / profile / instance role) — not in YAML
+# AWS API creds (boto3 — never in YAML). Either:
+#   ~/.aws/credentials  (+ optional AWS_PROFILE / ~/.aws/config)
+#   or AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY (+ optional AWS_SESSION_TOKEN)
+# SSH: rodeo auto-manages ~/.rodeo/ssh/id_ed25519 and imports EC2 key pair "rodeo"
 rodeo fleet provision -f workshop.yaml    # create/reuse → write hosts[]
 rodeo fleet doctor -f workshop.yaml
 rodeo fleet deploy -f workshop.yaml
@@ -111,9 +113,8 @@ lab:
   # components: [harvester]         # optional — see "Access sheet" below.
   #                                  # Omit to show every URL fleet knows how to build.
 defaults:
-  ssh_user: root
-  # identity_file: /home/you/.ssh/id_ed25519
-  # ssh_options: ["ProxyJump=bastion.example"]
+  ssh_user: ec2-user                 # AMI user (ec2-user / sles / root)
+  # identity_file: ignored — rodeo uses managed ~/.rodeo/ssh/id_ed25519
 hosts:
   - id: student-01
     ssh: 203.0.113.11               # host or user@host
@@ -358,30 +359,54 @@ Validation rules (fail closed):
 
 - `provider.type` ∈ `{aws, gcp, vultr, hetzner}`.
 - `provider.count` integer 1–64 when set; if `hosts:` non-empty and count omitted, ensure exactly those ids (reuse/create by `rodeo-host-id`).
-- `defaults.identity_file` (or equivalent key material) required for provision SSH wait.
+- SSH identity is managed under `~/.rodeo/ssh/id_ed25519` (auto-created; imported to EC2 as key pair `rodeo`). `defaults.identity_file` / `provider.key_name` are optional.
 - Type-specific required keys enforced by that adapter’s `validate()` only.
+
+#### AWS API credentials
+
+Provision uses **boto3 only** (AWS CLI is optional). Supply credentials via either:
+
+| Method | How |
+|--------|-----|
+| Shared file | `~/.aws/credentials` (and optional `~/.aws/config` / `AWS_PROFILE`) |
+| Environment | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` (+ optional `AWS_SESSION_TOKEN`) |
+
+Never put AWS access keys in `workshop.yaml` or `rodeo-plan.yaml`.
 
 #### `provider.type: aws` (F4a)
 
-Prefer **metal** or large Nitro nested-virt types (≥128 GiB RAM for full Harvester /
-Edge). Set `volume_size_gib: 500` (or larger) so nested Harvester disks fit.
-Tiny / burstable types are rejected at validate.
+Prefer **`i7i.8xlarge`** (local NVMe) for Harvester / Edge I/O. Metal remains valid.
+`apply_host_context` raises Harvester `disk_gb` to 1200 and mounts NVMe on
+`image_dir`. Root `volume_size_gib` only needs the OS (~100 GiB). Tiny / burstable
+types are rejected at validate. Nested virt defaults **on** for non-metal types.
+
+SSH: rodeo generates `~/.rodeo/ssh/id_ed25519` if missing, imports it as EC2 key pair
+**`rodeo`**, and plants the same private key on the KVM host so nested VMs share it.
+New instances also get cloud-init UserData: root authorized_keys + `NOPASSWD` sudo
+for `ssh_user` so remote `rodeo up` never asks for a password.
+Use `rodeo ssh student-01` or `rodeo ssh student-01/rancher`.
 
 ```yaml
 provider:
   type: aws
   count: 12
   region: eu-central-1              # required
-  instance_type: m7i.metal-24xl     # required; nested-virt capable / metal
-  ami: ami-0123456789abcdef0        # required (or ami_name_filter later)
-  key_name: rodeo-workshop          # required EC2 key pair name
+  instance_type: i7i.8xlarge        # preferred: local NVMe; metal also OK
+  # ami omitted → newest openSUSE Leap 16.0 (x86_64) Marketplace AMI
+  # ami_name_filter: "openSUSE Leap 16.0 (x86_64)*"   # default when ami unset
+  # ami: ami-0123456789abcdef0      # optional pin (SLES 16 / specific Leap build)
   subnet_id: subnet-0abc…           # required
   security_group_ids:               # required; must allow 22, 8443, 30002 as needed
     - sg-0abc…
+  # key_name: rodeo                 # default; ImportKeyPair managed by rodeo
   # associate_public_ip: true       # default true
-  # nested_virtualization: true     # if using Nitro nested-virt types instead of metal
-  # volume_size_gib: 500            # recommended ≥500 for Harvester
+  # nested_virtualization: true     # default on for non-metal
+  # volume_size_gib: 100            # root EBS; lab disks use NVMe via host_context
 ```
+
+Subscribe once to [openSUSE Leap on Marketplace](https://aws.amazon.com/marketplace/pp/prodview-wn2xje27ui45o)
+(current build example: *openSUSE Leap 16.0 (x86_64) - v20260629*). SSH user: **`ec2-user`**.
+SLES 16 works too — set `ami:` to that image id and `ssh_user` if it is not `ec2-user`.
 
 #### `provider.type: gcp` (F4b)
 

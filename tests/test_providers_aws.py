@@ -14,12 +14,76 @@ from rodeo.providers.aws import AwsHostProvider
 from rodeo.providers.base import ProvisionedHost
 
 
+@pytest.fixture
+def managed_ssh(tmp_path, monkeypatch):
+    """Point managed ~/.rodeo/ssh at a temp dir and generate a key."""
+    ssh_dir = tmp_path / "managed-ssh"
+    monkeypatch.setattr("rodeo.paths.rodeo_ssh_dir", lambda: ssh_dir)
+    monkeypatch.setattr("rodeo.ssh_key.rodeo_ssh_dir", lambda: ssh_dir)
+    from rodeo.ssh_key import ensure_rodeo_ssh_key
+
+    ensure_rodeo_ssh_key()
+    return ssh_dir
+
+
 class _FakeEC2:
     def __init__(self) -> None:
         self.instances: dict[str, dict] = {}
         self._n = 0
         self.terminated: list[str] = []
         self.started: list[str] = []
+        self.key_pairs: dict[str, dict] = {}
+        self.imported: list[str] = []
+
+    def describe_key_pairs(self, KeyNames=None):
+        names = KeyNames or []
+        pairs = [self.key_pairs[n] for n in names if n in self.key_pairs]
+        if names and not pairs:
+            err = Exception("InvalidKeyPair.NotFound")
+            err.response = {"Error": {"Code": "InvalidKeyPair.NotFound"}}  # type: ignore[attr-defined]
+            raise err
+        return {"KeyPairs": pairs}
+
+    def import_key_pair(self, KeyName, PublicKeyMaterial):
+        from rodeo.ssh_key import local_pubkey_sha256, rodeo_ssh_public_key_path
+
+        fp = local_pubkey_sha256(rodeo_ssh_public_key_path())
+        self.key_pairs[KeyName] = {"KeyName": KeyName, "KeyFingerprint": fp}
+        self.imported.append(KeyName)
+        return {"KeyName": KeyName, "KeyFingerprint": fp}
+
+    def describe_images(self, Owners=None, Filters=None):
+        # Prefer explicit test fixtures; default Leap-like image when filtering.
+        images = getattr(self, "images", None)
+        if images is None:
+            images = [
+                {
+                    "ImageId": "ami-leap-newest",
+                    "Name": "openSUSE Leap 16.0 (x86_64) - v20260629",
+                    "CreationDate": "2026-06-29T00:00:00.000Z",
+                    "State": "available",
+                    "Architecture": "x86_64",
+                },
+                {
+                    "ImageId": "ami-leap-older",
+                    "Name": "openSUSE Leap 16.0 (x86_64) - v20260101",
+                    "CreationDate": "2026-01-01T00:00:00.000Z",
+                    "State": "available",
+                    "Architecture": "x86_64",
+                },
+            ]
+        return {"Images": list(images)}
+
+    def describe_instance_type_offerings(self, LocationType=None, Filters=None):
+        values = []
+        for f in Filters or []:
+            if f.get("Name") == "instance-type":
+                values = list(f.get("Values") or [])
+        return {
+            "InstanceTypeOfferings": [
+                {"InstanceType": v, "Location": "eu-central-1"} for v in values
+            ]
+        }
 
     def describe_instances(self, Filters=None, InstanceIds=None):
         items = list(self.instances.values())
@@ -44,6 +108,12 @@ class _FakeEC2:
         return {"Reservations": [{"Instances": items}] if items else []}
 
     def run_instances(self, **kwargs):
+        if kwargs.get("DryRun"):
+            err = Exception("DryRunOperation")
+            err.response = {  # type: ignore[attr-defined]
+                "Error": {"Code": "DryRunOperation", "Message": "Request would have succeeded"}
+            }
+            raise err
         self._n += 1
         iid = f"i-{self._n:08d}"
         tags = []
@@ -87,14 +157,12 @@ def _aws_workshop(tmp_path: Path, *, hosts: str = "hosts: []", count: int = 2) -
               profile: harvester
             defaults:
               ssh_user: ec2-user
-              identity_file: /tmp/key.pem
             provider:
               type: aws
               count: {count}
               region: eu-central-1
               instance_type: m7i.metal-24xl
               ami: ami-abc
-              key_name: rodeo
               subnet_id: subnet-1
               security_group_ids: [sg-1]
             {hosts}
@@ -134,6 +202,100 @@ def test_aws_rejects_tiny_instance_type():
         )
 
 
+def test_aws_validate_without_key_name():
+    p = AwsHostProvider(ec2_client=_FakeEC2(), sleep=lambda s: None)
+    p.validate(
+        {
+            "type": "aws",
+            "region": "eu-central-1",
+            "instance_type": "i7i.8xlarge",
+            "subnet_id": "subnet-1",
+            "security_group_ids": ["sg-1"],
+        }
+    )
+
+
+def test_resolve_ami_explicit():
+    p = AwsHostProvider(ec2_client=_FakeEC2(), sleep=lambda s: None)
+    assert p.resolve_ami(p._ec2, {"ami": "ami-pinned"}) == "ami-pinned"
+
+
+def test_resolve_ami_leap_filter_picks_newest():
+    fake = _FakeEC2()
+    p = AwsHostProvider(ec2_client=fake, sleep=lambda s: None)
+    assert p.resolve_ami(fake, {}) == "ami-leap-newest"
+    assert (
+        p.resolve_ami(fake, {"ami_name_filter": "openSUSE Leap 16.0 (x86_64)*"})
+        == "ami-leap-newest"
+    )
+
+
+def test_resolve_ami_no_match():
+    fake = _FakeEC2()
+    fake.images = []
+    p = AwsHostProvider(ec2_client=fake, sleep=lambda s: None)
+    with pytest.raises(ConfigError, match="no AMI matched"):
+        p.resolve_ami(fake, {"ami_name_filter": "nope*"})
+
+
+def test_aws_create_enables_nested_virt_by_default_on_i7i(managed_ssh, monkeypatch):
+    fake = _FakeEC2()
+    captured: dict = {}
+
+    def capture_run(**kwargs):
+        captured.update(kwargs)
+        return _FakeEC2.run_instances(fake, **kwargs)
+
+    fake.run_instances = capture_run  # type: ignore[method-assign]
+    p = AwsHostProvider(ec2_client=fake, sleep=lambda s: None)
+    monkeypatch.setattr(
+        "rodeo.providers.aws.AwsHostProvider._wait_ssh",
+        lambda *a, **k: None,
+    )
+    from rodeo.providers.base import ProvisionSpec
+
+    p.provision(
+        ProvisionSpec(
+            workshop="demo",
+            host_ids=["primary"],
+            ssh_user="ec2-user",
+            wait_ssh=False,
+        ),
+        {
+            "type": "aws",
+            "region": "us-east-1",
+            "instance_type": "i7i.8xlarge",
+            "ami": "ami-x",
+            "subnet_id": "subnet-1",
+            "security_group_ids": ["sg-1"],
+        },
+    )
+    assert captured.get("CpuOptions") == {"NestedVirtualization": "enabled"}
+    assert captured.get("KeyName") == "rodeo"
+    assert fake.imported == ["rodeo"]
+    ud = captured.get("UserData") or ""
+    assert "#cloud-config" in ud
+    assert "NOPASSWD:ALL" in ud
+    assert "PermitRootLogin prohibit-password" in ud
+
+
+def test_aws_rejects_nested_virt_false_on_virtual_type():
+    p = AwsHostProvider(ec2_client=_FakeEC2(), sleep=lambda s: None)
+    with pytest.raises(ConfigError, match="nested_virtualization"):
+        p.validate(
+            {
+                "type": "aws",
+                "region": "us-east-1",
+                "instance_type": "i7i.8xlarge",
+                "ami": "ami-x",
+                "key_name": "k",
+                "subnet_id": "subnet-1",
+                "security_group_ids": ["sg-1"],
+                "nested_virtualization": False,
+            }
+        )
+
+
 def test_ownership_tags_managed_by_rodeo():
     from rodeo.providers.base import TAG_MANAGED_BY_VALUE, ownership_tags
 
@@ -143,7 +305,7 @@ def test_ownership_tags_managed_by_rodeo():
     assert tags["rodeo-host-id"] == "primary"
 
 
-def test_aws_provision_create_and_reuse(tmp_path, monkeypatch):
+def test_aws_provision_create_and_reuse(tmp_path, managed_ssh, monkeypatch):
     path = _aws_workshop(tmp_path, count=1)
     inv = load_inventory(path)
     fake = _FakeEC2()
@@ -171,7 +333,7 @@ def test_aws_provision_create_and_reuse(tmp_path, monkeypatch):
     assert reloaded.hosts[0].public_ip == "203.0.113.1"
 
 
-def test_aws_provision_restarts_stopped_instance(tmp_path, monkeypatch):
+def test_aws_provision_restarts_stopped_instance(tmp_path, managed_ssh, monkeypatch):
     path = _aws_workshop(tmp_path, count=1)
     inv = load_inventory(path)
     fake = _FakeEC2()
@@ -191,7 +353,7 @@ def test_aws_provision_restarts_stopped_instance(tmp_path, monkeypatch):
     assert fake.instances[iid]["State"]["Name"] == "running"
 
 
-def test_aws_deprovision_only_tagged(tmp_path, monkeypatch):
+def test_aws_deprovision_only_tagged(tmp_path, managed_ssh, monkeypatch):
     path = _aws_workshop(tmp_path, count=1)
     inv = load_inventory(path)
     fake = _FakeEC2()
@@ -253,7 +415,7 @@ def test_merge_preserves_order(tmp_path):
     assert inv.hosts[1].public_ip == "9.9.9.9"
 
 
-def test_fleet_provision_cli(monkeypatch, tmp_path):
+def test_fleet_provision_cli(managed_ssh, monkeypatch, tmp_path):
     path = _aws_workshop(tmp_path, count=1)
     fake = _FakeEC2()
     provider = AwsHostProvider(ec2_client=fake, sleep=lambda s: None)

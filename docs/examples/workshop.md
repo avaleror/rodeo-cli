@@ -43,15 +43,13 @@ lab:
   dir: /root/lab
   profile: harvester
 defaults:
-  ssh_user: ec2-user
-  identity_file: ~/.ssh/rodeo-workshop.pem
+  ssh_user: ec2-user              # openSUSE Leap Marketplace
 provider:
   type: aws
   count: 2
   region: eu-central-1
-  instance_type: m7i.metal-24xl   # or nested-virt Nitro + nested_virtualization: true
-  ami: ami-…
-  key_name: rodeo-workshop
+  instance_type: i7i.8xlarge      # preferred: local NVMe; metal also OK
+  # ami omitted → Leap 16.0 (x86_64)* from aws-marketplace (e.g. v20260629)
   subnet_id: subnet-…
   security_group_ids: [sg-…]
 hosts: []
@@ -59,8 +57,13 @@ hosts: []
 
 ```bash
 pip install 'rodeo-cli[aws]'
+# Creds: ~/.aws/credentials  OR  AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY
+# Subscribe once: AWS Marketplace → openSUSE Leap
+# SSH key: auto ~/.rodeo/ssh/id_ed25519 → EC2 key pair "rodeo"
 rodeo fleet provision -f workshop.yaml
 rodeo fleet doctor -f workshop.yaml
+rodeo ssh student-01
+rodeo ssh student-01/rancher
 rodeo fleet deprovision -f workshop.yaml --yes
 ```
 
@@ -75,19 +78,19 @@ deployment_target: aws
 provider:
   type: aws
   region: eu-central-1
-  instance_type: m7i.metal-24xl
-  ami: ami-…
-  key_name: rodeo-workshop
+  instance_type: i7i.8xlarge      # preferred: local NVMe
+  # Leap 16 by default; pin with ami: ami-… for SLES 16 if needed
   subnet_id: subnet-…
   security_group_ids: [sg-…]
-  identity_file: ~/.ssh/rodeo-workshop.pem
   ssh_user: ec2-user
-  volume_size_gib: 500
+  volume_size_gib: 100            # root EBS; lab disks on NVMe via host_context
 ```
 
 ```bash
 pip install 'rodeo-cli[aws]'
 rodeo up --yes --profile harvester --target aws
+rodeo ssh primary
+rodeo ssh primary/rancher
 # tear down the EC2 host (not nested VMs alone):
 rodeo destroy --cloud --yes
 ```

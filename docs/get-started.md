@@ -82,7 +82,18 @@ deploy, diagnose, retry, and an access URL sheet.
 
 **Shipped:** F0–F2.1 (JSON reports, fan-out, deploy/retry/access/diagnose).  
 **Roadmap:** MCP (F3); F4a AWS provision shipped (MVP); next GCP → Vultr Bare Metal → Hetzner (F4b–d).
-Single-host: `rodeo up --target aws` (Phase E MVP).
+
+### Single-host AWS
+
+`rodeo up --target aws` provisions one EC2 KVM host then remote-deploys. Pick
+`--instance-tier budget|recommended|performance` (or set `provider.instance_type`);
+rodeo checks regional availability before create. See
+[provider fields](reference/plan.md#provider-when-deployment_target-aws).
+
+```bash
+pip install 'rodeo-cli[aws]'
+rodeo up --yes --profile harvester --target aws --instance-tier recommended
+```
 
 See [Fleet](fleet.md) and [Fleet roadmap](fleet.md#roadmap).
 

@@ -6,6 +6,7 @@ from typing import Any
 
 from ..config import ConfigError
 from ..providers import DeprovisionResult, ProvisionSpec, ProvisionedHost, get_provider
+from ..ssh_key import resolve_ssh_identity
 from .inventory import (
     FleetInventory,
     desired_host_ids,
@@ -24,11 +25,7 @@ def fleet_provision(
 ) -> list[ProvisionedHost]:
     """Ensure cloud hosts exist; optionally merge into workshop.yaml."""
     provider_cfg = require_provider(inventory)
-    if not inventory.defaults.get("identity_file") and wait_ssh:
-        raise ConfigError(
-            "defaults.identity_file is required for provision SSH wait "
-            "(or pass --no-wait-ssh)"
-        )
+    identity = resolve_ssh_identity(inventory.identity_file)
     ids = desired_host_ids(inventory, host_ids=host_ids)
     extra = provider_cfg.get("labels") or {}
     if extra and not isinstance(extra, dict):
@@ -37,7 +34,7 @@ def fleet_provision(
         workshop=inventory.name,
         host_ids=ids,
         ssh_user=inventory.ssh_user,
-        identity_file=inventory.identity_file,
+        identity_file=identity,
         extra_labels={str(k): str(v) for k, v in dict(extra).items()},
         wait_ssh=wait_ssh,
     )

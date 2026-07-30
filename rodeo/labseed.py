@@ -208,5 +208,11 @@ def normalize_plan(
             host_cpus=os.cpu_count() or 0,
             flavor_counts=counts,
         )
+    elif deployment_target == "aws":
+        from .host_context import apply_host_context
+
+        adapted, _ = apply_host_context(data, host_facts={})
+        data.clear()
+        data.update(adapted)
 
     plan_path.write_text(yaml.safe_dump(data, sort_keys=False, default_flow_style=False))

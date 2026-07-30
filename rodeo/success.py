@@ -175,6 +175,7 @@ def render_success(cfg: dict) -> None:
     lines.append("  rodeo status                 # health + phase progress")
     if is_suse_edge:
         lines.append("  rodeo ssh eib            # shell into the EIB VM (build Elemental OS images here)")
+        lines.append("  rodeo ssh <host>/<vm>    # from laptop: hop via KVM/EC2 host")
         lines.append("  On the eib VM: edit /home/eib-config/edge-definition.yaml")
         lines.append("    → replace REPLACE_WITH_REGISTRATION_URL with the MachineRegistration URL")
         lines.append("    → run EIB to build the Elemental OS image (base OS from Hauler: http://localhost:8080)")

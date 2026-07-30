@@ -57,16 +57,18 @@ rancher            aws              Rancher on an AWS EC2 KVM host
 
 **Tech platform** — what lab topology and software stack to deploy. Encoded in `rodeo/profiles/<name>.py` + `data/platforms/<name>/definition.yaml`. Platform code is host-agnostic; the same profile works on any host context.
 
-**Host context** — where the KVM host runs and what that implies for host-level setup. Encoded in `deployment_target` in `rodeo-plan.yaml`. Affects: guarded phases, firewall/DNAT configuration, external IP detection, success screen output. The underlying infrastructure is always KVM/libvirt regardless of host context.
+**Host context** — where the KVM host runs and what that implies for host-level setup. Encoded in `deployment_target` in `rodeo-plan.yaml`. Affects: guarded phases, firewall/DNAT configuration, external IP detection, success screen output, and **infra adaptation** (`rodeo/host_context.py`): resource floors, disk backend, guest cache/io. Acquire can be provisioned or BYO; both converge through the same overlays. The underlying infrastructure is always KVM/libvirt regardless of host context.
 
 | `deployment_target` | Host type | Key differences |
 |---|---|---|
-| `baremetal` | Linux bare metal with KVM | full firewalld + DNAT |
-| `instruqt` | Instruqt managed KVM builder | `finalise` phase guarded; Instruqt-aware networking |
-| `aws` | Laptop provisions EC2; lab runs on the instance as baremetal | shared `provider:` + `rodeo destroy --cloud` |
+| `baremetal` | Linux bare metal with KVM | full firewalld + DNAT; optional disk-space warn |
+| `instruqt` | Instruqt managed KVM builder | `finalise` guarded; vCPU/RAM presets (~70% host) |
+| `aws` | Provisioned EC2 *or* BYO on EC2 | `provider:` + destroy; `disk_gb` floor 1200; NVMe → `image_dir` |
 | `gcp` *(planned)* | GCP instance with KVM | external IP via GCE metadata; VPC firewall rules |
 
-Adding a new host context requires four touch points: `config.py` allowed list, `up_cmd.py` auto-detection, `runner.py` vars file, `success.py` output. See the Extension points table below.
+**Acquire vs adapt.** Host acquire can be provisioned (`rodeo up --target aws` / Fleet `provider:`) or BYO (SSH inventory / operator-created EC2). Both must hit `apply_host_context()` before deploy so workshops do not fork playbooks per cloud. Tech platform declares *what* lab; host context declares *where* and *how the host must be shaped*.
+
+Adding a new host context requires: `config.py` allowed list, `up_cmd.py` auto-detection, `runner.py` vars file, `success.py` output, and an overlay in `host_context.py`. See the Extension points table below.
 
 ---
 
@@ -420,7 +422,7 @@ Live KVM regression is still manual (or geekohive) before touching MAC/DHCP/ISO 
 | Add… | Where |
 |------|-------|
 | New tech platform | New `RodeoProfile` in `profiles/` + `definition.yaml` in `data/platforms/` + register in `profiles/__init__.py` |
-| New deployment_target | `config.py` allowed list + `up_cmd.py` auto-detect + `runner.py` vars + `success.py` output + `kvm_host` role conditionals |
+| New deployment_target | `config.py` allowed list + `up_cmd.py` auto-detect + `runner.py` vars + `success.py` output + `host_context.py` overlay + `kvm_host` role conditionals |
 | New phase | Add to `profile.phases` + `run_phase()` dispatch |
 | New CLI command | `commands/*.py` + register in `cli.py` |
 | Host OS support | `install_deps.py` + possibly kvm_host role conditionals |

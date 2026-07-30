@@ -5,6 +5,12 @@
 - name: Include package tasks
   ansible.builtin.import_tasks: packages.yml
 
+- name: Include NVMe instance-store pool (aws / storage.backend=nvme)
+  ansible.builtin.import_tasks: nvme_storage.yml
+  when: >
+    (host_storage_backend | default('') | lower) == 'nvme'
+    or (deployment_target | default('') | lower) == 'aws'
+
 - name: Include libvirt tasks
   ansible.builtin.import_tasks: libvirt.yml
 

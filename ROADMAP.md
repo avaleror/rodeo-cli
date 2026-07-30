@@ -150,15 +150,17 @@ Approach: the KVM host itself becomes an EC2 / GCE instance. From the laptop, `r
 - [x] Shared `provider:` block in `rodeo-plan.yaml` (same shape as Fleet `workshop.yaml`)
 - [x] `rodeo up --target aws` — provision + SSH + remote deploy (MVP)
 - [x] `rodeo destroy --cloud --yes` — terminate ownership-tagged single-host instance
-- [ ] `install-deps` support for Amazon Linux 2023 (dnf path already exists, needs testing)
+- [x] Infra adaptation (`rodeo/host_context.py`): aws `disk_gb` floor 1200, `storage.backend: nvme`, kvm_host NVMe → `image_dir`; nested virt default on for non-metal
+- [x] Instance tiers (`budget` / `recommended` / `performance`) per lab profile + region offerings/capacity DryRun (`instance_catalog.py`, `assert_available`); `rodeo up --instance-tier`
+- [ ] `install-deps` support for Amazon Linux 2023 (dnf path already exists, needs testing) — prefer SLES 16 / Leap 16 AMIs
 - [ ] Security group rules mirror the firewalld rules (ports 8443, 30002, 22) — still operator-supplied SG
-- [ ] `storage.device` detection on NVMe instance store (`/dev/nvme1n1`)
 - [ ] Cost guard: `rodeo plan` estimates on-demand hourly cost for the selected instance type
+- [ ] Live validate: `i7i.8xlarge` Leap 16 (or SLES 16) + NVMe pool + harvester (provision or BYO) — checklist in [docs/examples/testing.md](docs/examples/testing.md#aws-live-smoke-i7i8xlarge--nvme)
 - [ ] GCP equivalent: Compute Engine with `--enable-nested-virtualization` on N2 / C3
 
 **Share with Fleet F4:** same `rodeo/providers/aws` backs `rodeo fleet provision` and single-host `rodeo up --target aws`. Remaining providers: GCP → Vultr Bare Metal → Hetzner Cloud (see Phase I). Equinix is out of scope.
 
-**Sizing:** prefer metal (e.g. `m7i.metal-24xl`) or large Nitro nested-virt (≥128 GiB RAM) for full Harvester/Edge; tiny instance types are rejected at validate.
+**Sizing:** three tiers per profile (see `rodeo/providers/instance_catalog.py`); **recommended** for Harvester is **`i7i.8xlarge`** (local NVMe). Explicit `provider.instance_type` still wins. Metal remains the performance escape hatch. Tiny types are rejected at validate. Guest disks default to **1.2 TiB per Harvester node** under aws host-context. Availability is checked in-region before create; no silent downsize.
 
 ---
 

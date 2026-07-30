@@ -79,9 +79,18 @@ def _default_labs_root() -> Path:
               help="Internal: continue after sudo re-exec.")
 @click.option("--reconcile", is_flag=True, default=False,
               help="Pass --reconcile to deploy (re-run vms when VM memory/vCPU drifts).")
+@click.option(
+    "--instance-tier",
+    "instance_tier",
+    default=None,
+    type=click.Choice(["budget", "recommended", "performance"], case_sensitive=False),
+    help="AWS host size tier when --target aws (ignored if provider.instance_type is set). "
+         "With --yes and no type/tier, defaults to recommended.",
+)
 def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
            assume_yes: bool, no_deploy: bool, no_tmux: bool,
-           deployment_target: str | None, resume: bool, reconcile: bool) -> None:
+           deployment_target: str | None, resume: bool, reconcile: bool,
+           instance_tier: str | None) -> None:
     """Bring up a SUSE/Rancher learning lab in one command.
 
     Runs inside a tmux session automatically so the deploy survives SSH or
@@ -225,7 +234,12 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
 
     if aws_control_plane:
         assert lab is not None
-        _aws_control_plane_deploy(lab, profile=profile)
+        _aws_control_plane_deploy(
+            lab,
+            profile=profile,
+            instance_tier=instance_tier,
+            assume_yes=assume_yes,
+        )
         return
 
     # On EC2 with deployment_target aws: run local phases as baremetal.
@@ -251,18 +265,54 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
     _deploy(lab, assume_yes=assume_yes, reconcile=reconcile)
 
 
-def _aws_control_plane_deploy(lab: Path, *, profile: str | None) -> None:
+def _aws_control_plane_deploy(
+    lab: Path,
+    *,
+    profile: str | None,
+    instance_tier: str | None,
+    assume_yes: bool,
+) -> None:
     """Provision EC2 + remote ``rodeo up --target baremetal`` from the laptop."""
     try:
         cfg = load_config("rodeo-plan.yaml", config_dir=str(lab))
-        validate_config(cfg)
     except ValueError as exc:
         console.print(f"[red]✗  {exc}[/red]")
         raise SystemExit(1)
 
-    console.print("\n[bold]Provisioning AWS KVM host[/bold]…")
+    # Resolve lab profile name for the instance catalog (not engine type).
+    lab_profile = profile or _infer_lab_profile(lab) or "harvester"
     try:
-        provisioned = execute_aws_up(cfg, profile=profile)
+        cfg = _resolve_aws_instance_choice(
+            cfg,
+            lab=lab,
+            lab_profile=lab_profile,
+            instance_tier=instance_tier,
+            assume_yes=assume_yes,
+        )
+        validate_config(cfg)
+    except (ConfigError, ValueError) as exc:
+        console.print(f"[red]✗  {exc}[/red]")
+        raise SystemExit(1)
+
+    from ..host_context import apply_host_context
+
+    cfg, hc_notes = apply_host_context(cfg, host_facts={})
+    for line in hc_notes:
+        console.print(f"[dim]host-context: {line}[/dim]")
+    # Persist overlays into the lab plan so the remote host inherits disk_gb / nvme.
+    _persist_plan_overlays(lab, cfg)
+
+    provider = cfg.get("provider") or {}
+    console.print(
+        f"\n[bold]Provisioning AWS KVM host[/bold]  "
+        f"[cyan]{provider.get('instance_type')}[/cyan] "
+        f"in [cyan]{provider.get('region')}[/cyan]…"
+    )
+    try:
+        # Hint catalog profile for AwsHostProvider.apply_instance_selection
+        if isinstance(cfg.get("provider"), dict):
+            cfg["provider"] = {**cfg["provider"], "lab_profile": lab_profile}
+        provisioned = execute_aws_up(cfg, profile=profile or lab_profile)
     except ConfigError as exc:
         console.print(f"[red]✗  {exc}[/red]")
         raise SystemExit(1)
@@ -276,6 +326,116 @@ def _aws_control_plane_deploy(lab: Path, *, profile: str | None) -> None:
         f"  Tear down host:  rodeo destroy --cloud --yes "
         f"(from this lab dir)\n"
     )
+
+
+def _infer_lab_profile(lab: Path) -> str | None:
+    """Best-effort profile name from lab directory or plan name."""
+    name = lab.name.strip()
+    from ..labseed import PROFILE_EXAMPLE
+
+    if name in PROFILE_EXAMPLE:
+        return name
+    plan = lab / "rodeo-plan.yaml"
+    if plan.is_file():
+        import yaml as _yaml
+
+        data = _yaml.safe_load(plan.read_text()) or {}
+        pname = str(data.get("name") or "")
+        for key in PROFILE_EXAMPLE:
+            if key in pname:
+                return key
+    return None
+
+
+def _resolve_aws_instance_choice(
+    cfg: dict,
+    *,
+    lab: Path,
+    lab_profile: str,
+    instance_tier: str | None,
+    assume_yes: bool,
+) -> dict:
+    """Pick instance_type from explicit type, CLI tier, prompt, or recommended."""
+    from ..providers.aws import AwsHostProvider
+    from ..providers.instance_catalog import (
+        TIERS,
+        catalog_for_profile,
+        normalize_tier,
+        resolve_instance_type,
+    )
+
+    provider = dict(cfg.get("provider") or {})
+    explicit = str(provider.get("instance_type") or "").strip()
+    tier_cli = instance_tier or str(provider.get("instance_tier") or "").strip() or None
+
+    if not explicit and not tier_cli and not assume_yes:
+        catalog = catalog_for_profile(lab_profile)
+        console.print(f"\n[bold]AWS instance size[/bold] for profile [cyan]{lab_profile}[/cyan]:\n")
+        for i, tier in enumerate(TIERS, start=1):
+            offer = catalog[tier]
+            mark = " (default)" if tier == "recommended" else ""
+            console.print(
+                f"  {i}) [bold]{tier}[/bold]{mark}  "
+                f"[cyan]{offer.instance_type}[/cyan]  — {offer.notes}"
+            )
+        choice = Prompt.ask(
+            "\nPick a size",
+            choices=["1", "2", "3", "budget", "recommended", "performance"],
+            default="2",
+        )
+        if choice in ("1", "2", "3"):
+            tier_cli = TIERS[int(choice) - 1]
+        else:
+            tier_cli = normalize_tier(choice)
+
+    itype, tier_used = resolve_instance_type(
+        profile=lab_profile,
+        instance_type=explicit or None,
+        instance_tier=tier_cli,
+    )
+    provider["instance_type"] = itype
+    if tier_used:
+        provider["instance_tier"] = tier_used
+    provider["lab_profile"] = lab_profile
+    cfg = {**cfg, "provider": provider}
+
+    # Persist so re-runs and destroy keep the same type.
+    _persist_plan_overlays(lab, cfg)
+
+    # Pre-flight availability (also runs again inside provision if creating).
+    AwsHostProvider().assert_available(provider, count=1)
+    console.print(
+        f"[green]✓[/green]  {itype} available in {provider.get('region')} "
+        f"(profile={lab_profile}"
+        + (f", tier={tier_used}" if tier_used else "")
+        + ")."
+    )
+    return cfg
+
+
+def _persist_plan_overlays(lab: Path, cfg: dict) -> None:
+    """Write host-context resource/storage overlays back into rodeo-plan.yaml."""
+    import yaml as _yaml
+
+    plan_path = lab / "rodeo-plan.yaml"
+    if not plan_path.is_file():
+        return
+    data = _yaml.safe_load(plan_path.read_text()) or {}
+    if not isinstance(data, dict):
+        return
+    if isinstance(cfg.get("resources"), dict):
+        data["resources"] = cfg["resources"]
+    if isinstance(cfg.get("storage"), dict):
+        storage = data.setdefault("storage", {})
+        if isinstance(storage, dict):
+            storage.update({k: v for k, v in cfg["storage"].items() if k in ("backend",)})
+    if isinstance(cfg.get("libvirt"), dict):
+        libvirt = data.setdefault("libvirt", {})
+        if isinstance(libvirt, dict):
+            for key in ("disk_cache", "disk_io"):
+                if key in cfg["libvirt"]:
+                    libvirt[key] = cfg["libvirt"][key]
+    plan_path.write_text(_yaml.safe_dump(data, sort_keys=False, default_flow_style=False))
 
 
 # --------------------------------------------------------------------------- #
@@ -365,6 +525,20 @@ def _deploy(lab: Path, assume_yes: bool, reconcile: bool = False) -> None:
     except ValueError as exc:
         console.print(f"[red]✗  {exc}[/red]")
         raise SystemExit(1)
+
+    from ..host_context import apply_host_context, persist_host_context_notes
+    from ..preflight import detect_host as _detect_host
+
+    host_info = _detect_host()
+    cfg, hc_notes = apply_host_context(
+        cfg,
+        host_facts={
+            "cpus": host_info.get("cpus") or 0,
+            "disk_free_gib": host_info.get("disk_free_gib"),
+            "image_dir": host_info.get("image_dir"),
+        },
+    )
+    persist_host_context_notes(cfg, hc_notes)
 
     root = find_ansible_root(cfg)
     if root is None or not (root / "ansible" / "playbook.yml").exists():

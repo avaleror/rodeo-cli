@@ -793,6 +793,8 @@ class DeployRunner:
             "libvirt_storage_device": storage.get("device", ""),
             "libvirt_storage_fs_type": storage.get("fs_type", "xfs"),
             "libvirt_storage_mount_point": storage.get("mount_point", storage.get("image_dir", "/var/lib/libvirt/images")),
+            # aws / NVMe instance-store: kvm_host formats+mounts into image_dir.
+            "host_storage_backend":  storage.get("backend", ""),
             # True for profiles using Traefik ingress + Let's Encrypt (suse-edge).
             "rancher_ingress_enabled": self.cfg.get("rancher_tls", {}).get("source") == "letsEncrypt",
             **self._disk_driver_vars(),

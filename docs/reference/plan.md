@@ -111,7 +111,7 @@ Must be unique per host. Changing `name` after deploy creates orphaned resources
 |-------|-----------|
 | `baremetal` | Full deploy. `finalise` enables VM autostart on host reboot. |
 | `instruqt` | `finalise` is skipped automatically. Run it after the Instruqt snapshot: `rodeo deploy --from finalise --finalise` |
-| `aws` | Laptop control plane: require a `provider:` block, provision/reuse one EC2 KVM host, wait for SSH, remote-run `rodeo up --target baremetal` on that host. Tear down with `rodeo destroy --cloud --yes`. |
+| `aws` | Laptop control plane: require a `provider:` block, provision/reuse one EC2 KVM host, wait for SSH, remote-run `rodeo up` on that host. Tear down with `rodeo destroy --cloud --yes`. BYO: create the instance yourself, keep `deployment_target: aws` (or set `storage.backend: nvme`) and deploy on the box. |
 
 **Required.** Defaults to `baremetal` when omitted.
 
@@ -120,31 +120,66 @@ On **instruqt**, `rodeo up` / lab seeding also applies host-aware `resources` pr
 Existing plans are not rewritten on re-deploy; only seeded plans get the presets.
 `rodeo doctor` / `rodeo deploy --check` warn (non-fatal) when a plan still exceeds the budget.
 
+On **aws**, `apply_host_context()` (seed + deploy) raises `resources.harvester.disk_gb`
+to **1200** when lower, sets `storage.backend: nvme`, and mounts the largest non-root
+NVMe on `image_dir`. Prefer **`i7i.8xlarge`**. Nested virt is enabled by default on
+non-metal types.
+
 ### `provider` (when `deployment_target: aws`)
 
 Same shape as Fleet [`workshop.yaml` provider](../fleet.md#workshopyaml-provider-schema).
-Required fields for AWS: `type`, `region`, `instance_type`, `ami`, `key_name`,
-`subnet_id`, `security_group_ids`, plus `identity_file` (SSH private key path) for
-the remote deploy. Prefer metal / large nested-virt (≥128 GiB) and `volume_size_gib: 500+`.
+Required fields for AWS: `type`, `region`, `subnet_id`, `security_group_ids`, and
+either **`instance_type`** or **`instance_tier`**.
+
+**Instance size (single-host v1):** pick one of three tiers for the lab profile, or set
+an explicit type. `rodeo up --target aws` prompts interactively when neither is set;
+with `--yes` it uses **recommended**.
+
+| Tier | Meaning |
+|------|---------|
+| `budget` | Meets the profile minimum (often EBS-backed Nitro) |
+| `recommended` | Preferred size (usually `i7i.*` local NVMe for Harvester/Edge) |
+| `performance` | Metal / larger escape hatch |
+
+Before create, rodeo checks the type is **offered in the region** and probes capacity
+via `RunInstances` DryRun. If the region has no capacity, it fails with a message to
+try another region or tier — it does not silently downsize.
 
 ```yaml
 deployment_target: aws
 provider:
   type: aws
   region: eu-central-1
-  instance_type: m7i.metal-24xl
-  ami: ami-…
-  key_name: rodeo-workshop
+  # Either:
+  instance_tier: recommended          # budget | recommended | performance
+  # Or pin explicitly:
+  # instance_type: i7i.8xlarge
+  # ami omitted → openSUSE Leap 16.0 (x86_64)* from aws-marketplace
+  # ami: ami-…                        # optional pin (SLES 16 / Leap)
+  # ami_name_filter: "openSUSE Leap 16.0 (x86_64)*"
   subnet_id: subnet-…
-  security_group_ids: [sg-…]
-  identity_file: ~/.ssh/rodeo-workshop.pem
-  ssh_user: ec2-user
-  # nested_virtualization: true
-  # volume_size_gib: 500
+  security_group_ids: [sg-…]          # 22, 8443, 30002
+  ssh_user: ec2-user                  # Leap Marketplace default; sles for some SLES AMIs
+  # nested_virtualization: true       # default on for non-metal
+  # volume_size_gib: 100              # root EBS; lab disks use NVMe
 ```
 
-Credentials use the standard boto3 chain (env / profile / role) — never store AWS
-keys in the plan.
+```bash
+rodeo up --yes --profile harvester --target aws --instance-tier recommended
+```
+
+**AWS API credentials** (boto3 — never in the plan): `~/.aws/credentials` /
+`AWS_PROFILE`, **or** `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY`
+(+ optional `AWS_SESSION_TOKEN`). AWS CLI is optional.
+
+**Marketplace:** subscribe once to
+[openSUSE Leap](https://aws.amazon.com/marketplace/pp/prodview-wn2xje27ui45o)
+(or your SLES AMI) in the target account/region before first provision.
+
+**SSH / root:** new instances get cloud-init UserData that installs the managed
+pubkey for **root** and **passwordless sudo** for `ssh_user` (`ec2-user` on Leap).
+Remote `rodeo up` runs under `sudo -n` so it never prompts. `rodeo ssh primary`
+or `rodeo ssh primary/rancher` use the same managed key.
 
 ### `resources`
 

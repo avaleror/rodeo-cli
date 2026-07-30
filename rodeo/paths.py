@@ -42,6 +42,10 @@ def rodeo_profiles_dir() -> Path:
     return rodeo_dir() / "profiles"
 
 
+def rodeo_ssh_dir() -> Path:
+    return rodeo_dir() / "ssh"
+
+
 def rodeo_last_lab_file() -> Path:
     return rodeo_dir() / "last_lab"
 

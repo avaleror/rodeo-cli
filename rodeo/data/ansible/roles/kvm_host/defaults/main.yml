@@ -82,3 +82,7 @@ libvirt_primary_service: "{{ 'virtqemud' if libvirt_daemon_mode == 'modular' els
 #            physical LAN and get real IPs. No DNAT; UIs reached directly.
 network_mode: nat
 host_bridge: br0
+
+# aws / i7i: set via plan storage.backend or deployment_target (runner emits host_storage_backend).
+host_storage_backend: ""
+image_dir: /var/lib/libvirt/images

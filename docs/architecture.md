@@ -3,7 +3,7 @@
 Technical reference for contributors and maintainers. For deploying a workshop, see [User guide](get-started.md).
 
 **Version:** 0.14.2 <!-- x-release-please-version -->
-**License:** Apache-2.0
+**License:** GPL-3.0-or-later
 
 ---
 

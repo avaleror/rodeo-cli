@@ -64,7 +64,7 @@ CI (`.github/workflows/ci.yml`) runs `ruff check` and `pytest` on Ubuntu for Pyt
 git commit -s -m "fix: correct etcd join gap calculation"
 ```
 
-The DCO sign-off (`Signed-off-by: Your Name <your@email.com>`) is your statement that you have the right to submit the contribution under the Apache-2.0 license. It is not a CLA.
+The DCO sign-off (`Signed-off-by: Your Name <your@email.com>`) is your statement that you have the right to submit the contribution under the GPL-3.0-or-later license. It is not a CLA.
 
 ## Commit message format
 
@@ -96,4 +96,4 @@ You never bump a version or write release notes by hand.
 
 ## License
 
-By contributing you agree that your contributions are licensed under the Apache-2.0 license. See [LICENSE](LICENSE).
+By contributing you agree that your contributions are licensed under the GPL-3.0-or-later license. See [LICENSE](LICENSE).

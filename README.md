@@ -8,7 +8,7 @@ A CLI for deploying hands-on lab infrastructure. Point it at a Linux host with K
 [![Release](https://img.shields.io/github/v/release/avaleror/rodeo-cli?sort=semver&label=release)](https://github.com/avaleror/rodeo-cli/releases)
 [![CI](https://github.com/avaleror/rodeo-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/avaleror/rodeo-cli/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
-[![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
+[![License](https://img.shields.io/badge/license-GPL--3.0-green)](LICENSE)
 
 **[📖 Docs & user guide](https://avaleror.github.io/rodeo-cli/)**
 

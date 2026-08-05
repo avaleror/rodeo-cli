@@ -19,7 +19,7 @@ title: rodeo-cli
 <div class="rc-stat"><div class="rc-stat-num">6</div><div class="rc-stat-label">Bundled profiles</div></div>
 <div class="rc-stat"><div class="rc-stat-num">318</div><div class="rc-stat-label">Tests passing</div></div>
 <div class="rc-stat"><div class="rc-stat-num">1</div><div class="rc-stat-label">Command to deploy</div></div>
-<div class="rc-stat"><div class="rc-stat-num rc-stat-num--text">Apache-2.0</div><div class="rc-stat-label">License</div></div>
+<div class="rc-stat"><div class="rc-stat-num rc-stat-num--text">GPL-3.0</div><div class="rc-stat-label">License</div></div>
 </div>
 
 ## Why it exists
@@ -98,7 +98,7 @@ Next: GCP → Vultr Bare Metal → Hetzner (F4b–d). See
 <p>Ready to try it? Head to <a href="get-started/">Get started</a>, or jump straight to a <a href="guide-rancher/">profile guide</a>.</p>
 
 <div style="margin-top:1rem">
-<span class="rc-tag accent">Apache-2.0</span>
+<span class="rc-tag accent">GPL-3.0</span>
 <span class="rc-tag">Python 3.10+</span>
 <span class="rc-tag">KVM / libvirt</span>
 <span class="rc-tag">Ansible under the hood</span>

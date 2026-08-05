@@ -6,7 +6,7 @@ This document gives any developer or AI assistant enough context to audit, exten
 
 ## What this is
 
-`rodeo-cli` is a Python CLI that deploys and manages **rodeos** — live, hands-on labs on nested KVM. It is **Terraform-for-labs**: a declarative `definition.yaml` + `rodeo-plan.yaml` describe the desired lab; `rodeo plan` diffs it against the host; `rodeo deploy` converges. Six bundled profiles ship on `main` across three engine types: `rancher` (Rancher Prime on K3s, single VM), `suse-virt` (Harvester HCI + Rancher — `test`, `harvester-ha`, `harvester-2n`, `harvester`), and `suse-edge` (SUSE Edge 3.6 + Elemental + EIB). It runs on bare metal, Instruqt, or cloud VMs with nested KVM.
+`rodeo-cli` is a Python CLI that deploys and manages **rodeos** — live, hands-on labs on nested KVM. It follows a declarative model: a `definition.yaml` + `rodeo-plan.yaml` describe the desired lab; `rodeo plan` diffs it against the host; `rodeo deploy` converges. Six bundled profiles ship on `main` across three engine types: `rancher` (Rancher Prime on K3s, single VM), `suse-virt` (Harvester HCI + Rancher — `test`, `harvester-ha`, `harvester-2n`, `harvester`), and `suse-edge` (SUSE Edge 3.6 + Elemental + EIB). It runs on bare metal, Instruqt, or cloud VMs with nested KVM.
 
 It replaces `rodeo.sh`, a monolithic bash script in the parent repository. Design goals:
 

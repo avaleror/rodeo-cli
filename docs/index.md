@@ -3,7 +3,7 @@ title: rodeo-cli
 ---
 
 <div class="rc-hero" markdown>
-<div class="rc-eyebrow">// terraform-for-labs</div>
+<div class="rc-eyebrow">// declarative lab deployment</div>
 
 # Deploy real lab infrastructure without writing Ansible or touching libvirt
 
@@ -24,7 +24,7 @@ title: rodeo-cli
 
 ## Why it exists
 
-Standing up a Harvester cluster or a Rancher Prime instance for a demo, a workshop, or a test usually means writing Ansible, wiring libvirt networks by hand, and re-learning the same iPXE boot chain every time. rodeo-cli replaces all of that with one idea borrowed from Terraform: describe the lab you want, and let a plan/apply pipeline build it.
+Standing up a Harvester cluster or a Rancher Prime instance for a demo, a workshop, or a test usually means writing Ansible, wiring libvirt networks by hand, and re-learning the same iPXE boot chain every time. rodeo-cli replaces all of that with one idea: describe the lab you want, and let a plan/apply pipeline build it.
 
 A **profile** is a config-dir with two YAML files. `rodeo-plan.yaml` sets resources and credentials. `definition.yaml` describes the topology: nodes, network, exposed services, boot order. The CLI reads those, runs `rodeo plan` to show you the diff against the host, and `rodeo deploy` to converge it — idempotently, so re-running after an edit only touches what changed.
 

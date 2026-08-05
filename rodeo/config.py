@@ -9,7 +9,7 @@ Plan files may use Jinja templating with a `parameters:` block:
         memory_mib: {{ memory }}
 
 Value precedence: base defaults < profile defaults < plan file
-< --paramfile (deep-merged like terraform tfvars) < -P key=value
+< --paramfile (deep-merged override file) < -P key=value
 (dotted paths, e.g. -P resources.harvester.memory_mib=20480).
 """
 from __future__ import annotations
@@ -55,7 +55,7 @@ _BASE_DEFAULTS: dict[str, Any] = {
 }
 
 # Markers that identify a lab directory, so commands can be run from anywhere
-# inside it without passing --config-dir (like git/terraform finding their root).
+# inside it without passing --config-dir (auto-detected from the working directory).
 _LAB_MARKERS = ("rodeo-plan.yaml", "definition.yaml")
 
 

@@ -1,5 +1,5 @@
 site_name: rodeo-cli
-site_description: Terraform-for-labs — a declarative CLI that deploys hands-on lab infrastructure (Harvester HCI, Rancher Prime, SUSE Edge) on KVM.
+site_description: A declarative CLI that deploys hands-on lab infrastructure (Harvester HCI, Rancher Prime, SUSE Edge) on KVM.
 site_url: https://avaleror.github.io/rodeo-cli/
 repo_url: https://github.com/avaleror/rodeo-cli
 repo_name: avaleror/rodeo-cli

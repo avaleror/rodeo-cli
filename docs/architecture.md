@@ -38,7 +38,7 @@ Every profile shares the same foundation: host networking, firewalld DNAT, DNS, 
 | Interactive definition generation | `rodeo generate` (templates base via parameter collection for hybrid customization, produces full config-dir yaml skeleton with project conventions like infra_type; post-validation via load_config; next steps for bootstrap/deploy/stop/start/clean lifecycle). Enables consistent entry to declarative model (definition as source for inventory/renderer/phases). |
 
 
-**Vision (roadmap):** Terraform-for-labs — declare desired state, preview diff, converge, destroy what you own. See [ROADMAP.md](https://github.com/avaleror/rodeo-cli/blob/main/ROADMAP.md).
+**Vision (roadmap):** Declarative lab deployment — declare desired state, preview diff, converge, destroy what you own. See [ROADMAP.md](https://github.com/avaleror/rodeo-cli/blob/main/ROADMAP.md).
 
 ---
 
@@ -448,5 +448,5 @@ Equinix is out of scope. See [Fleet](fleet.md#roadmap).
 |----------|----------|
 | [User guide](get-started.md) | Workshop operators deploying labs |
 | [Fleet](fleet.md) | Multi-host workshops (F0–F2.1 + F4a AWS MVP; [roadmap](fleet.md#roadmap) F3, F4b–d) |
-| [ROADMAP.md](https://github.com/avaleror/rodeo-cli/blob/main/ROADMAP.md) | Planned Terraform-for-labs features |
+| [ROADMAP.md](https://github.com/avaleror/rodeo-cli/blob/main/ROADMAP.md) | Planned declarative-deployment features |
 | [CONTEXT.md](https://github.com/avaleror/rodeo-cli/blob/main/CONTEXT.md) | Full project context for AI/developers |

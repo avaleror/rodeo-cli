@@ -1,8 +1,8 @@
 # rodeo-cli roadmap
 
-**Vision:** rodeo behaves like Terraform for lab deployments. A YAML plan declares the desired lab; `rodeo plan` shows the diff against the host; `rodeo deploy` converges; `rodeo destroy` removes exactly what the plan owns. The product recipes (Harvester boot ordering, etcd gaps, Instruqt guards) stay opinionated — the interface is declarative.
+**Vision:** rodeo takes a declarative approach to lab deployments. A YAML plan declares the desired lab; `rodeo plan` shows the diff against the host; `rodeo deploy` converges; `rodeo destroy` removes exactly what the plan owns. The product recipes (Harvester boot ordering, etcd gaps, Instruqt guards) stay opinionated — the interface is declarative.
 
-Design pillars: plan/apply/destroy lifecycle, tfvars-style override files, inline `-P` parameters, fail-closed validation, and ownership metadata on libvirt objects so the hypervisor is the source of truth. Out of scope on purpose: multi-provider abstraction. rodeo is KVM-first and product-opinionated by design.
+Design pillars: plan/apply/destroy lifecycle, deep-mergeable override files, inline `-P` parameters, fail-closed validation, and ownership metadata on libvirt objects so the hypervisor is the source of truth. Out of scope on purpose: multi-provider abstraction. rodeo is KVM-first and product-opinionated by design.
 
 ---
 
@@ -30,10 +30,10 @@ Live-validated on bare metal (SLES 16) and on an **Instruqt builder** with `depl
 
 ---
 
-## Phase A — Terraform UX ✅ (done 2026-06-12)
+## Phase A — Declarative UX ✅ (done 2026-06-12)
 
 - `-P key=value` dotted-path overrides with YAML type coercion on `plan` / `deploy` / `status` / `clean`
-- `--paramfile FILE` — YAML deep-merged over the plan, tfvars-style
+- `--paramfile FILE` — YAML deep-merged over the plan
 - Jinja templating in plan files with a `parameters:` block; `StrictUndefined` so missing parameters fail loudly
 - `rodeo plan` — read-only diff: VMs (+ create / ~ memory 8192 → 16384 / ✓ unchanged), network, storage, phase status
 - Plain-mode progress via `rich.Status`, `ConfigError` group handler (no tracebacks on bad YAML)
@@ -47,7 +47,7 @@ skips any phase already marked `completed` in `~/.rodeo/state/<name>.yaml`
 (`runner.py:192`), regardless of whether the live host still matches the plan.
 `rodeo plan` already computes the real diff (VM memory/vcpu vs. live libvirt,
 network active/inactive, storage artifacts present) — `rodeo deploy`/`rodeo up`
-just never look at it. Closing that gap is the actual "Terraform apply" promise
+just never look at it. Closing that gap is the actual "declarative apply" promise
 in the vision statement at the top of this file; B1 and B2 below are the concrete
 steps.
 

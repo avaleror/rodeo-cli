@@ -30,6 +30,9 @@ htmlcov/
 # Claude / project instructions (never committed)
 CLAUDE.md
 
+# Cursor rules (local editor config only, never committed)
+.cursor/
+
 # Rodeo runtime state (stays local)
 .rodeo/
 

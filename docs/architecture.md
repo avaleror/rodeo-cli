@@ -436,7 +436,7 @@ Live KVM regression is still manual (or geekohive) before touching MAC/DHCP/ISO 
 For N identical student/instructor KVM hosts, the laptop runs `rodeo fleet` over
 OpenSSH. Each remote still executes single-host `rodeo up` / `doctor` / `status`.
 **Shipped F0–F2.1:** JSON reports → fan-out → deploy/retry/access/diagnose.  
-**Roadmap:** F3 MCP; F4a AWS + Phase E single-host `rodeo up --target aws` MVP;
+**Roadmap:** F4a AWS + Phase E single-host `rodeo up --target aws` MVP;
 next **GCP** → **Vultr Bare Metal** → Hetzner Cloud.
 Equinix is out of scope. See [Fleet](fleet.md#roadmap).
 

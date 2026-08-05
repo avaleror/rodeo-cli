@@ -15,7 +15,6 @@ See also: [Get started](get-started.md) (single host), [Architecture](architectu
 | **F1** | Shipped | Inventory + read-only fan-out | `rodeo fleet doctor`, `rodeo fleet status` |
 | **F2** | Shipped | Deploy / retry / access sheet | `rodeo fleet deploy`, `retry`, `access` |
 | **F2.1** | Shipped | Failure forensics | `rodeo fleet diagnose` |
-| **F3** | Roadmap | MCP tools on top of fleet | — |
 | **F4a** | Shipped (MVP) | AWS host-acquire | `rodeo fleet provision`, `deprovision` |
 | **F4b–d** | Roadmap | GCP → Vultr BM → Hetzner | — |
 
@@ -32,13 +31,6 @@ rodeo status --output json
 ## Roadmap
 
 What is **not** shipped yet for Fleet. Full checklist: [ROADMAP Phase I](https://github.com/avaleror/rodeo-cli/blob/main/ROADMAP.md#phase-i--fleet--workshop-fan-out).
-
-### F3 — MCP (planned)
-
-Thin MCP tools that wrap existing fleet commands (`doctor`, `status`, `deploy`,
-`diagnose`, `retry`, `access`) so an IDE or agent can drive a workshop without
-reimplementing OpenSSH fan-out. No new provision logic inside MCP — that stays
-CLI-first under F4.
 
 ### F4 — Host-acquire
 
@@ -267,7 +259,7 @@ Fleet does **not** sudo-re-exec on the laptop.
 - `rodeo/fleet/ssh_exec.py` = laptop→KVM host.
 - Concurrency defaults: doctor/status `-j 8`; deploy/retry use `lab.concurrency`
   (default 4) unless `-j` is set. Prefer low concurrency for deploy (ISO/network).
-- See [Roadmap](#roadmap) for F3 MCP and F4 host-acquire. Equinix is out of scope.
+- See [Roadmap](#roadmap) for F4 host-acquire. Equinix is out of scope.
   Shared secrets and changing the phase pipeline stay out of Fleet.
 
 ---

@@ -288,7 +288,6 @@ over OpenSSH (workshop inventory). Engine/phases stay single-host. See [docs/fle
 - [x] F1 — `workshop.yaml` + `rodeo fleet doctor|status` (OpenSSH fan-out, labels, concurrency)
 - [x] F2 — `rodeo fleet deploy|retry|access` (tmux start, job file, failed-only retry, URL sheet)
 - [x] F2.1 — `rodeo fleet diagnose` (central log/status collect for failure forensics)
-- [ ] F3 — MCP tools on top of fleet (after F2)
 - [ ] F4 — Host-acquire → `workshop.yaml` (separate from converge); Python native SDKs behind `rodeo/providers/`
   - [x] F4a — **AWS** MVP (`boto3`, optional `[aws]` extra): `fleet provision|deprovision`, ownership tags, inventory merge — gaps: no plan dry-run; deprovision does not clear `hosts[]`
   - [ ] F4b — **GCP** (`google-cloud-compute`) — after AWS

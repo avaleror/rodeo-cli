@@ -3,7 +3,7 @@
 # Topology: 1 Rancher Prime management cluster VM + 1 Edge Image Builder VM + 4 edge node VMs.
 #
 # Management cluster (rancher VM):
-#   K3s v1.35.3+k3s1 (lab simplification; production SUSE Edge uses RKE2 v1.35.3+rke2r3)
+#   K3s v1.35.5+k3s1 (lab simplification; production SUSE Edge uses RKE2 v1.35.3+rke2r3)
 #   Rancher Prime 2.14.1 + cert-manager v1.20.1
 #   Elemental Operator 1.9.0 (CRDs + operator Helm charts from registry.suse.com)
 #   Fleet (included in Rancher Prime)
@@ -207,6 +207,22 @@ definition:
 
   # Rancher VM config (cloud-init drives K3s + Rancher Prime + Elemental install).
   rancher:
+    # Rancher Prime UI extension for OS Manager (SUSE's current branding for
+    # Elemental) — surfaces machine inventory/registration in the Rancher UI.
+    # rodeo-cli reconciles this on every deploy, same mechanism suse-virt uses
+    # for the Harvester extension.
+    # Pinned to 3.0.1 — the newest version actually published in the
+    # rancher/ui-plugin-charts catalog as of 2026-08-10. Note: 3.0.1 has a known
+    # JS load error on @rancher/shell 3.0.9-rc.6 (the shell Rancher 2.14.1
+    # ships); a 3.0.2-rc.2 build reportedly fixes it but is not published in
+    # the standard catalog yet, so it can't be pinned here until it lands.
+    ui_extensions:
+      - name: elemental              # chart name in the repo + UIPlugin name
+        version: "3.0.1"             # keep in step with the OS Manager/Elemental version
+        repo:
+          name: rancher             # ClusterRepo name (reused if it already exists; shared with harvester's block on suse-virt)
+          git_repo: https://github.com/rancher/ui-plugin-charts
+          git_branch: main
     cloud_init:
       packages: []
       runcmd: []

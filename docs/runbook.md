@@ -347,3 +347,24 @@ rodeo fleet diagnose -f workshop.yaml --all-selected   # every selected host
 ```
 
 See [Fleet — Diagnose](fleet.md#diagnose-failure-forensics) for the artifact layout.
+
+---
+
+## `sudo rodeo` / `sudo ssh -i /root/.ssh/id_ed25519 ...` says "command not found"
+
+SUSE's default `/usr/etc/sudoers` ships two conflicting `Defaults secure_path=`
+lines; the second (narrower, missing `/usr/local/*`) wins, so `sudo` can't find
+`rodeo` (installed under `/usr/local/bin`) even though it works fine without
+`sudo`. The `kvm_host` phase fixes this automatically on SUSE hosts (see
+`/etc/sudoers.d/rodeo-secure-path`) starting with a fresh `rodeo deploy`.
+
+If you hit this on a host with VMs already running, don't re-run `--from
+kvm_host` just for this — on a live lab that phase also re-touches firewalld
+and the libvirt network, which can conflict with domains that are already up.
+Apply the one-off fix directly instead:
+
+```bash
+echo 'Defaults secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"' \
+  | sudo tee /etc/sudoers.d/rodeo-secure-path >/dev/null
+sudo visudo -c   # confirm it parses before trusting it
+```

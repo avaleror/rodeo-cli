@@ -1,0 +1,18 @@
+---
+# SUSE's default /usr/etc/sudoers ships two conflicting `Defaults secure_path=`
+# lines; the second (narrower, no /usr/local/*) wins. That silently breaks a
+# bare `sudo rodeo` or `sudo ssh -i /root/.ssh/id_ed25519 ...` typed by an
+# operator or workshop student — the binary/key exist, sudo just can't find
+# them on its restricted PATH. A local /etc/sudoers.d/ drop-in (processed
+# after the vendor base file, per its own @includedir) is the intended
+# override mechanism on this OS, not a hack.
+- name: Ensure sudo secure_path includes /usr/local/bin (SUSE default-sudoers gap)
+  ansible.builtin.copy:
+    dest: /etc/sudoers.d/rodeo-secure-path
+    content: |
+      Defaults secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    owner: root
+    group: root
+    mode: '0440'
+    validate: 'visudo -cf %s'
+  when: ansible_os_family == "Suse"

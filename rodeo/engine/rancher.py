@@ -283,6 +283,13 @@ class RancherPhase:
                 f"\n  Rancher URL  : {self.rancher_api}  (NodePort)"
                 "\n  Standalone Rancher lab — no Harvester cluster to import."
             )
+            # Reconcile declared Rancher UI extensions (e.g. suse-edge's OS Manager /
+            # Elemental extension). Non-fatal: warnings only, never fails the phase.
+            # Standalone labs (rancher, suse-edge) never reach the non-standalone
+            # branch below, so this must be handled here too, not just once.
+            if self.ui_extensions:
+                if not (yield from self._reconcile_ui_extensions()):
+                    return
             self.success = True
             return
 
@@ -1552,9 +1559,30 @@ class RancherPhase:
                 yield LogLine(f"  {line}")
         if r.returncode != 0:
             return False
-        if self._sleep(15):  # let the catalog controller download the index
-            return False
+
+        # Wait for the catalog controller to actually finish downloading the index —
+        # a fixed short sleep isn't reliable for a repo's first-ever sync against a
+        # real GitHub-hosted chart index, and a premature install action against an
+        # unindexed repo fails silently (empty index, no chart found). Poll the
+        # ClusterRepo's own downloadTime instead of guessing a fixed wait.
+        deadline = time.monotonic() + 90
+        while time.monotonic() < deadline:
+            if self._ext_repo_downloaded(repo_name, ts):
+                return True
+            if self._sleep(5):
+                return False
+        yield LogLine(f"  ⚠ {repo_name}: index still downloading after 90s; proceeding anyway.")
         return True
+
+    def _ext_repo_downloaded(self, repo_name: str, since: str) -> bool:
+        """True once the ClusterRepo's index has downloaded at/after `since` (UTC 'Z' timestamps sort lexicographically)."""
+        script = (
+            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+            f"kubectl get clusterrepo {repo_name} -o "
+            "jsonpath='{.status.downloadTime}' 2>/dev/null || true\n"
+        )
+        downloaded = self._ssh_script(script, timeout=20).stdout.strip()
+        return bool(downloaded) and downloaded >= since
 
     def _catalog_chart_action(
         self, action: str, repo_name: str, chart: str, version: str, ns: str

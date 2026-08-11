@@ -233,6 +233,46 @@ def test_install_rancher_letsencrypt_in_values_file(cfg, monkeypatch):
     assert "ops@example.com" in script
 
 
+def test_ui_extensions_reconciled_for_standalone_labs(cfg, monkeypatch):
+    """Regression: standalone labs (rancher, suse-edge — no Harvester cluster) used
+    to return early in stream_import() before ever reaching the ui_extensions
+    reconcile call, so a declared extension (e.g. suse-edge's OS Manager/Elemental)
+    never actually installed on `rodeo deploy` — only via the separate, manually-run
+    `rodeo install-extensions` command."""
+    phase = RancherPhase(cfg)
+    phase.standalone = True
+    phase.ui_extensions = [{"name": "elemental", "version": "3.0.1", "repo": {}}]
+    calls: list[str] = []
+
+    def fake_reconcile(self):
+        calls.append("called")
+        return True
+        yield  # unreachable — presence of yield makes this a generator fn
+
+    monkeypatch.setattr(RancherPhase, "_reconcile_ui_extensions", fake_reconcile)
+    _, _ = drain(phase.stream_import())
+    assert calls == ["called"]
+    assert phase.success is True
+
+
+def test_ui_extensions_not_reconciled_for_standalone_labs_without_declaration(cfg, monkeypatch):
+    """No declared extensions (e.g. plain `rancher` profile) must not attempt a
+    reconcile at all — same as the non-standalone path already behaves."""
+    phase = RancherPhase(cfg)
+    phase.standalone = True
+    phase.ui_extensions = []
+    calls: list[str] = []
+
+    def fake_reconcile(self):
+        calls.append("called")
+        return True
+        yield  # unreachable
+
+    monkeypatch.setattr(RancherPhase, "_reconcile_ui_extensions", fake_reconcile)
+    drain(phase.stream_import())
+    assert calls == []
+
+
 def test_set_harvester_password_runs_regardless_of_auto_import(cfg, monkeypatch):
     """Harvester's own dashboard password must be set even when auto-import is off
     (the workshop default) — it's independent of whether the cluster gets imported

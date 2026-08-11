@@ -74,6 +74,28 @@ def test_default_identity_raises_clear_error_when_root_key_unreadable(
         default_identity({}, prefer_root_key=True)
 
 
+def test_default_identity_raises_clear_error_when_root_dir_not_traversable(
+    managed_ssh, monkeypatch
+):
+    """Live regression, not just a hypothetical: on the actual test node, /root
+    is mode 700, so a non-root user can't even stat() a file inside it —
+    Path.is_file() raises PermissionError before an os.access() check is ever
+    reached. This used to propagate as an unhandled traceback instead of the
+    clean ConfigError."""
+
+    class _UnstattablePath:
+        def is_file(self):
+            raise PermissionError("no traverse permission on /root")
+
+        def __str__(self):
+            return "/root/.ssh/id_ed25519"
+
+    monkeypatch.setattr("rodeo.ssh_targets._HOST_ROOT_SSH_KEY", _UnstattablePath())
+    monkeypatch.setattr("rodeo.ssh_targets.os.geteuid", lambda: 1000)
+    with pytest.raises(ConfigError, match="sudo"):
+        default_identity({}, prefer_root_key=True)
+
+
 def test_default_identity_explicit_key_still_wins_over_root_key(
     managed_ssh, tmp_path, monkeypatch
 ):

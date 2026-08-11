@@ -55,11 +55,11 @@ def default_identity(
         if plan_key:
             return str(Path(str(plan_key)).expanduser())
     managed = ensure_rodeo_ssh_key()
-    root_key = _HOST_ROOT_SSH_KEY
-    if (prefer_root_key or os.geteuid() == 0) and root_key.is_file():
-        if os.access(root_key, os.R_OK):
-            return str(root_key)
-        if prefer_root_key:
+    if prefer_root_key or os.geteuid() == 0:
+        status = _root_key_status(_HOST_ROOT_SSH_KEY)
+        if status == "readable":
+            return str(_HOST_ROOT_SSH_KEY)
+        if status == "blocked" and prefer_root_key:
             # Nested VMs only ever trust this key (baked into their cloud-init
             # by the common/ensure_ssh_key Ansible task) — the operator's
             # managed key is a different identity, for host/EC2-level hops.
@@ -67,11 +67,22 @@ def default_identity(
             # the VM doesn't trust, which just degrades into an unexplained
             # interactive password prompt.
             raise ConfigError(
-                f"{root_key} is the key nested VMs trust, but it isn't readable "
-                "as the current user — re-run with sudo (e.g. `sudo rodeo ssh "
-                "<vm>`)."
+                f"{_HOST_ROOT_SSH_KEY} is the key nested VMs trust, but it isn't "
+                "readable as the current user — re-run with sudo (e.g. `sudo "
+                "rodeo ssh <vm>`)."
             )
     return str(managed)
+
+
+def _root_key_status(root_key: Path) -> str:
+    """'readable', 'blocked' (present but we can't confirm/read it — e.g. no
+    traverse permission on /root itself), or 'absent'."""
+    try:
+        if not root_key.is_file():
+            return "absent"
+    except PermissionError:
+        return "blocked"
+    return "readable" if os.access(root_key, os.R_OK) else "blocked"
 
 
 def find_workshop_path(explicit: str | None = None) -> Path | None:

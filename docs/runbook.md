@@ -334,3 +334,16 @@ rodeo logs --bundle -o rodeo-bundle.tar.gz
 ```
 
 The bundle includes: redacted plan (secrets replaced with `***`), phase state, recent serial log tails for all VMs, and `virsh` domain info. Attach it when filing a bug or escalating to maintainers.
+
+---
+
+## Multi-host workshop failures
+
+For fleet deploys, pick the failing host from the job file or `rodeo fleet status`, then pull forensics to the laptop:
+
+```bash
+rodeo fleet diagnose -f workshop.yaml                  # failed hosts (default)
+rodeo fleet diagnose -f workshop.yaml --all-selected   # every selected host
+```
+
+See [Fleet — Diagnose](fleet.md#diagnose-failure-forensics) for the artifact layout.

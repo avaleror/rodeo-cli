@@ -45,12 +45,12 @@ To pick a specific profile instead of letting `rodeo up` choose:
 
 | Profile | What it builds | RAM |
 |---|---|---|
-| `rancher` | Rancher Prime on K3s, single VM | ~10-16 GiB |
-| `harvester-2n` | 2-node Harvester HCI + Rancher | ~40 GiB |
+| `rancher` | Rancher Prime on K3s, single VM | ~10 GiB |
+| `test` | 2-node Harvester cluster, no Rancher | ~36 GiB |
 | `harvester-ha` | 3-node Harvester HCI, no Rancher | ~52 GiB |
+| `harvester-2n` | 2-node Harvester HCI + Rancher | ~56 GiB |
 | `harvester` | 3-node Harvester HCI + Rancher | ~60 GiB |
-| `suse-edge` | Rancher + Elemental Operator + EIB + 4 edge nodes | varies |
-| `test` | Minimal single-node Harvester for fast iteration | smallest |
+| `suse-edge` | Rancher + Elemental + EIB + edge nodes | ~40 GiB |
 
 Full walkthroughs live in the profile guides: [Rancher Prime](guide-rancher.md), [Harvester HCI](guide-harvester.md), [SUSE Edge](guide-suse-edge.md).
 

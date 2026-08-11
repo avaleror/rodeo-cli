@@ -70,8 +70,8 @@ storage:
 # Software versions. Pin these to reproduce a specific lab.
 versions:
   harvester: "1.8.1"          # Harvester ISO version to download and install
-  rancher: "2.13.1"           # Rancher Prime Helm chart version
-  k3s: "v1.31.4+k3s1"        # K3s version for the Rancher VM
+  rancher: "2.14.1"           # Rancher Prime Helm chart version
+  k3s: "v1.35.3+k3s1"        # K3s version for the Rancher VM
   cert_manager: "v1.16.2"     # cert-manager Helm chart version (Rancher dependency)
 
 # Jinja2 templating: define variables used in this file.
@@ -240,8 +240,8 @@ rodeo deploy -P libvirt.disk_cache=writeback -P libvirt.disk_io=threads
 | Field | Default | Notes |
 |-------|---------|-------|
 | `harvester` | `"1.8.1"` | ISO version string. rodeo downloads the matching ISO from the Harvester release page. |
-| `rancher` | `"2.13.1"` | Rancher Prime Helm chart version. |
-| `k3s` | `"v1.31.4+k3s1"` | K3s version installed on the Rancher VM. |
+| `rancher` | `"2.14.1"` | Rancher Prime Helm chart version. |
+| `k3s` | `"v1.35.3+k3s1"` | K3s version installed on the Rancher VM (`suse-virt` / `rancher`). SUSE Edge defaults to `v1.35.5+k3s1`. |
 | `cert_manager` | `"v1.16.2"` | cert-manager Helm chart (Rancher dependency). |
 
 ### `parameters`

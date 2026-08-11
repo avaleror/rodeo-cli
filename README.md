@@ -100,16 +100,22 @@ Full walkthrough: [Create your own rodeo](docs/custom-rodeos.md).
 | `install-deps` | Install host packages (KVM, libvirt, ansible, kubectl) |
 | `init` | Create `rodeo-plan.yaml` and `~/.rodeo/secrets.yaml` |
 | `plan` | Preview what deploy would change (no changes made) |
-| `deploy` | Run the phase pipeline. Flags: `--from PHASE`, `--force`, `--check`, `--no-tui`, `-P key=value` |
+| `deploy` | Run the phase pipeline. Flags: `--from PHASE`, `--force`, `--reconcile` (default on) / `--no-reconcile`, `--check`, `--no-tui`, `-P key=value` |
 | `status` | VM states, VIP reachability, phase progress |
 | `stop` | Graceful stop in reverse definition order (infra-aware) |
 | `start` | Start host services and VMs in definition order |
+| `start-if-needed` | Idempotent boot guard — start only what is stopped |
 | `clean` | Destroy lab VMs, disks, state. `--all --yes --secrets` for a full host reset |
+| `destroy` | Tear down cloud-acquired host (`--cloud`) or owned lab resources |
+| `fleet` | Multi-host workshop fan-out: `doctor`, `status`, `deploy`, `retry`, `access`, `diagnose`, `provision` |
 | `watch` | Split-panel TUI: phase progress + VM serial logs |
 | `ssh` | SSH into a lab VM: `rodeo ssh harvester1` |
 | `logs` | Tail VM serial log. `--bundle` packages a support tarball |
 | `restart` | Restart a single VM |
 | `attach` | Serial console (Ctrl+] to detach) |
+| `set-password` | Rotate the Rancher admin password for a running lab |
+| `install-extensions` | Install Rancher UI extensions (e.g. Harvester) |
+| `self-update` | `git pull` + reinstall the CLI in one shot |
 | `bootstrap` | (advanced) One-shot host setup for clean SLES, links binary, seeds a lab dir |
 | `generate` | (advanced) Interactive config-dir skeleton from templates |
 
@@ -141,6 +147,7 @@ Precedence: profile defaults < plan < paramfile < `-P`.
 | [SUSE Edge profile guide](docs/guide-suse-edge.md) | Deploy the SUSE Edge 3.6 stack (Rancher + Elemental + EIB + edge nodes) |
 | [Bare metal example](docs/examples/bare-metal.md) | Full walkthrough on a physical or cloud host |
 | [Instruqt example](docs/examples/instruqt.md) | Build an Instruqt track image with a pre-deployed cluster |
+| [Fleet (multi-host)](docs/fleet.md) | Workshop fan-out across many KVM hosts |
 | [Testing and CI](docs/examples/testing.md) | Unit tests, integration tests, GitHub Actions |
 
 **Reference**

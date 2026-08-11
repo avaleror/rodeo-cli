@@ -72,6 +72,11 @@ Single-host `deployment_target: aws` (Phase E MVP) shares the same
 `rodeo/providers/aws` adapter and `provider:` YAML schema as Fleet F4a.
 On the EC2 guest the lab still runs as `baremetal`.
 
+Live smoke checklists:
+
+- [AWS single-host + fleet](examples/aws-fleet-claude-test-plan.md)
+- [Testing — AWS live smoke](examples/testing.md#aws-live-smoke-i7i8xlarge--nvme)
+
 ---
 
 ## F0 — JSON on a single host

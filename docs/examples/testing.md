@@ -108,6 +108,8 @@ Verify on the KVM host after `kvm_host`:
 
 Unit coverage: `tests/test_host_context.py`, `tests/test_kvm_host_nvme_storage.py`.
 
+Longer agent/ops checklist (single-host + fleet): [aws-fleet-claude-test-plan.md](aws-fleet-claude-test-plan.md).
+
 ## Integration tests — GitHub Actions (self-hosted runner)
 
 The integration workflow is at `.github/workflows/integration.yml`. It runs on a self-hosted runner with the labels `self-hosted`, `kvm`, `sles16`.

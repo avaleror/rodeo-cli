@@ -14,11 +14,20 @@ venv/
 .ruff_cache/
 .pytest_cache/
 .coverage
+coverage.xml
 htmlcov/
 .mypy_cache/
+.tox/
+.nox/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*~
 
 # Secrets / local config
-/secrets.yaml
+secrets.yaml
 *.secrets.yaml
 .env
 

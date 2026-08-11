@@ -13,9 +13,9 @@ For security issues, do not open a public issue. See [SECURITY.md](SECURITY.md).
 - **Bug reports** — detailed, reproducible steps with `rodeo logs --bundle` output attached
 - **Documentation fixes** — typos, unclear steps, missing examples
 - **Bug fixes** — link to the issue in the PR
-- **New profiles** — SUSE Edge, Telco Cloud, custom topologies (see [ROADMAP.md](ROADMAP.md))
-- **New deployment targets** — AWS, GCP (see [ROADMAP.md](ROADMAP.md) Phase E)
-- **Test coverage** — especially the Instruqt validation queue items in ROADMAP.md
+- **New profiles** — SUSE Edge polish, Telco Cloud, custom topologies (see [ROADMAP.md](ROADMAP.md))
+- **New deployment targets / cloud providers** — AWS single-host and Fleet F4a are shipped; GCP / Vultr / Hetzner are next (ROADMAP Phase E / F4)
+- **Test coverage** — especially live KVM regressions for items still open in ROADMAP.md (B2 reconcile-by-default, `suse-edge` Instruqt)
 
 ## Development setup
 

@@ -39,10 +39,13 @@ Run `rodeo doctor` to see which profiles fit your host's available RAM.
 
 ## Host requirements
 
-| Profile | RAM | Disk | CPU |
-|---------|-----|------|-----|
+Lab footprint (guest RAM sum) is in the table above. `rodeo doctor` uses a higher **host available RAM** threshold so nested KVM has headroom — e.g. `harvester` needs ~60 GiB of guests but doctor recommends ~72 GiB free on the host.
+
+| Profile | Host RAM (doctor) | Disk | CPU |
+|---------|-------------------|------|-----|
 | `test` | ~36 GiB | ~600 GiB in `/var/lib/libvirt/images` | ~16 vCPU |
 | `harvester-ha` | ~52 GiB | ~1000 GiB | ~20 vCPU |
+| `harvester-2n` | ~56 GiB | ~700 GiB | ~24 vCPU |
 | `harvester` | ~72 GiB | ~1050 GiB | ~34 vCPU |
 
 **OS:** Linux with KVM. SLES 16 or Leap 16 recommended; Ubuntu and Fedora work via `install-deps`. Nested virtualization must be enabled if the host is itself a VM (cloud, Instruqt).

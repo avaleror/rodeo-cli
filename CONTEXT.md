@@ -20,7 +20,7 @@ It replaces `rodeo.sh`, a monolithic bash script in the parent repository. Desig
 
 **GitHub:** https://github.com/avaleror/rodeo-cli
 **Author:** Andres Valero, Principal Technology Advocate at SUSE
-**Version:** 0.14.2 <!-- x-release-please-version --> (bundled profiles live-validated on bare metal SLES 16; Instruqt validation pending — see ROADMAP)
+**Version:** 0.14.2 <!-- x-release-please-version --> (bundled profiles live-validated on bare metal SLES 16; Instruqt builder validated 2026-07-15 — see ROADMAP)
 **Python:** 3.10+
 
 ---
@@ -105,7 +105,7 @@ Failure semantics:
 A profile defines `phases`, `vm_names`, `ansible_phases`, `guarded_phases`, default config, and phase dispatch. Three engine types ship on `main`:
 - **`suse-virt`** — `kvm_host → vms → pxe_server → cluster → rancher → finalise`. Harvester HCI + Rancher. The `rancher` phase is skipped when the topology has no Rancher node (e.g. the 2-node `test` lab).
 - **`rancher`** — `kvm_host → vms → boot → rancher → finalise`. One VM = Rancher Prime on K3s, no Harvester (no pxe_server/cluster). The lightweight `boot` phase starts the network + VM (the suse-virt `cluster` phase does that for Harvester).
-- **`suse-edge`** — SUSE Edge 3.6: Rancher Prime + Elemental Operator + EIB + edge nodes with vTPM 2.0. sslip.io + Let's Encrypt for the Rancher URL. Bare-metal validated; Instruqt validation pending.
+- **`suse-edge`** — SUSE Edge 3.6: Rancher Prime + Elemental Operator + EIB + edge nodes with vTPM 2.0. sslip.io + Let's Encrypt for the Rancher URL. Bare-metal validated; Instruqt live validation still pending (see ROADMAP Phase F).
 
 CLI commands resolve VM names and phase lists from the loaded plan/profile, never from hardcoded lists. Topology (start order, node names, ready count, etcd gap) comes from the definition via `inventory.build_inventory()`, not hardcoded strings.
 
@@ -225,23 +225,18 @@ ruff check rodeo tests && pytest tests/
 
 For end-user / clean-host testing, the simplest path is `rodeo up` (or the bootstrap script). The global **gitleaks** pre-commit hook means dummy passwords in tests need a `# gitleaks:allow` comment.
 
-Live SLES 16 testing has covered the `rancher` and 2-node `test` profiles end-to-end (see Version history). The full 3-node `harvester` profile has not yet been run live.
+Live SLES 16 and Instruqt builder testing have covered `rancher`, `test`, `harvester-ha`, and full `harvester` end-to-end (see ROADMAP validation queue). `suse-edge` remains bare-metal validated with Instruqt pending.
 
 ---
 
 ## Version history
 
-- **v0.1** — CLI skeleton, wrong playbook path, no bundled Ansible, phantom preflight phase.
-- **v0.2** — Textual TUI, bundled Ansible + bash deployer scripts, corrected 5-phase pipeline.
-- **v0.3** — Bash retired (ClusterPhase/RancherPhase in Python), single event-driven DeployRunner, per-plan state, preflight `--check`, instruqt finalise guard, secrets resolvers (`??env/file/cmd`), random init credentials, exception/timeout/cancellation hardening, pytest suite + CI, profile scaffold.
-- **v0.4** — Dynamic `__version__` from package metadata; centralized SSH options in `rodeo/ssh.py` + consistent key defaults; profile-driven VM lists in TUI (no hardcoded tabs/switches); removed global `state.PHASES` (profiles own phase lists, `reset_from` now strictly requires phases arg); relaxed preflight (`--check`: virsh/ssh are warnings only, core tools remain required); `attach` respects `libvirt.uri`; Cluster/Rancher use derived users + libvirt URI; eject uses LibvirtDriver with stop support; NodePort patch uses explicit `--type strategic`; libvirt driver uses constants; added tests for generate/stop/start; generate no longer silently clobbers global secrets (exists check + warning); virsh fallbacks in stop/start/clean now honor plan libvirt.uri. P0/P1 safe items complete (big inventory/topology deferred to roadmap Phase C per constraints).
-- **v0.5 (june-lifecycle tag)** — `generate` + `stop`/`start` (infra-aware from definition) + `clean --all/--hard/--secrets/--force-network` host reset + `bootstrap` + `--config-dir` (EIB-style) + `init --profile`. Versioning moved to git tags.
-- **v0.6** — **Beginner on-ramp**: `rodeo up` (doctor → fit a lab → file secrets → self-sudo → deploy → success), `rodeo doctor`, file-based secrets default, lab-dir auto-detect. **`rancher` profile** (Rancher Prime on K3s, single VM) + lightweight `boot` phase. **Declarative custom rodeos**: `rodeo new` / `rodeo profiles`, profiles resolve from `~/.rodeo/profiles/`; `docs/custom-rodeos.md`. **Phase C (topology-driven)**: ClusterPhase reads start_order/harvester_node_names/harvester_ready_count/etcd_gap from the definition; conditional rancher phase; 2/3/N-node works. **Hardened by live SLES 16 testing** (both profiles validated end-to-end): python3-lxml + preflight check; cloud-init injected into the Leap 16 image (`virt-customize`); MAC-based iPXE chain (per-host dnsmasq tags were silently ignored vs libvirt host entries); installer console logged to the serial file; Harvester config YAMLs 0644 (nginx 403); mgmt interface by MAC not eth0; **Harvester disk 250 GB** (100 GB filled → containerd no-space → no VIP); topology-aware success screen; RancherPhase tolerates empty API bodies + idempotent password.
-- **v0.9.0** — Harvester import dropped from automation (now an Instruqt lab exercise); custom TLS cert generation removed; Rancher setup ends after NodePort + admin API + ISO eject; `start-if-needed` idempotent boot guard; 20-min cap on background Rancher drain loop; OVMF async copy fix (`command: cp` instead of `copy` with async).
-- **v0.9.1** — `rodeo self-update` command (git pull + pip reinstall in one shot); `rodeo clean` auto-refreshes the CLI at the end of every run.
-- **v0.10.x** — declarative inventory (Phase C) live-validated on bare metal; bundled `harvester-2n` + `suse-edge` profiles added (3 engine types: `rancher`, `suse-virt`, `suse-edge`); profile standardization — shared config assembly + phase dispatch centralized in `profiles/base.py`, the three profile classes reduced to data + deltas (PR #4); numerous Harvester-import and Rancher bootstrap fixes.
-- **v0.12.0 (current)** — audit-driven fixes: centralized `~/.rodeo` paths under sudo, plan flavor drift for suse-edge, curl-4 downloads for Instruqt, galaxy collection install cache, inventory fail-loud; 215 unit tests; Instruqt validation queue still pending (see ROADMAP).
-- **planned** — full 3-node `harvester` live regression; `sudo rodeo` self-escalation for clean/stop/start; `rodeo diagnose` (Claude API log analysis); ansible-lint + ansible sync check in CI; `--output json`; finish wiring `vm_nodes` overrides + `nodes: N` shorthand; split `rancher.py` into api/remote.
+- **v0.1–v0.6** — CLI skeleton → Textual TUI → bash retired → beginner on-ramp (`rodeo up` / `doctor`) → topology-driven Phase C. See git tags for detail.
+- **v0.9.x** — Harvester import as lab exercise by default; `self-update`; `start-if-needed`.
+- **v0.10.x** — `harvester-2n` + `suse-edge`; profile standardization on `profiles/base.py`.
+- **v0.12.0** — audit-driven fixes: `~/.rodeo` paths under sudo, plan flavor drift, curl-4 downloads, galaxy cache, inventory fail-loud.
+- **v0.13.0** — Instruqt builder end-to-end; opt-in `--reconcile` + `rodeo/drift.py`; guest disk cache keyed on target; host-aware resource presets.
+- **v0.14.x (current = 0.14.2)** — Fleet (F0–F2.1 + F4a AWS host-acquire); single-host `rodeo up --target aws`; GPL-3.0-or-later; ~420 unit tests. Next work lives in [ROADMAP.md](ROADMAP.md).
 
 ---
 

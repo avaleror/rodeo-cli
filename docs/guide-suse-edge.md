@@ -19,7 +19,7 @@ Use it when the workshop or demo focuses on **edge lifecycle**: building an OS i
 
 Rancher is reached through **Traefik ingress**, not a NodePort: cert-manager gets a real Let's Encrypt certificate over the HTTP01 challenge (port 80), and the UI + API + Elemental registration endpoint are served on port 443 at a `sslip.io` hostname derived from the host's external IP. Edge nodes are created by the `vms` phase but **started as a lab exercise**, not automatically — that is the hands-on part of the workshop.
 
-**Component versions (SUSE Edge 3.6):** Rancher Prime 2.14.1 · K3s v1.35.3+k3s1 (lab; production uses RKE2 v1.35.3+rke2r3) · cert-manager v1.20.1 · Elemental Operator 1.9.0 · Edge Image Builder 1.3.3.1.
+**Component versions (SUSE Edge 3.6):** Rancher Prime 2.14.1 · K3s v1.35.5+k3s1 (lab; production uses RKE2 v1.35.3+rke2r3) · cert-manager v1.20.1 · Elemental Operator 1.9.0 · Edge Image Builder 1.3.3.1.
 
 ---
 

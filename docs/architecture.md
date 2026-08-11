@@ -33,7 +33,7 @@ Every profile shares the same foundation: host networking, firewalld DNAT, DNS, 
 | Long waits are cancellable | `threading.Event` + process groups in poll loops |
 | Instruqt-safe builds | `deployment_target: instruqt` skips `finalise`; hostimage boot uses `start-if-needed` |
 | Self-contained install | Ansible roles bundled in `rodeo/data/ansible/` |
-| Minimal first-phase friction | `scripts/bootstrap-sles.sh` (curl | bash) + `rodeo bootstrap` subcommand + `install-deps --link` for global binary + `init --example` for pre-seeded declarative labs. See visual in user-guide. |
+| Minimal first-phase friction | `scripts/bootstrap-sles.sh` (curl | bash) + `rodeo bootstrap` subcommand + `install-deps --link` for global binary + `init --example` for pre-seeded declarative labs. See [Get started](get-started.md). |
 | Graceful stop/restart + host reset | `rodeo stop`/`start` (infra-aware from definition: infra_type, components, start_order; graceful ACPI + host services; restartable). `clean --all --hard --secrets --force-network` for full reset (VMs/networks/states/passwords; no package removal). Clean runs stop first unless --hard. |
 | Interactive definition generation | `rodeo generate` (templates base via parameter collection for hybrid customization, produces full config-dir yaml skeleton with project conventions like infra_type; post-validation via load_config; next steps for bootstrap/deploy/stop/start/clean lifecycle). Enables consistent entry to declarative model (definition as source for inventory/renderer/phases). |
 

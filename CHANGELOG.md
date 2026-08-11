@@ -1,5 +1,56 @@
 # Changelog
 
+## [0.15.0](https://github.com/avaleror/rodeo-cli/compare/v0.14.2...v0.15.0) (2026-08-11)
+
+
+### Features
+
+* **aws:** instance tiers, capacity check, NVMe host context, managed SSH ([0b9bd15](https://github.com/avaleror/rodeo-cli/commit/0b9bd150725988593299bf0d21f37166d9a3dc43))
+* **cli:** add rodeo install-extensions to reconcile UI extensions post-deploy ([081ad8a](https://github.com/avaleror/rodeo-cli/commit/081ad8a6b2801cc7dde37ec2b660d77a36930b1a))
+* **cli:** add rodeo set-password to rotate credentials post-deploy ([8f1ef68](https://github.com/avaleror/rodeo-cli/commit/8f1ef689e1cbbf95c69224e81b9f566cd1e12374))
+* **docs:** add rodeo-cli logo (Horseshoe Prompt mark) + favicons ([e6a4c3b](https://github.com/avaleror/rodeo-cli/commit/e6a4c3b5658fb485b093fab0cbd69d3f4c90d9d3))
+* **fleet:** F0/F1 — rodeo doctor/status --output json, fleet fan-out over SSH ([9d683a1](https://github.com/avaleror/rodeo-cli/commit/9d683a1840abdab61f1a16a57bb29bc7fedc269b))
+* **fleet:** F2 — deploy, retry, and access sheet over OpenSSH ([f911cda](https://github.com/avaleror/rodeo-cli/commit/f911cdaa07b451525ab560a6ddd917ae0f723089))
+* **fleet:** F2.1 — rodeo fleet diagnose, failure forensics at scale ([a558c94](https://github.com/avaleror/rodeo-cli/commit/a558c940f6754e1c3873a0ec3f8084b03b57c35e))
+* **providers:** AWS host-acquire for Fleet F4a and single-host up --target aws ([486a56a](https://github.com/avaleror/rodeo-cli/commit/486a56a36ba927774ad9afb1d46808e7737ff128))
+* **reconcile:** make VM drift reconciliation the default (B2 step 5) ([23f0513](https://github.com/avaleror/rodeo-cli/commit/23f0513e650e84a9756e9ae0e0139365e19679f9))
+* **suse-edge:** install the OS Manager (Elemental) Rancher UI extension ([69b3866](https://github.com/avaleror/rodeo-cli/commit/69b38665006346967b9f9e1837d572deeef62717))
+
+
+### Bug Fixes
+
+* **aws:** IMDSv2 detect, restart exit code, accurate up finish message ([2e6a4da](https://github.com/avaleror/rodeo-cli/commit/2e6a4daa72a577dc7ec147108524ef4c727f4cb2))
+* **ci:** pin ruff to 0.15.16, unpinned dep silently broke CI ([cce5e6c](https://github.com/avaleror/rodeo-cli/commit/cce5e6ca023ca216bedd700a68dfb3c766343604))
+* **docs:** give the horseshoe mark real nail holes (4 per branch) ([32628bc](https://github.com/avaleror/rodeo-cli/commit/32628bc18613b3f25a473447a1974d88eb3f67ba))
+* **fleet:** scope access URLs to lab.components, add script syntax regression tests ([5abc81a](https://github.com/avaleror/rodeo-cli/commit/5abc81a0b7dbaf75f926db83573d4e4ed7fc6adc))
+* **fleet:** treat apply as no_cache when checking lab complete ([44b8906](https://github.com/avaleror/rodeo-cli/commit/44b8906f7f21b9e167dfba3df44ab41a24b8ad73))
+* **rancher:** clear first-login setting even when password already matches ([33327d6](https://github.com/avaleror/rodeo-cli/commit/33327d6d8238608906ce3f3e4e81dd2598c44cf5))
+* **rancher:** reconcile UI extensions for standalone labs too ([4a456d3](https://github.com/avaleror/rodeo-cli/commit/4a456d3c170e3f7c2120a2aee21cf4c281050327))
+* **rancher:** restore Harvester UI extension declaration in bundled profiles ([d90c1b1](https://github.com/avaleror/rodeo-cli/commit/d90c1b1656557865891c72596c3212531c5319e8))
+* **rancher:** retry Harvester password change, set it regardless of auto-import ([8d4606b](https://github.com/avaleror/rodeo-cli/commit/8d4606bc0e7e18d00e1509b70a7c03213aecee48))
+* **secrets:** remove hardcoded fallback passwords, fail loud when missing ([7cd8424](https://github.com/avaleror/rodeo-cli/commit/7cd8424b890fee3a519c376d6745991af197a02c))
+* **ssh:** handle PermissionError from stat(), not just unreadable files ([abf6509](https://github.com/avaleror/rodeo-cli/commit/abf650971fc5f4bc98a5c516f161a51d879e6497))
+* **ssh:** stop nested-VM SSH from silently degrading to a password prompt ([5174222](https://github.com/avaleror/rodeo-cli/commit/5174222ff41b939ab912c6142661972fb4ddbc5e))
+
+
+### Refactoring
+
+* **ansible:** ansible-lint clean roles, per-node DHCP drift, dedup curl/ssh-key tasks ([8bb5de6](https://github.com/avaleror/rodeo-cli/commit/8bb5de62378c28d83e7f4325359e7d8e58edf141))
+
+
+### Documentation
+
+* add GitHub Pages site (mkdocs-material, andresvalero.tech design) ([67a97bd](https://github.com/avaleror/rodeo-cli/commit/67a97bd21822ba1978e3dd5fc9cc044c93fac75d))
+* add Harvester admin password recovery when the live value is unknown ([10af0c3](https://github.com/avaleror/rodeo-cli/commit/10af0c3e1c197acd6e53f76c38d083c325f9d74d))
+* clean up wording across docs and site copy ([8784d73](https://github.com/avaleror/rodeo-cli/commit/8784d736dfce69c11762bd57a9626a3bd1e13746))
+* document rancher.ui_extensions and rodeo install-extensions ([e050ab9](https://github.com/avaleror/rodeo-cli/commit/e050ab9cd11431d3749cd948973331adc5555465))
+* **examples:** add AWS single-host + fleet live smoke-test checklist for Claude Code ([855ee5f](https://github.com/avaleror/rodeo-cli/commit/855ee5f3ee8c2c4f3b6ddcfc247367805b13763b))
+* fix layout — hero font-size bug, dead grid space, uneven card grids ([5a41b3a](https://github.com/avaleror/rodeo-cli/commit/5a41b3aaecd5badee6b7c3f86ae8dfaa2f1b286a))
+* **fleet:** add Roadmap subsection for F3 MCP and F4 host-acquire ([d982d61](https://github.com/avaleror/rodeo-cli/commit/d982d615513fcec6f784059f6940fe7da6bc42da))
+* **fleet:** F4 host-acquire plan — AWS then GCP then Hetzner ([8fd1ad8](https://github.com/avaleror/rodeo-cli/commit/8fd1ad88803f653b56dcbe2622f60836b9eca301))
+* hygiene pass — sync versions, test counts, command reference ([02c1447](https://github.com/avaleror/rodeo-cli/commit/02c1447fd4142e079e71ba8c02ea0c449db66e0c))
+* move historical audits under docs/archive/ ([1b3fd93](https://github.com/avaleror/rodeo-cli/commit/1b3fd938fa856e0e04b6037a1f2df603a51a63ef))
+
 ## [0.14.2](https://github.com/avaleror/rodeo-cli/compare/v0.14.1...v0.14.2) (2026-07-17)
 
 

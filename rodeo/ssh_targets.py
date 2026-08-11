@@ -13,6 +13,10 @@ from .fleet.inventory import load_inventory
 from .providers.remote_up import load_aws_host_state
 from .ssh_key import ensure_rodeo_ssh_key, resolve_ssh_identity
 
+# The KVM host's own key, baked into every nested VM's cloud-init by
+# common/ensure_ssh_key.yml — the only identity nested VMs ever trust.
+_HOST_ROOT_SSH_KEY = Path("/root/.ssh/id_ed25519")
+
 
 @dataclass(frozen=True)
 class SshTarget:
@@ -38,7 +42,12 @@ def parse_ssh_target_arg(raw: str) -> tuple[str | None, str]:
     return None, text
 
 
-def default_identity(cfg: dict[str, Any] | None = None, *, key: str | None = None) -> str:
+def default_identity(
+    cfg: dict[str, Any] | None = None,
+    *,
+    key: str | None = None,
+    prefer_root_key: bool = False,
+) -> str:
     if key:
         return str(Path(key).expanduser())
     if cfg:
@@ -46,10 +55,22 @@ def default_identity(cfg: dict[str, Any] | None = None, *, key: str | None = Non
         if plan_key:
             return str(Path(str(plan_key)).expanduser())
     managed = ensure_rodeo_ssh_key()
-    if os.geteuid() == 0:
-        root_key = Path("/root/.ssh/id_ed25519")
-        if root_key.is_file():
+    root_key = _HOST_ROOT_SSH_KEY
+    if (prefer_root_key or os.geteuid() == 0) and root_key.is_file():
+        if os.access(root_key, os.R_OK):
             return str(root_key)
+        if prefer_root_key:
+            # Nested VMs only ever trust this key (baked into their cloud-init
+            # by the common/ensure_ssh_key Ansible task) — the operator's
+            # managed key is a different identity, for host/EC2-level hops.
+            # Fail clearly here rather than silently falling back to a key
+            # the VM doesn't trust, which just degrades into an unexplained
+            # interactive password prompt.
+            raise ConfigError(
+                f"{root_key} is the key nested VMs trust, but it isn't readable "
+                "as the current user — re-run with sudo (e.g. `sudo rodeo ssh "
+                "<vm>`)."
+            )
     return str(managed)
 
 
@@ -221,7 +242,11 @@ def build_ssh_target(
         user, ip = resolve_vm_on_plan(cfg, name)
         if login_user:
             user = login_user
-        return SshTarget(user=user, host=ip, identity_file=identity)
+        # Nested VMs only trust the host's /root/.ssh/id_ed25519 (see
+        # ensure_ssh_key.yml), never the operator's managed key — resolve it
+        # explicitly here regardless of the invoking user's euid.
+        vm_identity = default_identity(cfg, key=key, prefer_root_key=True)
+        return SshTarget(user=user, host=ip, identity_file=vm_identity)
 
     try:
         user, host, ident = resolve_kvm_host(

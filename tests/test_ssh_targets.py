@@ -8,6 +8,7 @@ import pytest
 from rodeo.config import ConfigError
 from rodeo.ssh_targets import (
     build_ssh_target,
+    default_identity,
     parse_ssh_target_arg,
     ssh_argv_for,
 )
@@ -42,6 +43,63 @@ def test_build_ssh_target_local_vm(managed_ssh):
     argv = ssh_argv_for(t)
     assert "root@192.168.122.10" in argv
     assert "ProxyJump" not in " ".join(argv)
+
+
+def test_default_identity_prefers_root_key_when_readable_even_if_not_root(
+    managed_ssh, tmp_path, monkeypatch
+):
+    """Nested VMs only trust the host's /root/.ssh/id_ed25519 (baked into their
+    cloud-init) — prefer_root_key must pick it regardless of the invoking
+    user's euid, not just when already running as root."""
+    fake_root_key = tmp_path / "fake_root_id_ed25519"
+    fake_root_key.write_text("fake-key")
+    monkeypatch.setattr("rodeo.ssh_targets._HOST_ROOT_SSH_KEY", fake_root_key)
+    monkeypatch.setattr("rodeo.ssh_targets.os.geteuid", lambda: 1000)  # not root
+    result = default_identity({}, prefer_root_key=True)
+    assert result == str(fake_root_key)
+
+
+def test_default_identity_raises_clear_error_when_root_key_unreadable(
+    managed_ssh, tmp_path, monkeypatch
+):
+    """Regression: previously this silently fell back to the operator's managed
+    key (which the VM doesn't trust), degrading into an unexplained interactive
+    password prompt. Must fail with an actionable sudo hint instead."""
+    fake_root_key = tmp_path / "fake_root_id_ed25519"
+    fake_root_key.write_text("fake-key")
+    monkeypatch.setattr("rodeo.ssh_targets._HOST_ROOT_SSH_KEY", fake_root_key)
+    monkeypatch.setattr("rodeo.ssh_targets.os.geteuid", lambda: 1000)
+    monkeypatch.setattr("rodeo.ssh_targets.os.access", lambda *a, **k: False)
+    with pytest.raises(ConfigError, match="sudo"):
+        default_identity({}, prefer_root_key=True)
+
+
+def test_default_identity_explicit_key_still_wins_over_root_key(
+    managed_ssh, tmp_path, monkeypatch
+):
+    """--key / plan-level ssh.identity_file must still override, even for
+    nested-VM targets — prefer_root_key only affects the final fallback."""
+    fake_root_key = tmp_path / "fake_root_id_ed25519"
+    fake_root_key.write_text("fake-key")
+    monkeypatch.setattr("rodeo.ssh_targets._HOST_ROOT_SSH_KEY", fake_root_key)
+    chosen = tmp_path / "explicit_key"
+    chosen.write_text("explicit")
+    result = default_identity({}, key=str(chosen), prefer_root_key=True)
+    assert result == str(chosen)
+
+
+def test_build_ssh_target_local_vm_uses_root_key_when_available(
+    managed_ssh, tmp_path, monkeypatch
+):
+    """rodeo ssh <local-vm> must resolve the host's root key, not the operator's
+    managed key — end-to-end through build_ssh_target, not just the helper."""
+    fake_root_key = tmp_path / "fake_root_id_ed25519"
+    fake_root_key.write_text("fake-key")
+    monkeypatch.setattr("rodeo.ssh_targets._HOST_ROOT_SSH_KEY", fake_root_key)
+    monkeypatch.setattr("rodeo.ssh_targets.os.geteuid", lambda: 1000)
+    cfg = {"vms": {"rancher": {"ip": "192.168.122.9", "user": "root"}}}
+    t = build_ssh_target("rancher", cfg=cfg)
+    assert t.identity_file == str(fake_root_key)
 
 
 def test_build_ssh_target_host_from_workshop(managed_ssh, tmp_path, monkeypatch):

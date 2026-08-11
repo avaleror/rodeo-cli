@@ -17,6 +17,20 @@
     name: common
     tasks_from: ensure_ssh_key
 
+# Nested VM IPs are static and reused across every redeploy, but each fresh
+# install generates a new host key — so a stale entry from a previous deploy
+# always triggers a false "REMOTE HOST IDENTIFICATION HAS CHANGED" warning
+# (it's the same IP, a genuinely different VM, not a real MITM). Clear any
+# cached entry for each node's IP before the new VM boots and offers its key.
+- name: Clear stale known_hosts entries for reused nested-VM IPs
+  ansible.builtin.known_hosts:
+    name: "{{ item.ip }}"
+    state: absent
+  loop: "{{ vm_nodes }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: item.ip is defined
+
 # --- Harvester ISO ---
 
 - name: Download Harvester {{ harvester_version }} ISO
@@ -95,6 +109,8 @@
   loop_control:
     label: "{{ item.name }}"
 
+# No creates: guard — config seed ISO is always rebuilt to match current templates
+# (same pattern as rancher_image.yml / eib_image.yml cloud-init ISOs).
 - name: Build Harvester config seed ISOs (async)
   ansible.builtin.command: >
     xorriso -as mkisofs

@@ -1,0 +1,2400 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A declarative CLI that deploys hands-on lab infrastructure (Harvester HCI, Rancher Prime, SUSE Edge) on KVM.">
+      
+      
+      
+        <link rel="canonical" href="https://avaleror.github.io/rodeo-cli/fleet/">
+      
+      
+        <link rel="prev" href="../custom-rodeos/">
+      
+      
+        <link rel="next" href="../reference/plan/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/logo/favicon.ico">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Fleet (multi-host workshops) - rodeo-cli</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/custom.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#fleet-multi-host-workshop-orchestration" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="rodeo-cli" class="md-header__button md-logo" aria-label="rodeo-cli" data-md-component="logo">
+      
+  <img src="../assets/logo/horseshoe-mark.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            rodeo-cli
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Fleet (multi-host workshops)
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/avaleror/rodeo-cli" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    avaleror/rodeo-cli
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../get-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Get started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../guide-rancher/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Profiles
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../custom-rodeos/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Create your own rodeo
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Fleet (multi-host workshops)
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../reference/plan/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../examples/bare-metal/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Examples
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../runbook/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Troubleshooting
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../architecture/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Architecture
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="rodeo-cli" class="md-nav__button md-logo" aria-label="rodeo-cli" data-md-component="logo">
+      
+  <img src="../assets/logo/horseshoe-mark.svg" alt="logo">
+
+    </a>
+    rodeo-cli
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/avaleror/rodeo-cli" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    avaleror/rodeo-cli
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../get-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Get started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Profiles
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Profiles
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-rancher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rancher Prime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-harvester/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Harvester HCI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-suse-edge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SUSE Edge
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../custom-rodeos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Create your own rodeo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fleet (multi-host workshops)
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fleet (multi-host workshops)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#capabilities-by-phase" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Capabilities by phase
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#roadmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Roadmap
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Roadmap">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#f4-host-acquire" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F4 — Host-acquire
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#related-not-fleet-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related (not Fleet-only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#f0-json-on-a-single-host" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F0 — JSON on a single host
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inventory-workshopyaml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inventory (workshop.yaml)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#f1-doctor-and-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F1 — doctor and status
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#f2-deploy-retry-access" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F2 — deploy, retry, access
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="F2 — deploy, retry, access">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#instructor-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Instructor flow
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-fleet-deploy-does-on-each-host" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What fleet deploy does on each host
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#job-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Job file
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#retry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retry
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#diagnose-failure-forensics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Diagnose (failure forensics)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#access-sheet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Access sheet
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#openssh-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OpenSSH requirements
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design notes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#f4-host-acquire-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F4 host-acquire design
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="F4 host-acquire design">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#hostprovider-protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HostProvider Protocol
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#workshopyaml-provider-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        workshop.yaml provider: schema
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="workshop.yaml provider: schema">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#common-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common fields
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#aws-api-credentials" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AWS API credentials
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#providertype-aws-f4a" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        provider.type: aws (F4a)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#providertype-gcp-f4b" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        provider.type: gcp (F4b)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#providertype-vultr-f4c" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        provider.type: vultr (F4c)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#providertype-hetzner-f4d" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        provider.type: hetzner (F4d)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#merge-semantics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Merge semantics
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    rodeo-plan.yaml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/definition/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    definition.yaml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Examples
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/bare-metal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bare metal
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/instruqt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Instruqt track
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/workshop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workshop fleet inventory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing & CI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../runbook/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#capabilities-by-phase" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Capabilities by phase
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#roadmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Roadmap
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Roadmap">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#f4-host-acquire" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F4 — Host-acquire
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#related-not-fleet-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related (not Fleet-only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#f0-json-on-a-single-host" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F0 — JSON on a single host
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inventory-workshopyaml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inventory (workshop.yaml)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#f1-doctor-and-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F1 — doctor and status
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#f2-deploy-retry-access" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F2 — deploy, retry, access
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="F2 — deploy, retry, access">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#instructor-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Instructor flow
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-fleet-deploy-does-on-each-host" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What fleet deploy does on each host
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#job-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Job file
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#retry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retry
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#diagnose-failure-forensics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Diagnose (failure forensics)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#access-sheet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Access sheet
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#openssh-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OpenSSH requirements
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design notes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#f4-host-acquire-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F4 host-acquire design
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="F4 host-acquire design">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#hostprovider-protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HostProvider Protocol
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#workshopyaml-provider-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        workshop.yaml provider: schema
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="workshop.yaml provider: schema">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#common-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common fields
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#aws-api-credentials" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AWS API credentials
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#providertype-aws-f4a" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        provider.type: aws (F4a)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#providertype-gcp-f4b" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        provider.type: gcp (F4b)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#providertype-vultr-f4c" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        provider.type: vultr (F4c)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#providertype-hetzner-f4d" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        provider.type: hetzner (F4d)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#merge-semantics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Merge semantics
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="fleet-multi-host-workshop-orchestration">Fleet — multi-host workshop orchestration<a class="headerlink" href="#fleet-multi-host-workshop-orchestration" title="Permanent link">&para;</a></h1>
+<p>Laptop-side control plane that drives <strong>many remote KVM hosts</strong> over OpenSSH.
+Each host still runs normal single-host <code>rodeo</code>; fleet only fans out and tracks
+jobs. Engine phases, Ansible roles, and nested networking are unchanged.</p>
+<p>See also: <a href="../get-started/">Get started</a> (single host), <a href="../architecture/">Architecture</a>,
+<a href="https://github.com/avaleror/rodeo-cli/blob/main/ROADMAP.md">ROADMAP.md</a> (Phase I).</p>
+<h2 id="capabilities-by-phase">Capabilities by phase<a class="headerlink" href="#capabilities-by-phase" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Status</th>
+<th>What</th>
+<th>Commands</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>F0</strong></td>
+<td>Shipped</td>
+<td>Machine-readable host CLI</td>
+<td><code>rodeo doctor --output json</code>, <code>rodeo status --output json</code></td>
+</tr>
+<tr>
+<td><strong>F1</strong></td>
+<td>Shipped</td>
+<td>Inventory + read-only fan-out</td>
+<td><code>rodeo fleet doctor</code>, <code>rodeo fleet status</code></td>
+</tr>
+<tr>
+<td><strong>F2</strong></td>
+<td>Shipped</td>
+<td>Deploy / retry / access sheet</td>
+<td><code>rodeo fleet deploy</code>, <code>retry</code>, <code>access</code></td>
+</tr>
+<tr>
+<td><strong>F2.1</strong></td>
+<td>Shipped</td>
+<td>Failure forensics</td>
+<td><code>rodeo fleet diagnose</code></td>
+</tr>
+<tr>
+<td><strong>F4a</strong></td>
+<td>Shipped (MVP)</td>
+<td>AWS host-acquire</td>
+<td><code>rodeo fleet provision</code>, <code>deprovision</code></td>
+</tr>
+<tr>
+<td><strong>F4b–d</strong></td>
+<td>Roadmap</td>
+<td>GCP → Vultr BM → Hetzner</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p>Host prerequisites (after <a href="https://github.com/avaleror/rodeo-cli/blob/main/install.sh"><code>install.sh</code></a> on each lab machine):</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>rodeo<span class="w"> </span>doctor<span class="w"> </span>--output<span class="w"> </span>json
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="c1"># from the lab directory:</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>rodeo<span class="w"> </span>status<span class="w"> </span>--output<span class="w"> </span>json
+</span></code></pre></div>
+<hr />
+<h2 id="roadmap">Roadmap<a class="headerlink" href="#roadmap" title="Permanent link">&para;</a></h2>
+<p>What is <strong>not</strong> shipped yet for Fleet. Full checklist: <a href="https://github.com/avaleror/rodeo-cli/blob/main/ROADMAP.md#phase-i--fleet--workshop-fan-out">ROADMAP Phase I</a>.</p>
+<h3 id="f4-host-acquire">F4 — Host-acquire<a class="headerlink" href="#f4-host-acquire" title="Permanent link">&para;</a></h3>
+<p><strong>Create KVM hosts from the laptop</strong>, merge into <code>workshop.yaml</code>, then run the
+normal converge loop. Providers stop at inventory; deploy / diagnose / retry stay
+OpenSSH-only.</p>
+<table>
+<thead>
+<tr>
+<th>Order</th>
+<th>Provider</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>F4a</strong></td>
+<td><strong>AWS</strong> (<code>boto3</code>, <code>pip install 'rodeo-cli[aws]'</code>)</td>
+<td><strong>MVP shipped</strong> — create/reuse by tags, wait running + SSH, write <code>hosts[]</code>, terminate tagged only</td>
+</tr>
+<tr>
+<td><strong>F4b</strong></td>
+<td><strong>GCP</strong> (<code>google-cloud-compute</code>)</td>
+<td>Planned</td>
+</tr>
+<tr>
+<td><strong>F4c</strong></td>
+<td><strong>Vultr Bare Metal</strong> (<code>[vultr]</code> extra)</td>
+<td>Planned — after GCP; real metal for nested KVM</td>
+</tr>
+<tr>
+<td><strong>F4d</strong></td>
+<td><strong>Hetzner Cloud</strong> (<code>hcloud</code>)</td>
+<td>Planned — after Vultr; nested KVM must be validated</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Out of scope:</strong> Equinix Metal (service sunset). Shared secrets across hosts.
+Changing the nested phase engine for multi-host.</p>
+<p><strong>MVP gaps (AWS):</strong> no <code>plan</code> dry-run yet; <code>deprovision</code> does not rewrite <code>hosts[]</code>
+(terminate only — edit or re-provision to refresh YAML); auto SG later.</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s1">&#39;rodeo-cli[aws]&#39;</span><span class="w">   </span><span class="c1"># once, on the laptop</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="c1"># AWS API creds (boto3 — never in YAML). Either:</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="c1">#   ~/.aws/credentials  (+ optional AWS_PROFILE / ~/.aws/config)</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1">#   or AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY (+ optional AWS_SESSION_TOKEN)</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="c1"># SSH: rodeo auto-manages ~/.rodeo/ssh/id_ed25519 and imports EC2 key pair &quot;rodeo&quot;</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>provision<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w">    </span><span class="c1"># create/reuse → write hosts[]</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>doctor<span class="w"> </span>-f<span class="w"> </span>workshop.yaml
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>deploy<span class="w"> </span>-f<span class="w"> </span>workshop.yaml
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>deprovision<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>--yes
+</span></code></pre></div>
+<p>Shared <code>HostProvider</code> Protocol and <code>provider:</code> YAML schema:
+<a href="#f4-host-acquire-design">Host-acquire design</a> below.</p>
+<h3 id="related-not-fleet-only">Related (not Fleet-only)<a class="headerlink" href="#related-not-fleet-only" title="Permanent link">&para;</a></h3>
+<p>Single-host <code>deployment_target: aws</code> (Phase E MVP) shares the same
+<code>rodeo/providers/aws</code> adapter and <code>provider:</code> YAML schema as Fleet F4a.
+On the EC2 guest the lab still runs as <code>baremetal</code>.</p>
+<p>Live smoke checklists:</p>
+<ul>
+<li><a href="../examples/aws-fleet-claude-test-plan/">AWS single-host + fleet</a></li>
+<li><a href="../examples/testing/#aws-live-smoke-i7i8xlarge--nvme">Testing — AWS live smoke</a></li>
+</ul>
+<hr />
+<h2 id="f0-json-on-a-single-host">F0 — JSON on a single host<a class="headerlink" href="#f0-json-on-a-single-host" title="Permanent link">&para;</a></h2>
+<p>Structured reports live in <code>rodeo/service/</code> so CLI and fleet share one shape.</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>rodeo<span class="w"> </span>doctor<span class="w"> </span>--output<span class="w"> </span>json
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>rodeo<span class="w"> </span>status<span class="w"> </span>--output<span class="w"> </span>json<span class="w">   </span><span class="c1"># requires a lab (cwd or --config-dir)</span>
+</span></code></pre></div>
+<p>Default <code>--output text</code> keeps the existing Rich tables.</p>
+<hr />
+<h2 id="inventory-workshopyaml">Inventory (<code>workshop.yaml</code>)<a class="headerlink" href="#inventory-workshopyaml" title="Permanent link">&para;</a></h2>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">suse-virt-rodeo-emea</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nt">lab</span><span class="p">:</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span><span class="nt">dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/root/suse-virt-workshop</span><span class="w">     </span><span class="c1"># remote path (status + deploy cwd)</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span><span class="c1"># F2 — one of:</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">  </span><span class="nt">source</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git:https://github.com/avaleror/suse-virt-workshop.git</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">  </span><span class="c1"># profile: harvester              # alternative: seed bundled/custom profile</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">  </span><span class="nt">branch</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">main</span><span class="w">                      </span><span class="c1"># optional (git only)</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">  </span><span class="nt">target</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">baremetal</span><span class="w">                 </span><span class="c1"># baremetal | instruqt (use baremetal for AWS hosts)</span>
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="w">  </span><span class="nt">concurrency</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">4</span><span class="w">                    </span><span class="c1"># default -j for deploy/retry</span>
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="w">  </span><span class="nt">ports</span><span class="p">:</span>
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="w">    </span><span class="nt">harvester</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">8443</span><span class="w">                 </span><span class="c1"># DNAT on host public IP</span>
+</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="w">    </span><span class="nt">rancher</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">30002</span>
+</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="w">  </span><span class="c1"># components: [harvester]         # optional — see &quot;Access sheet&quot; below.</span>
+</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a><span class="w">  </span><span class="c1">#                                  # Omit to show every URL fleet knows how to build.</span>
+</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="nt">defaults</span><span class="p">:</span>
+</span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a><span class="w">  </span><span class="nt">ssh_user</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ec2-user</span><span class="w">                 </span><span class="c1"># AMI user (ec2-user / sles / root)</span>
+</span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a><span class="w">  </span><span class="c1"># identity_file: ignored — rodeo uses managed ~/.rodeo/ssh/id_ed25519</span>
+</span><span id="__span-3-18"><a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a><span class="nt">hosts</span><span class="p">:</span>
+</span><span id="__span-3-19"><a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">student-01</span>
+</span><span id="__span-3-20"><a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a><span class="w">    </span><span class="nt">ssh</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">203.0.113.11</span><span class="w">               </span><span class="c1"># host or user@host</span>
+</span><span id="__span-3-21"><a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a><span class="w">    </span><span class="nt">public_ip</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">203.0.113.11</span><span class="w">         </span><span class="c1"># used by fleet access</span>
+</span><span id="__span-3-22"><a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a><span class="w">    </span><span class="nt">labels</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> room</span><span class="p">:</span><span class="w"> </span><span class="nv">a</span><span class="w"> </span><span class="p p-Indicator">}</span>
+</span><span id="__span-3-23"><a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">student-02</span>
+</span><span id="__span-3-24"><a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a><span class="w">    </span><span class="nt">ssh</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">root@lab-02.example</span>
+</span><span id="__span-3-25"><a id="__codelineno-3-25" name="__codelineno-3-25" href="#__codelineno-3-25"></a><span class="w">    </span><span class="nt">public_ip</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">203.0.113.12</span>
+</span><span id="__span-3-26"><a id="__codelineno-3-26" name="__codelineno-3-26" href="#__codelineno-3-26"></a><span class="w">    </span><span class="nt">labels</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> room</span><span class="p">:</span><span class="w"> </span><span class="nv">b</span><span class="w"> </span><span class="p p-Indicator">}</span>
+</span></code></pre></div>
+<p>Validation is fail-closed: unique <code>id</code>, required <code>ssh</code>, required <code>lab.dir</code>.
+<code>lab.source</code> or <code>lab.profile</code> is required only for <strong>deploy</strong> / <strong>retry</strong>.</p>
+<hr />
+<h2 id="f1-doctor-and-status">F1 — doctor and status<a class="headerlink" href="#f1-doctor-and-status" title="Permanent link">&para;</a></h2>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>doctor<span class="w"> </span>-f<span class="w"> </span>workshop.yaml
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>status<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>--output<span class="w"> </span>json
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>doctor<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>--label<span class="w"> </span><span class="nv">room</span><span class="o">=</span>a
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>status<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>--host<span class="w"> </span>student-01<span class="w"> </span>-j<span class="w"> </span><span class="m">4</span>
+</span></code></pre></div>
+<ul>
+<li>Exit <code>0</code> only when every selected host succeeds.</li>
+<li><strong>doctor:</strong> remote process exit is not enough — fleet also checks KVM, nested
+  virt, core tools, and that a bundled profile fits RAM
+  (<code>rodeo/fleet/doctor.py::_readiness_problems</code>).</li>
+<li><strong>status:</strong> runs in <code>lab.dir</code> on each host. If <code>workshop.job.yaml</code> exists,
+  status refreshes per-host job states for later retry.</li>
+</ul>
+<hr />
+<h2 id="f2-deploy-retry-access">F2 — deploy, retry, access<a class="headerlink" href="#f2-deploy-retry-access" title="Permanent link">&para;</a></h2>
+<h3 id="instructor-flow">Instructor flow<a class="headerlink" href="#instructor-flow" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>doctor<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>-j<span class="w"> </span><span class="m">8</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>deploy<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>-j<span class="w"> </span><span class="m">4</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>status<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w">          </span><span class="c1"># poll until phases complete</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>diagnose<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w">        </span><span class="c1"># pull logs for failed hosts</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>retry<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>--failed-only
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>access<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>--output<span class="w"> </span>json
+</span></code></pre></div>
+<h3 id="what-fleet-deploy-does-on-each-host">What <code>fleet deploy</code> does on each host<a class="headerlink" href="#what-fleet-deploy-does-on-each-host" title="Permanent link">&para;</a></h3>
+<ol>
+<li>Ensure <code>rodeo</code> is on PATH (runs <code>install.sh</code> if missing).</li>
+<li>Sync lab: <code>git clone</code> / <code>git pull --ff-only</code>, or <code>rodeo up --no-deploy</code> for a profile.</li>
+<li>Start <strong>detached tmux</strong> running <code>rodeo up --yes --no-tmux</code> in <code>lab.dir</code>
+   (session name <code>rodeo-fleet-&lt;workshop&gt;-&lt;host-id&gt;</code>).</li>
+<li>Return immediately — does <strong>not</strong> wait for the 90–150 minute install.</li>
+<li>Write <strong><code>workshop.job.yaml</code></strong> beside the inventory (chmod 600).</li>
+</ol>
+<p>Hosts whose <strong>cacheable</strong> phases are already all <code>completed</code> are <strong>skipped</strong>
+unless <code>--force</code>. The <code>apply</code> phase is never cached (re-run every local deploy)
+and does not block this check.</p>
+<p>Secrets: generated <strong>per host</strong> by remote <code>rodeo up</code> — fleet never scp’s a shared
+<code>secrets.yaml</code>.</p>
+<h3 id="job-file">Job file<a class="headerlink" href="#job-file" title="Permanent link">&para;</a></h3>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">workshop</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">suse-virt-rodeo-emea</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nt">hosts</span><span class="p">:</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span><span class="nt">student-01</span><span class="p">:</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span><span class="nt">state</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">running</span><span class="w">    </span><span class="c1"># pending | running | ok | failed</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">    </span><span class="nt">tmux</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rodeo-fleet-suse-virt-rodeo-emea-student-01</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">  </span><span class="nt">student-02</span><span class="p">:</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">    </span><span class="nt">state</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">failed</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">    </span><span class="nt">last_error</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;...&quot;</span>
+</span></code></pre></div>
+<h3 id="retry">Retry<a class="headerlink" href="#retry" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>retry<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>--failed-only<span class="w">   </span><span class="c1"># default</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>retry<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>--all-selected<span class="w">  </span><span class="c1"># ignore job failures; use --host/--label</span>
+</span></code></pre></div>
+<p>Refreshes job state from live <code>status</code>, then re-starts deploy with <code>--force</code> on
+the chosen hosts.</p>
+<h3 id="diagnose-failure-forensics">Diagnose (failure forensics)<a class="headerlink" href="#diagnose-failure-forensics" title="Permanent link">&para;</a></h3>
+<p><code>fleet status</code> / the job file tell you <em>which</em> host and phase failed. To see
+<em>why</em>, pull logs onto the laptop:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>diagnose<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w">                  </span><span class="c1"># failed hosts (default)</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>diagnose<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>--all-selected<span class="w">   </span><span class="c1"># every selected host</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>diagnose<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>-o<span class="w"> </span>/tmp/diag<span class="w"> </span>--output<span class="w"> </span>json
+</span></code></pre></div>
+<p>Per host, under <code>&lt;inventory&gt;.diagnose-&lt;utc&gt;/&lt;host-id&gt;/</code> (or <code>-o</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Artifact</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>status.json</code></td>
+<td>remote <code>rodeo status --output json</code></td>
+</tr>
+<tr>
+<td><code>logs/*.log</code></td>
+<td>tails of <code>~/.rodeo/logs/</code> (incl. <code>fleet-up.log</code>)</td>
+</tr>
+<tr>
+<td><code>meta/state/</code></td>
+<td><code>~/.rodeo/state/*.yaml</code> phase cache</td>
+</tr>
+<tr>
+<td><code>meta/tmux-pane.txt</code></td>
+<td>tmux pane capture when the job session still exists</td>
+</tr>
+<tr>
+<td><code>summary.json</code></td>
+<td>short failure digest for that host</td>
+</tr>
+<tr>
+<td><code>index.json</code></td>
+<td>workshop-wide index (also printed with <code>--output json</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>Does not print or collect secrets. Exit <code>0</code> when collection succeeds; <code>1</code> if SSH
+or archive extract fails for any host.</p>
+<h3 id="access-sheet">Access sheet<a class="headerlink" href="#access-sheet" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>access<span class="w"> </span>-f<span class="w"> </span>workshop.yaml
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>id</th>
+<th>Harvester</th>
+<th>Rancher</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>student-01</td>
+<td><code>https://203.0.113.11:8443</code></td>
+<td><code>https://203.0.113.11:30002</code></td>
+</tr>
+</tbody>
+</table>
+<p>Nested VIP stays <code>192.168.122.10</code> inside each host; students use <strong>host public IP +
+DNAT</strong>. Passwords are <strong>never</strong> printed — they live on each host in
+<code>~/.rodeo/secrets.yaml</code>.</p>
+<p>By default <code>access</code> prints both URLs for every host — fleet has no reliable
+local signal for which UIs a given lab actually exposes (a bundled profile
+name doesn't map 1:1 to components: e.g. the <code>test</code> profile's example dir has
+no Rancher node at all). Set <code>lab.components: [harvester]</code> or
+<code>[rancher]</code> in the inventory to suppress the URL(s) that don't apply to your
+workshop.</p>
+<hr />
+<h2 id="openssh-requirements">OpenSSH requirements<a class="headerlink" href="#openssh-requirements" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Key-based auth with <code>BatchMode=yes</code> (no password prompts).</li>
+<li>Host keys are not verified (<code>StrictHostKeyChecking=no</code>,
+  <code>UserKnownHostsFile=/dev/null</code>) — same trade-off as host→VM <code>rodeo/ssh.py</code>.
+  Workshop hosts are treated as ephemeral lab machines.</li>
+<li><code>ssh</code> on the laptop PATH; Agent / <code>ProxyJump</code> / <code>identity_file</code> work as usual.</li>
+<li>On each remote: <code>rodeo</code> + <code>tmux</code> on PATH for the SSH user; typically <code>root@</code>.</li>
+</ul>
+<p>Fleet does <strong>not</strong> sudo-re-exec on the laptop.</p>
+<h2 id="design-notes">Design notes<a class="headerlink" href="#design-notes" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>rodeo/ssh.py</code> = host→VM lab connections.</li>
+<li><code>rodeo/fleet/ssh_exec.py</code> = laptop→KVM host.</li>
+<li>Concurrency defaults: doctor/status <code>-j 8</code>; deploy/retry use <code>lab.concurrency</code>
+  (default 4) unless <code>-j</code> is set. Prefer low concurrency for deploy (ISO/network).</li>
+<li>See <a href="#roadmap">Roadmap</a> for F4 host-acquire. Equinix is out of scope.
+  Shared secrets and changing the phase pipeline stay out of Fleet.</li>
+</ul>
+<hr />
+<h2 id="f4-host-acquire-design">F4 host-acquire design<a class="headerlink" href="#f4-host-acquire-design" title="Permanent link">&para;</a></h2>
+<p>Shared Protocol / schema for host-acquire. <strong>AWS (F4a) MVP is implemented</strong> in
+<code>rodeo/providers/</code> for both Fleet and single-host <code>deployment_target: aws</code>.
+GCP / Vultr / Hetzner remain stubs. Summary in <a href="#roadmap">Roadmap</a>.</p>
+<p><strong>Important:</strong> AWS-provisioned workshop hosts run the lab as
+<code>lab.target: baremetal</code> (full firewalld / DNAT / <code>finalise</code>). <code>deployment_target: aws</code>
+is the laptop control-plane mode (<code>rodeo up --target aws</code>); do not set
+<code>lab.target: aws</code> in <code>workshop.yaml</code>.</p>
+<h3 id="hostprovider-protocol"><code>HostProvider</code> Protocol<a class="headerlink" href="#hostprovider-protocol" title="Permanent link">&para;</a></h3>
+<p>Shared contract in planned <code>rodeo/providers/</code>. Fleet CLI never imports boto3/GCP/hcloud
+directly — only the registry + this surface.</p>
+<p><strong>Types (conceptual)</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ProviderConfig</code></td>
+<td>Parsed <code>workshop.yaml</code> → <code>provider:</code> mapping (type + type-specific fields)</td>
+</tr>
+<tr>
+<td><code>ProvisionSpec</code></td>
+<td>Workshop name, desired count / host ids, SSH defaults, labels to apply</td>
+</tr>
+<tr>
+<td><code>ProvisionedHost</code></td>
+<td>Maps 1:1 onto inventory <code>hosts[]</code>: <code>id</code>, <code>ssh</code>, <code>public_ip</code>, <code>labels</code>, optional <code>provider_id</code> (cloud instance id)</td>
+</tr>
+<tr>
+<td><code>DeprovisionResult</code></td>
+<td>Per-host outcome: destroyed / skipped / error</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Required operations</strong></p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>Stable id: <code>aws</code> | <code>gcp</code> | <code>vultr</code> | <code>hetzner</code></td>
+</tr>
+<tr>
+<td><code>validate(config) → None</code></td>
+<td>Fail closed (<code>ConfigError</code>) on missing/invalid fields <strong>for that type only</strong></td>
+</tr>
+<tr>
+<td><code>plan(spec, config) → list[action]</code></td>
+<td>Optional dry-run: create / reuse / noop per desired host id (nice-to-have for F4a)</td>
+</tr>
+<tr>
+<td><code>provision(spec, config) → list[ProvisionedHost]</code></td>
+<td>Idempotent: reuse instances tagged for this workshop+host id; create the rest; wait until <strong>running</strong> + <strong>SSH BatchMode</strong> succeeds</td>
+</tr>
+<tr>
+<td><code>deprovision(spec, config) → list[DeprovisionResult]</code></td>
+<td>Destroy <strong>only</strong> resources with ownership tags below; refuse untagged</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Shared (not per-provider)</strong></p>
+<ul>
+<li>SSH wait / probe via existing <code>rodeo/fleet/ssh_exec.py</code> (no paramiko).</li>
+<li>Inventory merge: write/update <code>hosts[]</code> by <code>id</code>; do not delete static hosts unless <code>--prune</code>.</li>
+<li>Optional extras: <code>[aws]</code>, <code>[gcp]</code>, <code>[vultr]</code>, <code>[hetzner]</code> so core install stays light.</li>
+</ul>
+<p><strong>Ownership tags</strong> (every created instance; same keys on all clouds)</p>
+<table>
+<thead>
+<tr>
+<th>Tag / label key</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ManagedBy</code></td>
+<td><code>rodeo</code></td>
+</tr>
+<tr>
+<td><code>rodeo-workshop</code></td>
+<td>plan <code>name:</code> / workshop <code>name:</code></td>
+</tr>
+<tr>
+<td><code>rodeo-host-id</code></td>
+<td>inventory host <code>id</code> (e.g. <code>student-01</code>) or <code>primary</code> for single-host</td>
+</tr>
+</tbody>
+</table>
+<p>GCP uses labels (DNS-1123); normalize keys to lowercase where the cloud requires it, but keep the same logical names.</p>
+<p><strong>Non-goals for the Protocol</strong></p>
+<ul>
+<li>No multi-cloud “common instance type” enum — size/image stay provider-specific.</li>
+<li>No shared secrets / AMI publishing pipeline in F4.</li>
+<li>No Libcloud / OpenTofu required for the default path.</li>
+</ul>
+<h3 id="workshopyaml-provider-schema"><code>workshop.yaml</code> <code>provider:</code> schema<a class="headerlink" href="#workshopyaml-provider-schema" title="Permanent link">&para;</a></h3>
+<p>Top-level <code>provider:</code> is optional. Absent → today’s behavior (static <code>hosts:</code> only).
+Present → <code>fleet provision</code> / <code>deprovision</code> are valid; <code>type</code> selects the adapter.</p>
+<h4 id="common-fields">Common fields<a class="headerlink" href="#common-fields" title="Permanent link">&para;</a></h4>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">suse-virt-rodeo-emea</span><span class="w">          </span><span class="c1"># used as rodeo-workshop tag</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="nt">lab</span><span class="p">:</span>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">  </span><span class="nt">dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/root/suse-virt-workshop</span>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">  </span><span class="nt">source</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git:https://github.com/example/suse-virt-workshop.git</span>
+</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="w">  </span><span class="c1"># … existing lab keys unchanged …</span>
+</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="nt">defaults</span><span class="p">:</span>
+</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="w">  </span><span class="nt">ssh_user</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">root</span><span class="w">                     </span><span class="c1"># or ec2-user / sles / … per AMI</span>
+</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="w">  </span><span class="nt">identity_file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">~/.ssh/rodeo-workshop.pem</span>
+</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="w">  </span><span class="c1"># ssh_options: [&quot;ProxyJump=bastion&quot;]</span>
+</span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="nt">provider</span><span class="p">:</span>
+</span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">aws</span><span class="w">                         </span><span class="c1"># aws | gcp | vultr | hetzner  (required if provider: present)</span>
+</span><span id="__span-10-12"><a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a><span class="w">  </span><span class="nt">count</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">12</span><span class="w">                         </span><span class="c1"># how many hosts to ensure when hosts: [] or undersized</span>
+</span><span id="__span-10-13"><a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a><span class="w">  </span><span class="c1"># host_id_prefix: student-        # default &quot;student-&quot;; ids student-01 … student-N</span>
+</span><span id="__span-10-14"><a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a><span class="w">  </span><span class="c1"># Optional overrides applied to every provisioned host:</span>
+</span><span id="__span-10-15"><a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a><span class="w">  </span><span class="c1"># labels: { room: a, event: emea }</span>
+</span><span id="__span-10-16"><a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a><span class="nt">hosts</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[]</span><span class="w">                           </span><span class="c1"># empty → provision creates; or pre-seed static + cloud mix</span>
+</span></code></pre></div>
+<p>Validation rules (fail closed):</p>
+<ul>
+<li><code>provider.type</code> ∈ <code>{aws, gcp, vultr, hetzner}</code>.</li>
+<li><code>provider.count</code> integer 1–64 when set; if <code>hosts:</code> non-empty and count omitted, ensure exactly those ids (reuse/create by <code>rodeo-host-id</code>).</li>
+<li>SSH identity is managed under <code>~/.rodeo/ssh/id_ed25519</code> (auto-created; imported to EC2 as key pair <code>rodeo</code>). <code>defaults.identity_file</code> / <code>provider.key_name</code> are optional.</li>
+<li>Type-specific required keys enforced by that adapter’s <code>validate()</code> only.</li>
+</ul>
+<h4 id="aws-api-credentials">AWS API credentials<a class="headerlink" href="#aws-api-credentials" title="Permanent link">&para;</a></h4>
+<p>Provision uses <strong>boto3 only</strong> (AWS CLI is optional). Supply credentials via either:</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>How</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Shared file</td>
+<td><code>~/.aws/credentials</code> (and optional <code>~/.aws/config</code> / <code>AWS_PROFILE</code>)</td>
+</tr>
+<tr>
+<td>Environment</td>
+<td><code>AWS_ACCESS_KEY_ID</code> + <code>AWS_SECRET_ACCESS_KEY</code> (+ optional <code>AWS_SESSION_TOKEN</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>Never put AWS access keys in <code>workshop.yaml</code> or <code>rodeo-plan.yaml</code>.</p>
+<h4 id="providertype-aws-f4a"><code>provider.type: aws</code> (F4a)<a class="headerlink" href="#providertype-aws-f4a" title="Permanent link">&para;</a></h4>
+<p>Prefer <strong><code>i7i.8xlarge</code></strong> (local NVMe) for Harvester / Edge I/O. Metal remains valid.
+<code>apply_host_context</code> raises Harvester <code>disk_gb</code> to 1200 and mounts NVMe on
+<code>image_dir</code>. Root <code>volume_size_gib</code> only needs the OS (~100 GiB). Tiny / burstable
+types are rejected at validate. Nested virt defaults <strong>on</strong> for non-metal types.</p>
+<p>SSH: rodeo generates <code>~/.rodeo/ssh/id_ed25519</code> if missing, imports it as EC2 key pair
+<strong><code>rodeo</code></strong>, and plants the same private key on the KVM host so nested VMs share it.
+New instances also get cloud-init UserData: root authorized_keys + <code>NOPASSWD</code> sudo
+for <code>ssh_user</code> so remote <code>rodeo up</code> never asks for a password.
+Use <code>rodeo ssh student-01</code> or <code>rodeo ssh student-01/rancher</code>.</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="nt">provider</span><span class="p">:</span>
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">aws</span>
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">  </span><span class="nt">count</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">12</span>
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">  </span><span class="nt">region</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">eu-central-1</span><span class="w">              </span><span class="c1"># required</span>
+</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="w">  </span><span class="nt">instance_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">i7i.8xlarge</span><span class="w">        </span><span class="c1"># preferred: local NVMe; metal also OK</span>
+</span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="w">  </span><span class="c1"># ami omitted → newest openSUSE Leap 16.0 (x86_64) Marketplace AMI</span>
+</span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="w">  </span><span class="c1"># ami_name_filter: &quot;openSUSE Leap 16.0 (x86_64)*&quot;   # default when ami unset</span>
+</span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="w">  </span><span class="c1"># ami: ami-0123456789abcdef0      # optional pin (SLES 16 / specific Leap build)</span>
+</span><span id="__span-11-9"><a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="w">  </span><span class="nt">subnet_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">subnet-0abc…</span><span class="w">           </span><span class="c1"># required</span>
+</span><span id="__span-11-10"><a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="w">  </span><span class="nt">security_group_ids</span><span class="p">:</span><span class="w">               </span><span class="c1"># required; must allow 22, 8443, 30002 as needed</span>
+</span><span id="__span-11-11"><a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sg-0abc…</span>
+</span><span id="__span-11-12"><a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a><span class="w">  </span><span class="c1"># key_name: rodeo                 # default; ImportKeyPair managed by rodeo</span>
+</span><span id="__span-11-13"><a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a><span class="w">  </span><span class="c1"># associate_public_ip: true       # default true</span>
+</span><span id="__span-11-14"><a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a><span class="w">  </span><span class="c1"># nested_virtualization: true     # default on for non-metal</span>
+</span><span id="__span-11-15"><a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a><span class="w">  </span><span class="c1"># volume_size_gib: 100            # root EBS; lab disks use NVMe via host_context</span>
+</span></code></pre></div>
+<p>Subscribe once to <a href="https://aws.amazon.com/marketplace/pp/prodview-wn2xje27ui45o">openSUSE Leap on Marketplace</a>
+(current build example: <em>openSUSE Leap 16.0 (x86_64) - v20260629</em>). SSH user: <strong><code>ec2-user</code></strong>.
+SLES 16 works too — set <code>ami:</code> to that image id and <code>ssh_user</code> if it is not <code>ec2-user</code>.</p>
+<h4 id="providertype-gcp-f4b"><code>provider.type: gcp</code> (F4b)<a class="headerlink" href="#providertype-gcp-f4b" title="Permanent link">&para;</a></h4>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="nt">provider</span><span class="p">:</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">gcp</span>
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">  </span><span class="nt">count</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">12</span>
+</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">  </span><span class="nt">project</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-gcp-project</span><span class="w">           </span><span class="c1"># required</span>
+</span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="w">  </span><span class="nt">zone</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">europe-west3-a</span><span class="w">              </span><span class="c1"># required</span>
+</span><span id="__span-12-6"><a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="w">  </span><span class="nt">machine_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">n2-standard-32</span><span class="w">      </span><span class="c1"># required</span>
+</span><span id="__span-12-7"><a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="w">  </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">projects/…/global/images/…</span><span class="w"> </span><span class="c1"># required (or family)</span>
+</span><span id="__span-12-8"><a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="w">  </span><span class="nt">network</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">default</span><span class="w">                  </span><span class="c1"># or full URL</span>
+</span><span id="__span-12-9"><a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="w">  </span><span class="nt">subnetwork</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">regions/…/subnetworks/…</span>
+</span><span id="__span-12-10"><a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="w">  </span><span class="c1"># enable_nested_virtualization: true   # default true for rodeo</span>
+</span><span id="__span-12-11"><a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="w">  </span><span class="c1"># min_cpu_platform: &quot;Intel Cascade Lake&quot;</span>
+</span><span id="__span-12-12"><a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a><span class="w">  </span><span class="c1"># tags: [rodeo-fleet]             # GCP network tags for firewall</span>
+</span></code></pre></div>
+<p>Auth: Application Default Credentials / service account — not stored in <code>workshop.yaml</code>.</p>
+<h4 id="providertype-vultr-f4c"><code>provider.type: vultr</code> (F4c)<a class="headerlink" href="#providertype-vultr-f4c" title="Permanent link">&para;</a></h4>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="nt">provider</span><span class="p">:</span>
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">vultr</span>
+</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">  </span><span class="nt">count</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">12</span>
+</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">  </span><span class="nt">region</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ewr</span><span class="w">                       </span><span class="c1"># required (Vultr location id)</span>
+</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="w">  </span><span class="nt">plan</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">vbm-8c-128gb</span><span class="w">                </span><span class="c1"># required — use ≥128 GiB for full Harvester labs</span>
+</span><span id="__span-13-6"><a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="w">  </span><span class="nt">os_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2284</span><span class="w">                       </span><span class="c1"># required (or snapshot_id / iPXE)</span>
+</span><span id="__span-13-7"><a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="w">  </span><span class="c1"># sshkey_id: [&quot;…&quot;]                # Vultr SSH key ids</span>
+</span><span id="__span-13-8"><a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="w">  </span><span class="c1"># firewall_group_id: &quot;…&quot;          # must allow 22 / UI ports for access sheet</span>
+</span><span id="__span-13-9"><a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a><span class="w">  </span><span class="c1"># label_prefix: rodeo-            # optional</span>
+</span></code></pre></div>
+<p>Auth: <code>VULTR_API_KEY</code> (API key may require IP allowlisting). Prefer REST <code>/v2/bare-metals</code>
+or the OpenAPI client over a thin community wrapper. <strong>Bare metal only</strong> for nested KVM —
+not Vultr Cloud VPS. Gate plans by RAM for the chosen profile (<code>rodeo doctor</code>).</p>
+<h4 id="providertype-hetzner-f4d"><code>provider.type: hetzner</code> (F4d)<a class="headerlink" href="#providertype-hetzner-f4d" title="Permanent link">&para;</a></h4>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="nt">provider</span><span class="p">:</span>
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">hetzner</span>
+</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">  </span><span class="nt">count</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">12</span>
+</span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="w">  </span><span class="nt">location</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">fsn1</span><span class="w">                    </span><span class="c1"># required</span>
+</span><span id="__span-14-5"><a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="w">  </span><span class="nt">server_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">cpx51</span><span class="w">                </span><span class="c1"># required — must pass nested-KVM validation for labs</span>
+</span><span id="__span-14-6"><a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="w">  </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rocky-9</span><span class="w">                    </span><span class="c1"># required (or snapshot id); SLES path TBD</span>
+</span><span id="__span-14-7"><a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="w">  </span><span class="c1"># ssh_keys: [&quot;rodeo-workshop&quot;]    # Hetzner SSH key names/ids</span>
+</span><span id="__span-14-8"><a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="w">  </span><span class="c1"># networks: []                    # optional private networks</span>
+</span><span id="__span-14-9"><a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a><span class="w">  </span><span class="c1"># firewalls: []                   # must expose 22 / UI ports for access sheet</span>
+</span></code></pre></div>
+<p>Auth: <code>HCLOUD_TOKEN</code> (or future <code>??</code> secret key) — not in plaintext in the inventory.
+<strong>Gate:</strong> do not mark F4d complete until <code>fleet doctor</code> shows nested KVM on a real
+Hetzner Cloud type used for workshops.</p>
+<h4 id="merge-semantics">Merge semantics<a class="headerlink" href="#merge-semantics" title="Permanent link">&para;</a></h4>
+<table>
+<thead>
+<tr>
+<th>Situation</th>
+<th><code>fleet provision</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>hosts: []</code>, <code>count: N</code></td>
+<td>Create/reuse <code>student-01</code>…<code>student-N</code>; write <code>hosts[]</code></td>
+</tr>
+<tr>
+<td><code>hosts:</code> lists ids</td>
+<td>Ensure those ids only (ignore count or require count ≥ len)</td>
+</tr>
+<tr>
+<td>Instance already tagged <code>rodeo-workshop</code> + <code>rodeo-host-id</code></td>
+<td>Reuse; refresh <code>ssh</code> / <code>public_ip</code> in YAML</td>
+</tr>
+<tr>
+<td><code>fleet deprovision</code></td>
+<td>Terminate/delete tagged instances; clear or mark cloud-sourced hosts in YAML</td>
+</tr>
+</tbody>
+</table>
+<p>Static hosts (no <code>labels.provider</code> / no cloud <code>provider_id</code>) are never destroyed by
+deprovision unless explicitly selected later (<code>--all-tagged</code> stays the default safety).</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.top", "navigation.indexes", "content.code.copy", "content.code.annotate", "toc.follow", "search.suggest", "search.highlight"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

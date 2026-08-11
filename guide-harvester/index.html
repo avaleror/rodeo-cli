@@ -1,0 +1,2238 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A declarative CLI that deploys hands-on lab infrastructure (Harvester HCI, Rancher Prime, SUSE Edge) on KVM.">
+      
+      
+      
+        <link rel="canonical" href="https://avaleror.github.io/rodeo-cli/guide-harvester/">
+      
+      
+        <link rel="prev" href="../guide-rancher/">
+      
+      
+        <link rel="next" href="../guide-suse-edge/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/logo/favicon.ico">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Harvester HCI - rodeo-cli</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/custom.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#harvester-hci-profile-guide" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="rodeo-cli" class="md-header__button md-logo" aria-label="rodeo-cli" data-md-component="logo">
+      
+  <img src="../assets/logo/horseshoe-mark.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            rodeo-cli
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Harvester HCI
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/avaleror/rodeo-cli" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    avaleror/rodeo-cli
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../get-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Get started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../guide-rancher/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Profiles
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../custom-rodeos/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Create your own rodeo
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../fleet/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Fleet (multi-host workshops)
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../reference/plan/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../examples/bare-metal/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Examples
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../runbook/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Troubleshooting
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../architecture/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Architecture
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="rodeo-cli" class="md-nav__button md-logo" aria-label="rodeo-cli" data-md-component="logo">
+      
+  <img src="../assets/logo/horseshoe-mark.svg" alt="logo">
+
+    </a>
+    rodeo-cli
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/avaleror/rodeo-cli" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    avaleror/rodeo-cli
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../get-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Get started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Profiles
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Profiles
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-rancher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rancher Prime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Harvester HCI
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Harvester HCI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#pick-your-profile" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pick your profile
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-you-get" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What you get
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What you get">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#all-harvester-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        All Harvester profiles
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#harvester-and-harvester-2n-profiles-add" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        harvester and harvester-2n profiles add
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#host-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Host requirements
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deploy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deploy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-happens-during-deploy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What happens during deploy
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What happens during deploy">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#time-estimates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Time estimates
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#log-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Log in
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Log in">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#download-the-kubeconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Download the kubeconfig
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#day-2-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Day-2 operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Day-2 operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#resume-a-failed-deploy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resume a failed deploy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rancher-ui-extensions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rancher UI extensions
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#instruqt-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Instruqt workflow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Troubleshooting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#harvester-vip-not-reachable-after-cluster-phase" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Harvester VIP not reachable after cluster phase
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ui-reachable-but-host8443-not-working" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UI reachable but host:8443 not working
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#node-never-joins-the-cluster" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Node never joins the cluster
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#etcd-recovery-last-resort" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        etcd recovery (last resort)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#admin-password-unknown-not-in-secretsyaml-not-the-persisted-file-not-adminadmin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Admin password unknown (not in secrets.yaml, not the persisted file, not admin/admin)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#customize" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Customize
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Customize">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#change-node-resources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Change node resources
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#change-the-disk-size" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Change the disk size
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#build-a-custom-harvester-lab" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Build a custom Harvester lab
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-suse-edge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SUSE Edge
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../custom-rodeos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Create your own rodeo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fleet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fleet (multi-host workshops)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    rodeo-plan.yaml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/definition/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    definition.yaml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Examples
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/bare-metal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bare metal
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/instruqt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Instruqt track
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/workshop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workshop fleet inventory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing & CI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../runbook/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#pick-your-profile" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pick your profile
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-you-get" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What you get
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What you get">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#all-harvester-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        All Harvester profiles
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#harvester-and-harvester-2n-profiles-add" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        harvester and harvester-2n profiles add
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#host-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Host requirements
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deploy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deploy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-happens-during-deploy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What happens during deploy
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What happens during deploy">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#time-estimates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Time estimates
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#log-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Log in
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Log in">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#download-the-kubeconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Download the kubeconfig
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#day-2-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Day-2 operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Day-2 operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#resume-a-failed-deploy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resume a failed deploy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rancher-ui-extensions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rancher UI extensions
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#instruqt-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Instruqt workflow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Troubleshooting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#harvester-vip-not-reachable-after-cluster-phase" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Harvester VIP not reachable after cluster phase
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ui-reachable-but-host8443-not-working" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UI reachable but host:8443 not working
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#node-never-joins-the-cluster" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Node never joins the cluster
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#etcd-recovery-last-resort" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        etcd recovery (last resort)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#admin-password-unknown-not-in-secretsyaml-not-the-persisted-file-not-adminadmin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Admin password unknown (not in secrets.yaml, not the persisted file, not admin/admin)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#customize" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Customize
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Customize">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#change-node-resources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Change node resources
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#change-the-disk-size" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Change the disk size
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#build-a-custom-harvester-lab" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Build a custom Harvester lab
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="harvester-hci-profile-guide">Harvester HCI — profile guide<a class="headerlink" href="#harvester-hci-profile-guide" title="Permanent link">&para;</a></h1>
+<p>This guide covers the four Harvester profiles in rodeo-cli. All deploy <strong>SUSE Virtualization (Harvester HCI)</strong> as nested KVM VMs on a single Linux host. Pick the one that fits your host and workshop goals.</p>
+<hr />
+<h2 id="pick-your-profile">Pick your profile<a class="headerlink" href="#pick-your-profile" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Profile</th>
+<th>Nodes</th>
+<th>Rancher</th>
+<th>etcd</th>
+<th>RAM needed</th>
+<th>Use when</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>test</code></td>
+<td>2 Harvester</td>
+<td>No</td>
+<td>1 leader</td>
+<td>~36 GiB</td>
+<td>Quick evaluation, tight host, no HA needed</td>
+</tr>
+<tr>
+<td><code>harvester-ha</code></td>
+<td>3 Harvester</td>
+<td>No</td>
+<td>3-member HA</td>
+<td>~52 GiB</td>
+<td>Harvester workshop with full etcd HA, no Rancher</td>
+</tr>
+<tr>
+<td><code>harvester-2n</code></td>
+<td>2 Harvester + 1 Rancher</td>
+<td>Yes</td>
+<td>1 leader</td>
+<td>~56 GiB</td>
+<td>HCI + Rancher on a mid-size host, no etcd HA</td>
+</tr>
+<tr>
+<td><code>harvester</code></td>
+<td>3 Harvester + 1 Rancher</td>
+<td>Yes</td>
+<td>3-member HA</td>
+<td>~60 GiB</td>
+<td>Full lab: HCI + multi-cluster management</td>
+</tr>
+</tbody>
+</table>
+<p>Run <code>rodeo doctor</code> to see which profiles fit your host's available RAM.</p>
+<hr />
+<h2 id="what-you-get">What you get<a class="headerlink" href="#what-you-get" title="Permanent link">&para;</a></h2>
+<h3 id="all-harvester-profiles">All Harvester profiles<a class="headerlink" href="#all-harvester-profiles" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Default IP</th>
+<th>Access</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Harvester VIP</td>
+<td>192.168.122.10</td>
+<td><code>https://192.168.122.10</code> (direct, inside lab network)</td>
+</tr>
+<tr>
+<td>Harvester UI via host</td>
+<td>host IP</td>
+<td><code>https://&lt;host&gt;:8443</code> (DNAT, reachable from outside)</td>
+</tr>
+<tr>
+<td>harvester1</td>
+<td>192.168.122.11</td>
+<td><code>rodeo ssh harvester1</code></td>
+</tr>
+<tr>
+<td>harvester2</td>
+<td>192.168.122.12</td>
+<td><code>rodeo ssh harvester2</code></td>
+</tr>
+<tr>
+<td>harvester3</td>
+<td>192.168.122.13</td>
+<td><code>rodeo ssh harvester3</code> (not present in <code>test</code> / <code>harvester-2n</code>)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="harvester-and-harvester-2n-profiles-add"><code>harvester</code> and <code>harvester-2n</code> profiles add<a class="headerlink" href="#harvester-and-harvester-2n-profiles-add" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Default IP</th>
+<th>Access</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Rancher Prime</td>
+<td>192.168.122.9</td>
+<td><code>https://&lt;host&gt;:30002</code> (DNAT)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="host-requirements">Host requirements<a class="headerlink" href="#host-requirements" title="Permanent link">&para;</a></h2>
+<p>Lab footprint (guest RAM sum) is in the table above. <code>rodeo doctor</code> uses a higher <strong>host available RAM</strong> threshold so nested KVM has headroom — e.g. <code>harvester</code> needs ~60 GiB of guests but doctor recommends ~72 GiB free on the host.</p>
+<table>
+<thead>
+<tr>
+<th>Profile</th>
+<th>Host RAM (doctor)</th>
+<th>Disk</th>
+<th>CPU</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>test</code></td>
+<td>~36 GiB</td>
+<td>~600 GiB in <code>/var/lib/libvirt/images</code></td>
+<td>~16 vCPU</td>
+</tr>
+<tr>
+<td><code>harvester-ha</code></td>
+<td>~52 GiB</td>
+<td>~1000 GiB</td>
+<td>~20 vCPU</td>
+</tr>
+<tr>
+<td><code>harvester-2n</code></td>
+<td>~56 GiB</td>
+<td>~700 GiB</td>
+<td>~24 vCPU</td>
+</tr>
+<tr>
+<td><code>harvester</code></td>
+<td>~72 GiB</td>
+<td>~1050 GiB</td>
+<td>~34 vCPU</td>
+</tr>
+</tbody>
+</table>
+<p><strong>OS:</strong> Linux with KVM. SLES 16 or Leap 16 recommended; Ubuntu and Fedora work via <code>install-deps</code>. Nested virtualization must be enabled if the host is itself a VM (cloud, Instruqt).</p>
+<p>Harvester installs via <strong>iPXE network boot</strong> (the <code>pxe_server</code> phase serves boot scripts and config over HTTP). This is why the disk requirement is high — each node gets a 320 GiB virtual disk (Harvester's Elemental installer carves a fixed 150 GiB persistent partition regardless of disk size, so the rest goes to Longhorn's own partition).</p>
+<hr />
+<h2 id="deploy">Deploy<a class="headerlink" href="#deploy" title="Permanent link">&para;</a></h2>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>rodeo<span class="w"> </span>up<span class="w"> </span>--profile<span class="w"> </span><span class="nb">test</span><span class="w">           </span><span class="c1"># 2-node, fastest</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>rodeo<span class="w"> </span>up<span class="w"> </span>--profile<span class="w"> </span>harvester-ha<span class="w">   </span><span class="c1"># 3-node HA, no Rancher</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>rodeo<span class="w"> </span>up<span class="w"> </span>--profile<span class="w"> </span>harvester<span class="w">      </span><span class="c1"># full lab</span>
+</span></code></pre></div>
+<p><code>rodeo up</code> checks the host, installs missing packages (with your consent), generates credentials, and drives the full pipeline. It self-escalates with sudo.</p>
+<p><strong>Disconnect protection (tmux):</strong> <code>rodeo up</code> automatically wraps itself in a named tmux session before starting the deploy. If your SSH or Instruqt connection drops mid-deploy, the process keeps running. Re-attach any time:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>tmux<span class="w"> </span>attach<span class="w"> </span>-t<span class="w"> </span>rodeo-harvester<span class="w">    </span><span class="c1"># or rodeo-test, rodeo-harvester-ha — matches --profile name</span>
+</span></code></pre></div>
+<p>Detach without stopping the deploy: <code>Ctrl+b  d</code>. If you run <code>rodeo up</code> again and the session exists, it re-attaches to the running deploy instead of starting a second one. Use <code>--no-tmux</code> to skip this behaviour in scripts.</p>
+<hr />
+<h2 id="what-happens-during-deploy">What happens during deploy<a class="headerlink" href="#what-happens-during-deploy" title="Permanent link">&para;</a></h2>
+<p>The <code>suse-virt</code> pipeline (used by all four Harvester profiles) runs these phases:</p>
+<ol>
+<li><strong>kvm_host</strong> — prepares the hypervisor: KVM packages, libvirt daemon, firewall rules (including the DNAT rule that makes <code>:8443</code> reach the Harvester VIP), and the image storage pool</li>
+<li><strong>vms</strong> — downloads the Harvester ISO, creates virtual disks (size varies by profile — see Host requirements above), and writes libvirt XML definitions (VMs are defined but not started yet)</li>
+<li><strong>pxe_server</strong> — sets up nginx + TFTP + dnsmasq on the host's <code>virbr0</code> (192.168.122.1). Generates a <code>boot.ipxe</code> that chains to a per-node MAC script, and a Harvester config YAML for each node</li>
+<li><strong>cluster</strong> — starts VMs in order (<code>harvester1</code> first, then a gap for etcd, then the rest). Waits for each node to install Harvester via iPXE, join the cluster, and become <code>Ready</code>. Watches the VIP (192.168.122.10) for the cluster to converge</li>
+<li><strong>rancher</strong> — (<code>harvester</code> profile only) installs K3s + Rancher Prime on the <code>rancher</code> VM, exposes it on NodePort 30002, and configures the admin API. Harvester cluster import is intentionally left as a lab exercise — students do it via the Rancher UI as the first challenge</li>
+<li><strong>finalise</strong> — enables VM autostart on host reboot (skipped on Instruqt; use <code>rodeo start-if-needed</code> on hostimage boot instead of baking finalise into the image)</li>
+</ol>
+<h3 id="time-estimates">Time estimates<a class="headerlink" href="#time-estimates" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Profile</th>
+<th>Typical time</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>test</code></td>
+<td>45–90 minutes</td>
+</tr>
+<tr>
+<td><code>harvester-ha</code></td>
+<td>60–120 minutes</td>
+</tr>
+<tr>
+<td><code>harvester</code></td>
+<td>90–150 minutes</td>
+</tr>
+</tbody>
+</table>
+<p>Most of that time is the Harvester iPXE install inside nested KVM. Watch live progress:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>rodeo<span class="w"> </span>watch<span class="w">              </span><span class="c1"># split-panel TUI: phases + serial logs</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>rodeo<span class="w"> </span>logs<span class="w"> </span>harvester1<span class="w">    </span><span class="c1"># just the serial log for one node</span>
+</span></code></pre></div>
+<p>The TUI shows all VM serial consoles simultaneously in a vertical split. The left panel has a global elapsed timer for the full deploy. Each console window shows a per-VM elapsed timer that starts from when the first serial output arrives for that node — useful for spotting a node that started late or stopped responding.</p>
+<hr />
+<h2 id="log-in">Log in<a class="headerlink" href="#log-in" title="Permanent link">&para;</a></h2>
+<p>After deploy finishes, <code>rodeo up</code> prints the URLs and credentials. To see them again:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>rodeo<span class="w"> </span>status
+</span></code></pre></div>
+<ul>
+<li><strong>Harvester UI:</strong> <code>https://&lt;host&gt;:8443</code></li>
+<li><strong>Username:</strong> <code>admin</code></li>
+<li><strong>Password:</strong> value of <code>harvester_admin_password</code> in <code>~/.rodeo/secrets.yaml</code></li>
+<li><strong>Rancher UI</strong> (harvester profile): <code>https://&lt;host&gt;:30002</code> — same password</li>
+</ul>
+<p>The Harvester bootstrap process prompts for a VIP on first login if the cluster has not yet converged. If the UI asks for a VIP, use <code>192.168.122.10</code>.</p>
+<blockquote>
+<p><strong>Instruqt labs:</strong> Harvester cluster import into Rancher is the first lab challenge. The infrastructure is ready; students complete the import via Rancher UI &gt; Virtualization Management &gt; Import Existing.</p>
+</blockquote>
+<h3 id="download-the-kubeconfig">Download the kubeconfig<a class="headerlink" href="#download-the-kubeconfig" title="Permanent link">&para;</a></h3>
+<p>From the Harvester UI: Support → Download KubeConfig.</p>
+<p>Or via SSH tunnel to the VIP:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>ssh<span class="w"> </span>-i<span class="w"> </span>~/.ssh/your-key<span class="w"> </span>-N<span class="w"> </span>-L<span class="w"> </span><span class="m">6443</span>:192.168.122.10:6443<span class="w"> </span>user@&lt;host&gt;
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="c1"># then in another terminal:</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>kubectl<span class="w"> </span>--kubeconfig<span class="w"> </span>~/.rodeo/harvester-kubeconfig<span class="w"> </span>get<span class="w"> </span>nodes
+</span></code></pre></div>
+<p>The kubeconfig is also at <code>/root/.rodeo/harvester-kubeconfig</code> on the host after deploy.</p>
+<hr />
+<h2 id="day-2-operations">Day-2 operations<a class="headerlink" href="#day-2-operations" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Task</th>
+<th>Command</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Check cluster and VM health</td>
+<td><code>rodeo status</code></td>
+</tr>
+<tr>
+<td>Watch live logs</td>
+<td><code>rodeo watch</code></td>
+</tr>
+<tr>
+<td>SSH into a node</td>
+<td><code>rodeo ssh harvester1</code></td>
+</tr>
+<tr>
+<td>Tail serial log</td>
+<td><code>rodeo logs harvester2</code></td>
+</tr>
+<tr>
+<td>Restart a single node</td>
+<td><code>rodeo restart harvester1</code></td>
+</tr>
+<tr>
+<td>Graceful stop (preserves VMs)</td>
+<td><code>rodeo stop --all --yes</code></td>
+</tr>
+<tr>
+<td>Start after stop</td>
+<td><code>rodeo start --all --yes</code></td>
+</tr>
+<tr>
+<td>Destroy the lab</td>
+<td><code>rodeo clean --yes</code></td>
+</tr>
+<tr>
+<td>Full host reset</td>
+<td><code>rodeo clean --all --yes --secrets</code></td>
+</tr>
+<tr>
+<td>Support bundle</td>
+<td><code>rodeo logs --bundle -o rodeo-bundle.tar.gz</code></td>
+</tr>
+<tr>
+<td>Rotate the admin password</td>
+<td><code>rodeo set-password</code></td>
+</tr>
+<tr>
+<td>Install/reconcile Rancher UI extensions</td>
+<td><code>rodeo install-extensions</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="resume-a-failed-deploy">Resume a failed deploy<a class="headerlink" href="#resume-a-failed-deploy" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>rodeo<span class="w"> </span>status<span class="w">                      </span><span class="c1"># see which phase failed</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>rodeo<span class="w"> </span>deploy<span class="w"> </span>--from<span class="w"> </span>cluster<span class="w">       </span><span class="c1"># resume from that phase</span>
+</span></code></pre></div>
+<p>The deploy pipeline is idempotent within a phase. If the <code>cluster</code> phase times out waiting for a node, check the serial log (<code>rodeo logs harvester1</code>) for the root cause before resuming.</p>
+<h3 id="rancher-ui-extensions">Rancher UI extensions<a class="headerlink" href="#rancher-ui-extensions" title="Permanent link">&para;</a></h3>
+<p>Extensions (e.g. the SUSE Virtualization / Harvester extension) are declared once
+under <code>rancher.ui_extensions</code> in <code>definition.yaml</code> — see the <a href="../reference/definition/#rancherui_extensions">full field
+reference</a> for the format. Every
+deploy reconciles the declared list automatically; to install or upgrade one on an
+already-deployed lab without redeploying, run:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>rodeo<span class="w"> </span>install-extensions<span class="w"> </span>--yes
+</span></code></pre></div>
+<p>It talks straight to the running Rancher Prime over SSH/API, so it's safe to run
+against a live cluster. Check what's actually installed first:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>rodeo<span class="w"> </span>ssh<span class="w"> </span>rancher
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">KUBECONFIG</span><span class="o">=</span>/etc/rancher/k3s/k3s.yaml
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>kubectl<span class="w"> </span>-n<span class="w"> </span>cattle-ui-plugin-system<span class="w"> </span>get<span class="w"> </span>uiplugins.catalog.cattle.io<span class="w"> </span>harvester<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">  </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{.spec.plugin.version}&#39;</span>
+</span></code></pre></div>
+<p>An empty result (or <code>NotFound</code>) means it isn't installed yet; a version string
+that doesn't match <code>definition.yaml</code> means it's due for reconcile.</p>
+<hr />
+<h2 id="instruqt-workflow">Instruqt workflow<a class="headerlink" href="#instruqt-workflow" title="Permanent link">&para;</a></h2>
+<p>This is the workflow for building an <strong>Instruqt hostimage</strong> with a pre-deployed Harvester cluster. Full detail: <a href="../examples/instruqt/">Instruqt example</a>.</p>
+<ol>
+<li>Set <code>deployment_target: instruqt</code> in <code>rodeo-plan.yaml</code> (skips <code>finalise</code> — keep it that way)</li>
+<li>Deploy the lab (<code>rodeo up --profile harvester --yes</code> or <code>rodeo deploy</code>)</li>
+<li>Verify: <code>rodeo status</code></li>
+<li><strong>Before Save:</strong> do <strong>not</strong> run <code>rodeo deploy --finalise</code>; confirm agent ports <code>15778</code>/<code>15779</code> and that <code>libvirt-guests</code> is disabled (the success screen prints this checklist)</li>
+<li>Save the hostimage in the Instruqt UI</li>
+<li>Wire <strong><code>rodeo start-if-needed</code></strong> into the track setup script so every attendee boot starts VMs and re-applies DNAT/nft</li>
+</ol>
+<p>Do not bake <code>finalise</code> into the hostimage — nested VM autostart races the Instruqt agent and can leave the console on <strong>Please Wait</strong>.</p>
+<hr />
+<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
+<h3 id="harvester-vip-not-reachable-after-cluster-phase">Harvester VIP not reachable after cluster phase<a class="headerlink" href="#harvester-vip-not-reachable-after-cluster-phase" title="Permanent link">&para;</a></h3>
+<p>The cluster phase waits for the VIP (<code>192.168.122.10</code>) to respond on port 443. If it times out:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>rodeo<span class="w"> </span>logs<span class="w"> </span>harvester1<span class="w">    </span><span class="c1"># check the install log — is it still installing?</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>rodeo<span class="w"> </span>ssh<span class="w"> </span>harvester1<span class="w">     </span><span class="c1"># if the node is up, check: kubectl get nodes</span>
+</span></code></pre></div>
+<p>Common causes: disk too small (Harvester's Elemental installer always carves a fixed 150 GiB persistent partition — a smaller disk starves it and causes "no space" errors in containerd), nested virt not enabled, not enough RAM.</p>
+<h3 id="ui-reachable-but-host8443-not-working">UI reachable but host:8443 not working<a class="headerlink" href="#ui-reachable-but-host8443-not-working" title="Permanent link">&para;</a></h3>
+<p>The DNAT from <code>host:8443</code> to the Harvester VIP goes through libvirt's nftables firewall. If port forwarding is broken after a <code>virsh net-destroy</code>/restart:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>sudo<span class="w"> </span>/etc/libvirt/hooks/network<span class="w"> </span>default<span class="w"> </span>started<span class="w">   </span><span class="c1"># re-apply the DNAT rule</span>
+</span></code></pre></div>
+<p>The hook is installed by the <code>kvm_host</code> phase. It re-runs automatically when libvirt restarts the default network.</p>
+<h3 id="node-never-joins-the-cluster">Node never joins the cluster<a class="headerlink" href="#node-never-joins-the-cluster" title="Permanent link">&para;</a></h3>
+<p>Check the serial log for the stuck node. Common issues:</p>
+<ul>
+<li><strong>HTTP 403 on iPXE config</strong>: nginx couldn't read the config file (permissions). Re-run <code>rodeo deploy --from pxe_server</code>.</li>
+<li><strong>Wrong NIC name in config</strong>: Harvester config uses <code>hwAddr</code> (MAC) to identify the interface, not <code>eth0</code>. This is handled automatically — if you see a NIC error, check the MAC in <code>definition.yaml</code> matches the VM.</li>
+<li><strong>etcd timeout on join</strong>: there is a built-in gap (default 60 s) between starting harvester1 and starting the others. If etcd still times out, the first node may not have finished installing — check its log.</li>
+</ul>
+<h3 id="etcd-recovery-last-resort">etcd recovery (last resort)<a class="headerlink" href="#etcd-recovery-last-resort" title="Permanent link">&para;</a></h3>
+<p>If one etcd member is permanently broken (e.g. after accidentally destroying its VM), the three-step recovery is:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># 1. From a healthy node, remove the broken member</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>crictl<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>&lt;etcd-container-id&gt;<span class="w"> </span>etcdctl<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">  </span>--endpoints<span class="o">=</span>https://127.0.0.1:2379<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">  </span>--cacert<span class="o">=</span>/var/lib/rancher/rke2/server/tls/etcd/server-ca.crt<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="w">  </span>--cert<span class="o">=</span>/var/lib/rancher/rke2/server/tls/etcd/server-client.crt<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="w">  </span>--key<span class="o">=</span>/var/lib/rancher/rke2/server/tls/etcd/server-client.key<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="w">  </span>member<span class="w"> </span>remove<span class="w"> </span>&lt;member-id&gt;
+</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>
+</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="c1"># 2. On the broken node, wipe the etcd data and add a rejoin config</span>
+</span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>rm<span class="w"> </span>-rf<span class="w"> </span>/var/lib/rancher/rke2/server/db/etcd
+</span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>cat<span class="w"> </span>&gt;<span class="w"> </span>/etc/rancher/rke2/config.yaml.d/00-rejoin.yaml<span class="w"> </span><span class="s">&lt;&lt;EOF</span>
+</span><span id="__span-10-12"><a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a><span class="s">server: https://192.168.122.10:9345</span>
+</span><span id="__span-10-13"><a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a><span class="s">token: &lt;cluster-token&gt;</span>
+</span><span id="__span-10-14"><a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a><span class="s">EOF</span>
+</span><span id="__span-10-15"><a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a>
+</span><span id="__span-10-16"><a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a><span class="c1"># 3. Restart rke2-server on the broken node</span>
+</span><span id="__span-10-17"><a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a>systemctl<span class="w"> </span>restart<span class="w"> </span>rke2-server
+</span></code></pre></div>
+<p>The cluster token is <code>harvester_token</code> in <code>~/.rodeo/secrets.yaml</code>.</p>
+<h3 id="admin-password-unknown-not-in-secretsyaml-not-the-persisted-file-not-adminadmin">Admin password unknown (not in secrets.yaml, not the persisted file, not admin/admin)<a class="headerlink" href="#admin-password-unknown-not-in-secretsyaml-not-the-persisted-file-not-adminadmin" title="Permanent link">&para;</a></h3>
+<p><code>rodeo set-password</code> recovers the admin password by trying known candidates — the
+configured <code>secrets.yaml</code> value, the last one it persisted on the host, and the
+<code>admin</code>/<code>admin</code> bootstrap. If none of those match (e.g. someone changed it by hand
+outside of rodeo-cli and forgot), there's nothing left for it to log in <em>with</em>, so
+it can't roll the password forward. Recover directly via <code>kubectl</code> instead — this
+is the same technique Rancher documents for "locked out, don't know the current
+password," and it applies here because Harvester's dashboard embeds the same
+<code>users.management.cattle.io</code> user-management CRD (confirmed live: <code>cattle-system</code>
+runs a full 3-replica <code>rancher</code> deployment fronting the Harvester UI/API).</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># 1. Find the admin user&#39;s object name</span>
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">KUBECONFIG</span><span class="o">=</span>/root/.rodeo/harvester-kubeconfig
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>kubectl<span class="w"> </span>get<span class="w"> </span>users.management.cattle.io<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">  </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{range .items[*]}{.metadata.name}{&quot; &quot;}{.username}{&quot;\n&quot;}{end}&#39;</span>
+</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="c1"># -&gt; e.g. user-4wwtk admin</span>
+</span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>
+</span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="c1"># 2. Generate a bcrypt hash of the new password (Go&#39;s bcrypt accepts $2a$/$2b$/$2y$ alike)</span>
+</span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>python3<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--quiet<span class="w"> </span>bcrypt
+</span><span id="__span-11-9"><a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>python3<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import bcrypt; print(bcrypt.hashpw(b&#39;YourNewPassword123&#39;, bcrypt.gensalt(10)).decode())&quot;</span>
+</span><span id="__span-11-10"><a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>
+</span><span id="__span-11-11"><a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a><span class="c1"># 3. Patch the user object directly — sets the password hash and clears the</span>
+</span><span id="__span-11-12"><a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a><span class="c1">#    &quot;must change password&quot; flag in one shot</span>
+</span><span id="__span-11-13"><a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a>kubectl<span class="w"> </span>patch<span class="w"> </span>users.management.cattle.io<span class="w"> </span>&lt;user-object-name&gt;<span class="w"> </span>--type<span class="o">=</span>merge<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-11-14"><a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a><span class="w">  </span>-p<span class="w"> </span><span class="s1">&#39;{&quot;password&quot;:&quot;&lt;hash-from-step-2&gt;&quot;,&quot;mustChangePassword&quot;:false}&#39;</span>
+</span><span id="__span-11-15"><a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a>
+</span><span id="__span-11-16"><a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a><span class="c1"># 4. Restart Rancher so all 3 replicas drop their stale in-memory cache of the</span>
+</span><span id="__span-11-17"><a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a><span class="c1">#    old hash — without this, kube-vip round-robins your login attempts across</span>
+</span><span id="__span-11-18"><a id="__codelineno-11-18" name="__codelineno-11-18" href="#__codelineno-11-18"></a><span class="c1">#    replicas and you&#39;ll see intermittent 401s even though the patch landed in</span>
+</span><span id="__span-11-19"><a id="__codelineno-11-19" name="__codelineno-11-19" href="#__codelineno-11-19"></a><span class="c1">#    etcd cleanly. Only touches cattle-system — no VM/storage/network impact.</span>
+</span><span id="__span-11-20"><a id="__codelineno-11-20" name="__codelineno-11-20" href="#__codelineno-11-20"></a>kubectl<span class="w"> </span>-n<span class="w"> </span>cattle-system<span class="w"> </span>rollout<span class="w"> </span>restart<span class="w"> </span>deployment/rancher
+</span><span id="__span-11-21"><a id="__codelineno-11-21" name="__codelineno-11-21" href="#__codelineno-11-21"></a>kubectl<span class="w"> </span>-n<span class="w"> </span>cattle-system<span class="w"> </span>rollout<span class="w"> </span>status<span class="w"> </span>deployment/rancher<span class="w"> </span>--timeout<span class="o">=</span>180s
+</span></code></pre></div>
+<p>Verify, then bring <code>secrets.yaml</code> and the persisted-candidate file back in sync so
+this doesn't happen again on the next rotation:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>curl<span class="w"> </span>-sk<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>https://192.168.122.10/v3-public/localProviders/local?action<span class="o">=</span>login<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">  </span>-H<span class="w"> </span><span class="s1">&#39;Content-Type: application/json&#39;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;username&quot;:&quot;admin&quot;,&quot;password&quot;:&quot;YourNewPassword123&quot;}&#39;</span>
+</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="c1"># -&gt; a JSON body with a &quot;token&quot; field means it worked</span>
+</span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>
+</span><span id="__span-12-6"><a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="c1"># Update ~/.rodeo/secrets.yaml&#39;s harvester_admin_password to match, then:</span>
+</span><span id="__span-12-7"><a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="nb">echo</span><span class="w"> </span>-n<span class="w"> </span><span class="s1">&#39;YourNewPassword123&#39;</span><span class="w"> </span>&gt;<span class="w"> </span>/root/harvester-password
+</span><span id="__span-12-8"><a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>chmod<span class="w"> </span><span class="m">600</span><span class="w"> </span>/root/harvester-password
+</span></code></pre></div>
+<p>If <code>htpasswd</code> (part of <code>apache2-utils</code>) is available instead of Python, <code>htpasswd
+-bnBC 10 "" 'YourNewPassword123' | tr -d ':\n'</code> produces an equivalent hash.</p>
+<hr />
+<h2 id="customize">Customize<a class="headerlink" href="#customize" title="Permanent link">&para;</a></h2>
+<h3 id="change-node-resources">Change node resources<a class="headerlink" href="#change-node-resources" title="Permanent link">&para;</a></h3>
+<p>Edit the profile files in <code>~/.rodeo/profiles/&lt;profile&gt;/</code> or override at deploy time:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>rodeo<span class="w"> </span>deploy<span class="w"> </span>-P<span class="w"> </span>resources.harvester.memory_mib<span class="o">=</span><span class="m">20480</span>
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>rodeo<span class="w"> </span>deploy<span class="w"> </span>-P<span class="w"> </span>resources.harvester.vcpu<span class="o">=</span><span class="m">10</span>
+</span></code></pre></div>
+<h3 id="change-the-disk-size">Change the disk size<a class="headerlink" href="#change-the-disk-size" title="Permanent link">&para;</a></h3>
+<p>The default is 320 GiB per Harvester node. Do not go below ~250 — Harvester's Elemental installer always carves a fixed 150 GiB persistent partition regardless of disk size, so smaller disks starve it and prevent container images from pulling, and leave little room for Longhorn itself.</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>rodeo<span class="w"> </span>deploy<span class="w"> </span>-P<span class="w"> </span>resources.harvester.disk_gb<span class="o">=</span><span class="m">400</span>
+</span></code></pre></div>
+<h3 id="build-a-custom-harvester-lab">Build a custom Harvester lab<a class="headerlink" href="#build-a-custom-harvester-lab" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>rodeo<span class="w"> </span>new<span class="w"> </span>edge-lab<span class="w"> </span>--from<span class="w"> </span>harvester-ha<span class="w">    </span><span class="c1"># scaffold from 3-node HA</span>
+</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="nv">$EDITOR</span><span class="w"> </span>~/.rodeo/profiles/edge-lab/definition.yaml
+</span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>rodeo<span class="w"> </span>up<span class="w"> </span>--profile<span class="w"> </span>edge-lab
+</span></code></pre></div>
+<p>Full format reference: <a href="../custom-rodeos/">Create your own rodeo</a>.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.top", "navigation.indexes", "content.code.copy", "content.code.annotate", "toc.follow", "search.suggest", "search.highlight"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

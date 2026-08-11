@@ -1,0 +1,2516 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A declarative CLI that deploys hands-on lab infrastructure (Harvester HCI, Rancher Prime, SUSE Edge) on KVM.">
+      
+      
+      
+        <link rel="canonical" href="https://avaleror.github.io/rodeo-cli/architecture/">
+      
+      
+        <link rel="prev" href="../runbook/">
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/logo/favicon.ico">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Architecture - rodeo-cli</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/custom.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#rodeo-cli-architecture-design" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="rodeo-cli" class="md-header__button md-logo" aria-label="rodeo-cli" data-md-component="logo">
+      
+  <img src="../assets/logo/horseshoe-mark.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            rodeo-cli
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Architecture
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/avaleror/rodeo-cli" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    avaleror/rodeo-cli
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../get-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Get started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../guide-rancher/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Profiles
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../custom-rodeos/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Create your own rodeo
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../fleet/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Fleet (multi-host workshops)
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../reference/plan/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../examples/bare-metal/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Examples
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../runbook/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Troubleshooting
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Architecture
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="rodeo-cli" class="md-nav__button md-logo" aria-label="rodeo-cli" data-md-component="logo">
+      
+  <img src="../assets/logo/horseshoe-mark.svg" alt="logo">
+
+    </a>
+    rodeo-cli
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/avaleror/rodeo-cli" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    avaleror/rodeo-cli
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../get-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Get started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Profiles
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Profiles
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-rancher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rancher Prime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-harvester/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Harvester HCI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-suse-edge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SUSE Edge
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../custom-rodeos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Create your own rodeo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fleet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fleet (multi-host workshops)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    rodeo-plan.yaml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/definition/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    definition.yaml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Examples
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/bare-metal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bare metal
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/instruqt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Instruqt track
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/workshop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workshop fleet inventory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing & CI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../runbook/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-rodeo-cli-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What rodeo-cli is
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design-goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design goals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#two-dimension-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two-dimension model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#engine-types-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Engine types &amp; profiles
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Engine types &amp; profiles">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-three-engine-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The three engine types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bundled-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bundled profiles
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#high-level-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        High-level architecture
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#why-ansible-and-python-not-one-or-the-other" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why Ansible and Python (not one or the other)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#repository-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Repository layout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deployment-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deployment pipeline
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-system" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration system
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuration system">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#precedence-lowest-highest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Precedence (lowest → highest)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#jinja-plans" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Jinja plans
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#secrets-placeholders" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Secrets (?? placeholders)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ansible-vars-file-deployrunner_write_vars_file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ansible vars file (DeployRunner._write_vars_file)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        State
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#event-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Event model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#workshop-topology-suse-virt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Workshop topology (suse-virt)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Workshop topology (suse-virt)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#harvester-install-via-ipxe-not-iso-first-boot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Harvester install via iPXE (not ISO-first boot)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sles-16-instruqt-constraints-do-not-break" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SLES 16 / Instruqt constraints (do not break)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-model-lab-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security model (lab scope)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing-ci" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing &amp; CI
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#extension-points" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Extension points
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fleet-multi-host-workshops" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fleet (multi-host workshops)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related-documents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related documents
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-rodeo-cli-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What rodeo-cli is
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design-goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design goals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#two-dimension-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two-dimension model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#engine-types-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Engine types &amp; profiles
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Engine types &amp; profiles">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-three-engine-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The three engine types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bundled-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bundled profiles
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#high-level-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        High-level architecture
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#why-ansible-and-python-not-one-or-the-other" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why Ansible and Python (not one or the other)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#repository-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Repository layout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deployment-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deployment pipeline
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-system" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration system
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuration system">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#precedence-lowest-highest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Precedence (lowest → highest)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#jinja-plans" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Jinja plans
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#secrets-placeholders" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Secrets (?? placeholders)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ansible-vars-file-deployrunner_write_vars_file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ansible vars file (DeployRunner._write_vars_file)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        State
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#event-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Event model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#workshop-topology-suse-virt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Workshop topology (suse-virt)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Workshop topology (suse-virt)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#harvester-install-via-ipxe-not-iso-first-boot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Harvester install via iPXE (not ISO-first boot)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sles-16-instruqt-constraints-do-not-break" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SLES 16 / Instruqt constraints (do not break)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-model-lab-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security model (lab scope)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing-ci" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing &amp; CI
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#extension-points" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Extension points
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fleet-multi-host-workshops" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fleet (multi-host workshops)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related-documents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related documents
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="rodeo-cli-architecture-design">rodeo-cli — Architecture &amp; design<a class="headerlink" href="#rodeo-cli-architecture-design" title="Permanent link">&para;</a></h1>
+<p>Technical reference for contributors and maintainers. For deploying a workshop, see <a href="../get-started/">User guide</a>.</p>
+<p><strong>Version:</strong> 0.14.2 <!-- x-release-please-version -->
+<strong>License:</strong> GPL-3.0-or-later</p>
+<hr />
+<h2 id="what-rodeo-cli-is">What rodeo-cli is<a class="headerlink" href="#what-rodeo-cli-is" title="Permanent link">&para;</a></h2>
+<p><code>rodeo-cli</code> deploys the <strong>infrastructure for a rodeo</strong>: a live, hands-on workshop where attendees work against real systems. It builds a lab of <strong>nested KVM VMs</strong> on a single Linux host, driven by a declarative plan — you pick a profile, it converges the host.</p>
+<p>The stack it builds depends on the chosen <strong>engine type</strong> (see <a href="#engine-types-profiles">Engine types &amp; profiles</a>):</p>
+<ul>
+<li><strong><code>suse-virt</code></strong> — a 3-node Harvester HCI cluster (+ optional Rancher Prime)</li>
+<li><strong><code>rancher</code></strong> — a single VM running Rancher Prime on K3s</li>
+<li><strong><code>suse-edge</code></strong> — Rancher Prime + Elemental + Edge Image Builder + edge nodes</li>
+</ul>
+<p>Every profile shares the same foundation: host networking, firewalld DNAT, DNS, storage, and phase orchestration on nested KVM/libvirt. The tool runs on <strong>cloud instances</strong>, <strong>Instruqt builder VMs</strong>, <strong>local VMs</strong>, or <strong>bare metal</strong> — anywhere you have KVM and enough RAM/disk.</p>
+<hr />
+<h2 id="design-goals">Design goals<a class="headerlink" href="#design-goals" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Goal</th>
+<th>How it is met</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Declarative lab definition</td>
+<td><code>rodeo-plan.yaml</code> + secrets + <code>-P</code> / <code>--paramfile</code></td>
+</tr>
+<tr>
+<td>Plan before apply</td>
+<td><code>rodeo plan</code> (read-only diff vs host)</td>
+</tr>
+<tr>
+<td>Safe resume</td>
+<td>Per-plan state, <code>--from PHASE</code>, <code>--force</code></td>
+</tr>
+<tr>
+<td>One orchestrator</td>
+<td><code>DeployRunner</code> — no duplicated TUI/plain/bash paths</td>
+</tr>
+<tr>
+<td>Host setup is idempotent</td>
+<td>Ansible roles <code>kvm_host</code> + <code>vms</code> + <code>pxe_server</code></td>
+</tr>
+<tr>
+<td>Long waits are cancellable</td>
+<td><code>threading.Event</code> + process groups in poll loops</td>
+</tr>
+<tr>
+<td>Instruqt-safe builds</td>
+<td><code>deployment_target: instruqt</code> skips <code>finalise</code>; hostimage boot uses <code>start-if-needed</code></td>
+</tr>
+<tr>
+<td>Self-contained install</td>
+<td>Ansible roles bundled in <code>rodeo/data/ansible/</code></td>
+</tr>
+<tr>
+<td>Minimal first-phase friction</td>
+<td><code>scripts/bootstrap-sles.sh</code> (curl</td>
+</tr>
+<tr>
+<td>Graceful stop/restart + host reset</td>
+<td><code>rodeo stop</code>/<code>start</code> (infra-aware from definition: infra_type, components, start_order; graceful ACPI + host services; restartable). <code>clean --all --hard --secrets --force-network</code> for full reset (VMs/networks/states/passwords; no package removal). Clean runs stop first unless --hard.</td>
+</tr>
+<tr>
+<td>Interactive definition generation</td>
+<td><code>rodeo generate</code> (templates base via parameter collection for hybrid customization, produces full config-dir yaml skeleton with project conventions like infra_type; post-validation via load_config; next steps for bootstrap/deploy/stop/start/clean lifecycle). Enables consistent entry to declarative model (definition as source for inventory/renderer/phases).</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Vision (roadmap):</strong> Declarative lab deployment — declare desired state, preview diff, converge, destroy what you own. See <a href="https://github.com/avaleror/rodeo-cli/blob/main/ROADMAP.md">ROADMAP.md</a>.</p>
+<hr />
+<h2 id="two-dimension-model">Two-dimension model<a class="headerlink" href="#two-dimension-model" title="Permanent link">&para;</a></h2>
+<p>rodeo-cli has two independent axes that combine to produce a lab deployment:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>Tech platform  ×  Host context  =  lab deployment
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>suse-edge          baremetal        SUSE Edge 3.6 on bare metal KVM
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>suse-edge          instruqt         SUSE Edge 3.6 on Instruqt KVM
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>suse-virt          instruqt         SUSE Virtualization on Instruqt KVM
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>rancher            aws              Rancher on an AWS EC2 KVM host
+</span></code></pre></div>
+<p><strong>Tech platform</strong> — what lab topology and software stack to deploy. Encoded in <code>rodeo/profiles/&lt;name&gt;.py</code> + <code>data/platforms/&lt;name&gt;/definition.yaml</code>. Platform code is host-agnostic; the same profile works on any host context.</p>
+<p><strong>Host context</strong> — where the KVM host runs and what that implies for host-level setup. Encoded in <code>deployment_target</code> in <code>rodeo-plan.yaml</code>. Affects: guarded phases, firewall/DNAT configuration, external IP detection, success screen output, and <strong>infra adaptation</strong> (<code>rodeo/host_context.py</code>): resource floors, disk backend, guest cache/io. Acquire can be provisioned or BYO; both converge through the same overlays. The underlying infrastructure is always KVM/libvirt regardless of host context.</p>
+<table>
+<thead>
+<tr>
+<th><code>deployment_target</code></th>
+<th>Host type</th>
+<th>Key differences</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>baremetal</code></td>
+<td>Linux bare metal with KVM</td>
+<td>full firewalld + DNAT; optional disk-space warn</td>
+</tr>
+<tr>
+<td><code>instruqt</code></td>
+<td>Instruqt managed KVM builder</td>
+<td><code>finalise</code> guarded; vCPU/RAM presets (~70% host)</td>
+</tr>
+<tr>
+<td><code>aws</code></td>
+<td>Provisioned EC2 <em>or</em> BYO on EC2</td>
+<td><code>provider:</code> + destroy; <code>disk_gb</code> floor 1200; NVMe → <code>image_dir</code></td>
+</tr>
+<tr>
+<td><code>gcp</code> <em>(planned)</em></td>
+<td>GCP instance with KVM</td>
+<td>external IP via GCE metadata; VPC firewall rules</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Acquire vs adapt.</strong> Host acquire can be provisioned (<code>rodeo up --target aws</code> / Fleet <code>provider:</code>) or BYO (SSH inventory / operator-created EC2). Both must hit <code>apply_host_context()</code> before deploy so workshops do not fork playbooks per cloud. Tech platform declares <em>what</em> lab; host context declares <em>where</em> and <em>how the host must be shaped</em>.</p>
+<p>Adding a new host context requires: <code>config.py</code> allowed list, <code>up_cmd.py</code> auto-detection, <code>runner.py</code> vars file, <code>success.py</code> output, and an overlay in <code>host_context.py</code>. See the Extension points table below.</p>
+<hr />
+<h2 id="engine-types-profiles">Engine types &amp; profiles<a class="headerlink" href="#engine-types-profiles" title="Permanent link">&para;</a></h2>
+<p>Two terms that sound alike but are different:</p>
+<ul>
+<li><strong>Engine <code>type</code></strong> — the deploy <em>pipeline</em>: which phases run and how. Code lives in <code>rodeo/profiles/&lt;name&gt;.py</code> (a <code>RodeoProfile</code> subclass) + <code>data/platforms/&lt;name&gt;/definition.yaml</code>. There are <strong>three</strong> today.</li>
+<li><strong>Profile</strong> (<code>--profile</code>) — a named, runnable <em>lab</em> (a config-dir, bundled or under <code>~/.rodeo/profiles/</code>). Each profile picks one engine type. There are <strong>six</strong> bundled ones.</li>
+</ul>
+<p>Since PR #4 the three profile classes are thin: <code>RodeoProfile</code> (<code>profiles/base.py</code>) owns config assembly (<code>default_cfg()</code> — loads the definition with a static fallback) and phase dispatch (a table-driven <code>run_phase()</code> with a no-Rancher skip guard). Each subclass carries only its data and deltas — <code>static_vms</code>, <code>resources</code>, <code>versions</code>, and small hooks like <code>extra_cfg()</code> / <code>_default_user()</code>.</p>
+<h3 id="the-three-engine-types">The three engine types<a class="headerlink" href="#the-three-engine-types" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Engine type</th>
+<th>Phase pipeline</th>
+<th>Boot method</th>
+<th>Stack</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>suse-virt</code></td>
+<td><code>kvm_host → vms → pxe_server → cluster → rancher → apply → finalise</code></td>
+<td>iPXE network install (UEFI)</td>
+<td>Harvester HCI cluster (+ optional Rancher Prime)</td>
+</tr>
+<tr>
+<td><code>rancher</code></td>
+<td><code>kvm_host → vms → boot → rancher → apply → finalise</code></td>
+<td>cloud-init image</td>
+<td>1 VM: Rancher Prime on K3s</td>
+</tr>
+<tr>
+<td><code>suse-edge</code></td>
+<td><code>kvm_host → vms → boot → rancher → elemental → apply → finalise</code></td>
+<td>cloud-init image</td>
+<td>Rancher Prime + Elemental Operator + EIB + edge nodes</td>
+</tr>
+</tbody>
+</table>
+<p>The Harvester path is the outlier: it needs <code>pxe_server</code> (iPXE/TFTP/HTTP) and a <code>cluster</code> phase that network-installs each node and waits for the VIP. The cloud-image profiles skip both — a single <code>boot</code> phase starts the network and VMs directly. <code>suse-edge</code> adds one phase, <code>elemental</code>, which installs the Elemental Operator after Rancher so edge nodes can register over TPM. <code>rancher</code>/<code>elemental</code> phases are skipped automatically when a topology has no Rancher node.</p>
+<h3 id="bundled-profiles">Bundled profiles<a class="headerlink" href="#bundled-profiles" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Profile</th>
+<th>Engine type</th>
+<th>Topology</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>rancher</code></td>
+<td><code>rancher</code></td>
+<td>1 VM: Rancher Prime on K3s</td>
+</tr>
+<tr>
+<td><code>test</code></td>
+<td><code>suse-virt</code></td>
+<td>2-node Harvester, no Rancher</td>
+</tr>
+<tr>
+<td><code>harvester-ha</code></td>
+<td><code>suse-virt</code></td>
+<td>3-node Harvester, no Rancher (etcd HA)</td>
+</tr>
+<tr>
+<td><code>harvester-2n</code></td>
+<td><code>suse-virt</code></td>
+<td>2-node Harvester + Rancher Prime</td>
+</tr>
+<tr>
+<td><code>harvester</code></td>
+<td><code>suse-virt</code></td>
+<td>3-node Harvester HCI + Rancher Prime</td>
+</tr>
+<tr>
+<td><code>suse-edge</code></td>
+<td><code>suse-edge</code></td>
+<td>Rancher + Elemental + EIB + 4 edge nodes (SUSE Edge 3.6)</td>
+</tr>
+</tbody>
+</table>
+<p>Per-profile topology tables (VMs, IPs, RAM) live in each <a href="../get-started/">deployment guide</a>. The detailed suse-virt topology and iPXE boot chain are documented below as the reference implementation.</p>
+<hr />
+<h2 id="high-level-architecture">High-level architecture<a class="headerlink" href="#high-level-architecture" title="Permanent link">&para;</a></h2>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>┌─────────────────────────────────────────────────────────────┐
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>│  CLI (click)                                                │
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>│  init · plan · deploy · status · clean · ssh · logs · …     │
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>└──────────────────────────┬──────────────────────────────────┘
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>                           │ load_config() + validate_config()
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>                           ▼
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>┌─────────────────────────────────────────────────────────────┐
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>│  Profile (e.g. SuseVirtProfile)                             │
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>│  phases · vm_names · guarded_phases · run_phase()           │
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>└──────────────────────────┬──────────────────────────────────┘
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>                           │
+</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>                           ▼
+</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>┌─────────────────────────────────────────────────────────────┐
+</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>│  DeployRunner.run() → Iterator[DeployEvent]                 │
+</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>│  PhaseStarted · LogLine · ProgressUpdate · PhaseDone · …    │
+</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>└───────┬─────────────────────────────┬───────────────────────┘
+</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>        │                             │
+</span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>        ▼                             ▼
+</span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>┌───────────────────┐       ┌─────────────────────────────┐
+</span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>│ Ansible phases    │       │ Python phases (per profile) │
+</span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>│ kvm_host, vms,    │       │ boot · cluster · rancher ·  │
+</span><span id="__span-1-22"><a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>│ pxe_server        │       │ elemental · apply · finalise│
+</span><span id="__span-1-23"><a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>│ ansible-playbook  │       │ ClusterPhase · RancherPhase │
+</span><span id="__span-1-24"><a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>│ -e @vars-file     │       │ LibvirtDriver               │
+</span><span id="__span-1-25"><a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a>└───────────────────┘       └─────────────────────────────┘
+</span><span id="__span-1-26"><a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a>        │                             │
+</span><span id="__span-1-27"><a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a>        ▼                             ▼
+</span><span id="__span-1-28"><a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a>┌─────────────────────────────────────────────────────────────┐
+</span><span id="__span-1-29"><a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a>│  KVM host (SLES 16 / Leap / Ubuntu / Fedora)                │
+</span><span id="__span-1-30"><a id="__codelineno-1-30" name="__codelineno-1-30" href="#__codelineno-1-30"></a>│  libvirt · firewalld · virbr0 · 4 nested VMs                │
+</span><span id="__span-1-31"><a id="__codelineno-1-31" name="__codelineno-1-31" href="#__codelineno-1-31"></a>└─────────────────────────────────────────────────────────────┘
+</span></code></pre></div>
+<p><strong>Consumers of the event stream:</strong></p>
+<ul>
+<li><code>rodeo/app.py</code> — Textual TUI (DeployPanel + LogsPanel)</li>
+<li><code>rodeo/commands/deploy.py</code> — Rich plain output</li>
+</ul>
+<p>Neither contains pipeline logic. Both subscribe to the same <code>DeployRunner</code> generator.</p>
+<hr />
+<h2 id="why-ansible-and-python-not-one-or-the-other">Why Ansible and Python (not one or the other)<a class="headerlink" href="#why-ansible-and-python-not-one-or-the-other" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Tool</th>
+<th>Rationale</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Host packages, systemd, firewalld, sysctl</td>
+<td><strong>Ansible</strong></td>
+<td>Declarative idempotency; SLES 16 edge cases already encoded in roles</td>
+</tr>
+<tr>
+<td>VM disks, ISOs, XML, cloud-init, network XML</td>
+<td><strong>Ansible</strong></td>
+<td>Template + file generation; community.libvirt modules</td>
+</tr>
+<tr>
+<td>iPXE boot server (nginx, dnsmasq, boot files)</td>
+<td><strong>Ansible</strong></td>
+<td><code>pxe_server</code> role; two-stage UEFI → TFTP → HTTP</td>
+</tr>
+<tr>
+<td>VM start order, VIP poll, kubeconfig, nodes Ready</td>
+<td><strong>Python</strong></td>
+<td>20–90 minute waits, progress UX, cancellation</td>
+</tr>
+<tr>
+<td>K3s, Rancher API, cluster import</td>
+<td><strong>Python</strong></td>
+<td>Procedural API sequence; structured errors</td>
+</tr>
+<tr>
+<td>Runtime VM ops (status, clean, restart)</td>
+<td><strong>libvirt-python</strong></td>
+<td>Direct API; avoids virsh where possible</td>
+</tr>
+</tbody>
+</table>
+<p>Bash deploy scripts (<code>start-vms.sh</code>, <code>setup-rancher.sh</code>, <code>deploy.sh</code>) were <strong>retired in v0.3</strong>. Logic lives in <code>engine/cluster.py</code> and <code>engine/rancher.py</code>.</p>
+<p><strong>Do not replace Ansible roles with Python</strong> without a live KVM regression. The fragile Instruqt boot-order behavior is in the roles.</p>
+<hr />
+<h2 id="repository-layout">Repository layout<a class="headerlink" href="#repository-layout" title="Permanent link">&para;</a></h2>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>rodeo/
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>├── cli.py                 Click entry; ConfigError handler
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>├── config.py              Plan load, Jinja, -P/--paramfile, secrets, validation
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>├── state.py               ~/.rodeo/state/&lt;plan-name&gt;.yaml (profiles own phase lists; `reset_from` requires phases arg)
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>├── ssh.py                 Shared SSH opts + helpers (used by engine + commands)
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>├── app.py                 Textual TUI (event subscriber only)
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>├── engine/
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>│   ├── runner.py          DeployRunner, vars file, phase dispatch helpers
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>│   ├── cluster.py         ClusterPhase
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>│   ├── rancher.py         RancherPhase
+</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>│   └── libvirt.py         LibvirtDriver
+</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>├── profiles/
+</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>│   ├── base.py            RodeoProfile — shared config assembly + phase dispatch
+</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>│   ├── rancher.py         Rancher Prime on K3s (1 VM)
+</span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>│   ├── suse_virt.py       Harvester HCI + Rancher (default workshop profile)
+</span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>│   └── suse_edge.py       SUSE Edge 3.6 (Rancher + Elemental + EIB + edge nodes)
+</span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>├── commands/              Thin CLI wrappers
+</span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>├── service/               JSON report helpers (doctor, status) for CLI + fleet
+</span><span id="__span-2-19"><a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>├── fleet/                 Laptop→host workshop fan-out (OpenSSH; see docs/fleet.md)
+</span><span id="__span-2-20"><a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>├── widgets/               TUI panels
+</span><span id="__span-2-21"><a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>└── data/
+</span><span id="__span-2-22"><a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a>    ├── platforms/         definition.yaml per tech platform (suse-virt, suse-edge, rancher)
+</span><span id="__span-2-23"><a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a>    ├── ansible/           kvm_host + vms + pxe_server roles (bundled)
+</span><span id="__span-2-24"><a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a>    ├── examples/          reference rodeo-plan.yaml per platform (not workshop content)
+</span><span id="__span-2-25"><a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a>    ├── deployer/          inventory.local + legacy examples
+</span><span id="__span-2-26"><a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a>    └── templates/         init templates
+</span><span id="__span-2-27"><a id="__codelineno-2-27" name="__codelineno-2-27" href="#__codelineno-2-27"></a>
+</span><span id="__span-2-28"><a id="__codelineno-2-28" name="__codelineno-2-28" href="#__codelineno-2-28"></a>tests/                     pytest (config, runner, cluster, ansible contract, fleet, …)
+</span><span id="__span-2-29"><a id="__codelineno-2-29" name="__codelineno-2-29" href="#__codelineno-2-29"></a>docs/                      architecture.md, get-started.md, fleet.md, …
+</span></code></pre></div>
+<hr />
+<h2 id="deployment-pipeline">Deployment pipeline<a class="headerlink" href="#deployment-pipeline" title="Permanent link">&para;</a></h2>
+<p>Each engine type runs a subset of the phase catalog below, in the order given by its profile's <code>phases</code> list (see <a href="#engine-types-profiles">Engine types &amp; profiles</a>). State is per plan name (<code>cfg["name"]</code>). The dispatch is generic: <code>RodeoProfile.run_phase()</code> sends Ansible phases to <code>stream_ansible</code> and the rest through a <code>phase → DeployRunner method</code> table.</p>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Engine</th>
+<th>Used by</th>
+<th>Summary</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>kvm_host</code></td>
+<td>Ansible</td>
+<td>all</td>
+<td>KVM packages, modular libvirt, NM unmanaged conf, firewalld rules (not started), storage pool, sysctl</td>
+</tr>
+<tr>
+<td><code>vms</code></td>
+<td>Ansible</td>
+<td>all</td>
+<td>Download ISOs/images, virbr0 + DHCP leases, qcow2 disks, config ISOs, define domains (not start); disk-first boot order</td>
+</tr>
+<tr>
+<td><code>pxe_server</code></td>
+<td>Ansible</td>
+<td><code>suse-virt</code></td>
+<td>nginx on <code>virbr0:8080</code>, <code>ipxe.efi</code> TFTP, vmlinuz/initrd/rootfs, per-node iPXE scripts + config YAMLs, dnsmasq two-stage boot</td>
+</tr>
+<tr>
+<td><code>boot</code></td>
+<td><code>DeployRunner</code></td>
+<td><code>rancher</code>, <code>suse-edge</code></td>
+<td>Start virbr0 + cloud-image VMs directly (no iPXE); wait for IPs</td>
+</tr>
+<tr>
+<td><code>cluster</code></td>
+<td><code>ClusterPhase</code></td>
+<td><code>suse-virt</code></td>
+<td>firewalld on; virbr0 up; start h1 → VIP → h2 → 90s → h3 → rancher; kubeconfig; 3 nodes Ready</td>
+</tr>
+<tr>
+<td><code>rancher</code></td>
+<td><code>RancherPhase</code></td>
+<td>all</td>
+<td>K3s, Helm, cert-manager, Rancher Prime, admin API. Skipped if no Rancher node. Harvester import is a lab exercise.</td>
+</tr>
+<tr>
+<td><code>elemental</code></td>
+<td><code>RancherPhase._install_elemental</code></td>
+<td><code>suse-edge</code></td>
+<td>Install Elemental Operator (CRDs + operator) so edge nodes register over TPM</td>
+</tr>
+<tr>
+<td><code>apply</code></td>
+<td><code>DeployRunner</code></td>
+<td>all</td>
+<td>Apply extra manifests (Fleet GitOps, demo workloads); never cached, re-runs each <code>up</code></td>
+</tr>
+<tr>
+<td><code>finalise</code></td>
+<td><code>DeployRunner</code></td>
+<td>all</td>
+<td>VM autostart + <code>libvirt-guests</code> enable</td>
+</tr>
+</tbody>
+</table>
+<p>The <code>suse-virt</code> pipeline (the widest) is the reference implementation detailed in the sections below. <code>rancher</code> and <code>suse-edge</code> swap the <code>pxe_server</code>/<code>cluster</code> pair for a single <code>boot</code> phase on cloud images; <code>suse-edge</code> adds <code>elemental</code>.</p>
+<p><strong>Timeouts (nested KVM):</strong> VIP ≤ 60 min, kubeconfig ≤ 30 min, nodes Ready ≤ 90 min.</p>
+<p><strong>Instruqt guard:</strong> <code>finalise</code> is in <code>guarded_phases</code>. Skipped when <code>deployment_target: instruqt</code> unless <code>--finalise</code>. Do not bake finalise into a hostimage (agent / boot hang); use <code>rodeo start-if-needed</code> on track setup. See <code>docs/examples/instruqt.md</code>.</p>
+<hr />
+<h2 id="configuration-system">Configuration system<a class="headerlink" href="#configuration-system" title="Permanent link">&para;</a></h2>
+<h3 id="precedence-lowest-highest">Precedence (lowest → highest)<a class="headerlink" href="#precedence-lowest-highest" title="Permanent link">&para;</a></h3>
+<ol>
+<li><code>_BASE_DEFAULTS</code> in <code>config.py</code></li>
+<li>Profile <code>default_cfg()</code> (e.g. <code>SuseVirtProfile</code>)</li>
+<li><code>rodeo-plan.yaml</code> (Jinja-rendered if templated)</li>
+<li><code>--paramfile</code> (deep merge, tfvars-style)</li>
+<li><code>-P dotted.path=value</code> (CLI overrides)</li>
+</ol>
+<h3 id="jinja-plans">Jinja plans<a class="headerlink" href="#jinja-plans" title="Permanent link">&para;</a></h3>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">parameters</span><span class="p">:</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">memory</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">16384</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nt">resources</span><span class="p">:</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span><span class="nt">harvester</span><span class="p">:</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">    </span><span class="nt">memory_mib</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{{</span><span class="w"> </span><span class="nv">memory</span><span class="w"> </span><span class="p p-Indicator">}}</span>
+</span></code></pre></div>
+<p><code>StrictUndefined</code> — missing parameters fail at load time, not mid-deploy.</p>
+<h3 id="secrets-placeholders">Secrets (<code>??</code> placeholders)<a class="headerlink" href="#secrets-placeholders" title="Permanent link">&para;</a></h3>
+<p>Resolved at load time from <code>~/.rodeo/secrets.yaml</code>, <code>??env:</code>, <code>??file:</code>, or <code>??cmd:</code>. <code>validate_config()</code> fails closed on unresolved or empty credentials. (Note: <code>rodeo generate</code> now guards the global secrets file with exists check + warning to avoid silent clobber.)</p>
+<p>Passwords go to Ansible via a <strong>mode-600 vars file</strong> (<code>-e @file</code>), never on argv. Password-bearing Ansible template tasks use <code>no_log: true</code>.</p>
+<h3 id="ansible-vars-file-deployrunner_write_vars_file">Ansible vars file (<code>DeployRunner._write_vars_file</code>)<a class="headerlink" href="#ansible-vars-file-deployrunner_write_vars_file" title="Permanent link">&para;</a></h3>
+<p>Generated per deploy. Keys Ansible actually consumes:</p>
+<ul>
+<li><code>libvirt_flavors</code> (nested — matches <code>vm.xml.j2</code>, <code>images.yml</code>)</li>
+<li><code>lab_dns_domain</code> (not <code>dns_domain</code>)</li>
+<li><code>harvester_version</code>, <code>harvester_iso_checksum</code> (version-keyed map)</li>
+<li>network, passwords, <code>image_dir</code>, optional <code>harvester_token</code></li>
+</ul>
+<h3 id="state">State<a class="headerlink" href="#state" title="Permanent link">&para;</a></h3>
+<p><code>~/.rodeo/state/&lt;plan-name&gt;.yaml</code> — phase completion, timestamps, <code>last_error</code>. chmod 600.</p>
+<ul>
+<li><code>rodeo deploy</code> skips completed phases</li>
+<li><code>rodeo deploy --from PHASE</code> clears that phase and later</li>
+<li><code>rodeo deploy --force</code> ignores state</li>
+</ul>
+<hr />
+<h2 id="event-model">Event model<a class="headerlink" href="#event-model" title="Permanent link">&para;</a></h2>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">DeployRunner</span><span class="o">.</span><span class="n">run</span><span class="p">()</span> <span class="n">yields</span><span class="p">:</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  <span class="n">PhaseStarted</span><span class="p">(</span><span class="n">phase</span><span class="p">)</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>  <span class="n">PhaseSkipped</span><span class="p">(</span><span class="n">phase</span><span class="p">,</span> <span class="n">reason</span><span class="p">)</span>   <span class="c1"># &quot;done&quot; | &quot;before_start&quot; | &quot;instruqt&quot;</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>  <span class="n">LogLine</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>  <span class="n">ProgressUpdate</span><span class="p">(</span><span class="n">step</span><span class="p">,</span> <span class="n">elapsed</span><span class="p">,</span> <span class="n">total</span><span class="p">,</span> <span class="n">detail</span><span class="p">)</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>  <span class="n">PhaseDone</span><span class="p">(</span><span class="n">phase</span><span class="p">,</span> <span class="n">elapsed</span><span class="p">)</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>  <span class="n">PhaseFailed</span><span class="p">(</span><span class="n">phase</span><span class="p">,</span> <span class="n">rc</span><span class="p">,</span> <span class="n">message</span><span class="p">)</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>  <span class="n">DeployComplete</span><span class="p">()</span>
+</span></code></pre></div>
+<p><strong>Failure semantics:</strong></p>
+<ul>
+<li>Exceptions in <code>profile.run_phase()</code> → <code>PhaseFailed</code>, pipeline stops</li>
+<li><code>runner.stop</code> checked in all poll loops</li>
+<li><code>runner.terminate()</code> SIGTERMs subprocess group (TUI quit → exit 130)</li>
+<li>Subprocess timeouts in RancherPhase → failed rc, not uncaught exceptions</li>
+</ul>
+<hr />
+<h2 id="workshop-topology-suse-virt">Workshop topology (suse-virt)<a class="headerlink" href="#workshop-topology-suse-virt" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>VM</th>
+<th>Role</th>
+<th>IP</th>
+<th>Default RAM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>harvester1</td>
+<td>Bootstrap (alpha)</td>
+<td>192.168.122.11</td>
+<td>20 GiB</td>
+</tr>
+<tr>
+<td>harvester2</td>
+<td>Join (bravo)</td>
+<td>192.168.122.12</td>
+<td>20 GiB</td>
+</tr>
+<tr>
+<td>harvester3</td>
+<td>Join (charlie)</td>
+<td>192.168.122.13</td>
+<td>20 GiB</td>
+</tr>
+<tr>
+<td>rancher</td>
+<td>Rancher Prime / K3s</td>
+<td>192.168.122.9</td>
+<td>8 GiB</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>VIP:</strong> 192.168.122.10 (Harvester API/UI via kube-vip)</li>
+<li><strong>DNS domain:</strong> <code>rodeo.lab</code> (libvirt dnsmasq + <code>/etc/hosts</code>)</li>
+<li><strong>Host DNAT:</strong> :8443 → Harvester VIP :443, :30002 → Rancher NodePort</li>
+</ul>
+<p><img alt="Network and ports (Instruqt → host → nested VMs)" src="../assets/diagrams/rodeo-network-ports.png" /></p>
+<p><em>Editable source:</em> <a href="../assets/diagrams/rodeo-network-ports.mmd"><code>assets/diagrams/rodeo-network-ports.mmd</code></a></p>
+<p>The diagram shows the full path from a student browser through Instruqt <code>cloud-client</code> nginx tabs, host <code>firewalld</code> DNAT on <strong>geekohive</strong>, and <code>virbr0</code> guests (VIP, Harvester nodes, Rancher, optional LB pool).</p>
+<p>VM IPs/user for Python-side ops (ssh, restart, status, cluster waits) come from profile <code>default_cfg()</code> + plan <code>vms</code> (profile-driven in TUI panels too). Full <code>vm_nodes</code> (MACs/UUIDs/flavors + provisioning) still from <code>roles/vms/defaults/main.yml</code> (Ansible side). Custom topologies / single inventory source on the roadmap (Phase C). TUI LogsPanel and phase focus now derive VM list from cfg/profile instead of hardcodes.</p>
+<h3 id="harvester-install-via-ipxe-not-iso-first-boot">Harvester install via iPXE (not ISO-first boot)<a class="headerlink" href="#harvester-install-via-ipxe-not-iso-first-boot" title="Permanent link">&para;</a></h3>
+<p>Harvester 1.8.1 requires UEFI; legacy BIOS PXE is not supported. The <code>pxe_server</code> role provisions network boot on <code>virbr0</code>:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>UEFI firmware (empty disk, no bootloader)
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  → DHCP from dnsmasq on 192.168.122.1
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>  → Stage 1: boot ipxe.efi (TFTP)                  [dhcp-boot tag:!ipxe]
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>  → Stage 2: ONE generic boot.ipxe over HTTP       [dhcp-boot tag:ipxe]
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>  → boot.ipxe chains to the per-node script by MAC: :8080/ipxe/mac-&lt;mac&gt;
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>  → kernel + initrd + squashfs over HTTP (installer console logged to ttyS1)
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>  → unattended install (config YAML at :8080/config/config-harvesterN.yaml)
+</span></code></pre></div>
+<p>The per-node routing is <strong>MAC-based</strong>, not per-host dnsmasq tags: libvirt already
+writes a <code>&lt;host mac=…&gt;</code> for each node's IP, and a second <code>dhcp-host</code> for the same
+MAC (to set a routing tag) is silently ignored by dnsmasq — so all iPXE clients
+get one <code>boot.ipxe</code>, which selects the node script by <code>${net0/mac:hexhyp}</code>.</p>
+<p>VM XML boot order is <strong>disk first, management NIC second</strong>. On first boot the qcow2 is empty, so UEFI falls through to NIC PXE. After install, reboots go straight to disk. ISO CDROMs remain attached as fallback; <code>RancherPhase</code> ejects them once the cluster is up.</p>
+<p><strong>On-disk layout after <code>pxe_server</code>:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/var/lib/libvirt/dnsmasq/ipxe.efi</code></td>
+<td>Stage-1 UEFI loader (TFTP)</td>
+</tr>
+<tr>
+<td><code>/srv/harvester-pxe/harvester/</code></td>
+<td>vmlinuz, initrd, rootfs.squashfs, ISO symlink</td>
+</tr>
+<tr>
+<td><code>/srv/harvester-pxe/ipxe/boot.ipxe</code></td>
+<td>Generic stage-2 script (chains by MAC)</td>
+</tr>
+<tr>
+<td><code>/srv/harvester-pxe/ipxe/mac-&lt;mac&gt;</code></td>
+<td>Per-node iPXE scripts (named by mgmt MAC)</td>
+</tr>
+<tr>
+<td><code>/srv/harvester-pxe/config/config-harvester{N}.yaml</code></td>
+<td>CREATE/JOIN Harvester config (0644 so nginx serves it)</td>
+</tr>
+</tbody>
+</table>
+<p>Ref: <a href="https://docs.harvesterhci.io/v1.8/install/pxe-boot-install">Harvester v1.8 PXE boot install</a>.</p>
+<hr />
+<h2 id="sles-16-instruqt-constraints-do-not-break">SLES 16 / Instruqt constraints (do not break)<a class="headerlink" href="#sles-16-instruqt-constraints-do-not-break" title="Permanent link">&para;</a></h2>
+<p>Documented in role comments and <a href="https://github.com/avaleror/rodeo-cli/blob/main/CONTEXT.md">CONTEXT.md</a>.</p>
+<ol>
+<li><strong>NetworkManager only</strong> — wicked removed; virbr0/vnet* marked unmanaged</li>
+<li><strong>Modular libvirt</strong> — disable monolithic <code>libvirtd</code>; enable socket-activated daemons</li>
+<li><strong>libvirt-guests off during build</strong> — stalls <code>network-online.target</code> on Instruqt save/reboot</li>
+<li><strong>virbr0 autostart false until cluster</strong> — same boot-order issue</li>
+<li><strong>firewalld rules permanent, daemon stopped during Ansible</strong> — protects Instruqt mgmt NIC</li>
+<li><strong>90s gap between harvester2 and harvester3</strong> — etcd join race prevention</li>
+<li><strong>OVMF 4MB non-SecureBoot</strong> — 2MB images gone on SLES 16</li>
+<li><strong>xorriso</strong> — not genisoimage</li>
+</ol>
+<p><strong>Files to treat as fragile:</strong></p>
+<ul>
+<li><code>roles/kvm_host/tasks/libvirt.yml</code></li>
+<li><code>roles/vms/tasks/network_setup.yml</code></li>
+<li><code>roles/vms/defaults/main.yml</code> (MACs ↔ DHCP ↔ Harvester config)</li>
+<li><code>roles/pxe_server/templates/network-pxe.xml.j2</code> (two-stage iPXE dnsmasq routing)</li>
+<li><code>roles/pxe_server/templates/ipxe-node.j2</code> (UEFI <code>initrd=</code> kernel arg required)</li>
+<li><code>engine/cluster.py</code> (<code>ETCD_JOIN_GAP</code>, virbr0 start before VM boot)</li>
+</ul>
+<hr />
+<h2 id="security-model-lab-scope">Security model (lab scope)<a class="headerlink" href="#security-model-lab-scope" title="Permanent link">&para;</a></h2>
+<p>Single-tenant training lab, not production.</p>
+<table>
+<thead>
+<tr>
+<th>Choice</th>
+<th>Reason</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TLS verify off</td>
+<td>Self-signed Harvester/Rancher certs</td>
+</tr>
+<tr>
+<td>SSH <code>StrictHostKeyChecking=no</code></td>
+<td>Ephemeral lab VMs, host key baked in cloud-init</td>
+</tr>
+<tr>
+<td><code>security_driver = "none"</code></td>
+<td>Nested KVM on SELinux-enforcing SLES 16</td>
+</tr>
+<tr>
+<td>SELinux permissive (kvm_host role)</td>
+<td>Nested virt lab compatibility</td>
+</tr>
+<tr>
+<td>One host ed25519 key in all guests</td>
+<td>Deployer drives SSH/API setup</td>
+</tr>
+<tr>
+<td>DNAT on host</td>
+<td>Attendees reach UIs via host IP</td>
+</tr>
+</tbody>
+</table>
+<p>Protected: secrets in chmod-600 files, <code>no_log</code> on password tasks, random passwords/tokens from <code>rodeo init</code>, fail-closed validation.</p>
+<hr />
+<h2 id="testing-ci">Testing &amp; CI<a class="headerlink" href="#testing-ci" title="Permanent link">&para;</a></h2>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>ruff<span class="w"> </span>check<span class="w"> </span>rodeo<span class="w"> </span>tests
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>pytest<span class="w"> </span>tests/<span class="w"> </span>-v
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Test area</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>test_config.py</code></td>
+<td>Merge, Jinja, -P, secret resolvers, validation</td>
+</tr>
+<tr>
+<td><code>test_runner.py</code></td>
+<td>Pipeline events, instruqt guard, vars file</td>
+</tr>
+<tr>
+<td><code>test_ansible_consistency.py</code></td>
+<td>Profile ↔ Ansible defaults ↔ plan template drift</td>
+</tr>
+<tr>
+<td><code>test_ansible_vars_contract.py</code></td>
+<td>Vars file keys match Ansible consumers</td>
+</tr>
+<tr>
+<td><code>test_pxe_integration.py</code></td>
+<td>Playbook order, pxe_server role, boot order, JOIN VIP guard</td>
+</tr>
+<tr>
+<td><code>test_cluster.py</code> / <code>test_rancher.py</code></td>
+<td>Poll loops, timeouts, parsing</td>
+</tr>
+<tr>
+<td><code>test_plan_cmd.py</code></td>
+<td>Plan diff command</td>
+</tr>
+</tbody>
+</table>
+<p>GitHub Actions: <code>.github/workflows/ci.yml</code> — Python 3.10 + 3.12 (ruff, pytest); ansible-lint job on 3.12.</p>
+<p>Live KVM regression is still manual (or geekohive) before touching MAC/DHCP/ISO chain.</p>
+<hr />
+<h2 id="extension-points">Extension points<a class="headerlink" href="#extension-points" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Add…</th>
+<th>Where</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>New tech platform</td>
+<td>New <code>RodeoProfile</code> in <code>profiles/</code> + <code>definition.yaml</code> in <code>data/platforms/</code> + register in <code>profiles/__init__.py</code></td>
+</tr>
+<tr>
+<td>New deployment_target</td>
+<td><code>config.py</code> allowed list + <code>up_cmd.py</code> auto-detect + <code>runner.py</code> vars + <code>success.py</code> output + <code>host_context.py</code> overlay + <code>kvm_host</code> role conditionals</td>
+</tr>
+<tr>
+<td>New phase</td>
+<td>Add to <code>profile.phases</code> + <code>run_phase()</code> dispatch</td>
+</tr>
+<tr>
+<td>New CLI command</td>
+<td><code>commands/*.py</code> + register in <code>cli.py</code></td>
+</tr>
+<tr>
+<td>Host OS support</td>
+<td><code>install_deps.py</code> + possibly kvm_host role conditionals</td>
+</tr>
+<tr>
+<td>New workshop/demo</td>
+<td>Separate repo: <code>rodeo-plan.yaml</code> (type + deployment_target) + lab guide + host setup docs</td>
+</tr>
+<tr>
+<td>Multi-host workshop fan-out</td>
+<td><code>rodeo/fleet/</code> + <code>workshop.yaml</code> — see <a href="../fleet/">Fleet</a>; do not multi-host the phase engine</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="fleet-multi-host-workshops">Fleet (multi-host workshops)<a class="headerlink" href="#fleet-multi-host-workshops" title="Permanent link">&para;</a></h2>
+<p>For N identical student/instructor KVM hosts, the laptop runs <code>rodeo fleet</code> over
+OpenSSH. Each remote still executes single-host <code>rodeo up</code> / <code>doctor</code> / <code>status</code>.
+<strong>Shipped F0–F2.1:</strong> JSON reports → fan-out → deploy/retry/access/diagnose.<br />
+<strong>Roadmap:</strong> F4a AWS + Phase E single-host <code>rodeo up --target aws</code> MVP;
+next <strong>GCP</strong> → <strong>Vultr Bare Metal</strong> → Hetzner Cloud.
+Equinix is out of scope. See <a href="../fleet/#roadmap">Fleet</a>.</p>
+<hr />
+<h2 id="related-documents">Related documents<a class="headerlink" href="#related-documents" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>Audience</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="../get-started/">User guide</a></td>
+<td>Workshop operators deploying labs</td>
+</tr>
+<tr>
+<td><a href="../fleet/">Fleet</a></td>
+<td>Multi-host workshops (F0–F2.1 + F4a AWS MVP; <a href="../fleet/#roadmap">roadmap</a> F3, F4b–d)</td>
+</tr>
+<tr>
+<td><a href="https://github.com/avaleror/rodeo-cli/blob/main/ROADMAP.md">ROADMAP.md</a></td>
+<td>Planned declarative-deployment features</td>
+</tr>
+<tr>
+<td><a href="https://github.com/avaleror/rodeo-cli/blob/main/CONTEXT.md">CONTEXT.md</a></td>
+<td>Full project context for AI/developers</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.top", "navigation.indexes", "content.code.copy", "content.code.annotate", "toc.follow", "search.suggest", "search.highlight"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

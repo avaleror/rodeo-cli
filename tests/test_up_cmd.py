@@ -120,7 +120,7 @@ def test_up_deploys_when_root(tmp_path, monkeypatch):
 
     def fake_exec(cfg, root, **kwargs):
         captured["name"] = cfg["name"]
-        captured["reconcile"] = kwargs.get("reconcile", False)
+        captured["reconcile"] = kwargs.get("reconcile", True)
         return 0
 
     monkeypatch.setattr(up_mod, "execute_deploy", fake_exec)
@@ -131,6 +131,29 @@ def test_up_deploys_when_root(tmp_path, monkeypatch):
     )
     assert result.exit_code == 0, result.output
     assert captured.get("name") == "deployme"
+    assert captured.get("reconcile") is True
+
+
+def test_up_no_reconcile_opt_out(tmp_path, monkeypatch):
+    monkeypatch.setattr(up_mod, "detect_host", _ready_host)
+    monkeypatch.setattr(up_mod, "is_root", lambda: True)
+    monkeypatch.setattr(up_mod, "run_preflight", lambda cfg, root: True)
+
+    captured = {}
+
+    def fake_exec(cfg, root, **kwargs):
+        captured["reconcile"] = kwargs.get("reconcile")
+        return 0
+
+    monkeypatch.setattr(up_mod, "execute_deploy", fake_exec)
+    lab = tmp_path / "labs" / "norec"
+
+    result = CliRunner().invoke(
+        up_mod.up_cmd,
+        ["--yes", "--no-tmux", "--no-reconcile", "--profile", "test", "--dir", str(lab)],
+    )
+    assert result.exit_code == 0, result.output
+    assert captured.get("reconcile") is False
 
 
 def test_up_with_custom_profile_deploys_in_place(tmp_path, monkeypatch):

@@ -41,10 +41,14 @@ console = Console()
               help="Run ansible-galaxy install before Ansible phases.")
 @click.option("--force", is_flag=True, default=False,
               help="Re-run all phases, ignoring phase state.")
-@click.option("--reconcile", is_flag=True, default=False,
-              help="If VMs drift from the plan (memory/vCPU), reset from the vms "
-                   "phase instead of skipping it. Opt-in (ROADMAP B2); still may "
-                   "need clean+redeploy for running domains.")
+@click.option(
+    "--reconcile/--no-reconcile",
+    default=True,
+    help="When VM memory/vCPU (or NAT DHCP host markers) drift from the plan, "
+         "reset from the vms phase instead of skipping it. On by default; "
+         "use --no-reconcile to keep phase-cache-only behaviour. Running "
+         "domains need stop/start (or clean+redeploy) to pick up new memory.",
+)
 @click.option("--finalise", "include_guarded", is_flag=True, default=False,
               help="Run finalise even when deployment_target is 'instruqt' "
                    "(only after the Instruqt image snapshot).")
@@ -146,7 +150,7 @@ def execute_deploy(
     from_phase: str | None = None,
     install_collections: bool = True,
     force: bool = False,
-    reconcile: bool = False,
+    reconcile: bool = True,
     include_guarded: bool = False,
     ansible_verbose: int = 0,
     tui: bool | None = None,
@@ -211,7 +215,7 @@ def _deploy_plain(
     from_phase: str | None,
     install_collections: bool,
     force: bool = False,
-    reconcile: bool = False,
+    reconcile: bool = True,
     include_guarded: bool = False,
     ansible_verbose: int = 0,
 ) -> int:

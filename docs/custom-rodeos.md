@@ -189,22 +189,23 @@ The `apply` phase is the one exception (it never caches, so node-manifest edits 
 take effect on the next run — see [Applying manifests to a node](#applying-manifests-to-a-node)).
 
 So after a lab has deployed once, editing `nodes`, `resources`, or `network` and
-re-running `rodeo up --profile mylab` **does nothing** — the phases that would apply the
-change are skipped. `rodeo plan` will still show the drift (a `~ change` on the affected
-VM, and that phase flagged `done, but drift detected` instead of a plain checkmark), but
-seeing it and fixing it are two different commands:
+re-running `rodeo up --profile mylab` used to skip completed phases. As of B2 step 5,
+**memory/vCPU drift is reconciled by default** on `rodeo deploy` / `rodeo up` (reset from
+`vms`). Topology changes (add/remove nodes) still need a manual path:
 
 ```bash
 cd ~/.rodeo/profiles/mylab
-rodeo deploy --reconcile   # opt-in: reset from vms when memory/vCPU drifted
+rodeo plan                  # always shows live drift
+rodeo deploy                # reconciles memory/vCPU drift by default
+rodeo deploy --no-reconcile # old phase-cache-only behaviour
 rodeo deploy --from vms     # resume from a specific phase, or
 rodeo deploy --force        # redo every phase, or
 rodeo clean --yes && rodeo up --profile mylab   # destroy this lab's VMs and redeploy
 ```
 
-`--reconcile` clears the cached `vms` (and later) phase state when live memory/vCPU
+Default reconcile clears the cached `vms` (and later) phase state when live memory/vCPU
 differs from the plan. For **running** domains, libvirt still will not live-resize —
-prefer `clean` + redeploy when you need the new sizes applied for real.
+stop/start the domain (or `clean` + redeploy) so the inactive XML is applied.
 
 ---
 

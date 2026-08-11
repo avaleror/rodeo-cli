@@ -117,7 +117,7 @@ class RodeoApp(App):
         force: bool = False,
         include_guarded: bool = False,
         ansible_verbose: int = 0,
-        reconcile: bool = False,
+        reconcile: bool = True,
     ) -> None:
         super().__init__()
         self.cfg = cfg

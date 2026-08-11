@@ -4,6 +4,19 @@
 
 Design pillars: plan/apply/destroy lifecycle, deep-mergeable override files, inline `-P` parameters, fail-closed validation, and ownership metadata on libvirt objects so the hypervisor is the source of truth. Out of scope on purpose: multi-provider abstraction. rodeo is KVM-first and product-opinionated by design.
 
+## Next up
+
+1. **B1** — ownership tags on libvirt domains (`rodeo:plan=<name>`) → accurate `destroy` / `list`
+2. **Phase H Level 1** — Hauler prefetch (skip multi-GB re-downloads on Instruqt / clean+up)
+3. **F4b** — GCP host-acquire (after AWS F4a)
+4. **Phase F** — `suse-edge` live validation (bare metal, then Instruqt)
+5. **Maintainability** — split `rancher.py` (start with Elemental / Edge)
+
+✅ B2 step 5 live-validated 2026-08-06 (bare-metal SLES, `test` profile): plan showed memory drift; deploy without reconcile skipped `vms`; `--reconcile` reset from `vms` and wrote new memory into inactive domain XML; cold start applied 20480 MiB. Reconcile is now the default (`--no-reconcile` opt-out).
+
+Test coverage: structural idempotency twin of `tests/test_vms_network_idempotency.py`
+for `roles/pxe_server/tasks/network.yml` (`tests/test_pxe_network_idempotency.py`).
+
 ---
 
 ## Validation queue — Instruqt ✅ (validated 2026-07-15)
@@ -42,14 +55,11 @@ Live-validated on bare metal (SLES 16) and on an **Instruqt builder** with `depl
 
 ## Phase B — Resource ownership + drift-aware reconciliation (next)
 
-Today, idempotency is **phase-level, not resource-level**: `DeployRunner.run()`
-skips any phase already marked `completed` in `~/.rodeo/state/<name>.yaml`
-(`runner.py:192`), regardless of whether the live host still matches the plan.
-`rodeo plan` already computes the real diff (VM memory/vcpu vs. live libvirt,
-network active/inactive, storage artifacts present) — `rodeo deploy`/`rodeo up`
-just never look at it. Closing that gap is the actual "declarative apply" promise
-in the vision statement at the top of this file; B1 and B2 below are the concrete
-steps.
+Today, default idempotency is **phase-level with live drift reconcile for VMs**:
+`DeployRunner.run()` skips phases marked `completed` unless drift is detected (default),
+or the operator passes `--force` / `--from` / `--no-reconcile`. `rodeo plan` always
+computes the live diff. B2 steps 1–5 are done; remaining work is ownership tagging (B1)
+and broader topology/pxe reconcile (V2).
 
 ### B1 — Ownership tagging (~2 days)
 
@@ -97,11 +107,11 @@ memory drift and assert `DeployRunner.run()` re-runs `vms` (not skipped) while l
 unrelated already-done phases skipped, and that omitting `--reconcile` reproduces
 today's exact behavior (no regressions for anyone not opting in).
 
-**Step 5 — live-validate, then flip the default.** Run `--reconcile` through a real
-memory-resize-and-redeploy cycle on a bare-metal KVM host (matches this repo's existing
-"validate live before shipping" convention — see Standing Constraints). Only once that's
-proven: make reconciliation the default behavior and add `--no-reconcile` as the opt-out,
-matching the vision statement's "declare desired state ... converge" without a flag.
+**Step 5 — live-validate, then flip the default.** ✅ Live-validated 2026-08-06 on
+bare-metal SLES (`test` profile): memory bump → `rodeo plan` drift → deploy without
+reconcile skipped `vms` → `--reconcile` reset from `vms` and updated inactive domain
+XML; cold start applied the new MiB. Reconciliation is now the default; `--no-reconcile`
+is the opt-out.
 
 **Step 6 — V2 (separate, later, own roadmap entry when scoped):** topology drift
 (new/removed nodes) that needs Harvester join/etcd-gap sequencing, and broader
@@ -145,6 +155,8 @@ pxe/cluster reconcile. **Partial progress:** NAT DHCP host reservations
 Add `deployment_target: aws` and `deployment_target: gcp` so rodeo-cli can provision a KVM host automatically, not just consume one that is already set up.
 
 Approach: the KVM host itself becomes an EC2 / GCE instance. From the laptop, `rodeo up --target aws` provisions (or reuses) it, waits for SSH, then remote-runs `rodeo up --target baremetal` on the instance. Nested VMs are unchanged — only the outer host is cloud-acquired.
+
+AWS MVP is shipped (see checkboxes). Remaining: AL2023 deps path, SG automation, cost estimate, live `i7i.8xlarge` checklist, then GCP.
 
 - [x] `aws` provider in `rodeo/providers/` — create/reuse by ownership tags (`ManagedBy=rodeo`)
 - [x] Shared `provider:` block in `rodeo-plan.yaml` (same shape as Fleet `workshop.yaml`)
@@ -306,6 +318,9 @@ over OpenSSH (workshop inventory). Engine/phases stay single-host. See [docs/fle
     marker (see `rodeo/drift.py`). Still prefer a live regression after touching
     PXE boot-chain files (generic `boot.ipxe` → MAC-named scripts, installer cmdline,
     config-YAML perms).
+  - Test coverage: `tests/test_vms_network_idempotency.py` pins the vms path;
+    `tests/test_pxe_network_idempotency.py` pins the PXE path (`_pxe_net_needs_redefine`,
+    `dnsmasq:options`, destroy inside `when`, fail-closed on running domains).
 - No bash deploy scripts. Ansible stays for `kvm_host` / `vms` / `pxe_server`.
 - Wall time is dominated by nested-KVM Harvester install (20–60 min). Optimize UX and correctness first, CLI speed second.
 - Harvester nodes need at least 250 GiB disk. Smaller disks fill the persistent partition, containerd fails, VIP never comes up. Validated live.

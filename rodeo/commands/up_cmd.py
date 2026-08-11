@@ -77,8 +77,12 @@ def _default_labs_root() -> Path:
 )
 @click.option("--resume", is_flag=True, hidden=True,
               help="Internal: continue after sudo re-exec.")
-@click.option("--reconcile", is_flag=True, default=False,
-              help="Pass --reconcile to deploy (re-run vms when VM memory/vCPU drifts).")
+@click.option(
+    "--reconcile/--no-reconcile",
+    default=True,
+    help="Pass through to deploy: re-run vms when VM memory/vCPU drifts "
+         "(default on). Use --no-reconcile to skip drift checks.",
+)
 @click.option(
     "--instance-tier",
     "instance_tier",
@@ -258,8 +262,7 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
         console.print("\n[bold]Switching to root for the install[/bold] (sudo)…")
         resume_args = ["up", "--resume", "--dir", str(lab), "--yes",
                        "--target", local_target if deployment_target != "aws" else "baremetal"]
-        if reconcile:
-            resume_args.append("--reconcile")
+        resume_args.append("--reconcile" if reconcile else "--no-reconcile")
         ensure_root(resume_args)  # does not return
 
     _deploy(lab, assume_yes=assume_yes, reconcile=reconcile)
@@ -517,7 +520,7 @@ def _choose_profile(host: dict, assume_yes: bool) -> str:
     return choice
 
 
-def _deploy(lab: Path, assume_yes: bool, reconcile: bool = False) -> None:
+def _deploy(lab: Path, assume_yes: bool, reconcile: bool = True) -> None:
     """Load the lab, preflight, and run the pipeline (called as root)."""
     try:
         cfg = load_config("rodeo-plan.yaml", config_dir=str(lab))

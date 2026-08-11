@@ -118,7 +118,7 @@ class DeployRunner:
         force: bool = False,
         include_guarded: bool = False,
         ansible_verbose: int = 0,
-        reconcile: bool = False,
+        reconcile: bool = True,
     ) -> None:
         self.cfg = cfg
         self.root = root

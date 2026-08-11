@@ -181,7 +181,7 @@ def test_stale_vars_files_are_swept(fake_profile, fake_cfg, tmp_path):
 
 
 def test_reconcile_reruns_vms_on_memory_drift(fake_profile, fake_cfg, tmp_path, monkeypatch):
-    """--reconcile + VM memory drift clears vms cache; unrelated done phases stay skipped."""
+    """Default reconcile + VM memory drift clears vms cache; unrelated done phases stay skipped."""
     from rodeo.drift import DriftReport, VmChange
 
     fake_profile.phases = ["alpha", "vms", "gamma"]
@@ -214,7 +214,31 @@ def test_reconcile_reruns_vms_on_memory_drift(fake_profile, fake_cfg, tmp_path, 
     assert any("--reconcile" in e.line for e in _of_type(events, LogLine))
 
 
+def test_default_reconcile_consults_drift(fake_profile, fake_cfg, tmp_path, monkeypatch):
+    """DeployRunner defaults reconcile=True so drift is checked without an opt-in flag."""
+    from rodeo.drift import DriftReport, VmChange
+
+    fake_profile.phases = ["vms"]
+    state.mark_phase_done("vms", "test-plan")
+    called = {"n": 0}
+
+    def drift(cfg, actual=None):
+        called["n"] += 1
+        return DriftReport(
+            reachable=True,
+            vm_changes=[
+                VmChange(name="vm1", kind="memory", desired="x", from_value=1, to_value=2)
+            ],
+        )
+
+    monkeypatch.setattr("rodeo.drift.collect_drift", drift)
+    _events(DeployRunner(fake_cfg, tmp_path))
+    assert called["n"] == 1
+    assert "vms" in fake_profile.ran
+
+
 def test_without_reconcile_skips_despite_drift(fake_profile, fake_cfg, tmp_path, monkeypatch):
+    """--no-reconcile keeps phase-cache-only behaviour even when live memory drifts."""
     from rodeo.drift import DriftReport, VmChange
 
     fake_profile.phases = ["alpha", "vms", "gamma"]
@@ -235,7 +259,7 @@ def test_without_reconcile_skips_despite_drift(fake_profile, fake_cfg, tmp_path,
     monkeypatch.setattr("rodeo.drift.collect_drift", boom)
 
     events = _events(DeployRunner(fake_cfg, tmp_path, reconcile=False))
-    assert called["n"] == 0  # drift not consulted without --reconcile
+    assert called["n"] == 0  # drift not consulted with reconcile=False
     assert fake_profile.ran == []
     skipped = [e for e in _of_type(events, PhaseSkipped) if e.reason == "done"]
     assert [e.phase for e in skipped] == ["alpha", "vms", "gamma"]

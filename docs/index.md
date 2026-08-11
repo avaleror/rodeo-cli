@@ -17,7 +17,7 @@ title: rodeo-cli
 
 <div class="rc-stats" markdown>
 <div class="rc-stat"><div class="rc-stat-num">6</div><div class="rc-stat-label">Bundled profiles</div></div>
-<div class="rc-stat"><div class="rc-stat-num">318</div><div class="rc-stat-label">Tests passing</div></div>
+<div class="rc-stat"><div class="rc-stat-num">424</div><div class="rc-stat-label">Tests passing</div></div>
 <div class="rc-stat"><div class="rc-stat-num">1</div><div class="rc-stat-label">Command to deploy</div></div>
 <div class="rc-stat"><div class="rc-stat-num rc-stat-num--text">GPL-3.0</div><div class="rc-stat-label">License</div></div>
 </div>
@@ -26,7 +26,7 @@ title: rodeo-cli
 
 Standing up a Harvester cluster or a Rancher Prime instance for a demo, a workshop, or a test usually means writing Ansible, wiring libvirt networks by hand, and re-learning the same iPXE boot chain every time. rodeo-cli replaces all of that with one idea: describe the lab you want, and let a plan/apply pipeline build it.
 
-A **profile** is a config-dir with two YAML files. `rodeo-plan.yaml` sets resources and credentials. `definition.yaml` describes the topology: nodes, network, exposed services, boot order. The CLI reads those, runs `rodeo plan` to show you the diff against the host, and `rodeo deploy` to converge it — idempotently, so re-running after an edit only touches what changed.
+A **profile** is a config-dir with two YAML files. `rodeo-plan.yaml` sets resources and credentials. `definition.yaml` describes the topology: nodes, network, exposed services, boot order. The CLI reads those, runs `rodeo plan` to show you the diff against the host, and `rodeo deploy` to converge. Re-runs are safe: deploy reconciles VM memory/vCPU drift by default (`--no-reconcile` to opt out); use `--force` or `--from` when you need a broader re-apply.
 
 ## Main features
 

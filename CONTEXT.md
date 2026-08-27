@@ -69,7 +69,10 @@ rodeo/
 ├── engine/
 │   ├── runner.py           DeployRunner — single pipeline, yields typed events
 │   ├── cluster.py          ClusterPhase — VM start order, VIP/kubeconfig/nodes waits
-│   ├── rancher.py          RancherPhase — K3s, cert-manager, Rancher, NodePort, eject ISOs
+│   ├── rancher/            RancherPhase package — one concern per module, composed as mixins:
+│   │                       remote (SSH/HTTP), cluster_setup (K3s/Helm/cert-manager/Rancher),
+│   │                       harvester (import/CA fixes/password/eject), elemental, extensions,
+│   │                       hauler (airgap), content (Gitea + demo-app seeding), summary
 │   └── libvirt.py          LibvirtDriver — direct libvirt-python VM/network ops
 ├── inventory.py            build_inventory(): renders definition.yaml → vm_nodes (MAC/UUID gen), pxe, firewall, host_prep
 ├── labinabox.py            build_lab_json(): inventory → lab-in-a-box lab.json (rodeo export)

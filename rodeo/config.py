@@ -340,9 +340,13 @@ def validate_config(cfg: dict) -> None:
             "Set values in rodeo-plan.yaml (??key) and ~/.rodeo/secrets.yaml, or run: rodeo init"
         )
     target = cfg.get("deployment_target", "baremetal")
-    if target not in ("instruqt", "baremetal", "aws"):
+    # Targets come from the host-context registry (built-ins + plugins),
+    # so a plugin-provided deployment_target validates like the built-ins.
+    from .host_context import is_known_target, known_targets
+
+    if not is_known_target(target):
         raise ConfigError(
-            f"Invalid deployment_target '{target}' — use 'instruqt', 'baremetal', or 'aws'."
+            f"Invalid deployment_target '{target}' — use one of: {', '.join(known_targets())}."
         )
     if target == "aws":
         _validate_aws_provider(cfg)

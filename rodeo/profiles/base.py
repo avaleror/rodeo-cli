@@ -174,6 +174,18 @@ class RodeoProfile(ABC):
             for node in inv.get("vm_nodes", [])
         }
 
+    # --- Success screen hooks ---
+    # The success panel (rodeo/success.py) renders access URLs and credentials
+    # itself; the profile owns the narrative parts so a new lab type (including
+    # one from a plugin) never has to patch success.py.
+    def success_extra_sections(self, cfg: dict) -> list[str]:
+        """Optional Rich-markup lines shown before 'First things to try'."""
+        return []
+
+    def success_next_steps(self, cfg: dict) -> list[str]:
+        """Rich-markup lines under 'First things to try'."""
+        return default_success_next_steps(cfg)
+
     # --- Phase dispatch ---
     def run_phase(
         self,
@@ -199,3 +211,27 @@ class RodeoProfile(ABC):
             return
 
         yield from getattr(runner, method)()
+
+
+def default_success_next_steps(cfg: dict) -> list[str]:
+    """Generic 'First things to try' lines, keyed on what the topology includes.
+
+    Module-level so success.py can fall back to it when the plan's type doesn't
+    resolve to a registered profile.
+    """
+    vms = cfg.get("vms", {})
+    harvester_nodes = [
+        n for n in vms if n not in ("rancher", "eib") and not n.startswith("edge")
+    ]
+    has_harvester = bool(harvester_nodes)
+    has_rancher = "rancher" in vms or any(
+        isinstance(c, dict) and c.get("name") == "rancher"
+        for c in cfg.get("components", [])
+    )
+    ssh_target = harvester_nodes[0] if has_harvester else next(iter(vms), "rancher")
+    lines = [f"  rodeo ssh {ssh_target}{' ' * max(1, 16 - len(ssh_target))}# shell into the VM"]
+    if has_harvester:
+        lines.append("  In Harvester: create a VM from an image, then watch it boot")
+    elif has_rancher:
+        lines.append("  In Rancher: explore Cluster Management and install an app from Charts")
+    return lines

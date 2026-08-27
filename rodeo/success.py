@@ -76,7 +76,14 @@ def render_success(cfg: dict) -> None:
     harvester_ui_port = 8443
 
     profile_type = cfg.get("type", "")
-    is_suse_edge = profile_type == "suse-edge"
+    # The profile owns the narrative sections (see RodeoProfile.success_* hooks);
+    # unknown types fall back to the generic next-steps.
+    try:
+        from .profiles import get_profile
+
+        profile = get_profile(profile_type)
+    except Exception:
+        profile = None
 
     vms = cfg.get("vms", {})
     harvester_nodes = [n for n in vms if n not in ("rancher", "eib") and not n.startswith("edge")]
@@ -160,36 +167,17 @@ def render_success(cfg: dict) -> None:
         )
 
     lines.append("")
-    if is_suse_edge:
-        edge_nodes = [(n, v) for n, v in vms.items() if n.startswith("edge")]
-        if edge_nodes:
-            lines.append("[bold]Edge node reference[/bold]  (static DHCP — MAC determines IP)")
-            lines.append("  node    MAC                  IP")
-            for name, info in sorted(edge_nodes):
-                mac = info.get("mac", "—")
-                ip  = info.get("ip", "—")
-                lines.append(f"  {name:<7} {mac:<20} {ip}  (DHCP pre-assigned)")
-            lines.append("")
+    if profile is not None:
+        lines.extend(profile.success_extra_sections(cfg))
 
     lines.append("[bold]First things to try[/bold]")
     lines.append("  rodeo status                 # health + phase progress")
-    if is_suse_edge:
-        lines.append("  rodeo ssh eib            # shell into the EIB VM (build Elemental OS images here)")
-        lines.append("  rodeo ssh <host>/<vm>    # from laptop: hop via KVM/EC2 host")
-        lines.append("  On the eib VM: edit /home/eib-config/edge-definition.yaml")
-        lines.append("    → replace REPLACE_WITH_REGISTRATION_URL with the MachineRegistration URL")
-        lines.append("    → run EIB to build the Elemental OS image (base OS from Hauler: http://localhost:8080)")
-        lines.append("  From the KVM host: rodeo pull-edge-image   # seed edge1/2/3 boot disks")
-        lines.append("  rodeo start edge1 edge2 edge3              # boot edge nodes into Elemental")
-        lines.append("  In Rancher: Fleet → Git Repos → alien-geeko is waiting for edge clusters")
-        lines.append("    → label your edge cluster: demo=true  edge-type=x86-cluster")
+    if profile is not None:
+        lines.extend(profile.success_next_steps(cfg))
     else:
-        ssh_target = harvester_nodes[0] if has_harvester else next(iter(vms), "rancher")
-        lines.append(f"  rodeo ssh {ssh_target}{' ' * max(1, 16 - len(ssh_target))}# shell into the VM")
-        if has_harvester:
-            lines.append("  In Harvester: create a VM from an image, then watch it boot")
-        elif has_rancher:
-            lines.append("  In Rancher: explore Cluster Management and install an app from Charts")
+        from .profiles.base import default_success_next_steps
+
+        lines.extend(default_success_next_steps(cfg))
 
     lines.append("")
     lines.append("[dim]Stop for later:  rodeo stop --all --yes   ·   Tear down:  rodeo clean --yes[/dim]")

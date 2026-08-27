@@ -68,7 +68,7 @@ rancher            aws              Rancher on an AWS EC2 KVM host
 
 **Acquire vs adapt.** Host acquire can be provisioned (`rodeo up --target aws` / Fleet `provider:`) or BYO (SSH inventory / operator-created EC2). Both must hit `apply_host_context()` before deploy so workshops do not fork playbooks per cloud. Tech platform declares *what* lab; host context declares *where* and *how the host must be shaped*.
 
-Adding a new host context requires: `config.py` allowed list, `up_cmd.py` auto-detection, `runner.py` vars file, `success.py` output, and an overlay in `host_context.py`. See the Extension points table below.
+Adding a new host context is one call: `host_context.register_host_context(name, overlay)`. Registration makes the target valid in plans, `--target`, and the `rodeo up` prompt; the overlay is also where engine behaviour is customized — values it sets on the plan (`libvirt.disk_cache`/`disk_io`, `storage.backend`, resources) are honored by DeployRunner over its per-target defaults. Only a target needing bespoke *detection* (like Instruqt's env probe) still touches `up_cmd.py`. See the Extension points table below.
 
 ---
 
@@ -422,7 +422,8 @@ Live KVM regression is still manual (or geekohive) before touching MAC/DHCP/ISO 
 | Add… | Where |
 |------|-------|
 | New tech platform | New `RodeoProfile` + `definition.yaml`, then `profiles.register_profile()` (in-tree: `profiles/__init__.py`; out-of-tree: a `rodeo.plugins` entry point) |
-| New deployment_target | `config.py` allowed list + `up_cmd.py` auto-detect + `runner.py` vars + `success.py` output + `host_context.py` overlay + `kvm_host` role conditionals |
+| New deployment_target | `host_context.register_host_context(name, overlay)` — validation, `--target`, prompt, and plan shaping all follow; add `up_cmd.py` auto-detection only if the target is probeable |
+| Profile success screen | Override `RodeoProfile.success_extra_sections()` / `success_next_steps()` — `success.py` renders URLs/credentials, the profile owns the narrative |
 | New Python phase | `profiles.base.register_stream_phase()` + a `stream_*` generator on DeployRunner + add to `profile.phases` |
 | New host provider | `providers.registry.register_provider()` with a factory returning a `HostProvider` |
 | Third-party plugin | A package with a `rodeo.plugins` entry point calling the register_* APIs — discovered lazily on the first lookup miss (see `rodeo/plugins.py`) |

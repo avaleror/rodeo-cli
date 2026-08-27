@@ -48,7 +48,8 @@ from .deploy import execute_deploy
 
 console = Console()
 
-_VALID_TARGETS = ("baremetal", "instruqt", "aws")
+# Targets live in the host-context registry (built-ins + plugins); validated
+# at load/deploy time by validate_config, and listed live for the prompt.
 
 
 def _default_labs_root() -> Path:
@@ -71,9 +72,10 @@ def _default_labs_root() -> Path:
     "--target",
     "deployment_target",
     default=None,
-    type=click.Choice(list(_VALID_TARGETS), case_sensitive=False),
+    metavar="TARGET",
     help="Where this lab runs: 'baremetal', 'instruqt', or 'aws' "
-         "(aws = provision EC2 then remote deploy; default: auto-detect).",
+         "(aws = provision EC2 then remote deploy; plugins may add targets; "
+         "default: auto-detect).",
 )
 @click.option("--resume", is_flag=True, hidden=True,
               help="Internal: continue after sudo re-exec.")
@@ -153,11 +155,23 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
             deployment_target = _detect_target()
             _needs_prompt = True
         if not assume_yes and _needs_prompt:
+            from ..host_context import known_targets
+
             deployment_target = Prompt.ask(
                 "Where is this running?",
-                choices=list(_VALID_TARGETS),
+                choices=known_targets(),
                 default=deployment_target,
             )
+
+    deployment_target = (deployment_target or "").strip().lower() or None
+    from ..host_context import is_known_target, known_targets
+
+    if deployment_target and not is_known_target(deployment_target):
+        console.print(
+            f"[red]✗  Unknown target '{deployment_target}' — "
+            f"use one of: {', '.join(known_targets())}.[/red]"
+        )
+        raise SystemExit(2)
 
     console.print("\n[bold]rodeo up[/bold] — let's get a lab running.\n")
 

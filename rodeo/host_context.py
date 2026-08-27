@@ -4,11 +4,23 @@ Tech platform (``type:``) declares *what* lab. Host context
 (``deployment_target:``) declares *where* and how the host must be shaped.
 Acquire can be provisioned or BYO; this module applies the same overlays either
 way so performance and infra quirks are not tribal knowledge.
+
+Targets are a registry: built-ins (baremetal, instruqt, aws) register below,
+and external code adds its own with :func:`register_host_context` — directly,
+or through a ``rodeo.plugins`` entry point. An overlay is the customization
+point for engine behaviour too: values it sets on the plan (e.g.
+``libvirt.disk_cache``/``disk_io``, ``storage.backend``) are honored by
+DeployRunner over its per-target defaults.
 """
 from __future__ import annotations
 
 import copy
-from typing import Any
+from typing import Any, Callable
+
+# An overlay mutates cfg in place and returns human-readable notes.
+HostContextOverlay = Callable[[dict[str, Any], dict[str, Any]], list[str]]
+
+_TARGETS: dict[str, HostContextOverlay] = {}
 
 # AWS / NVMe workshops: ≥1.2 TiB per Harvester node (performance-first).
 AWS_HARVESTER_DISK_GB = 1200
@@ -17,6 +29,46 @@ AWS_HARVESTER_DISK_GB = 1200
 _AWS_DISK_FLOORS: dict[str, int] = {
     "harvester": AWS_HARVESTER_DISK_GB,
 }
+
+
+def register_host_context(
+    name: str,
+    overlay: HostContextOverlay,
+    *,
+    replace: bool = False,
+) -> None:
+    """Register a deployment_target overlay: (cfg, host_facts) -> notes.
+
+    Registering makes ``deployment_target: <name>`` pass validation and routes
+    plan shaping through ``overlay``. The overlay mutates cfg in place and
+    returns note lines shown in the deploy log.
+    """
+    key = (name or "").strip().lower()
+    if not key:
+        raise ValueError("deployment_target name must be non-empty")
+    if key in _TARGETS and not replace:
+        raise ValueError(
+            f"deployment_target '{key}' is already registered (pass replace=True to override)"
+        )
+    _TARGETS[key] = overlay
+
+
+def known_targets() -> list[str]:
+    """All registered deployment_target names (loads plugins first)."""
+    from .plugins import load_plugins
+
+    load_plugins()
+    return sorted(_TARGETS)
+
+
+def is_known_target(name: str) -> bool:
+    key = (name or "").strip().lower()
+    if key in _TARGETS:
+        return True
+    from .plugins import load_plugins
+
+    load_plugins()
+    return key in _TARGETS
 
 
 def apply_host_context(
@@ -33,12 +85,16 @@ def apply_host_context(
     target = str(out.get("deployment_target") or "baremetal").strip().lower()
     facts = host_facts or {}
 
-    if target == "instruqt":
-        notes.extend(_apply_instruqt(out, facts))
-    elif target == "aws":
-        notes.extend(_apply_aws(out, facts))
-    else:
-        notes.extend(_apply_baremetal(out, facts))
+    overlay = _TARGETS.get(target)
+    if overlay is None:
+        from .plugins import load_plugins
+
+        load_plugins()
+        overlay = _TARGETS.get(target)
+    if overlay is None:
+        # Unvalidated/unknown target: shape like baremetal rather than crash.
+        overlay = _apply_baremetal
+    notes.extend(overlay(out, facts))
 
     # EC2 + NVMe detection can enable the storage backend even on baremetal BYO.
     if target != "aws" and (facts.get("on_ec2") or facts.get("has_nvme")):
@@ -163,3 +219,8 @@ def _planned_disk_gb(cfg: dict[str, Any]) -> int:
 def persist_host_context_notes(cfg: dict[str, Any], notes: list[str]) -> None:
     """Stash adaptation notes on cfg for deploy logs (non-serialized)."""
     cfg["_host_context_notes"] = list(notes)
+
+
+register_host_context("baremetal", _apply_baremetal)
+register_host_context("instruqt", _apply_instruqt)
+register_host_context("aws", _apply_aws)

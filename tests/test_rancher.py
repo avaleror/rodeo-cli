@@ -167,7 +167,7 @@ def test_import_fails_when_cluster_never_active(cfg, monkeypatch, tmp_path):
 
     kube = tmp_path / "harvester-kubeconfig"
     kube.write_text("dummy")
-    monkeypatch.setattr(rancher_mod, "harvester_kubeconfig_path", lambda: kube)
+    monkeypatch.setattr(rancher_mod.harvester, "harvester_kubeconfig_path", lambda: kube)
 
     # _wait_cluster_active returns an empty iterator → None return value → falsy
     monkeypatch.setattr(RancherPhase, "_wait_cluster_active", lambda self: iter(()))

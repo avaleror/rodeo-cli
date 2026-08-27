@@ -44,6 +44,7 @@ BASE_VERSIONS: dict = {
 
 # Non-ansible phases and how to stream them: phase -> (DeployRunner method, needs_rancher).
 # needs_rancher phases are skipped when the topology has no rancher node.
+# Extend with register_stream_phase() — don't edit this dict from outside.
 _STREAM_PHASES: dict[str, tuple[str, bool]] = {
     "boot":      ("stream_boot",      False),
     "cluster":   ("stream_cluster",   False),
@@ -52,6 +53,28 @@ _STREAM_PHASES: dict[str, tuple[str, bool]] = {
     "apply":     ("stream_apply",     False),
     "finalise":  ("stream_finalise",  False),
 }
+
+
+def register_stream_phase(
+    phase: str,
+    runner_method: str,
+    *,
+    needs_rancher: bool = False,
+    replace: bool = False,
+) -> None:
+    """Register a Python-driven phase for profiles to include in ``phases``.
+
+    ``runner_method`` names a generator method on DeployRunner (existing or
+    attached by a plugin) that yields DeployEvents and sets runner._last_rc.
+    ``needs_rancher`` phases are skipped when the topology has no rancher node.
+    """
+    if not phase or not runner_method:
+        raise ValueError("register_stream_phase requires a phase and a runner method name")
+    if phase in _STREAM_PHASES and not replace:
+        raise ValueError(
+            f"stream phase '{phase}' is already registered (pass replace=True to override)"
+        )
+    _STREAM_PHASES[phase] = (runner_method, needs_rancher)
 
 
 class RodeoProfile(ABC):

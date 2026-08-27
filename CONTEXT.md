@@ -76,6 +76,7 @@ rodeo/
 │   └── libvirt.py          LibvirtDriver — direct libvirt-python VM/network ops
 ├── inventory.py            build_inventory(): renders definition.yaml → vm_nodes (MAC/UUID gen), pxe, firewall, host_prep
 ├── labinabox.py            build_lab_json(): inventory → lab-in-a-box lab.json (rodeo export)
+├── plugins.py              Lazy `rodeo.plugins` entry-point discovery for register_* APIs
 ├── config_dir.py           --config-dir (EIB-style) loader
 ├── preflight.py            Host detect + run_preflight + recommend_profile (doctor/up/check)
 ├── secretgen.py            Shared password/token generation + ~/.rodeo/secrets.yaml

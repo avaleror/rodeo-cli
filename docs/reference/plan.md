@@ -113,7 +113,10 @@ Must be unique per host. Changing `name` after deploy creates orphaned resources
 | `instruqt` | `finalise` is skipped automatically. Run it after the Instruqt snapshot: `rodeo deploy --from finalise --finalise` |
 | `aws` | Laptop control plane: require a `provider:` block, provision/reuse one EC2 KVM host, wait for SSH, remote-run `rodeo up` on that host. Tear down with `rodeo destroy --cloud --yes`. BYO: create the instance yourself, keep `deployment_target: aws` (or set `storage.backend: nvme`) and deploy on the box. |
 
-**Required.** Defaults to `baremetal` when omitted.
+**Required.** Defaults to `baremetal` when omitted. Plugins can add targets via
+`host_context.register_host_context()` (see the architecture doc's extension
+points) — a registered target is accepted here, by `--target`, and by the
+`rodeo up` prompt.
 
 On **instruqt**, `rodeo up` / lab seeding also applies host-aware `resources` presets so
 Σ guest vCPU stays near ~70% of the builder (Harvester typically 6–8 vCPU / 20 GiB).

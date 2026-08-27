@@ -82,7 +82,8 @@ rodeo/
 ├── secretgen.py            Shared password/token generation + ~/.rodeo/secrets.yaml
 ├── labseed.py              Seed a lab from a profile; resolve/scaffold custom profiles
 ├── privilege.py            sudo self-escalation (ensure_root)
-├── success.py              Topology-aware success screen
+├── success.py              Success screen: URLs/credentials here, narrative via RodeoProfile.success_* hooks
+├── host_context.py         deployment_target overlay registry (register_host_context)
 ├── profiles/
 │   ├── base.py             RodeoProfile ABC: phases, vm_names, guarded_phases
 │   ├── suse_virt.py        suse-virt profile (Harvester + Rancher; conditional rancher phase)

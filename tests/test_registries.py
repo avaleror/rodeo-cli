@@ -4,10 +4,16 @@ from __future__ import annotations
 
 import pytest
 
+import rodeo.host_context as host_ctx_mod
 import rodeo.plugins as plugins_mod
 import rodeo.profiles as profiles_mod
 import rodeo.providers.registry as providers_mod
-from rodeo.config import ConfigError
+from rodeo.config import ConfigError, validate_config
+from rodeo.host_context import (
+    apply_host_context,
+    is_known_target,
+    register_host_context,
+)
 from rodeo.profiles import base as profiles_base
 from rodeo.profiles import get_profile, list_profile_types, register_profile
 from rodeo.profiles.base import RodeoProfile, register_stream_phase
@@ -20,6 +26,7 @@ def isolated_registries(monkeypatch):
     monkeypatch.setattr(profiles_mod, "_REGISTRY", dict(profiles_mod._REGISTRY))
     monkeypatch.setattr(providers_mod, "_FACTORIES", dict(providers_mod._FACTORIES))
     monkeypatch.setattr(profiles_base, "_STREAM_PHASES", dict(profiles_base._STREAM_PHASES))
+    monkeypatch.setattr(host_ctx_mod, "_TARGETS", dict(host_ctx_mod._TARGETS))
     monkeypatch.setattr(plugins_mod, "_loaded", False)
 
 
@@ -119,6 +126,43 @@ def test_register_provider_rejects_duplicates_unless_replace():
         register_provider("x", lambda: 2)
     register_provider("x", lambda: 2, replace=True)
     assert get_provider("x") == 2
+
+
+# ---------- host contexts (deployment_target) ----------
+
+def test_register_host_context_applies_overlay():
+    def overlay(cfg, facts):
+        cfg.setdefault("libvirt", {})["disk_cache"] = "writeback"
+        return ["libvirt.disk_cache: → writeback (my-cloud)"]
+
+    register_host_context("my-cloud", overlay)
+    assert is_known_target("my-cloud")
+    out, notes = apply_host_context({"deployment_target": "my-cloud"})
+    assert out["libvirt"]["disk_cache"] == "writeback"
+    assert any("my-cloud" in n for n in notes)
+
+
+def test_registered_target_passes_validation():
+    register_host_context("my-cloud", lambda cfg, facts: [])
+    validate_config({"deployment_target": "my-cloud"})
+
+
+def test_unknown_target_fails_validation_listing_known():
+    with pytest.raises(ConfigError, match="Invalid deployment_target 'nope'.*baremetal"):
+        validate_config({"deployment_target": "nope"})
+
+
+def test_register_host_context_rejects_duplicates_unless_replace():
+    with pytest.raises(ValueError, match="already registered"):
+        register_host_context("aws", lambda c, f: [])
+    register_host_context("aws", lambda c, f: ["aws override"], replace=True)
+    _out, notes = apply_host_context({"deployment_target": "aws"})
+    assert "aws override" in notes
+
+
+def test_unregistered_target_shapes_like_baremetal():
+    out, _notes = apply_host_context({"deployment_target": "mystery"})
+    assert out["deployment_target"] == "mystery"
 
 
 # ---------- entry-point discovery ----------

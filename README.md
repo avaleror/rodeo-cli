@@ -100,6 +100,7 @@ Full walkthrough: [Create your own rodeo](docs/custom-rodeos.md).
 | `install-deps` | Install host packages (KVM, libvirt, ansible, kubectl) |
 | `init` | Create `rodeo-plan.yaml` and `~/.rodeo/secrets.yaml` |
 | `plan` | Preview what deploy would change (no changes made) |
+| `export` | Render the lab spec for another deployer — currently lab-in-a-box `lab.json` |
 | `deploy` | Run the phase pipeline. Flags: `--from PHASE`, `--force`, `--reconcile` (default on) / `--no-reconcile`, `--check`, `--no-tui`, `-P key=value` |
 | `status` | VM states, VIP reachability, phase progress |
 | `stop` | Graceful stop in reverse definition order (infra-aware) |

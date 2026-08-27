@@ -269,6 +269,33 @@ rodeo deploy --paramfile big-lab.yaml
 
 ---
 
+## lab_in_a_box — exporting to lab-in-a-box
+
+`rodeo export --format lab-in-a-box` renders the lab as the `lab.json` that
+[lab-in-a-box](https://github.com/SUSE-Technical-Marketing/lab-in-a-box)'s
+`setup_lab.sh` / `destroy_lab.sh` consume (tested against release 1.0.0). The
+plan and definition stay the source of truth; the optional `lab_in_a_box:`
+block holds the knobs that only exist on the lab-in-a-box side:
+
+```yaml
+lab_in_a_box:
+  iso_image: openSUSE-Leap-15.6.qcow2   # base qcow2 in lab-in-a-box's ISO_LOC (required to deploy)
+  config_method: cloud-init             # cloud-init (default) | iso-cloud-init | "" (ignition/combustion)
+  cluster_name: mgmt                    # kcluster name (also its DNS record: <name>.<domain>)
+  cluster_type: k3s                     # k3s (default) | rke2
+  clu_rel: stable                       # install channel — exact version pins don't carry over
+  addons: [rancher]                     # override the derived install_<addon> list
+  sections:                             # verbatim extra/override lab.json sections
+    rancher: {rancher_rel: stable}
+```
+
+Not carried over (warned at export time): PXE-booted Harvester nodes
+(lab-in-a-box has no PXE — use `--skip-unsupported` to export the rest),
+exposed-service host port-forwards, storage/image-dir selection, and exact
+k3s/rke2 version pins.
+
+---
+
 ## What belongs here vs. definition.yaml
 
 | Put it in `rodeo-plan.yaml` | Put it in `definition.yaml` |

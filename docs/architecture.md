@@ -421,9 +421,11 @@ Live KVM regression is still manual (or geekohive) before touching MAC/DHCP/ISO 
 
 | Add… | Where |
 |------|-------|
-| New tech platform | New `RodeoProfile` in `profiles/` + `definition.yaml` in `data/platforms/` + register in `profiles/__init__.py` |
+| New tech platform | New `RodeoProfile` + `definition.yaml`, then `profiles.register_profile()` (in-tree: `profiles/__init__.py`; out-of-tree: a `rodeo.plugins` entry point) |
 | New deployment_target | `config.py` allowed list + `up_cmd.py` auto-detect + `runner.py` vars + `success.py` output + `host_context.py` overlay + `kvm_host` role conditionals |
-| New phase | Add to `profile.phases` + `run_phase()` dispatch |
+| New Python phase | `profiles.base.register_stream_phase()` + a `stream_*` generator on DeployRunner + add to `profile.phases` |
+| New host provider | `providers.registry.register_provider()` with a factory returning a `HostProvider` |
+| Third-party plugin | A package with a `rodeo.plugins` entry point calling the register_* APIs — discovered lazily on the first lookup miss (see `rodeo/plugins.py`) |
 | New CLI command | `commands/*.py` + register in `cli.py` |
 | Host OS support | `install_deps.py` + possibly kvm_host role conditionals |
 | New workshop/demo | Separate repo: `rodeo-plan.yaml` (type + deployment_target) + lab guide + host setup docs |

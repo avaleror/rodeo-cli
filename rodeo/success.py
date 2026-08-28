@@ -167,17 +167,30 @@ def render_success(cfg: dict) -> None:
         )
 
     lines.append("")
-    if profile is not None:
-        lines.extend(profile.success_extra_sections(cfg))
+    # Narrative: prefer the story machinery — the lab's story/success.md, else
+    # the profile's bundled success.md, translated to the plan's story.language.
+    # Any story problem degrades to the Python hooks: the payoff screen renders.
+    story_text = None
+    try:
+        from .story import render_success_story
 
-    lines.append("[bold]First things to try[/bold]")
-    lines.append("  rodeo status                 # health + phase progress")
-    if profile is not None:
-        lines.extend(profile.success_next_steps(cfg))
+        story_text = render_success_story(cfg)
+    except Exception:
+        story_text = None
+
+    if story_text is not None:
+        lines.extend(story_text.rstrip("\n").splitlines())
     else:
-        from .profiles.base import default_success_next_steps
+        if profile is not None:
+            lines.extend(profile.success_extra_sections(cfg))
+        lines.append("[bold]First things to try[/bold]")
+        lines.append("  rodeo status                 # health + phase progress")
+        if profile is not None:
+            lines.extend(profile.success_next_steps(cfg))
+        else:
+            from .profiles.base import default_success_next_steps
 
-        lines.extend(default_success_next_steps(cfg))
+            lines.extend(default_success_next_steps(cfg))
 
     lines.append("")
     lines.append("[dim]Stop for later:  rodeo stop --all --yes   ·   Tear down:  rodeo clean --yes[/dim]")

@@ -142,6 +142,58 @@ def test_missing_rmstory_binary_gives_install_hint(tmp_path, monkeypatch):
         render_story(_lab(tmp_path), language="es")
 
 
+# ---------- success screen (A2) ----------
+
+def test_success_story_bundled_rancher(tmp_path):
+    (tmp_path / "rodeo-plan.yaml").write_text("type: rancher\nname: demo\n")
+    cfg = load_config(tmp_path / "rodeo-plan.yaml", config_dir=tmp_path)
+    text = story_mod.render_success_story(cfg)
+    assert "First things to try" in text
+    assert "rodeo ssh rancher" in text
+    assert "install an app from Charts" in text
+    assert "<span" not in text  # stripped for terminal output
+
+
+def test_success_story_bundled_suse_edge_renders_edge_table(tmp_path):
+    (tmp_path / "rodeo-plan.yaml").write_text("type: suse-edge\nname: edge\n")
+    cfg = load_config(tmp_path / "rodeo-plan.yaml", config_dir=tmp_path)
+    text = story_mod.render_success_story(cfg)
+    assert "Edge node reference" in text
+    assert "rodeo ssh eib" in text
+    assert "alien-geeko" in text
+    assert "edge1" in text
+
+
+def test_success_story_lab_override_wins(tmp_path):
+    cfg = _lab(tmp_path)
+    (tmp_path / "story" / "success.md").write_text(
+        '<span lang="en" id="s.custom">Custom payoff at <span no>{{ rancher_url }}</span></span>\n'
+    )
+    text = story_mod.render_success_story(cfg)
+    assert "Custom payoff at https://192.168.122.9:30002" in text
+
+
+def test_success_story_none_for_unknown_type(tmp_path):
+    (tmp_path / "rodeo-plan.yaml").write_text("name: x\n")
+    cfg = {"type": "", "vms": {}, "network": {}}
+    assert story_mod.render_success_story(cfg) is None
+
+
+def test_success_story_translates_when_language_set(tmp_path, fake_rmstory):
+    cfg = _lab(tmp_path, "story:\n  language: es\n")
+    text = story_mod.render_success_story(cfg)
+    assert "[es]" in text  # fake translator prefixes content
+    (cmd,) = [c for c in fake_rmstory.calls if c[1] == "translate"]
+    assert cmd[cmd.index("--to") + 1] == "es"
+
+
+def test_success_story_degrades_to_english_without_rmstory(tmp_path, monkeypatch):
+    monkeypatch.setattr(story_mod.shutil, "which", lambda name: None)
+    cfg = _lab(tmp_path, "story:\n  language: es\n")
+    text = story_mod.render_success_story(cfg)
+    assert "First things to try" in text  # English source, no exception
+
+
 def test_bundled_rancher_example_story_renders(tmp_path):
     from rodeo.labseed import seed_lab
 

@@ -304,6 +304,11 @@ Rendering in the source language with no variant needs nothing installed;
 translation and variant assembly use the `rmstory` system package
 (`sudo rodeo install-deps --story` — distro packages, never PyPI).
 
+The post-deploy success screen uses the same machinery: each profile ships a
+tagged `success.md`, a lab can override it with `story/success.md`, and
+`story.language` localizes it. Translation problems always degrade to the
+English source — the payoff screen never fails.
+
 ---
 
 ## lab_in_a_box — exporting to lab-in-a-box

@@ -272,6 +272,40 @@ rodeo deploy --paramfile big-lab.yaml
 
 ---
 
+## story — workshop narrative, languages, and variants
+
+`rodeo story render` produces the participant hand-out for this lab from
+rmstory-tagged markdown in the lab's `story/` directory:
+
+```
+<lab>/story/*.md       tagged markdown sources (authored in English)
+<lab>/story/stories/   story-variant indexes, one <id>.yaml per variant
+<lab>/story/strings/   translation store (rmstory filesystem backend)
+```
+
+The optional `story:` block sets the defaults (CLI flags override):
+
+```yaml
+story:
+  language: es          # target language (default en = source, no translation)
+  id: villain-arc       # story variant to assemble (default: all spans)
+  engine: gemini        # rmstory engine to machine-fill missing translations
+  engine_env:           # engine credentials — ?? secrets are resolved
+    GEMINI_API_KEY: "??gemini_api_key"
+```
+
+Deployment facts are substituted into the rendered text as Jinja expressions —
+write them inside invariant spans so translation never touches them:
+`<span no>{{ rancher_url }}</span>`. Available facts: `name`, `type`,
+`language`, `vip`, `harvester_url`, `rancher_ip`, `rancher_url`,
+`rancher_nodeport`, `dns_domain`, `gateway`, `vms`, `vm_names`, `credentials`.
+
+Rendering in the source language with no variant needs nothing installed;
+translation and variant assembly use the `rmstory` system package
+(`sudo rodeo install-deps --story` — distro packages, never PyPI).
+
+---
+
 ## lab_in_a_box — exporting to lab-in-a-box
 
 `rodeo export --format lab-in-a-box` renders the lab as the `lab.json` that

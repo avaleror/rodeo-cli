@@ -22,6 +22,7 @@ from .commands.profiles_cmd import profiles_cmd
 from .commands.restart import restart_cmd
 from .commands.ssh_cmd import ssh_cmd
 from .commands.status import status_cmd
+from .commands.story_cmd import story_cmd
 from .commands.stop_cmd import stop_cmd
 from .commands.start_cmd import start_cmd
 from .commands.start_if_needed_cmd import start_if_needed_cmd
@@ -84,6 +85,7 @@ cli.add_command(generate_cmd,     name="generate")
 cli.add_command(init_cmd,         name="init")
 cli.add_command(plan_cmd,         name="plan")
 cli.add_command(export_cmd,       name="export")
+cli.add_command(story_cmd,        name="story")
 cli.add_command(deploy_cmd,       name="deploy")
 cli.add_command(clean_cmd,        name="clean")
 cli.add_command(stop_cmd,              name="stop")

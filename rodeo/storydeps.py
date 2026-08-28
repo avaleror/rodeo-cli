@@ -34,7 +34,7 @@ MULTILANG_RELEASE = "1.1.2"
 
 _GITHUB_OWNER = "rmahique"
 
-_INSTALL_HINT = (
+INSTALL_HINT = (
     "story features need the rmstory + multilang system packages — "
     "install them with: sudo rodeo install-deps --story"
 )
@@ -55,7 +55,7 @@ def require_rmstory():
     """Import and return the rmstory module, or fail with the install hint."""
     if not rmstory_available():
         raise ConfigError(
-            f"rmstory is not installed — {_INSTALL_HINT}\n"
+            f"rmstory is not installed — {INSTALL_HINT}\n"
             "If rodeo runs in a venv, recreate it with --system-site-packages "
             "so the system package is visible (same as libvirt-python)."
         )

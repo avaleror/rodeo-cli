@@ -75,6 +75,17 @@ def load_config_dir(path: str | Path | None = None) -> dict[str, Any]:
                 scripts.append(str(f))
         info["custom_scripts"] = scripts
 
+    # story/ — rmstory-tagged workshop narrative (see rodeo/story.py):
+    #   story/*.md      tagged markdown sources
+    #   story/stories/  rmstory story-variant indexes (<id>.yaml)
+    #   story/strings/  rmstory translation store (filesystem backend)
+    story = root / "story"
+    if story.is_dir():
+        info["story"] = {
+            "root": str(story),
+            "sources": sorted(str(f) for f in story.glob("*.md")),
+        }
+
     # Future extensions (rpms, network per-host, os-files, pxe-extras, etc.)
     # can be added here without breaking callers.
 

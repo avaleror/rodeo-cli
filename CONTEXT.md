@@ -84,7 +84,8 @@ rodeo/
 ├── secretgen.py            Shared password/token generation + ~/.rodeo/secrets.yaml
 ├── labseed.py              Seed a lab from a profile; resolve/scaffold custom profiles
 ├── privilege.py            sudo self-escalation (ensure_root)
-├── success.py              Success screen: URLs/credentials here, narrative via RodeoProfile.success_* hooks
+├── success.py              Success screen: URLs/credentials here; narrative from story success.md (per-profile,
+│                           lab-overridable, story.language-localized) with RodeoProfile.success_* hooks as fallback
 ├── host_context.py         deployment_target overlay registry (register_host_context)
 ├── profiles/
 │   ├── base.py             RodeoProfile ABC: phases, vm_names, guarded_phases

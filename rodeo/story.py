@@ -71,9 +71,23 @@ def story_facts(cfg: dict) -> dict:
             if isinstance(spec, dict)
         }
     story_cfg = cfg.get("story", {}) if isinstance(cfg.get("story"), dict) else {}
+    plan_vms = cfg.get("vms", {})
+    harvester_nodes = [
+        n for n in plan_vms if n not in ("rancher", "eib") and not n.startswith("edge")
+    ]
+    has_rancher = "rancher" in plan_vms or any(
+        isinstance(c, dict) and c.get("name") == "rancher"
+        for c in cfg.get("components", [])
+    )
+    edge_nodes = [
+        {"name": n, "ip": spec.get("ip", "—"), "mac": spec.get("mac", "—")}
+        for n, spec in sorted(plan_vms.items())
+        if n.startswith("edge") and isinstance(spec, dict)
+    ]
     return {
         "name": cfg.get("name", ""),
         "type": cfg.get("type", ""),
+        "deployment_target": cfg.get("deployment_target", "baremetal"),
         "language": story_cfg.get("language", SOURCE_LANGUAGE),
         "vip": vip,
         "harvester_url": f"https://{vip}" if vip else "",
@@ -85,6 +99,12 @@ def story_facts(cfg: dict) -> dict:
         "vms": vms,
         "vm_names": list(vms),
         "credentials": cfg.get("credentials", {}),
+        # Topology flags for {% if %} blocks in story templates.
+        "has_harvester": bool(harvester_nodes),
+        "has_rancher": has_rancher,
+        "harvester_nodes": harvester_nodes,
+        "ssh_target": harvester_nodes[0] if harvester_nodes else next(iter(plan_vms), "rancher"),
+        "edge_nodes": edge_nodes,
     }
 
 
@@ -149,19 +169,7 @@ def render_story(
 
         files = [str(p) for p in sources]
         if language != SOURCE_LANGUAGE:
-            out_dir = tmp_path / "translated"
-            out_dir.mkdir()
-            args = ["translate", *files, "--to", language, "--out", str(out_dir)]
-            if engine:
-                args += ["--engine", engine]
-            _run_rmstory(args, env)
-            translated = sorted(out_dir.glob("*.md"))
-            if not translated:
-                raise ConfigError(
-                    f"rmstory translate produced no files in {out_dir} — "
-                    "check the story sources and translation store"
-                )
-            files = [str(p) for p in translated]
+            files = _translate_files(files, language, engine, env, tmp_path)
 
         if story_id:
             out_file = tmp_path / "assembled.md"
@@ -171,6 +179,83 @@ def render_story(
             text = "\n".join(Path(f).read_text() for f in files)
 
     return _render_facts(text, cfg)
+
+
+def _translate_files(
+    files: list[str], language: str, engine: str, env: dict[str, str], tmp_path: Path
+) -> list[str]:
+    """Translate tagged sources via the rmstory CLI; return the translated copies."""
+    out_dir = tmp_path / "translated"
+    out_dir.mkdir()
+    args = ["translate", *files, "--to", language, "--out", str(out_dir)]
+    if engine:
+        args += ["--engine", engine]
+    _run_rmstory(args, env)
+    translated = sorted(out_dir.glob("*.md"))
+    if not translated:
+        raise ConfigError(
+            f"rmstory translate produced no files in {out_dir} — "
+            "check the story sources and translation store"
+        )
+    return [str(p) for p in translated]
+
+
+def _success_source(cfg: dict) -> Path | None:
+    """The success-screen story source: lab override, else the bundled profile one."""
+    root = story_dir(cfg)
+    if root is not None and (root / "success.md").is_file():
+        return root / "success.md"
+    profile_type = str(cfg.get("type") or "").strip()
+    if not profile_type:
+        return None
+    bundled = Path(__file__).parent / "data" / "platforms" / profile_type / "success.md"
+    return bundled if bundled.is_file() else None
+
+
+def render_success_story(cfg: dict) -> str | None:
+    """The narrative part of the success screen, translated when configured.
+
+    Returns None when neither the lab nor the profile ships a success.md
+    (callers fall back to the RodeoProfile.success_* hooks). Never raises for
+    translation problems — the payoff screen must render, so a failed or
+    unavailable translation degrades to the English source.
+    """
+    source = _success_source(cfg)
+    if source is None:
+        return None
+
+    story_cfg = cfg.get("story", {}) if isinstance(cfg.get("story"), dict) else {}
+    language = (story_cfg.get("language") or SOURCE_LANGUAGE).strip()
+    text = source.read_text()
+
+    if language != SOURCE_LANGUAGE:
+        root = story_dir(cfg)
+        try:
+            if root is None:
+                raise ConfigError(
+                    "translation needs a lab story/ dir for the strings store"
+                )
+            env = _rmstory_env(root, story_cfg.get("engine_env"))
+            with tempfile.TemporaryDirectory(prefix="rodeo-success-") as tmp:
+                tmp_path = Path(tmp)
+                # Translate a copy so a bundled (read-only) source never gets touched.
+                work = tmp_path / source.name
+                work.write_text(text)
+                (translated,) = _translate_files(
+                    [str(work)], language, story_cfg.get("engine") or "", env, tmp_path
+                )
+                text = Path(translated).read_text()
+        except ConfigError:
+            pass  # degrade to the English source
+
+    return _strip_spans(_render_facts(text, cfg))
+
+
+def _strip_spans(text: str) -> str:
+    """Drop rmstory span markup for terminal output (Rich prints tags literally)."""
+    import re
+
+    return re.sub(r"</?span[^>]*>", "", text)
 
 
 def _render_facts(text: str, cfg: dict) -> str:

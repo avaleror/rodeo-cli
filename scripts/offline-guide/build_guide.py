@@ -12,7 +12,7 @@ import json
 import re
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[2]
+DEFAULT_REPO = Path(__file__).resolve().parents[2]
 
 CHAPTER_DIRS = [
     "01-the-arrival-welcome",
@@ -158,14 +158,14 @@ def demote_headings(text):
     return "".join(out)
 
 
-def collect_raw_terms():
+def collect_raw_terms(repo):
     """Scan every span in every chapter's English source and record its
     literal inner text, keyed by id. Spans marked lang="nolang" no (e.g.
     product/technology names that are never translated) have no
     content.json entry in ANY locale, so this is the fallback text used
     when a locale string is missing for one of them."""
     for d in CHAPTER_DIRS:
-        raw = (REPO / d / "assignment.md").read_text()
+        raw = (repo / d / "assignment.md").read_text()
         stack = []  # list of (id_or_None, start_of_inner)
         for m in TAG_RE.finditer(raw):
             tag = m.group(1)
@@ -182,22 +182,22 @@ def collect_raw_terms():
                 stack.append((sid, m.end()))
 
 
-def build(locale, out_path):
-    strings_dir = REPO / "rmstory" / "strings" / locale
+def build(locale, out_path, repo=DEFAULT_REPO):
+    strings_dir = repo / "rmstory" / "strings" / locale
     if not strings_dir.is_dir():
         raise SystemExit(f"No strings found for locale {locale!r} at {strings_dir}")
 
-    collect_raw_terms()
+    collect_raw_terms(repo)
     chunks = []
     for d in CHAPTER_DIRS:
-        raw = (REPO / d / "assignment.md").read_text()
+        raw = (repo / d / "assignment.md").read_text()
         _fm, body = split_frontmatter(raw)
         rendered = render_body(strings_dir, body)
         rendered = clean_ui_chrome(rendered)
         rendered = demote_headings(rendered)
         # rewrite relative asset paths to absolute file:// paths so the
         # PDF renderer can locate images regardless of the md file location
-        rendered = rendered.replace("../assets/", f"file://{REPO}/assets/")
+        rendered = rendered.replace("../assets/", f"file://{repo}/assets/")
         chunks.append(f"\n{rendered}\n")
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -212,10 +212,14 @@ def build(locale, out_path):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--locale", default="pt-BR", help="locale under rmstory/strings/ (default: pt-BR)")
+    ap.add_argument("--repo", type=Path, default=DEFAULT_REPO,
+                     help="path to the rodeo content repo (chapter dirs + rmstory/); "
+                          f"default: {DEFAULT_REPO}")
     ap.add_argument("--out", type=Path, default=None, help="output .md path")
     args = ap.parse_args()
-    out_path = args.out or REPO / "offline-guides" / ".build" / f"guide-{args.locale}.md"
-    build(args.locale, out_path)
+    repo = args.repo.resolve()
+    out_path = args.out or repo / "offline-guides" / ".build" / f"guide-{args.locale}.md"
+    build(args.locale, out_path, repo)
 
 
 if __name__ == "__main__":

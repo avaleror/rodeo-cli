@@ -2,11 +2,58 @@
 from __future__ import annotations
 
 from rodeo import success
+from rodeo.profiles import _REGISTRY
+from rodeo.profiles.base import RodeoProfile
 
 
 def _render(cfg, capsys):
     success.render_success(cfg)
     return capsys.readouterr().out
+
+
+def test_suse_edge_sections_come_from_profile(capsys):
+    cfg = {
+        "type": "suse-edge",
+        "network": {"rancher_ip": "192.168.122.9"},
+        "vms": {
+            "rancher": {"ip": "192.168.122.9"},
+            "eib": {"ip": "192.168.122.20"},
+            "edge1": {"ip": "192.168.122.31", "mac": "02:00:00:0E:62:A1"},
+        },
+    }
+    out = _render(cfg, capsys)
+    assert "Edge node reference" in out
+    assert "rodeo ssh eib" in out
+    assert "alien-geeko" in out
+
+
+def test_custom_profile_owns_success_narrative(capsys, monkeypatch):
+    class _MyLab(RodeoProfile):
+        name = "my-lab"
+        phases = []
+        vm_names = []
+        ansible_phases = frozenset()
+
+        def default_cfg(self, config_dir=None):
+            return {}
+
+        def success_extra_sections(self, cfg):
+            return ["[bold]Custom section[/bold]"]
+
+        def success_next_steps(self, cfg):
+            return ["  try the custom thing"]
+
+    monkeypatch.setitem(_REGISTRY, "my-lab", _MyLab())
+    cfg = {"type": "my-lab", "network": {}, "vms": {"vm1": {"ip": "10.0.0.1"}}}
+    out = _render(cfg, capsys)
+    assert "Custom section" in out
+    assert "try the custom thing" in out
+
+
+def test_unknown_type_falls_back_to_generic_next_steps(capsys):
+    cfg = {"type": "no-such-lab", "network": {}, "vms": {"rancher": {"ip": "10.0.0.9"}}}
+    out = _render(cfg, capsys)
+    assert "ssh rancher" in out
 
 
 def test_rancher_only_hides_harvester(capsys):

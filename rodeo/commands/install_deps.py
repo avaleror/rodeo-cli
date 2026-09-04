@@ -172,6 +172,23 @@ def _install_ansible_collections() -> None:
         )
 
 
+def _install_story_deps(distro: str) -> None:
+    """rmstory + multilang from their GitHub release distro packages (never PyPI)."""
+    from ..storydeps import install_story_deps, rmstory_available
+
+    console.print("[bold]  Installing story dependencies (rmstory + multilang)...[/bold]")
+    names = install_story_deps(distro)
+    for name in names:
+        console.print(f"[green]  ✓  {name}[/green]")
+    if rmstory_available():
+        console.print("[green]  rmstory importable.[/green]")
+    else:
+        console.print(
+            "[yellow]  ⚠  rmstory installed but not importable in this Python. "
+            "If using a venv, recreate it with --system-site-packages.[/yellow]"
+        )
+
+
 def _ensure_invoking_user_in_libvirt_group() -> None:
     """Add the real (non-root) user to the ``libvirt`` group.
 
@@ -217,9 +234,12 @@ def _ensure_invoking_user_in_libvirt_group() -> None:
 
 @click.command("install-deps")
 @click.option("--skip-ansible", is_flag=True, help="Skip ansible-core pip install.")
+@click.option("--story", is_flag=True, default=False,
+              help="Also install the story/i18n dependencies (rmstory + multilang) "
+                   "as distro packages from their GitHub releases — never from PyPI.")
 @click.option("--link", is_flag=True, help="Create/update /usr/local/bin/rodeo symlink to this invocation (so plain 'rodeo' and 'sudo rodeo' work without exports or full paths).")
 @click.option("--force-link", is_flag=True, help="Force overwrite an existing /usr/local/bin/rodeo symlink.")
-def install_deps_cmd(skip_ansible: bool, link: bool, force_link: bool) -> None:
+def install_deps_cmd(skip_ansible: bool, story: bool, link: bool, force_link: bool) -> None:
     """Install system packages and tools required to run rodeo deploy."""
     if os.geteuid() != 0:
         console.print("[red]Must run as root: sudo rodeo install-deps[/red]")
@@ -241,6 +261,9 @@ def install_deps_cmd(skip_ansible: bool, link: bool, force_link: bool) -> None:
 
         if not skip_ansible:
             _install_ansible(distro)
+
+        if story:
+            _install_story_deps(distro)
     except subprocess.CalledProcessError as exc:
         cmd = " ".join(str(c) for c in exc.cmd[:4])
         console.print(

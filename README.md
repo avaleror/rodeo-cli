@@ -97,9 +97,11 @@ Full walkthrough: [Create your own rodeo](docs/custom-rodeos.md).
 | `doctor` | Host readiness check and profile recommendation by available RAM |
 | `new` | Scaffold a custom lab from a bundled base: `rodeo new mylab --from harvester` |
 | `profiles` | List deployable profiles (bundled + your custom ones in `~/.rodeo/profiles/`) |
-| `install-deps` | Install host packages (KVM, libvirt, ansible, kubectl) |
+| `install-deps` | Install host packages (KVM, libvirt, ansible, kubectl). `--story` adds rmstory + multilang from their GitHub release distro packages |
 | `init` | Create `rodeo-plan.yaml` and `~/.rodeo/secrets.yaml` |
 | `plan` | Preview what deploy would change (no changes made) |
+| `export` | Render the lab spec for another deployer — currently lab-in-a-box `lab.json` |
+| `story` | Render the workshop hand-out (`story render`) — languages and story variants via rmstory, topology facts filled in |
 | `deploy` | Run the phase pipeline. Flags: `--from PHASE`, `--force`, `--reconcile` (default on) / `--no-reconcile`, `--check`, `--no-tui`, `-P key=value` |
 | `status` | VM states, VIP reachability, phase progress |
 | `stop` | Graceful stop in reverse definition order (infra-aware) |

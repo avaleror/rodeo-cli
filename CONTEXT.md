@@ -69,15 +69,24 @@ rodeo/
 ├── engine/
 │   ├── runner.py           DeployRunner — single pipeline, yields typed events
 │   ├── cluster.py          ClusterPhase — VM start order, VIP/kubeconfig/nodes waits
-│   ├── rancher.py          RancherPhase — K3s, cert-manager, Rancher, NodePort, eject ISOs
+│   ├── rancher/            RancherPhase package — one concern per module, composed as mixins:
+│   │                       remote (SSH/HTTP), cluster_setup (K3s/Helm/cert-manager/Rancher),
+│   │                       harvester (import/CA fixes/password/eject), elemental, extensions,
+│   │                       hauler (airgap), content (Gitea + demo-app seeding), summary
 │   └── libvirt.py          LibvirtDriver — direct libvirt-python VM/network ops
 ├── inventory.py            build_inventory(): renders definition.yaml → vm_nodes (MAC/UUID gen), pxe, firewall, host_prep
+├── labinabox.py            build_lab_json(): inventory → lab-in-a-box lab.json (rodeo export)
+├── plugins.py              Lazy `rodeo.plugins` entry-point discovery for register_* APIs
+├── storydeps.py            rmstory + multilang as distro packages (install-deps --story; never PyPI)
+├── story.py                rodeo story render: translate + assemble via rmstory CLI, facts via Jinja
 ├── config_dir.py           --config-dir (EIB-style) loader
 ├── preflight.py            Host detect + run_preflight + recommend_profile (doctor/up/check)
 ├── secretgen.py            Shared password/token generation + ~/.rodeo/secrets.yaml
 ├── labseed.py              Seed a lab from a profile; resolve/scaffold custom profiles
 ├── privilege.py            sudo self-escalation (ensure_root)
-├── success.py              Topology-aware success screen
+├── success.py              Success screen: URLs/credentials here; narrative from story success.md (per-profile,
+│                           lab-overridable, story.language-localized) with RodeoProfile.success_* hooks as fallback
+├── host_context.py         deployment_target overlay registry (register_host_context)
 ├── profiles/
 │   ├── base.py             RodeoProfile ABC: phases, vm_names, guarded_phases
 │   ├── suse_virt.py        suse-virt profile (Harvester + Rancher; conditional rancher phase)

@@ -36,7 +36,7 @@ def _virsh(*args: str, uri: str | None = None) -> None:
 @click.option("--force-network", is_flag=True, help="Force destroy the libvirt 'default' network even if other non-rodeo VMs exist.")
 @click.option("--secrets", is_flag=True, help="Also remove ~/.rodeo/secrets.yaml (global passwords for the plan). Use with --all or --yes for host reset.")
 @click.option("--hard", is_flag=True, help="Hard destroy (skip graceful stop first). Default is to run stop logic for VMs if running, for clean stopped state before destroy/undefine.")
-@click.option("--refresh", is_flag=True, help="After cleaning, update rodeo-cli to the latest upstream code (same robust path as 'rodeo self-update'). Off by default so clean never changes the CLI version out from under you — important for pinned/Instruqt hosts.")
+@click.option("--refresh", is_flag=True, default=False, help="After cleaning, update rodeo-cli to the latest upstream code (same robust path as 'rodeo self-update'). Off by default so clean never changes the CLI version out from under you — important for pinned/Instruqt hosts.")
 def clean_cmd(
     config_path: str, config_dir: str | None, params: tuple[str, ...], paramfile: str | None, yes: bool, all: bool, force_network: bool, secrets: bool, hard: bool, refresh: bool
 ) -> None:

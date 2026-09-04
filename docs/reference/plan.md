@@ -113,7 +113,10 @@ Must be unique per host. Changing `name` after deploy creates orphaned resources
 | `instruqt` | `finalise` is skipped automatically. Run it after the Instruqt snapshot: `rodeo deploy --from finalise --finalise` |
 | `aws` | Laptop control plane: require a `provider:` block, provision/reuse one EC2 KVM host, wait for SSH, remote-run `rodeo up` on that host. Tear down with `rodeo destroy --cloud --yes`. BYO: create the instance yourself, keep `deployment_target: aws` (or set `storage.backend: nvme`) and deploy on the box. |
 
-**Required.** Defaults to `baremetal` when omitted.
+**Required.** Defaults to `baremetal` when omitted. Plugins can add targets via
+`host_context.register_host_context()` (see the architecture doc's extension
+points) — a registered target is accepted here, by `--target`, and by the
+`rodeo up` prompt.
 
 On **instruqt**, `rodeo up` / lab seeding also applies host-aware `resources` presets so
 Σ guest vCPU stays near ~70% of the builder (Harvester typically 6–8 vCPU / 20 GiB).
@@ -266,6 +269,72 @@ rodeo deploy --paramfile big-lab.yaml
 ```
 
 **Precedence (lowest to highest):** profile defaults → `rodeo-plan.yaml` → `--paramfile` → `-P`
+
+---
+
+## story — workshop narrative, languages, and variants
+
+`rodeo story render` produces the participant hand-out for this lab from
+rmstory-tagged markdown in the lab's `story/` directory:
+
+```
+<lab>/story/*.md       tagged markdown sources (authored in English)
+<lab>/story/stories/   story-variant indexes, one <id>.yaml per variant
+<lab>/story/strings/   translation store (rmstory filesystem backend)
+```
+
+The optional `story:` block sets the defaults (CLI flags override):
+
+```yaml
+story:
+  language: es          # target language (default en = source, no translation)
+  id: villain-arc       # story variant to assemble (default: all spans)
+  engine: gemini        # rmstory engine to machine-fill missing translations
+  engine_env:           # engine credentials — ?? secrets are resolved
+    GEMINI_API_KEY: "??gemini_api_key"
+```
+
+Deployment facts are substituted into the rendered text as Jinja expressions —
+write them inside invariant spans so translation never touches them:
+`<span no>{{ rancher_url }}</span>`. Available facts: `name`, `type`,
+`language`, `vip`, `harvester_url`, `rancher_ip`, `rancher_url`,
+`rancher_nodeport`, `dns_domain`, `gateway`, `vms`, `vm_names`, `credentials`.
+
+Rendering in the source language with no variant needs nothing installed;
+translation and variant assembly use the `rmstory` system package
+(`sudo rodeo install-deps --story` — distro packages, never PyPI).
+
+The post-deploy success screen uses the same machinery: each profile ships a
+tagged `success.md`, a lab can override it with `story/success.md`, and
+`story.language` localizes it. Translation problems always degrade to the
+English source — the payoff screen never fails.
+
+---
+
+## lab_in_a_box — exporting to lab-in-a-box
+
+`rodeo export --format lab-in-a-box` renders the lab as the `lab.json` that
+[lab-in-a-box](https://github.com/SUSE-Technical-Marketing/lab-in-a-box)'s
+`setup_lab.sh` / `destroy_lab.sh` consume (tested against release 1.0.0). The
+plan and definition stay the source of truth; the optional `lab_in_a_box:`
+block holds the knobs that only exist on the lab-in-a-box side:
+
+```yaml
+lab_in_a_box:
+  iso_image: openSUSE-Leap-15.6.qcow2   # base qcow2 in lab-in-a-box's ISO_LOC (required to deploy)
+  config_method: cloud-init             # cloud-init (default) | iso-cloud-init | "" (ignition/combustion)
+  cluster_name: mgmt                    # kcluster name (also its DNS record: <name>.<domain>)
+  cluster_type: k3s                     # k3s (default) | rke2
+  clu_rel: stable                       # install channel — exact version pins don't carry over
+  addons: [rancher]                     # override the derived install_<addon> list
+  sections:                             # verbatim extra/override lab.json sections
+    rancher: {rancher_rel: stable}
+```
+
+Not carried over (warned at export time): PXE-booted Harvester nodes
+(lab-in-a-box has no PXE — use `--skip-unsupported` to export the rest),
+exposed-service host port-forwards, storage/image-dir selection, and exact
+k3s/rke2 version pins.
 
 ---
 

@@ -1,0 +1,165 @@
+@page {
+  size: A4;
+  margin: 2.6cm 1.8cm 2.1cm 1.8cm;
+  @top-left {
+    content: "__HEADER_TITLE__";
+    font-family: "DejaVu Sans", Arial, sans-serif;
+    font-size: 8pt; color: #8a8a8a;
+  }
+  @top-right {
+    content: string(chaptertitle);
+    font-family: "DejaVu Sans", Arial, sans-serif;
+    font-size: 8pt; color: #8a8a8a;
+  }
+  @bottom-center {
+    content: "Página " counter(page) " de " counter(pages);
+    font-family: "DejaVu Sans", Arial, sans-serif;
+    font-size: 8pt; color: #8a8a8a;
+  }
+}
+@page :first {
+  @top-left { content: none; }
+  @top-right { content: none; }
+  @bottom-center { content: none; }
+}
+
+html { orphans: 3; widows: 3; }
+
+body {
+  font-family: "DejaVu Sans", Arial, sans-serif;
+  font-size: 10.5pt;
+  line-height: 1.45;
+  color: #222;
+}
+
+/* Cover page */
+header#title-block-header {
+  margin-top: 30%;
+  text-align: center;
+  break-after: page;
+}
+header#title-block-header h1.title { font-size: 30pt; margin-bottom: 0.3em; }
+header#title-block-header p.subtitle {
+  font-size: 13pt; color: #555; font-weight: normal;
+  max-width: 80%; margin: 0 auto 1.2em;
+}
+header#title-block-header p.date { font-size: 10pt; color: #888; }
+
+h1, h2, h3 {
+  font-family: "DejaVu Sans", Arial, sans-serif;
+  color: #1a1a1a;
+  break-after: avoid;
+  hyphens: none;
+  overflow-wrap: break-word;
+}
+
+h1.chapter-title {
+  font-size: 22pt;
+  line-height: 1.25;
+  border-bottom: 3px solid #30ba78;
+  padding-bottom: 8px;
+  margin-top: 0;
+  break-before: page;
+  string-set: chaptertitle content();
+}
+
+h2 {
+  font-size: 14pt;
+  border-bottom: 1px solid #ccc;
+  padding-bottom: 3px;
+  margin-top: 1.8em;
+}
+
+h3 { font-size: 12pt; margin-top: 1.4em; }
+
+#TOC {
+  break-before: page;
+  break-after: page;
+}
+#TOC h1, #TOC h2 { border: none; font-size: 16pt; break-before: avoid; }
+#TOC ul { list-style: none; padding-left: 1em; }
+#TOC a { color: #1a1a1a; text-decoration: none; }
+#TOC > ul > li > a { font-weight: bold; }
+
+img { max-width: 90%; display: block; margin: 10px auto; }
+img.logos { max-width: 42%; }
+
+pre, code {
+  font-family: "DejaVu Sans Mono", monospace;
+  font-size: 9pt;
+}
+pre {
+  background: #f4f4f4;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  break-inside: avoid;
+}
+
+blockquote {
+  border-left: 4px solid #d4af37;
+  margin: 0.8em 0;
+  padding: 4px 14px;
+  background: #fbf8ef;
+  break-inside: avoid;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 10px 0;
+  font-size: 9.5pt;
+  break-inside: avoid;
+}
+th, td { border: 1px solid #bbb; padding: 5px 8px; text-align: left; }
+th { background: #eef7f1; }
+
+.story {
+  border-left: 5px solid #d4af37;
+  background: #f6f9f7;
+  padding: 10px 16px;
+  margin: 12px 0;
+  border-radius: 0 10px 10px 0;
+  break-inside: avoid;
+}
+.missionbox {
+  border: 2px dashed #30ba78;
+  border-radius: 10px;
+  padding: 10px 16px;
+  margin: 12px 0;
+  break-inside: avoid;
+}
+.cred { break-inside: avoid; }
+.cred pre { display: inline-block; background: #eee; }
+a { color: #1f7a4d; }
+
+div.note, div.important, div.warning, div.tip, div.caution {
+  border-left: 4px solid #30ba78;
+  background: #f2faf6;
+  border-radius: 0 8px 8px 0;
+  padding: 6px 14px;
+  margin: 10px 0;
+  break-inside: avoid;
+}
+div.important { border-left-color: #d4af37; background: #fbf8ef; }
+div.warning, div.caution { border-left-color: #d4592a; background: #fdf2ee; }
+div.note > .title, div.important > .title, div.warning > .title,
+div.tip > .title, div.caution > .title {
+  font-weight: bold; text-transform: uppercase; font-size: 8.5pt;
+  color: #1f7a4d; margin-bottom: 2px;
+}
+div.important > .title { color: #8a6d1a; }
+div.warning > .title, div.caution > .title { color: #a8431d; }
+div.note > .title > p, div.important > .title > p, div.warning > .title > p,
+div.tip > .title > p, div.caution > .title > p { margin: 0; }
+
+/* keep a heading's immediate box together with it (story/note right after
+   a task heading shouldn't be orphaned across a page break) */
+h1 + div.story, h2 + div.story,
+h1 + div.note, h2 + div.note,
+h1 + div.important, h2 + div.important,
+h1 + .missionbox, h2 + .missionbox {
+  break-before: avoid;
+}

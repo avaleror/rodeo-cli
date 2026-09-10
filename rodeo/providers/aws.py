@@ -30,16 +30,29 @@ _REQUIRED = ("region", "subnet_id", "security_group_ids")
 # Recommended default for performance-first Harvester labs (local NVMe).
 DEFAULT_INSTANCE_TYPE = "i7i.8xlarge"
 
-# Prefer openSUSE Leap 16 (Marketplace) — same family as SLES 16, free, ssh as ec2-user.
-# Pin with provider.ami when you need a fixed image; otherwise resolve newest match.
+# SLES 16 pay-as-you-go, published by SUSE through Amazon (owner 013907871322,
+# UsageOperation RunInstances:000g). Pin with provider.ami when you need a fixed
+# image; otherwise the newest match wins.
 #
-# This must match the AMI's *Name* field, not the Marketplace listing title. The
-# published name is "openSUSE-Leap-16-0-<date>-hvm-ssd-x86_64-<uuid>" — hyphens,
-# no parentheses — so the old "openSUSE Leap 16.0 (x86_64)*" filter matched zero
-# images in every region and provision failed at AMI resolution. The trailing
-# x86_64 anchor keeps the arm64 sibling out of the result set.
-DEFAULT_AMI_NAME_FILTER = "openSUSE-Leap-16-0-*-hvm-ssd-x86_64-*"
-DEFAULT_AMI_OWNERS = ("aws-marketplace",)
+# Why not openSUSE Leap, and why not BYOS — both were tried and both fail:
+#
+#   * Leap 16 is a Marketplace product whose listing does not permit 7th-gen
+#     Intel instance types. Nested virtualisation via CpuOptions needs exactly
+#     those (i7i / m7i), so Leap + i7i.8xlarge — the two former defaults — is
+#     rejected with UnsupportedOperation, in every account and region. Leap's
+#     only nested-virt-capable option is *.metal, at 60-80% more per hour for
+#     less local NVMe.
+#   * The SLES BYOS images allow i7i, but carry no subscription, so zypper has
+#     no repos and install-deps fails. rodeo has no SUSEConnect step to fix
+#     that, so BYOS cannot be a working default.
+#
+# PAYG resolves both: repos work with no registration, i7i is allowed, and the
+# licence surcharge is ~$0.125/hr on i7i.8xlarge (~$1 per 8-hour workshop).
+#
+# The v???????? date anchor is deliberate: a looser "v*" also matches the -ecs-
+# and -sapcal- variants, which are different images.
+DEFAULT_AMI_NAME_FILTER = "suse-sles-16-0-v????????-hvm-ssd-x86_64"
+DEFAULT_AMI_OWNERS = ("013907871322",)
 
 # Instance type prefixes that cannot host full Harvester / Edge nested labs.
 _TOO_SMALL_PREFIXES = (

@@ -458,25 +458,43 @@ def test_fleet_provision_cli(managed_ssh, monkeypatch, tmp_path):
     assert "student-01" in result.output
 
 
-def test_default_ami_filter_matches_published_marketplace_name():
-    """Regression: the default filter was written from the Marketplace listing
-    title ("openSUSE Leap 16.0 (x86_64)*"), which is not the AMI Name field, so it
-    matched zero images in every region and provision failed at AMI resolution.
+def test_default_ami_filter_matches_the_published_sles_payg_name():
+    """Regression, twice over.
 
-    Guards the shape against a real published name, and against the arm64
-    sibling leaking into the same result set.
+    The original filter was written from a Marketplace listing title
+    ("openSUSE Leap 16.0 (x86_64)*"), which is not the AMI Name field, so it
+    matched zero images in every region. The replacement must match a real
+    published Name — and must exclude the neighbouring SLES variants, which are
+    different images that happen to share the prefix. A loose "v*" instead of
+    the v???????? date anchor silently selects the -ecs- build.
     """
     from fnmatch import fnmatch
 
-    from rodeo.providers.aws import DEFAULT_AMI_NAME_FILTER
+    from rodeo.providers.aws import DEFAULT_AMI_NAME_FILTER as pat
 
-    x86 = "openSUSE-Leap-16-0-v20260629-hvm-ssd-x86_64-5535c495-72d4-4355-b169-54ffa874f849"
-    arm = "openSUSE-Leap-16-0-v20260629-hvm-ssd-arm64-a516e959-df54-4035-bb1a-63599b7a6df9"
-    assert fnmatch(x86, DEFAULT_AMI_NAME_FILTER)
-    assert not fnmatch(arm, DEFAULT_AMI_NAME_FILTER)
+    assert fnmatch("suse-sles-16-0-v20260625-hvm-ssd-x86_64", pat)
+    for other in (
+        "suse-sles-16-0-v20260703-ecs-hvm-ssd-x86_64",       # ECS-optimised
+        "suse-sles-16-0-sapcal-v20260701-hvm-ssd-x86_64",    # SAP
+        "suse-sles-16-0-chost-byos-v20260805-hvm-ssd-x86_64",  # BYOS, no repos
+        "suse-sles-16-0-v20260625-hvm-ssd-arm64",            # wrong arch
+        "openSUSE-Leap-16-0-v20260629-hvm-ssd-x86_64-5535c495",  # not SLES
+    ):
+        assert not fnmatch(other, pat), other
 
 
-# --- public-IP reachability preflight -------------------------------------
+def test_default_instance_type_is_nested_virt_capable_and_ami_allows_it():
+    """The two defaults have to be compatible with each other: nested virt via
+    CpuOptions needs a 7th-gen Intel type, and the AMI's publisher must permit
+    it. Leap 16 + i7i.8xlarge shipped as the pair and could never launch —
+    Marketplace forbids i7i — so this pins the invariant rather than the values.
+    """
+    from rodeo.providers.aws import DEFAULT_AMI_NAME_FILTER, DEFAULT_INSTANCE_TYPE
+
+    assert DEFAULT_INSTANCE_TYPE.split(".")[0] in {"i7i", "m7i", "c7i", "r7i"}
+    # Amazon-published SUSE images carry no Marketplace instance-type
+    # restrictions; a Marketplace-only image (openSUSE Leap) does.
+    assert "sles" in DEFAULT_AMI_NAME_FILTER
 
 
 def _ingress_cfg(**over):

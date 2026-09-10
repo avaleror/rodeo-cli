@@ -89,7 +89,8 @@ Run in this order to fail fast on smaller profiles before investing time in bigg
 ### AWS live smoke (`i7i.8xlarge` + NVMe)
 
 Manual checklist for infra-adaptive host context (provision or BYO). Needs AWS creds
-and a SLES 16 / Leap 16 AMI with nested virt.
+and nothing else: the default AMI (SLES 16 PAYG) needs no Marketplace
+subscription, and `i7i.8xlarge` supports nested virt.
 
 ```bash
 pip install 'rodeo-cli[aws]'

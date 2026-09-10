@@ -154,12 +154,12 @@ provider:
   instance_tier: recommended          # budget | recommended | performance
   # Or pin explicitly:
   # instance_type: i7i.8xlarge
-  # ami omitted → openSUSE Leap 16.0 (x86_64)* from aws-marketplace
-  # ami: ami-…                        # optional pin (SLES 16 / Leap)
-  # ami_name_filter: "openSUSE Leap 16.0 (x86_64)*"
+  # ami omitted → newest suse-sles-16-0-v<date>-hvm-ssd-x86_64 (SLES 16 PAYG)
+  # ami: ami-…                        # optional pin
+  # ami_name_filter: "suse-sles-16-0-v????????-hvm-ssd-x86_64"
   subnet_id: subnet-…
   security_group_ids: [sg-…]          # 22, 8443, 30002
-  ssh_user: ec2-user                  # Leap Marketplace default; sles for some SLES AMIs
+  ssh_user: ec2-user                  # SLES 16 / Leap default
   # nested_virtualization: true       # default on for non-metal
   # volume_size_gib: 100              # root EBS; lab disks use NVMe
 ```
@@ -172,12 +172,21 @@ rodeo up --yes --profile harvester --target aws --instance-tier recommended
 `AWS_PROFILE`, **or** `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY`
 (+ optional `AWS_SESSION_TOKEN`). AWS CLI is optional.
 
-**Marketplace:** subscribe once to
-[openSUSE Leap](https://aws.amazon.com/marketplace/pp/prodview-wn2xje27ui45o)
-(or your SLES AMI) in the target account/region before first provision.
+**AMI choice matters more than it looks.** The default is SLES 16
+**pay-as-you-go** (published by SUSE via Amazon), and it is not
+interchangeable with the alternatives:
+
+- **openSUSE Leap 16** is a Marketplace product whose listing does not permit
+  7th-generation Intel instance types. Nested virtualisation needs exactly
+  those, so Leap cannot run a nested lab on anything but `*.metal`.
+- **SLES BYOS** images allow `i7i`, but ship without a subscription, so zypper
+  has no repos and `install-deps` fails. rodeo does not register hosts.
+
+PAYG avoids both traps at a licence surcharge of roughly $0.125/hr on
+`i7i.8xlarge`. No Marketplace subscription or opt-in is needed.
 
 **SSH / root:** new instances get cloud-init UserData that installs the managed
-pubkey for **root** and **passwordless sudo** for `ssh_user` (`ec2-user` on Leap).
+pubkey for **root** and **passwordless sudo** for `ssh_user` (`ec2-user` on SLES 16).
 Remote `rodeo up` runs under `sudo -n` so it never prompts. `rodeo ssh primary`
 or `rodeo ssh primary/rancher` use the same managed key.
 

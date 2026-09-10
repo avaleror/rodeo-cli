@@ -43,7 +43,7 @@ Optional:
 |----------|---------|
 | Profile | `harvester` |
 | Instance tier (single-host) | `recommended` → `i7i.8xlarge` |
-| Marketplace | Subscribe once to [openSUSE Leap](https://aws.amazon.com/marketplace/pp/prodview-wn2xje27ui45o) |
+| Marketplace | Not needed — the default SLES 16 PAYG AMI requires no subscription |
 
 ---
 

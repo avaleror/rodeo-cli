@@ -6,16 +6,11 @@ import subprocess
 from dataclasses import dataclass
 from typing import Optional
 
-try:
-    import libvirt as _libvirt
-    _AVAILABLE = True
-except ImportError:
-    _libvirt = None  # type: ignore[assignment]
-    _AVAILABLE = False
+_libvirt = None  # type: ignore[assignment]
+_AVAILABLE = False
+_VIR_RUNNING = 1
+_VIR_ERR_NO_DOMAIN = 42
 
-_VIR_RUNNING = getattr(_libvirt, "VIR_DOMAIN_RUNNING", 1) if _libvirt else 1
-
-_VIR_ERR_NO_DOMAIN = getattr(_libvirt, "VIR_ERR_NO_DOMAIN", 42) if _libvirt else 42
 
 def _libvirt_error_handler(ctx, err):
     """Suppress noisy 'Domain not found' errors from libvirt when intentionally
@@ -28,12 +23,38 @@ def _libvirt_error_handler(ctx, err):
         # Re-raise to default? But simple: print for other errors
         pass  # default handler already registered or we can ignore for now
 
-# Register once to reduce spam on expected not-found
-if _libvirt:
+
+def _load_libvirt() -> bool:
+    """(Re)attempt the import and refresh the derived globals. Re-checked on
+    every call rather than cached once at module-import time: `rodeo up` is a
+    single long-lived process that can run `install-deps` (in a subprocess)
+    partway through and then reach for libvirt-python later in that *same*
+    run, on a host where it wasn't installed yet when this module first
+    loaded. A one-shot check stays stuck on "not installed" for the rest of
+    that process even after install-deps made it available — which is
+    exactly what failed the `cluster` phase on the first-ever live AWS run:
+    install-deps reported the binding importable, then the deploy raised
+    this module's own "not installed" a few seconds later in the same run.
+    """
+    global _libvirt, _AVAILABLE, _VIR_RUNNING, _VIR_ERR_NO_DOMAIN
+    if _AVAILABLE:
+        return True
+    try:
+        import libvirt as lv
+    except ImportError:
+        return False
+    _libvirt = lv
+    _AVAILABLE = True
+    _VIR_RUNNING = getattr(_libvirt, "VIR_DOMAIN_RUNNING", 1)
+    _VIR_ERR_NO_DOMAIN = getattr(_libvirt, "VIR_ERR_NO_DOMAIN", 42)
     try:
         _libvirt.registerErrorHandler(_libvirt_error_handler, None)
     except Exception:
         pass
+    return True
+
+
+_load_libvirt()
 
 _STATE_MAP = {
     0: "no state",
@@ -58,7 +79,7 @@ class VMInfo:
 
 
 def _require_libvirt() -> None:
-    if not _AVAILABLE:
+    if not _load_libvirt():
         raise RuntimeError(
             "libvirt-python not installed. Run: sudo rodeo install-deps"
         )

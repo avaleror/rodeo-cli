@@ -100,6 +100,19 @@ rodeo up --yes --profile harvester --target aws --instance-tier recommended
 #   rodeo up --yes --profile harvester
 ```
 
+**Testing your own changes:** the instance installs rodeo-cli from GitHub, so a
+local working tree is invisible to it — and by default an already-bootstrapped
+host keeps the code it was first installed with. Push, then pass the ref:
+
+```bash
+rodeo up --yes --no-tmux --target aws --ref feat/my-fix
+```
+
+`--no-tmux` matters for scripted or agent-driven runs: without it `up` re-execs
+into tmux and the caller never sees the output. The remote log to read is
+`/root/.rodeo/logs/aws-up.log` on the host — far more informative than what
+surfaces locally.
+
 Verify on the KVM host after `kvm_host`:
 
 1. `resources.harvester.disk_gb` is **1200** (plan / vars)

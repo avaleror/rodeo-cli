@@ -87,7 +87,9 @@ deploy, diagnose, retry, and an access URL sheet.
 
 `rodeo up --target aws` provisions one EC2 KVM host then remote-deploys. Pick
 `--instance-tier budget|recommended|performance` (or set `provider.instance_type`);
-rodeo checks regional availability before create. See
+rodeo checks regional availability before create. The host installs rodeo-cli
+from GitHub — add `--ref <branch|tag|sha>` to pin it, or to push a new commit
+onto a host that already has rodeo. See
 [provider fields](reference/plan.md#provider-when-deployment_target-aws).
 
 ```bash

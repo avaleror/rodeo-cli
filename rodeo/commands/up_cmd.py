@@ -91,10 +91,20 @@ def _default_labs_root() -> Path:
     help="AWS host size tier when --target aws (ignored if provider.instance_type is set). "
          "With --yes and no type/tier, defaults to recommended.",
 )
+@click.option(
+    "--ref",
+    "ref",
+    default=None,
+    metavar="GIT_REF",
+    help="Branch, tag or SHA of rodeo-cli to run on the AWS host (--target aws only). "
+         "Forces the host's checkout to it, even if rodeo is already installed — "
+         "the only way a just-pushed commit reaches an existing host. "
+         "Default: leave whatever the host has (first bootstrap installs main).",
+)
 def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
            assume_yes: bool, no_deploy: bool, no_tmux: bool,
            deployment_target: str | None, resume: bool, reconcile: bool,
-           instance_tier: str | None) -> None:
+           instance_tier: str | None, ref: str | None) -> None:
     """Bring up a SUSE/Rancher learning lab in one command.
 
     Runs inside a tmux session automatically so the deploy survives SSH or
@@ -167,6 +177,15 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
     aws_control_plane = (
         deployment_target == "aws" and not resume and not on_ec2()
     )
+
+    if ref and not aws_control_plane:
+        # --ref only steers the *remote* bootstrap. Ignoring it silently would
+        # let someone believe a local deploy is running the pinned code.
+        console.print(
+            f"[yellow]⚠  --ref {ref} ignored — it only applies when this "
+            "machine is the AWS control plane (rodeo up --target aws from "
+            "outside EC2).[/yellow]\n"
+        )
 
     if not aws_control_plane:
         _print_host(host)
@@ -243,6 +262,7 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
             profile=profile,
             instance_tier=instance_tier,
             assume_yes=assume_yes,
+            ref=ref,
         )
         return
 
@@ -274,6 +294,7 @@ def _aws_control_plane_deploy(
     profile: str | None,
     instance_tier: str | None,
     assume_yes: bool,
+    ref: str | None = None,
 ) -> None:
     """Provision EC2 + remote ``rodeo up --target baremetal`` from the laptop."""
     try:
@@ -315,7 +336,7 @@ def _aws_control_plane_deploy(
         # Hint catalog profile for AwsHostProvider.apply_instance_selection
         if isinstance(cfg.get("provider"), dict):
             cfg["provider"] = {**cfg["provider"], "lab_profile": lab_profile}
-        provisioned = execute_aws_up(cfg, profile=profile or lab_profile)
+        provisioned = execute_aws_up(cfg, profile=profile or lab_profile, ref=ref)
     except ConfigError as exc:
         console.print(f"[red]✗  {exc}[/red]")
         raise SystemExit(1)

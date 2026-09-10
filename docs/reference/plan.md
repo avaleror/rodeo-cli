@@ -162,11 +162,38 @@ provider:
   ssh_user: ec2-user                  # SLES 16 / Leap default
   # nested_virtualization: true       # default on for non-metal
   # volume_size_gib: 100              # root EBS; lab disks use NVMe
+  # ref: main                         # rodeo-cli git ref to run on the host
+  # install_url: https://…/install.sh # fork or air-gapped mirror
 ```
 
 ```bash
 rodeo up --yes --profile harvester --target aws --instance-tier recommended
 ```
+
+**Which rodeo-cli the host runs (`--ref` / `provider.ref`).** The instance
+bootstraps itself with `install.sh` from GitHub — your local working tree
+never reaches it. By default the bootstrap runs **only when `rodeo` is
+absent**, so a host stays on the code it was first installed with, the same
+way `clean --refresh` refuses to move a pinned host's version unasked.
+
+Pass a ref to change that:
+
+```bash
+rodeo up --target aws --ref main         # pick up commits pushed since bootstrap
+rodeo up --target aws --ref v0.15.0      # pin a release
+rodeo up --target aws --ref feat/my-fix  # test a branch on a real host
+```
+
+A ref makes the bootstrap run **every time** and hard-resets the host's
+checkout to it (`install.sh --ref`), which is the only way a just-pushed
+commit reaches an existing host. The installer itself is fetched from the same
+ref, so `install.sh` and the code it installs cannot disagree. An explicit
+`provider.install_url` is used verbatim — for a fork or an air-gapped mirror —
+and the ref is still passed to it. `--ref` beats `provider.ref`; an invalid
+ref is rejected **before** any instance is launched, so a typo costs nothing.
+`--ref` applies only when the laptop is the AWS control plane; anywhere else
+it warns and is ignored. Fleet has the same mechanism —
+[`fleet deploy --ref` / `lab.ref`](../fleet.md#which-rodeo-cli-the-hosts-run).
 
 **AWS API credentials** (boto3 — never in the plan): `~/.aws/credentials` /
 `AWS_PROFILE`, **or** `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY`

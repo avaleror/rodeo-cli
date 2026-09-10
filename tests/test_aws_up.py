@@ -11,6 +11,7 @@ from click.testing import CliRunner
 from rodeo.config import ConfigError, load_config, validate_config
 from rodeo.providers.aws import AwsHostProvider
 from rodeo.providers.base import SINGLE_HOST_ID, ProvisionedHost
+from rodeo.install_source import install_url_for_ref, resolve_install_source
 from rodeo.providers.remote_up import (
     destroy_primary,
     execute_aws_up,
@@ -110,6 +111,123 @@ def test_remote_up_script_creates_the_log_dir_before_teeing():
     script = remote_up_script(lab_dir="/root/lab", profile="test")
     assert 'mkdir -p "$HOME/.rodeo/logs"' in script
     assert script.index('mkdir -p "$HOME/.rodeo/logs"') < script.index("tee -a")
+
+
+def test_remote_up_script_without_a_ref_leaves_an_existing_install_alone():
+    """No ref = no version change. Same stance as `clean --refresh`: never move
+    a pinned host's rodeo out from under it unasked."""
+    script = remote_up_script(lab_dir="/root/lab", profile="test")
+    assert "if ! command -v rodeo >/dev/null 2>&1; then" in script
+    assert "--ref" not in script
+
+
+def test_remote_up_script_with_a_ref_always_reinstalls():
+    """A ref must reach an *already bootstrapped* host.
+
+    The bootstrap used to be guarded by `command -v rodeo`, so a host
+    provisioned before a commit kept running the code it was first installed
+    with — pushing to main changed nothing, and the deploy silently tested
+    stale code. With a ref the installer runs unconditionally and install.sh
+    hard-resets the checkout.
+    """
+    script = remote_up_script(lab_dir="/root/lab", profile="test", ref="feat/x")
+    assert "bash -s -- --ref feat/x" in script
+    assert "command -v rodeo >/dev/null 2>&1" not in script
+    # The install must still be verified before rodeo is invoked.
+    assert script.index("--ref feat/x") < script.index("command -v rodeo >/dev/null")
+
+
+def test_ref_is_shell_quoted():
+    script = remote_up_script(lab_dir="/root/lab", profile="test", ref="v0.15.0")
+    assert "; rm -rf" not in script
+    with pytest.raises(ConfigError, match="invalid rodeo-cli ref"):
+        resolve_install_source({"type": "aws"}, ref="main; rm -rf /")
+
+
+@pytest.mark.parametrize("bad", ["", "  ", "-x", "a..b", "feat/../../etc"])
+def test_resolve_install_source_rejects_hostile_refs(bad):
+    if not bad.strip():
+        # Blank is "no ref", not an error.
+        assert resolve_install_source({"type": "aws"}, ref=bad)[1] is None
+        return
+    with pytest.raises(ConfigError):
+        resolve_install_source({"type": "aws"}, ref=bad)
+
+
+def test_installer_is_fetched_from_the_same_ref_it_installs():
+    """install.sh and the code it checks out must not disagree — fetching the
+    installer from main while checking out a branch reintroduces the bug in a
+    subtler form."""
+    url, ref = resolve_install_source({"type": "aws"}, ref="feat/x")
+    assert ref == "feat/x"
+    assert url == install_url_for_ref("feat/x")
+    assert "/feat/x/install.sh" in url
+
+
+def test_explicit_install_url_wins_over_the_ref():
+    """A configured install_url means a fork or an air-gapped mirror; the ref
+    still gets passed to it."""
+    url, ref = resolve_install_source(
+        {"type": "aws", "install_url": "https://mirror.internal/install.sh"},
+        ref="v0.15.0",
+    )
+    assert url == "https://mirror.internal/install.sh"
+    assert ref == "v0.15.0"
+
+
+def test_provider_ref_is_honoured_and_the_flag_beats_it():
+    assert resolve_install_source({"type": "aws", "ref": "v0.15.0"})[1] == "v0.15.0"
+    assert resolve_install_source({"type": "aws", "ref": "v0.15.0"}, ref="main")[1] == "main"
+
+
+def test_execute_aws_up_passes_the_ref_to_the_remote_script(monkeypatch, tmp_path):
+    """End of the plumbing: --ref must actually land in the SSH command."""
+    from rodeo.providers import remote_up as mod
+
+    seen: dict[str, object] = {}
+
+    def _fake_run_remote(inv, fh, argv, timeout=None):
+        seen["argv"] = argv
+        return type("R", (), {"ok": True, "rc": 0, "stdout": "AWS_UP_EXIT:0\n", "stderr": ""})()
+
+    monkeypatch.setattr(mod, "run_remote", _fake_run_remote)
+    monkeypatch.setattr(mod, "rodeo_state_dir", lambda: tmp_path / "state")
+    monkeypatch.setattr(mod, "resolve_ssh_identity", lambda p: str(tmp_path / "id_ed25519"))
+
+    host = ProvisionedHost(
+        id=SINGLE_HOST_ID,
+        ssh={"host": "1.2.3.4", "user": "ec2-user"},
+        public_ip="1.2.3.4",
+        provider_id="i-0abc",
+        labels={},
+    )
+    mod.run_remote_up({"name": "lab", "provider": {"type": "aws"}}, host, ref="feat/x")
+    argv = seen["argv"]
+    assert argv[:4] == ["sudo", "-n", "bash", "-lc"]
+    assert "--ref feat/x" in argv[4]
+
+
+def test_a_bad_ref_fails_before_anything_is_provisioned(tmp_path):
+    """An i7i costs $1.70/hr. A typo'd ref must be rejected before launch, not
+    after the instance is up and billing."""
+    lab = _aws_plan(tmp_path)
+    cfg = load_config(config_dir=str(lab))
+    called: list[str] = []
+
+    def _boom(name):
+        called.append(name)
+        raise AssertionError("provider must not be reached with an invalid ref")
+
+    with pytest.raises(ConfigError, match="invalid rodeo-cli ref"):
+        execute_aws_up(cfg, profile="test", ref="not a ref", get_provider_fn=_boom)
+    assert called == []
+
+
+def test_up_cmd_exposes_ref():
+    from rodeo.commands.up_cmd import up_cmd
+
+    params = {p.name for p in up_cmd.params}
+    assert "ref" in params, "rodeo up must expose --ref for the AWS remote bootstrap"
 
 
 def test_on_ec2_imdsv2(monkeypatch):

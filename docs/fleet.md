@@ -109,6 +109,8 @@ lab:
     rancher: 30002
   # components: [harvester]         # optional — see "Access sheet" below.
   #                                  # Omit to show every URL fleet knows how to build.
+  # ref: main                        # rodeo-cli git ref the hosts should run
+  # install_url: https://…           # fork or air-gapped mirror of install.sh
 defaults:
   ssh_user: ec2-user                 # AMI user (ec2-user / sles / root)
   # identity_file: ignored — rodeo uses managed ~/.rodeo/ssh/id_ed25519
@@ -162,7 +164,8 @@ rodeo fleet access -f workshop.yaml --output json
 
 ### What `fleet deploy` does on each host
 
-1. Ensure `rodeo` is on PATH (runs `install.sh` if missing).
+1. Ensure `rodeo` is on PATH (runs `install.sh` if missing — or always, with a ref;
+   see [Which rodeo-cli the hosts run](#which-rodeo-cli-the-hosts-run)).
 2. Sync lab: `git clone` / `git pull --ff-only`, or `rodeo up --no-deploy` for a profile.
 3. Start **detached tmux** running `rodeo up --yes --no-tmux` in `lab.dir`
    (session name `rodeo-fleet-<workshop>-<host-id>`).
@@ -198,6 +201,32 @@ rodeo fleet retry -f workshop.yaml --all-selected  # ignore job failures; use --
 
 Refreshes job state from live `status`, then re-starts deploy with `--force` on
 the chosen hosts.
+
+### Which rodeo-cli the hosts run
+
+Hosts bootstrap themselves from GitHub — your local working tree never reaches
+them. By default the bootstrap runs **only where `rodeo` is missing**, so a host
+keeps the code it was first installed with; `--force` re-runs the *deploy*, not
+the install.
+
+That is fine for a workshop pinned to a release, and wrong when you have just
+pushed a fix: a fleet-wide deploy would quietly run stale code on every host at
+once. Pass a ref to force it:
+
+```bash
+rodeo fleet deploy -f workshop.yaml --ref main         # tip of main everywhere
+rodeo fleet retry  -f workshop.yaml --ref feat/my-fix  # re-run the failures on a fix
+```
+
+With a ref the bootstrap runs every time and `install.sh --ref` hard-resets each
+host's checkout to it. `lab.ref` sets the same thing in the inventory; `--ref`
+overrides it. The installer is fetched from the same ref it checks out, unless
+`lab.install_url` points somewhere explicit (fork, air-gapped mirror), which is
+then used verbatim with the ref passed to it. An invalid ref fails at inventory
+load, before any host is contacted.
+
+This is the same mechanism as single-host `rodeo up --target aws --ref …` — both
+paths share `rodeo/install_source.py`.
 
 ### Diagnose (failure forensics)
 

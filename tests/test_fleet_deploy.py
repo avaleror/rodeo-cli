@@ -16,7 +16,9 @@ from rodeo.fleet.deploy import (
     fleet_deploy,
     tmux_session_name,
 )
+from rodeo.config import ConfigError
 from rodeo.fleet.inventory import FleetHost, load_inventory, require_deploy_config
+from rodeo.install_source import install_url_for_ref
 from rodeo.fleet.job import job_path_for, load_job, new_job, save_job
 from rodeo.fleet.ssh_exec import RemoteResult, ssh_argv
 from rodeo.fleet.sync import normalize_git_url, sync_script
@@ -64,6 +66,86 @@ def test_sync_and_deploy_scripts(tmp_path):
     assert "install.sh" in script or "command -v rodeo" in script
     assert "tmux new-session" in script
     assert "rodeo up --yes --no-tmux" in script
+
+
+def test_fleet_bootstrap_without_a_ref_leaves_an_existing_install_alone(tmp_path):
+    """Default fleet behaviour: only a host missing rodeo gets bootstrapped."""
+    inv = load_inventory(_workshop(tmp_path))
+    script = deploy_remote_script(inv, tmux_session_name(inv.name, "h1"))
+    assert "if ! command -v rodeo >/dev/null 2>&1; then" in script
+    assert "--ref" not in script
+    assert inv.ref is None
+
+
+def test_fleet_lab_ref_forces_the_bootstrap(tmp_path):
+    """Same bug as the AWS path had: a host bootstrapped before a commit kept
+    running the code it was first installed with, so a fleet-wide deploy could
+    silently run stale code on every host at once."""
+    inv = load_inventory(_workshop(tmp_path, extra_lab="ref: feat/x"))
+    assert inv.ref == "feat/x"
+    script = deploy_remote_script(inv, tmux_session_name(inv.name, "h1"))
+    assert "bash -s -- --ref feat/x" in script
+    assert "command -v rodeo >/dev/null 2>&1" not in script
+
+
+def test_fleet_installer_is_fetched_from_the_same_ref(tmp_path):
+    inv = load_inventory(_workshop(tmp_path, extra_lab="ref: v0.15.0"))
+    assert inv.install_url == install_url_for_ref("v0.15.0")
+    assert inv.install_url_explicit is False
+
+
+def test_fleet_explicit_install_url_is_kept_verbatim(tmp_path):
+    inv = load_inventory(
+        _workshop(
+            tmp_path,
+            extra_lab="install_url: https://mirror.internal/install.sh\n              ref: v0.15.0",
+        )
+    )
+    assert inv.install_url == "https://mirror.internal/install.sh"
+    assert inv.install_url_explicit is True
+    assert inv.ref == "v0.15.0"
+
+
+def test_fleet_bad_lab_ref_fails_at_load(tmp_path):
+    """Rejected before any host is contacted."""
+    with pytest.raises(ConfigError, match="invalid rodeo-cli ref"):
+        load_inventory(_workshop(tmp_path, extra_lab="ref: 'main; rm -rf /'"))
+
+
+def test_fleet_deploy_and_retry_expose_ref():
+    from rodeo.commands.fleet_cmd import fleet_deploy_cmd, fleet_retry_cmd
+
+    for cmd in (fleet_deploy_cmd, fleet_retry_cmd):
+        assert "ref" in {p.name for p in cmd.params}, f"{cmd.name} must expose --ref"
+
+
+def test_fleet_ref_flag_overrides_lab_ref_and_repoints_the_installer(tmp_path, monkeypatch):
+    """--ref must also move the installer URL. Keeping the resolved default
+    would fetch install.sh from main while checking out the ref."""
+    from rodeo.cli import cli
+
+    path = _workshop(tmp_path, extra_lab="ref: v0.15.0")
+    seen: dict[str, object] = {}
+
+    def _fake_deploy(inventory, hosts, **kwargs):
+        seen["inv"] = inventory
+        return [], None, tmp_path / "job.yaml"  # the command ignores the job
+
+    monkeypatch.setattr("rodeo.commands.fleet_cmd.fleet_deploy", _fake_deploy)
+    result = CliRunner().invoke(cli, ["fleet", "deploy", "-f", str(path), "--ref", "feat/x"])
+    assert result.exit_code == 0, result.output
+    inv = seen["inv"]
+    assert inv.ref == "feat/x"
+    assert inv.install_url == install_url_for_ref("feat/x")
+
+
+def test_fleet_ref_flag_rejects_a_hostile_ref(tmp_path):
+    from rodeo.cli import cli
+
+    path = _workshop(tmp_path)
+    result = CliRunner().invoke(cli, ["fleet", "deploy", "-f", str(path), "--ref", "a b"])
+    assert result.exit_code == 1
+    assert "invalid rodeo-cli ref" in result.output
 
 
 def _workshop_git(tmp_path, name="demo"):

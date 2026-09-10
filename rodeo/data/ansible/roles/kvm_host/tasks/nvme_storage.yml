@@ -30,13 +30,21 @@
   register: _nvme_sized
   changed_when: false
 
-- name: Resolve root disk path
+# findmnt SOURCE carries a btrfs subvolume suffix — "/dev/nvme0n1p3[/@/var]" —
+# and SLES 16 / openSUSE default to btrfs with /var as its own subvolume. Strip
+# it before any device comparison, or the same disk reads as two devices.
+- name: Resolve root and image_dir devices
   ansible.builtin.set_fact:
     _root_disk: >-
       {{
         (_root_src.stdout | default('') | trim)
+        | regex_replace('\[.*\]$', '')
         | regex_replace('p[0-9]+$', '')
       }}
+    _root_dev: >-
+      {{ (_root_src.stdout | default('') | trim) | regex_replace('\[.*\]$', '') }}
+    _image_dir_dev: >-
+      {{ (_image_dir_src.stdout | default('') | trim) | regex_replace('\[.*\]$', '') }}
 
 - name: Pick largest non-root NVMe device
   ansible.builtin.set_fact:
@@ -61,10 +69,7 @@
         and (
           (_image_dir_src.rc | default(1) != 0)
           or ((_image_dir_src.stdout | default('') | trim) == '')
-          or (
-            (_image_dir_src.stdout | default('') | trim)
-            == (_root_src.stdout | default('') | trim)
-          )
+          or (_image_dir_dev == _root_dev)
         )
       }}
 

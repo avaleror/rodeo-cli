@@ -10,7 +10,11 @@ Design pillars: plan/apply/destroy lifecycle, deep-mergeable override files, inl
 2. **Phase H Level 1** — Hauler prefetch (skip multi-GB re-downloads on Instruqt / clean+up)
 3. **F4b** — GCP host-acquire (after AWS F4a)
 4. **Phase F** — `suse-edge` live validation (bare metal, then Instruqt)
-5. **Maintainability** — split `rancher.py` (start with Elemental / Edge)
+
+⚠ #48 landed three areas this roadmap doesn't cover yet — third-party
+extensibility (`rodeo.plugins` entry points + a `deployment_target` registry),
+workshop story rendering and i18n (`rodeo story render`), and lab-in-a-box
+export (`rodeo export`). They still need a phase of their own here.
 
 ✅ B2 step 5 live-validated 2026-08-06 (bare-metal SLES, `test` profile): plan showed memory drift; deploy without reconcile skipped `vms`; `--reconcile` reset from `vms` and wrote new memory into inactive domain XML; cold start applied 20480 MiB. Reconcile is now the default (`--no-reconcile` opt-out).
 
@@ -147,6 +151,7 @@ pxe/cluster reconcile. **Partial progress:** NAT DHCP host reservations
 - [ ] Stream Helm/K3s SSH installer output (removes the long blind windows in the TUI)
 - [ ] `PhaseResult` return type instead of mutating `runner._last_rc`
 - [x] ansible-lint in CI
+- [x] `rancher.py` split into `rodeo/engine/rancher/` (PR #48, 2026-09-09): the 2184-line module decomposed into eight concern mixins — remote exec, cluster setup, Harvester, Elemental, UI extensions, Hauler, lab content, summary — composed by `RancherPhase`. Verified as a pure move, not a rewrite: all 49 methods preserved, 47 byte-identical, and the only two diffs are relative-import depth (`.libvirt` → `..libvirt`, `..paths` → `...paths`).
 
 ---
 

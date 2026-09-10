@@ -50,6 +50,34 @@ class SuseEdgeProfile(RodeoProfile):
             "elemental": _ELEMENTAL,
         }
 
+    # --- Success screen ---
+
+    def success_extra_sections(self, cfg: dict) -> list[str]:
+        edge_nodes = [(n, v) for n, v in cfg.get("vms", {}).items() if n.startswith("edge")]
+        if not edge_nodes:
+            return []
+        lines = ["[bold]Edge node reference[/bold]  (static DHCP — MAC determines IP)"]
+        lines.append("  node    MAC                  IP")
+        for name, info in sorted(edge_nodes):
+            mac = info.get("mac", "—")
+            ip = info.get("ip", "—")
+            lines.append(f"  {name:<7} {mac:<20} {ip}  (DHCP pre-assigned)")
+        lines.append("")
+        return lines
+
+    def success_next_steps(self, cfg: dict) -> list[str]:
+        return [
+            "  rodeo ssh eib            # shell into the EIB VM (build Elemental OS images here)",
+            "  rodeo ssh <host>/<vm>    # from laptop: hop via KVM/EC2 host",
+            "  On the eib VM: edit /home/eib-config/edge-definition.yaml",
+            "    → replace REPLACE_WITH_REGISTRATION_URL with the MachineRegistration URL",
+            "    → run EIB to build the Elemental OS image (base OS from Hauler: http://localhost:8080)",
+            "  From the KVM host: rodeo pull-edge-image   # seed edge1/2/3 boot disks",
+            "  rodeo start edge1 edge2 edge3              # boot edge nodes into Elemental",
+            "  In Rancher: Fleet → Git Repos → alien-geeko is waiting for edge clusters",
+            "    → label your edge cluster: demo=true  edge-type=x86-cluster",
+        ]
+
 
 # Let's Encrypt via sslip.io — Rancher is accessed at rancher.<ext-ip>.sslip.io:443
 # via Traefik ingress (no NodePort). Email is used for ACME registration.

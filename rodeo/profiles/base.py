@@ -44,6 +44,7 @@ BASE_VERSIONS: dict = {
 
 # Non-ansible phases and how to stream them: phase -> (DeployRunner method, needs_rancher).
 # needs_rancher phases are skipped when the topology has no rancher node.
+# Extend with register_stream_phase() — don't edit this dict from outside.
 _STREAM_PHASES: dict[str, tuple[str, bool]] = {
     "boot":      ("stream_boot",      False),
     "cluster":   ("stream_cluster",   False),
@@ -52,6 +53,28 @@ _STREAM_PHASES: dict[str, tuple[str, bool]] = {
     "apply":     ("stream_apply",     False),
     "finalise":  ("stream_finalise",  False),
 }
+
+
+def register_stream_phase(
+    phase: str,
+    runner_method: str,
+    *,
+    needs_rancher: bool = False,
+    replace: bool = False,
+) -> None:
+    """Register a Python-driven phase for profiles to include in ``phases``.
+
+    ``runner_method`` names a generator method on DeployRunner (existing or
+    attached by a plugin) that yields DeployEvents and sets runner._last_rc.
+    ``needs_rancher`` phases are skipped when the topology has no rancher node.
+    """
+    if not phase or not runner_method:
+        raise ValueError("register_stream_phase requires a phase and a runner method name")
+    if phase in _STREAM_PHASES and not replace:
+        raise ValueError(
+            f"stream phase '{phase}' is already registered (pass replace=True to override)"
+        )
+    _STREAM_PHASES[phase] = (runner_method, needs_rancher)
 
 
 class RodeoProfile(ABC):
@@ -151,6 +174,18 @@ class RodeoProfile(ABC):
             for node in inv.get("vm_nodes", [])
         }
 
+    # --- Success screen hooks ---
+    # The success panel (rodeo/success.py) renders access URLs and credentials
+    # itself; the profile owns the narrative parts so a new lab type (including
+    # one from a plugin) never has to patch success.py.
+    def success_extra_sections(self, cfg: dict) -> list[str]:
+        """Optional Rich-markup lines shown before 'First things to try'."""
+        return []
+
+    def success_next_steps(self, cfg: dict) -> list[str]:
+        """Rich-markup lines under 'First things to try'."""
+        return default_success_next_steps(cfg)
+
     # --- Phase dispatch ---
     def run_phase(
         self,
@@ -176,3 +211,27 @@ class RodeoProfile(ABC):
             return
 
         yield from getattr(runner, method)()
+
+
+def default_success_next_steps(cfg: dict) -> list[str]:
+    """Generic 'First things to try' lines, keyed on what the topology includes.
+
+    Module-level so success.py can fall back to it when the plan's type doesn't
+    resolve to a registered profile.
+    """
+    vms = cfg.get("vms", {})
+    harvester_nodes = [
+        n for n in vms if n not in ("rancher", "eib") and not n.startswith("edge")
+    ]
+    has_harvester = bool(harvester_nodes)
+    has_rancher = "rancher" in vms or any(
+        isinstance(c, dict) and c.get("name") == "rancher"
+        for c in cfg.get("components", [])
+    )
+    ssh_target = harvester_nodes[0] if has_harvester else next(iter(vms), "rancher")
+    lines = [f"  rodeo ssh {ssh_target}{' ' * max(1, 16 - len(ssh_target))}# shell into the VM"]
+    if has_harvester:
+        lines.append("  In Harvester: create a VM from an image, then watch it boot")
+    elif has_rancher:
+        lines.append("  In Rancher: explore Cluster Management and install an app from Charts")
+    return lines

@@ -1,0 +1,3 @@
+# Ordered span ids for the "first-ride" story variant.
+# Assemble with:  rodeo story render --story-id first-ride
+- welcome.first-task

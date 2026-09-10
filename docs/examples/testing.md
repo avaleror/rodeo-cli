@@ -25,6 +25,16 @@ ansible-galaxy collection install -r rodeo/data/ansible/requirements.yml
 ansible-lint rodeo/data/ansible
 ```
 
+To keep your host clean (or when the host has a live libvirt that interferes
+with the stop/start tests), run the same checks in throwaway containers —
+this mirrors the CI matrix exactly:
+
+```bash
+scripts/test-in-container.sh                 # Python 3.10 + 3.12, ruff + pytest
+scripts/test-in-container.sh 3.12            # one version
+scripts/test-in-container.sh 3.12 -- -k labinabox   # pass pytest args after --
+```
+
 What the unit tests cover:
 
 | Test file | Area |

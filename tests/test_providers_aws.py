@@ -432,3 +432,21 @@ def test_fleet_provision_cli(managed_ssh, monkeypatch, tmp_path):
     )
     assert result.exit_code == 0, result.output
     assert "student-01" in result.output
+
+
+def test_default_ami_filter_matches_published_marketplace_name():
+    """Regression: the default filter was written from the Marketplace listing
+    title ("openSUSE Leap 16.0 (x86_64)*"), which is not the AMI Name field, so it
+    matched zero images in every region and provision failed at AMI resolution.
+
+    Guards the shape against a real published name, and against the arm64
+    sibling leaking into the same result set.
+    """
+    from fnmatch import fnmatch
+
+    from rodeo.providers.aws import DEFAULT_AMI_NAME_FILTER
+
+    x86 = "openSUSE-Leap-16-0-v20260629-hvm-ssd-x86_64-5535c495-72d4-4355-b169-54ffa874f849"
+    arm = "openSUSE-Leap-16-0-v20260629-hvm-ssd-arm64-a516e959-df54-4035-bb1a-63599b7a6df9"
+    assert fnmatch(x86, DEFAULT_AMI_NAME_FILTER)
+    assert not fnmatch(arm, DEFAULT_AMI_NAME_FILTER)

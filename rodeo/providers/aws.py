@@ -32,7 +32,13 @@ DEFAULT_INSTANCE_TYPE = "i7i.8xlarge"
 
 # Prefer openSUSE Leap 16 (Marketplace) — same family as SLES 16, free, ssh as ec2-user.
 # Pin with provider.ami when you need a fixed image; otherwise resolve newest match.
-DEFAULT_AMI_NAME_FILTER = "openSUSE Leap 16.0 (x86_64)*"
+#
+# This must match the AMI's *Name* field, not the Marketplace listing title. The
+# published name is "openSUSE-Leap-16-0-<date>-hvm-ssd-x86_64-<uuid>" — hyphens,
+# no parentheses — so the old "openSUSE Leap 16.0 (x86_64)*" filter matched zero
+# images in every region and provision failed at AMI resolution. The trailing
+# x86_64 anchor keeps the arm64 sibling out of the result set.
+DEFAULT_AMI_NAME_FILTER = "openSUSE-Leap-16-0-*-hvm-ssd-x86_64-*"
 DEFAULT_AMI_OWNERS = ("aws-marketplace",)
 
 # Instance type prefixes that cannot host full Harvester / Edge nested labs.

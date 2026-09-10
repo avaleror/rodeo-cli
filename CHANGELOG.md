@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.16.0](https://github.com/avaleror/rodeo-cli/compare/v0.15.0...v0.16.0) (2026-09-10)
+
+
+### Features
+
+* **aws:** fail closed when a subnet can't give a reachable public IP ([8f55a9d](https://github.com/avaleror/rodeo-cli/commit/8f55a9db2523026ba323b3b117f911448a2d2cb3))
+* modular engine ([#48](https://github.com/avaleror/rodeo-cli/issues/48)) ([deff147](https://github.com/avaleror/rodeo-cli/commit/deff147cb65e427eee9e6c64ca0f721317b5bfdc))
+* **remote:** --ref to pin (and actually refresh) rodeo-cli on remote hosts ([ac5838e](https://github.com/avaleror/rodeo-cli/commit/ac5838ecfa4fa4d73d130309515bf2621b11d3e4))
+
+
+### Bug Fixes
+
+* **aws:** default AMI filter matched no images in any region ([05083f9](https://github.com/avaleror/rodeo-cli/commit/05083f902ec3340f6bcc3ede6f1ef38372980680))
+* **aws:** default to SLES 16 PAYG — Leap + i7i could never launch ([fff85ac](https://github.com/avaleror/rodeo-cli/commit/fff85ac6630582ce9dac9bedf79d999ed46f8b70))
+* **aws:** key-pair fingerprint compare ignored base64 padding ([53d20dc](https://github.com/avaleror/rodeo-cli/commit/53d20dc5267b6c23f9b44426a8ba62a2bba63a08))
+* **aws:** remote deploy never applied the aws host context ([50b6253](https://github.com/avaleror/rodeo-cli/commit/50b6253a37921475e6a38b96899e22c1270ceabf))
+* **aws:** the [aws] extra needs boto3[crt] for `aws login` credentials ([dd31380](https://github.com/avaleror/rodeo-cli/commit/dd31380c0374caa39fbc555e45ec9aa472112afc))
+* **install:** don't abort on BASH_SOURCE when piped through bash ([2cf9b76](https://github.com/avaleror/rodeo-cli/commit/2cf9b769cd418ba3456a536b8189125da61ced81))
+* **kvm_host:** NVMe pool never mounted on btrfs roots (SLES 16 / openSUSE) ([e12e8cf](https://github.com/avaleror/rodeo-cli/commit/e12e8cfe34ed3f10f90f0b1679ccf653b4b0d0d0))
+* **preflight:** count the NVMe pool kvm_host is about to mount ([5f1221b](https://github.com/avaleror/rodeo-cli/commit/5f1221bbd93e749f9708499901a6e6503c1e5153))
+
 ## [0.15.0](https://github.com/avaleror/rodeo-cli/compare/v0.14.2...v0.15.0) (2026-09-09)
 
 

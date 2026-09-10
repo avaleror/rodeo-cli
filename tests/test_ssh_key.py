@@ -91,3 +91,25 @@ def test_build_ec2_userdata_passwordless_root(ssh_home):
     assert "/root/.ssh/authorized_keys" in ud
     assert pub in ud
     assert "ec2-user" in ud
+
+
+def test_fingerprints_match_ignores_base64_padding_and_prefix():
+    """Regression: rodeo could not reuse an EC2 key pair it had imported itself.
+
+    ssh-keygen prints SHA256:<base64 with padding stripped>; EC2 returns the
+    same digest as bare base64 *with* the '=' padding. A plain string compare
+    therefore failed on every provision after the first, with an error claiming
+    the fingerprints differed while quoting two identical digests.
+    """
+    from rodeo.ssh_key import _fingerprints_match
+
+    local = "SHA256:kCvXKSedLq1uj7nB2lK2RkvDhg0H1P7tAqmMX81X6pY"
+    remote = "kCvXKSedLq1uj7nB2lK2RkvDhg0H1P7tAqmMX81X6pY="
+    assert _fingerprints_match(local, remote)
+    assert _fingerprints_match(remote, local)
+    # A genuinely different key must still be rejected.
+    assert not _fingerprints_match(local, "ZZZXKSedLq1uj7nB2lK2RkvDhg0H1P7tAqmMX81X6pY=")
+    # Empty / missing values are never a match.
+    assert not _fingerprints_match("", remote)
+    assert not _fingerprints_match(local, "")
+    assert not _fingerprints_match("SHA256:", remote)

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.16.1](https://github.com/avaleror/rodeo-cli/compare/v0.16.0...v0.16.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* **engine:** stale libvirt-python availability check inside a single rodeo up run ([2e365a7](https://github.com/avaleror/rodeo-cli/commit/2e365a7aec1d998c9680a213b7e29a5929567d64))
+
+
+### Documentation
+
+* **roadmap:** check off Phase E live validation ([7e0c39e](https://github.com/avaleror/rodeo-cli/commit/7e0c39e5b25565e7508c4ee0c3f07ac51b5e49bc))
+
 ## [0.16.0](https://github.com/avaleror/rodeo-cli/compare/v0.15.0...v0.16.0) (2026-09-10)
 
 

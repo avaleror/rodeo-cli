@@ -177,7 +177,7 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
     else:
         console.print(
             "[dim]AWS control plane — will provision EC2 and remote-run "
-            "rodeo up --target baremetal on the instance.[/dim]\n"
+            "rodeo up on the instance (phases run as baremetal there).[/dim]\n"
         )
 
     # 2. A lab to deploy.

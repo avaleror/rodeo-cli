@@ -193,7 +193,19 @@ def remote_up_script(
     profile: str | None,
     install_url: str = _DEFAULT_INSTALL,
 ) -> str:
-    """Bootstrap + remote ``rodeo up --target baremetal`` (guest runs as baremetal)."""
+    """Bootstrap + remote ``rodeo up --target aws`` (phases still run as baremetal).
+
+    ``--target aws``, not ``--target baremetal``. The remote detects it is on
+    EC2 via IMDS, so up_cmd takes the local-deploy path (no recursion) while
+    keeping ``deployment_target: aws`` in the plan — which is what makes
+    apply_host_context raise disk_gb to the aws floor and set
+    ``storage.backend: nvme`` so the kvm_host phase mounts the instance store.
+    Phase behaviour is still baremetal, via up_cmd's local_target.
+
+    Passing baremetal here discarded all of that: the remote seeded a plain
+    baremetal lab with disk_gb 250 on the 10 GB root EBS, and preflight failed
+    with "need ~520 GB, have 7 GB free" while a 3.4 TB NVMe sat unmounted.
+    """
     lab = shlex.quote(lab_dir)
     url = shlex.quote(install_url)
     profile_bits = ""
@@ -206,9 +218,14 @@ def remote_up_script(
         "fi; "
         "command -v rodeo >/dev/null; "
         f"mkdir -p {lab}; "
+        # tee's target directory does not exist on a fresh host: rodeo creates
+        # ~/.rodeo/logs on first run, but that run *is* the one being logged,
+        # so the pipeline dies before rodeo starts — tee exits immediately and
+        # rodeo takes SIGPIPE. $HOME is /root here (sudo -n bash -lc).
+        'mkdir -p "$HOME/.rodeo/logs"; '
         "set +e; "
         f"rodeo up --yes --no-tmux {profile_bits}"
-        f"--dir {lab} --target baremetal "
+        f"--dir {lab} --target aws "
         f"2>&1 | tee -a \"$HOME/.rodeo/logs/aws-up.log\"; "
         'ec=${PIPESTATUS[0]}; set -e; '
         'echo AWS_UP_EXIT:$ec; '
@@ -240,10 +257,18 @@ def run_remote_up(
         timeout=timeout,
     )
     if not result.ok:
-        msg = (result.stderr or result.stdout or f"exit {result.rc}").strip()
+        # Prefer stdout: the remote tees rodeo's own output there, while stderr
+        # often holds only ssh noise ("Permanently added … to known hosts"),
+        # which would otherwise be reported as the failure.
+        parts = [p.strip() for p in (result.stdout, result.stderr) if (p or "").strip()]
+        msg = "\n".join(parts) if parts else f"exit {result.rc}"
+        msg = msg[-1500:]
         raise ConfigError(
             f"remote rodeo up failed on {host.public_ip} "
-            f"(need passwordless sudo): {msg[:500]}"
+            f"(exit {result.rc}): {msg}\n"
+            "If the output is empty or mentions sudo, check that the AMI's "
+            "login user has passwordless sudo; otherwise the message above is "
+            "the real failure."
         )
     out = result.stdout or ""
     if "AWS_UP_EXIT:" in out:

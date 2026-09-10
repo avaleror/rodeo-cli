@@ -79,13 +79,37 @@ def test_validate_aws_ok(tmp_path):
     validate_config(cfg)
 
 
-def test_remote_up_script_uses_baremetal():
+def test_remote_up_script_keeps_the_aws_target():
+    """The remote must run --target aws, not --target baremetal.
+
+    This test previously asserted the opposite. On EC2, up_cmd detects IMDS and
+    takes the local-deploy path either way, but only "aws" keeps
+    deployment_target: aws in the plan — which is what makes apply_host_context
+    raise disk_gb to the aws floor and set storage.backend: nvme so kvm_host
+    mounts the instance store. Phase behaviour is baremetal regardless, via
+    up_cmd's local_target.
+
+    With baremetal the remote seeded a plain baremetal lab (disk_gb 250) on the
+    10 GB root EBS and preflight failed — "need ~520 GB, have 7 GB free" — with
+    a 3.4 TB NVMe sitting unmounted beside it.
+    """
     script = remote_up_script(lab_dir="/root/lab", profile="harvester")
-    assert "--target baremetal" in script
+    assert "--target aws" in script
+    assert "--target baremetal" not in script
     assert "--profile harvester" in script
     assert "install.sh" in script
     assert "PIPESTATUS[0]" in script
     assert "AWS_UP_EXIT:$ec" in script
+
+
+def test_remote_up_script_creates_the_log_dir_before_teeing():
+    """The pipeline tees into $HOME/.rodeo/logs, which does not exist on a fresh
+    host — rodeo creates it on first run, and that run is the one being logged.
+    Without the mkdir, tee exits immediately and rodeo dies on SIGPIPE before
+    doing any work."""
+    script = remote_up_script(lab_dir="/root/lab", profile="test")
+    assert 'mkdir -p "$HOME/.rodeo/logs"' in script
+    assert script.index('mkdir -p "$HOME/.rodeo/logs"') < script.index("tee -a")
 
 
 def test_on_ec2_imdsv2(monkeypatch):
@@ -241,3 +265,24 @@ def test_save_aws_host_state(tmp_path, monkeypatch):
     data = yaml.safe_load(path.read_text())
     assert data["provider_id"] == "i-abc"
     assert data["public_ip"] == "1.2.3.4"
+
+
+def test_aws_target_needs_no_provider_block_when_on_ec2(monkeypatch):
+    """On the EC2 host itself, deployment_target: aws must validate without a
+    provider: block.
+
+    The remote deploy keeps target aws so host_context applies the aws
+    adaptation (disk_gb floor, storage.backend: nvme). It has no provider block
+    — the laptop holds that — and demanding one made the remote deploy fail
+    with "deployment_target: aws requires a provider: block" on a host that was
+    already provisioned and had nothing left to acquire.
+    """
+    from rodeo import config as cfgmod
+
+    monkeypatch.setattr("rodeo.providers.remote_up.on_ec2", lambda **_k: True)
+    cfgmod._validate_aws_provider({"deployment_target": "aws"})  # must not raise
+
+    # Off EC2 (the laptop control plane) it is still required.
+    monkeypatch.setattr("rodeo.providers.remote_up.on_ec2", lambda **_k: False)
+    with pytest.raises(cfgmod.ConfigError, match="requires a provider"):
+        cfgmod._validate_aws_provider({"deployment_target": "aws"})

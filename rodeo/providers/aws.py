@@ -177,6 +177,84 @@ class AwsHostProvider:
             out["instance_tier"] = tier
         return out
 
+    def assert_public_ingress(self, ec2: Any, config: dict[str, Any]) -> None:
+        """Fail closed when the subnet cannot give the host a *reachable* public IP.
+
+        A workshop host is only useful if students can SSH to it, and rodeo hands
+        out public-IP endpoints via ``AssociatePublicIpAddress``. AWS will happily
+        assign a public IP in a subnet whose route table has no internet gateway:
+        the address is allocated and routes nowhere, so provision "succeeds" and
+        the deploy then hangs waiting for SSH. The host also has no egress, so
+        ``install-deps`` cannot reach the distro repos even from the console.
+
+        RunInstances DryRun does not catch this — it validates the request, not
+        reachability — so this is a separate probe of the subnet's effective
+        route table.
+
+        Skipped when ``provider.associate_public_ip`` is explicitly false: the
+        operator has opted into a private topology (bastion / VPN / SSM) and is
+        not relying on public reachability.
+        """
+        if not bool(config.get("associate_public_ip", True)):
+            return
+        subnet_id = str(config["subnet_id"])
+        region = str(config["region"])
+
+        # The subnet's explicitly associated route table, else the VPC's main one.
+        tables = (
+            ec2.describe_route_tables(
+                Filters=[{"Name": "association.subnet-id", "Values": [subnet_id]}]
+            ).get("RouteTables")
+            or []
+        )
+        vpc_id = ""
+        if not tables:
+            subnets = ec2.describe_subnets(SubnetIds=[subnet_id]).get("Subnets") or []
+            if not subnets:
+                raise ConfigError(f"provider.subnet_id {subnet_id} not found in {region}")
+            vpc_id = str(subnets[0].get("VpcId") or "")
+            tables = (
+                ec2.describe_route_tables(
+                    Filters=[
+                        {"Name": "vpc-id", "Values": [vpc_id]},
+                        {"Name": "association.main", "Values": ["true"]},
+                    ]
+                ).get("RouteTables")
+                or []
+            )
+
+        via_nat = False
+        for table in tables:
+            for route in table.get("Routes") or []:
+                if route.get("DestinationCidrBlock") != "0.0.0.0/0":
+                    continue
+                if str(route.get("State") or "active") != "active":
+                    continue
+                if str(route.get("GatewayId") or "").startswith("igw-"):
+                    return
+                if route.get("NatGatewayId") or str(
+                    route.get("GatewayId") or ""
+                ).startswith("nat-"):
+                    via_nat = True
+
+        where = f"subnet {subnet_id}" + (f" (vpc {vpc_id})" if vpc_id else "")
+        if via_nat:
+            raise ConfigError(
+                f"{where} in {region} routes 0.0.0.0/0 through a NAT gateway, which "
+                "is egress-only — the host can reach the internet but students "
+                "cannot SSH in to a public IP. Use a subnet whose route table has "
+                "an internet gateway route, or set provider.associate_public_ip: "
+                "false if you front the lab with a bastion."
+            )
+        raise ConfigError(
+            f"{where} in {region} has no 0.0.0.0/0 route to an internet gateway, so "
+            "a public IP assigned there is unreachable: students could not SSH in "
+            "and the host would have no egress for install-deps. Pick a subnet in a "
+            "VPC with an internet gateway attached (check: an igw- route in the "
+            "subnet's route table), or set provider.associate_public_ip: false if "
+            "the lab is reached over a bastion / VPN instead."
+        )
+
     def assert_available(
         self,
         config: dict[str, Any],
@@ -208,6 +286,10 @@ class AwsHostProvider:
                 "Pick another region (e.g. eu-west-1, us-east-1) or a different "
                 "provider.instance_tier / provider.instance_type."
             )
+
+        # Reachability before capacity: a host students can't SSH to is useless
+        # even when the instance type is available.
+        self.assert_public_ingress(ec2, config)
 
         # Capacity probe: DryRun with real networking + AMI.
         cfg = dict(config)

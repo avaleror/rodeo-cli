@@ -74,6 +74,30 @@ class _FakeEC2:
             ]
         return {"Images": list(images)}
 
+    def describe_subnets(self, SubnetIds=None, Filters=None):
+        return {"Subnets": [{"SubnetId": (SubnetIds or ["subnet-1"])[0], "VpcId": "vpc-1"}]}
+
+    def describe_route_tables(self, Filters=None):
+        # Default: a public subnet (0.0.0.0/0 -> igw). Tests override
+        # .route_tables to model NAT-only or isolated subnets.
+        tables = getattr(self, "route_tables", None)
+        if tables is None:
+            tables = [
+                {
+                    "RouteTableId": "rtb-1",
+                    "Routes": [
+                        {"DestinationCidrBlock": "172.31.0.0/16", "GatewayId": "local"},
+                        {
+                            "DestinationCidrBlock": "0.0.0.0/0",
+                            "GatewayId": "igw-1",
+                            "State": "active",
+                        },
+                    ],
+                }
+            ]
+        # Honour the main-route-table lookup by returning the same set.
+        return {"RouteTables": tables}
+
     def describe_instance_type_offerings(self, LocationType=None, Filters=None):
         values = []
         for f in Filters or []:
@@ -450,3 +474,88 @@ def test_default_ami_filter_matches_published_marketplace_name():
     arm = "openSUSE-Leap-16-0-v20260629-hvm-ssd-arm64-a516e959-df54-4035-bb1a-63599b7a6df9"
     assert fnmatch(x86, DEFAULT_AMI_NAME_FILTER)
     assert not fnmatch(arm, DEFAULT_AMI_NAME_FILTER)
+
+
+# --- public-IP reachability preflight -------------------------------------
+
+
+def _ingress_cfg(**over):
+    cfg = {
+        "type": "aws",
+        "region": "eu-north-1",
+        "subnet_id": "subnet-1",
+        "security_group_ids": ["sg-1"],
+        "instance_type": "i7i.8xlarge",
+    }
+    cfg.update(over)
+    return cfg
+
+
+def test_public_ingress_passes_when_subnet_routes_to_an_igw():
+    AwsHostProvider().assert_public_ingress(_FakeEC2(), _ingress_cfg())
+
+
+def test_public_ingress_rejects_subnet_with_no_default_route():
+    """The real failure we hit: a VPC with no internet gateway at all. AWS still
+    assigns a public IP, so provision looks fine and the deploy hangs on SSH."""
+    ec2 = _FakeEC2()
+    ec2.route_tables = [
+        {
+            "RouteTableId": "rtb-isolated",
+            "Routes": [
+                {"DestinationCidrBlock": "172.31.0.0/16", "GatewayId": "local"},
+                {"GatewayId": "vpce-1", "State": "active"},
+            ],
+        }
+    ]
+    with pytest.raises(ConfigError, match="no 0.0.0.0/0 route to an internet gateway"):
+        AwsHostProvider().assert_public_ingress(ec2, _ingress_cfg())
+
+
+def test_public_ingress_rejects_nat_only_subnet_with_a_specific_message():
+    """NAT gives egress but no inbound, so it looks healthy while students still
+    cannot reach the host. Worth its own message rather than the generic one."""
+    ec2 = _FakeEC2()
+    ec2.route_tables = [
+        {
+            "RouteTableId": "rtb-private",
+            "Routes": [
+                {
+                    "DestinationCidrBlock": "0.0.0.0/0",
+                    "NatGatewayId": "nat-1",
+                    "State": "active",
+                }
+            ],
+        }
+    ]
+    with pytest.raises(ConfigError, match="egress-only"):
+        AwsHostProvider().assert_public_ingress(ec2, _ingress_cfg())
+
+
+def test_public_ingress_ignores_blackholed_igw_route():
+    """A detached gateway leaves a blackhole route behind; it must not count."""
+    ec2 = _FakeEC2()
+    ec2.route_tables = [
+        {
+            "RouteTableId": "rtb-stale",
+            "Routes": [
+                {
+                    "DestinationCidrBlock": "0.0.0.0/0",
+                    "GatewayId": "igw-gone",
+                    "State": "blackhole",
+                }
+            ],
+        }
+    ]
+    with pytest.raises(ConfigError, match="no 0.0.0.0/0 route"):
+        AwsHostProvider().assert_public_ingress(ec2, _ingress_cfg())
+
+
+def test_public_ingress_skipped_when_public_ip_explicitly_disabled():
+    """Opting into a private topology (bastion / VPN / SSM) is legitimate — the
+    guard only defends the default, public-IP workshop shape."""
+    ec2 = _FakeEC2()
+    ec2.route_tables = []
+    AwsHostProvider().assert_public_ingress(
+        ec2, _ingress_cfg(associate_public_ip=False)
+    )

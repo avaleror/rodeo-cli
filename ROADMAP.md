@@ -166,6 +166,7 @@ AWS MVP is shipped (see checkboxes). Remaining: AL2023 deps path, SG automation,
 - [x] Instance tiers (`budget` / `recommended` / `performance`) per lab profile + region offerings/capacity DryRun (`instance_catalog.py`, `assert_available`); `rodeo up --instance-tier`
 - [ ] `install-deps` support for Amazon Linux 2023 (dnf path already exists, needs testing) — prefer SLES 16 / Leap 16 AMIs
 - [ ] Security group rules mirror the firewalld rules (ports 8443, 30002, 22) — still operator-supplied SG
+- [x] Provision preflight rejects a subnet that cannot give the host a *reachable* public IP (`assert_public_ingress`, runs inside `assert_available` so single-host and fleet both get it): a public IP in a VPC with no internet-gateway route is assigned but routes nowhere, so students can't SSH and the host has no egress for `install-deps` — while RunInstances DryRun still passes. NAT-only subnets get their own message (egress works, inbound doesn't); skipped when `provider.associate_public_ip: false` opts into a bastion topology. Live-verified against an account whose `eu-west-1` VPC has no IGW while 13 other regions do.
 - [ ] Cost guard: `rodeo plan` estimates on-demand hourly cost for the selected instance type
 - [ ] Live validate: `i7i.8xlarge` Leap 16 (or SLES 16) + NVMe pool + harvester (provision or BYO) — checklist in [docs/examples/testing.md](docs/examples/testing.md#aws-live-smoke-i7i8xlarge--nvme)
 - [ ] GCP equivalent: Compute Engine with `--enable-nested-virtualization` on N2 / C3

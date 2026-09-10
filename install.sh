@@ -31,7 +31,9 @@ DEV=0
 RODEO_DIR=""
 
 # In --dev mode the default dir is the repo root that contains this script.
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# ${BASH_SOURCE[0]:-$0} because the documented install path pipes this script
+# (curl … | bash), where BASH_SOURCE is unset and set -u aborts the subshell.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || echo /)"
 
 while [[ $# -gt 0 ]]; do
   case $1 in

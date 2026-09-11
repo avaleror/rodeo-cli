@@ -94,7 +94,14 @@ def test_remote_invocation_contract(fake_stream):
     # Paths are relative to the SSH user's home on the automation VM
     # (~/rodeo-labs/<plan>) so any automation_host user works, not just root.
     assert mkdir[0] == "ssh" and mkdir[-1] == "mkdir -p rodeo-labs/liab-test"
+    # The automation VM is a standing host: its key is pinned via accept-new
+    # into a rodeo-owned known_hosts (not the lab-guest no-check options).
+    assert "StrictHostKeyChecking=accept-new" in mkdir
+    assert any("labinabox_known_hosts" in a for a in mkdir)
+    assert "UserKnownHostsFile=/dev/null" not in mkdir
     assert scp[0] == "scp"
+    assert "-p" in scp  # carry the local 0600 mode (lab.json may hold secrets)
+    assert "StrictHostKeyChecking=accept-new" in scp
     assert scp[-1] == "root@auto.lab:rodeo-labs/liab-test/lab.json"
     assert deploy[0] == "ssh" and "root@auto.lab" in deploy
     remote = deploy[-1]

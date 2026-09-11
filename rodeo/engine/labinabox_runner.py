@@ -35,7 +35,6 @@ from pathlib import Path
 from typing import Iterator
 
 from ..labinabox import build_lab_json
-from ..ssh import ssh_opts
 from ..state import mark_phase_done, mark_phase_failed, reset_from
 from .events import (
     DeployComplete,
@@ -58,6 +57,26 @@ def _overlay(cfg: dict) -> dict:
     return cfg.get("lab_in_a_box") or {}
 
 
+def automation_ssh_opts() -> list[str]:
+    """SSH options for the automation VM — unlike rodeo/ssh.py's lab-guest
+    options, the automation VM is a standing host, so its key is pinned:
+    accept-new stores it in a rodeo-owned known_hosts on first contact and
+    every later connection (including the scp carrying lab.json, which may
+    hold addon credentials) fails loudly if the key changes."""
+    from ..paths import rodeo_ssh_dir
+
+    ssh_dir = rodeo_ssh_dir()
+    ssh_dir.mkdir(parents=True, exist_ok=True)
+    known_hosts = ssh_dir / "labinabox_known_hosts"
+    return [
+        "-o", "StrictHostKeyChecking=accept-new",
+        "-o", f"UserKnownHostsFile={known_hosts}",
+        "-o", "ConnectTimeout=10",
+        "-o", "BatchMode=yes",
+        "-o", "LogLevel=ERROR",
+    ]
+
+
 def ssh_target_argv(cfg: dict) -> list[str]:
     """ssh argv prefix for the automation VM: ssh [-i key] OPTS user@host."""
     overlay = _overlay(cfg)
@@ -65,7 +84,7 @@ def ssh_target_argv(cfg: dict) -> list[str]:
     identity = overlay.get("identity_file")
     if identity:
         argv += ["-i", str(identity)]
-    argv += ssh_opts()
+    argv += automation_ssh_opts()
     argv.append(overlay["automation_host"])
     return argv
 
@@ -145,7 +164,11 @@ class LabInABoxRunner:
 
         log_dir = rodeo_logs_dir()
         log_dir.mkdir(parents=True, exist_ok=True)
-        return log_dir / f"{self._plan_name}.log"
+        path = log_dir / f"{self._plan_name}.log"
+        # The --debug stream can echo addon credentials from lab.json —
+        # create the log 0600 (touch mode applies only on creation).
+        path.touch(mode=0o600, exist_ok=True)
+        return path
 
     @property
     def _local_lab_json(self) -> Path:
@@ -227,10 +250,13 @@ class LabInABoxRunner:
             return
 
         overlay = _overlay(self.cfg)
-        scp = ["scp"]
+        # -p carries the local 0600 mode to the automation VM — without it the
+        # remote file gets that user's umask (often 0644), exposing any addon
+        # credentials in sections: to other local users there.
+        scp = ["scp", "-p"]
         if overlay.get("identity_file"):
             scp += ["-i", str(overlay["identity_file"])]
-        scp += ssh_opts()
+        scp += automation_ssh_opts()
         scp += [str(local), f"{overlay['automation_host']}:{remote_path}"]
         rc = yield from self._stream(scp)
         self._last_rc = rc

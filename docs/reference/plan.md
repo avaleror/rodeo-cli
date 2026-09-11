@@ -361,6 +361,10 @@ Caution: without `--keep`, upstream `setup_lab.py` **destroys and recreates
 every VM** — rodeo passes `--keep` by default and reserves the rebuild for
 `rodeo deploy --force`.
 
+The automation VM's SSH host key is pinned on first contact
+(`~/.rodeo/ssh/labinabox_known_hosts`); a later key change fails the
+connection loudly — delete the entry there after a legitimate VM rebuild.
+
 ---
 
 ## What belongs here vs. definition.yaml

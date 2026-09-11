@@ -118,6 +118,7 @@ class RodeoApp(App):
         include_guarded: bool = False,
         ansible_verbose: int = 0,
         reconcile: bool = True,
+        runner_cls: type = DeployRunner,
     ) -> None:
         super().__init__()
         self.cfg = cfg
@@ -129,23 +130,32 @@ class RodeoApp(App):
         self.include_guarded = include_guarded
         self.ansible_verbose = ansible_verbose
         self.reconcile = reconcile
+        self.runner_cls = runner_cls
         self.exit_code: int = 0
         self._runner: DeployRunner | None = None
         self._stop_tailers = threading.Event()
 
+    @property
+    def _remote_engine(self) -> bool:
+        """Engines that run elsewhere have no local serial logs to tail."""
+        return bool(getattr(self.runner_cls, "remote", False))
+
     def compose(self) -> ComposeResult:
         from .profiles import get_profile
         profile = get_profile(self.cfg.get("type", "suse-virt"))
+        # A non-native engine carries its own phase list on the runner class.
+        phases = list(getattr(self.runner_cls, "phases", None) or profile.phases)
         vms = list(self.cfg.get("vms", {}).keys()) or profile.vm_names
         yield Header(show_clock=True)
         with Horizontal():
-            yield DeployPanel(phases=profile.phases)
+            yield DeployPanel(phases=phases)
             yield LogsPanel(vms=vms)
         yield Footer()
 
     def on_mount(self) -> None:
-        for vm in self.cfg.get("vms", {}).keys():
-            self._tail_vm(vm)
+        if not self._remote_engine:
+            for vm in self.cfg.get("vms", {}).keys():
+                self._tail_vm(vm)
         if not self.watch_only:
             self._run_deploy()
 
@@ -161,7 +171,7 @@ class RodeoApp(App):
 
     @work(thread=True)
     def _run_deploy(self) -> None:
-        self._runner = DeployRunner(
+        self._runner = self.runner_cls(
             cfg=self.cfg,
             root=self.ansible_root,
             from_phase=self.from_phase,

@@ -425,6 +425,7 @@ Live KVM regression is still manual (or geekohive) before touching MAC/DHCP/ISO 
 | New deployment_target | `host_context.register_host_context(name, overlay)` — validation, `--target`, prompt, and plan shaping all follow; add `up_cmd.py` auto-detection only if the target is probeable |
 | Profile success screen | Override `RodeoProfile.success_extra_sections()` / `success_next_steps()` — `success.py` renders URLs/credentials, the profile owns the narrative |
 | New Python phase | `profiles.base.register_stream_phase()` + a `stream_*` generator on DeployRunner + add to `profile.phases` |
+| New deploy engine | `engine.registry.register_engine(name, RunnerClass)` — a runner speaking the DeployRunner event protocol (`run()` yields `engine.events` types, `terminate()` cancels); selected by the plan's `engine:` key or `--engine`. In-tree: `native` (DeployRunner) and `lab-in-a-box` (`engine/labinabox_runner.py` — setup_lab.py on a remote automation VM) |
 | New host provider | `providers.registry.register_provider()` with a factory returning a `HostProvider` |
 | Third-party plugin | A package with a `rodeo.plugins` entry point calling the register_* APIs — discovered lazily on the first lookup miss (see `rodeo/plugins.py`) |
 | New CLI command | `commands/*.py` + register in `cli.py` |

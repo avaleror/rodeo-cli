@@ -219,6 +219,60 @@ def _resource_needs(cfg: dict) -> tuple[int, int]:
     )
 
 
+def _labinabox_remote_check(cfg: dict, remote_cmd: str, timeout: int = 20) -> tuple[bool, str]:
+    """Run a probe command on the automation VM; return (ok, detail)."""
+    import subprocess
+
+    from .engine.labinabox_runner import ssh_target_argv
+
+    try:
+        result = subprocess.run(
+            ssh_target_argv(cfg) + [remote_cmd],
+            capture_output=True, text=True, timeout=timeout,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, str(exc)
+    detail = (result.stdout + result.stderr).strip().splitlines()
+    return result.returncode == 0, detail[-1] if detail else f"exit {result.returncode}"
+
+
+def _run_preflight_labinabox(cfg: dict) -> bool:
+    """Preflight for engine: lab-in-a-box — the work happens on the automation
+    VM, so local KVM/RAM/Ansible checks are replaced by remote reachability
+    and lab-in-a-box installation checks."""
+    host = (cfg.get("lab_in_a_box") or {}).get("automation_host", "")
+    checks: list[tuple[str, bool, str, bool]] = []
+
+    ok_ssh, detail = _labinabox_remote_check(cfg, "true")
+    checks.append((
+        f"ssh {host}", ok_ssh,
+        f"cannot reach the automation VM over SSH — {detail}", False,
+    ))
+    if ok_ssh:
+        ok_tool, _ = _labinabox_remote_check(cfg, "setup_lab.py --version")
+        checks.append((
+            "setup_lab.py", ok_tool,
+            "setup_lab.py not installed on the automation VM — run lab-in-a-box's "
+            "install_automation_node_scripts.sh there", False,
+        ))
+        ok_cfg, _ = _labinabox_remote_check(cfg, "test -f /etc/lab_creation.cfg")
+        checks.append((
+            "/etc/lab_creation.cfg", ok_cfg,
+            "missing on the automation VM — copy /etc/lab_creation.cfg.example "
+            "and adjust it", False,
+        ))
+        checks.append(("scp", shutil.which("scp") is not None,
+                       "scp not found in PATH", False))
+
+    title = f"Preflight — {cfg.get('name', 'rodeo')} (engine: lab-in-a-box)"
+    all_ok = _print_checks(title, checks)
+    if all_ok:
+        console.print("[bold green]All checks passed.[/bold green]\n")
+    else:
+        console.print("[bold red]One or more checks failed.[/bold red]\n")
+    return all_ok
+
+
 def run_preflight(cfg: dict, root: Path, phases_to_run: list[str] | None = None) -> bool:
     """Plan-sized preflight for ``deploy --check`` / ``up``. Prints results, returns ok.
 
@@ -237,6 +291,11 @@ def run_preflight(cfg: dict, root: Path, phases_to_run: list[str] | None = None)
     A first-time deploy always starts with empty state, so this never masks the
     real check for genuinely new provisioning.
     """
+    # The lab-in-a-box engine converges on a remote automation VM: local
+    # host/tooling checks don't apply, remote ones do.
+    if cfg.get("engine", "native") == "lab-in-a-box":
+        return _run_preflight_labinabox(cfg)
+
     storage = cfg.get("storage", {})
     image_dir = storage.get("image_dir", DEFAULT_IMAGE_DIR)
 

@@ -93,10 +93,14 @@ def _default_labs_root() -> Path:
     help="AWS host size tier when --target aws (ignored if provider.instance_type is set). "
          "With --yes and no type/tier, defaults to recommended.",
 )
+@click.option("--engine", "engine", default=None, metavar="NAME",
+              help="Deploy engine override: native (default) or lab-in-a-box "
+                   "(setup_lab.py on a remote automation VM). Persistent form: "
+                   "engine: in rodeo-plan.yaml.")
 def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
            assume_yes: bool, no_deploy: bool, no_tmux: bool,
            deployment_target: str | None, resume: bool, reconcile: bool,
-           instance_tier: str | None) -> None:
+           instance_tier: str | None, engine: str | None) -> None:
     """Bring up a SUSE/Rancher learning lab in one command.
 
     Runs inside a tmux session automatically so the deploy survives SSH or
@@ -133,7 +137,7 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
         if lab is None:
             console.print("[red]✗  --resume needs --dir.[/red]")
             raise SystemExit(2)
-        _deploy(lab, assume_yes=True, reconcile=reconcile)
+        _deploy(lab, assume_yes=True, reconcile=reconcile, engine=engine)
         return
 
     # Resolve deployment target: explicit flag > existing plan > auto-detect > prompt.
@@ -277,9 +281,11 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
         resume_args = ["up", "--resume", "--dir", str(lab), "--yes",
                        "--target", local_target if deployment_target != "aws" else "baremetal"]
         resume_args.append("--reconcile" if reconcile else "--no-reconcile")
+        if engine:
+            resume_args += ["--engine", engine]
         ensure_root(resume_args)  # does not return
 
-    _deploy(lab, assume_yes=assume_yes, reconcile=reconcile)
+    _deploy(lab, assume_yes=assume_yes, reconcile=reconcile, engine=engine)
 
 
 def _aws_control_plane_deploy(
@@ -534,10 +540,14 @@ def _choose_profile(host: dict, assume_yes: bool) -> str:
     return choice
 
 
-def _deploy(lab: Path, assume_yes: bool, reconcile: bool = True) -> None:
+def _deploy(
+    lab: Path, assume_yes: bool, reconcile: bool = True, engine: str | None = None
+) -> None:
     """Load the lab, preflight, and run the pipeline (called as root)."""
     try:
         cfg = load_config("rodeo-plan.yaml", config_dir=str(lab))
+        if engine:
+            cfg["engine"] = engine
         validate_config(cfg)
     except ValueError as exc:
         console.print(f"[red]✗  {exc}[/red]")
@@ -558,9 +568,12 @@ def _deploy(lab: Path, assume_yes: bool, reconcile: bool = True) -> None:
     persist_host_context_notes(cfg, hc_notes)
 
     root = find_ansible_root(cfg)
-    if root is None or not (root / "ansible" / "playbook.yml").exists():
+    native_engine = cfg.get("engine", "native") == "native"
+    if native_engine and (root is None or not (root / "ansible" / "playbook.yml").exists()):
         console.print("[red]✗  Cannot find the bundled Ansible content. Reinstall rodeo-cli.[/red]")
         raise SystemExit(1)
+    if root is None:
+        root = lab  # non-native engines don't consume Ansible content
 
     if not run_preflight(cfg, root):
         if assume_yes:

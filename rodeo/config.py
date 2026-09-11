@@ -34,6 +34,7 @@ class ConfigError(ValueError):
 _BASE_DEFAULTS: dict[str, Any] = {
     "type": "suse-virt",
     "name": "suse-virt-rodeo",
+    "engine": "native",  # native | lab-in-a-box (see rodeo/engine/registry.py)
     "deployment_target": "baremetal",  # instruqt | baremetal | aws
     "network": {
         "mode": "nat",
@@ -351,6 +352,18 @@ def validate_config(cfg: dict) -> None:
     if target == "aws":
         _validate_aws_provider(cfg)
 
+    # Engines come from the engine registry (built-ins + plugins), like
+    # deployment targets above.
+    engine = cfg.get("engine", "native")
+    from .engine.registry import is_known_engine, list_engines
+
+    if not is_known_engine(engine):
+        raise ConfigError(
+            f"Invalid engine '{engine}' — use one of: {', '.join(list_engines())}."
+        )
+    if engine == "lab-in-a-box":
+        _validate_labinabox(cfg)
+
     libvirt = cfg.get("libvirt", {})
     if not isinstance(libvirt, dict):
         raise ConfigError("libvirt must be a mapping")
@@ -429,6 +442,29 @@ def validate_config(cfg: dict) -> None:
 
 
 _BUNDLED_DATA = Path(__file__).parent / "data"
+
+
+def _validate_labinabox(cfg: dict) -> None:
+    """Require the lab_in_a_box: block keys the remote engine cannot run without."""
+    overlay = cfg.get("lab_in_a_box")
+    if not isinstance(overlay, dict):
+        raise ConfigError(
+            "engine: lab-in-a-box requires a lab_in_a_box: block "
+            "(automation_host, iso_image, …) — see docs/reference/plan.md."
+        )
+    host = str(overlay.get("automation_host") or "").strip()
+    if not host:
+        raise ConfigError(
+            "engine: lab-in-a-box requires lab_in_a_box.automation_host "
+            "(the SSH target of the automation VM, e.g. root@automation.lab)."
+        )
+    # `rodeo export` only warns about a missing base image; a deploy without
+    # one is guaranteed to fail upstream preflight, so fail closed here.
+    if not str(overlay.get("iso_image") or "").strip():
+        raise ConfigError(
+            "engine: lab-in-a-box requires lab_in_a_box.iso_image "
+            "(a base qcow2 present in the automation VM's ISO_LOC)."
+        )
 
 
 def _validate_aws_provider(cfg: dict) -> None:

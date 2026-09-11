@@ -1,14 +1,22 @@
 """Extension registries: register_profile / register_stream_phase /
-register_provider, plus lazy rodeo.plugins entry-point discovery."""
+register_provider / register_engine, plus lazy rodeo.plugins entry-point
+discovery."""
 from __future__ import annotations
 
 import pytest
 
+import rodeo.engine.registry as engines_mod
 import rodeo.host_context as host_ctx_mod
 import rodeo.plugins as plugins_mod
 import rodeo.profiles as profiles_mod
 import rodeo.providers.registry as providers_mod
 from rodeo.config import ConfigError, validate_config
+from rodeo.engine.registry import (
+    get_engine,
+    is_known_engine,
+    list_engines,
+    register_engine,
+)
 from rodeo.host_context import (
     apply_host_context,
     is_known_target,
@@ -27,6 +35,7 @@ def isolated_registries(monkeypatch):
     monkeypatch.setattr(providers_mod, "_FACTORIES", dict(providers_mod._FACTORIES))
     monkeypatch.setattr(profiles_base, "_STREAM_PHASES", dict(profiles_base._STREAM_PHASES))
     monkeypatch.setattr(host_ctx_mod, "_TARGETS", dict(host_ctx_mod._TARGETS))
+    monkeypatch.setattr(engines_mod, "_ENGINES", dict(engines_mod._ENGINES))
     monkeypatch.setattr(plugins_mod, "_loaded", False)
 
 
@@ -93,6 +102,68 @@ def test_register_stream_phase_rejects_duplicates_unless_replace():
         register_stream_phase("rancher", "stream_other")
     register_stream_phase("rancher", "stream_other", replace=True)
     assert profiles_base._STREAM_PHASES["rancher"] == ("stream_other", False)
+
+
+# ---------- engines ----------
+
+def test_builtin_engines_resolve():
+    from rodeo.engine.labinabox_runner import LabInABoxRunner
+    from rodeo.engine.runner import DeployRunner
+
+    assert get_engine("native") is DeployRunner
+    assert get_engine("lab-in-a-box") is LabInABoxRunner
+    assert list_engines() == ["lab-in-a-box", "native"]
+    assert is_known_engine("native")
+    assert not is_known_engine("no-such-engine")
+
+
+def test_register_engine_class_and_factory():
+    class _FakeRunner:
+        phases = ["only"]
+
+    register_engine("fake-cls", _FakeRunner)
+    register_engine("fake-factory", lambda: _FakeRunner)
+    assert get_engine("fake-cls") is _FakeRunner
+    assert get_engine("fake-factory") is _FakeRunner
+
+
+def test_register_engine_rejects_duplicates_unless_replace():
+    class _FakeRunner:
+        pass
+
+    with pytest.raises(ValueError, match="already registered"):
+        register_engine("native", _FakeRunner)
+    register_engine("native", _FakeRunner, replace=True)
+    assert get_engine("native") is _FakeRunner
+
+
+def test_unknown_engine_raises_with_known_list():
+    with pytest.raises(ValueError, match="Unknown engine"):
+        get_engine("no-such-engine")
+
+
+def test_validate_config_rejects_unknown_engine():
+    with pytest.raises(ConfigError, match="Invalid engine"):
+        validate_config({"engine": "no-such-engine"})
+
+
+def test_validate_config_labinabox_requires_overlay():
+    with pytest.raises(ConfigError, match="lab_in_a_box"):
+        validate_config({"engine": "lab-in-a-box"})
+    with pytest.raises(ConfigError, match="automation_host"):
+        validate_config({"engine": "lab-in-a-box", "lab_in_a_box": {}})
+    with pytest.raises(ConfigError, match="iso_image"):
+        validate_config({
+            "engine": "lab-in-a-box",
+            "lab_in_a_box": {"automation_host": "root@automation.lab"},
+        })
+    validate_config({
+        "engine": "lab-in-a-box",
+        "lab_in_a_box": {
+            "automation_host": "root@automation.lab",
+            "iso_image": "openSUSE-Leap-15.6.qcow2",
+        },
+    })
 
 
 # ---------- providers ----------

@@ -67,7 +67,12 @@ rodeo/
 │   ├── deploy_panel.py     Left panel: DataTable phases + progress bar + RichLog
 │   └── logs_panel.py       Right panel: TabbedContent VM serial logs
 ├── engine/
-│   ├── runner.py           DeployRunner — single pipeline, yields typed events
+│   ├── events.py           Typed deploy events shared by every engine
+│   ├── stream.py           Generic subprocess streamer (tee to plan log, LogLine events)
+│   ├── registry.py         Engine registry: plan `engine:` → runner class (native | lab-in-a-box)
+│   ├── runner.py           DeployRunner — native pipeline, yields typed events
+│   ├── labinabox_runner.py LabInABoxRunner — render lab.json + stream setup_lab.py on a
+│   │                       remote automation VM (lab-in-a-box 1.8.0 contract)
 │   ├── cluster.py          ClusterPhase — VM start order, VIP/kubeconfig/nodes waits
 │   ├── rancher/            RancherPhase package — one concern per module, composed as mixins:
 │   │                       remote (SSH/HTTP), cluster_setup (K3s/Helm/cert-manager/Rancher),
@@ -75,7 +80,7 @@ rodeo/
 │   │                       hauler (airgap), content (Gitea + demo-app seeding), summary
 │   └── libvirt.py          LibvirtDriver — direct libvirt-python VM/network ops
 ├── inventory.py            build_inventory(): renders definition.yaml → vm_nodes (MAC/UUID gen), pxe, firewall, host_prep
-├── labinabox.py            build_lab_json(): inventory → lab-in-a-box lab.json (rodeo export)
+├── labinabox.py            build_lab_json(): inventory → lab-in-a-box lab.json (rodeo export + engine)
 ├── plugins.py              Lazy `rodeo.plugins` entry-point discovery for register_* APIs
 ├── storydeps.py            rmstory + multilang as distro packages (install-deps --story; never PyPI)
 ├── story.py                rodeo story render: translate + assemble via rmstory CLI, facts via Jinja

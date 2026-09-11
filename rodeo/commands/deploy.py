@@ -9,6 +9,7 @@ from rich.console import Console
 
 from ..config import find_ansible_root, load_config, validate_config
 from ..privilege import ensure_root, is_root
+from ..engine.registry import get_engine
 from ..engine.runner import (
     DeployComplete,
     DeployRunner,
@@ -56,6 +57,10 @@ console = Console()
               help="Run preflight checks and exit without deploying.")
 @click.option("--ansible-verbose", "ansible_verbose", default=0, type=int, metavar="LEVEL",
               help="Ansible verbosity level (0-4, like -vvv). Use 3 or 4 + --no-tui for perfect tracing of every ansible task during deployment phases.")
+@click.option("--engine", "engine", default=None, metavar="NAME",
+              help="Deploy engine override: native (default) or lab-in-a-box "
+                   "(setup_lab.py on a remote automation VM). Persistent form: "
+                   "engine: in rodeo-plan.yaml.")
 def deploy_cmd(
     config_path: str,
     config_dir: str | None,
@@ -70,6 +75,7 @@ def deploy_cmd(
     include_guarded: bool,
     preflight_only: bool,
     ansible_verbose: int,
+    engine: str | None,
 ) -> None:
     """Deploy the full SUSE Virtualization Rodeo cluster."""
     if not is_root():
@@ -80,11 +86,15 @@ def deploy_cmd(
             config_dir = ctx.obj.get("config_dir")
     try:
         cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir)
+        if engine:
+            cfg["engine"] = engine
         validate_config(cfg)
         profile = get_profile(cfg.get("type", "suse-virt"))
+        runner_cls = get_engine(cfg.get("engine", "native"))
     except ValueError as exc:
         console.print(f"[red]✗  {exc}[/red]")
         raise SystemExit(1)
+    native_engine = runner_cls is DeployRunner
 
     from ..host_context import apply_host_context, persist_host_context_notes
     from ..preflight import detect_host
@@ -100,15 +110,20 @@ def deploy_cmd(
     )
     persist_host_context_notes(cfg, hc_notes)
 
-    if from_phase is not None and from_phase not in profile.phases:
+    # An alternative engine brings its own phase list; the native one runs
+    # the profile's.
+    engine_phases = profile.phases if native_engine else list(
+        getattr(runner_cls, "phases", [])
+    )
+    if from_phase is not None and from_phase not in engine_phases:
         console.print(
             f"[red]✗  Unknown phase '{from_phase}'. "
-            f"Valid phases: {', '.join(profile.phases)}[/red]"
+            f"Valid phases: {', '.join(engine_phases)}[/red]"
         )
         raise SystemExit(1)
 
     root = Path(ansible_path) if ansible_path else find_ansible_root(cfg)
-    if root is None or not (root / "ansible" / "playbook.yml").exists():
+    if native_engine and (root is None or not (root / "ansible" / "playbook.yml").exists()):
         console.print(
             "[red]Cannot find ansible/playbook.yml.[/red]\n"
             "Set [bold]ansible.path[/bold] in rodeo-plan.yaml, "
@@ -116,13 +131,15 @@ def deploy_cmd(
             "or set [bold]RODEO_ANSIBLE_PATH[/bold]."
         )
         raise SystemExit(1)
+    if root is None:
+        root = Path.cwd()  # non-native engines don't consume Ansible content
 
     # Compute which phases will actually run so preflight can skip resource
     # checks that are irrelevant (e.g. RAM/disk when --from rancher skips vms).
-    if from_phase is not None and from_phase in profile.phases:
-        phases_to_run = profile.phases[profile.phases.index(from_phase):]
+    if from_phase is not None and from_phase in engine_phases:
+        phases_to_run = engine_phases[engine_phases.index(from_phase):]
     else:
-        phases_to_run = list(profile.phases)
+        phases_to_run = list(engine_phases)
 
     ok = run_preflight(cfg, root, phases_to_run=phases_to_run)
     if preflight_only:
@@ -159,9 +176,12 @@ def execute_deploy(
 
     Shared by ``rodeo deploy`` and ``rodeo up`` so both get identical behavior and
     the same success screen. Prints :func:`render_success` on a clean run (code 0).
+    The runner class comes from the plan's ``engine:`` key via the engine registry.
     """
     from ..host_context import apply_host_context, persist_host_context_notes
     from ..preflight import detect_host
+
+    runner_cls = get_engine(cfg.get("engine", "native"))
 
     host = detect_host()
     cfg, hc_notes = apply_host_context(
@@ -193,16 +213,17 @@ def execute_deploy(
                 reconcile=reconcile,
                 include_guarded=include_guarded,
                 ansible_verbose=ansible_verbose,
+                runner_cls=runner_cls,
             )
             app.run()
             code = app.exit_code
         except ImportError:
             console.print("[yellow]⚠  textual not installed — falling back to plain output[/yellow]")
             code = _deploy_plain(cfg, root, from_phase, install_collections, force,
-                                 reconcile, include_guarded, ansible_verbose)
+                                 reconcile, include_guarded, ansible_verbose, runner_cls)
     else:
         code = _deploy_plain(cfg, root, from_phase, install_collections, force,
-                             reconcile, include_guarded, ansible_verbose)
+                             reconcile, include_guarded, ansible_verbose, runner_cls)
 
     if code == 0:
         render_success(cfg)
@@ -218,8 +239,9 @@ def _deploy_plain(
     reconcile: bool = True,
     include_guarded: bool = False,
     ansible_verbose: int = 0,
+    runner_cls: type = DeployRunner,
 ) -> int:
-    runner = DeployRunner(
+    runner = runner_cls(
         cfg=cfg,
         root=root,
         from_phase=from_phase,
@@ -275,6 +297,9 @@ def _deploy_plain(
         elif isinstance(event, PhaseFailed):
             _stop_status()
             console.print(f"[red]✗  {event.phase} failed (exit {event.rc})[/red]")
+            if event.message and event.message != f"{event.phase} failed":
+                # markup=False: the message can carry raw upstream output.
+                console.print(f"   {event.message}", markup=False, style="dim")
             return event.rc or 1
         elif isinstance(event, DeployComplete):
             _stop_status()

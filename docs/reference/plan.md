@@ -311,30 +311,54 @@ English source — the payoff screen never fails.
 
 ---
 
-## lab_in_a_box — exporting to lab-in-a-box
+## lab_in_a_box — deploying through lab-in-a-box
 
-`rodeo export --format lab-in-a-box` renders the lab as the `lab.json` that
-[lab-in-a-box](https://github.com/SUSE-Technical-Marketing/lab-in-a-box)'s
-`setup_lab.sh` / `destroy_lab.sh` consume (tested against release 1.0.0). The
-plan and definition stay the source of truth; the optional `lab_in_a_box:`
-block holds the knobs that only exist on the lab-in-a-box side:
+Two ways to hand a lab to
+[lab-in-a-box](https://github.com/SUSE-Technical-Marketing/lab-in-a-box)
+(release 1.8.0, the Python-based `setup_lab.py` contract):
+
+1. **`engine: lab-in-a-box`** in the plan (or `rodeo deploy --engine
+   lab-in-a-box`) — rodeo renders the lab.json, pushes it over SSH to a
+   lab-in-a-box *automation VM*, and streams `setup_lab.py --keep --debug`
+   through the normal deploy pipeline (TUI or plain, same phase state,
+   `rodeo clean` runs `destroy_lab.py` remotely). The automation VM is an
+   operator-provided prerequisite (upstream's
+   `install_automation_node_scripts.sh`); rodeo's preflight verifies it.
+2. **`rodeo export --format lab-in-a-box -o lab.json`** — emit the file and
+   run `setup_lab.py --keep lab.json` yourself.
+
+The plan and definition stay the source of truth; the `lab_in_a_box:` block
+holds the knobs that only exist on the lab-in-a-box side:
 
 ```yaml
+engine: lab-in-a-box                    # default: native
 lab_in_a_box:
-  iso_image: openSUSE-Leap-15.6.qcow2   # base qcow2 in lab-in-a-box's ISO_LOC (required to deploy)
-  config_method: cloud-init             # cloud-init (default) | iso-cloud-init | "" (ignition/combustion)
+  automation_host: root@automation.lab  # SSH target of the automation VM (required by the engine)
+  identity_file: ~/.ssh/id_rodeo        # optional SSH key for automation_host
+  remote_dir: /root/rodeo-labs/<name>   # where lab.json lands on the automation VM (default shown)
+  keep: true                            # setup_lab.py --keep (incremental re-runs); rodeo deploy --force drops it
+  debug: true                           # setup_lab.py --debug (live command output for the TUI/log)
+  iso_image: openSUSE-Leap-15.6.qcow2   # base qcow2 in lab-in-a-box's ISO_LOC (engine: required; export: warned)
+  config_method: cloud-init             # cloud-init (default) | virt_customize | install_iso | "" (ignition/combustion)
   cluster_name: mgmt                    # kcluster name (also its DNS record: <name>.<domain>)
   cluster_type: k3s                     # k3s (default) | rke2
   clu_rel: stable                       # install channel — exact version pins don't carry over
-  addons: [rancher]                     # override the derived install_<addon> list
+  addons: [rancher]                     # override the derived install_<addon> list (1.8.0 also
+                                        # accepts {"<addon>": {...}} per-entry config overrides)
   sections:                             # verbatim extra/override lab.json sections
     rancher: {rancher_rel: stable}
 ```
 
-Not carried over (warned at export time): PXE-booted Harvester nodes
-(lab-in-a-box has no PXE — use `--skip-unsupported` to export the rest),
-exposed-service host port-forwards, storage/image-dir selection, and exact
-k3s/rke2 version pins.
+Exposed-service host port-forwards now translate to lab-in-a-box's
+`portforward` service (per-node `forwarded_ports`). Still not carried over
+(warned at export time, refused by the engine): PXE-booted Harvester nodes —
+those labs stay on the native engine until lab-in-a-box's PXE path is
+live-regression-tested — storage/image-dir selection (lives in the automation
+VM's `/etc/lab_creation.cfg`), and exact k3s/rke2 version pins.
+
+Caution: without `--keep`, upstream `setup_lab.py` **destroys and recreates
+every VM** — rodeo passes `--keep` by default and reserves the rebuild for
+`rodeo deploy --force`.
 
 ---
 

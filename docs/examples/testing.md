@@ -201,3 +201,35 @@ RODEO_PASSWORD=testpassword rodeo plan -P credentials.harvester_os_password=??en
 ```
 
 `deploy --check` runs the preflight suite (including secret validation) without starting any phase.
+
+## Live smoke — lab-in-a-box engine (Phase J2 checklist)
+
+Prerequisite: a lab-in-a-box automation VM (release 1.8.0+) installed per
+upstream's `install_automation_node_scripts.sh`, with `/etc/lab_creation.cfg`
+configured, the base qcow2 present in its `ISO_LOC`, and root SSH reachable
+from the machine running rodeo.
+
+```bash
+# 1. Preflight only — remote SSH / setup_lab.py / lab_creation.cfg checks
+rodeo deploy --engine lab-in-a-box --check \
+  -P lab_in_a_box.automation_host=root@automation.lab \
+  -P lab_in_a_box.iso_image=openSUSE-Leap-15.6.qcow2
+
+# 2. First deploy (rancher profile) — watch for the render + deploy phases;
+#    minutes-long silent windows per cluster are upstream settle sleeps, not hangs
+rodeo deploy --engine lab-in-a-box
+
+# 3. Idempotent re-run — setup_lab.py --keep must reuse matching VMs
+rodeo deploy --engine lab-in-a-box
+
+# 4. Forced rebuild — --force drops --keep (upstream destroys + recreates)
+rodeo deploy --engine lab-in-a-box --force
+
+# 5. Teardown — clean must run destroy_lab.py on the automation VM and
+#    surface its WARNING lines (destroy_lab.py always exits 0)
+rodeo clean --yes
+```
+
+Verify on the automation VM: `/root/rodeo-labs/<plan>/lab.json` content
+matches `rodeo export` output; DNS records for the lab FQDNs resolve via its
+BIND.

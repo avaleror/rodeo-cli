@@ -25,7 +25,14 @@ from .base import (
     ownership_tags,
 )
 
-_REQUIRED = ("region", "subnet_id", "security_group_ids")
+_REQUIRED = ("region", "subnet_id")
+
+# Mirrors the kvm_host firewalld rules a workshop host actually needs open:
+# SSH, the Harvester UI DNAT (harvester_ui_port default), the Rancher NodePort
+# DNAT (rancher_nodeport default). See rodeo/data/ansible/roles/kvm_host/
+# defaults/main.yml and tasks/firewall.yml. If those ansible defaults ever
+# change, this tuple should move with them.
+MANAGED_SG_PORTS = (22, 8443, 30002)
 
 # Recommended default for performance-first Harvester labs (local NVMe).
 DEFAULT_INSTANCE_TYPE = "i7i.8xlarge"
@@ -95,6 +102,34 @@ def _require_boto3():
         ) from exc
 
 
+def _detect_caller_ip() -> str:
+    """This machine's public IP, to scope the auto-managed security group to
+    "operator only" — the same convention already used by hand-created
+    rodeo-workshop SGs. Uses AWS's own checkip endpoint so auto-management
+    adds no new third-party trust beyond AWS itself, which the provider
+    already requires."""
+    import urllib.error
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen("https://checkip.amazonaws.com", timeout=5) as resp:
+            ip = resp.read().decode().strip()
+    except (urllib.error.URLError, OSError, TimeoutError) as exc:
+        raise ConfigError(
+            "could not auto-detect this machine's public IP to scope the "
+            "auto-managed security group (needed because "
+            "provider.security_group_ids is unset). Set "
+            "provider.security_group_ids explicitly to skip auto-detection. "
+            f"Underlying error: {exc}"
+        ) from exc
+    if not ip or ("." not in ip and ":" not in ip):
+        raise ConfigError(
+            f"unexpected response from IP-detection service: {ip!r} — set "
+            "provider.security_group_ids explicitly to skip auto-detection"
+        )
+    return ip
+
+
 class AwsHostProvider:
     """Provision/reuse/terminate EC2 instances tagged for a workshop."""
 
@@ -105,9 +140,11 @@ class AwsHostProvider:
         *,
         ec2_client: Any | None = None,
         sleep: Callable[[float], None] = time.sleep,
+        caller_ip_fn: Callable[[], str] = _detect_caller_ip,
     ) -> None:
         self._ec2 = ec2_client
         self._sleep = sleep
+        self._caller_ip_fn = caller_ip_fn
 
     def _client(self, config: dict[str, Any]) -> Any:
         if self._ec2 is not None:
@@ -139,9 +176,14 @@ class AwsHostProvider:
         if not ami and not filt:
             # OK — provision will use DEFAULT_AMI_NAME_FILTER (Leap 16).
             pass
-        sgs = config["security_group_ids"]
-        if not isinstance(sgs, list) or not sgs or not all(isinstance(x, str) for x in sgs):
-            raise ConfigError("provider.security_group_ids must be a non-empty list of strings")
+        sgs = config.get("security_group_ids")
+        if sgs is not None and (
+            not isinstance(sgs, list) or not sgs or not all(isinstance(x, str) for x in sgs)
+        ):
+            raise ConfigError(
+                "provider.security_group_ids, when set, must be a non-empty list of strings "
+                "(omit it entirely to let rodeo create and manage one automatically)"
+            )
         owners = config.get("ami_owners")
         if owners is not None and (
             not isinstance(owners, list) or not all(isinstance(x, str) for x in owners)
@@ -268,6 +310,221 @@ class AwsHostProvider:
             "the lab is reached over a bastion / VPN instead."
         )
 
+    @staticmethod
+    def _vpc_id_for_subnet(ec2: Any, subnet_id: str) -> str:
+        subnets = ec2.describe_subnets(SubnetIds=[subnet_id]).get("Subnets") or []
+        if not subnets:
+            raise ConfigError(f"provider.subnet_id {subnet_id} not found")
+        return str(subnets[0].get("VpcId") or "")
+
+    @staticmethod
+    def _default_sg_for_vpc(ec2: Any, vpc_id: str) -> str:
+        """The VPC's built-in 'default' SG — used only to give a capacity
+        DryRun something real to reference when no workshop-scoped managed SG
+        exists yet. Never created, tagged, or cleaned up by rodeo."""
+        resp = ec2.describe_security_groups(
+            Filters=[
+                {"Name": "vpc-id", "Values": [vpc_id]},
+                {"Name": "group-name", "Values": ["default"]},
+            ]
+        )
+        groups = resp.get("SecurityGroups") or []
+        if not groups:
+            raise ConfigError(
+                f"no default security group found in vpc {vpc_id} to probe "
+                "capacity with — set provider.security_group_ids explicitly"
+            )
+        return str(groups[0]["GroupId"])
+
+    @staticmethod
+    def _find_managed_sg(ec2: Any, *, vpc_id: str, workshop: str) -> str | None:
+        resp = ec2.describe_security_groups(
+            Filters=[
+                {"Name": "vpc-id", "Values": [vpc_id]},
+                {"Name": f"tag:{TAG_MANAGED_BY}", "Values": [TAG_MANAGED_BY_VALUE]},
+                {"Name": f"tag:{TAG_WORKSHOP}", "Values": [workshop]},
+                {"Name": "tag:rodeo-resource", "Values": ["security-group"]},
+            ]
+        )
+        groups = resp.get("SecurityGroups") or []
+        return str(groups[0]["GroupId"]) if groups else None
+
+    @staticmethod
+    def _create_managed_sg(ec2: Any, *, vpc_id: str, workshop: str) -> str:
+        name = f"rodeo-{workshop}"
+        tags = {
+            TAG_MANAGED_BY: TAG_MANAGED_BY_VALUE,
+            TAG_WORKSHOP: workshop,
+            "rodeo-resource": "security-group",
+        }
+        try:
+            resp = ec2.create_security_group(
+                GroupName=name,
+                Description=(
+                    f"rodeo-managed: {workshop} — SSH + Harvester UI + Rancher "
+                    f"NodePort ({', '.join(str(p) for p in MANAGED_SG_PORTS)})"
+                ),
+                VpcId=vpc_id,
+                TagSpecifications=[
+                    {
+                        "ResourceType": "security-group",
+                        "Tags": [{"Key": k, "Value": v} for k, v in tags.items()],
+                    }
+                ],
+            )
+            return str(resp["GroupId"])
+        except Exception as exc:  # noqa: BLE001
+            code, message = _aws_error_parts(exc)
+            if code != "InvalidGroup.Duplicate":
+                raise ConfigError(
+                    f"could not create security group {name!r} in vpc {vpc_id}: "
+                    f"{message}"
+                ) from exc
+            # Racing another run, or a stale untagged leftover from a name
+            # that matches ours: reuse it by name rather than fail.
+            resp = ec2.describe_security_groups(
+                Filters=[
+                    {"Name": "vpc-id", "Values": [vpc_id]},
+                    {"Name": "group-name", "Values": [name]},
+                ]
+            )
+            groups = resp.get("SecurityGroups") or []
+            if not groups:
+                raise ConfigError(
+                    f"security group {name!r} reported as duplicate but not found "
+                    f"in vpc {vpc_id} — transient AWS inconsistency, retry"
+                ) from exc
+            return str(groups[0]["GroupId"])
+
+    def _reconcile_managed_sg_ingress(self, ec2: Any, sg_id: str, caller_cidr: str) -> None:
+        """Desired state: exactly one ingress source (the caller's current
+        public IP) per managed port. Revokes any other CIDR on those ports —
+        safe because this SG is exclusively rodeo's, nothing else touches it —
+        and authorizes the current one. No-ops on repeat runs from the same IP."""
+        resp = ec2.describe_security_groups(GroupIds=[sg_id])
+        perms = (resp.get("SecurityGroups") or [{}])[0].get("IpPermissions") or []
+        for port in MANAGED_SG_PORTS:
+            current = {
+                str(r.get("CidrIp"))
+                for perm in perms
+                if perm.get("IpProtocol") == "tcp"
+                and perm.get("FromPort") == port
+                and perm.get("ToPort") == port
+                for r in perm.get("IpRanges") or []
+                if r.get("CidrIp")
+            }
+            if current == {caller_cidr}:
+                continue
+            stale = current - {caller_cidr}
+            if stale:
+                ec2.revoke_security_group_ingress(
+                    GroupId=sg_id,
+                    IpPermissions=[
+                        {
+                            "IpProtocol": "tcp",
+                            "FromPort": port,
+                            "ToPort": port,
+                            "IpRanges": [{"CidrIp": c} for c in stale],
+                        }
+                    ],
+                )
+            if caller_cidr not in current:
+                ec2.authorize_security_group_ingress(
+                    GroupId=sg_id,
+                    IpPermissions=[
+                        {
+                            "IpProtocol": "tcp",
+                            "FromPort": port,
+                            "ToPort": port,
+                            "IpRanges": [
+                                {"CidrIp": caller_cidr, "Description": "rodeo operator IP"}
+                            ],
+                        }
+                    ],
+                )
+
+    def _resolve_security_groups(
+        self,
+        ec2: Any,
+        config: dict[str, Any],
+        *,
+        workshop: str | None = None,
+    ) -> list[str]:
+        """``provider.security_group_ids`` if given (BYO SG, unchanged
+        behaviour); otherwise a rodeo-managed SG scoped to this machine's
+        current public IP on :data:`MANAGED_SG_PORTS`.
+
+        Without a ``workshop`` — the standalone pre-flight capacity check,
+        before any workshop-scoped resource should exist yet — falls back to
+        the VPC's default SG so the DryRun probe has something real to
+        reference. The real managed SG is only created once provisioning is
+        actually about to happen (see ``provision``), so a capacity failure
+        never leaves one behind.
+        """
+        sgs = config.get("security_group_ids")
+        if sgs:
+            return list(sgs)
+        vpc_id = self._vpc_id_for_subnet(ec2, str(config["subnet_id"]))
+        if not workshop:
+            return [self._default_sg_for_vpc(ec2, vpc_id)]
+        sg_id = self._find_managed_sg(ec2, vpc_id=vpc_id, workshop=workshop)
+        if sg_id is None:
+            sg_id = self._create_managed_sg(ec2, vpc_id=vpc_id, workshop=workshop)
+        caller_ip = self._caller_ip_fn()
+        self._reconcile_managed_sg_ingress(ec2, sg_id, f"{caller_ip}/32")
+        return [sg_id]
+
+    def _cleanup_managed_sg(
+        self,
+        ec2: Any,
+        config: dict[str, Any],
+        *,
+        workshop: str,
+    ) -> DeprovisionResult | None:
+        """Best-effort delete of the rodeo-managed SG for this workshop.
+
+        Only called when ``provider.security_group_ids`` was unset (rodeo
+        owns the SG). SG deletion fails with DependencyViolation while any
+        ENI is still attached, which is normal for a few dozen seconds after
+        ``terminate_instances`` — retried with backoff, but never allowed to
+        fail the destroy call: the SG costs nothing left behind, and a later
+        `rodeo destroy` re-run or the tag-based sweep script will catch it.
+        """
+        try:
+            subnet_id = str(config.get("subnet_id") or "")
+            if not subnet_id:
+                return None
+            vpc_id = self._vpc_id_for_subnet(ec2, subnet_id)
+            sg_id = self._find_managed_sg(ec2, vpc_id=vpc_id, workshop=workshop)
+            if not sg_id:
+                return None
+            for attempt in range(6):
+                try:
+                    ec2.delete_security_group(GroupId=sg_id)
+                    return DeprovisionResult(
+                        id="security-group", ok=True, provider_id=sg_id, detail="deleted"
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    code, _ = _aws_error_parts(exc)
+                    if code != "DependencyViolation":
+                        return DeprovisionResult(
+                            id="security-group",
+                            ok=True,
+                            provider_id=sg_id,
+                            detail=f"cleanup skipped ({code or 'error'}) — safe to ignore",
+                        )
+                    if attempt < 5:
+                        self._sleep(10)
+            return DeprovisionResult(
+                id="security-group",
+                ok=True,
+                provider_id=sg_id,
+                detail="still attached (instance ENIs detaching) — re-run destroy "
+                "in a minute, or it'll be caught by a tag-based sweep",
+            )
+        except Exception:  # noqa: BLE001 — cleanup must never fail the destroy call
+            return None
+
     def assert_available(
         self,
         config: dict[str, Any],
@@ -307,6 +564,10 @@ class AwsHostProvider:
         # Capacity probe: DryRun with real networking + AMI.
         cfg = dict(config)
         cfg["ami"] = self.resolve_ami(ec2, cfg)
+        # No workshop context here (standalone pre-flight): fall back to the
+        # VPC's default SG rather than create the real managed one this early
+        # — a capacity failure below must not leave a security group behind.
+        cfg["security_group_ids"] = self._resolve_security_groups(ec2, cfg)
         try:
             # MinCount=count would request N; AWS DryRun still validates capacity path.
             kwargs = self._run_instances_kwargs(
@@ -407,6 +668,13 @@ class AwsHostProvider:
                 to_create.append(host_id)
         if to_create:
             self.assert_available(cfg, count=len(to_create))
+        # Real managed SG (create/reuse + reconcile to this machine's current
+        # IP) only after capacity is confirmed — a failed capacity check must
+        # not leave a security group behind. No-op when the operator supplied
+        # provider.security_group_ids explicitly.
+        cfg["security_group_ids"] = self._resolve_security_groups(
+            ec2, cfg, workshop=wait_spec.workshop
+        )
         for host_id in wait_spec.host_ids:
             if host_id in existing_map:
                 inst = existing_map[host_id]
@@ -491,25 +759,48 @@ class AwsHostProvider:
                 targets.append((hid, inst["InstanceId"]))
 
         if not targets:
-            return [
+            results = [
                 DeprovisionResult(id=hid, ok=True, detail="no matching instance")
                 for hid in (spec.host_ids or [])
             ] or [
                 DeprovisionResult(id="*", ok=True, detail="no matching instances")
             ]
+        else:
+            ids = [iid for _, iid in targets]
+            try:
+                ec2.terminate_instances(InstanceIds=ids)
+                results = [
+                    DeprovisionResult(id=hid, ok=True, provider_id=iid, detail="terminating")
+                    for hid, iid in targets
+                ]
+            except Exception as exc:  # noqa: BLE001
+                results = [
+                    DeprovisionResult(id=hid, ok=False, error=str(exc), provider_id=iid)
+                    for hid, iid in targets
+                ]
 
-        ids = [iid for _, iid in targets]
-        try:
-            ec2.terminate_instances(InstanceIds=ids)
-        except Exception as exc:  # noqa: BLE001
-            return [
-                DeprovisionResult(id=hid, ok=False, error=str(exc), provider_id=iid)
-                for hid, iid in targets
-            ]
-        return [
-            DeprovisionResult(id=hid, ok=True, provider_id=iid, detail="terminating")
-            for hid, iid in targets
-        ]
+        # Managed-SG cleanup (only ours to delete when the operator didn't
+        # supply provider.security_group_ids) — but only once nothing else
+        # tagged for this workshop is still alive: `spec.host_ids` can scope
+        # a partial teardown (Fleet destroying one student while others keep
+        # running), and deleting a shared SG out from under them would be
+        # wrong. A fresh, unscoped re-query is the authoritative check —
+        # correct whether termination above just succeeded, failed, or found
+        # nothing to do (which also makes "re-run destroy to catch a
+        # leftover SG" work, per _cleanup_managed_sg's own retry message).
+        if not config.get("security_group_ids"):
+            terminated_ids = {iid for _, iid in targets}
+            remaining = ec2.describe_instances(Filters=filters)
+            still_alive = any(
+                inst["InstanceId"] not in terminated_ids
+                for res in remaining.get("Reservations") or []
+                for inst in res.get("Instances") or []
+            )
+            if not still_alive:
+                cleanup = self._cleanup_managed_sg(ec2, config, workshop=spec.workshop)
+                if cleanup:
+                    results.append(cleanup)
+        return results
 
     def _find_owned(self, ec2: Any, workshop: str, host_id: str) -> dict[str, Any] | None:
         resp = ec2.describe_instances(

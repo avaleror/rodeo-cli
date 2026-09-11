@@ -131,8 +131,21 @@ non-metal types.
 ### `provider` (when `deployment_target: aws`)
 
 Same shape as Fleet [`workshop.yaml` provider](../fleet.md#workshopyaml-provider-schema).
-Required fields for AWS: `type`, `region`, `subnet_id`, `security_group_ids`, and
-either **`instance_type`** or **`instance_tier`**.
+Required fields for AWS: `type`, `region`, `subnet_id`, and either
+**`instance_type`** or **`instance_tier`**.
+
+**Security group is auto-managed unless you pin one.** Omit
+`security_group_ids` and rodeo creates (or reuses) an SG named `rodeo-<name>`
+in the subnet's VPC, opens exactly the ports the host needs — SSH (22),
+Harvester UI (8443), Rancher NodePort (30002) — and scopes all three to
+*this machine's current public IP*, detected automatically. Re-running from
+a different IP (new wifi, VPN toggled) updates the rule in place rather than
+piling up stale ones. `rodeo destroy --cloud --yes` deletes it once nothing
+else tagged for the workshop is still running (best-effort: if the instance
+hasn't finished detaching yet, re-run destroy — it's never left as a hard
+failure). Set `security_group_ids` explicitly to opt back into a hand-managed
+SG — useful for a shared multi-attendee IP range, a bastion topology, or an
+SG your org's security policy already owns.
 
 **Instance size (single-host v1):** pick one of three tiers for the lab profile, or set
 an explicit type. `rodeo up --target aws` prompts interactively when neither is set;
@@ -161,7 +174,8 @@ provider:
   # ami: ami-…                        # optional pin
   # ami_name_filter: "suse-sles-16-0-v????????-hvm-ssd-x86_64"
   subnet_id: subnet-…
-  security_group_ids: [sg-…]          # 22, 8443, 30002
+  # security_group_ids: [sg-…]        # omit → rodeo creates/manages one,
+  #                                    # scoped to this machine's public IP
   ssh_user: ec2-user                  # SLES 16 / Leap default
   # nested_virtualization: true       # default on for non-metal
   # volume_size_gib: 100              # root EBS; lab disks use NVMe

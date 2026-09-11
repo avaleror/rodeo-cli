@@ -422,13 +422,22 @@ provider:
   # ami_name_filter: "openSUSE Leap 16.0 (x86_64)*"   # default when ami unset
   # ami: ami-0123456789abcdef0      # optional pin (SLES 16 / specific Leap build)
   subnet_id: subnet-0abc…           # required
-  security_group_ids:               # required; must allow 22, 8443, 30002 as needed
+  security_group_ids:               # must allow 22, 8443, 30002 as needed
     - sg-0abc…
   # key_name: rodeo                 # default; ImportKeyPair managed by rodeo
   # associate_public_ip: true       # default true
   # nested_virtualization: true     # default on for non-metal
   # volume_size_gib: 100            # root EBS; lab disks use NVMe via host_context
 ```
+
+**`security_group_ids` is optional, but set it explicitly for a real fleet.**
+Omit it and rodeo auto-manages one, scoped to *the machine running `fleet
+provision`'s* current public IP — right for single-host `rodeo up --target
+aws` (you're both operator and the only person who needs in), wrong for a
+multi-attendee fleet where each student connects from their own IP: they'd
+all be locked out except you. Set `security_group_ids` to an SG that actually
+covers your attendees' network (a classroom CIDR, `0.0.0.0/0` for a public
+workshop, or a VPN range) whenever `count` > 1 real students.
 
 Subscribe once to [openSUSE Leap on Marketplace](https://aws.amazon.com/marketplace/pp/prodview-wn2xje27ui45o)
 (current build example: *openSUSE Leap 16.0 (x86_64) - v20260629*). SSH user: **`ec2-user`**.

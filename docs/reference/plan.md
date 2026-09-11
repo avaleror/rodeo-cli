@@ -333,9 +333,10 @@ holds the knobs that only exist on the lab-in-a-box side:
 ```yaml
 engine: lab-in-a-box                    # default: native
 lab_in_a_box:
-  automation_host: root@automation.lab  # SSH target of the automation VM (required by the engine)
+  automation_host: user@automation.lab  # SSH target of the automation VM (required by the engine)
   identity_file: ~/.ssh/id_rodeo        # optional SSH key for automation_host
-  remote_dir: /root/rodeo-labs/<name>   # where lab.json lands on the automation VM (default shown)
+  remote_dir: rodeo-labs/<name>         # where lab.json lands on the automation VM — default shown,
+                                        # relative to the SSH user's home (~/rodeo-labs/<name>)
   keep: true                            # setup_lab.py --keep (incremental re-runs); rodeo deploy --force drops it
   debug: true                           # setup_lab.py --debug (live command output for the TUI/log)
   iso_image: openSUSE-Leap-15.6.qcow2   # base qcow2 in lab-in-a-box's ISO_LOC (engine: required; export: warned)

@@ -206,13 +206,13 @@ RODEO_PASSWORD=testpassword rodeo plan -P credentials.harvester_os_password=??en
 
 Prerequisite: a lab-in-a-box automation VM (release 1.8.0+) installed per
 upstream's `install_automation_node_scripts.sh`, with `/etc/lab_creation.cfg`
-configured, the base qcow2 present in its `ISO_LOC`, and root SSH reachable
-from the machine running rodeo.
+configured, the base qcow2 present in its `ISO_LOC`, and SSH (any user that
+can run `setup_lab.py`) reachable from the machine running rodeo.
 
 ```bash
 # 1. Preflight only — remote SSH / setup_lab.py / lab_creation.cfg checks
 rodeo deploy --engine lab-in-a-box --check \
-  -P lab_in_a_box.automation_host=root@automation.lab \
+  -P lab_in_a_box.automation_host=user@automation.lab \
   -P lab_in_a_box.iso_image=openSUSE-Leap-15.6.qcow2
 
 # 2. First deploy (rancher profile) — watch for the render + deploy phases;
@@ -230,6 +230,6 @@ rodeo deploy --engine lab-in-a-box --force
 rodeo clean --yes
 ```
 
-Verify on the automation VM: `/root/rodeo-labs/<plan>/lab.json` content
-matches `rodeo export` output; DNS records for the lab FQDNs resolve via its
-BIND.
+Verify on the automation VM: `~/rodeo-labs/<plan>/lab.json` (in the SSH
+user's home) matches `rodeo export` output; DNS records for the lab FQDNs
+resolve via its BIND.

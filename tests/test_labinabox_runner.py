@@ -91,16 +91,18 @@ def test_remote_invocation_contract(fake_stream):
     _events(runner)
 
     mkdir, scp, deploy = fake_stream.calls
-    assert mkdir[0] == "ssh" and mkdir[-1] == "mkdir -p /root/rodeo-labs/liab-test"
+    # Paths are relative to the SSH user's home on the automation VM
+    # (~/rodeo-labs/<plan>) so any automation_host user works, not just root.
+    assert mkdir[0] == "ssh" and mkdir[-1] == "mkdir -p rodeo-labs/liab-test"
     assert scp[0] == "scp"
-    assert scp[-1] == "root@auto.lab:/root/rodeo-labs/liab-test/lab.json"
+    assert scp[-1] == "root@auto.lab:rodeo-labs/liab-test/lab.json"
     assert deploy[0] == "ssh" and "root@auto.lab" in deploy
     remote = deploy[-1]
     # PYTHONUNBUFFERED beats setup_lab.py's block-buffered stdout off-TTY;
     # --keep keeps the run incremental; --debug streams command output live.
     assert remote == (
         "PYTHONUNBUFFERED=1 setup_lab.py --keep --debug "
-        "/root/rodeo-labs/liab-test/lab.json"
+        "rodeo-labs/liab-test/lab.json"
     )
 
 
@@ -198,5 +200,5 @@ def test_destroy_remote_lab_surfaces_warnings():
     rc, lines = destroy_remote_lab(_cfg(), run=fake_run)
     assert rc == 0  # destroy_lab.py always exits 0 — output is the signal
     assert calls["cmd"][0] == "ssh"
-    assert calls["cmd"][-1] == "destroy_lab.py /root/rodeo-labs/liab-test/lab.json"
+    assert calls["cmd"][-1] == "destroy_lab.py rodeo-labs/liab-test/lab.json"
     assert any("WARNING" in line for line in lines)

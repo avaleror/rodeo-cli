@@ -8,11 +8,12 @@ the TUI consume it unchanged. Selected with `engine: lab-in-a-box` in the plan
 Targets lab-in-a-box release 1.8.0 — the Python-based contract introduced with
 the 1.5.0 rewrite (https://github.com/SUSE-Technical-Marketing/lab-in-a-box):
 
-  - `setup_lab.py [--keep] [--debug] <lab.json>` runs as root on the
-    *automation VM* and exits 0 (clean) / 1 (preflight or any node/cluster/
-    addon failure). `--keep` makes re-runs incremental; WITHOUT it every VM is
-    destroyed and recreated, so rodeo passes it by default and only drops it
-    on --force (mirroring upstream MCP's deploy_lab/rebuild_lab split).
+  - `setup_lab.py [--keep] [--debug] <lab.json>` runs on the *automation VM*
+    (as whatever user lab_in_a_box.automation_host names) and exits 0 (clean)
+    / 1 (preflight or any node/cluster/addon failure). `--keep` makes re-runs
+    incremental; WITHOUT it every VM is destroyed and recreated, so rodeo
+    passes it by default and only drops it on --force (mirroring upstream
+    MCP's deploy_lab/rebuild_lab split).
   - `destroy_lab.py <lab.json>` tears the lab down but always exits 0 —
     failures are only visible as WARNING lines on the stream.
   - stdout is block-buffered off-TTY and `--debug` is what streams command
@@ -72,7 +73,10 @@ def ssh_target_argv(cfg: dict) -> list[str]:
 def remote_lab_path(cfg: dict) -> str:
     overlay = _overlay(cfg)
     plan = cfg.get("name", "default")
-    remote_dir = overlay.get("remote_dir") or f"/root/rodeo-labs/{plan}"
+    # Default is relative to the SSH user's home on the automation VM
+    # (~/rodeo-labs/<plan>, mirroring rodeo's local labs root) so it works
+    # for any automation_host user; ssh/scp resolve relative paths there.
+    remote_dir = overlay.get("remote_dir") or f"rodeo-labs/{plan}"
     return f"{remote_dir.rstrip('/')}/lab.json"
 
 

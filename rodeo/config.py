@@ -456,7 +456,7 @@ def _validate_labinabox(cfg: dict) -> None:
     if not host:
         raise ConfigError(
             "engine: lab-in-a-box requires lab_in_a_box.automation_host "
-            "(the SSH target of the automation VM, e.g. root@automation.lab)."
+            "(the SSH target of the automation VM, e.g. user@automation.lab)."
         )
     # `rodeo export` only warns about a missing base image; a deploy without
     # one is guaranteed to fail upstream preflight, so fail closed here.

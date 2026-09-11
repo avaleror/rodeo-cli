@@ -17,6 +17,16 @@ def test_catalog_harvester_recommended():
     assert offer.instance_type == "i7i.8xlarge"
 
 
+def test_catalog_harvester_aws_recommended_is_separate_from_harvester():
+    """harvester-aws is a distinct profile/catalog entry from harvester (same
+    topology, AWS-tuned instance) — must not just fall through to harvester's
+    i7i.8xlarge, which wastes half its NVMe (two devices, rodeo mounts one)."""
+    offer = catalog_for_profile("harvester-aws")["recommended"]
+    assert offer.instance_type == "m8id.12xlarge"
+    # The generic profile is untouched by adding the AWS-specific one.
+    assert catalog_for_profile("harvester")["recommended"].instance_type == "i7i.8xlarge"
+
+
 def test_resolve_explicit_type_wins():
     itype, tier = resolve_instance_type(
         profile="harvester",

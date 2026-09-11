@@ -100,6 +100,7 @@ The Harvester path is the outlier: it needs `pxe_server` (iPXE/TFTP/HTTP) and a 
 | `harvester-ha` | `suse-virt` | 3-node Harvester, no Rancher (etcd HA) |
 | `harvester-2n` | `suse-virt` | 2-node Harvester + Rancher Prime |
 | `harvester` | `suse-virt` | 3-node Harvester HCI + Rancher Prime |
+| `harvester-aws` | `suse-virt` | Same topology as `harvester`, `rodeo-plan.yaml` pre-tuned for `deployment_target: aws` (`provider:` block, `m8id.12xlarge` recommended) |
 | `suse-edge` | `suse-edge` | Rancher + Elemental + EIB + 4 edge nodes (SUSE Edge 3.6) |
 
 Per-profile topology tables (VMs, IPs, RAM) live in each [deployment guide](get-started.md). The detailed suse-virt topology and iPXE boot chain are documented below as the reference implementation.

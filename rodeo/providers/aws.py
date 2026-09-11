@@ -360,8 +360,10 @@ class AwsHostProvider:
         try:
             resp = ec2.create_security_group(
                 GroupName=name,
+                # EC2's GroupDescription rejects non-ASCII (rejected an em
+                # dash live on 2026-09-11) — keep this string plain ASCII.
                 Description=(
-                    f"rodeo-managed: {workshop} — SSH + Harvester UI + Rancher "
+                    f"rodeo-managed: {workshop} - SSH + Harvester UI + Rancher "
                     f"NodePort ({', '.join(str(p) for p in MANAGED_SG_PORTS)})"
                 ),
                 VpcId=vpc_id,

@@ -61,6 +61,15 @@ class _FakeEC2WithSG(_FakeEC2):
         return {"SecurityGroups": groups}
 
     def create_security_group(self, GroupName, Description, VpcId, TagSpecifications=None):
+        # Real EC2 rejects non-ASCII GroupDescription (caught live 2026-09-11
+        # against an em dash) — enforce the same constraint here so a
+        # regression fails a test instead of only a real provisioning run.
+        try:
+            Description.encode("ascii")
+        except UnicodeEncodeError as exc:
+            err = Exception("InvalidParameterValue")
+            err.response = {"Error": {"Code": "InvalidParameterValue"}}  # type: ignore[attr-defined]
+            raise err from exc
         for g in self.security_groups.values():
             if g["GroupName"] == GroupName and g["VpcId"] == VpcId:
                 err = Exception("InvalidGroup.Duplicate")

@@ -27,7 +27,13 @@ network:
 
 resources:
   harvester:
-    memory_mib: 20480    # 20 GiB per Harvester node
+    memory_mib: 24576    # 24 GiB per Harvester node (raised from 20 GiB
+                         # 2026-09-11 for headroom/performance): 3x24 + 16
+                         # (Rancher) = 88 GiB guest RAM total, leaving ~35 GiB
+                         # of m8id.8xlarge's ~123 GiB usable RAM for the host
+                         # + buff/cache — live-verified the host itself only
+                         # needs ~2-3 GiB baseline, so this is comfortable
+                         # margin, not a tight fit.
     vcpu: 10
     disk_gb: 500         # matches the AWS host-context floor for this profile:
                          # 3 nodes x 500 GB + 60 GB (Rancher) = 1560 GB, comfortable
@@ -36,7 +42,7 @@ resources:
                          # floor anyway — set explicitly here so the file doesn't
                          # look under-provisioned before the first deploy.
   rancher:
-    memory_mib: 8192
+    memory_mib: 16384    # 16 GiB (raised from 8 GiB 2026-09-11, see harvester note above)
     vcpu: 4
     disk_gb: 60
 

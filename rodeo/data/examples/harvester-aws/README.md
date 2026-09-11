@@ -5,6 +5,11 @@ Same 3-node Harvester HCI + Rancher Prime topology as the `harvester` profile
 `deployment_target: aws` instead of `instruqt`/`baremetal`:
 
 - `provider:` block present (fill in `region` and `subnet_id`)
+- `resources.harvester.memory_mib: 24576` (24 GiB) and
+  `resources.rancher.memory_mib: 16384` (16 GiB) — raised from the generic
+  `harvester` profile's 20/8 GiB for headroom/performance: 3x24 + 16 = 88 GiB
+  guest RAM total, leaving ~35 GiB of `m8id.8xlarge`'s ~123 GiB usable RAM
+  for the host (live-verified the host itself only needs ~2-3 GiB baseline)
 - `resources.harvester.disk_gb: 500` — matches the AWS host-context floor for
   this profile (3 x 500 GB + 60 GB Rancher = 1560 GB), instead of the generic
   `harvester` profile's 320 GB (which `apply_host_context()` would still raise

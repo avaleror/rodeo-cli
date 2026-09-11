@@ -47,6 +47,11 @@ def test_harvester_aws_profile_same_topology_as_harvester(tmp_path):
     # per-node floor, not the generic profile's 320.
     assert plan["resources"]["harvester"]["disk_gb"] == 500
     assert plan["resources"]["rancher"]["disk_gb"] == 60
+    # RAM raised above the generic profile's 20/8 GiB 2026-09-11 for headroom:
+    # 3x24 + 16 = 88 GiB guest RAM, live-verified to leave ~35 GiB of
+    # m8id.8xlarge's ~123 GiB usable RAM for the host.
+    assert plan["resources"]["harvester"]["memory_mib"] == 24576
+    assert plan["resources"]["rancher"]["memory_mib"] == 16384
 
     # The generic "harvester" profile is untouched by adding "harvester-aws".
     harvester_plan = yaml.safe_load((harvester_lab / "rodeo-plan.yaml").read_text())

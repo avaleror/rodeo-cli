@@ -64,6 +64,23 @@ def status_cmd(
     profile = get_profile(cfg.get("type", "suse-virt"))
     vip = report["vip"]
 
+    # A non-native engine has its own phase list, and its VMs live on the
+    # automation VM's hypervisors — the local libvirt/VIP probes below only
+    # reflect this host.
+    phases = list(profile.phases)
+    if cfg.get("engine", "native") != "native":
+        from ..engine.registry import get_engine
+
+        try:
+            phases = list(getattr(get_engine(cfg["engine"]), "phases", phases))
+        except ValueError:
+            pass
+        console.print(
+            f"\n[dim]engine: {cfg['engine']} — VM states and VIP below probe this "
+            "host only; the lab itself runs via "
+            f"{(cfg.get('lab_in_a_box') or {}).get('automation_host', 'its automation VM')}.[/dim]"
+        )
+
     table = Table(box=box.ROUNDED, show_header=True, header_style="bold cyan", padding=(0, 1))
     table.add_column("VM", style="bold", min_width=12)
     table.add_column("State", min_width=10)
@@ -93,7 +110,7 @@ def status_cmd(
 
     if report.get("phases"):
         console.print("  [bold]Phases[/bold]")
-        for phase in profile.phases:
+        for phase in phases:
             info = report["phases"].get(phase, {})
             if info.get("completed"):
                 icon = "[green]✓[/green]"

@@ -313,9 +313,11 @@ streams the run, and keeps its plan/state/TUI UX. Selection: plan key
   `destroy_lab.py` remotely, `--engine` on deploy/up. Native stays default.
 - [ ] **J2** — non-PXE parity + live validation: `rancher` profile end-to-end
   against a real automation VM (re-run idempotency, clean, TUI streaming —
-  expect minutes-long silent windows per cluster), engine-aware success
-  screen (automation-VM BIND FQDNs instead of IP:NodePort); then flip the
-  default to `engine: lab-in-a-box` for non-PXE profiles (native = opt-out)
+  expect minutes-long silent windows per cluster); then flip the default to
+  `engine: lab-in-a-box` for non-PXE profiles (native = opt-out).
+  Done ahead of the live run: engine-aware success screen (automation-VM
+  BIND FQDNs instead of IP:NodePort) and `rodeo status` engine phase list +
+  remote-lab note.
 - [ ] **J3** — Harvester/PXE labs: prefer upstream `setup_harvester_cluster.py`
   (own cluster-config JSON) over re-expressing rodeo's validated iPXE chain in
   the generic PXE service; gate on a bare-metal live regression

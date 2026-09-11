@@ -59,6 +59,57 @@ def _read_passwords() -> tuple[str, str]:
     return harvester_pw or "(see ~/.rodeo/secrets.yaml)", rancher_pw or "(see ~/.rodeo/secrets.yaml)"
 
 
+def _render_success_labinabox(cfg: dict) -> None:
+    """Success panel for labs converged by lab-in-a-box on an automation VM.
+
+    Access goes through the FQDNs the automation VM's BIND registered (A + PTR
+    per node; the rancher addon registers <rancher_shorthn>.<domain>) — not
+    rodeo's IP:NodePort scheme. Credentials live on the lab-in-a-box side
+    (addon config sections / its defaults), not in ~/.rodeo/secrets.yaml.
+    """
+    overlay = cfg.get("lab_in_a_box") or {}
+    automation = overlay.get("automation_host", "<automation-vm>")
+    domain = cfg.get("network", {}).get("dns_domain", "rodeo.lab")
+    rancher_shorthn = (
+        (overlay.get("sections") or {}).get("rancher") or {}
+    ).get("rancher_shorthn", "rancher")
+
+    lines: list[str] = []
+    lines.append("[bold green]Your lab is up[/bold green] — converged by lab-in-a-box.\n")
+
+    vms = cfg.get("vms", {})
+    if vms:
+        lines.append("[bold]Nodes[/bold]  (DNS registered in the automation VM's BIND)")
+        for name in vms:
+            lines.append(f"  {name:<14} {name}.{domain}")
+
+    if _has_rancher(cfg):
+        lines.append("")
+        lines.append(f"[bold]Rancher Prime[/bold]  https://{rancher_shorthn}.{domain}")
+        lines.append(
+            "  [dim](hostname registered by the install_rancher addon; "
+            "credentials come from its config section on the lab-in-a-box side)[/dim]"
+        )
+
+    lines.append("")
+    lines.append(
+        f"[dim]Resolve the FQDNs via the automation VM ({automation}) — use it as "
+        "your DNS server or add /etc/hosts entries.[/dim]"
+    )
+    lines.append("")
+    lines.append("[bold]First things to try[/bold]")
+    lines.append("  rodeo status                 # phase progress (lab runs remotely)")
+    lines.append("  rodeo deploy                 # re-converge (setup_lab.py --keep)")
+    lines.append("")
+    lines.append(
+        f"[dim]Tear down:  rodeo clean --yes  (runs destroy_lab.py on {automation})[/dim]"
+    )
+
+    console.print()
+    console.print(Panel("\n".join(lines), title="rodeo · lab-in-a-box", border_style="green", expand=False))
+    console.print()
+
+
 def render_success(cfg: dict) -> None:
     """Print the success panel with access URLs, credentials, and next steps.
 
@@ -67,7 +118,14 @@ def render_success(cfg: dict) -> None:
 
     Target-aware: baremetal detects the host IP and shows the DNAT'd ports; Instruqt
     shows internal IPs and points the user to the Instruqt tab in the lab UI.
+
+    Engine-aware: labs converged by lab-in-a-box get their own panel — FQDN
+    access via the automation VM's DNS instead of IP:NodePort.
     """
+    if cfg.get("engine") == "lab-in-a-box":
+        _render_success_labinabox(cfg)
+        return
+
     target = cfg.get("deployment_target", "baremetal")
     net = cfg.get("network", {})
     vip = net.get("vip", "192.168.122.10")

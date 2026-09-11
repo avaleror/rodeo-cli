@@ -22,12 +22,18 @@ HostContextOverlay = Callable[[dict[str, Any], dict[str, Any]], list[str]]
 
 _TARGETS: dict[str, HostContextOverlay] = {}
 
-# AWS / NVMe workshops: ≥1.2 TiB per Harvester node (performance-first).
-AWS_HARVESTER_DISK_GB = 1200
+# AWS / NVMe workshops: ~1.2 TiB total for the whole Harvester pool, split
+# across however many Harvester nodes the profile actually has — matching
+# real-world (Instruqt) sizing. The original 2026-07-30 design floored this
+# PER node regardless of count, so a 3-node profile demanded ~3.6 TiB — more
+# than a single i7i.8xlarge NVMe device provides. Caught live 2026-09-11.
+AWS_HARVESTER_DISK_GB_TOTAL = 1200
 
-# Only raise disk when unset or below this floor (never shrink an explicit larger plan).
+# Only raise disk when unset or below the floor (never shrink an explicit
+# larger plan). Values are TOTAL budgets for that flavor's node count, not
+# per-node.
 _AWS_DISK_FLOORS: dict[str, int] = {
-    "harvester": AWS_HARVESTER_DISK_GB,
+    "harvester": AWS_HARVESTER_DISK_GB_TOTAL,
 }
 
 
@@ -164,24 +170,48 @@ def _ensure_harvester_disk_floor(
     cfg: dict[str, Any],
     floors: dict[str, int],
 ) -> list[str]:
+    """Raise ``resources.<flavor>.disk_gb`` so the flavor's node *pool* reaches
+    roughly ``floors[flavor]`` GB total, not each node individually — a fixed
+    per-node floor would keep multiplying with node count (a 3-node profile
+    at a 1200 GB/node floor needs ~3.6 TiB, more than a single NVMe device
+    provides). Never shrinks an explicit larger plan.
+    """
     notes: list[str] = []
     resources = cfg.get("resources")
     if not isinstance(resources, dict):
         return notes
-    for flavor, floor in floors.items():
+    for flavor, total_floor in floors.items():
         block = resources.get(flavor)
         if not isinstance(block, dict):
             continue
+        node_count = max(1, _count_flavor_nodes(cfg, flavor))
+        per_node_floor = max(1, total_floor // node_count)
         current = block.get("disk_gb")
         try:
             cur_i = int(current) if current is not None else 0
         except (TypeError, ValueError):
             cur_i = 0
-        if cur_i >= floor:
+        if cur_i >= per_node_floor:
             continue
-        block["disk_gb"] = floor
-        notes.append(f"resources.{flavor}.disk_gb: {current} → {floor}")
+        block["disk_gb"] = per_node_floor
+        plural = "" if node_count == 1 else "s"
+        notes.append(
+            f"resources.{flavor}.disk_gb: {current} → {per_node_floor} "
+            f"({node_count} node{plural}, ~{total_floor} GB total budget)"
+        )
     return notes
+
+
+def _count_flavor_nodes(cfg: dict[str, Any], flavor: str) -> int:
+    from .inventory import _fallback_flavor_name, plan_vm_rows, vm_flavor_map
+
+    flavors = vm_flavor_map(cfg)
+    count = 0
+    for name, _ in plan_vm_rows(cfg):
+        key = flavors.get(name, _fallback_flavor_name(name))
+        if key == flavor:
+            count += 1
+    return count
 
 
 def _ensure_nvme_backend(cfg: dict[str, Any], *, force: bool) -> list[str]:

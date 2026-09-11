@@ -167,7 +167,7 @@ AWS MVP is shipped (see checkboxes). Remaining: AL2023 deps path, SG automation,
 - [x] Shared `provider:` block in `rodeo-plan.yaml` (same shape as Fleet `workshop.yaml`)
 - [x] `rodeo up --target aws` — provision + SSH + remote deploy (MVP)
 - [x] `rodeo destroy --cloud --yes` — terminate ownership-tagged single-host instance
-- [x] Infra adaptation (`rodeo/host_context.py`): aws `disk_gb` floor 1200, `storage.backend: nvme`, kvm_host NVMe → `image_dir`; nested virt default on for non-metal
+- [x] Infra adaptation (`rodeo/host_context.py`): aws `disk_gb` floor ~1200 GB **total across the Harvester pool** (split evenly per node — a 3-node profile gets 400 GB/node, not 1200 GB/node; fixed 2026-09-11 after the original per-node floor demanded ~3.6 TiB for 3 nodes, more than a single i7i.8xlarge NVMe device provides), `storage.backend: nvme`, kvm_host NVMe → `image_dir`; nested virt default on for non-metal
 - [x] Instance tiers (`budget` / `recommended` / `performance`) per lab profile + region offerings/capacity DryRun (`instance_catalog.py`, `assert_available`); `rodeo up --instance-tier`
 - [ ] `install-deps` support for Amazon Linux 2023 (dnf path already exists, needs testing) — prefer the default SLES 16 AMI
 - [x] Default AMI is SLES 16 PAYG, not openSUSE Leap: the Leap Marketplace listing forbids 7th-gen Intel types, which is exactly what nested virt via `CpuOptions` requires, so the shipped Leap + `i7i.8xlarge` pair could never launch in any account. SLES BYOS allows `i7i` but has no repos without registration, which rodeo does not do. PAYG costs ~$0.125/hr more and needs no subscription.
@@ -180,7 +180,9 @@ AWS MVP is shipped (see checkboxes). Remaining: AL2023 deps path, SG automation,
 
 **Share with Fleet F4:** same `rodeo/providers/aws` backs `rodeo fleet provision` and single-host `rodeo up --target aws`. Remaining providers: GCP → Vultr Bare Metal → Hetzner Cloud (see Phase I). Equinix is out of scope.
 
-**Sizing:** three tiers per profile (see `rodeo/providers/instance_catalog.py`); **recommended** for Harvester is **`i7i.8xlarge`** (local NVMe). Explicit `provider.instance_type` still wins. Metal remains the performance escape hatch. Tiny types are rejected at validate. Guest disks default to **1.2 TiB per Harvester node** under aws host-context. Availability is checked in-region before create; no silent downsize.
+**Sizing:** three tiers per profile (see `rodeo/providers/instance_catalog.py`); **recommended** for Harvester is **`i7i.8xlarge`** (local NVMe). Explicit `provider.instance_type` still wins. Metal remains the performance escape hatch. Tiny types are rejected at validate. Guest disks default to **~1.2 TiB total across the Harvester pool** (split per node) under aws host-context — matches real-world (Instruqt) sizing, not a per-node floor. Availability is checked in-region before create; no silent downsize.
+
+**Known limitation (not yet fixed):** `i7i.8xlarge` actually ships **two** separate ~3.4 TiB NVMe devices, but `kvm_host` only mounts the single largest one — the second sits unused. Found live 2026-09-11 while chasing the disk-floor bug above. Combining both (LVM/RAID0 under `image_dir`) would double usable NVMe on that size but isn't done.
 
 ---
 

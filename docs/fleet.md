@@ -402,9 +402,11 @@ Never put AWS access keys in `workshop.yaml` or `rodeo-plan.yaml`.
 #### `provider.type: aws` (F4a)
 
 Prefer **`i7i.8xlarge`** (local NVMe) for Harvester / Edge I/O. Metal remains valid.
-`apply_host_context` raises Harvester `disk_gb` to 1200 and mounts NVMe on
-`image_dir`. Root `volume_size_gib` only needs the OS (~100 GiB). Tiny / burstable
-types are rejected at validate. Nested virt defaults **on** for non-metal types.
+`apply_host_context` raises the Harvester pool's total `disk_gb` toward ~1200 GB,
+split evenly per node (a 3-node profile gets ~400 GB/node, not 1200 GB/node — it's
+a pool budget, not a per-node floor), and mounts NVMe on `image_dir`. Root
+`volume_size_gib` only needs the OS (~100 GiB). Tiny / burstable types are
+rejected at validate. Nested virt defaults **on** for non-metal types.
 
 SSH: rodeo generates `~/.rodeo/ssh/id_ed25519` if missing, imports it as EC2 key pair
 **`rodeo`**, and plants the same private key on the KVM host so nested VMs share it.

@@ -124,9 +124,11 @@ Existing plans are not rewritten on re-deploy; only seeded plans get the presets
 `rodeo doctor` / `rodeo deploy --check` warn (non-fatal) when a plan still exceeds the budget.
 
 On **aws**, `apply_host_context()` (seed + deploy) raises `resources.harvester.disk_gb`
-to **1200** when lower, sets `storage.backend: nvme`, and mounts the largest non-root
-NVMe on `image_dir`. Prefer **`i7i.8xlarge`**. Nested virt is enabled by default on
-non-metal types.
+toward a **~1200 GB total budget for the whole Harvester pool**, split evenly per node
+(a 3-node profile gets ~400 GB/node) — not 1200 per node, which would demand ~3.6 TiB
+for 3 nodes, more than a single NVMe device on most instance types provides. Also sets
+`storage.backend: nvme` and mounts the largest non-root NVMe on `image_dir`. Prefer
+**`i7i.8xlarge`**. Nested virt is enabled by default on non-metal types.
 
 ### `provider` (when `deployment_target: aws`)
 

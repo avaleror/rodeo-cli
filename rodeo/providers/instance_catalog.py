@@ -93,7 +93,9 @@ AWS_PROFILE_TIERS: dict[str, dict[InstanceTier, InstanceOffer]] = {
     # mounts one). m8id.8xlarge (same vCPU/RAM as harvester-2n's pick) gives a
     # single ~1.9 TiB device instead — tight for 3 nodes at a naive 600 GB/node
     # floor (1860 GB, ~40 GB free), which is why AWS_HARVESTER_DISK_GB dropped
-    # to 500: 3x500 + 60 (Rancher) = 1560 GB, ~300+ GB free.
+    # to 500: 3x500 + 60 (Rancher) = 1560 GB, ~300+ GB free. Live-validated
+    # 2026-09-11: all 3 nodes Ready (real etcd HA), Rancher up, both UIs
+    # externally reachable, actual NVMe usage only ~205 GB of 1.8 TiB (12%).
     "harvester-aws": {
         "budget": InstanceOffer(
             "m7i.16xlarge", "budget", "64 vCPU / 256 GiB — 3-node + Rancher (EBS)"

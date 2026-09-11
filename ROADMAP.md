@@ -128,7 +128,7 @@ pxe/cluster reconcile. **Partial progress:** NAT DHCP host reservations
 - `rodeo/inventory.py` renders `vm_nodes` from `definition.yaml`: names, IPs, deterministic MACs, `uuid5` UUIDs
 - `ClusterPhase` derives start_order / harvester_node_names / harvester_ready_count / etcd_gap from the inventory — N-node works
 - `suse-virt` skips `rancher` phase when no Rancher node in the topology
-- Bundled profiles across 3 engine types (`rancher`, `suse-virt`, `suse-edge`): `rancher` (1 VM), `test` (2-node), `harvester-ha` (3-node HA), `harvester-2n` (2-node + Rancher), `harvester` (3-node + Rancher), `harvester-aws` (same topology as `harvester`, `rodeo-plan.yaml` pre-tuned for AWS — separate profile, `harvester` itself untouched), `suse-edge` (Rancher + Elemental + EIB + 4 edge nodes)
+- Bundled profiles across 3 engine types (`rancher`, `suse-virt`, `suse-edge`): `rancher` (1 VM), `test` (2-node), `harvester-ha` (3-node HA), `harvester-2n` (2-node + Rancher), `harvester` (3-node + Rancher), `harvester-aws` (same topology as `harvester`, `rodeo-plan.yaml` pre-tuned for AWS — separate profile, `harvester` itself untouched; live-validated 2026-09-11 on `m8id.8xlarge` — all 3 nodes `Ready`, Rancher up, both UIs externally reachable, ~12% NVMe used), `suse-edge` (Rancher + Elemental + EIB + 4 edge nodes)
 - [ ] Plan schema sugar `nodes: 3` shorthand (explicit node blocks already work; shorthand is the remaining piece)
 
 ## Phase D — Polish (ongoing)

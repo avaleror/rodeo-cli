@@ -1,29 +1,37 @@
 """Translate a rodeo lab specification into a lab-in-a-box lab.json.
 
-First concrete step of the lab-in-a-box deployer integration: rodeo stays the
-source of truth (definition.yaml + rodeo-plan.yaml + profile defaults); this
-module renders the same inventory that drives the native engine into the JSON
-input consumed by lab-in-a-box's setup_lab.sh / destroy_lab.sh.
+rodeo stays the source of truth (definition.yaml + rodeo-plan.yaml + profile
+defaults); this module renders the same inventory that drives the native
+engine into the JSON input consumed by lab-in-a-box's setup_lab.py /
+destroy_lab.py. It backs both `rodeo export` and the `lab-in-a-box` deploy
+engine (rodeo/engine/labinabox_runner.py).
 
-Targets lab-in-a-box main (release 1.0.0, commit b4b2a0a). Contract observed in
-setup_lab.sh, setup_vm.sh, libs/lab_creation.bash and libs/k8s_functions.bash:
+Targets lab-in-a-box release 1.8.0 — the Python-based contract introduced by
+the 1.5.0 rewrite. Authoritative schema: `setup_lab.py --input-definition
+json` (scripts/lab_schema, base_lab_schema()):
 
   nodes:      map keyed by VM name (an FQDN — used verbatim as the SSH and DNS
-              name). Every key of a node object is exported as an env var when
-              that VM is built, so per-node VM_MEM / VM_CPU / VM_DSK / NETWORK
-              override the common defaults; 'kcluster' marks Kubernetes
-              cluster membership; INSTALL_RKE2_TYPE picks the RKE2 role.
-  common:     defaults exported for every VM (lab_name, mymask, mygw, mydns,
-              mynet_reverse, mydomain, ISO_IMAGE, sizing, config_method).
+              name). Node keys overlay the common defaults per VM (VM_MEM /
+              VM_CPU / VM_DSK, myip, mymac, forwarded_ports …); 'kcluster'
+              marks Kubernetes cluster membership; INSTALL_RKE2_TYPE picks the
+              RKE2 role. NETWORK is no longer a lab-file key — the libvirt
+              network string is built server-side from BRIDGE in
+              lab_creation.cfg; explicit mymac values also avoid its
+              interactive MAC-conflict prompt.
+  common:     lab-wide defaults (lab_name, mymask, mygw, mydns, mynet_reverse,
+              mydomain, ISO_IMAGE, sizing, config_method, services[]).
   kclusters:  map keyed by cluster name; clu_type (k3s | rke2), clu_rel
               (release channel), mydomain, addons[] (each run once per cluster
-              via install_<addon>).
-  <addon>:    optional per-addon config section (exported by _load_vars).
+              via install_<addon>; an entry may also be a single-key
+              {"<addon>": {...}} config-override mapping since 1.8.0).
+  <addon>:    optional per-addon config section (see install_<addon> --schema).
 
-Not representable in lab-in-a-box today (reported as warnings or errors):
-  - PXE/iPXE-booted nodes (Harvester) — lab-in-a-box has no PXE support.
-  - exposed_services host DNAT — lab-in-a-box does not manage the host firewall.
-  - storage/image-dir selection — VM_IMG_LOC lives in /etc/lab_creation.cfg.
+Still not representable (reported as warnings or errors):
+  - PXE/iPXE-booted nodes (Harvester) — lab-in-a-box grew a generic PXE
+    service, but rodeo's Harvester labs stay on the native engine's live-
+    validated boot chain until that path is regression-tested (ROADMAP).
+  - storage/image-dir selection — VM_IMG_LOC/ISO_LOC live in
+    /etc/lab_creation.cfg on the automation VM, not in the lab file.
   - exact k8s version pins — lab-in-a-box installs from a release channel.
 """
 from __future__ import annotations
@@ -34,10 +42,22 @@ from typing import Any
 from .config import ConfigError
 from .inventory import build_inventory
 
-# install_<addon> scripts shipped on lab-in-a-box main (release 1.0.0).
+# install_<addon> scripts shipped with lab-in-a-box release 1.8.0. Used when
+# deriving addons from rodeo components; overlay-specified addons always win
+# (upstream's own preflight validates them against what is installed there).
 LIAB_ADDONS = frozenset({
-    "argocd", "insecure_app", "jenkins", "longhorn", "mariadb", "neuvector",
-    "nv-demo-helm", "nv_testing", "rancher", "struts_demo", "suma", "wordpress",
+    "agones", "anthropic", "apertus", "appcollection", "argocd",
+    "client_registration", "codellama", "colt", "complianceascode", "coredns",
+    "deepseek", "ds389", "fluentd", "fluid", "gemini", "gpu_operator",
+    "harbor", "harvester", "home_assistant", "insecure_app", "istio",
+    "jenkins", "kagent", "keycloak", "kimi", "kiwi", "kubewarden", "kucero",
+    "linkerd", "longhorn", "mailman", "mariadb", "mediagoblin", "milvus",
+    "mistral", "neuvector", "nginx", "nv-demo-helm", "nv_testing", "ollama",
+    "open_saber", "open_webui", "openai", "openldap", "phoebe", "postgresql",
+    "qdrant", "qwen", "rancher", "skynet_simulator", "smlm", "smlm_proxy",
+    "stackpack", "starcoder2", "struts_demo", "suma", "supertux_classic",
+    "suse_ai", "suse_observability", "traefik", "trento", "uyuni", "weaviate",
+    "wikimusic", "wordpress",
 })
 
 # Node flavors that form the management Kubernetes cluster in rodeo profiles.
@@ -100,7 +120,6 @@ def build_lab_json(cfg: dict, *, skip_unsupported: bool = False) -> tuple[dict, 
     plan_net = cfg.get("network", {})
     domain = net.get("domain") or plan_net.get("dns_domain") or "rodeo.lab"
     gateway = net.get("gateway") or plan_net.get("gateway")
-    bridge = net.get("bridge", "virbr0")
     cidr = net.get("cidr")
 
     pxe_node_names = {n["name"] for n in inv.get("pxe", {}).get("nodes", [])}
@@ -123,12 +142,12 @@ def build_lab_json(cfg: dict, *, skip_unsupported: bool = False) -> tuple[dict, 
             entry["myip"] = node["ip"]
         mac = _node_mgmt_mac(node)
         if mac:
+            # Explicit MACs keep DNS/DHCP deterministic and avoid lab-in-a-box's
+            # interactive MAC-conflict prompt (it reads the answer from a TTY).
             entry["mymac"] = mac
-            # setup_vm.sh only applies ${NETWORK:-bridge=br0,...}; a per-node
-            # key wins over that default, so pin rodeo's bridge explicitly.
-            entry["NETWORK"] = f"bridge={bridge},mac.address={mac}"
-        else:
-            entry["NETWORK"] = f"bridge={bridge}"
+        # The libvirt network string is built by lab-in-a-box from BRIDGE in
+        # lab_creation.cfg (per-node NETWORK stopped being a lab-file key in
+        # the Python rewrite) — the automation VM's config selects the bridge.
 
         flavor = node.get("flavor", "")
         sizing = _sizing(resources, flavor)
@@ -150,8 +169,9 @@ def build_lab_json(cfg: dict, *, skip_unsupported: bool = False) -> tuple[dict, 
 
     if unsupported and not skip_unsupported:
         raise ConfigError(
-            f"Nodes not deployable by lab-in-a-box (PXE/iPXE boot): {', '.join(sorted(unsupported))}\n"
-            "lab-in-a-box has no PXE support — Harvester labs stay on the native engine.\n"
+            f"Nodes not translated for lab-in-a-box (PXE/iPXE boot): {', '.join(sorted(unsupported))}\n"
+            "Harvester labs stay on the native engine until lab-in-a-box's PXE "
+            "path is live-regression-tested (see ROADMAP).\n"
             "Use --skip-unsupported to export only the non-PXE nodes, or a non-PXE "
             "profile such as 'rancher'."
         )
@@ -183,11 +203,40 @@ def build_lab_json(cfg: dict, *, skip_unsupported: bool = False) -> tuple[dict, 
             "-P lab_in_a_box.iso_image=<name>"
         )
 
+    # exposed_services host DNAT → lab-in-a-box's portforward service:
+    # per-node forwarded_ports ("<ext>:<int>/<PROTO>") applied on the
+    # hypervisor. Forwards whose target is not a node address (e.g. a floating
+    # VIP) cannot be attributed to a node and are reported instead.
+    ip_to_fqdn = {
+        entry["myip"]: fqdn for fqdn, entry in nodes.items() if entry.get("myip")
+    }
+    for fwd in inv.get("firewall", {}).get("port_forwards", []):
+        fqdn = ip_to_fqdn.get(fwd.get("toaddr"))
+        rule = f"{fwd['port']}:{fwd['toport']}/{str(fwd.get('proto', 'tcp')).upper()}"
+        if fqdn is None:
+            warnings.append(
+                f"port-forward {rule} → {fwd.get('toaddr')} targets no exported "
+                "node (VIP?) — not representable as a lab-in-a-box forwarded_port"
+            )
+            continue
+        nodes[fqdn].setdefault("forwarded_ports", []).append(rule)
+    if any("forwarded_ports" in entry for entry in nodes.values()):
+        common.setdefault("services", []).append("portforward")
+
     lab: dict[str, Any] = {"nodes": nodes, "common": common}
 
     if cluster_members:
         if overlay.get("addons") is not None:
             addons = list(overlay["addons"])
+            # 1.8.0 allows {"<addon>": {...}} override entries — validate names.
+            names = [next(iter(a)) if isinstance(a, dict) else a for a in addons]
+            unknown = sorted(set(names) - LIAB_ADDONS)
+            if unknown:
+                warnings.append(
+                    f"addon(s) not shipped with lab-in-a-box 1.8.0: {', '.join(unknown)} "
+                    "— its preflight will fail unless install_<addon> exists on the "
+                    "automation VM"
+                )
         else:
             addons = [
                 c["name"] for c in inv.get("components", [])
@@ -216,12 +265,6 @@ def build_lab_json(cfg: dict, *, skip_unsupported: bool = False) -> tuple[dict, 
             if versions.get("cert_manager"):
                 rancher_section["cert_manager_ver"] = f"--version {versions['cert_manager']}"
             lab["rancher"] = rancher_section
-
-    if inv.get("firewall", {}).get("port_forwards"):
-        warnings.append(
-            "exposed_services host port-forwards are not managed by lab-in-a-box — "
-            "configure host DNAT separately (rodeo's kvm_host firewall phase or manually)"
-        )
 
     # Escape hatch: verbatim extra/override sections for lab-in-a-box
     # (e.g. per-addon config blocks the translator doesn't know about).

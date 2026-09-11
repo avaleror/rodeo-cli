@@ -10,11 +10,13 @@ Design pillars: plan/apply/destroy lifecycle, deep-mergeable override files, inl
 2. **Phase H Level 1** — Hauler prefetch (skip multi-GB re-downloads on Instruqt / clean+up)
 3. **F4b** — GCP host-acquire (after AWS F4a)
 4. **Phase F** — `suse-edge` live validation (bare metal, then Instruqt)
+5. **Maintainability** — split `rancher.py` (start with Elemental / Edge)
+6. **Phase J2** — lab-in-a-box engine live validation (`rancher` profile via a real automation VM), then flip the non-PXE default
 
-⚠ #48 landed three areas this roadmap doesn't cover yet — third-party
-extensibility (`rodeo.plugins` entry points + a `deployment_target` registry),
-workshop story rendering and i18n (`rodeo story render`), and lab-in-a-box
-export (`rodeo export`). They still need a phase of their own here.
+⚠ #48 landed two areas this roadmap doesn't cover yet — third-party
+extensibility (`rodeo.plugins` entry points + a `deployment_target` registry)
+and workshop story rendering and i18n (`rodeo story render`). They still need
+a phase of their own here. (lab-in-a-box export/deploy is now Phase J below.)
 
 ✅ B2 step 5 live-validated 2026-08-06 (bare-metal SLES, `test` profile): plan showed memory drift; deploy without reconcile skipped `vms`; `--reconcile` reset from `vms` and wrote new memory into inactive domain XML; cold start applied 20480 MiB. Reconcile is now the default (`--no-reconcile` opt-out).
 
@@ -298,6 +300,46 @@ Bake a pre-loaded Hauler store into the geekohive snapshot (`suse-virt-rodeo-180
 - [ ] Document the connected-side prep workflow for SUSE PTA team (Andres + Raul)
 
 **Dependencies:** Level 1 can start independently. Level 2 requires Level 1 validated. Level 3 requires Level 2. Instruqt builder validation (top of this file) is clear as of 2026-07-15.
+
+---
+
+## Phase J — lab-in-a-box deploy engine (staged migration)
+
+Goal: [lab-in-a-box](https://github.com/SUSE-Technical-Marketing/lab-in-a-box)
+(release 1.8.0+, the Python `setup_lab.py` contract) becomes the deploy
+backend, replacing the native engine **step by step without discarding the
+live-validated native machinery**. lab-in-a-box runs on a remote *automation
+VM* over SSH (upstream's own topology); rodeo renders the lab.json, pushes it,
+streams the run, and keeps its plan/state/TUI UX. Selection: plan key
+`engine: native | lab-in-a-box` + `--engine` on deploy/up, backed by
+`rodeo/engine/registry.py` (fifth extension registry).
+
+- [x] **J0** — translator retargeted to the 1.8.0 contract (`rodeo export`):
+  no per-node `NETWORK`, `forwarded_ports` + `portforward` service from
+  `exposed_services`, 1.8.0 addon set, `setup_lab.py` hints
+- [x] **J1** — engine registry + `LabInABoxRunner` (render → deploy phases,
+  same event protocol as DeployRunner, `--keep` by default / rebuild on
+  `--force`, failure summary from the upstream LAB SUMMARY block), remote
+  preflight (SSH, setup_lab.py, /etc/lab_creation.cfg), `clean` runs
+  `destroy_lab.py` remotely, `--engine` on deploy/up. Native stays default.
+- [ ] **J2** — non-PXE parity + live validation: `rancher` profile end-to-end
+  against a real automation VM (re-run idempotency, clean, TUI streaming —
+  expect minutes-long silent windows per cluster); then flip the default to
+  `engine: lab-in-a-box` for non-PXE profiles (native = opt-out).
+  Done ahead of the live run: engine-aware success screen (automation-VM
+  BIND FQDNs instead of IP:NodePort) and `rodeo status` engine phase list +
+  remote-lab note.
+- [ ] **J3** — Harvester/PXE labs: prefer upstream `setup_harvester_cluster.py`
+  (own cluster-config JSON) over re-expressing rodeo's validated iPXE chain in
+  the generic PXE service; gate on a bare-metal live regression
+- [ ] **J4** — global default flip once J3 validates (native remains
+  selectable; no deletion of roles/phases), optional
+  `install-deps --labinabox` automation-VM bootstrap (git tag pin — upstream
+  ships no rpm/deb assets), docs sweep
+
+Standing note: lab-in-a-box tracks its `dev` branch fast (1.5.0 → 1.8.0 in a
+week); re-check the contract (`setup_lab.py --input-definition json`) when
+bumping the targeted release.
 
 ---
 

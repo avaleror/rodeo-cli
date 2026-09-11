@@ -9,7 +9,6 @@ import subprocess
 import tempfile
 import threading
 import time
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
@@ -18,6 +17,17 @@ import yaml
 from ..config import ConfigError
 from ..ssh import ssh_opts
 from ..state import is_phase_done, mark_phase_done, mark_phase_failed, reset_from
+from .events import (  # noqa: F401 — re-exported: consumers import events from here
+    DeployComplete,
+    DeployEvent,
+    LogLine,
+    PhaseDone,
+    PhaseFailed,
+    PhaseSkipped,
+    PhaseStarted,
+    ProgressUpdate,
+)
+from .stream import stream_command
 
 logger = logging.getLogger(__name__)
 
@@ -38,55 +48,6 @@ def _detect_ext_iface() -> str:
     except Exception:
         pass
     return "eth0"
-
-
-# ---------- Events ----------
-
-@dataclass
-class DeployEvent:
-    pass
-
-
-@dataclass
-class PhaseStarted(DeployEvent):
-    phase: str
-
-
-@dataclass
-class PhaseSkipped(DeployEvent):
-    phase: str
-    reason: str = ""  # "done" | "before_start"
-
-
-@dataclass
-class PhaseDone(DeployEvent):
-    phase: str
-    elapsed: float
-
-
-@dataclass
-class PhaseFailed(DeployEvent):
-    phase: str
-    rc: int
-    message: str = ""
-
-
-@dataclass
-class LogLine(DeployEvent):
-    line: str
-
-
-@dataclass
-class ProgressUpdate(DeployEvent):
-    step: str
-    elapsed: float
-    total: float
-    detail: str = ""
-
-
-@dataclass
-class DeployComplete(DeployEvent):
-    pass
 
 
 # Known Harvester ISO checksums (releases.rancher.com). When the plan pins a
@@ -267,28 +228,16 @@ class DeployRunner:
         log_dir.mkdir(parents=True, exist_ok=True)
         return log_dir / f"{self._plan_name}.log"
 
+    def _set_proc(self, proc: subprocess.Popen | None) -> None:
+        self._proc = proc
+
     def _stream_subprocess(
         self, cmd: list[str], env: dict | None = None
     ) -> Iterator[DeployEvent]:
         """Launch a subprocess, stream stdout as LogLine events, set _last_rc."""
-        self._proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            errors="replace",
-            bufsize=1,
-            env=env,
-            start_new_session=True,
+        self._last_rc = yield from stream_command(
+            cmd, self._log_file, env=env, on_proc=self._set_proc
         )
-        with open(self._log_file, "a", errors="replace") as lf:
-            lf.write(f"\n--- {' '.join(cmd)} ---\n")
-            for raw in self._proc.stdout:  # type: ignore[union-attr]
-                lf.write(raw)
-                yield LogLine(raw.rstrip())
-        self._proc.wait()
-        self._last_rc = self._proc.returncode
-        self._proc = None
 
     def _tee_phase(self, events: Iterator[DeployEvent]) -> Iterator[DeployEvent]:
         """Yield events from a Python phase and mirror LogLine text to the log file."""

@@ -10,6 +10,7 @@ registrations through the public APIs:
 
     # my_pkg/rodeo_plugin.py
     def register() -> None:
+        from rodeo.engine.registry import register_engine
         from rodeo.profiles import register_profile
         from rodeo.profiles.base import register_stream_phase
         from rodeo.providers.registry import register_provider

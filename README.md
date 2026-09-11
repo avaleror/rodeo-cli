@@ -100,7 +100,7 @@ Full walkthrough: [Create your own rodeo](docs/custom-rodeos.md).
 | `install-deps` | Install host packages (KVM, libvirt, ansible, kubectl). `--story` adds rmstory + multilang from their GitHub release distro packages |
 | `init` | Create `rodeo-plan.yaml` and `~/.rodeo/secrets.yaml` |
 | `plan` | Preview what deploy would change (no changes made) |
-| `export` | Render the lab spec for another deployer — currently lab-in-a-box `lab.json` |
+| `export` | Render the lab spec for another deployer — currently lab-in-a-box `lab.json` (or set `engine: lab-in-a-box` to let `deploy`/`up` drive lab-in-a-box on a remote automation VM) |
 | `story` | Render the workshop hand-out (`story render`) — languages and story variants via rmstory, topology facts filled in |
 | `deploy` | Run the phase pipeline. Flags: `--from PHASE`, `--force`, `--reconcile` (default on) / `--no-reconcile`, `--check`, `--no-tui`, `-P key=value` |
 | `status` | VM states, VIP reachability, phase progress |

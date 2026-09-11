@@ -160,19 +160,29 @@ def _pick_asset(assets: list[dict], prefixes: list[str], needle: str) -> dict:
 
 
 def _download_verified(asset: dict, assets: list[dict], dest_dir: Path) -> Path:
-    """Download one asset; verify it against its .sha512 sibling when present."""
-    dest = dest_dir / asset["name"]
-    urllib.request.urlretrieve(asset["browser_download_url"], dest)
+    """Download one asset and verify it against its .sha512 sibling.
+
+    Fails closed: these packages are installed as root with
+    --allow-unsigned-rpm, so the checksum is the only integrity check — a
+    release without one is refused rather than trusted (the pinned releases
+    all ship .sha512 siblings; see the packaging matrix).
+    """
     sha_name = asset["name"] + ".sha512"
     sha_asset = next((a for a in assets if a.get("name") == sha_name), None)
-    if sha_asset is not None:
-        with urllib.request.urlopen(sha_asset["browser_download_url"], timeout=30) as r:
-            expected = r.read().decode().split()[0].strip().lower()
-        actual = hashlib.sha512(dest.read_bytes()).hexdigest()
-        if actual != expected:
-            raise ConfigError(
-                f"sha512 mismatch for {asset['name']} — refusing to install"
-            )
+    if sha_asset is None:
+        raise ConfigError(
+            f"release asset {asset['name']} has no {sha_name} sibling — "
+            "refusing to install an unverifiable package as root"
+        )
+    dest = dest_dir / asset["name"]
+    urllib.request.urlretrieve(asset["browser_download_url"], dest)
+    with urllib.request.urlopen(sha_asset["browser_download_url"], timeout=30) as r:
+        expected = r.read().decode().split()[0].strip().lower()
+    actual = hashlib.sha512(dest.read_bytes()).hexdigest()
+    if actual != expected:
+        raise ConfigError(
+            f"sha512 mismatch for {asset['name']} — refusing to install"
+        )
     return dest
 
 

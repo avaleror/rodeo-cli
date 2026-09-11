@@ -124,34 +124,15 @@ Existing plans are not rewritten on re-deploy; only seeded plans get the presets
 `rodeo doctor` / `rodeo deploy --check` warn (non-fatal) when a plan still exceeds the budget.
 
 On **aws**, `apply_host_context()` (seed + deploy) raises `resources.harvester.disk_gb`
-to a flat **500 GB per Harvester node** and `resources.rancher.disk_gb` to **60 GB**
-(never scaled by node count — the rest of the NVMe device is deliberately left free,
-matching real-world/Instruqt sizing). Also sets `storage.backend: nvme` and mounts the
-largest non-root NVMe on `image_dir`. Prefer **`i7i.8xlarge`** for the generic 3-node
-`harvester` profile (needs its 256 GiB RAM, BYO/non-AWS-tuned); the AWS-specific
-`harvester-2n` and `harvester-aws` profiles both use **`m8id.8xlarge`** (32 vCPU /
-128 GiB / a single ~1.9 TiB NVMe device — unlike `i7i.8xlarge`, which splits its NVMe
-across two ~3.4 TiB devices and rodeo only mounts one). Nested virt is enabled by
-default on non-metal types.
+to **1200** when lower, sets `storage.backend: nvme`, and mounts the largest non-root
+NVMe on `image_dir`. Prefer **`i7i.8xlarge`**. Nested virt is enabled by default on
+non-metal types.
 
 ### `provider` (when `deployment_target: aws`)
 
 Same shape as Fleet [`workshop.yaml` provider](../fleet.md#workshopyaml-provider-schema).
-Required fields for AWS: `type`, `region`, `subnet_id`, and either
-**`instance_type`** or **`instance_tier`**.
-
-**Security group is auto-managed unless you pin one.** Omit
-`security_group_ids` and rodeo creates (or reuses) an SG named `rodeo-<name>`
-in the subnet's VPC, opens exactly the ports the host needs — SSH (22),
-Harvester UI (8443), Rancher NodePort (30002) — and scopes all three to
-*this machine's current public IP*, detected automatically. Re-running from
-a different IP (new wifi, VPN toggled) updates the rule in place rather than
-piling up stale ones. `rodeo destroy --cloud --yes` deletes it once nothing
-else tagged for the workshop is still running (best-effort: if the instance
-hasn't finished detaching yet, re-run destroy — it's never left as a hard
-failure). Set `security_group_ids` explicitly to opt back into a hand-managed
-SG — useful for a shared multi-attendee IP range, a bastion topology, or an
-SG your org's security policy already owns.
+Required fields for AWS: `type`, `region`, `subnet_id`, `security_group_ids`, and
+either **`instance_type`** or **`instance_tier`**.
 
 **Instance size (single-host v1):** pick one of three tiers for the lab profile, or set
 an explicit type. `rodeo up --target aws` prompts interactively when neither is set;
@@ -176,67 +157,30 @@ provider:
   instance_tier: recommended          # budget | recommended | performance
   # Or pin explicitly:
   # instance_type: i7i.8xlarge
-  # ami omitted → newest suse-sles-16-0-v<date>-hvm-ssd-x86_64 (SLES 16 PAYG)
-  # ami: ami-…                        # optional pin
-  # ami_name_filter: "suse-sles-16-0-v????????-hvm-ssd-x86_64"
+  # ami omitted → openSUSE Leap 16.0 (x86_64)* from aws-marketplace
+  # ami: ami-…                        # optional pin (SLES 16 / Leap)
+  # ami_name_filter: "openSUSE Leap 16.0 (x86_64)*"
   subnet_id: subnet-…
-  # security_group_ids: [sg-…]        # omit → rodeo creates/manages one,
-  #                                    # scoped to this machine's public IP
-  ssh_user: ec2-user                  # SLES 16 / Leap default
+  security_group_ids: [sg-…]          # 22, 8443, 30002
+  ssh_user: ec2-user                  # Leap Marketplace default; sles for some SLES AMIs
   # nested_virtualization: true       # default on for non-metal
   # volume_size_gib: 100              # root EBS; lab disks use NVMe
-  # ref: main                         # rodeo-cli git ref to run on the host
-  # install_url: https://…/install.sh # fork or air-gapped mirror
 ```
 
 ```bash
 rodeo up --yes --profile harvester --target aws --instance-tier recommended
 ```
 
-**Which rodeo-cli the host runs (`--ref` / `provider.ref`).** The instance
-bootstraps itself with `install.sh` from GitHub — your local working tree
-never reaches it. By default the bootstrap runs **only when `rodeo` is
-absent**, so a host stays on the code it was first installed with, the same
-way `clean --refresh` refuses to move a pinned host's version unasked.
-
-Pass a ref to change that:
-
-```bash
-rodeo up --target aws --ref main         # pick up commits pushed since bootstrap
-rodeo up --target aws --ref v0.15.0      # pin a release
-rodeo up --target aws --ref feat/my-fix  # test a branch on a real host
-```
-
-A ref makes the bootstrap run **every time** and hard-resets the host's
-checkout to it (`install.sh --ref`), which is the only way a just-pushed
-commit reaches an existing host. The installer itself is fetched from the same
-ref, so `install.sh` and the code it installs cannot disagree. An explicit
-`provider.install_url` is used verbatim — for a fork or an air-gapped mirror —
-and the ref is still passed to it. `--ref` beats `provider.ref`; an invalid
-ref is rejected **before** any instance is launched, so a typo costs nothing.
-`--ref` applies only when the laptop is the AWS control plane; anywhere else
-it warns and is ignored. Fleet has the same mechanism —
-[`fleet deploy --ref` / `lab.ref`](../fleet.md#which-rodeo-cli-the-hosts-run).
-
 **AWS API credentials** (boto3 — never in the plan): `~/.aws/credentials` /
 `AWS_PROFILE`, **or** `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY`
 (+ optional `AWS_SESSION_TOKEN`). AWS CLI is optional.
 
-**AMI choice matters more than it looks.** The default is SLES 16
-**pay-as-you-go** (published by SUSE via Amazon), and it is not
-interchangeable with the alternatives:
-
-- **openSUSE Leap 16** is a Marketplace product whose listing does not permit
-  7th-generation Intel instance types. Nested virtualisation needs exactly
-  those, so Leap cannot run a nested lab on anything but `*.metal`.
-- **SLES BYOS** images allow `i7i`, but ship without a subscription, so zypper
-  has no repos and `install-deps` fails. rodeo does not register hosts.
-
-PAYG avoids both traps at a licence surcharge of roughly $0.125/hr on
-`i7i.8xlarge`. No Marketplace subscription or opt-in is needed.
+**Marketplace:** subscribe once to
+[openSUSE Leap](https://aws.amazon.com/marketplace/pp/prodview-wn2xje27ui45o)
+(or your SLES AMI) in the target account/region before first provision.
 
 **SSH / root:** new instances get cloud-init UserData that installs the managed
-pubkey for **root** and **passwordless sudo** for `ssh_user` (`ec2-user` on SLES 16).
+pubkey for **root** and **passwordless sudo** for `ssh_user` (`ec2-user` on Leap).
 Remote `rodeo up` runs under `sudo -n` so it never prompts. `rodeo ssh primary`
 or `rodeo ssh primary/rancher` use the same managed key.
 
@@ -367,30 +311,59 @@ English source — the payoff screen never fails.
 
 ---
 
-## lab_in_a_box — exporting to lab-in-a-box
+## lab_in_a_box — deploying through lab-in-a-box
 
-`rodeo export --format lab-in-a-box` renders the lab as the `lab.json` that
-[lab-in-a-box](https://github.com/SUSE-Technical-Marketing/lab-in-a-box)'s
-`setup_lab.sh` / `destroy_lab.sh` consume (tested against release 1.0.0). The
-plan and definition stay the source of truth; the optional `lab_in_a_box:`
-block holds the knobs that only exist on the lab-in-a-box side:
+Two ways to hand a lab to
+[lab-in-a-box](https://github.com/SUSE-Technical-Marketing/lab-in-a-box)
+(release 1.8.0, the Python-based `setup_lab.py` contract):
+
+1. **`engine: lab-in-a-box`** in the plan (or `rodeo deploy --engine
+   lab-in-a-box`) — rodeo renders the lab.json, pushes it over SSH to a
+   lab-in-a-box *automation VM*, and streams `setup_lab.py --keep --debug`
+   through the normal deploy pipeline (TUI or plain, same phase state,
+   `rodeo clean` runs `destroy_lab.py` remotely). The automation VM is an
+   operator-provided prerequisite (upstream's
+   `install_automation_node_scripts.sh`); rodeo's preflight verifies it.
+2. **`rodeo export --format lab-in-a-box -o lab.json`** — emit the file and
+   run `setup_lab.py --keep lab.json` yourself.
+
+The plan and definition stay the source of truth; the `lab_in_a_box:` block
+holds the knobs that only exist on the lab-in-a-box side:
 
 ```yaml
+engine: lab-in-a-box                    # default: native
 lab_in_a_box:
-  iso_image: openSUSE-Leap-15.6.qcow2   # base qcow2 in lab-in-a-box's ISO_LOC (required to deploy)
-  config_method: cloud-init             # cloud-init (default) | iso-cloud-init | "" (ignition/combustion)
+  automation_host: user@automation.lab  # SSH target of the automation VM (required by the engine)
+  identity_file: ~/.ssh/id_rodeo        # optional SSH key for automation_host
+  remote_dir: rodeo-labs/<name>         # where lab.json lands on the automation VM — default shown,
+                                        # relative to the SSH user's home (~/rodeo-labs/<name>)
+  keep: true                            # setup_lab.py --keep (incremental re-runs); rodeo deploy --force drops it
+  debug: true                           # setup_lab.py --debug (live command output for the TUI/log)
+  iso_image: openSUSE-Leap-15.6.qcow2   # base qcow2 in lab-in-a-box's ISO_LOC (engine: required; export: warned)
+  config_method: cloud-init             # cloud-init (default) | virt_customize | install_iso | "" (ignition/combustion)
   cluster_name: mgmt                    # kcluster name (also its DNS record: <name>.<domain>)
   cluster_type: k3s                     # k3s (default) | rke2
   clu_rel: stable                       # install channel — exact version pins don't carry over
-  addons: [rancher]                     # override the derived install_<addon> list
+  addons: [rancher]                     # override the derived install_<addon> list (1.8.0 also
+                                        # accepts {"<addon>": {...}} per-entry config overrides)
   sections:                             # verbatim extra/override lab.json sections
     rancher: {rancher_rel: stable}
 ```
 
-Not carried over (warned at export time): PXE-booted Harvester nodes
-(lab-in-a-box has no PXE — use `--skip-unsupported` to export the rest),
-exposed-service host port-forwards, storage/image-dir selection, and exact
-k3s/rke2 version pins.
+Exposed-service host port-forwards now translate to lab-in-a-box's
+`portforward` service (per-node `forwarded_ports`). Still not carried over
+(warned at export time, refused by the engine): PXE-booted Harvester nodes —
+those labs stay on the native engine until lab-in-a-box's PXE path is
+live-regression-tested — storage/image-dir selection (lives in the automation
+VM's `/etc/lab_creation.cfg`), and exact k3s/rke2 version pins.
+
+Caution: without `--keep`, upstream `setup_lab.py` **destroys and recreates
+every VM** — rodeo passes `--keep` by default and reserves the rebuild for
+`rodeo deploy --force`.
+
+The automation VM's SSH host key is pinned on first contact
+(`~/.rodeo/ssh/labinabox_known_hosts`); a later key change fails the
+connection loudly — delete the entry there after a legitimate VM rebuild.
 
 ---
 

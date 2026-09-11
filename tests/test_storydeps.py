@@ -224,3 +224,17 @@ def test_story_flag_is_opt_in():
     params = {p.name: p for p in mod.install_deps_cmd.params}
     assert "story" in params
     assert params["story"].default is False
+
+
+def test_download_verified_fails_closed_without_sha512(monkeypatch, tmp_path):
+    # Packages install as root with --allow-unsigned-rpm: a release asset
+    # with no .sha512 sibling must be refused, never trusted, and nothing
+    # should be downloaded at all.
+    asset = {"name": "pkg.rpm", "browser_download_url": "https://example.invalid/pkg.rpm"}
+
+    def _no_download(url, dest):  # pragma: no cover - must not be reached
+        raise AssertionError("download attempted for an unverifiable asset")
+
+    monkeypatch.setattr(storydeps.urllib.request, "urlretrieve", _no_download)
+    with pytest.raises(ConfigError, match="no pkg.rpm.sha512"):
+        storydeps._download_verified(asset, [asset], tmp_path)

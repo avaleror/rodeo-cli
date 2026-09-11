@@ -88,6 +88,23 @@ def clean_cmd(
 
     console.print()
 
+    # Labs deployed through the lab-in-a-box engine live on its automation
+    # VM's hypervisors, not this host: tear them down remotely first.
+    # destroy_lab.py always exits 0 — failures only appear as WARNING lines,
+    # so surface the output rather than trusting the return code.
+    if (cfg or {}).get("engine") == "lab-in-a-box":
+        from ..engine.labinabox_runner import destroy_remote_lab
+
+        host = (cfg.get("lab_in_a_box") or {}).get("automation_host", "?")
+        console.print(f"  [dim]destroy (lab-in-a-box)[/dim]  via {host}")
+        try:
+            _rc, lines = destroy_remote_lab(cfg)
+            for line in lines:
+                style = "yellow" if "WARNING" in line or "ERROR" in line else "dim"
+                console.print(f"    {line}", markup=False, style=style)
+        except Exception as exc:
+            console.print(f"[yellow]⚠ remote destroy_lab.py failed: {exc}[/yellow]")
+
     # If not --hard, do graceful stop first (VMs via ACPI shutdown) so clean happens on stopped infra.
     # This ensures 'rodeo clean' (even without explicit 'rodeo stop') leaves clean state; --hard for immediate force.
     if not hard:

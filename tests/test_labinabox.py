@@ -1,8 +1,9 @@
 """lab-in-a-box export — spec translation contract (rodeo/labinabox.py).
 
-Pins the lab.json shape consumed by lab-in-a-box main (release 1.0.0):
-node keys become per-VM env vars, common holds lab-wide defaults, kclusters
-drives setup_k3s/setup_rke2 and install_<addon> dispatch.
+Pins the lab.json shape consumed by lab-in-a-box release 1.8.0 (setup_lab.py,
+the Python-based contract): node keys overlay common defaults per VM, common
+holds lab-wide defaults + services[], kclusters drives the k3s/rke2 install
+and install_<addon> dispatch, forwarded_ports drives host DNAT.
 """
 from __future__ import annotations
 
@@ -26,11 +27,12 @@ def test_rancher_profile_maps_to_lab_json(tmp_path):
     cfg = _rancher_cfg(tmp_path)
     lab, warnings = build_lab_json(cfg)
 
-    # Node keyed by FQDN, with the definition's IP/MAC and pinned NETWORK.
+    # Node keyed by FQDN, with the definition's IP/MAC. NETWORK stopped being
+    # a lab-file key in the Python rewrite (BRIDGE lives in lab_creation.cfg).
     node = lab["nodes"]["rancher.rodeo.lab"]
     assert node["myip"] == "192.168.122.9"
     assert node["mymac"] == "02:00:00:0D:62:E9"
-    assert node["NETWORK"] == "bridge=virbr0,mac.address=02:00:00:0D:62:E9"
+    assert "NETWORK" not in node
 
     # Sizing from the profile's resources block, stringified for the shell.
     assert node["VM_MEM"] == "8192"
@@ -63,7 +65,7 @@ def test_rancher_profile_maps_to_lab_json(tmp_path):
     assert "ISO_IMAGE" not in common
     assert any("iso_image" in w for w in warnings)
 
-    # The result must be plain JSON (setup_lab.sh validates with jq).
+    # The result must be plain JSON (setup_lab.py parses it as JSON first).
     json.loads(json.dumps(lab))
 
 
@@ -117,10 +119,22 @@ def test_overlay_overrides(tmp_path):
     assert lab["rancher"]["rancher_version"] == cfg["versions"]["rancher"]
 
 
-def test_port_forward_warning(tmp_path):
+def test_port_forwards_map_to_portforward_service(tmp_path):
+    # The rancher profile exposes NodePort 30002 → the rancher node: that is
+    # now representable as lab-in-a-box's portforward service.
     cfg = _rancher_cfg(tmp_path)
-    _lab, warnings = build_lab_json(cfg)
-    assert any("port-forwards" in w for w in warnings)
+    lab, warnings = build_lab_json(cfg)
+    node = lab["nodes"]["rancher.rodeo.lab"]
+    assert node["forwarded_ports"] == ["30002:30002/TCP"]
+    assert lab["common"]["services"] == ["portforward"]
+    assert not any("port-forward" in w for w in warnings)
+
+
+def test_unknown_overlay_addon_warns(tmp_path):
+    cfg = _rancher_cfg(tmp_path, "lab_in_a_box:\n  addons: [rancher, not_a_real_addon]\n")
+    lab, warnings = build_lab_json(cfg)
+    assert lab["kclusters"]["mgmt"]["addons"] == ["rancher", "not_a_real_addon"]
+    assert any("not_a_real_addon" in w for w in warnings)
 
 
 def test_reverse_zone():

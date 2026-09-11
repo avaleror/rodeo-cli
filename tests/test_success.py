@@ -131,3 +131,38 @@ def test_baremetal_shows_dnat_url(capsys, monkeypatch):
     assert "Instruqt" not in out
     assert "hostimage checklist" not in out
     assert "start-if-needed" not in out
+
+
+def test_labinabox_engine_gets_fqdn_panel(capsys):
+    cfg = {
+        "engine": "lab-in-a-box",
+        "type": "rancher",
+        "network": {"dns_domain": "rodeo.lab", "rancher_ip": "192.168.122.9"},
+        "vms": {"rancher": {"ip": "192.168.122.9"}},
+        "lab_in_a_box": {
+            "automation_host": "user@automation.lab",
+            "iso_image": "leap.qcow2",
+        },
+    }
+    out = _render(cfg, capsys)
+    assert "lab-in-a-box" in out
+    assert "rancher.rodeo.lab" in out          # node FQDN + rancher addon URL
+    assert "user@automation.lab" in out        # where DNS/destroy happen
+    assert "destroy_lab.py" in out
+    # Native-engine framing must not leak into the remote panel.
+    assert "30002" not in out
+    assert "secrets.yaml" not in out
+
+
+def test_labinabox_rancher_shorthn_override(capsys):
+    cfg = {
+        "engine": "lab-in-a-box",
+        "network": {"dns_domain": "demo.lab"},
+        "vms": {"rancher": {"ip": "192.168.122.9"}},
+        "lab_in_a_box": {
+            "automation_host": "user@automation.lab",
+            "sections": {"rancher": {"rancher_shorthn": "mgr"}},
+        },
+    }
+    out = _render(cfg, capsys)
+    assert "https://mgr.demo.lab" in out

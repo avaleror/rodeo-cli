@@ -31,11 +31,14 @@ _TARGETS: dict[str, HostContextOverlay] = {}
 # ("performance-first"), so a 3-node profile demanded ~3.6 TiB — more than a
 # single NVMe device provides on most instance types. Caught live 2026-09-11.
 # A same-day fix tried a 1200 GB *total* pool budget split per node instead —
-# also wrong. Andrés then settled it twice: first a flat 300 GB/Harvester-node
-# (full stop, no node-count math), then raised to 600 once the recommended
-# instance for harvester-2n (m8id.8xlarge, 32 vCPU / 128 GiB / a single
-# ~1.9 TiB NVMe device) gave more comfortable Longhorn headroom to spend.
-AWS_HARVESTER_DISK_GB = 600
+# also wrong. Andrés then settled it in steps: flat 300 GB/Harvester-node, then
+# 600 once harvester-2n's recommended instance (m8id.8xlarge, 32 vCPU / 128 GiB
+# / a single ~1.9 TiB NVMe device) gave headroom to spend — but 600 x 3 nodes
+# (harvester-aws) + 60 (Rancher) = 1860 GB leaves only ~40 GB free on that same
+# ~1.9 TiB device, too tight. Settled at 500: 500x3 + 60 = 1560 GB, ~300+ GB
+# free margin on harvester-aws's m8id.8xlarge, and even more room on
+# harvester-2n's 2-node math (500x2 + 60 = 1060 GB).
+AWS_HARVESTER_DISK_GB = 500
 AWS_RANCHER_DISK_GB = 60
 
 # Only raise disk when unset or below the floor (never shrink an explicit

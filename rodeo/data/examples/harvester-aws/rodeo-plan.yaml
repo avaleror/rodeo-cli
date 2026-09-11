@@ -13,7 +13,7 @@ provider:
   region: eu-central-1          # <- set to your region
   subnet_id: subnet-CHANGE-ME   # <- must be in a VPC with an internet gateway
   instance_tier: recommended    # budget | recommended | performance — see instance_catalog.py
-  # instance_type: m8id.12xlarge   # or pin explicitly instead of a tier
+  # instance_type: m8id.8xlarge   # or pin explicitly instead of a tier
   associate_public_ip: true
   # security_group_ids: [sg-...] # omit to let rodeo create/manage one,
   #                               # scoped to this machine's public IP
@@ -29,9 +29,9 @@ resources:
   harvester:
     memory_mib: 20480    # 20 GiB per Harvester node
     vcpu: 10
-    disk_gb: 600         # matches the AWS host-context floor for this profile:
-                         # 3 nodes x 600 GB + 60 GB (Rancher) = 1860 GB, comfortable
-                         # margin under m8id.12xlarge's single ~2.85 TiB NVMe device.
+    disk_gb: 500         # matches the AWS host-context floor for this profile:
+                         # 3 nodes x 500 GB + 60 GB (Rancher) = 1560 GB, comfortable
+                         # margin under m8id.8xlarge's single ~1.9 TiB NVMe device.
                          # apply_host_context() would raise a lower value to this
                          # floor anyway — set explicitly here so the file doesn't
                          # look under-provisioned before the first deploy.

@@ -5,13 +5,13 @@ Same 3-node Harvester HCI + Rancher Prime topology as the `harvester` profile
 `deployment_target: aws` instead of `instruqt`/`baremetal`:
 
 - `provider:` block present (fill in `region` and `subnet_id`)
-- `resources.harvester.disk_gb: 600` — matches the AWS host-context floor for
-  this profile (3 x 600 GB + 60 GB Rancher = 1860 GB), instead of the generic
+- `resources.harvester.disk_gb: 500` — matches the AWS host-context floor for
+  this profile (3 x 500 GB + 60 GB Rancher = 1560 GB), instead of the generic
   `harvester` profile's 320 GB (which `apply_host_context()` would still raise
-  automatically on AWS, but showing 600 here means the file isn't
+  automatically on AWS, but showing 500 here means the file isn't
   under-provisioned before the first deploy)
-- `provider.instance_tier: recommended` resolves to `m8id.12xlarge`
-  (48 vCPU / 192 GiB RAM / a single ~2.85 TiB NVMe device) — see
+- `provider.instance_tier: recommended` resolves to `m8id.8xlarge`
+  (32 vCPU / 128 GiB RAM / a single ~1.9 TiB NVMe device) — see
   `rodeo/providers/instance_catalog.py`
 
 The `harvester` profile itself is untouched and stays generic — this is a

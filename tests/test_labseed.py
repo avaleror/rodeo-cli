@@ -45,7 +45,7 @@ def test_harvester_aws_profile_same_topology_as_harvester(tmp_path):
     assert plan["provider"]["instance_tier"] == "recommended"
     # apply_host_context() ran at seed time (deployment_target=aws): the flat
     # per-node floor, not the generic profile's 320.
-    assert plan["resources"]["harvester"]["disk_gb"] == 600
+    assert plan["resources"]["harvester"]["disk_gb"] == 500
     assert plan["resources"]["rancher"]["disk_gb"] == 60
 
     # The generic "harvester" profile is untouched by adding "harvester-aws".

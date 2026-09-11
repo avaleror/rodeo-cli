@@ -58,7 +58,7 @@ AWS_PROFILE_TIERS: dict[str, dict[InstanceTier, InstanceOffer]] = {
             "32 vCPU / 128 GiB / a single ~1.9 TiB NVMe device — unlike i7i.8xlarge "
             "(same vCPU/RAM but splits its NVMe across two ~3.4 TiB devices, only "
             "one of which rodeo mounts), m8id.8xlarge's local storage is one device "
-            "that matches this profile's real ~1260 GB need (600 GB/Harvester node "
+            "that matches this profile's real ~1060 GB need (500 GB/Harvester node "
             "+ 60 GB Rancher) without wasting capacity",
         ),
         "performance": InstanceOffer(
@@ -90,17 +90,19 @@ AWS_PROFILE_TIERS: dict[str, dict[InstanceTier, InstanceOffer]] = {
     # Same topology/guest sizing as "harvester" — a separate catalog entry
     # because the right AWS instance for it is not i7i.8xlarge: same vCPU/RAM,
     # but i7i.8xlarge splits its NVMe across two ~3.4 TiB devices (rodeo only
-    # mounts one), while m8id.12xlarge gives a single ~2.85 TiB device that
-    # comfortably fits this profile's ~1860 GB real need (3 x 600 GB Harvester
-    # + 60 GB Rancher) with room to spare.
+    # mounts one). m8id.8xlarge (same vCPU/RAM as harvester-2n's pick) gives a
+    # single ~1.9 TiB device instead — tight for 3 nodes at a naive 600 GB/node
+    # floor (1860 GB, ~40 GB free), which is why AWS_HARVESTER_DISK_GB dropped
+    # to 500: 3x500 + 60 (Rancher) = 1560 GB, ~300+ GB free.
     "harvester-aws": {
         "budget": InstanceOffer(
             "m7i.16xlarge", "budget", "64 vCPU / 256 GiB — 3-node + Rancher (EBS)"
         ),
         "recommended": InstanceOffer(
-            "m8id.12xlarge", "recommended",
-            "48 vCPU / 192 GiB / a single ~2.85 TiB NVMe device — sized to this "
-            "profile's real ~1860 GB need, not split across multiple devices",
+            "m8id.8xlarge", "recommended",
+            "32 vCPU / 128 GiB / a single ~1.9 TiB NVMe device — matches this "
+            "profile's real ~1560 GB need (500 GB/Harvester node x 3 + 60 GB "
+            "Rancher), not split across multiple devices",
         ),
         "performance": InstanceOffer(
             "m7i.metal-24xl", "performance", "bare metal — max nested performance"

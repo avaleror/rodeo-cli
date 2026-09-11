@@ -1,8 +1,10 @@
 """rodeo export — render the lab spec in another deployer's input format.
 
-First step of delegating deployment to lab-in-a-box: the rodeo plan +
-definition stay the source of truth, and this command emits the lab.json
-that lab-in-a-box's setup_lab.sh / destroy_lab.sh consume.
+The rodeo plan + definition stay the source of truth; this command emits the
+lab.json that lab-in-a-box's setup_lab.py / destroy_lab.py consume (release
+1.8.0 contract). To deploy through lab-in-a-box directly, set
+``engine: lab-in-a-box`` in the plan instead — same translation, driven by
+rodeo (see rodeo/engine/labinabox_runner.py).
 """
 from __future__ import annotations
 
@@ -47,9 +49,10 @@ def export_cmd(
     """Export the lab as a lab-in-a-box lab.json.
 
     \b
-    Deploy the exported lab from a lab-in-a-box automation node:
+    Deploy the exported lab from a lab-in-a-box automation VM:
       rodeo export -o lab.json
-      setup_lab.sh lab.json        # destroy_lab.sh lab.json to tear down
+      setup_lab.py --keep lab.json   # destroy_lab.py lab.json to tear down
+    (or let rodeo drive it: engine: lab-in-a-box in rodeo-plan.yaml)
     \b
     lab-in-a-box specific knobs live under lab_in_a_box: in rodeo-plan.yaml
     (iso_image, config_method, cluster_type, clu_rel, addons, sections)
@@ -72,5 +75,5 @@ def export_cmd(
     else:
         Path(output).write_text(text)
         console.print(
-            f"[green]✓  Wrote {output}[/green] — deploy with: setup_lab.sh {output}"
+            f"[green]✓  Wrote {output}[/green] — deploy with: setup_lab.py --keep {output}"
         )

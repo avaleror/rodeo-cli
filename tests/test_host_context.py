@@ -26,11 +26,12 @@ def test_aws_raises_harvester_disk_and_sets_nvme_backend():
 
 
 def test_aws_floor_is_flat_per_node_not_scaled_by_node_count():
-    """A flat per-node floor (300 GB) regardless of how many Harvester nodes
-    the profile has — deliberately NOT a shared pool budget. The earlier
+    """A flat per-node floor regardless of how many Harvester nodes the
+    profile has — deliberately NOT a shared pool budget. The earlier
     per-node-1200 design (2026-07-30) and its same-day total-pool-budget
-    fix both got corrected 2026-09-11: real target is 300 GB/Harvester-node,
-    60 GB/Rancher-node, flat, leaving the rest of the NVMe device free."""
+    fix both got corrected 2026-09-11: real target is a flat
+    AWS_HARVESTER_DISK_GB per Harvester node / AWS_RANCHER_DISK_GB for
+    Rancher, leaving the rest of the NVMe device free."""
     cfg = {
         "deployment_target": "aws",
         "resources": {
@@ -48,17 +49,20 @@ def test_aws_floor_is_flat_per_node_not_scaled_by_node_count():
 
 
 def test_aws_does_not_raise_disk_already_above_floor():
-    """Most bundled profiles already default harvester to 320 GB (above the
-    300 GB AWS floor) — the floor must not change it, only raise when below."""
+    """An explicit disk_gb already at or above the AWS floor must not change —
+    only raise when below."""
     cfg = {
         "deployment_target": "aws",
-        "resources": {"harvester": {"disk_gb": 320}, "rancher": {"disk_gb": 60}},
+        "resources": {
+            "harvester": {"disk_gb": AWS_HARVESTER_DISK_GB + 100},
+            "rancher": {"disk_gb": AWS_RANCHER_DISK_GB},
+        },
         "storage": {},
         "libvirt": {},
     }
     out, notes = apply_host_context(cfg)
-    assert out["resources"]["harvester"]["disk_gb"] == 320
-    assert out["resources"]["rancher"]["disk_gb"] == 60
+    assert out["resources"]["harvester"]["disk_gb"] == AWS_HARVESTER_DISK_GB + 100
+    assert out["resources"]["rancher"]["disk_gb"] == AWS_RANCHER_DISK_GB
     assert not any("disk_gb" in n for n in notes)
 
 

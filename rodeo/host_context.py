@@ -22,17 +22,20 @@ HostContextOverlay = Callable[[dict[str, Any], dict[str, Any]], list[str]]
 
 _TARGETS: dict[str, HostContextOverlay] = {}
 
-# AWS / NVMe workshops: flat per-node floors, deliberately small — matches
-# real-world (Instruqt) sizing, not "use as much of the local NVMe as
-# possible". The rest of the device is intentionally left free.
+# AWS / NVMe workshops: flat per-node floors, deliberately well under the
+# NVMe device's actual capacity — matches real-world (Instruqt) sizing, not
+# "use as much of the local NVMe as possible". The rest of the device is
+# intentionally left free.
 #
 # History: the original 2026-07-30 design floored Harvester at 1200 GB/node
 # ("performance-first"), so a 3-node profile demanded ~3.6 TiB — more than a
 # single NVMe device provides on most instance types. Caught live 2026-09-11.
 # A same-day fix tried a 1200 GB *total* pool budget split per node instead —
-# also wrong: Andrés clarified the real target is a flat 300 GB/Harvester-node,
-# 60 GB/Rancher-node, full stop, regardless of node count.
-AWS_HARVESTER_DISK_GB = 300
+# also wrong. Andrés then settled it twice: first a flat 300 GB/Harvester-node
+# (full stop, no node-count math), then raised to 600 once the recommended
+# instance for harvester-2n (m8id.8xlarge, 32 vCPU / 128 GiB / a single
+# ~1.9 TiB NVMe device) gave more comfortable Longhorn headroom to spend.
+AWS_HARVESTER_DISK_GB = 600
 AWS_RANCHER_DISK_GB = 60
 
 # Only raise disk when unset or below the floor (never shrink an explicit

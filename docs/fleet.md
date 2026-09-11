@@ -402,10 +402,10 @@ Never put AWS access keys in `workshop.yaml` or `rodeo-plan.yaml`.
 #### `provider.type: aws` (F4a)
 
 Prefer **`i7i.8xlarge`** (local NVMe) for Harvester / Edge I/O. Metal remains valid.
-`apply_host_context` raises `resources.harvester.disk_gb` to a flat **300 GB**
+`apply_host_context` raises `resources.harvester.disk_gb` to a flat **600 GB**
 and `resources.rancher.disk_gb` to **60 GB** — never scaled by node count, so
 the rest of the NVMe device is deliberately left free — and mounts NVMe on
-`image_dir`. Root `volume_size_gib` only needs the OS (~100 GiB). Tiny /
+`image_dir`. Root `volume_size_gib` only needs the OS (~100 GiB). Tiny /
 burstable types are rejected at validate. Nested virt defaults **on** for
 non-metal types.
 

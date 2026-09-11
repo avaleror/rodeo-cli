@@ -63,7 +63,7 @@ rancher            aws              Rancher on an AWS EC2 KVM host
 |---|---|---|
 | `baremetal` | Linux bare metal with KVM | full firewalld + DNAT; optional disk-space warn |
 | `instruqt` | Instruqt managed KVM builder | `finalise` guarded; vCPU/RAM presets (~70% host) |
-| `aws` | Provisioned EC2 *or* BYO on EC2 | `provider:` + destroy; `disk_gb` floor ~1200 total (split per node); NVMe → `image_dir` |
+| `aws` | Provisioned EC2 *or* BYO on EC2 | `provider:` + destroy; `disk_gb` floor 300/Harvester-node, 60/Rancher-node (flat); NVMe → `image_dir` |
 | `gcp` *(planned)* | GCP instance with KVM | external IP via GCE metadata; VPC firewall rules |
 
 **Acquire vs adapt.** Host acquire can be provisioned (`rodeo up --target aws` / Fleet `provider:`) or BYO (SSH inventory / operator-created EC2). Both must hit `apply_host_context()` before deploy so workshops do not fork playbooks per cloud. Tech platform declares *what* lab; host context declares *where* and *how the host must be shaped*.

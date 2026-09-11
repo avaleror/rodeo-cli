@@ -125,7 +125,7 @@ surfaces locally.
 
 Verify on the KVM host after `kvm_host`:
 
-1. `resources.harvester.disk_gb` is `~1200 / node_count` — a pool budget split evenly per node, not 1200 per node (plan / vars)
+1. `resources.harvester.disk_gb` is **300** and `resources.rancher.disk_gb` is **60** — flat per-node floors, not scaled by node count (plan / vars)
 2. `storage.backend: nvme` and `image_dir` is mounted on instance-store NVMe (`findmnt`, `lsblk`)
 3. Guest disks live under that `image_dir` (not root EBS alone)
 4. Harvester VIP / `rodeo status` healthy; tear down with `rodeo destroy --cloud --yes` if provisioned

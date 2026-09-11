@@ -54,7 +54,10 @@ AWS_PROFILE_TIERS: dict[str, dict[InstanceTier, InstanceOffer]] = {
             "m7i.8xlarge", "budget", "32 vCPU / 128 GiB — 2n + Rancher"
         ),
         "recommended": InstanceOffer(
-            "i7i.8xlarge", "recommended", "local NVMe — preferred for Harvester I/O"
+            "i7i.2xlarge", "recommended",
+            "8 vCPU / 64 GiB / ~1.75 TiB local NVMe — sized to the actual "
+            "~660 GB pool need (300 GB/Harvester node + 60 GB Rancher), not "
+            "the profile's full guest RAM/vCPU headroom",
         ),
         "performance": InstanceOffer(
             "m7i.metal-24xl", "performance", "bare metal — max nested performance"

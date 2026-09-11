@@ -1,73 +1,65 @@
 """Host-context adaptation overlays."""
 from __future__ import annotations
 
-from rodeo import host_context as host_context_mod
-from rodeo.host_context import AWS_HARVESTER_DISK_GB_TOTAL, apply_host_context
+from rodeo.host_context import (
+    AWS_HARVESTER_DISK_GB,
+    AWS_RANCHER_DISK_GB,
+    apply_host_context,
+)
 
 
-def _base_aws_cfg(disk_gb: int = 320) -> dict:
-    return {
+def test_aws_raises_harvester_disk_and_sets_nvme_backend():
+    cfg = {
         "deployment_target": "aws",
-        "type": "suse-virt",
-        "name": "t",
-        "resources": {"harvester": {"memory_mib": 16384, "vcpu": 8, "disk_gb": disk_gb}},
+        "resources": {"harvester": {"memory_mib": 16384, "vcpu": 8, "disk_gb": 250}},
         "storage": {"image_dir": "/var/lib/libvirt/images"},
         "libvirt": {"uri": "qemu:///system"},
     }
-
-
-def test_aws_raises_harvester_disk_and_sets_nvme_backend(monkeypatch):
-    """Single-node pool: the whole 1200 GB budget lands on it, same as the
-    historical per-node floor for the 1-node case."""
-    monkeypatch.setattr(host_context_mod, "_count_flavor_nodes", lambda cfg, flavor: 1)
-    cfg = _base_aws_cfg(320)
     out, notes = apply_host_context(cfg)
-    assert out["resources"]["harvester"]["disk_gb"] == AWS_HARVESTER_DISK_GB_TOTAL
+    assert out["resources"]["harvester"]["disk_gb"] == AWS_HARVESTER_DISK_GB
     assert out["storage"]["backend"] == "nvme"
     assert out["libvirt"]["disk_cache"] == "none"
     assert out["libvirt"]["disk_io"] == "native"
     assert any("disk_gb" in n for n in notes)
     # Original unchanged
-    assert cfg["resources"]["harvester"]["disk_gb"] == 320
+    assert cfg["resources"]["harvester"]["disk_gb"] == 250
 
 
-def test_aws_splits_disk_floor_across_harvester_node_count(monkeypatch):
-    """The 1200 GB budget is for the whole pool, not per node: a 3-node
-    profile must not demand ~3.6 TiB (the 2026-07-30 design bug, caught live
-    2026-09-11 — i7i.8xlarge's single NVMe device is ~3.4 TiB)."""
-    monkeypatch.setattr(host_context_mod, "_count_flavor_nodes", lambda cfg, flavor: 3)
-    cfg = _base_aws_cfg(320)
-    cfg["resources"]["rancher"] = {"disk_gb": 60}
+def test_aws_floor_is_flat_per_node_not_scaled_by_node_count():
+    """A flat per-node floor (300 GB) regardless of how many Harvester nodes
+    the profile has — deliberately NOT a shared pool budget. The earlier
+    per-node-1200 design (2026-07-30) and its same-day total-pool-budget
+    fix both got corrected 2026-09-11: real target is 300 GB/Harvester-node,
+    60 GB/Rancher-node, flat, leaving the rest of the NVMe device free."""
+    cfg = {
+        "deployment_target": "aws",
+        "resources": {
+            "harvester": {"disk_gb": 250},
+            "rancher": {"disk_gb": 40},
+        },
+        "storage": {"image_dir": "/var/lib/libvirt/images"},
+        "libvirt": {"uri": "qemu:///system"},
+    }
     out, notes = apply_host_context(cfg)
-    per_node = out["resources"]["harvester"]["disk_gb"]
-    assert per_node * 3 <= AWS_HARVESTER_DISK_GB_TOTAL
-    assert per_node == AWS_HARVESTER_DISK_GB_TOTAL // 3
-    assert any("3 nodes" in n for n in notes)
-    # Rancher isn't in the floor table — untouched.
+    assert out["resources"]["harvester"]["disk_gb"] == AWS_HARVESTER_DISK_GB
+    assert out["resources"]["rancher"]["disk_gb"] == AWS_RANCHER_DISK_GB
+    assert any("resources.harvester.disk_gb" in n for n in notes)
+    assert any("resources.rancher.disk_gb" in n for n in notes)
+
+
+def test_aws_does_not_raise_disk_already_above_floor():
+    """Most bundled profiles already default harvester to 320 GB (above the
+    300 GB AWS floor) — the floor must not change it, only raise when below."""
+    cfg = {
+        "deployment_target": "aws",
+        "resources": {"harvester": {"disk_gb": 320}, "rancher": {"disk_gb": 60}},
+        "storage": {},
+        "libvirt": {},
+    }
+    out, notes = apply_host_context(cfg)
+    assert out["resources"]["harvester"]["disk_gb"] == 320
     assert out["resources"]["rancher"]["disk_gb"] == 60
-
-
-def test_aws_two_node_harvester_gets_more_per_node_than_three(monkeypatch):
-    cfg_2 = _base_aws_cfg(320)
-    cfg_3 = _base_aws_cfg(320)
-    monkeypatch.setattr(host_context_mod, "_count_flavor_nodes", lambda cfg, flavor: 2)
-    two_out, _ = apply_host_context(cfg_2)
-    monkeypatch.setattr(host_context_mod, "_count_flavor_nodes", lambda cfg, flavor: 3)
-    three_out, _ = apply_host_context(cfg_3)
-    assert (
-        two_out["resources"]["harvester"]["disk_gb"]
-        > three_out["resources"]["harvester"]["disk_gb"]
-    )
-
-
-def test_count_flavor_nodes_matches_bundled_default_topology():
-    """Unmocked integration check, no definition.yaml override: locks in the
-    bundled default suse-virt topology's actual harvester node count, so a
-    future change to that default can't silently change the AWS disk-floor
-    math without a test noticing."""
-    cfg = {"type": "suse-virt", "name": "t"}
-    assert host_context_mod._count_flavor_nodes(cfg, "harvester") == 3
-    assert host_context_mod._count_flavor_nodes(cfg, "rancher") == 1
+    assert not any("disk_gb" in n for n in notes)
 
 
 def test_aws_does_not_shrink_larger_disk():

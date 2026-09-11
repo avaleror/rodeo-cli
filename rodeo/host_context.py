@@ -22,12 +22,30 @@ HostContextOverlay = Callable[[dict[str, Any], dict[str, Any]], list[str]]
 
 _TARGETS: dict[str, HostContextOverlay] = {}
 
-# AWS / NVMe workshops: ≥1.2 TiB per Harvester node (performance-first).
-AWS_HARVESTER_DISK_GB = 1200
+# AWS / NVMe workshops: flat per-node floors, deliberately well under the
+# NVMe device's actual capacity — matches real-world (Instruqt) sizing, not
+# "use as much of the local NVMe as possible". The rest of the device is
+# intentionally left free.
+#
+# History: the original 2026-07-30 design floored Harvester at 1200 GB/node
+# ("performance-first"), so a 3-node profile demanded ~3.6 TiB — more than a
+# single NVMe device provides on most instance types. Caught live 2026-09-11.
+# A same-day fix tried a 1200 GB *total* pool budget split per node instead —
+# also wrong. Andrés then settled it in steps: flat 300 GB/Harvester-node, then
+# 600 once harvester-2n's recommended instance (m8id.8xlarge, 32 vCPU / 128 GiB
+# / a single ~1.9 TiB NVMe device) gave headroom to spend — but 600 x 3 nodes
+# (harvester-aws) + 60 (Rancher) = 1860 GB leaves only ~40 GB free on that same
+# ~1.9 TiB device, too tight. Settled at 500: 500x3 + 60 = 1560 GB, ~300+ GB
+# free margin on harvester-aws's m8id.8xlarge, and even more room on
+# harvester-2n's 2-node math (500x2 + 60 = 1060 GB).
+AWS_HARVESTER_DISK_GB = 500
+AWS_RANCHER_DISK_GB = 60
 
-# Only raise disk when unset or below this floor (never shrink an explicit larger plan).
+# Only raise disk when unset or below the floor (never shrink an explicit
+# larger plan).
 _AWS_DISK_FLOORS: dict[str, int] = {
     "harvester": AWS_HARVESTER_DISK_GB,
+    "rancher": AWS_RANCHER_DISK_GB,
 }
 
 
@@ -164,6 +182,11 @@ def _ensure_harvester_disk_floor(
     cfg: dict[str, Any],
     floors: dict[str, int],
 ) -> list[str]:
+    """Raise ``resources.<flavor>.disk_gb`` to a flat per-node floor. Deliberately
+    NOT scaled by node count — a 3-node profile gets 3x this value in total,
+    same as a 1-node profile gets 1x, leaving the rest of the NVMe device free
+    for other things. Never shrinks an explicit larger plan.
+    """
     notes: list[str] = []
     resources = cfg.get("resources")
     if not isinstance(resources, dict):

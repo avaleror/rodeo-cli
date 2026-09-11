@@ -468,7 +468,19 @@ def _validate_labinabox(cfg: dict) -> None:
 
 
 def _validate_aws_provider(cfg: dict) -> None:
-    """Require a valid shared provider: block when deployment_target is aws."""
+    """Require a valid shared provider: block when deployment_target is aws.
+
+    Skipped when already running on EC2. The provider block describes how to
+    *acquire* a host, and on the host itself there is nothing to acquire — but
+    the plan still needs deployment_target: aws so apply_host_context raises
+    disk_gb to the aws floor and sets storage.backend: nvme for the instance
+    store. Requiring the block there would mean shipping the laptop's
+    provisioning config to a machine that cannot act on it.
+    """
+    from .providers.remote_up import on_ec2
+
+    if on_ec2():
+        return
     provider = cfg.get("provider")
     if not isinstance(provider, dict):
         raise ConfigError(

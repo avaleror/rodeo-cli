@@ -1,12 +1,14 @@
 """Tests for rodeo ssh target resolution (vm | host | host/vm)."""
 from __future__ import annotations
 
+import os
 import textwrap
 
 import pytest
 
 from rodeo.config import ConfigError
 from rodeo.ssh_targets import (
+    _root_key_status,
     build_ssh_target,
     default_identity,
     parse_ssh_target_arg,
@@ -19,10 +21,41 @@ def managed_ssh(tmp_path, monkeypatch):
     ssh_dir = tmp_path / "ssh"
     monkeypatch.setattr("rodeo.paths.rodeo_ssh_dir", lambda: ssh_dir)
     monkeypatch.setattr("rodeo.ssh_key.rodeo_ssh_dir", lambda: ssh_dir)
+    # Point the host-root-key probe at a path that does not exist, so tests
+    # resolve identities deterministically instead of reading the real
+    # /root/.ssh/id_ed25519 — which is absent on a dev laptop but present and
+    # untraversable on a Linux CI runner. Tests that need it present override
+    # this with their own monkeypatch.
+    monkeypatch.setattr(
+        "rodeo.ssh_targets._HOST_ROOT_SSH_KEY", tmp_path / "no-host-root-key"
+    )
     from rodeo.ssh_key import ensure_rodeo_ssh_key
 
     ensure_rodeo_ssh_key()
     return ssh_dir
+
+
+# root bypasses directory permission bits, so a mode-000 stand-in for /root
+# can't be simulated when the suite itself runs privileged (e.g. sudo pytest on
+# a KVM host).
+unprivileged_only = pytest.mark.skipif(
+    os.geteuid() == 0, reason="root bypasses the directory permissions under test"
+)
+
+
+@pytest.fixture
+def unreadable_root_key(tmp_path):
+    """A key inside a directory the invoking user cannot traverse — the real
+    shape of /root (mode 700) for a non-root user, without mocking stat()."""
+    fake_root = tmp_path / "fakeroot"
+    (fake_root / ".ssh").mkdir(parents=True)
+    key = fake_root / ".ssh" / "id_ed25519"
+    key.write_text("fake-key")
+    fake_root.chmod(0o000)
+    try:
+        yield key
+    finally:
+        fake_root.chmod(0o700)
 
 
 def test_parse_host_vm():
@@ -74,26 +107,42 @@ def test_default_identity_raises_clear_error_when_root_key_unreadable(
         default_identity({}, prefer_root_key=True)
 
 
+@unprivileged_only
 def test_default_identity_raises_clear_error_when_root_dir_not_traversable(
-    managed_ssh, monkeypatch
+    managed_ssh, unreadable_root_key, monkeypatch
 ):
     """Live regression, not just a hypothetical: on the actual test node, /root
-    is mode 700, so a non-root user can't even stat() a file inside it —
-    Path.is_file() raises PermissionError before an os.access() check is ever
-    reached. This used to propagate as an unhandled traceback instead of the
-    clean ConfigError."""
+    is mode 700, so a non-root user can't even stat() a file inside it. This
+    used to propagate as an unhandled traceback instead of the clean
+    ConfigError.
 
-    class _UnstattablePath:
-        def is_file(self):
-            raise PermissionError("no traverse permission on /root")
-
-        def __str__(self):
-            return "/root/.ssh/id_ed25519"
-
-    monkeypatch.setattr("rodeo.ssh_targets._HOST_ROOT_SSH_KEY", _UnstattablePath())
+    Uses a genuinely untraversable directory rather than a stand-in that raises
+    PermissionError from is_file(): that mock passed on every Python version
+    while the real probe silently stopped detecting this case on 3.13+, where
+    is_file() swallows PermissionError and returns False."""
+    monkeypatch.setattr(
+        "rodeo.ssh_targets._HOST_ROOT_SSH_KEY", unreadable_root_key
+    )
     monkeypatch.setattr("rodeo.ssh_targets.os.geteuid", lambda: 1000)
     with pytest.raises(ConfigError, match="sudo"):
         default_identity({}, prefer_root_key=True)
+
+
+@unprivileged_only
+def test_root_key_status_reports_blocked_not_absent_when_untraversable(
+    unreadable_root_key,
+):
+    """Guards the probe itself: a present-but-unreachable key must read as
+    'blocked'. Reporting 'absent' would fall through to the operator's managed
+    key, which nested VMs do not trust."""
+    assert _root_key_status(unreadable_root_key) == "blocked"
+
+
+def test_root_key_status_reports_absent_for_a_directory(tmp_path):
+    """Only a regular file counts as the host root key."""
+    not_a_key = tmp_path / "id_ed25519"
+    not_a_key.mkdir()
+    assert _root_key_status(not_a_key) == "absent"
 
 
 def test_default_identity_explicit_key_still_wins_over_root_key(

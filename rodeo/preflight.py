@@ -182,6 +182,51 @@ def _print_checks(title: str, checks: list[tuple[str, bool, str, bool]]) -> bool
     return all_ok
 
 
+def _pending_nvme_pool_gib(
+    storage: dict,
+    *,
+    sys_block: Path = Path("/sys/block"),
+    proc_mounts: Path = Path("/proc/mounts"),
+) -> int:
+    """GiB that kvm_host is about to provide from an unmounted NVMe device.
+
+    With ``storage.backend: nvme`` (set by host_context on aws), the kvm_host
+    phase formats the largest non-root NVMe instance-store device and mounts it
+    at ``storage.mount_point`` — see roles/kvm_host/tasks/nvme_storage.yml. That
+    happens *after* preflight, so measuring free space in image_dir sees only
+    the small root EBS volume and fails a deploy that would in fact have had
+    terabytes: "need ~2420 GB, have 7 GB free" beside an idle 3.4 TB device.
+
+    Report the pending capacity so the check reflects what the deploy will
+    actually have. Returns 0 when this does not apply, leaving the ordinary
+    free-space check in charge.
+    """
+    if str(storage.get("backend") or "").strip().lower() != "nvme":
+        return 0
+    try:
+        mounted = proc_mounts.read_text()
+    except OSError:
+        return 0
+    try:
+        candidates = sorted(sys_block.glob("nvme*n1"))
+    except OSError:
+        return 0
+    best = 0
+    for dev in candidates:
+        name = dev.name
+        # In use as a whole disk, or via any of its partitions (the root volume).
+        if f"/dev/{name} " in mounted:
+            continue
+        if any(f"/dev/{part.name} " in mounted for part in dev.glob(f"{name}p*")):
+            continue
+        try:
+            sectors = int((dev / "size").read_text().strip())
+        except (OSError, ValueError):
+            continue
+        best = max(best, sectors * 512 // (1024**3))
+    return best
+
+
 def _resource_needs(cfg: dict) -> tuple[int, int]:
     """Compute (need_mib, need_gb) from the actual VM set in cfg.
 
@@ -324,7 +369,13 @@ def run_preflight(cfg: dict, root: Path, phases_to_run: list[str] | None = None)
             checks.append(("RAM", True, "could not read /proc/meminfo", False))
 
         free_gb = _free_gib(image_dir)
-        if free_gb >= 0:
+        pending_gb = _pending_nvme_pool_gib(storage)
+        if pending_gb > max(free_gb, 0):
+            # kvm_host will mount this before any VM disk is written.
+            checks.append(("disk", pending_gb >= need_gb,
+                           f"need ~{need_gb} GB, {pending_gb} GB pending on an unmounted "
+                           f"NVMe device (kvm_host mounts it at {image_dir})", False))
+        elif free_gb >= 0:
             checks.append(("disk", free_gb >= need_gb,
                            f"need ~{need_gb} GB, have {free_gb} GB free in {image_dir}", False))
         else:

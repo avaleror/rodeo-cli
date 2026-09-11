@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import click
@@ -19,6 +20,7 @@ from ..fleet.diagnose import (
 )
 from ..fleet.doctor import fleet_doctor
 from ..fleet.inventory import (
+    FleetInventory,
     load_inventory,
     parse_label_opts,
     require_deploy_config,
@@ -32,6 +34,7 @@ from ..fleet.provision import (
     provision_payload,
 )
 from ..fleet.status import fleet_status
+from ..install_source import resolve_install_source
 
 console = Console()
 
@@ -91,6 +94,27 @@ def _concurrency_opt(default: int | None = 8):
         )(fn)
 
     return deco
+
+
+def _with_ref(inventory: FleetInventory, ref: str | None) -> FleetInventory:
+    """Apply ``--ref``, repointing the installer at the same ref it checks out.
+
+    Only a *configured* ``lab.install_url`` is carried over: leaving the
+    resolved default in place would fetch install.sh from main while checking
+    out the ref — the same class of bug in a subtler form. Exits 1 on an
+    invalid ref, before any host is contacted.
+    """
+    if not ref:
+        return inventory
+    override: dict[str, str] = {"ref": ref}
+    if inventory.install_url_explicit:
+        override["install_url"] = inventory.install_url
+    try:
+        install_url, resolved_ref = resolve_install_source(override)
+    except ConfigError as exc:
+        console.print(f"[red]✗  {exc}[/red]")
+        raise SystemExit(1)
+    return replace(inventory, install_url=install_url, ref=resolved_ref)
 
 
 def _load_selection(
@@ -253,6 +277,16 @@ def fleet_status_cmd(
     default=False,
     help="Re-start even when remote phases are already complete.",
 )
+@click.option(
+    "--ref",
+    "ref",
+    default=None,
+    metavar="GIT_REF",
+    help="Branch, tag or SHA of rodeo-cli to run on the hosts (overrides lab.ref). "
+         "Forces the bootstrap even where rodeo is already installed — the only way "
+         "a just-pushed commit reaches hosts that were bootstrapped earlier. "
+         "Default: leave each host on the code it already has.",
+)
 @_file_label_host
 def fleet_deploy_cmd(
     inventory_path: Path,
@@ -261,6 +295,7 @@ def fleet_deploy_cmd(
     concurrency: int | None,
     output_fmt: str,
     force: bool,
+    ref: str | None,
 ) -> None:
     """Bootstrap, sync lab, and start ``rodeo up`` in tmux on each host.
 
@@ -273,6 +308,8 @@ def fleet_deploy_cmd(
     except ConfigError as exc:
         console.print(f"[red]✗  {exc}[/red]")
         raise SystemExit(1)
+
+    inventory = _with_ref(inventory, ref)
 
     results, _job, job_path = fleet_deploy(
         inventory,
@@ -324,6 +361,16 @@ def fleet_deploy_cmd(
     help="Retry only hosts marked failed in the job file (default), "
     "or all hosts matching --label/--host.",
 )
+@click.option(
+    "--ref",
+    "ref",
+    default=None,
+    metavar="GIT_REF",
+    help="Branch, tag or SHA of rodeo-cli to run on the hosts (overrides lab.ref). "
+         "Forces the bootstrap even where rodeo is already installed — the only way "
+         "a just-pushed commit reaches hosts that were bootstrapped earlier. "
+         "Default: leave each host on the code it already has.",
+)
 @_file_label_host
 def fleet_retry_cmd(
     inventory_path: Path,
@@ -332,6 +379,7 @@ def fleet_retry_cmd(
     concurrency: int | None,
     output_fmt: str,
     failed_only: bool,
+    ref: str | None,
 ) -> None:
     """Re-run deploy for failed (or selected) hosts; updates the job file."""
     try:
@@ -351,6 +399,8 @@ def fleet_retry_cmd(
     except ConfigError as exc:
         console.print(f"[red]✗  {exc}[/red]")
         raise SystemExit(1)
+
+    inventory = _with_ref(inventory, ref)
 
     if failed_only:
         failed = set(job.failed_ids())

@@ -109,6 +109,8 @@ lab:
     rancher: 30002
   # components: [harvester]         # optional — see "Access sheet" below.
   #                                  # Omit to show every URL fleet knows how to build.
+  # ref: main                        # rodeo-cli git ref the hosts should run
+  # install_url: https://…           # fork or air-gapped mirror of install.sh
 defaults:
   ssh_user: ec2-user                 # AMI user (ec2-user / sles / root)
   # identity_file: ignored — rodeo uses managed ~/.rodeo/ssh/id_ed25519
@@ -162,7 +164,8 @@ rodeo fleet access -f workshop.yaml --output json
 
 ### What `fleet deploy` does on each host
 
-1. Ensure `rodeo` is on PATH (runs `install.sh` if missing).
+1. Ensure `rodeo` is on PATH (runs `install.sh` if missing — or always, with a ref;
+   see [Which rodeo-cli the hosts run](#which-rodeo-cli-the-hosts-run)).
 2. Sync lab: `git clone` / `git pull --ff-only`, or `rodeo up --no-deploy` for a profile.
 3. Start **detached tmux** running `rodeo up --yes --no-tmux` in `lab.dir`
    (session name `rodeo-fleet-<workshop>-<host-id>`).
@@ -198,6 +201,32 @@ rodeo fleet retry -f workshop.yaml --all-selected  # ignore job failures; use --
 
 Refreshes job state from live `status`, then re-starts deploy with `--force` on
 the chosen hosts.
+
+### Which rodeo-cli the hosts run
+
+Hosts bootstrap themselves from GitHub — your local working tree never reaches
+them. By default the bootstrap runs **only where `rodeo` is missing**, so a host
+keeps the code it was first installed with; `--force` re-runs the *deploy*, not
+the install.
+
+That is fine for a workshop pinned to a release, and wrong when you have just
+pushed a fix: a fleet-wide deploy would quietly run stale code on every host at
+once. Pass a ref to force it:
+
+```bash
+rodeo fleet deploy -f workshop.yaml --ref main         # tip of main everywhere
+rodeo fleet retry  -f workshop.yaml --ref feat/my-fix  # re-run the failures on a fix
+```
+
+With a ref the bootstrap runs every time and `install.sh --ref` hard-resets each
+host's checkout to it. `lab.ref` sets the same thing in the inventory; `--ref`
+overrides it. The installer is fetched from the same ref it checks out, unless
+`lab.install_url` points somewhere explicit (fork, air-gapped mirror), which is
+then used verbatim with the ref passed to it. An invalid ref fails at inventory
+load, before any host is contacted.
+
+This is the same mechanism as single-host `rodeo up --target aws --ref …` — both
+paths share `rodeo/install_source.py`.
 
 ### Diagnose (failure forensics)
 
@@ -373,9 +402,12 @@ Never put AWS access keys in `workshop.yaml` or `rodeo-plan.yaml`.
 #### `provider.type: aws` (F4a)
 
 Prefer **`i7i.8xlarge`** (local NVMe) for Harvester / Edge I/O. Metal remains valid.
-`apply_host_context` raises Harvester `disk_gb` to 1200 and mounts NVMe on
-`image_dir`. Root `volume_size_gib` only needs the OS (~100 GiB). Tiny / burstable
-types are rejected at validate. Nested virt defaults **on** for non-metal types.
+`apply_host_context` raises `resources.harvester.disk_gb` to a flat **500 GB**
+and `resources.rancher.disk_gb` to **60 GB** — never scaled by node count, so
+the rest of the NVMe device is deliberately left free — and mounts NVMe on
+`image_dir`. Root `volume_size_gib` only needs the OS (~100 GiB). Tiny /
+burstable types are rejected at validate. Nested virt defaults **on** for
+non-metal types.
 
 SSH: rodeo generates `~/.rodeo/ssh/id_ed25519` if missing, imports it as EC2 key pair
 **`rodeo`**, and plants the same private key on the KVM host so nested VMs share it.
@@ -393,13 +425,22 @@ provider:
   # ami_name_filter: "openSUSE Leap 16.0 (x86_64)*"   # default when ami unset
   # ami: ami-0123456789abcdef0      # optional pin (SLES 16 / specific Leap build)
   subnet_id: subnet-0abc…           # required
-  security_group_ids:               # required; must allow 22, 8443, 30002 as needed
+  security_group_ids:               # must allow 22, 8443, 30002 as needed
     - sg-0abc…
   # key_name: rodeo                 # default; ImportKeyPair managed by rodeo
   # associate_public_ip: true       # default true
   # nested_virtualization: true     # default on for non-metal
   # volume_size_gib: 100            # root EBS; lab disks use NVMe via host_context
 ```
+
+**`security_group_ids` is optional, but set it explicitly for a real fleet.**
+Omit it and rodeo auto-manages one, scoped to *the machine running `fleet
+provision`'s* current public IP — right for single-host `rodeo up --target
+aws` (you're both operator and the only person who needs in), wrong for a
+multi-attendee fleet where each student connects from their own IP: they'd
+all be locked out except you. Set `security_group_ids` to an SG that actually
+covers your attendees' network (a classroom CIDR, `0.0.0.0/0` for a public
+workshop, or a VPN range) whenever `count` > 1 real students.
 
 Subscribe once to [openSUSE Leap on Marketplace](https://aws.amazon.com/marketplace/pp/prodview-wn2xje27ui45o)
 (current build example: *openSUSE Leap 16.0 (x86_64) - v20260629*). SSH user: **`ec2-user`**.

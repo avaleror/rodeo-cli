@@ -8,6 +8,7 @@ from typing import Any
 import yaml
 
 from ..config import ConfigError
+from ..install_source import DEFAULT_INSTALL_URL, resolve_install_source
 
 _VALID_TARGETS = frozenset({"baremetal", "instruqt"})
 
@@ -39,9 +40,14 @@ class FleetInventory:
     deploy_concurrency: int = 4
     harvester_ui_port: int = 8443
     rancher_ui_port: int = 30002
-    install_url: str = (
-        "https://raw.githubusercontent.com/avaleror/rodeo-cli/main/install.sh"
-    )
+    install_url: str = DEFAULT_INSTALL_URL
+    # Git ref of rodeo-cli to run on the hosts. None = leave an existing
+    # install alone (only a host without rodeo gets bootstrapped).
+    ref: str | None = None
+    # True when lab.install_url was set explicitly (fork / air-gapped mirror),
+    # so `--ref` knows not to point the installer back at the default URL —
+    # install.sh must come from the same ref it checks out.
+    install_url_explicit: bool = False
     # None = unknown (git-source labs, or profile not declared here) — fleet
     # access shows every URL it knows how to build. Set explicitly when a
     # profile doesn't expose one of the UIs, e.g. ["harvester"] for
@@ -112,10 +118,11 @@ def load_inventory(path: str | Path) -> FleetInventory:
     harvester_port = int(ports.get("harvester") or 8443)
     rancher_port = int(ports.get("rancher") or 30002)
 
-    install_url = str(
-        lab.get("install_url")
-        or "https://raw.githubusercontent.com/avaleror/rodeo-cli/main/install.sh"
-    ).strip()
+    # Resolved (not just read) so lab.ref is validated at load time — before
+    # any host is touched — and so install.sh is fetched from the same ref it
+    # checks out.
+    install_url, lab_ref = resolve_install_source(lab)
+    install_url_explicit = bool(str(lab.get("install_url") or "").strip())
 
     components_raw = lab.get("components")
     lab_components: list[str] | None = None
@@ -201,6 +208,8 @@ def load_inventory(path: str | Path) -> FleetInventory:
         harvester_ui_port=harvester_port,
         rancher_ui_port=rancher_port,
         install_url=install_url,
+        ref=lab_ref,
+        install_url_explicit=install_url_explicit,
         lab_components=lab_components,
         provider=provider,
     )

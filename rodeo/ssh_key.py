@@ -194,8 +194,19 @@ def ensure_ec2_key_pair(ec2: Any, *, key_name: str = DEFAULT_EC2_KEY_NAME) -> st
 
 
 def _fingerprints_match(local_fp: str, remote_fp: str) -> bool:
-    a = local_fp.strip().removeprefix("SHA256:")
-    b = remote_fp.strip().removeprefix("SHA256:")
+    """Compare a local ``SHA256:…`` fingerprint with EC2's KeyFingerprint.
+
+    The two sides format the same digest differently, so a plain string compare
+    reports a mismatch for a key pair rodeo imported itself:
+
+      ssh-keygen -lf : SHA256:kCvXKSed…X6pY     (prefixed, padding stripped)
+      EC2            :        kCvXKSed…X6pY=    (bare, base64 padding kept)
+
+    Normalise both to unpadded base64 before comparing. Only the padding and
+    prefix are cosmetic — the digest itself must match exactly.
+    """
+    a = local_fp.strip().removeprefix("SHA256:").rstrip("=")
+    b = remote_fp.strip().removeprefix("SHA256:").rstrip("=")
     return bool(a) and bool(b) and a == b
 
 

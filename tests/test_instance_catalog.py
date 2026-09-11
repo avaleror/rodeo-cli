@@ -17,6 +17,16 @@ def test_catalog_harvester_recommended():
     assert offer.instance_type == "i7i.8xlarge"
 
 
+def test_catalog_harvester_aws_recommended_is_separate_from_harvester():
+    """harvester-aws is a distinct profile/catalog entry from harvester (same
+    topology, AWS-tuned instance) — must not just fall through to harvester's
+    i7i.8xlarge, which wastes half its NVMe (two devices, rodeo mounts one)."""
+    offer = catalog_for_profile("harvester-aws")["recommended"]
+    assert offer.instance_type == "m8id.8xlarge"
+    # The generic profile is untouched by adding the AWS-specific one.
+    assert catalog_for_profile("harvester")["recommended"].instance_type == "i7i.8xlarge"
+
+
 def test_resolve_explicit_type_wins():
     itype, tier = resolve_instance_type(
         profile="harvester",
@@ -81,12 +91,32 @@ class _CapEC2:
         self.images = [
             {
                 "ImageId": "ami-leap",
-                "Name": "openSUSE Leap 16.0 (x86_64) - v1",
+                "Name": "openSUSE-Leap-16-0-v20260629-hvm-ssd-x86_64-5535c495",
                 "CreationDate": "2026-01-01T00:00:00.000Z",
                 "State": "available",
                 "Architecture": "x86_64",
             }
         ]
+
+    def describe_subnets(self, SubnetIds=None, Filters=None):
+        return {"Subnets": [{"SubnetId": (SubnetIds or ["subnet-1"])[0], "VpcId": "vpc-1"}]}
+
+    def describe_route_tables(self, Filters=None):
+        # Public subnet by default — these tests are about capacity, not routing.
+        return {
+            "RouteTables": [
+                {
+                    "RouteTableId": "rtb-1",
+                    "Routes": [
+                        {
+                            "DestinationCidrBlock": "0.0.0.0/0",
+                            "GatewayId": "igw-1",
+                            "State": "active",
+                        }
+                    ],
+                }
+            ]
+        }
 
     def describe_instance_type_offerings(self, LocationType=None, Filters=None):
         if self.offerings:

@@ -12,14 +12,18 @@ import yaml
 from ..config import ConfigError
 from ..fleet.inventory import FleetHost, FleetInventory
 from ..fleet.ssh_exec import run_remote
+from ..install_source import (
+    DEFAULT_INSTALL_URL,
+    bootstrap_fragment,
+    resolve_install_source,
+)
 from ..paths import rodeo_state_dir
 from ..ssh_key import resolve_ssh_identity
 from .base import SINGLE_HOST_ID, ProvisionSpec, ProvisionedHost
 from .registry import get_provider
 
-_DEFAULT_INSTALL = (
-    "https://raw.githubusercontent.com/avaleror/rodeo-cli/main/install.sh"
-)
+# install_url / ref resolution is shared with fleet deploy — see install_source.
+_DEFAULT_INSTALL = DEFAULT_INSTALL_URL
 _DEFAULT_LAB_DIR = "/root/rodeo-lab"
 
 
@@ -192,23 +196,41 @@ def remote_up_script(
     lab_dir: str,
     profile: str | None,
     install_url: str = _DEFAULT_INSTALL,
+    ref: str | None = None,
 ) -> str:
-    """Bootstrap + remote ``rodeo up --target baremetal`` (guest runs as baremetal)."""
+    """Bootstrap + remote ``rodeo up --target aws`` (phases still run as baremetal).
+
+    ``--target aws``, not ``--target baremetal``. The remote detects it is on
+    EC2 via IMDS, so up_cmd takes the local-deploy path (no recursion) while
+    keeping ``deployment_target: aws`` in the plan — which is what makes
+    apply_host_context raise disk_gb to the aws floor and set
+    ``storage.backend: nvme`` so the kvm_host phase mounts the instance store.
+    Phase behaviour is still baremetal, via up_cmd's local_target.
+
+    Passing baremetal here discarded all of that: the remote seeded a plain
+    baremetal lab with disk_gb 250 on the 10 GB root EBS, and preflight failed
+    with "need ~520 GB, have 7 GB free" while a 3.4 TB NVMe sat unmounted.
+
+    *ref* pins the rodeo-cli the host runs. It also forces the bootstrap to
+    run even when ``rodeo`` is already installed, which is the only way local
+    commits reach a host that was provisioned before them.
+    """
     lab = shlex.quote(lab_dir)
-    url = shlex.quote(install_url)
     profile_bits = ""
     if profile:
         profile_bits = f"--profile {shlex.quote(profile)} "
     return (
         "set -euo pipefail; "
-        "if ! command -v rodeo >/dev/null 2>&1; then "
-        f"curl -fsSL {url} | bash; "
-        "fi; "
-        "command -v rodeo >/dev/null; "
+        f"{bootstrap_fragment(install_url=install_url, ref=ref)}; "
         f"mkdir -p {lab}; "
+        # tee's target directory does not exist on a fresh host: rodeo creates
+        # ~/.rodeo/logs on first run, but that run *is* the one being logged,
+        # so the pipeline dies before rodeo starts — tee exits immediately and
+        # rodeo takes SIGPIPE. $HOME is /root here (sudo -n bash -lc).
+        'mkdir -p "$HOME/.rodeo/logs"; '
         "set +e; "
         f"rodeo up --yes --no-tmux {profile_bits}"
-        f"--dir {lab} --target baremetal "
+        f"--dir {lab} --target aws "
         f"2>&1 | tee -a \"$HOME/.rodeo/logs/aws-up.log\"; "
         'ec=${PIPESTATUS[0]}; set -e; '
         'echo AWS_UP_EXIT:$ec; '
@@ -221,17 +243,19 @@ def run_remote_up(
     host: ProvisionedHost,
     *,
     profile: str | None = None,
+    ref: str | None = None,
     timeout: float = 7200.0,
 ) -> None:
     """SSH to the provisioned host and run ``rodeo up`` as baremetal."""
     inv, fh = _fleet_inventory_for(cfg, host)
     provider_cfg = _provider_cfg(cfg)
     lab_dir = str(provider_cfg.get("lab_dir") or _DEFAULT_LAB_DIR)
-    install_url = str(provider_cfg.get("install_url") or _DEFAULT_INSTALL)
+    install_url, resolved_ref = resolve_install_source(provider_cfg, ref=ref)
     script = remote_up_script(
         lab_dir=lab_dir,
         profile=profile,
         install_url=install_url,
+        ref=resolved_ref,
     )
     result = run_remote(
         inv,
@@ -240,10 +264,18 @@ def run_remote_up(
         timeout=timeout,
     )
     if not result.ok:
-        msg = (result.stderr or result.stdout or f"exit {result.rc}").strip()
+        # Prefer stdout: the remote tees rodeo's own output there, while stderr
+        # often holds only ssh noise ("Permanently added … to known hosts"),
+        # which would otherwise be reported as the failure.
+        parts = [p.strip() for p in (result.stdout, result.stderr) if (p or "").strip()]
+        msg = "\n".join(parts) if parts else f"exit {result.rc}"
+        msg = msg[-1500:]
         raise ConfigError(
             f"remote rodeo up failed on {host.public_ip} "
-            f"(need passwordless sudo): {msg[:500]}"
+            f"(exit {result.rc}): {msg}\n"
+            "If the output is empty or mentions sudo, check that the AMI's "
+            "login user has passwordless sudo; otherwise the message above is "
+            "the real failure."
         )
     out = result.stdout or ""
     if "AWS_UP_EXIT:" in out:
@@ -286,10 +318,15 @@ def execute_aws_up(
     cfg: dict[str, Any],
     *,
     profile: str | None = None,
+    ref: str | None = None,
     get_provider_fn: Callable[[str], Any] | None = None,
     remote_timeout: float = 7200.0,
 ) -> ProvisionedHost:
     """Provision (or reuse) primary EC2 host, then remote-run ``rodeo up``."""
+    # Resolve the bootstrap source *before* provisioning: a typo'd ref must
+    # cost nothing. Validating it at first use would reject it only after an
+    # i7i is already running and billing.
+    resolve_install_source(_provider_cfg(cfg), ref=ref)
     host = provision_primary(cfg, get_provider_fn=get_provider_fn)
-    run_remote_up(cfg, host, profile=profile, timeout=remote_timeout)
+    run_remote_up(cfg, host, profile=profile, ref=ref, timeout=remote_timeout)
     return host

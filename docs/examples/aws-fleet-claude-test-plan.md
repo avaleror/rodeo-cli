@@ -43,7 +43,7 @@ Optional:
 |----------|---------|
 | Profile | `harvester` |
 | Instance tier (single-host) | `recommended` → `i7i.8xlarge` |
-| Marketplace | Subscribe once to [openSUSE Leap](https://aws.amazon.com/marketplace/pp/prodview-wn2xje27ui45o) |
+| Marketplace | Not needed — the default SLES 16 PAYG AMI requires no subscription |
 
 ---
 
@@ -114,7 +114,7 @@ rodeo ssh primary -- 'cd /root/lab 2>/dev/null || cd ~/lab; rodeo status --outpu
 ```
 
 Adjust remote lab path if the seed used a different dir. Inspect plan/vars for
-Harvester disk sizing when NVMe is present (`disk_gb` **1200**, `storage.backend: nvme`).
+Harvester disk sizing when NVMe is present (`disk_gb` **300** per Harvester node, **60** per Rancher node — flat, not scaled by node count — and `storage.backend: nvme`).
 
 **Pass when:**
 

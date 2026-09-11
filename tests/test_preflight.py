@@ -137,3 +137,59 @@ def test_resource_checks_reapply_after_clean_resets_state(tmp_path, capsys):
     ok = preflight.run_preflight(cfg, tmp_path, phases_to_run=["vms", "cluster"])
     assert ok is False
     assert "RAM" in capsys.readouterr().out
+
+
+def _fake_block(tmp_path, devices, mounts):
+    """Build a fake /sys/block + /proc/mounts pair."""
+    sys_block = tmp_path / "sys-block"
+    sys_block.mkdir(parents=True)
+    for name, sectors, parts in devices:
+        dev = sys_block / name
+        dev.mkdir()
+        (dev / "size").write_text(f"{sectors}\n")
+        for part in parts:
+            (dev / part).mkdir()
+    proc_mounts = tmp_path / "mounts"
+    proc_mounts.write_text("".join(f"{m} / ext4 rw 0 0\n" for m in mounts))
+    return sys_block, proc_mounts
+
+
+def test_pending_nvme_pool_reports_the_unmounted_instance_store(tmp_path):
+    """The aws case: a 10 GB root EBS plus an idle 3.4 TB instance store.
+
+    Regression: preflight measured only the mounted root volume and failed the
+    deploy — "need ~2420 GB, have 7 GB free" — although kvm_host mounts the
+    NVMe pool before any VM disk is written.
+    """
+    from rodeo.preflight import _pending_nvme_pool_gib
+
+    sys_block, proc_mounts = _fake_block(
+        tmp_path,
+        devices=[("nvme0n1", 20971520, ["nvme0n1p1", "nvme0n1p3"]),   # 10 GiB root
+                 ("nvme1n1", 7325302784, [])],                        # ~3.4 TiB store
+        mounts=["/dev/nvme0n1p3"],
+    )
+    got = _pending_nvme_pool_gib(
+        {"backend": "nvme"}, sys_block=sys_block, proc_mounts=proc_mounts
+    )
+    assert got > 3000
+
+
+def test_pending_nvme_pool_skips_mounted_and_non_nvme_backends(tmp_path):
+    from rodeo.preflight import _pending_nvme_pool_gib
+
+    sys_block, proc_mounts = _fake_block(
+        tmp_path,
+        devices=[("nvme1n1", 7325302784, [])],
+        mounts=["/dev/nvme1n1"],  # already mounted -> ordinary check applies
+    )
+    assert _pending_nvme_pool_gib(
+        {"backend": "nvme"}, sys_block=sys_block, proc_mounts=proc_mounts
+    ) == 0
+    # Not an nvme-backed plan: never consulted.
+    sys_block2, proc_mounts2 = _fake_block(
+        tmp_path / "b", devices=[("nvme1n1", 7325302784, [])], mounts=[]
+    )
+    assert _pending_nvme_pool_gib(
+        {}, sys_block=sys_block2, proc_mounts=proc_mounts2
+    ) == 0

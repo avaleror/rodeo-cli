@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -76,12 +77,24 @@ def default_identity(
 
 def _root_key_status(root_key: Path) -> str:
     """'readable', 'blocked' (present but we can't confirm/read it — e.g. no
-    traverse permission on /root itself), or 'absent'."""
+    traverse permission on /root itself), or 'absent'.
+
+    Probes with os.stat() rather than Path.is_file(): since Python 3.13,
+    is_file() delegates to os.path.isfile() and swallows PermissionError,
+    returning False. That reports a mode-700 /root as "absent" instead of
+    "blocked", so the sudo hint below never fires and `rodeo ssh <vm>`
+    silently falls back to a key nested VMs don't trust — the exact
+    password-prompt regression this status check exists to prevent.
+    os.stat() raises EACCES on every supported version.
+    """
     try:
-        if not root_key.is_file():
-            return "absent"
+        mode = os.stat(root_key).st_mode
     except PermissionError:
         return "blocked"
+    except OSError:
+        return "absent"
+    if not stat.S_ISREG(mode):
+        return "absent"
     return "readable" if os.access(root_key, os.R_OK) else "blocked"
 
 

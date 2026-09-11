@@ -1,0 +1,74 @@
+# rodeo-plan.yaml — full 3-node Harvester HCI + Rancher Prime, pre-tuned for AWS
+# (harvester-aws profile). Same topology as the 'harvester' profile — this is
+# a separate profile, not a replacement, so the generic 'harvester' example
+# stays untouched for baremetal/Instruqt use.
+#
+# Fill in provider.region and provider.subnet_id, then: rodeo up --target aws
+
+name: harvester-aws-rodeo
+deployment_target: aws
+
+provider:
+  type: aws
+  region: eu-central-1          # <- set to your region
+  subnet_id: subnet-CHANGE-ME   # <- must be in a VPC with an internet gateway
+  instance_tier: recommended    # budget | recommended | performance — see instance_catalog.py
+  # instance_type: m8id.8xlarge   # or pin explicitly instead of a tier
+  associate_public_ip: true
+  # security_group_ids: [sg-...] # omit to let rodeo create/manage one,
+  #                               # scoped to this machine's public IP
+
+network:
+  mode: nat
+  vip: "192.168.122.10"
+  rancher_ip: "192.168.122.9"
+  gateway: "192.168.122.1"
+  dns_domain: "rodeo.lab"
+
+resources:
+  harvester:
+    memory_mib: 24576    # 24 GiB per Harvester node (raised from 20 GiB
+                         # 2026-09-11 for headroom/performance): 3x24 + 16
+                         # (Rancher) = 88 GiB guest RAM total, leaving ~35 GiB
+                         # of m8id.8xlarge's ~123 GiB usable RAM for the host
+                         # + buff/cache — live-verified the host itself only
+                         # needs ~2-3 GiB baseline, so this is comfortable
+                         # margin, not a tight fit.
+    vcpu: 10
+    disk_gb: 500         # matches the AWS host-context floor for this profile:
+                         # 3 nodes x 500 GB + 60 GB (Rancher) = 1560 GB, comfortable
+                         # margin under m8id.8xlarge's single ~1.9 TiB NVMe device.
+                         # apply_host_context() would raise a lower value to this
+                         # floor anyway — set explicitly here so the file doesn't
+                         # look under-provisioned before the first deploy.
+  rancher:
+    memory_mib: 16384    # 16 GiB (raised from 8 GiB 2026-09-11, see harvester note above)
+    vcpu: 4
+    disk_gb: 60
+
+versions:
+  harvester: "1.8.1"
+  rancher: "2.14.1"
+  k3s: "v1.35.3+k3s1"
+  cert_manager: "v1.20.1"
+
+storage:
+  image_dir: /var/lib/libvirt/images
+  backend: nvme
+
+libvirt:
+  uri: qemu:///system
+  disk_cache: none
+  disk_io: native
+
+ansible:
+  path: null
+  inventory: deployer/inventory.local
+
+harvester_auto_import: false   # students import Harvester into Rancher as lab challenge 1
+
+credentials:
+  harvester_os_password: "??harvester_os_password"
+  harvester_admin_password: "??harvester_admin_password"
+  rancher_admin_password: "??rancher_admin_password"
+  harvester_token: "??harvester_token"

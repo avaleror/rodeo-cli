@@ -74,6 +74,30 @@ class _FakeEC2:
             ]
         return {"Images": list(images)}
 
+    def describe_subnets(self, SubnetIds=None, Filters=None):
+        return {"Subnets": [{"SubnetId": (SubnetIds or ["subnet-1"])[0], "VpcId": "vpc-1"}]}
+
+    def describe_route_tables(self, Filters=None):
+        # Default: a public subnet (0.0.0.0/0 -> igw). Tests override
+        # .route_tables to model NAT-only or isolated subnets.
+        tables = getattr(self, "route_tables", None)
+        if tables is None:
+            tables = [
+                {
+                    "RouteTableId": "rtb-1",
+                    "Routes": [
+                        {"DestinationCidrBlock": "172.31.0.0/16", "GatewayId": "local"},
+                        {
+                            "DestinationCidrBlock": "0.0.0.0/0",
+                            "GatewayId": "igw-1",
+                            "State": "active",
+                        },
+                    ],
+                }
+            ]
+        # Honour the main-route-table lookup by returning the same set.
+        return {"RouteTables": tables}
+
     def describe_instance_type_offerings(self, LocationType=None, Filters=None):
         values = []
         for f in Filters or []:
@@ -432,3 +456,124 @@ def test_fleet_provision_cli(managed_ssh, monkeypatch, tmp_path):
     )
     assert result.exit_code == 0, result.output
     assert "student-01" in result.output
+
+
+def test_default_ami_filter_matches_the_published_sles_payg_name():
+    """Regression, twice over.
+
+    The original filter was written from a Marketplace listing title
+    ("openSUSE Leap 16.0 (x86_64)*"), which is not the AMI Name field, so it
+    matched zero images in every region. The replacement must match a real
+    published Name — and must exclude the neighbouring SLES variants, which are
+    different images that happen to share the prefix. A loose "v*" instead of
+    the v???????? date anchor silently selects the -ecs- build.
+    """
+    from fnmatch import fnmatch
+
+    from rodeo.providers.aws import DEFAULT_AMI_NAME_FILTER as pat
+
+    assert fnmatch("suse-sles-16-0-v20260625-hvm-ssd-x86_64", pat)
+    for other in (
+        "suse-sles-16-0-v20260703-ecs-hvm-ssd-x86_64",       # ECS-optimised
+        "suse-sles-16-0-sapcal-v20260701-hvm-ssd-x86_64",    # SAP
+        "suse-sles-16-0-chost-byos-v20260805-hvm-ssd-x86_64",  # BYOS, no repos
+        "suse-sles-16-0-v20260625-hvm-ssd-arm64",            # wrong arch
+        "openSUSE-Leap-16-0-v20260629-hvm-ssd-x86_64-5535c495",  # not SLES
+    ):
+        assert not fnmatch(other, pat), other
+
+
+def test_default_instance_type_is_nested_virt_capable_and_ami_allows_it():
+    """The two defaults have to be compatible with each other: nested virt via
+    CpuOptions needs a 7th-gen Intel type, and the AMI's publisher must permit
+    it. Leap 16 + i7i.8xlarge shipped as the pair and could never launch —
+    Marketplace forbids i7i — so this pins the invariant rather than the values.
+    """
+    from rodeo.providers.aws import DEFAULT_AMI_NAME_FILTER, DEFAULT_INSTANCE_TYPE
+
+    assert DEFAULT_INSTANCE_TYPE.split(".")[0] in {"i7i", "m7i", "c7i", "r7i"}
+    # Amazon-published SUSE images carry no Marketplace instance-type
+    # restrictions; a Marketplace-only image (openSUSE Leap) does.
+    assert "sles" in DEFAULT_AMI_NAME_FILTER
+
+
+def _ingress_cfg(**over):
+    cfg = {
+        "type": "aws",
+        "region": "eu-north-1",
+        "subnet_id": "subnet-1",
+        "security_group_ids": ["sg-1"],
+        "instance_type": "i7i.8xlarge",
+    }
+    cfg.update(over)
+    return cfg
+
+
+def test_public_ingress_passes_when_subnet_routes_to_an_igw():
+    AwsHostProvider().assert_public_ingress(_FakeEC2(), _ingress_cfg())
+
+
+def test_public_ingress_rejects_subnet_with_no_default_route():
+    """The real failure we hit: a VPC with no internet gateway at all. AWS still
+    assigns a public IP, so provision looks fine and the deploy hangs on SSH."""
+    ec2 = _FakeEC2()
+    ec2.route_tables = [
+        {
+            "RouteTableId": "rtb-isolated",
+            "Routes": [
+                {"DestinationCidrBlock": "172.31.0.0/16", "GatewayId": "local"},
+                {"GatewayId": "vpce-1", "State": "active"},
+            ],
+        }
+    ]
+    with pytest.raises(ConfigError, match="no 0.0.0.0/0 route to an internet gateway"):
+        AwsHostProvider().assert_public_ingress(ec2, _ingress_cfg())
+
+
+def test_public_ingress_rejects_nat_only_subnet_with_a_specific_message():
+    """NAT gives egress but no inbound, so it looks healthy while students still
+    cannot reach the host. Worth its own message rather than the generic one."""
+    ec2 = _FakeEC2()
+    ec2.route_tables = [
+        {
+            "RouteTableId": "rtb-private",
+            "Routes": [
+                {
+                    "DestinationCidrBlock": "0.0.0.0/0",
+                    "NatGatewayId": "nat-1",
+                    "State": "active",
+                }
+            ],
+        }
+    ]
+    with pytest.raises(ConfigError, match="egress-only"):
+        AwsHostProvider().assert_public_ingress(ec2, _ingress_cfg())
+
+
+def test_public_ingress_ignores_blackholed_igw_route():
+    """A detached gateway leaves a blackhole route behind; it must not count."""
+    ec2 = _FakeEC2()
+    ec2.route_tables = [
+        {
+            "RouteTableId": "rtb-stale",
+            "Routes": [
+                {
+                    "DestinationCidrBlock": "0.0.0.0/0",
+                    "GatewayId": "igw-gone",
+                    "State": "blackhole",
+                }
+            ],
+        }
+    ]
+    with pytest.raises(ConfigError, match="no 0.0.0.0/0 route"):
+        AwsHostProvider().assert_public_ingress(ec2, _ingress_cfg())
+
+
+def test_public_ingress_skipped_when_public_ip_explicitly_disabled():
+    """Opting into a private topology (bastion / VPN / SSM) is legitimate — the
+    guard only defends the default, public-IP workshop shape."""
+    ec2 = _FakeEC2()
+    ec2.route_tables = []
+    AwsHostProvider().assert_public_ingress(
+        ec2, _ingress_cfg(associate_public_ip=False)
+    )

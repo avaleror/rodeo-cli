@@ -1,5 +1,92 @@
 # Changelog
 
+## [0.16.1](https://github.com/avaleror/rodeo-cli/compare/v0.16.0...v0.16.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* **engine:** stale libvirt-python availability check inside a single rodeo up run ([2e365a7](https://github.com/avaleror/rodeo-cli/commit/2e365a7aec1d998c9680a213b7e29a5929567d64))
+
+
+### Documentation
+
+* **roadmap:** check off Phase E live validation ([7e0c39e](https://github.com/avaleror/rodeo-cli/commit/7e0c39e5b25565e7508c4ee0c3f07ac51b5e49bc))
+
+## [0.16.0](https://github.com/avaleror/rodeo-cli/compare/v0.15.0...v0.16.0) (2026-09-10)
+
+
+### Features
+
+* **aws:** fail closed when a subnet can't give a reachable public IP ([8f55a9d](https://github.com/avaleror/rodeo-cli/commit/8f55a9db2523026ba323b3b117f911448a2d2cb3))
+* modular engine ([#48](https://github.com/avaleror/rodeo-cli/issues/48)) ([deff147](https://github.com/avaleror/rodeo-cli/commit/deff147cb65e427eee9e6c64ca0f721317b5bfdc))
+* **remote:** --ref to pin (and actually refresh) rodeo-cli on remote hosts ([ac5838e](https://github.com/avaleror/rodeo-cli/commit/ac5838ecfa4fa4d73d130309515bf2621b11d3e4))
+
+
+### Bug Fixes
+
+* **aws:** default AMI filter matched no images in any region ([05083f9](https://github.com/avaleror/rodeo-cli/commit/05083f902ec3340f6bcc3ede6f1ef38372980680))
+* **aws:** default to SLES 16 PAYG — Leap + i7i could never launch ([fff85ac](https://github.com/avaleror/rodeo-cli/commit/fff85ac6630582ce9dac9bedf79d999ed46f8b70))
+* **aws:** key-pair fingerprint compare ignored base64 padding ([53d20dc](https://github.com/avaleror/rodeo-cli/commit/53d20dc5267b6c23f9b44426a8ba62a2bba63a08))
+* **aws:** remote deploy never applied the aws host context ([50b6253](https://github.com/avaleror/rodeo-cli/commit/50b6253a37921475e6a38b96899e22c1270ceabf))
+* **aws:** the [aws] extra needs boto3[crt] for `aws login` credentials ([dd31380](https://github.com/avaleror/rodeo-cli/commit/dd31380c0374caa39fbc555e45ec9aa472112afc))
+* **install:** don't abort on BASH_SOURCE when piped through bash ([2cf9b76](https://github.com/avaleror/rodeo-cli/commit/2cf9b769cd418ba3456a536b8189125da61ced81))
+* **kvm_host:** NVMe pool never mounted on btrfs roots (SLES 16 / openSUSE) ([e12e8cf](https://github.com/avaleror/rodeo-cli/commit/e12e8cfe34ed3f10f90f0b1679ccf653b4b0d0d0))
+* **preflight:** count the NVMe pool kvm_host is about to mount ([5f1221b](https://github.com/avaleror/rodeo-cli/commit/5f1221bbd93e749f9708499901a6e6503c1e5153))
+
+## [0.15.0](https://github.com/avaleror/rodeo-cli/compare/v0.14.2...v0.15.0) (2026-09-09)
+
+
+### Features
+
+* **aws:** instance tiers, capacity check, NVMe host context, managed SSH ([0b9bd15](https://github.com/avaleror/rodeo-cli/commit/0b9bd150725988593299bf0d21f37166d9a3dc43))
+* **cli:** add rodeo install-extensions to reconcile UI extensions post-deploy ([081ad8a](https://github.com/avaleror/rodeo-cli/commit/081ad8a6b2801cc7dde37ec2b660d77a36930b1a))
+* **cli:** add rodeo set-password to rotate credentials post-deploy ([8f1ef68](https://github.com/avaleror/rodeo-cli/commit/8f1ef689e1cbbf95c69224e81b9f566cd1e12374))
+* **docs:** add rodeo-cli logo (Horseshoe Prompt mark) + favicons ([e6a4c3b](https://github.com/avaleror/rodeo-cli/commit/e6a4c3b5658fb485b093fab0cbd69d3f4c90d9d3))
+* **fleet:** F0/F1 — rodeo doctor/status --output json, fleet fan-out over SSH ([9d683a1](https://github.com/avaleror/rodeo-cli/commit/9d683a1840abdab61f1a16a57bb29bc7fedc269b))
+* **fleet:** F2 — deploy, retry, and access sheet over OpenSSH ([f911cda](https://github.com/avaleror/rodeo-cli/commit/f911cdaa07b451525ab560a6ddd917ae0f723089))
+* **fleet:** F2.1 — rodeo fleet diagnose, failure forensics at scale ([a558c94](https://github.com/avaleror/rodeo-cli/commit/a558c940f6754e1c3873a0ec3f8084b03b57c35e))
+* **providers:** AWS host-acquire for Fleet F4a and single-host up --target aws ([486a56a](https://github.com/avaleror/rodeo-cli/commit/486a56a36ba927774ad9afb1d46808e7737ff128))
+* **reconcile:** make VM drift reconciliation the default (B2 step 5) ([23f0513](https://github.com/avaleror/rodeo-cli/commit/23f0513e650e84a9756e9ae0e0139365e19679f9))
+* **suse-edge:** install the OS Manager (Elemental) Rancher UI extension ([69b3866](https://github.com/avaleror/rodeo-cli/commit/69b38665006346967b9f9e1837d572deeef62717))
+
+
+### Bug Fixes
+
+* **aws:** IMDSv2 detect, restart exit code, accurate up finish message ([2e6a4da](https://github.com/avaleror/rodeo-cli/commit/2e6a4daa72a577dc7ec147108524ef4c727f4cb2))
+* **ci:** pin ruff to 0.15.16, unpinned dep silently broke CI ([cce5e6c](https://github.com/avaleror/rodeo-cli/commit/cce5e6ca023ca216bedd700a68dfb3c766343604))
+* **clean:** explicit --refresh default for newer Click ([232079d](https://github.com/avaleror/rodeo-cli/commit/232079d34bba080fcb69c973afed9ead13c93fc3))
+* **docs:** give the horseshoe mark real nail holes (4 per branch) ([32628bc](https://github.com/avaleror/rodeo-cli/commit/32628bc18613b3f25a473447a1974d88eb3f67ba))
+* **fleet:** scope access URLs to lab.components, add script syntax regression tests ([5abc81a](https://github.com/avaleror/rodeo-cli/commit/5abc81a0b7dbaf75f926db83573d4e4ed7fc6adc))
+* **fleet:** treat apply as no_cache when checking lab complete ([44b8906](https://github.com/avaleror/rodeo-cli/commit/44b8906f7f21b9e167dfba3df44ab41a24b8ad73))
+* **kvm_host:** auto-correct sudo secure_path on SUSE hosts ([9083f90](https://github.com/avaleror/rodeo-cli/commit/9083f9017c8f1e24026ac06592bc18d0113a41c7))
+* **rancher:** clear first-login setting even when password already matches ([33327d6](https://github.com/avaleror/rodeo-cli/commit/33327d6d8238608906ce3f3e4e81dd2598c44cf5))
+* **rancher:** reconcile UI extensions for standalone labs too ([4a456d3](https://github.com/avaleror/rodeo-cli/commit/4a456d3c170e3f7c2120a2aee21cf4c281050327))
+* **rancher:** restore Harvester UI extension declaration in bundled profiles ([d90c1b1](https://github.com/avaleror/rodeo-cli/commit/d90c1b1656557865891c72596c3212531c5319e8))
+* **rancher:** retry Harvester password change, set it regardless of auto-import ([8d4606b](https://github.com/avaleror/rodeo-cli/commit/8d4606bc0e7e18d00e1509b70a7c03213aecee48))
+* **secrets:** remove hardcoded fallback passwords, fail loud when missing ([7cd8424](https://github.com/avaleror/rodeo-cli/commit/7cd8424b890fee3a519c376d6745991af197a02c))
+* **ssh:** detect an unreadable /root on Python 3.13+, not just &lt;=3.12 ([6296a3a](https://github.com/avaleror/rodeo-cli/commit/6296a3ac7ecaf40c568e137b9bcf123326e8958b))
+* **ssh:** handle PermissionError from stat(), not just unreadable files ([abf6509](https://github.com/avaleror/rodeo-cli/commit/abf650971fc5f4bc98a5c516f161a51d879e6497))
+* **ssh:** stop nested-VM SSH from silently degrading to a password prompt ([5174222](https://github.com/avaleror/rodeo-cli/commit/5174222ff41b939ab912c6142661972fb4ddbc5e))
+
+
+### Refactoring
+
+* **ansible:** ansible-lint clean roles, per-node DHCP drift, dedup curl/ssh-key tasks ([8bb5de6](https://github.com/avaleror/rodeo-cli/commit/8bb5de62378c28d83e7f4325359e7d8e58edf141))
+
+
+### Documentation
+
+* add GitHub Pages site (mkdocs-material, andresvalero.tech design) ([67a97bd](https://github.com/avaleror/rodeo-cli/commit/67a97bd21822ba1978e3dd5fc9cc044c93fac75d))
+* add Harvester admin password recovery when the live value is unknown ([10af0c3](https://github.com/avaleror/rodeo-cli/commit/10af0c3e1c197acd6e53f76c38d083c325f9d74d))
+* clean up wording across docs and site copy ([8784d73](https://github.com/avaleror/rodeo-cli/commit/8784d736dfce69c11762bd57a9626a3bd1e13746))
+* document rancher.ui_extensions and rodeo install-extensions ([e050ab9](https://github.com/avaleror/rodeo-cli/commit/e050ab9cd11431d3749cd948973331adc5555465))
+* **examples:** add AWS single-host + fleet live smoke-test checklist for Claude Code ([855ee5f](https://github.com/avaleror/rodeo-cli/commit/855ee5f3ee8c2c4f3b6ddcfc247367805b13763b))
+* fix layout — hero font-size bug, dead grid space, uneven card grids ([5a41b3a](https://github.com/avaleror/rodeo-cli/commit/5a41b3aaecd5badee6b7c3f86ae8dfaa2f1b286a))
+* **fleet:** add Roadmap subsection for F3 MCP and F4 host-acquire ([d982d61](https://github.com/avaleror/rodeo-cli/commit/d982d615513fcec6f784059f6940fe7da6bc42da))
+* **fleet:** F4 host-acquire plan — AWS then GCP then Hetzner ([8fd1ad8](https://github.com/avaleror/rodeo-cli/commit/8fd1ad88803f653b56dcbe2622f60836b9eca301))
+* hygiene pass — sync versions, test counts, command reference ([02c1447](https://github.com/avaleror/rodeo-cli/commit/02c1447fd4142e079e71ba8c02ea0c449db66e0c))
+* move historical audits under docs/archive/ ([1b3fd93](https://github.com/avaleror/rodeo-cli/commit/1b3fd938fa856e0e04b6037a1f2df603a51a63ef))
+
 ## [0.14.2](https://github.com/avaleror/rodeo-cli/compare/v0.14.1...v0.14.2) (2026-07-17)
 
 

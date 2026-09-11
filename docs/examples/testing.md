@@ -99,7 +99,8 @@ Run in this order to fail fast on smaller profiles before investing time in bigg
 ### AWS live smoke (`i7i.8xlarge` + NVMe)
 
 Manual checklist for infra-adaptive host context (provision or BYO). Needs AWS creds
-and a SLES 16 / Leap 16 AMI with nested virt.
+and nothing else: the default AMI (SLES 16 PAYG) needs no Marketplace
+subscription, and `i7i.8xlarge` supports nested virt.
 
 ```bash
 pip install 'rodeo-cli[aws]'
@@ -109,9 +110,22 @@ rodeo up --yes --profile harvester --target aws --instance-tier recommended
 #   rodeo up --yes --profile harvester
 ```
 
+**Testing your own changes:** the instance installs rodeo-cli from GitHub, so a
+local working tree is invisible to it — and by default an already-bootstrapped
+host keeps the code it was first installed with. Push, then pass the ref:
+
+```bash
+rodeo up --yes --no-tmux --target aws --ref feat/my-fix
+```
+
+`--no-tmux` matters for scripted or agent-driven runs: without it `up` re-execs
+into tmux and the caller never sees the output. The remote log to read is
+`/root/.rodeo/logs/aws-up.log` on the host — far more informative than what
+surfaces locally.
+
 Verify on the KVM host after `kvm_host`:
 
-1. `resources.harvester.disk_gb` is **1200** (plan / vars)
+1. `resources.harvester.disk_gb` is **300** and `resources.rancher.disk_gb` is **60** — flat per-node floors, not scaled by node count (plan / vars)
 2. `storage.backend: nvme` and `image_dir` is mounted on instance-store NVMe (`findmnt`, `lsblk`)
 3. Guest disks live under that `image_dir` (not root EBS alone)
 4. Harvester VIP / `rodeo status` healthy; tear down with `rodeo destroy --cloud --yes` if provisioned

@@ -13,6 +13,11 @@ Design pillars: plan/apply/destroy lifecycle, deep-mergeable override files, inl
 5. **Maintainability** — split `rancher.py` (start with Elemental / Edge)
 6. **Phase J2** — lab-in-a-box engine live validation (`rancher` profile via a real automation VM), then flip the non-PXE default
 
+⚠ #48 landed two areas this roadmap doesn't cover yet — third-party
+extensibility (`rodeo.plugins` entry points + a `deployment_target` registry)
+and workshop story rendering and i18n (`rodeo story render`). They still need
+a phase of their own here. (lab-in-a-box export/deploy is now Phase J below.)
+
 ✅ B2 step 5 live-validated 2026-08-06 (bare-metal SLES, `test` profile): plan showed memory drift; deploy without reconcile skipped `vms`; `--reconcile` reset from `vms` and wrote new memory into inactive domain XML; cold start applied 20480 MiB. Reconcile is now the default (`--no-reconcile` opt-out).
 
 Test coverage: structural idempotency twin of `tests/test_vms_network_idempotency.py`
@@ -125,7 +130,7 @@ pxe/cluster reconcile. **Partial progress:** NAT DHCP host reservations
 - `rodeo/inventory.py` renders `vm_nodes` from `definition.yaml`: names, IPs, deterministic MACs, `uuid5` UUIDs
 - `ClusterPhase` derives start_order / harvester_node_names / harvester_ready_count / etcd_gap from the inventory — N-node works
 - `suse-virt` skips `rancher` phase when no Rancher node in the topology
-- Bundled profiles across 3 engine types (`rancher`, `suse-virt`, `suse-edge`): `rancher` (1 VM), `test` (2-node), `harvester-ha` (3-node HA), `harvester-2n` (2-node + Rancher), `harvester` (3-node + Rancher), `suse-edge` (Rancher + Elemental + EIB + 4 edge nodes)
+- Bundled profiles across 3 engine types (`rancher`, `suse-virt`, `suse-edge`): `rancher` (1 VM), `test` (2-node), `harvester-ha` (3-node HA), `harvester-2n` (2-node + Rancher), `harvester` (3-node + Rancher), `harvester-aws` (same topology as `harvester`, `rodeo-plan.yaml` pre-tuned for AWS — separate profile, `harvester` itself untouched; live-validated 2026-09-11 on `m8id.8xlarge` — all 3 nodes `Ready`, Rancher up, both UIs externally reachable, ~12% NVMe used), `suse-edge` (Rancher + Elemental + EIB + 4 edge nodes)
 - [ ] Plan schema sugar `nodes: 3` shorthand (explicit node blocks already work; shorthand is the remaining piece)
 
 ## Phase D — Polish (ongoing)
@@ -148,6 +153,7 @@ pxe/cluster reconcile. **Partial progress:** NAT DHCP host reservations
 - [ ] Stream Helm/K3s SSH installer output (removes the long blind windows in the TUI)
 - [ ] `PhaseResult` return type instead of mutating `runner._last_rc`
 - [x] ansible-lint in CI
+- [x] `rancher.py` split into `rodeo/engine/rancher/` (PR #48, 2026-09-09): the 2184-line module decomposed into eight concern mixins — remote exec, cluster setup, Harvester, Elemental, UI extensions, Hauler, lab content, summary — composed by `RancherPhase`. Verified as a pure move, not a rewrite: all 49 methods preserved, 47 byte-identical, and the only two diffs are relative-import depth (`.libvirt` → `..libvirt`, `..paths` → `...paths`).
 
 ---
 
@@ -163,17 +169,22 @@ AWS MVP is shipped (see checkboxes). Remaining: AL2023 deps path, SG automation,
 - [x] Shared `provider:` block in `rodeo-plan.yaml` (same shape as Fleet `workshop.yaml`)
 - [x] `rodeo up --target aws` — provision + SSH + remote deploy (MVP)
 - [x] `rodeo destroy --cloud --yes` — terminate ownership-tagged single-host instance
-- [x] Infra adaptation (`rodeo/host_context.py`): aws `disk_gb` floor 1200, `storage.backend: nvme`, kvm_host NVMe → `image_dir`; nested virt default on for non-metal
+- [x] Infra adaptation (`rodeo/host_context.py`): aws `disk_gb` floor is a **flat 500 GB per Harvester node, 60 GB per Rancher node** — not scaled by node count, deliberately leaving the rest of the NVMe device free. History: the original design floored Harvester at 1200 GB/node (“performance-first”), demanding ~3.6 TiB for a 3-node profile; a same-day fix tried a 1200 GB *total pool* budget split per node instead; a flat 300, then 600 GB/node followed; settled at 500 once the 3-node `harvester-aws` profile needed to fit on the same `m8id.8xlarge` (32 vCPU / 128 GiB / a single ~1.9 TiB NVMe device) as 2-node `harvester-2n` — 600/node left only ~40 GB free across 3 nodes on that device, too tight. `storage.backend: nvme`, kvm_host NVMe → `image_dir`; nested virt default on for non-metal
 - [x] Instance tiers (`budget` / `recommended` / `performance`) per lab profile + region offerings/capacity DryRun (`instance_catalog.py`, `assert_available`); `rodeo up --instance-tier`
-- [ ] `install-deps` support for Amazon Linux 2023 (dnf path already exists, needs testing) — prefer SLES 16 / Leap 16 AMIs
-- [ ] Security group rules mirror the firewalld rules (ports 8443, 30002, 22) — still operator-supplied SG
+- [ ] `install-deps` support for Amazon Linux 2023 (dnf path already exists, needs testing) — prefer the default SLES 16 AMI
+- [x] Default AMI is SLES 16 PAYG, not openSUSE Leap: the Leap Marketplace listing forbids 7th-gen Intel types, which is exactly what nested virt via `CpuOptions` requires, so the shipped Leap + `i7i.8xlarge` pair could never launch in any account. SLES BYOS allows `i7i` but has no repos without registration, which rodeo does not do. PAYG costs ~$0.125/hr more and needs no subscription.
+- [x] Security group rules mirror the firewalld rules (ports 8443, 30002, 22): `provider.security_group_ids` is now optional — omitted, rodeo creates/reuses a `rodeo-<workshop>` SG (`AwsHostProvider._resolve_security_groups`/`_reconcile_managed_sg_ingress` in `rodeo/providers/aws.py`), scoped to the calling machine's current public IP (auto-detected via `checkip.amazonaws.com`, re-scoped in place on IP drift). `rodeo destroy --cloud --yes` deletes it once no workshop instance is left running (retried through `DependencyViolation`, never a hard failure). Right for single-host `rodeo up --target aws`; a real multi-attendee Fleet still needs an explicit `security_group_ids` covering the attendees' network — documented in `docs/fleet.md`. BYO SG via `security_group_ids` is unchanged.
+- [x] Provision preflight rejects a subnet that cannot give the host a *reachable* public IP (`assert_public_ingress`, runs inside `assert_available` so single-host and fleet both get it): a public IP in a VPC with no internet-gateway route is assigned but routes nowhere, so students can't SSH and the host has no egress for `install-deps` — while RunInstances DryRun still passes. NAT-only subnets get their own message (egress works, inbound doesn't); skipped when `provider.associate_public_ip: false` opts into a bastion topology. Live-verified against an account whose `eu-west-1` VPC has no IGW while 13 other regions do.
+- [x] `--ref <branch|tag|sha>` on both remote paths — `rodeo up --target aws` (also `provider.ref`) and `rodeo fleet deploy` / `retry` (also `lab.ref`): pin the rodeo-cli the *hosts* run, and force the bootstrap even where `rodeo` is already installed. Without it a host keeps the code it was first installed with, so a pushed commit was invisible and a live run silently tested stale code — fleet-wide, on every host at once. The installer is fetched from the same ref it checks out; an invalid ref is rejected before any instance launches or any host is contacted. No ref still means "don't move a pinned host's version". Shared in `rodeo/install_source.py` so the two paths cannot drift.
 - [ ] Cost guard: `rodeo plan` estimates on-demand hourly cost for the selected instance type
-- [ ] Live validate: `i7i.8xlarge` Leap 16 (or SLES 16) + NVMe pool + harvester (provision or BYO) — checklist in [docs/examples/testing.md](docs/examples/testing.md#aws-live-smoke-i7i8xlarge--nvme)
+- [x] Live validate: `i7i.4xlarge` SLES 16 + NVMe pool + harvester (provisioned) — checklist in [docs/examples/testing.md](docs/examples/testing.md#aws-live-smoke-i7i8xlarge--nvme). Done 2026-09-10: 2/2 Harvester nodes `Ready` via `kubectl`, VIP reachable, `rodeo status` all phases green. Torn down after verification. Surfaced one new bug on the way — stale libvirt-python availability check inside a single `rodeo up` process, fixed same day in `rodeo/engine/libvirt.py`.
 - [ ] GCP equivalent: Compute Engine with `--enable-nested-virtualization` on N2 / C3
 
 **Share with Fleet F4:** same `rodeo/providers/aws` backs `rodeo fleet provision` and single-host `rodeo up --target aws`. Remaining providers: GCP → Vultr Bare Metal → Hetzner Cloud (see Phase I). Equinix is out of scope.
 
-**Sizing:** three tiers per profile (see `rodeo/providers/instance_catalog.py`); **recommended** for Harvester is **`i7i.8xlarge`** (local NVMe). Explicit `provider.instance_type` still wins. Metal remains the performance escape hatch. Tiny types are rejected at validate. Guest disks default to **1.2 TiB per Harvester node** under aws host-context. Availability is checked in-region before create; no silent downsize.
+**Sizing:** three tiers per profile (see `rodeo/providers/instance_catalog.py`); **recommended** varies by profile — `harvester-2n` (2-node) and the AWS-specific `harvester-aws` profile (§ "Bundled profiles" above — same 3-node + Rancher topology as `harvester`, kept as a separate profile) both use `m8id.8xlarge` (32 vCPU / 128 GiB / a single ~1.9 TiB NVMe device), avoiding `i7i.8xlarge`'s waste: same vCPU/RAM, but its NVMe is split across two ~3.4 TiB devices and rodeo only mounts one. The generic `harvester` profile's own catalog entry is untouched (`i7i.8xlarge`) for BYO/non-AWS use. Explicit `provider.instance_type` still wins. Metal remains the performance escape hatch. Tiny types are rejected at validate. Guest disks default to a **flat 500 GB/Harvester-node, 60 GB/Rancher-node** floor under aws host-context (3 x 500 + 60 = 1560 GB fits with margin on m8id.8xlarge's ~1.9 TiB device; a 600 GB/node floor tried first left only ~40 GB free for 3 nodes on the same device, too tight) — matches real-world (Instruqt) sizing, not a per-node-times-1200 or shared-total-budget model. Availability is checked in-region before create; no silent downsize.
+
+**Known limitation (not yet fixed):** `i7i.8xlarge` actually ships **two** separate ~3.4 TiB NVMe devices, but `kvm_host` only mounts the single largest one — the second sits unused. Found live 2026-09-11 while chasing the disk-floor bug above. Combining both (LVM/RAID0 under `image_dir`) would double usable NVMe on that size but isn't done.
 
 ---
 

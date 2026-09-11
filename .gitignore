@@ -39,6 +39,9 @@ secrets.yaml
 # Claude / project instructions (never committed)
 CLAUDE.md
 
+# Session handoff notes — names account-specific AWS resources, stays local
+HANDOFF.md
+
 # Cursor rules (local editor config only, never committed)
 .cursor/
 

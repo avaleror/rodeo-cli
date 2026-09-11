@@ -2,6 +2,9 @@
 - name: Include SELinux tasks
   ansible.builtin.import_tasks: selinux.yml
 
+- name: Include sudo secure_path fix
+  ansible.builtin.import_tasks: sudo_path.yml
+
 - name: Include package tasks
   ansible.builtin.import_tasks: packages.yml
 

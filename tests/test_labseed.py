@@ -25,6 +25,39 @@ def test_harvester_ha_profile(tmp_path):
     assert "rancher" not in plan.get("resources", {})
 
 
+def test_harvester_aws_profile_same_topology_as_harvester(tmp_path):
+    """harvester-aws is a distinct, AWS-pre-tuned profile — not a replacement
+    for harvester. Same 3-node + Rancher topology, but its own provider block
+    and disk sizing survive seeding with deployment_target=aws."""
+    assert PROFILE_EXAMPLE["harvester-aws"] == "harvester-aws"
+    assert example_dir("harvester-aws").is_dir()
+
+    harvester_lab = seed_lab("harvester", tmp_path / "harvester", deployment_target="aws")
+    aws_lab = seed_lab("harvester-aws", tmp_path / "harvester-aws", deployment_target="aws")
+
+    harvester_defn = yaml.safe_load((harvester_lab / "definition.yaml").read_text())["definition"]
+    aws_defn = yaml.safe_load((aws_lab / "definition.yaml").read_text())["definition"]
+    assert [n["name"] for n in aws_defn["nodes"]] == [n["name"] for n in harvester_defn["nodes"]]
+
+    plan = yaml.safe_load((aws_lab / "rodeo-plan.yaml").read_text())
+    assert plan["deployment_target"] == "aws"
+    assert plan["provider"]["type"] == "aws"
+    assert plan["provider"]["instance_tier"] == "recommended"
+    # apply_host_context() ran at seed time (deployment_target=aws): the flat
+    # per-node floor, not the generic profile's 320.
+    assert plan["resources"]["harvester"]["disk_gb"] == 500
+    assert plan["resources"]["rancher"]["disk_gb"] == 60
+    # RAM raised above the generic profile's 20/8 GiB 2026-09-11 for headroom:
+    # 3x24 + 16 = 88 GiB guest RAM, live-verified to leave ~35 GiB of
+    # m8id.8xlarge's ~123 GiB usable RAM for the host.
+    assert plan["resources"]["harvester"]["memory_mib"] == 24576
+    assert plan["resources"]["rancher"]["memory_mib"] == 16384
+
+    # The generic "harvester" profile is untouched by adding "harvester-aws".
+    harvester_plan = yaml.safe_load((harvester_lab / "rodeo-plan.yaml").read_text())
+    assert "provider" not in harvester_plan
+
+
 def test_seed_lab_normalizes_plan(tmp_path):
     lab = seed_lab("test", tmp_path / "labs" / "mylab")
     plan = lab / "rodeo-plan.yaml"

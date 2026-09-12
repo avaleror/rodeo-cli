@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.17.0](https://github.com/avaleror/rodeo-cli/compare/v0.16.1...v0.17.0) (2026-09-12)
+
+
+### Features
+
+* **aws:** auto-manage the security group instead of requiring an operator-supplied one ([787df16](https://github.com/avaleror/rodeo-cli/commit/787df169a12c59077a90e7b3c25b87148d083029))
+* **engine:** actually run custom/scripts/ — documented since config_dir shipped, never executed ([9ae7650](https://github.com/avaleror/rodeo-cli/commit/9ae7650dbae8fc58b75a06f79dd39f3a14a35d16))
+* **harvester-aws:** raise guest RAM to 24 GiB/Harvester-node, 16 GiB Rancher ([4a74a79](https://github.com/avaleror/rodeo-cli/commit/4a74a798eb5375ac31080ab4ce52c18101538588))
+* new harvester-aws profile — 3-node Harvester+Rancher pre-tuned for AWS ([23683cf](https://github.com/avaleror/rodeo-cli/commit/23683cf4903ef8e0f03489c4962beedb5c6d74f8))
+* new virt-workshop-aws profile — pre-lab state for suse-virt-workshop's exercises ([524ad34](https://github.com/avaleror/rodeo-cli/commit/524ad348eaedb50f95224411313ca5acfed4aacb))
+* **virt-workshop-aws:** pre-create daily-batch-processor for full chapter-4 parity ([8d5e9f2](https://github.com/avaleror/rodeo-cli/commit/8d5e9f27770c5b984aa9cc9439d9b3c7c340efa2))
+
+
+### Bug Fixes
+
+* **aws:** disk floor is a flat 300GB/Harvester-node, 60GB/Rancher-node, not a pool budget ([6d5e240](https://github.com/avaleror/rodeo-cli/commit/6d5e240907ae87fe688a89a0cceaae7be073b39d))
+* **aws:** harvester-2n needs 32 vCPU/128 GiB, not 8/64 — resize to m8id.8xlarge ([aed0368](https://github.com/avaleror/rodeo-cli/commit/aed0368f9d0e8fe97de75156c257529405a75bc9))
+* **aws:** harvester-aws must fit m8id.8xlarge too, not m8id.12xlarge ([b2763e5](https://github.com/avaleror/rodeo-cli/commit/b2763e5bddeff31f3ea624867781b06d14605f2c))
+* **aws:** managed-SG description used an em dash, which EC2's GroupDescription rejects ([96aca57](https://github.com/avaleror/rodeo-cli/commit/96aca573c7cd8044e81d114ffbeaae790873c751))
+* **aws:** NVMe disk floor was per Harvester node, not per pool — 3x overshoot ([192ee1b](https://github.com/avaleror/rodeo-cli/commit/192ee1bd3ad4795a24d6fd5356bb115b8904343b))
+* **virt-workshop-aws:** size webserver-prod's boot disk from image virtualSize ([7a74ece](https://github.com/avaleror/rodeo-cli/commit/7a74ece727ea6170fab7277af34e2b4f50d00166))
+
+
+### Documentation
+
+* live-validate harvester-aws on m8id.8xlarge — full success ([2e1d9a1](https://github.com/avaleror/rodeo-cli/commit/2e1d9a14a3cba6cb0ebd363fc01304b34e959949))
+
 ## [0.16.1](https://github.com/avaleror/rodeo-cli/compare/v0.16.0...v0.16.1) (2026-09-10)
 
 

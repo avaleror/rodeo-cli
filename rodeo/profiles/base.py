@@ -46,12 +46,13 @@ BASE_VERSIONS: dict = {
 # needs_rancher phases are skipped when the topology has no rancher node.
 # Extend with register_stream_phase() — don't edit this dict from outside.
 _STREAM_PHASES: dict[str, tuple[str, bool]] = {
-    "boot":      ("stream_boot",      False),
-    "cluster":   ("stream_cluster",   False),
-    "rancher":   ("stream_rancher",   True),
-    "elemental": ("stream_elemental", True),
-    "apply":     ("stream_apply",     False),
-    "finalise":  ("stream_finalise",  False),
+    "boot":            ("stream_boot",           False),
+    "cluster":         ("stream_cluster",        False),
+    "rancher":         ("stream_rancher",        True),
+    "elemental":       ("stream_elemental",      True),
+    "apply":           ("stream_apply",          False),
+    "custom_scripts":  ("stream_custom_scripts", False),
+    "finalise":        ("stream_finalise",        False),
 }
 
 

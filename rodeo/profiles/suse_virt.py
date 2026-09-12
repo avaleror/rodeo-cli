@@ -12,11 +12,11 @@ from .base import BASE_VERSIONS, RodeoProfile
 
 class SuseVirtProfile(RodeoProfile):
     name = "suse-virt"
-    phases = ["kvm_host", "vms", "pxe_server", "cluster", "rancher", "apply", "finalise"]
+    phases = ["kvm_host", "vms", "pxe_server", "cluster", "rancher", "apply", "finalise", "custom_scripts"]
     vm_names = ["harvester1", "harvester2", "harvester3", "rancher"]
     ansible_phases = frozenset(["kvm_host", "vms", "pxe_server"])
-    guarded_phases = frozenset(["finalise"])
-    no_cache_phases = frozenset(["apply"])
+    guarded_phases = frozenset(["finalise", "custom_scripts"])
+    no_cache_phases = frozenset(["apply", "custom_scripts"])
 
     # Versions are authoritative in definition.yaml; these are only hit without
     # the packaged data. Changing the definition drives idempotent upgrades on

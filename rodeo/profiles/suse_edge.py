@@ -9,11 +9,11 @@ class SuseEdgeProfile(RodeoProfile):
     # pxe_server and cluster phases are suse-virt specific — Edge uses cloud-init VMs.
     # elemental installs Elemental Operator (CRDs + Operator) on the management cluster
     # after Rancher Prime is up. Edge nodes then register via TPM + Elemental.
-    phases = ["kvm_host", "vms", "boot", "rancher", "elemental", "apply", "finalise"]
+    phases = ["kvm_host", "vms", "boot", "rancher", "elemental", "apply", "finalise", "custom_scripts"]
     vm_names = ["rancher", "eib", "edge1", "edge2", "edge3", "edge4"]
     ansible_phases = frozenset(["kvm_host", "vms"])
-    guarded_phases = frozenset(["finalise"])
-    no_cache_phases = frozenset(["apply"])
+    guarded_phases = frozenset(["finalise", "custom_scripts"])
+    no_cache_phases = frozenset(["apply", "custom_scripts"])
 
     static_vms = {
         "rancher": {"ip": "192.168.122.9",  "user": "root"},

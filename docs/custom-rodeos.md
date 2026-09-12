@@ -59,6 +59,24 @@ inventory metadata, but nothing consumes them yet — they're reserved for a fut
 phase. Don't put files there expecting them to be applied; use the per-hostname
 directories described next.
 
+### `custom/scripts/` — a `custom_scripts` phase, after `finalise`
+
+Numbered executable scripts (`50-my-setup.sh`, `60-seed-vm.sh`, ...) run in sorted
+order as the last phase of the deploy, once the cluster and networking are fully up.
+Each gets:
+
+- `KUBECONFIG` — Harvester's kubeconfig, if it exists (`~/.rodeo/harvester-kubeconfig`)
+- `RODEO_PLAN_NAME`, `RODEO_LAB_DIR`, `RODEO_CONFIG_DIR` — identifying context
+
+Write them idempotent (check-then-create): the phase is a `no_cache_phase` like
+`apply`, so it re-runs on every `rodeo up`, not just the first. A failing script is
+reported loudly but doesn't stop the rest (they're typically independent steps); the
+phase itself still ends up failed if any script did, so `rodeo status`/CI notice.
+`custom_scripts` is guarded the same way `finalise` is — skipped on
+`deployment_target: instruqt` unless `--finalise`, since scripts here create
+persistent cluster state that belongs baked into an image snapshot, not re-run on
+every session boot.
+
 `rodeo up`, `plan`, and `deploy` auto-detect this dir (walk up from the current
 directory), so inside a lab dir you can drop `--config-dir`.
 

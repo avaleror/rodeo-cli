@@ -13,11 +13,11 @@ from .base import BASE_VERSIONS, RodeoProfile
 class RancherProfile(RodeoProfile):
     name = "rancher"
     # 'boot' starts the network + VM (no Harvester cluster, so no pxe_server/cluster).
-    phases = ["kvm_host", "vms", "boot", "rancher", "apply", "finalise"]
+    phases = ["kvm_host", "vms", "boot", "rancher", "apply", "finalise", "custom_scripts"]
     vm_names = ["rancher"]
     ansible_phases = frozenset(["kvm_host", "vms"])
-    guarded_phases = frozenset(["finalise"])
-    no_cache_phases = frozenset(["apply"])
+    guarded_phases = frozenset(["finalise", "custom_scripts"])
+    no_cache_phases = frozenset(["apply", "custom_scripts"])
 
     static_vms = {"rancher": {"ip": "192.168.122.9", "user": "root"}}
     resources = {"rancher": {"memory_mib": 8192, "vcpu": 4, "disk_gb": 60}}

@@ -546,6 +546,88 @@ class DeployRunner:
 
         self._last_rc = 0
 
+    def stream_custom_scripts(self) -> Iterator[DeployEvent]:
+        """Run ``<config_dir>/custom/scripts/*`` in sorted (numbered) order.
+
+        Documented since the config-dir feature shipped (README convention:
+        "numbered scripts run in order for custom bootstrap or post-deploy
+        steps") but never actually executed until now — ``config_dir.py``
+        discovered them into ``_config_dir['custom_scripts']`` and nothing
+        consumed it.
+
+        Runs after ``finalise`` (guarded the same way — skipped on
+        ``deployment_target: instruqt`` unless ``--finalise``, since these
+        scripts create persistent cluster state that belongs baked into an
+        image snapshot, not re-run on every session boot) and is a
+        ``no_cache_phase`` like ``apply``: authors are expected to write
+        idempotent scripts (check-then-create), so every ``rodeo up``
+        re-verifies rather than silently skipping once done.
+
+        Each script gets ``KUBECONFIG`` (Harvester's kubeconfig, if it
+        exists) plus a few identifying env vars, and is expected to be
+        independently idempotent — a failing script is reported loudly but
+        does not stop the rest from running (they are typically independent
+        steps: create VM 1, create VM 2, ...), though the phase itself is
+        marked failed if any script failed, so state/CI notice.
+        """
+        config_dir = self.cfg.get("config_dir", "")
+        if not config_dir:
+            self._last_rc = 0
+            return
+
+        scripts_dir = Path(config_dir) / "custom" / "scripts"
+        if not scripts_dir.is_dir():
+            self._last_rc = 0
+            return
+
+        scripts = sorted(
+            f for f in scripts_dir.iterdir()
+            if f.is_file() and os.access(f, os.X_OK)
+        )
+        if not scripts:
+            self._last_rc = 0
+            return
+
+        env = os.environ.copy()
+        env["RODEO_PLAN_NAME"] = self._plan_name
+        env["RODEO_LAB_DIR"] = str(self.root)
+        env["RODEO_CONFIG_DIR"] = config_dir
+
+        from ..paths import harvester_kubeconfig_path
+
+        kubeconfig = harvester_kubeconfig_path()
+        if kubeconfig.exists():
+            env["KUBECONFIG"] = str(kubeconfig)
+
+        failed = 0
+        for script in scripts:
+            yield LogLine(f"Running custom script {script.name}...")
+            try:
+                r = subprocess.run(
+                    [str(script)],
+                    cwd=str(scripts_dir),
+                    env=env,
+                    capture_output=True, text=True, timeout=1800,
+                )
+            except subprocess.TimeoutExpired:
+                yield LogLine(f"  ✗  {script.name} timed out after 1800 s")
+                failed += 1
+                continue
+            except OSError as exc:
+                yield LogLine(f"  ✗  {script.name}: {exc}")
+                failed += 1
+                continue
+            for line in (r.stdout + r.stderr).splitlines():
+                if line.strip():
+                    yield LogLine(f"  {line}")
+            if r.returncode != 0:
+                yield LogLine(f"  ✗  {script.name} exited {r.returncode}")
+                failed += 1
+            else:
+                yield LogLine(f"  ✓  {script.name}")
+
+        self._last_rc = 1 if failed else 0
+
     def stream_finalise(self) -> Iterator[DeployEvent]:
         vm_names = list(self.cfg.get("vms", {}).keys())
         successes = 0

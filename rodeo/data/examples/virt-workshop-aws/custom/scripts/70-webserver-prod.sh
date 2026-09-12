@@ -1,13 +1,20 @@
 #!/bin/bash
 # virt-workshop-aws custom_scripts step 3/3.
 #
-# Pre-creates the "already running in production" VM that suse-virt-rodeo's
-# chapter 4 (The Rising Tide, zero-downtime live migration) assumes exists
-# before the student arrives — on the Instruqt track it is baked into the
-# saved cluster image; here, since every AWS deploy starts from a genuinely
-# blank cluster, this script builds the same end state on top of the harvester-
-# aws profile's plain harvester+rancher deploy: namespace, VM network, node
-# labels, and the VM itself.
+# Pre-creates the two VMs suse-virt-rodeo's chapter 4 (The Rising Tide,
+# zero-downtime live migration) assumes exist before the student arrives:
+#   webserver-prod          the payment gateway that gets live-migrated
+#   daily-batch-processor   the non-critical VM that gets paused/unpaused,
+#                           first scheduled onto webserver-prod's own node so
+#                           the two VMs are guaranteed to collide on arrival
+#                           (matches suse-virt-rodeo's
+#                           04-the-rising-tide-live-migration/setup-kvm-host,
+#                           which pins it there for exactly this reason,
+#                           then releases the pin once placed)
+# On the Instruqt track these are baked into the saved cluster image; here,
+# since every AWS deploy starts from a genuinely blank cluster, this script
+# builds the same end state on top of the harvester-aws profile's plain
+# harvester+rancher deploy: namespace, VM network, node labels, and both VMs.
 #
 # Runs after 50-image-cache.sh (needs the cached image already served) and
 # 60-nfs-backup-target.sh (order only, no direct dependency) as the last of
@@ -161,43 +168,61 @@ else
 fi
 log "boot disk size: ${DISK_GI}Gi (image virtualSize=${IMAGE_VIRTUAL_SIZE:-unknown} bytes)"
 
-# --- The VM itself --------------------------------------------------------
-# 1 vCPU / 1 GiB RAM — matches suse-virt-workshop's own documented spec for
-# the student-created version of this VM (Exercise 4.1); the boot disk is
-# sized dynamically above from the cached image's real virtual size.
-if kubectl get vm -n "${NS}" "${VM_NAME}" &>/dev/null; then
-  log "${VM_NAME} already exists, skipping creation."
-else
-  log "creating ${VM_NAME} (1 vCPU / 1 GiB / ${DISK_GI}Gi, DHCP on ${NET}) ..."
+# --- VM creation (shared by webserver-prod and daily-batch-processor) -----
+# 1 vCPU / 1 GiB RAM each — matches suse-virt-workshop's own documented spec
+# for the student-created version of webserver-prod (Exercise 4.1); the boot
+# disk is sized dynamically above from the cached image's real virtual size.
+# ``pin_node``, when set, forces initial scheduling onto that exact node
+# (kubernetes.io/hostname) instead of the normal stage=prod pool — used only
+# for daily-batch-processor's guaranteed first collision with webserver-prod.
+create_vm() {
+  local name="$1" pin_node="${2:-}"
+  local affinity_key affinity_value
+
+  if kubectl get vm -n "${NS}" "${name}" &>/dev/null; then
+    log "${name} already exists, skipping creation."
+    return
+  fi
+
+  if [ -n "${pin_node}" ]; then
+    log "creating ${name} (1 vCPU / 1 GiB / ${DISK_GI}Gi, DHCP on ${NET}), pinned to node ${pin_node} for a guaranteed first collision with webserver-prod ..."
+    affinity_key="kubernetes.io/hostname"
+    affinity_value="${pin_node}"
+  else
+    log "creating ${name} (1 vCPU / 1 GiB / ${DISK_GI}Gi, DHCP on ${NET}) ..."
+    affinity_key="stage"
+    affinity_value="prod"
+  fi
+
   cat <<EOF | kubectl apply -f -
 apiVersion: kubevirt.io/v1
 kind: VirtualMachine
 metadata:
-  name: ${VM_NAME}
+  name: ${name}
   namespace: ${NS}
   labels:
     stage: prod
   annotations:
     harvesterhci.io/volumeClaimTemplates: |-
-      [{"metadata":{"name":"${VM_NAME}-disk-0","annotations":{"harvesterhci.io/imageId":"${IMAGE_NS}/${IMAGE_NAME}"}},"spec":{"accessModes":["ReadWriteMany"],"resources":{"requests":{"storage":"${DISK_GI}Gi"}},"volumeMode":"Block","storageClassName":"${IMAGE_SC}"}}]
+      [{"metadata":{"name":"${name}-disk-0","annotations":{"harvesterhci.io/imageId":"${IMAGE_NS}/${IMAGE_NAME}"}},"spec":{"accessModes":["ReadWriteMany"],"resources":{"requests":{"storage":"${DISK_GI}Gi"}},"volumeMode":"Block","storageClassName":"${IMAGE_SC}"}}]
 spec:
   runStrategy: Always
   template:
     metadata:
       labels:
-        harvesterhci.io/vmName: ${VM_NAME}
+        harvesterhci.io/vmName: ${name}
     spec:
-      hostname: ${VM_NAME}
+      hostname: ${name}
       evictionStrategy: LiveMigrateIfPossible
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:
             - matchExpressions:
-              - key: stage
+              - key: ${affinity_key}
                 operator: In
                 values:
-                - prod
+                - ${affinity_value}
       domain:
         cpu:
           cores: 1
@@ -232,25 +257,63 @@ spec:
       volumes:
       - name: disk-0
         persistentVolumeClaim:
-          claimName: ${VM_NAME}-disk-0
+          claimName: ${name}-disk-0
       - name: cloudinitdisk
         cloudInitNoCloud:
           userData: |
             #cloud-config
-            hostname: ${VM_NAME}
+            hostname: ${name}
             ssh_authorized_keys:
               - ${SSH_PUBKEY}
 EOF
-fi
+}
 
-log "waiting for ${VM_NAME} to reach Running phase (up to 5 minutes) ..."
-PHASE=""
-for _ in $(seq 1 30); do
-  PHASE="$(kubectl get vmi -n "${NS}" "${VM_NAME}" -o jsonpath='{.status.phase}' 2>/dev/null)"
-  [ "${PHASE}" = "Running" ] && { log "${VM_NAME}: Running"; break; }
-  sleep 10
-done
-[ "${PHASE:-}" = "Running" ] || log "warn: ${VM_NAME} not Running yet after 5 minutes (non-fatal, check the UI)."
+wait_running() {
+  local name="$1" phase=""
+  log "waiting for ${name} to reach Running phase (up to 5 minutes) ..."
+  for _ in $(seq 1 30); do
+    phase="$(kubectl get vmi -n "${NS}" "${name}" -o jsonpath='{.status.phase}' 2>/dev/null)"
+    [ "${phase}" = "Running" ] && { log "${name}: Running"; return; }
+    sleep 10
+  done
+  log "warn: ${name} not Running yet after 5 minutes (non-fatal, check the UI)."
+}
+
+create_vm "${VM_NAME}"
+wait_running "${VM_NAME}"
+
+# --- daily-batch-processor: the "pause target" chapter 4 also needs --------
+# Resolve webserver-prod's current node so the first placement is guaranteed
+# to collide with it — otherwise the scheduler might just as easily pick the
+# other stage=prod node, making the story's contention a coin flip. Bounded
+# to 2 minutes; if it doesn't resolve, the VM still schedules fine, just
+# without the guaranteed collision (non-fatal).
+BATCH_VM_NAME="daily-batch-processor"
+if ! kubectl get vm -n "${NS}" "${BATCH_VM_NAME}" &>/dev/null; then
+  log "resolving ${VM_NAME}'s current node for ${BATCH_VM_NAME}'s initial placement ..."
+  WEBSERVER_NODE=""
+  for _ in $(seq 1 12); do
+    WEBSERVER_NODE="$(kubectl get vmi -n "${NS}" "${VM_NAME}" -o jsonpath='{.status.nodeName}' 2>/dev/null)"
+    [ -n "${WEBSERVER_NODE}" ] && break
+    sleep 10
+  done
+  [ -n "${WEBSERVER_NODE}" ] && log "${VM_NAME} is on node ${WEBSERVER_NODE}." \
+    || log "warn: could not resolve ${VM_NAME}'s node after 2 minutes; ${BATCH_VM_NAME} will schedule normally (stage=prod, may or may not collide)."
+  create_vm "${BATCH_VM_NAME}" "${WEBSERVER_NODE}"
+  wait_running "${BATCH_VM_NAME}"
+
+  # Release the node pin now that placement has happened once — restores the
+  # normal stage=prod affinity every other prod VM uses, so a future
+  # reschedule isn't forced back onto webserver-prod's node forever. This
+  # only affects scheduling decisions, so it never moves the VM that's
+  # already running.
+  log "releasing ${BATCH_VM_NAME}'s node pin (back to normal stage=prod scheduling) ..."
+  kubectl patch vm -n "${NS}" "${BATCH_VM_NAME}" --type merge \
+    -p '{"spec":{"template":{"spec":{"affinity":{"nodeAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":{"nodeSelectorTerms":[{"matchExpressions":[{"key":"stage","operator":"In","values":["prod"]}]}]}}}}}}}' \
+    || log "warn: failed to release ${BATCH_VM_NAME}'s node pin."
+else
+  log "${BATCH_VM_NAME} already exists, skipping creation."
+fi
 
 echo ">>> [webserver-prod] custom_scripts step complete."
 exit 0

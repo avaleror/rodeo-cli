@@ -141,15 +141,34 @@ IMAGE_SC="$(kubectl get virtualmachineimages.harvesterhci.io -n "${IMAGE_NS}" "$
   -o jsonpath='{.status.storageClassName}' 2>/dev/null)"
 [ -n "${IMAGE_SC}" ] || { echo ">>> [webserver-prod] FAILED: no storageClassName on ${IMAGE_NS}/${IMAGE_NAME}" >&2; exit 1; }
 
+# The boot disk PVC must be >= the image's own virtual (logical) size, not its
+# download size — a qcow2's compressed download can be tiny while its
+# filesystem is much larger (this openSUSE image: ~308 MiB download, 24 GiB
+# virtual size). A too-small PVC never binds (Longhorn/Harvester can't shrink
+# the volume to fit) and the VM sits ErrorUnschedulable forever. Compute the
+# real floor from .status.virtualSize instead of hardcoding a value that only
+# happens to work for today's cached image.
+IMAGE_VIRTUAL_SIZE="$(kubectl get virtualmachineimages.harvesterhci.io -n "${IMAGE_NS}" "${IMAGE_NAME}" \
+  -o jsonpath='{.status.virtualSize}' 2>/dev/null)"
+GIB=1073741824
+DISK_GI=5
+if [ -n "${IMAGE_VIRTUAL_SIZE}" ] && [ "${IMAGE_VIRTUAL_SIZE}" -gt 0 ] 2>/dev/null; then
+  # Ceiling-divide to whole GiB, then add a 1 GiB buffer.
+  NEEDED_GI=$(( (IMAGE_VIRTUAL_SIZE + GIB - 1) / GIB + 1 ))
+  [ "${NEEDED_GI}" -gt "${DISK_GI}" ] && DISK_GI="${NEEDED_GI}"
+else
+  log "warn: could not read image virtualSize, falling back to ${DISK_GI}Gi (may be too small)"
+fi
+log "boot disk size: ${DISK_GI}Gi (image virtualSize=${IMAGE_VIRTUAL_SIZE:-unknown} bytes)"
+
 # --- The VM itself --------------------------------------------------------
-# 1 vCPU / 1 GiB / 5 GiB — matches suse-virt-workshop's own documented spec
-# for the student-created version of this VM (Exercise 4.1), so the two
-# ways of getting webserver-prod (pre-created here, or student-created per
-# the exercise if this script is ever skipped) end up equivalent.
+# 1 vCPU / 1 GiB RAM — matches suse-virt-workshop's own documented spec for
+# the student-created version of this VM (Exercise 4.1); the boot disk is
+# sized dynamically above from the cached image's real virtual size.
 if kubectl get vm -n "${NS}" "${VM_NAME}" &>/dev/null; then
   log "${VM_NAME} already exists, skipping creation."
 else
-  log "creating ${VM_NAME} (1 vCPU / 1 GiB / 5 GiB, DHCP on ${NET}) ..."
+  log "creating ${VM_NAME} (1 vCPU / 1 GiB / ${DISK_GI}Gi, DHCP on ${NET}) ..."
   cat <<EOF | kubectl apply -f -
 apiVersion: kubevirt.io/v1
 kind: VirtualMachine
@@ -160,7 +179,7 @@ metadata:
     stage: prod
   annotations:
     harvesterhci.io/volumeClaimTemplates: |-
-      [{"metadata":{"name":"${VM_NAME}-disk-0","annotations":{"harvesterhci.io/imageId":"${IMAGE_NS}/${IMAGE_NAME}"}},"spec":{"accessModes":["ReadWriteMany"],"resources":{"requests":{"storage":"5Gi"}},"volumeMode":"Block","storageClassName":"${IMAGE_SC}"}}]
+      [{"metadata":{"name":"${VM_NAME}-disk-0","annotations":{"harvesterhci.io/imageId":"${IMAGE_NS}/${IMAGE_NAME}"}},"spec":{"accessModes":["ReadWriteMany"],"resources":{"requests":{"storage":"${DISK_GI}Gi"}},"volumeMode":"Block","storageClassName":"${IMAGE_SC}"}}]
 spec:
   runStrategy: Always
   template:

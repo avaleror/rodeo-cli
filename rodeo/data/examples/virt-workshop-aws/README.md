@@ -15,17 +15,26 @@ for how the phase itself works):
 |---|---|---|
 | `50-image-cache.sh` | Downloads openSUSE Leap 16.0's small KVM cloud image (~308 MiB, freely redistributable — SLES's equivalent is gated behind SUSE Customer Center) and serves it over HTTP on the libvirt gateway (`192.168.122.1:8889`) via a systemd unit | suse-virt-rodeo's manually-placed image cache |
 | `60-nfs-backup-target.sh` | Exports `/srv/backups` over NFS to `192.168.122.0/24` — the exact endpoint (`192.168.122.1:/srv/backups/`) Exercise 6's backup-target setting expects | suse-virt-workshop's current Exercise 6.5, where the *student* hand-rolls this per-distro (with an escape hatch: "if it's blocked in your environment, move on") |
-| `70-webserver-prod.sh` | Creates the `prod` namespace, node labels (`stage=prod` on harvester1/2, `stage=dev` on harvester3 — the same "one non-candidate node" setup suse-virt-rodeo uses for a real live-migration contrast), the `prod/service` VM network, and the `webserver-prod` VM itself (1 vCPU / 1 GiB / 5 GiB, from the cached image) | suse-virt-workshop's current Exercise 4.1, where the student creates this VM themselves |
+| `70-webserver-prod.sh` | Creates the `prod` namespace, node labels (`stage=prod` on harvester1/2, `stage=dev` on harvester3 — the same "one non-candidate node" setup suse-virt-rodeo uses for a real live-migration contrast), the `prod/service` VM network, and the `webserver-prod` VM itself (1 vCPU / 1 GiB, boot disk sized dynamically from the cached image's real virtual size) | suse-virt-workshop's current Exercise 4.1, where the student creates this VM themselves |
 
 All three are idempotent (check-then-create) and re-run on every `rodeo up` —
 see `docs/custom-rodeos.md` for the phase's guarantees.
 
-**Known risk:** the `prod/service` VM network's exact shape (bridge on
-`mgmt-br`, untagged/vlan 0) follows Harvester's standard "VM Network on the
-management network" convention, but suse-virt-rodeo's own repo has this
-baked into its Instruqt image rather than scripted anywhere — there was no
-proven-working manifest to copy from. Live-verify VM connectivity after a
-fresh deploy of this profile.
+The `prod/service` VM network's shape (bridge on `mgmt-br`, untagged/vlan 0,
+following Harvester's standard "VM Network on the management network"
+convention) had no proven-working manifest to copy from anywhere in either
+source repo — suse-virt-rodeo bakes it into its Instruqt image rather than
+scripting it. Live-verified 2026-09-12 on a fresh `m8id.8xlarge` deploy:
+`webserver-prod` reached `Running`/`LIVE-MIGRATABLE: True` and got a real
+DHCP lease (`192.168.122.x`) from the default libvirt network, confirmed both
+via the VMI's `.status.interfaces` and `virsh net-dhcp-leases default`.
+
+The boot disk's PVC size is read live from the cached image's
+`.status.virtualSize` (openSUSE Leap 16.0's KVM image: ~308 MiB download, 24
+GiB virtual size) plus a 1 GiB buffer, floored at 5Gi — a fixed small size
+(e.g. 5Gi) leaves the PVC permanently `Pending` and the VM
+`ErrorUnschedulable`, since Longhorn/Harvester can't provision a volume
+smaller than the image it's cloned from.
 
 ```bash
 rodeo up --yes --no-tmux --profile virt-workshop-aws --target aws

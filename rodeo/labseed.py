@@ -24,6 +24,7 @@ PROFILE_EXAMPLE = {
     "harvester-2n": "harvester-2n",         # 2-node Harvester + Rancher Prime (slim profile, ~56 GiB RAM)
     "harvester": "harvester",               # full 3-node Harvester + Rancher Prime
     "harvester-aws": "harvester-aws",       # same topology as "harvester", pre-tuned for deployment_target: aws
+    "virt-workshop-aws": "virt-workshop-aws",  # harvester-aws + custom/scripts/ (image cache, NFS, pre-created VM) for suse-virt-workshop
     "suse-edge": "suse-edge",               # Rancher + Elemental + EIB + 4 edge nodes (SUSE Edge 3.6)
 }
 

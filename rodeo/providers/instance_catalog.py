@@ -110,6 +110,23 @@ AWS_PROFILE_TIERS: dict[str, dict[InstanceTier, InstanceOffer]] = {
             "m7i.metal-24xl", "performance", "bare metal — max nested performance"
         ),
     },
+    # Same infra/sizing as harvester-aws — the custom/scripts/ that set it
+    # apart (image cache, NFS export, pre-created VM) don't change the host's
+    # own resource needs.
+    "virt-workshop-aws": {
+        "budget": InstanceOffer(
+            "m7i.16xlarge", "budget", "64 vCPU / 256 GiB — 3-node + Rancher (EBS)"
+        ),
+        "recommended": InstanceOffer(
+            "m8id.8xlarge", "recommended",
+            "32 vCPU / 128 GiB / a single ~1.9 TiB NVMe device — same as "
+            "harvester-aws; custom/scripts/ adds an image cache + NFS export "
+            "+ one pre-created VM on top, no extra host sizing needed",
+        ),
+        "performance": InstanceOffer(
+            "m7i.metal-24xl", "performance", "bare metal — max nested performance"
+        ),
+    },
     "suse-edge": {
         "budget": InstanceOffer(
             "m7i.16xlarge", "budget", "64 vCPU / 256 GiB — Edge stack (EBS)"

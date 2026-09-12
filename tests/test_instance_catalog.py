@@ -27,6 +27,14 @@ def test_catalog_harvester_aws_recommended_is_separate_from_harvester():
     assert catalog_for_profile("harvester")["recommended"].instance_type == "i7i.8xlarge"
 
 
+def test_catalog_virt_workshop_aws_matches_harvester_aws_sizing():
+    """virt-workshop-aws layers custom/scripts/ on top of harvester-aws's
+    infra — same host sizing, no extra resource needs for the image cache /
+    NFS export / one pre-created VM."""
+    offer = catalog_for_profile("virt-workshop-aws")["recommended"]
+    assert offer.instance_type == "m8id.8xlarge"
+
+
 def test_resolve_explicit_type_wins():
     itype, tier = resolve_instance_type(
         profile="harvester",

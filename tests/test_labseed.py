@@ -58,6 +58,35 @@ def test_harvester_aws_profile_same_topology_as_harvester(tmp_path):
     assert "provider" not in harvester_plan
 
 
+def test_virt_workshop_aws_profile_has_custom_scripts(tmp_path):
+    """virt-workshop-aws is harvester-aws's infra plus custom/scripts/ that
+    seed the pre-lab state suse-virt-workshop's exercises need (image cache,
+    NFS backup target, pre-created webserver-prod VM)."""
+    assert PROFILE_EXAMPLE["virt-workshop-aws"] == "virt-workshop-aws"
+    assert example_dir("virt-workshop-aws").is_dir()
+
+    lab = seed_lab("virt-workshop-aws", tmp_path / "virt-workshop-aws", deployment_target="aws")
+
+    defn = yaml.safe_load((lab / "definition.yaml").read_text())["definition"]
+    assert [n["name"] for n in defn["nodes"]] == ["harvester1", "harvester2", "harvester3", "rancher"]
+
+    plan = yaml.safe_load((lab / "rodeo-plan.yaml").read_text())
+    assert plan["deployment_target"] == "aws"
+    assert plan["resources"]["harvester"]["disk_gb"] == 500
+    assert plan["resources"]["harvester"]["memory_mib"] == 24576
+    assert plan["resources"]["rancher"]["memory_mib"] == 16384
+
+    scripts_dir = lab / "custom" / "scripts"
+    scripts = sorted(f.name for f in scripts_dir.iterdir() if f.is_file())
+    assert scripts == [
+        "50-image-cache.sh",
+        "60-nfs-backup-target.sh",
+        "70-webserver-prod.sh",
+    ]
+    for name in scripts:
+        assert (scripts_dir / name).stat().st_mode & 0o111, f"{name} must be executable"
+
+
 def test_seed_lab_normalizes_plan(tmp_path):
     lab = seed_lab("test", tmp_path / "labs" / "mylab")
     plan = lab / "rodeo-plan.yaml"

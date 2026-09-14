@@ -186,6 +186,15 @@ def _ensure_harvester_disk_floor(
     NOT scaled by node count — a 3-node profile gets 3x this value in total,
     same as a 1-node profile gets 1x, leaving the rest of the NVMe device free
     for other things. Never shrinks an explicit larger plan.
+
+    A plan may opt out of the global floor for one flavor by setting
+    ``resources.<flavor>.disk_floor_override_gb`` — needed when the target
+    instance's local NVMe is too small for the global floor times the
+    profile's own node count (e.g. a 2-node profile on a smaller instance
+    than the 3-node profiles were floored for: 2 x 500 + 60 = 1060 GB doesn't
+    fit m8id.4xlarge's 950 GB device, but 2 x 400 + 60 = 860 GB does). Unset
+    by default, so every existing profile keeps the flat 500 GB floor
+    unchanged — this is purely additive.
     """
     notes: list[str] = []
     resources = cfg.get("resources")
@@ -195,6 +204,12 @@ def _ensure_harvester_disk_floor(
         block = resources.get(flavor)
         if not isinstance(block, dict):
             continue
+        override = block.get("disk_floor_override_gb")
+        if override is not None:
+            try:
+                floor = int(override)
+            except (TypeError, ValueError):
+                pass
         current = block.get("disk_gb")
         try:
             cur_i = int(current) if current is not None else 0

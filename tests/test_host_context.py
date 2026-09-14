@@ -66,6 +66,54 @@ def test_aws_does_not_raise_disk_already_above_floor():
     assert not any("disk_gb" in n for n in notes)
 
 
+def test_aws_disk_floor_override_lowers_floor_for_that_flavor():
+    """resources.<flavor>.disk_floor_override_gb opts a plan out of the flat
+    500 GB floor — needed for a 2-node profile on a smaller instance than the
+    3-node profiles were floored for (2 x 500 + 60 = 1060 GB doesn't fit
+    m8id.4xlarge's 950 GB NVMe device; 2 x 400 + 60 = 860 GB does)."""
+    cfg = {
+        "deployment_target": "aws",
+        "resources": {
+            "harvester": {"disk_gb": 250, "disk_floor_override_gb": 400},
+            "rancher": {"disk_gb": 40},
+        },
+        "storage": {},
+        "libvirt": {},
+    }
+    out, notes = apply_host_context(cfg)
+    assert out["resources"]["harvester"]["disk_gb"] == 400
+    # Rancher has no override — still gets the normal flat floor.
+    assert out["resources"]["rancher"]["disk_gb"] == AWS_RANCHER_DISK_GB
+    assert any("resources.harvester.disk_gb: 250 → 400" in n for n in notes)
+
+
+def test_aws_disk_floor_override_still_never_shrinks_explicit_larger():
+    """The override changes the floor, not the "never shrink" rule — an
+    explicit disk_gb already above the override must survive unchanged."""
+    cfg = {
+        "deployment_target": "aws",
+        "resources": {"harvester": {"disk_gb": 900, "disk_floor_override_gb": 400}},
+        "storage": {},
+        "libvirt": {},
+    }
+    out, notes = apply_host_context(cfg)
+    assert out["resources"]["harvester"]["disk_gb"] == 900
+    assert not any("disk_gb" in n for n in notes)
+
+
+def test_aws_existing_profiles_unaffected_by_override_mechanism():
+    """No disk_floor_override_gb set (every profile shipped before this
+    feature) — behavior is byte-for-byte the same flat 500 GB floor."""
+    cfg = {
+        "deployment_target": "aws",
+        "resources": {"harvester": {"disk_gb": 250}},
+        "storage": {},
+        "libvirt": {},
+    }
+    out, _ = apply_host_context(cfg)
+    assert out["resources"]["harvester"]["disk_gb"] == AWS_HARVESTER_DISK_GB
+
+
 def test_aws_does_not_shrink_larger_disk():
     cfg = {
         "deployment_target": "aws",

@@ -35,6 +35,17 @@ def test_catalog_virt_workshop_aws_matches_harvester_aws_sizing():
     assert offer.instance_type == "m8id.8xlarge"
 
 
+def test_catalog_virt_workshop_aws_2n_budget_is_smaller_instance():
+    """virt-workshop-aws-2n's budget tier is the actual point of the profile:
+    a genuinely smaller/cheaper instance than the 3-node profile's, made
+    possible by dropping to 2 Harvester nodes — not just an EBS-only 3-node
+    box like virt-workshop-aws's own budget tier."""
+    offer = catalog_for_profile("virt-workshop-aws-2n")["budget"]
+    assert offer.instance_type == "m8id.4xlarge"
+    # The 3-node profile is untouched by adding the 2-node one.
+    assert catalog_for_profile("virt-workshop-aws")["budget"].instance_type == "m7i.16xlarge"
+
+
 def test_resolve_explicit_type_wins():
     itype, tier = resolve_instance_type(
         profile="harvester",

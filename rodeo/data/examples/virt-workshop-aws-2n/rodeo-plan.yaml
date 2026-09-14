@@ -1,0 +1,80 @@
+# rodeo-plan.yaml — budget-tier AWS variant of virt-workshop-aws: 2-node
+# Harvester HCI + Rancher Prime (no HA) sized to fit a smaller ~64 GiB RAM
+# instance instead of the 3-node profile's 128 GiB one. Same custom/scripts/
+# pre-lab automation (image cache, NFS backup target, webserver-prod +
+# daily-batch-processor), adapted for 2 nodes — see that directory's scripts
+# for what changed from the 3-node version.
+#
+# Fill in provider.region and provider.subnet_id, then: rodeo up --target aws
+
+name: virt-workshop-aws-2n-rodeo
+deployment_target: aws
+
+provider:
+  type: aws
+  region: eu-central-1          # <- set to your region
+  subnet_id: subnet-CHANGE-ME   # <- must be in a VPC with an internet gateway
+  instance_tier: budget         # budget | recommended | performance — this
+                                 # profile's whole point is the budget tier;
+                                 # recommended/performance exist for headroom
+                                 # if you want it, but budget is the intent.
+  # instance_type: m8id.4xlarge   # or pin explicitly instead of a tier
+  associate_public_ip: true
+  # security_group_ids: [sg-...] # omit to let rodeo create/manage one,
+  #                               # scoped to this machine's public IP
+
+network:
+  mode: nat
+  vip: "192.168.122.10"
+  rancher_ip: "192.168.122.9"
+  gateway: "192.168.122.1"
+  dns_domain: "vertextrust.bank"   # matches the Vertex Trust Bank story, same as suse-virt-workshop
+
+resources:
+  harvester:
+    memory_mib: 16384    # 16 GiB per Harvester node — same lean sizing as
+                         # harvester-2n / the bare-metal workshop profile.
+                         # 2x16 + 8 (Rancher) = 40 GiB guest RAM, comfortable
+                         # on m8id.4xlarge's 64 GiB (leaves ~24 GiB for host).
+    vcpu: 8
+    disk_gb: 400         # Below the global AWS floor of 500 GB/node on
+                         # purpose — see disk_floor_override_gb below. 2x400 +
+                         # 60 (Rancher) = 860 GB, fits under m8id.4xlarge's
+                         # 950 GB NVMe with ~90 GB margin (vs 1060 GB needed
+                         # at the unmodified 500 GB floor, which would not fit).
+    disk_floor_override_gb: 400   # opts this profile out of the flat 500 GB
+                                  # AWS floor (see host_context.py) — every
+                                  # other AWS profile is unaffected by this key.
+  rancher:
+    memory_mib: 8192
+    vcpu: 4
+    disk_gb: 60
+
+versions:
+  harvester: "1.8.1"
+  rancher: "2.14.1"
+  k3s: "v1.35.3+k3s1"
+  cert_manager: "v1.20.1"
+
+storage:
+  image_dir: /var/lib/libvirt/images
+  backend: nvme
+
+libvirt:
+  uri: qemu:///system
+  disk_cache: none
+  disk_io: native
+
+ansible:
+  path: null
+  inventory: deployer/inventory.local
+
+# Students import Harvester into Rancher in Exercise 1 (The Arrival),
+# same as suse-virt-workshop and suse-virt-rodeo.
+harvester_auto_import: false
+
+credentials:
+  harvester_os_password: "??harvester_os_password"
+  harvester_admin_password: "??harvester_admin_password"
+  rancher_admin_password: "??rancher_admin_password"
+  harvester_token: "??harvester_token"

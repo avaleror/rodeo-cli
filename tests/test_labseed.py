@@ -87,6 +87,46 @@ def test_virt_workshop_aws_profile_has_custom_scripts(tmp_path):
         assert (scripts_dir / name).stat().st_mode & 0o111, f"{name} must be executable"
 
 
+def test_virt_workshop_aws_2n_profile_is_2_node_and_has_custom_scripts(tmp_path):
+    """virt-workshop-aws-2n is the budget tier of virt-workshop-aws: 2-node
+    Harvester (like harvester-2n) instead of 3, sized for a smaller instance
+    (m8id.4xlarge) via disk_floor_override_gb, same custom/scripts/ minus the
+    3rd node's stage=dev label."""
+    assert PROFILE_EXAMPLE["virt-workshop-aws-2n"] == "virt-workshop-aws-2n"
+    assert example_dir("virt-workshop-aws-2n").is_dir()
+
+    lab = seed_lab("virt-workshop-aws-2n", tmp_path / "virt-workshop-aws-2n", deployment_target="aws")
+
+    defn = yaml.safe_load((lab / "definition.yaml").read_text())["definition"]
+    assert [n["name"] for n in defn["nodes"]] == ["harvester1", "harvester2", "rancher"]
+
+    plan = yaml.safe_load((lab / "rodeo-plan.yaml").read_text())
+    assert plan["deployment_target"] == "aws"
+    # disk_floor_override_gb (400) wins over the global AWS floor (500) —
+    # apply_host_context() ran at seed time.
+    assert plan["resources"]["harvester"]["disk_gb"] == 400
+    assert plan["resources"]["harvester"]["disk_floor_override_gb"] == 400
+    assert plan["resources"]["harvester"]["memory_mib"] == 16384
+    assert plan["resources"]["rancher"]["disk_gb"] == 60
+
+    scripts_dir = lab / "custom" / "scripts"
+    scripts = sorted(f.name for f in scripts_dir.iterdir() if f.is_file())
+    assert scripts == [
+        "50-image-cache.sh",
+        "60-nfs-backup-target.sh",
+        "70-webserver-prod.sh",
+    ]
+    for name in scripts:
+        assert (scripts_dir / name).stat().st_mode & 0o111, f"{name} must be executable"
+
+    script_text = (scripts_dir / "70-webserver-prod.sh").read_text()
+    assert "harvester3" not in script_text
+    assert "kubectl label node harvester3" not in script_text
+    assert "stage=dev" not in "\n".join(
+        line for line in script_text.splitlines() if not line.lstrip().startswith("#")
+    )
+
+
 def test_seed_lab_normalizes_plan(tmp_path):
     lab = seed_lab("test", tmp_path / "labs" / "mylab")
     plan = lab / "rodeo-plan.yaml"

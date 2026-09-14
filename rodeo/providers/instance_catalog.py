@@ -127,6 +127,29 @@ AWS_PROFILE_TIERS: dict[str, dict[InstanceTier, InstanceOffer]] = {
             "m7i.metal-24xl", "performance", "bare metal — max nested performance"
         ),
     },
+    # Budget-tier sibling of virt-workshop-aws: 2-node Harvester (no etcd HA,
+    # like harvester-2n) instead of 3, sized for a genuinely smaller/cheaper
+    # instance rather than just an EBS-only 3-node box. m8id.4xlarge (half of
+    # harvester-aws's m8id.8xlarge) is the actual intent of this profile's
+    # "budget" tier; recommended/performance exist for headroom if wanted,
+    # not because 2 nodes need it.
+    "virt-workshop-aws-2n": {
+        "budget": InstanceOffer(
+            "m8id.4xlarge", "budget",
+            "16 vCPU / 64 GiB / a single 950 GB NVMe device — this profile's "
+            "actual intent: 2x400 + 60 (Rancher) = 860 GB fits with margin "
+            "via resources.harvester.disk_floor_override_gb (see rodeo-plan.yaml)",
+        ),
+        "recommended": InstanceOffer(
+            "m8id.8xlarge", "recommended",
+            "32 vCPU / 128 GiB / 1.9 TiB NVMe — same instance as "
+            "virt-workshop-aws's recommended tier, more headroom than 2 "
+            "nodes need if you want it anyway",
+        ),
+        "performance": InstanceOffer(
+            "m7i.metal-24xl", "performance", "bare metal — max nested performance"
+        ),
+    },
     "suse-edge": {
         "budget": InstanceOffer(
             "m7i.16xlarge", "budget", "64 vCPU / 256 GiB — Edge stack (EBS)"

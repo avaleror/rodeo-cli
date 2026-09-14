@@ -136,6 +136,31 @@ def test_up_deploys_when_root(tmp_path, monkeypatch):
     assert captured.get("reconcile") is True
 
 
+def test_infer_lab_profile_prefers_longest_match(tmp_path):
+    """Live-caught 2026-09-14: a plan named 'virt-workshop-aws-2n-rodeo'
+    must infer 'virt-workshop-aws-2n', not 'virt-workshop-aws' — the shorter
+    name is also a substring of the longer one, and dict insertion order
+    used to pick it first, silently provisioning the wrong (more expensive)
+    instance type on any resume that doesn't pass --profile explicitly."""
+    lab = tmp_path / "some-dir-name"
+    lab.mkdir()
+    (lab / "rodeo-plan.yaml").write_text("name: virt-workshop-aws-2n-rodeo\n")
+    assert up_mod._infer_lab_profile(lab) == "virt-workshop-aws-2n"
+
+
+def test_infer_lab_profile_single_match_unaffected(tmp_path):
+    lab = tmp_path / "some-dir-name"
+    lab.mkdir()
+    (lab / "rodeo-plan.yaml").write_text("name: virt-workshop-aws-rodeo\n")
+    assert up_mod._infer_lab_profile(lab) == "virt-workshop-aws"
+
+
+def test_infer_lab_profile_dir_name_exact_match_wins_immediately(tmp_path):
+    lab = tmp_path / "virt-workshop-aws-2n"
+    lab.mkdir()
+    assert up_mod._infer_lab_profile(lab) == "virt-workshop-aws-2n"
+
+
 def test_up_registers_ownership_fixup_when_already_root_via_sudo_user(tmp_path, monkeypatch):
     """AWS remote deploy enters up_cmd already root via an outer `sudo -n bash
     -lc "rodeo up ..."` (see providers/remote_up.py) — rodeo itself is never

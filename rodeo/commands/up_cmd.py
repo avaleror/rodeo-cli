@@ -380,7 +380,15 @@ def _aws_control_plane_deploy(
 
 
 def _infer_lab_profile(lab: Path) -> str | None:
-    """Best-effort profile name from lab directory or plan name."""
+    """Best-effort profile name from lab directory or plan name.
+
+    Picks the LONGEST matching PROFILE_EXAMPLE key, not the first found —
+    live-caught 2026-09-14: a plan named "virt-workshop-aws-2n-rodeo" matched
+    "virt-workshop-aws" first (dict insertion order), since that shorter name
+    is also a substring of the longer one, silently inferring the wrong
+    profile (and provisioning the wrong, more expensive instance type) on any
+    resume/rerun that doesn't pass --profile explicitly.
+    """
     name = lab.name.strip()
     from ..labseed import PROFILE_EXAMPLE
 
@@ -392,9 +400,9 @@ def _infer_lab_profile(lab: Path) -> str | None:
 
         data = _yaml.safe_load(plan.read_text()) or {}
         pname = str(data.get("name") or "")
-        for key in PROFILE_EXAMPLE:
-            if key in pname:
-                return key
+        matches = [key for key in PROFILE_EXAMPLE if key in pname]
+        if matches:
+            return max(matches, key=len)
     return None
 
 

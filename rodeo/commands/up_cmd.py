@@ -14,6 +14,7 @@ Design choices that remove the classic friction:
 """
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -41,7 +42,7 @@ from ..privilege import (
     sudo_prefix,
     tmux_available,
 )
-from ..paths import invoking_home
+from ..paths import fix_invoking_ownership, invoking_home
 from ..providers.remote_up import execute_aws_up, on_ec2
 from ..secretgen import ensure_secrets_file
 from .deploy import execute_deploy
@@ -298,6 +299,18 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
                        "--target", local_target if deployment_target != "aws" else "baremetal"]
         resume_args.append("--reconcile" if reconcile else "--no-reconcile")
         ensure_root(resume_args)  # does not return
+    elif os.environ.get("SUDO_USER"):
+        # Already root here without going through ensure_root()'s own relaunch
+        # above — e.g. the AWS remote deploy script invokes us via an outer
+        # `sudo -n bash -lc "rodeo up ..."`, so rodeo itself is never the
+        # process sudo launched. ensure_root() is where the "hand ~/.rodeo
+        # back to the invoking user on exit" hook normally gets registered;
+        # since that path is skipped here, register it directly so
+        # ~/.rodeo doesn't stay root-owned forever (every later `rodeo
+        # status`/`rodeo ssh` would otherwise need sudo too).
+        import atexit
+
+        atexit.register(fix_invoking_ownership)
 
     _deploy(lab, assume_yes=assume_yes, reconcile=reconcile)
 

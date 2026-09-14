@@ -1,6 +1,8 @@
 """rodeo up — the on-ramp flow (engine + host mocked)."""
 from __future__ import annotations
 
+import atexit
+
 import yaml
 from click.testing import CliRunner
 
@@ -132,6 +134,50 @@ def test_up_deploys_when_root(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
     assert captured.get("name") == "deployme"
     assert captured.get("reconcile") is True
+
+
+def test_up_registers_ownership_fixup_when_already_root_via_sudo_user(tmp_path, monkeypatch):
+    """AWS remote deploy enters up_cmd already root via an outer `sudo -n bash
+    -lc "rodeo up ..."` (see providers/remote_up.py) — rodeo itself is never
+    the process sudo launched, so ensure_root()'s own relaunch (and the
+    ownership-fixup atexit it would register) never runs. up_cmd must
+    register the same hook directly in this case, or ~/.rodeo stays
+    root-owned forever after an AWS deploy."""
+    monkeypatch.setattr(up_mod, "detect_host", _ready_host)
+    monkeypatch.setattr(up_mod, "is_root", lambda: True)
+    monkeypatch.setattr(up_mod, "run_preflight", lambda cfg, root: True)
+    monkeypatch.setattr(up_mod, "execute_deploy", lambda cfg, root, **kwargs: 0)
+    monkeypatch.setenv("SUDO_USER", "ec2-user")
+
+    registered = []
+    monkeypatch.setattr(atexit, "register", lambda fn: registered.append(fn))
+
+    lab = tmp_path / "labs" / "aws-style"
+    result = CliRunner().invoke(
+        up_mod.up_cmd, ["--yes", "--no-tmux", "--profile", "test", "--dir", str(lab)]
+    )
+    assert result.exit_code == 0, result.output
+    assert up_mod.fix_invoking_ownership in registered
+
+
+def test_up_no_fixup_when_already_root_no_sudo_user(tmp_path, monkeypatch):
+    """Genuinely root with no invoking user (no SUDO_USER) — nothing to hand
+    back, so no hook should be registered."""
+    monkeypatch.setattr(up_mod, "detect_host", _ready_host)
+    monkeypatch.setattr(up_mod, "is_root", lambda: True)
+    monkeypatch.setattr(up_mod, "run_preflight", lambda cfg, root: True)
+    monkeypatch.setattr(up_mod, "execute_deploy", lambda cfg, root, **kwargs: 0)
+    monkeypatch.delenv("SUDO_USER", raising=False)
+
+    registered = []
+    monkeypatch.setattr(atexit, "register", lambda fn: registered.append(fn))
+
+    lab = tmp_path / "labs" / "plain-root"
+    result = CliRunner().invoke(
+        up_mod.up_cmd, ["--yes", "--no-tmux", "--profile", "test", "--dir", str(lab)]
+    )
+    assert result.exit_code == 0, result.output
+    assert registered == []
 
 
 def test_up_no_reconcile_opt_out(tmp_path, monkeypatch):

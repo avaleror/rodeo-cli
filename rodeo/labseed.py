@@ -27,6 +27,7 @@ PROFILE_EXAMPLE = {
     "virt-workshop-aws": "virt-workshop-aws",  # harvester-aws + custom/scripts/ (image cache, NFS, pre-created VM) for suse-virt-workshop
     "virt-workshop-aws-2n": "virt-workshop-aws-2n",  # budget tier: 2-node Harvester (like harvester-2n) + same custom/scripts/, sized for m8id.4xlarge
     "suse-edge": "suse-edge",               # Rancher + Elemental + EIB + 4 edge nodes (SUSE Edge 3.6)
+    "suse-edge-aws": "suse-edge-aws",       # same topology as "suse-edge", pre-tuned for deployment_target: aws (more RAM/disk headroom, rancher_tls: secret)
 }
 
 _LAB_MARKERS = ("rodeo-plan.yaml", "definition.yaml")

@@ -46,6 +46,24 @@ def test_catalog_virt_workshop_aws_2n_budget_is_smaller_instance():
     assert catalog_for_profile("virt-workshop-aws")["budget"].instance_type == "m7i.16xlarge"
 
 
+def test_catalog_suse_edge_aws_recommended_has_local_nvme():
+    """suse-edge-aws's real guest footprint (~44 GiB RAM / 16 vCPU / 310 GB
+    disk) is much smaller than Harvester's — sized independently, not a
+    copy of the generic suse-edge catalog entry (which is oversized)."""
+    offer = catalog_for_profile("suse-edge-aws")["recommended"]
+    assert offer.instance_type == "m8id.4xlarge"
+    # The generic suse-edge entry is untouched by adding suse-edge-aws.
+    assert catalog_for_profile("suse-edge")["recommended"].instance_type == "i7i.8xlarge"
+
+
+def test_catalog_suse_edge_aws_budget_is_same_size_no_nvme():
+    """Unlike harvester-aws-style profiles, suse-edge-aws's budget tier is a
+    genuine budget pick: same vCPU/RAM as recommended, just no local NVMe,
+    and actually cheaper (not a bigger/pricier EBS-only box)."""
+    offer = catalog_for_profile("suse-edge-aws")["budget"]
+    assert offer.instance_type == "m7i.4xlarge"
+
+
 def test_resolve_explicit_type_wins():
     itype, tier = resolve_instance_type(
         profile="harvester",

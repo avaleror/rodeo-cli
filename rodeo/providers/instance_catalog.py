@@ -161,6 +161,30 @@ AWS_PROFILE_TIERS: dict[str, dict[InstanceTier, InstanceOffer]] = {
             "m7i.metal-24xl", "performance", "bare metal — max nested performance"
         ),
     },
+    # suse-edge's real guest footprint is much smaller than Harvester's (1
+    # Rancher + 1 EIB + 4 lightweight edge nodes = ~44 GiB RAM / 16 vCPU / 310
+    # GB disk total) — sized from scratch here rather than reusing the
+    # generic "suse-edge" entry above, which was never recalculated for this
+    # and ended up oversized (i7i.8xlarge, 32 vCPU/128 GiB, plus that type's
+    # documented multi-device NVMe issue — see instance_catalog module docs).
+    "suse-edge-aws": {
+        "budget": InstanceOffer(
+            "m7i.4xlarge", "budget",
+            "16 vCPU / 64 GiB, EBS only — same size as recommended, just no "
+            "local NVMe. A genuine budget pick here (cheaper AND same vCPU/"
+            "RAM), unlike harvester-aws-style profiles where 'budget' means "
+            "a bigger EBS-only box",
+        ),
+        "recommended": InstanceOffer(
+            "m8id.4xlarge", "recommended",
+            "16 vCPU / 64 GiB / a single 950 GB NVMe device — local NVMe "
+            "helps EIB's image-building I/O; ~310 GB guest disk need fits "
+            "with ~640 GB to spare",
+        ),
+        "performance": InstanceOffer(
+            "m7i.metal-24xl", "performance", "bare metal — max nested performance"
+        ),
+    },
 }
 
 _DEFAULT_PROFILE_KEY = "harvester"

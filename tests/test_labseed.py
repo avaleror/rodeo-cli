@@ -127,6 +127,31 @@ def test_virt_workshop_aws_2n_profile_is_2_node_and_has_custom_scripts(tmp_path)
     )
 
 
+def test_suse_edge_aws_profile_more_headroom_and_secret_tls(tmp_path):
+    """suse-edge-aws: same topology as suse-edge (type stays 'suse-edge'),
+    more RAM/disk headroom for AWS, and rancher_tls forced to 'secret'
+    instead of the bare-metal default's letsEncrypt — no external DNS/ACME
+    dependency, same choice already made for virt-workshop-aws."""
+    assert PROFILE_EXAMPLE["suse-edge-aws"] == "suse-edge-aws"
+    assert example_dir("suse-edge-aws").is_dir()
+
+    lab = seed_lab("suse-edge-aws", tmp_path / "suse-edge-aws", deployment_target="aws")
+
+    plan = yaml.safe_load((lab / "rodeo-plan.yaml").read_text())
+    assert plan["type"] == "suse-edge"
+    assert plan["deployment_target"] == "aws"
+    assert plan["rancher_tls"]["source"] == "secret"
+    assert plan["resources"]["rancher"]["memory_mib"] == 12288
+    assert plan["resources"]["eib"]["memory_mib"] == 16384
+    assert plan["resources"]["edge-node"]["memory_mib"] == 4096
+
+    # The generic "suse-edge" profile is untouched by adding "suse-edge-aws".
+    edge_lab = seed_lab("suse-edge", tmp_path / "suse-edge", deployment_target="baremetal")
+    edge_plan = yaml.safe_load((edge_lab / "rodeo-plan.yaml").read_text())
+    assert edge_plan["rancher_tls"]["source"] == "letsEncrypt"
+    assert edge_plan["resources"]["rancher"]["memory_mib"] == 8192
+
+
 def test_seed_lab_normalizes_plan(tmp_path):
     lab = seed_lab("test", tmp_path / "labs" / "mylab")
     plan = lab / "rodeo-plan.yaml"

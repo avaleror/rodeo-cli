@@ -78,19 +78,24 @@ deployment_target: aws
 provider:
   type: aws
   region: eu-central-1
-  instance_type: i7i.8xlarge      # preferred: local NVMe
+  instance_tier: recommended   # harvester → m8id.8xlarge (see instance_catalog)
+  # instance_type: m8id.8xlarge  # or pin explicitly
   # Leap 16 by default; pin with ami: ami-… for SLES 16 if needed
   subnet_id: subnet-…
-  security_group_ids: [sg-…]
+  # security_group_ids: [sg-…]   # omit → rodeo manages one scoped to your IP
   ssh_user: ec2-user
   volume_size_gib: 100            # root EBS; lab disks on NVMe via host_context
 ```
 
 ```bash
 pip install 'rodeo-cli[aws]'
-rodeo up --yes --profile harvester --target aws
+rodeo up --yes --profile harvester --target aws --instance-tier recommended
 rodeo ssh primary
 rodeo ssh primary/rancher
 # tear down the EC2 host (not nested VMs alone):
 rodeo destroy --cloud --yes
 ```
+
+AWS is `--target aws` on the base topology (no separate `*-aws` profile). In Fleet
+`workshop.yaml`, never set `lab.target: aws` — use `lab.target: baremetal` on
+provisioned hosts.

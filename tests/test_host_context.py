@@ -160,3 +160,67 @@ def test_baremetal_ec2_nvme_fact_enables_backend():
     out, notes = apply_host_context(cfg, host_facts={"has_nvme": True})
     assert out["storage"]["backend"] == "nvme"
     assert any("nvme" in n for n in notes)
+
+
+def test_aws_suse_edge_forces_self_signed_tls_and_raises_headroom():
+    """suse-edge on aws must not default to letsEncrypt: rodeo's managed SG
+    (rodeo/providers/aws.py MANAGED_SG_PORTS) only opens 22/8443/30002 to the
+    operator's own IP — port 80 is never reachable, so ACME can never
+    complete, and 443 (where letsEncrypt/Traefik would serve) isn't open
+    either. Values below match the deleted suse-edge-aws example profile."""
+    cfg = {
+        "type": "suse-edge",
+        "deployment_target": "aws",
+        "rancher_tls": {"source": "letsEncrypt", "email": "admin@example.com"},
+        "resources": {
+            "rancher": {"memory_mib": 8192, "vcpu": 4, "disk_gb": 60},
+            "eib": {"memory_mib": 12288, "vcpu": 4, "disk_gb": 100},
+            "edge-node": {"memory_mib": 4096, "vcpu": 2, "disk_gb": 20},
+        },
+    }
+    out, notes = apply_host_context(cfg)
+    assert out["rancher_tls"]["source"] == "secret"
+    assert out["rancher_tls"]["email"] == "admin@example.com"
+    assert out["resources"]["rancher"]["memory_mib"] == 12288
+    assert out["resources"]["rancher"]["disk_gb"] == 60
+    assert out["resources"]["eib"]["memory_mib"] == 16384
+    assert out["resources"]["eib"]["disk_gb"] == 150
+    assert out["resources"]["edge-node"]["memory_mib"] == 4096
+    assert out["resources"]["edge-node"]["disk_gb"] == 25
+    assert any("rancher_tls.source" in n for n in notes)
+
+
+def test_aws_suse_edge_leaves_explicit_non_default_tls_alone():
+    """Only the still-default 'letsEncrypt' is replaced — a plan that already
+    chose 'secret' (or anything else) is left untouched."""
+    cfg = {
+        "type": "suse-edge",
+        "deployment_target": "aws",
+        "rancher_tls": {"source": "secret"},
+        "resources": {"rancher": {"memory_mib": 20000, "disk_gb": 60}},
+    }
+    out, notes = apply_host_context(cfg)
+    assert out["rancher_tls"]["source"] == "secret"
+    assert not any("rancher_tls.source" in n for n in notes)
+    # Never shrinks an explicit larger plan.
+    assert out["resources"]["rancher"]["memory_mib"] == 20000
+
+
+def test_aws_suse_edge_overlay_does_not_run_on_baremetal_or_other_types():
+    baremetal = {
+        "type": "suse-edge",
+        "deployment_target": "baremetal",
+        "rancher_tls": {"source": "letsEncrypt"},
+        "resources": {"rancher": {"memory_mib": 8192, "disk_gb": 60}},
+    }
+    out, _ = apply_host_context(baremetal)
+    assert out["rancher_tls"]["source"] == "letsEncrypt"
+    assert out["resources"]["rancher"]["memory_mib"] == 8192
+
+    harvester_on_aws = {
+        "type": "suse-virt",
+        "deployment_target": "aws",
+        "resources": {"harvester": {"disk_gb": 0}},
+    }
+    out2, _ = apply_host_context(harvester_on_aws)
+    assert "rancher_tls" not in out2

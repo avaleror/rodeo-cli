@@ -24,7 +24,11 @@ from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
 from ..config import ConfigError, find_ansible_root, find_lab_dir, load_config, validate_config
-from ..labseed import custom_profile_dir, profile_kind, seed_lab
+from ..labseed import (
+    custom_profile_dir,
+    profile_kind,
+    seed_lab,
+)
 from ..preflight import (
     PROFILE_SIZING,
     detect_host,

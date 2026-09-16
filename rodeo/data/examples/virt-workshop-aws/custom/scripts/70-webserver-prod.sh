@@ -13,7 +13,7 @@
 #                           then releases the pin once placed)
 # On the Instruqt track these are baked into the saved cluster image; here,
 # since every AWS deploy starts from a genuinely blank cluster, this script
-# builds the same end state on top of the harvester-aws profile's plain
+# builds the same end state on top of the harvester profile's plain
 # harvester+rancher deploy: namespace, VM network, node labels, and both VMs.
 #
 # Runs after 50-image-cache.sh (needs the cached image already served) and

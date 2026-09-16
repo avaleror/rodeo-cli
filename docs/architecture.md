@@ -66,6 +66,26 @@ rancher            aws              Rancher on an AWS EC2 KVM host
 | `aws` | Provisioned EC2 *or* BYO on EC2 | `provider:` + destroy; `disk_gb` floor 500/Harvester-node, 60/Rancher-node (flat); NVMe → `image_dir` |
 | `gcp` *(planned)* | GCP instance with KVM | external IP via GCE metadata; VPC firewall rules |
 
+### Vocabulary (keep these straight)
+
+| Term | Meaning | Where it lives |
+|------|---------|----------------|
+| **Control plane acquire** | Laptop provisions (or reuses) a cloud KVM host, waits for SSH, then remote-runs deploy | `rodeo up --target aws` / `rodeo fleet provision` |
+| **Execution target on the KVM host** | What phase guards and firewall/DNAT the *host* actually runs | Phases run as `baremetal` (or `instruqt`) on the instance — never as a second cloud pipeline |
+| **`deployment_target: aws` in the plan** | Host-context marker: disk/NVMe/cache overlays + cloud destroy ownership. Stays in the plan on the instance so `apply_host_context` and `rodeo destroy --cloud` still work | `rodeo-plan.yaml` |
+| **Lab topology** | Nested VM shape: nodes, MACs, boot order, exposed services | `definition.yaml` → `rodeo/inventory.py` |
+| **Workshop inventory** | Which student/instructor *hosts* exist and how to SSH to them | `workshop.yaml` → `rodeo/fleet/inventory.py` |
+
+**Option A rule — AWS is *where*, not a second *what*.** There is **no** separate `*-aws` topology profile. Use the base profile (`harvester`, `suse-edge`, …) plus `--target aws` / `deployment_target: aws`. Instance size comes from `instance_catalog` keyed by that **same** profile name (`budget` / `recommended` / `performance`). Disk floors, NVMe, and guest cache/io come from `host_context` when the target is `aws`.
+
+Canonical smoke:
+
+```bash
+rodeo up --yes --profile harvester --target aws --instance-tier recommended
+```
+
+**Never set `lab.target: aws` in `workshop.yaml`.** Fleet-provisioned hosts run the lab as `lab.target: baremetal`. `deployment_target: aws` is only the laptop control-plane / plan host-context marker for single-host acquire. Mixing them breaks phase behaviour.
+
 **Acquire vs adapt.** Host acquire can be provisioned (`rodeo up --target aws` / Fleet `provider:`) or BYO (SSH inventory / operator-created EC2). Both must hit `apply_host_context()` before deploy so workshops do not fork playbooks per cloud. Tech platform declares *what* lab; host context declares *where* and *how the host must be shaped*.
 
 Adding a new host context is one call: `host_context.register_host_context(name, overlay)`. Registration makes the target valid in plans, `--target`, and the `rodeo up` prompt; the overlay is also where engine behaviour is customized — values it sets on the plan (`libvirt.disk_cache`/`disk_io`, `storage.backend`, resources) are honored by DeployRunner over its per-target defaults. Only a target needing bespoke *detection* (like Instruqt's env probe) still touches `up_cmd.py`. See the Extension points table below.
@@ -77,7 +97,7 @@ Adding a new host context is one call: `host_context.register_host_context(name,
 Two terms that sound alike but are different:
 
 - **Engine `type`** — the deploy *pipeline*: which phases run and how. Code lives in `rodeo/profiles/<name>.py` (a `RodeoProfile` subclass) + `data/platforms/<name>/definition.yaml`. There are **three** today.
-- **Profile** (`--profile`) — a named, runnable *lab* (a config-dir, bundled or under `~/.rodeo/profiles/`). Each profile picks one engine type. There are **six** bundled ones.
+- **Profile** (`--profile`) — a named, runnable *lab* (a config-dir, bundled or under `~/.rodeo/profiles/`). Each profile picks one engine type. Topology profiles are the *what*; AWS is only a *where*.
 
 Since PR #4 the three profile classes are thin: `RodeoProfile` (`profiles/base.py`) owns config assembly (`default_cfg()` — loads the definition with a static fallback) and phase dispatch (a table-driven `run_phase()` with a no-Rancher skip guard). Each subclass carries only its data and deltas — `static_vms`, `resources`, `versions`, and small hooks like `extra_cfg()` / `_default_user()`.
 
@@ -99,9 +119,12 @@ The Harvester path is the outlier: it needs `pxe_server` (iPXE/TFTP/HTTP) and a 
 | `test` | `suse-virt` | 2-node Harvester, no Rancher |
 | `harvester-ha` | `suse-virt` | 3-node Harvester, no Rancher (etcd HA) |
 | `harvester-2n` | `suse-virt` | 2-node Harvester + Rancher Prime |
-| `harvester` | `suse-virt` | 3-node Harvester HCI + Rancher Prime |
-| `harvester-aws` | `suse-virt` | Same topology as `harvester`, `rodeo-plan.yaml` pre-tuned for `deployment_target: aws` (`provider:` block, `m8id.8xlarge` recommended) |
-| `suse-edge` | `suse-edge` | Rancher + Elemental + EIB + 4 edge nodes (SUSE Edge 3.6) |
+| `harvester` | `suse-virt` | 3-node Harvester HCI + Rancher Prime (AWS: same profile + `--target aws`; recommended `m8id.8xlarge`) |
+| `suse-edge` | `suse-edge` | Rancher + Elemental + EIB + 4 edge nodes (SUSE Edge 3.6; AWS: same profile + `--target aws`) |
+| `virt-workshop-aws` | `suse-virt` | Workshop overlay on harvester topology (`custom/scripts/` for image cache / NFS / sample VMs) |
+| `virt-workshop-aws-2n` | `suse-virt` | 2-node workshop overlay (budget instance tier) |
+
+`virt-workshop-aws` / `virt-workshop-aws-2n` are workshop-specific overlays (custom scripts for suse-virt-workshop), not AWS twins of `harvester`.
 
 Per-profile topology tables (VMs, IPs, RAM) live in each [deployment guide](get-started.md). The detailed suse-virt topology and iPXE boot chain are documented below as the reference implementation.
 

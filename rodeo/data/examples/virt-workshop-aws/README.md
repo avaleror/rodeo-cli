@@ -1,8 +1,8 @@
 # virt-workshop-aws profile
 
-Same 3-node Harvester HCI + Rancher Prime topology and AWS sizing as
-`harvester-aws` (`m8id.8xlarge`, 24 GiB/Harvester-node, 16 GiB Rancher, 500 GB/
-Harvester-node disk floor) — plus the extra pre-lab state
+Same 3-node Harvester HCI + Rancher Prime topology and AWS sizing as the
+base `harvester` profile on `--target aws` (`m8id.8xlarge`, 24 GiB/Harvester-node,
+16 GiB Rancher, 500 GB/Harvester-node disk floor) — plus the extra pre-lab state
 [suse-virt-workshop](https://github.com/avaleror/suse-virt-workshop)'s
 exercises need, so a student can run the same story
 [suse-virt-rodeo](https://github.com/avaleror/suse-virt-rodeo) runs on

@@ -34,10 +34,10 @@ _TARGETS: dict[str, HostContextOverlay] = {}
 # also wrong. Andrés then settled it in steps: flat 300 GB/Harvester-node, then
 # 600 once harvester-2n's recommended instance (m8id.8xlarge, 32 vCPU / 128 GiB
 # / a single ~1.9 TiB NVMe device) gave headroom to spend — but 600 x 3 nodes
-# (harvester-aws) + 60 (Rancher) = 1860 GB leaves only ~40 GB free on that same
-# ~1.9 TiB device, too tight. Settled at 500: 500x3 + 60 = 1560 GB, ~300+ GB
-# free margin on harvester-aws's m8id.8xlarge, and even more room on
-# harvester-2n's 2-node math (500x2 + 60 = 1060 GB).
+# (3-node harvester on AWS) + 60 (Rancher) = 1860 GB leaves only ~40 GB free on
+# that same ~1.9 TiB device, too tight. Settled at 500: 500x3 + 60 = 1560 GB,
+# ~300+ GB free margin on harvester's recommended m8id.8xlarge, and even more
+# room on harvester-2n's 2-node math (500x2 + 60 = 1060 GB).
 AWS_HARVESTER_DISK_GB = 500
 AWS_RANCHER_DISK_GB = 60
 
@@ -46,6 +46,19 @@ AWS_RANCHER_DISK_GB = 60
 _AWS_DISK_FLOORS: dict[str, int] = {
     "harvester": AWS_HARVESTER_DISK_GB,
     "rancher": AWS_RANCHER_DISK_GB,
+}
+
+# suse-edge on AWS: same RAM/disk headroom the deleted suse-edge-aws example
+# profile used to hardcode (rancher 12/60, eib 16/150, edge-node stays 4/25).
+# Floors only raise, never shrink an explicit larger plan — same contract as
+# _ensure_harvester_disk_floor.
+_AWS_SUSE_EDGE_MEMORY_MIB_FLOORS: dict[str, int] = {
+    "rancher": 12288,
+    "eib": 16384,
+}
+_AWS_SUSE_EDGE_DISK_GB_FLOORS: dict[str, int] = {
+    "eib": 150,
+    "edge-node": 25,
 }
 
 
@@ -145,6 +158,8 @@ def _apply_instruqt(cfg: dict[str, Any], facts: dict[str, Any]) -> list[str]:
 def _apply_aws(cfg: dict[str, Any], facts: dict[str, Any]) -> list[str]:
     notes: list[str] = []
     notes.extend(_ensure_harvester_disk_floor(cfg, _AWS_DISK_FLOORS))
+    if cfg.get("type") == "suse-edge":
+        notes.extend(_apply_aws_suse_edge(cfg))
     notes.extend(_ensure_nvme_backend(cfg, force=True))
     # Local NVMe: baremetal-style O_DIRECT once the pool is on instance store.
     libvirt = cfg.setdefault("libvirt", {})
@@ -157,6 +172,33 @@ def _apply_aws(cfg: dict[str, Any], facts: dict[str, Any]) -> list[str]:
     if not libvirt.get("disk_io"):
         libvirt["disk_io"] = "native"
         notes.append("libvirt.disk_io: → native (aws/nvme)")
+    return notes
+
+
+def _apply_aws_suse_edge(cfg: dict[str, Any]) -> list[str]:
+    """suse-edge on AWS needs self-signed Rancher TLS, not the bare-metal
+    default of letsEncrypt: rodeo's own managed security group only opens
+    22/8443/30002 (``rodeo/providers/aws.py`` ``MANAGED_SG_PORTS``), scoped to
+    the operator's own IP — port 80 is never open to anyone, so the ACME
+    HTTP-01 challenge can never complete, and even a valid cert would sit
+    behind Traefik on 443, which the managed SG also does not expose. 'secret'
+    routes Rancher to the self-signed cert + NodePort 30002 path instead,
+    which the managed SG does open. Only replaces the still-default
+    'letsEncrypt' — an explicit non-default choice (e.g. the user already set
+    'secret', or a custom source) is left alone.
+
+    Also raises rancher/eib RAM and eib/edge-node disk to the headroom the
+    deleted suse-edge-aws example profile used to hardcode — AWS instances
+    afford it and EIB image builds benefit from it. Never shrinks an explicit
+    larger plan.
+    """
+    notes: list[str] = []
+    tls = cfg.get("rancher_tls")
+    if isinstance(tls, dict) and tls.get("source") == "letsEncrypt":
+        tls["source"] = "secret"
+        notes.append("rancher_tls.source: letsEncrypt → secret (aws managed SG has no port 80/443)")
+    notes.extend(_ensure_resource_floor(cfg, _AWS_SUSE_EDGE_MEMORY_MIB_FLOORS, "memory_mib"))
+    notes.extend(_ensure_resource_floor(cfg, _AWS_SUSE_EDGE_DISK_GB_FLOORS, "disk_gb"))
     return notes
 
 
@@ -219,6 +261,36 @@ def _ensure_harvester_disk_floor(
             continue
         block["disk_gb"] = floor
         notes.append(f"resources.{flavor}.disk_gb: {current} → {floor}")
+    return notes
+
+
+def _ensure_resource_floor(
+    cfg: dict[str, Any],
+    floors: dict[str, int],
+    field: str,
+) -> list[str]:
+    """Raise ``resources.<flavor>.<field>`` to an absolute floor per flavor.
+    Never shrinks an explicit larger plan. Unlike
+    :func:`_ensure_harvester_disk_floor`, this is not node-count-aware — each
+    flavor listed gets its own independent floor, no
+    ``disk_floor_override_gb``-style opt-out (not needed by current callers)."""
+    notes: list[str] = []
+    resources = cfg.get("resources")
+    if not isinstance(resources, dict):
+        return notes
+    for flavor, floor in floors.items():
+        block = resources.get(flavor)
+        if not isinstance(block, dict):
+            continue
+        current = block.get(field)
+        try:
+            cur_i = int(current) if current is not None else 0
+        except (TypeError, ValueError):
+            cur_i = 0
+        if cur_i >= floor:
+            continue
+        block[field] = floor
+        notes.append(f"resources.{flavor}.{field}: {current} → {floor}")
     return notes
 
 

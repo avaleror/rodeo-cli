@@ -114,7 +114,7 @@ rodeo ssh primary -- 'cd /root/lab 2>/dev/null || cd ~/lab; rodeo status --outpu
 ```
 
 Adjust remote lab path if the seed used a different dir. Inspect plan/vars for
-Harvester disk sizing when NVMe is present (`disk_gb` **300** per Harvester node, **60** per Rancher node — flat, not scaled by node count — and `storage.backend: nvme`).
+Harvester disk sizing when NVMe is present (`disk_gb` **500** per Harvester node, **60** per Rancher node — flat, not scaled by node count — and `storage.backend: nvme`).
 
 **Pass when:**
 

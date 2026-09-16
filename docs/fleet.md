@@ -304,10 +304,20 @@ Shared Protocol / schema for host-acquire. **AWS (F4a) MVP is implemented** in
 `rodeo/providers/` for both Fleet and single-host `deployment_target: aws`.
 GCP / Vultr / Hetzner remain stubs. Summary in [Roadmap](#roadmap).
 
-**Important:** AWS-provisioned workshop hosts run the lab as
-`lab.target: baremetal` (full firewalld / DNAT / `finalise`). `deployment_target: aws`
-is the laptop control-plane mode (`rodeo up --target aws`); do not set
-`lab.target: aws` in `workshop.yaml`.
+**Important — never set `lab.target: aws` in `workshop.yaml`.**
+
+AWS-provisioned workshop hosts run the lab as `lab.target: baremetal` (full
+firewalld / DNAT / `finalise`). `deployment_target: aws` is the laptop
+control-plane / plan host-context marker (`rodeo up --target aws` and the plan
+kept on the instance for disk floors + `destroy --cloud`). Mixing
+`lab.target: aws` into Fleet inventory breaks phase behaviour.
+
+| Axis | Single-host | Fleet workshop |
+|------|-------------|----------------|
+| Acquire | `rodeo up --target aws` + `provider:` in plan | `rodeo fleet provision` + `provider:` in `workshop.yaml` |
+| Lab topology profile | `--profile harvester` | same base profile seeded on each host |
+| Execution on the KVM host | phases as `baremetal` | `lab.target: baremetal` |
+| Plan marker on the host | keep `deployment_target: aws` | do **not** set `lab.target: aws` |
 
 ### `HostProvider` Protocol
 

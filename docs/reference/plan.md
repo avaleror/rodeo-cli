@@ -127,12 +127,28 @@ On **aws**, `apply_host_context()` (seed + deploy) raises `resources.harvester.d
 to a flat **500 GB per Harvester node** and `resources.rancher.disk_gb` to **60 GB**
 (never scaled by node count — the rest of the NVMe device is deliberately left free,
 matching real-world/Instruqt sizing). Also sets `storage.backend: nvme` and mounts the
-largest non-root NVMe on `image_dir`. Prefer **`i7i.8xlarge`** for the generic 3-node
-`harvester` profile (needs its 256 GiB RAM, BYO/non-AWS-tuned); the AWS-specific
-`harvester-2n` and `harvester-aws` profiles both use **`m8id.8xlarge`** (32 vCPU /
-128 GiB / a single ~1.9 TiB NVMe device — unlike `i7i.8xlarge`, which splits its NVMe
-across two ~3.4 TiB devices and rodeo only mounts one). Nested virt is enabled by
-default on non-metal types.
+largest non-root NVMe on `image_dir`. Nested virt is enabled by default on non-metal
+types.
+
+**Option A — one topology profile, AWS is where.** Use the base profile and
+`--target aws` (there is no separate `*-aws` plan template):
+
+```bash
+rodeo up --yes --profile harvester --target aws --instance-tier recommended
+```
+
+Instance size comes from `rodeo/providers/instance_catalog.py` keyed by that
+**same** profile name. **recommended** for `harvester` and `harvester-2n` is
+**`m8id.8xlarge`** (32 vCPU / 128 GiB / a single ~1.9 TiB NVMe device — unlike
+`i7i.8xlarge`, which splits its NVMe across two devices and rodeo only mounts
+one). `suse-edge` recommended is **`m8id.4xlarge`**. Explicit
+`provider.instance_type` still wins.
+
+Keep `deployment_target: aws` in the plan on the instance (host-context +
+`destroy --cloud` marker). On the EC2 box itself, phases run as **baremetal**.
+Never set `lab.target: aws` in Fleet `workshop.yaml` — use `lab.target: baremetal`
+there (see [Fleet](../fleet.md)).
+
 
 ### `provider` (when `deployment_target: aws`)
 
@@ -160,7 +176,7 @@ with `--yes` it uses **recommended**.
 | Tier | Meaning |
 |------|---------|
 | `budget` | Meets the profile minimum (often EBS-backed Nitro) |
-| `recommended` | Preferred size (usually `i7i.*` local NVMe for Harvester/Edge) |
+| `recommended` | Preferred size for that profile (often local NVMe; see `instance_catalog`) |
 | `performance` | Metal / larger escape hatch |
 
 Before create, rodeo checks the type is **offered in the region** and probes capacity

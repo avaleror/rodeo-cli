@@ -17,17 +17,16 @@ import yaml
 _EXAMPLES = Path(__file__).parent / "data" / "examples"
 
 # Beginner-facing profile name -> bundled example directory.
+# AWS is *where* (--target aws / deployment_target: aws), not a second topology.
 PROFILE_EXAMPLE = {
     "rancher": "rancher-lab-config",        # 1 VM: Rancher Prime on K3s, no Harvester (smallest)
     "test": "harvester-lab-config",         # 2-node Harvester, no Rancher (modest hosts)
     "harvester-ha": "harvester-ha-config",  # 3-node Harvester, no Rancher (3-member etcd HA, lean sizing)
     "harvester-2n": "harvester-2n",         # 2-node Harvester + Rancher Prime (slim profile, ~56 GiB RAM)
     "harvester": "harvester",               # full 3-node Harvester + Rancher Prime
-    "harvester-aws": "harvester-aws",       # same topology as "harvester", pre-tuned for deployment_target: aws
-    "virt-workshop-aws": "virt-workshop-aws",  # harvester-aws + custom/scripts/ (image cache, NFS, pre-created VM) for suse-virt-workshop
+    "virt-workshop-aws": "virt-workshop-aws",  # harvester topology + custom/scripts/ (image cache, NFS, pre-created VM) for suse-virt-workshop
     "virt-workshop-aws-2n": "virt-workshop-aws-2n",  # budget tier: 2-node Harvester (like harvester-2n) + same custom/scripts/, sized for m8id.4xlarge
     "suse-edge": "suse-edge",               # Rancher + Elemental + EIB + 4 edge nodes (SUSE Edge 3.6)
-    "suse-edge-aws": "suse-edge-aws",       # same topology as "suse-edge", pre-tuned for deployment_target: aws (more RAM/disk headroom, rancher_tls: secret)
 }
 
 _LAB_MARKERS = ("rodeo-plan.yaml", "definition.yaml")

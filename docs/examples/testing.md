@@ -104,9 +104,9 @@ subscription, and `i7i.8xlarge` supports nested virt.
 
 ```bash
 pip install 'rodeo-cli[aws]'
-# Provision path (recommended tier → i7i.8xlarge for harvester; region capacity checked first):
+# Provision path (recommended tier → m8id.8xlarge for harvester; region capacity checked first):
 rodeo up --yes --profile harvester --target aws --instance-tier recommended
-# Or BYO: SSH to an existing i7i.8xlarge, set deployment_target: aws, then:
+# Or BYO: SSH to an existing m8id.8xlarge (or similar), set deployment_target: aws, then:
 #   rodeo up --yes --profile harvester
 ```
 
@@ -125,7 +125,7 @@ surfaces locally.
 
 Verify on the KVM host after `kvm_host`:
 
-1. `resources.harvester.disk_gb` is **300** and `resources.rancher.disk_gb` is **60** — flat per-node floors, not scaled by node count (plan / vars)
+1. `resources.harvester.disk_gb` is **500** and `resources.rancher.disk_gb` is **60** — flat per-node floors, not scaled by node count (plan / vars)
 2. `storage.backend: nvme` and `image_dir` is mounted on instance-store NVMe (`findmnt`, `lsblk`)
 3. Guest disks live under that `image_dir` (not root EBS alone)
 4. Harvester VIP / `rodeo status` healthy; tear down with `rodeo destroy --cloud --yes` if provisioned

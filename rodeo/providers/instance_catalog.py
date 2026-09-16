@@ -2,6 +2,10 @@
 
 Fleet multi-host will reuse the same catalog later. Explicit
 ``provider.instance_type`` always wins over ``provider.instance_tier``.
+
+Option A: catalog keys are **topology** profile names (``harvester``,
+``suse-edge``, …). There is no separate ``*-aws`` catalog entry — AWS is
+*where* (``--target aws`` / ``deployment_target: aws``), not a second *what*.
 """
 from __future__ import annotations
 
@@ -76,27 +80,10 @@ AWS_PROFILE_TIERS: dict[str, dict[InstanceTier, InstanceOffer]] = {
             "m7i.metal-24xl", "performance", "bare metal — max nested performance"
         ),
     },
+    # Live-validated 2026-09-11 on m8id.8xlarge: all 3 nodes Ready, Rancher up,
+    # both UIs reachable, ~12% of the single ~1.9 TiB NVMe used. i7i.8xlarge has
+    # the same vCPU/RAM but splits NVMe across two devices (rodeo mounts one).
     "harvester": {
-        "budget": InstanceOffer(
-            "m7i.16xlarge", "budget", "64 vCPU / 256 GiB — 3-node + Rancher (EBS)"
-        ),
-        "recommended": InstanceOffer(
-            "i7i.8xlarge", "recommended", "local NVMe — preferred for Harvester I/O"
-        ),
-        "performance": InstanceOffer(
-            "m7i.metal-24xl", "performance", "bare metal — max nested performance"
-        ),
-    },
-    # Same topology/guest sizing as "harvester" — a separate catalog entry
-    # because the right AWS instance for it is not i7i.8xlarge: same vCPU/RAM,
-    # but i7i.8xlarge splits its NVMe across two ~3.4 TiB devices (rodeo only
-    # mounts one). m8id.8xlarge (same vCPU/RAM as harvester-2n's pick) gives a
-    # single ~1.9 TiB device instead — tight for 3 nodes at a naive 600 GB/node
-    # floor (1860 GB, ~40 GB free), which is why AWS_HARVESTER_DISK_GB dropped
-    # to 500: 3x500 + 60 (Rancher) = 1560 GB, ~300+ GB free. Live-validated
-    # 2026-09-11: all 3 nodes Ready (real etcd HA), Rancher up, both UIs
-    # externally reachable, actual NVMe usage only ~205 GB of 1.8 TiB (12%).
-    "harvester-aws": {
         "budget": InstanceOffer(
             "m7i.16xlarge", "budget", "64 vCPU / 256 GiB — 3-node + Rancher (EBS)"
         ),
@@ -110,9 +97,8 @@ AWS_PROFILE_TIERS: dict[str, dict[InstanceTier, InstanceOffer]] = {
             "m7i.metal-24xl", "performance", "bare metal — max nested performance"
         ),
     },
-    # Same infra/sizing as harvester-aws — the custom/scripts/ that set it
-    # apart (image cache, NFS export, pre-created VM) don't change the host's
-    # own resource needs.
+    # Same host sizing as harvester — custom/scripts/ (image cache, NFS, one
+    # pre-created VM) do not change the EC2 footprint.
     "virt-workshop-aws": {
         "budget": InstanceOffer(
             "m7i.16xlarge", "budget", "64 vCPU / 256 GiB — 3-node + Rancher (EBS)"
@@ -120,7 +106,7 @@ AWS_PROFILE_TIERS: dict[str, dict[InstanceTier, InstanceOffer]] = {
         "recommended": InstanceOffer(
             "m8id.8xlarge", "recommended",
             "32 vCPU / 128 GiB / a single ~1.9 TiB NVMe device — same as "
-            "harvester-aws; custom/scripts/ adds an image cache + NFS export "
+            "harvester; custom/scripts/ adds an image cache + NFS export "
             "+ one pre-created VM on top, no extra host sizing needed",
         ),
         "performance": InstanceOffer(
@@ -128,11 +114,8 @@ AWS_PROFILE_TIERS: dict[str, dict[InstanceTier, InstanceOffer]] = {
         ),
     },
     # Budget-tier sibling of virt-workshop-aws: 2-node Harvester (no etcd HA,
-    # like harvester-2n) instead of 3, sized for a genuinely smaller/cheaper
-    # instance rather than just an EBS-only 3-node box. m8id.4xlarge (half of
-    # harvester-aws's m8id.8xlarge) is the actual intent of this profile's
-    # "budget" tier; recommended/performance exist for headroom if wanted,
-    # not because 2 nodes need it.
+    # like harvester-2n). m8id.4xlarge is the actual intent of this profile's
+    # "budget" tier.
     "virt-workshop-aws-2n": {
         "budget": InstanceOffer(
             "m8id.4xlarge", "budget",
@@ -150,30 +133,13 @@ AWS_PROFILE_TIERS: dict[str, dict[InstanceTier, InstanceOffer]] = {
             "m7i.metal-24xl", "performance", "bare metal — max nested performance"
         ),
     },
+    # Guest footprint ~44 GiB RAM / 16 vCPU / ~310 GB disk — much smaller than
+    # Harvester. Sized for AWS nested KVM; baremetal/Instruqt ignore this catalog.
     "suse-edge": {
-        "budget": InstanceOffer(
-            "m7i.16xlarge", "budget", "64 vCPU / 256 GiB — Edge stack (EBS)"
-        ),
-        "recommended": InstanceOffer(
-            "i7i.8xlarge", "recommended", "local NVMe — preferred for Edge / Harvester I/O"
-        ),
-        "performance": InstanceOffer(
-            "m7i.metal-24xl", "performance", "bare metal — max nested performance"
-        ),
-    },
-    # suse-edge's real guest footprint is much smaller than Harvester's (1
-    # Rancher + 1 EIB + 4 lightweight edge nodes = ~44 GiB RAM / 16 vCPU / 310
-    # GB disk total) — sized from scratch here rather than reusing the
-    # generic "suse-edge" entry above, which was never recalculated for this
-    # and ended up oversized (i7i.8xlarge, 32 vCPU/128 GiB, plus that type's
-    # documented multi-device NVMe issue — see instance_catalog module docs).
-    "suse-edge-aws": {
         "budget": InstanceOffer(
             "m7i.4xlarge", "budget",
             "16 vCPU / 64 GiB, EBS only — same size as recommended, just no "
-            "local NVMe. A genuine budget pick here (cheaper AND same vCPU/"
-            "RAM), unlike harvester-aws-style profiles where 'budget' means "
-            "a bigger EBS-only box",
+            "local NVMe (genuine budget pick for this smaller guest footprint)",
         ),
         "recommended": InstanceOffer(
             "m8id.4xlarge", "recommended",
@@ -190,6 +156,11 @@ AWS_PROFILE_TIERS: dict[str, dict[InstanceTier, InstanceOffer]] = {
 _DEFAULT_PROFILE_KEY = "harvester"
 
 
+def _canonical_profile(profile: str) -> str:
+    """Normalize a topology profile name for catalog lookup."""
+    return (profile or "").strip() or _DEFAULT_PROFILE_KEY
+
+
 def normalize_tier(raw: str | None) -> InstanceTier:
     """Parse ``budget|recommended|performance`` (case-insensitive)."""
     if raw is None or str(raw).strip() == "":
@@ -204,7 +175,7 @@ def normalize_tier(raw: str | None) -> InstanceTier:
 
 def catalog_for_profile(profile: str) -> dict[InstanceTier, InstanceOffer]:
     """Return the three offers for a lab profile (fallback: harvester)."""
-    name = (profile or "").strip() or _DEFAULT_PROFILE_KEY
+    name = _canonical_profile(profile)
     if name in AWS_PROFILE_TIERS:
         return AWS_PROFILE_TIERS[name]
     return AWS_PROFILE_TIERS[_DEFAULT_PROFILE_KEY]

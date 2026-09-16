@@ -1,13 +1,13 @@
 # rodeo-plan.yaml — full 3-node Harvester HCI + Rancher Prime, pre-tuned for
 # AWS, WITH the extra pre-lab state suse-virt-workshop's exercises need
-# (virt-workshop-aws profile). Same infra as harvester-aws, plus
+# (virt-workshop-aws profile). Same infra as `harvester` + `--target aws`, plus
 # custom/scripts/ that: cache a VM image over HTTP, export an NFS backup
 # target, and pre-create the "webserver-prod" VM — giving the self-serve
 # workshop the same starting state suse-virt-rodeo's Instruqt image already
 # has baked in. See custom/scripts/*.sh for what each step does and why.
 #
-# harvester-aws stays untouched — this is a separate profile for running the
-# suse-virt-workshop exercises specifically, not a replacement.
+# For a plain 3-node lab without workshop scripts, prefer:
+#   rodeo up --yes --profile harvester --target aws --instance-tier recommended
 #
 # Fill in provider.region and provider.subnet_id, then: rodeo up --target aws
 
@@ -33,7 +33,7 @@ network:
 
 resources:
   harvester:
-    memory_mib: 24576    # 24 GiB per Harvester node — same sizing as harvester-aws.
+    memory_mib: 24576    # 24 GiB per Harvester node — same AWS headroom as harvester on m8id.8xlarge.
                          # 3x24 + 16 (Rancher) = 88 GiB guest RAM total, leaving
                          # ~35 GiB of m8id.8xlarge's ~123 GiB usable RAM for the
                          # host + buff/cache.
@@ -44,7 +44,7 @@ resources:
                          # room for the ~308 MiB cached VM image and webserver-prod's
                          # own 5 GiB disk (both created by custom/scripts/) too.
   rancher:
-    memory_mib: 16384    # 16 GiB — same as harvester-aws.
+    memory_mib: 16384    # 16 GiB — same AWS headroom as harvester on m8id.8xlarge.
     vcpu: 4
     disk_gb: 60
 

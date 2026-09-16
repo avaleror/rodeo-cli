@@ -3,7 +3,11 @@ from __future__ import annotations
 
 import yaml
 
-from rodeo.labseed import PROFILE_EXAMPLE, example_dir, seed_lab
+from rodeo.labseed import (
+    PROFILE_EXAMPLE,
+    example_dir,
+    seed_lab,
+)
 
 
 def test_profile_maps_to_bundled_example():
@@ -25,41 +29,31 @@ def test_harvester_ha_profile(tmp_path):
     assert "rancher" not in plan.get("resources", {})
 
 
-def test_harvester_aws_profile_same_topology_as_harvester(tmp_path):
-    """harvester-aws is a distinct, AWS-pre-tuned profile — not a replacement
-    for harvester. Same 3-node + Rancher topology, but its own provider block
-    and disk sizing survive seeding with deployment_target=aws."""
-    assert PROFILE_EXAMPLE["harvester-aws"] == "harvester-aws"
-    assert example_dir("harvester-aws").is_dir()
+def test_harvester_with_aws_target_applies_host_context(tmp_path):
+    """Option A: same harvester topology; AWS is deployment_target + host_context."""
+    assert "harvester-aws" not in PROFILE_EXAMPLE
 
-    harvester_lab = seed_lab("harvester", tmp_path / "harvester", deployment_target="aws")
-    aws_lab = seed_lab("harvester-aws", tmp_path / "harvester-aws", deployment_target="aws")
+    lab = seed_lab("harvester", tmp_path / "harvester", deployment_target="aws")
 
-    harvester_defn = yaml.safe_load((harvester_lab / "definition.yaml").read_text())["definition"]
-    aws_defn = yaml.safe_load((aws_lab / "definition.yaml").read_text())["definition"]
-    assert [n["name"] for n in aws_defn["nodes"]] == [n["name"] for n in harvester_defn["nodes"]]
+    defn = yaml.safe_load((lab / "definition.yaml").read_text())["definition"]
+    assert [n["name"] for n in defn["nodes"]] == [
+        "harvester1",
+        "harvester2",
+        "harvester3",
+        "rancher",
+    ]
 
-    plan = yaml.safe_load((aws_lab / "rodeo-plan.yaml").read_text())
+    plan = yaml.safe_load((lab / "rodeo-plan.yaml").read_text())
     assert plan["deployment_target"] == "aws"
-    assert plan["provider"]["type"] == "aws"
-    assert plan["provider"]["instance_tier"] == "recommended"
-    # apply_host_context() ran at seed time (deployment_target=aws): the flat
-    # per-node floor, not the generic profile's 320.
+    # apply_host_context() ran at seed time: flat per-node floor.
     assert plan["resources"]["harvester"]["disk_gb"] == 500
     assert plan["resources"]["rancher"]["disk_gb"] == 60
-    # RAM raised above the generic profile's 20/8 GiB 2026-09-11 for headroom:
-    # 3x24 + 16 = 88 GiB guest RAM, live-verified to leave ~35 GiB of
-    # m8id.8xlarge's ~123 GiB usable RAM for the host.
-    assert plan["resources"]["harvester"]["memory_mib"] == 24576
-    assert plan["resources"]["rancher"]["memory_mib"] == 16384
-
-    # The generic "harvester" profile is untouched by adding "harvester-aws".
-    harvester_plan = yaml.safe_load((harvester_lab / "rodeo-plan.yaml").read_text())
-    assert "provider" not in harvester_plan
+    assert plan["storage"]["backend"] == "nvme"
+    assert "provider" not in plan  # fill in for acquire, or use CLI
 
 
 def test_virt_workshop_aws_profile_has_custom_scripts(tmp_path):
-    """virt-workshop-aws is harvester-aws's infra plus custom/scripts/ that
+    """virt-workshop-aws is harvester topology plus custom/scripts/ that
     seed the pre-lab state suse-virt-workshop's exercises need (image cache,
     NFS backup target, pre-created webserver-prod VM)."""
     assert PROFILE_EXAMPLE["virt-workshop-aws"] == "virt-workshop-aws"
@@ -127,25 +121,26 @@ def test_virt_workshop_aws_2n_profile_is_2_node_and_has_custom_scripts(tmp_path)
     )
 
 
-def test_suse_edge_aws_profile_more_headroom_and_secret_tls(tmp_path):
-    """suse-edge-aws: same topology as suse-edge (type stays 'suse-edge'),
-    more RAM/disk headroom for AWS, and rancher_tls forced to 'secret'
-    instead of the bare-metal default's letsEncrypt — no external DNS/ACME
-    dependency, same choice already made for virt-workshop-aws."""
-    assert PROFILE_EXAMPLE["suse-edge-aws"] == "suse-edge-aws"
-    assert example_dir("suse-edge-aws").is_dir()
+def test_suse_edge_with_aws_target_applies_host_context(tmp_path):
+    """Option A: suse-edge + aws host context; no separate *-aws profile.
 
-    lab = seed_lab("suse-edge-aws", tmp_path / "suse-edge-aws", deployment_target="aws")
+    aws host-context must force self-signed TLS, not the bare-metal default
+    of letsEncrypt: rodeo's managed security group (rodeo/providers/aws.py
+    MANAGED_SG_PORTS) only opens 22/8443/30002 to the operator's own IP, so
+    the ACME HTTP-01 challenge (port 80) could never complete. See
+    test_host_context.py for the full overlay behavior."""
+    assert "suse-edge-aws" not in PROFILE_EXAMPLE
+
+    lab = seed_lab("suse-edge", tmp_path / "suse-edge-on-aws", deployment_target="aws")
 
     plan = yaml.safe_load((lab / "rodeo-plan.yaml").read_text())
     assert plan["type"] == "suse-edge"
     assert plan["deployment_target"] == "aws"
-    assert plan["rancher_tls"]["source"] == "secret"
+    assert plan["storage"]["backend"] == "nvme"
     assert plan["resources"]["rancher"]["memory_mib"] == 12288
     assert plan["resources"]["eib"]["memory_mib"] == 16384
-    assert plan["resources"]["edge-node"]["memory_mib"] == 4096
+    assert plan["rancher_tls"]["source"] == "secret"
 
-    # The generic "suse-edge" profile is untouched by adding "suse-edge-aws".
     edge_lab = seed_lab("suse-edge", tmp_path / "suse-edge", deployment_target="baremetal")
     edge_plan = yaml.safe_load((edge_lab / "rodeo-plan.yaml").read_text())
     assert edge_plan["rancher_tls"]["source"] == "letsEncrypt"

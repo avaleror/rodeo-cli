@@ -11,9 +11,25 @@ def test_suse_virt_declares_harvester_ui_extension():
     exts = cfg.get("rancher_ui_extensions")
     assert exts, "suse-virt should declare rancher_ui_extensions"
     harv = next(e for e in exts if e["name"] == "harvester")
-    assert harv["version"] == "1.8.1"
+    assert harv["version"] == "1.8.2"
     assert harv["repo"]["name"] == "rancher"
     assert harv["repo"]["git_repo"] == "https://github.com/rancher/ui-plugin-charts"
+
+
+def test_suse_virt_versions_bumped_without_touching_suse_edge():
+    """2026-09-16: Harvester 1.8.1 -> 1.8.2, Rancher 2.14.1 -> 2.14.5 for the
+    suse-virt (Harvester-family) profiles only. SUSE Edge stays on Rancher
+    2.14.1 for now — its own versions dict extends the same shared
+    BASE_VERSIONS constant, so this guards against a future edit to
+    BASE_VERSIONS accidentally dragging Edge's Rancher version along."""
+    from rodeo.profiles.suse_edge import SuseEdgeProfile
+
+    virt_versions = SuseVirtProfile().default_cfg().get("versions", {})
+    assert virt_versions["harvester"] == "1.8.2"
+    assert virt_versions["rancher"] == "2.14.5"
+
+    edge_versions = SuseEdgeProfile().default_cfg().get("versions", {})
+    assert edge_versions["rancher"] == "2.14.1"
 
 
 def test_rancher_phase_reads_ui_extensions():
@@ -50,4 +66,4 @@ def test_bundled_harvester_and_harvester_2n_examples_declare_ui_extensions():
         exts = cfg.get("rancher_ui_extensions")
         assert exts, f"bundled '{profile}' example should declare rancher_ui_extensions"
         harv = next(e for e in exts if e["name"] == "harvester")
-        assert harv["version"] == "1.8.1"
+        assert harv["version"] == "1.8.2"

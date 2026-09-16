@@ -93,6 +93,7 @@ class DeployComplete(DeployEvent):
 # version not listed here, the checksum is passed empty so get_url skips
 # verification instead of failing against the 1.8.1 role default.
 _HARVESTER_ISO_CHECKSUMS = {
+    "1.8.2": "sha512:3f53f3a38b6496b86e8f23912999bb32ac7d93caba5b1245598390145dae369fd1dd54fff0fbc8839b13ebae8be295695bbf33356920a979b684ea75e5d18625",
     "1.8.1": "sha512:b1950e7d0543b813711e1b5006eafe1bb042cc3625449180a987a21d31bc70de9111df270b7911fafbfbd53a86b834f7f8f3fbfcd2ad81ee86fa2d9f1bd8a5a0",
     "1.8.0": "sha512:dcbe2b2ba47e1f15854eb054f0cf5a5efe711db7aa86c4a4e50410e0f12aa5481085f99b85e62e89ddb53b95b61dc859b8568152f986be7d4168fd6b8ead026a",
 }
@@ -828,7 +829,7 @@ class DeployRunner:
                 "rodeo-plan.yaml, or run 'rodeo init'."
             )
 
-        version = ver.get("harvester", "1.8.1")
+        version = ver.get("harvester", "1.8.2")
         vars_data = {
             "network_mode":          net.get("mode", "nat"),
             "host_bridge":           net.get("host_bridge", "br0"),

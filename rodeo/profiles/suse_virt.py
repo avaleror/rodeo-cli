@@ -22,7 +22,11 @@ class SuseVirtProfile(RodeoProfile):
     # the packaged data. Changing the definition drives idempotent upgrades on
     # re-run (helm upgrade --install for Rancher/cert-manager; K3s installer).
     versions_from_definition = True
-    versions = {**BASE_VERSIONS, "harvester": "1.8.1"}
+    # Overrides both harvester and rancher from BASE_VERSIONS (2026-09-16 bump
+    # to Harvester 1.8.2 / Rancher 2.14.5) — deliberately NOT changed in
+    # BASE_VERSIONS itself, since RancherProfile and SuseEdgeProfile also
+    # extend that dict and SUSE Edge stays on Rancher 2.14.1 for now.
+    versions = {**BASE_VERSIONS, "harvester": "1.8.2", "rancher": "2.14.5"}
 
     resources = {
         "harvester": {"memory_mib": 16384, "vcpu": 8, "disk_gb": 320},

@@ -200,8 +200,8 @@ definition:
   # Rancher is the management cluster for Harvester; K3s is used here (lab simplification;
   # production SUSE Edge 3.6 uses RKE2 v1.35.3+rke2r3 for the management cluster).
   versions:
-    harvester:    "1.8.1"
-    rancher:      "2.14.1"
+    harvester:    "1.8.2"
+    rancher:      "2.14.5"
     k3s:          "v1.35.3+k3s1"
     cert_manager: "v1.20.1"
 
@@ -275,7 +275,7 @@ definition:
     # non-fatal (a failed extension logs a warning, never breaks the deploy).
     ui_extensions:
       - name: harvester              # chart name in the repo + UIPlugin name
-        version: "1.8.1"             # keep in step with the Harvester server version
+        version: "1.8.2"             # keep in step with the Harvester server version
         repo:
           name: rancher             # ClusterRepo name (reused if it already exists)
           git_repo: https://github.com/rancher/ui-plugin-charts

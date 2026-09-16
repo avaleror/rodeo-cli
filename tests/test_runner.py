@@ -10,6 +10,7 @@ import yaml
 from rodeo import state
 from rodeo.config import ConfigError
 from rodeo.engine.runner import (
+    _HARVESTER_ISO_CHECKSUMS,
     DeployComplete,
     DeployRunner,
     LogLine,
@@ -157,9 +158,29 @@ def test_vars_file_unknown_version_disables_checksum(fake_profile, fake_cfg, tmp
     fake_cfg["versions"] = {"harvester": "9.9.9"}
     vars_file = DeployRunner(fake_cfg, tmp_path)._write_vars_file()
     data = yaml.safe_load(vars_file.read_text())
-    # Empty string overrides the 1.8.1 role default so get_url skips the check
+    # Empty string overrides the role default so get_url skips the check
     # instead of failing the download against the wrong checksum.
     assert data["harvester_iso_checksum"] == ""
+
+
+def test_harvester_1_8_2_checksum_registered():
+    """2026-09-16 bump: the ISO's sha512 was computed from a live download
+    (releases.rancher.com publishes no checksum sidecar for this file),
+    verified as a valid bootable ISO9660 image before pinning."""
+    assert _HARVESTER_ISO_CHECKSUMS["1.8.2"] == (
+        "sha512:3f53f3a38b6496b86e8f23912999bb32ac7d93caba5b1245598390145dae369"
+        "fd1dd54fff0fbc8839b13ebae8be295695bbf33356920a979b684ea75e5d18625"
+    )
+
+
+def test_vars_file_default_harvester_version_is_1_8_2(fake_profile, fake_cfg, tmp_path):
+    """No versions.harvester in the plan at all -> falls back to the new
+    default, with its checksum threaded through, not the old 1.8.1 one."""
+    fake_cfg.pop("versions", None)
+    vars_file = DeployRunner(fake_cfg, tmp_path)._write_vars_file()
+    data = yaml.safe_load(vars_file.read_text())
+    assert data["harvester_version"] == "1.8.2"
+    assert data["harvester_iso_checksum"] == _HARVESTER_ISO_CHECKSUMS["1.8.2"]
 
 
 def test_vars_file_passes_token_when_set(fake_profile, fake_cfg, tmp_path):

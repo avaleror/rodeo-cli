@@ -30,7 +30,7 @@ resources:
 # Pin the Harvester version explicitly so this profile never silently drifts to
 # a different tool default. All Harvester profiles pin the same version.
 versions:
-  harvester: "1.8.1"
+  harvester: "1.8.2"
 
 # credentials use ?? for secrets.yaml or env
 credentials:

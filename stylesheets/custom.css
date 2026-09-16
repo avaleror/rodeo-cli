@@ -1,0 +1,294 @@
+/* rodeo-cli docs — visual language ported from andresvalero.tech
+   (dark terminal aesthetic, green accent, Syne + Space Mono) */
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;700;800&display=swap');
+
+:root {
+  --rc-accent: #00ff9d;
+  --rc-bg: #0a0a0f;
+  --rc-bg2: #111118;
+  --rc-bg3: #16161f;
+  --rc-border: #1e1e2e;
+  --rc-text: #e8e4d9;
+  --rc-muted: #555;
+  --rc-muted2: #888;
+  --rc-font-display: 'Syne', sans-serif;
+  --rc-font-mono: 'Space Mono', monospace;
+}
+
+/* ── Material palette override (slate = dark, default = light) ── */
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: var(--rc-bg);
+  --md-primary-fg-color--light: var(--rc-bg2);
+  --md-primary-fg-color--dark: var(--rc-bg);
+  --md-primary-bg-color: var(--rc-accent);
+  --md-accent-fg-color: var(--rc-accent);
+  --md-default-bg-color: var(--rc-bg);
+  --md-default-bg-color--light: var(--rc-bg2);
+  --md-default-fg-color: var(--rc-text);
+  --md-default-fg-color--light: var(--rc-muted2);
+  --md-default-fg-color--lighter: var(--rc-muted);
+  --md-typeset-a-color: var(--rc-accent);
+  --md-code-bg-color: var(--rc-bg3);
+  --md-code-fg-color: var(--rc-text);
+}
+
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #0a0a0f;
+  --md-primary-bg-color: var(--rc-accent);
+  --md-accent-fg-color: #009e5f;
+  --md-typeset-a-color: #009e5f;
+}
+
+.md-header,
+.md-tabs {
+  background-color: var(--rc-bg) !important;
+  border-bottom: 1px solid var(--rc-border);
+}
+
+.md-typeset,
+.md-header,
+.md-tabs,
+.md-nav {
+  font-family: var(--rc-font-display);
+}
+
+.md-typeset code,
+.md-typeset pre,
+.md-typeset kbd {
+  font-family: var(--rc-font-mono);
+}
+
+.md-header__topic,
+.md-tabs__link,
+.md-nav__title,
+.md-nav__link {
+  letter-spacing: 0.02em;
+}
+
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3 {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+/* ── Widen the reading column ──
+   Material reserves a narrow ~52rem typeset column even inside a much wider
+   grid, which on large screens leaves a big dead gap down one side. Widen
+   both, in px (not rem) — Material bumps the root font-size at wide
+   breakpoints, which would otherwise blow these up unpredictably too. */
+.md-grid {
+  max-width: 1600px;
+}
+@media screen and (min-width: 1220px) {
+  .md-content__inner {
+    max-width: 1100px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+
+/* ── Hero (index.md) ── */
+.rc-hero {
+  padding: 3rem 0 2rem;
+  border-bottom: 1px solid var(--rc-border);
+  margin-bottom: 2rem;
+}
+.rc-eyebrow {
+  font-family: var(--rc-font-mono);
+  font-size: 12px;
+  color: var(--rc-accent);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+.rc-eyebrow::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--rc-border);
+}
+.rc-hero h1 {
+  font-size: clamp(28px, 3.4vw, 54px) !important;
+  line-height: 1.15 !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.03em !important;
+  margin-bottom: 0.9rem !important;
+  max-width: 900px;
+}
+.rc-hero .rc-tagline {
+  font-size: 17px;
+  color: var(--rc-muted2);
+  max-width: 640px;
+  line-height: 1.6;
+  margin-bottom: 1.6rem;
+}
+.rc-hero-actions {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+/* ── Buttons ── */
+.rc-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.8rem 1.6rem;
+  font-family: var(--rc-font-mono);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+  border-radius: 2px;
+  transition: opacity 0.2s, border-color 0.2s, color 0.2s;
+}
+.rc-btn-primary {
+  background: var(--rc-accent);
+  color: var(--rc-bg) !important;
+  border: none;
+}
+.rc-btn-primary:hover { opacity: 0.85; }
+.rc-btn-secondary {
+  background: transparent;
+  color: var(--rc-text) !important;
+  border: 1px solid var(--rc-border);
+}
+.rc-btn-secondary:hover { border-color: var(--rc-accent); color: var(--rc-accent) !important; }
+
+/* ── Terminal card ── */
+.rc-terminal {
+  background: var(--rc-bg2);
+  border: 1px solid var(--rc-border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 1.5rem 0;
+}
+.rc-terminal-bar {
+  background: var(--rc-bg3);
+  padding: 0.55rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 1px solid var(--rc-border);
+}
+.rc-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.rc-dot.red { background: #ff5f56; }
+.rc-dot.yellow { background: #ffbd2e; }
+.rc-dot.green { background: #27c93f; }
+.rc-terminal-title {
+  font-family: var(--rc-font-mono);
+  font-size: 11px;
+  color: var(--rc-muted);
+  margin-left: 8px;
+}
+.rc-terminal-body {
+  padding: 1.2rem 1.4rem;
+  font-family: var(--rc-font-mono);
+  font-size: 13px;
+  line-height: 1.9;
+  color: var(--rc-muted2);
+  white-space: pre-wrap;
+}
+.rc-terminal-body .rc-cmd { color: var(--rc-accent); }
+.rc-terminal-body .rc-val { color: var(--rc-text); }
+
+/* ── Feature / stat grid ── */
+.rc-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--rc-border);
+  border: 1px solid var(--rc-border);
+  margin: 1.5rem 0;
+}
+@media (max-width: 900px) {
+  .rc-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 560px) {
+  .rc-grid { grid-template-columns: 1fr; }
+}
+.rc-card {
+  background: var(--rc-bg);
+  padding: 1.5rem 1.6rem;
+  transition: background 0.2s;
+}
+.rc-card:hover { background: var(--rc-bg2); }
+.rc-card-label {
+  font-family: var(--rc-font-mono);
+  font-size: 11px;
+  color: var(--rc-accent);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 0.6rem;
+}
+.rc-card h3 {
+  font-size: 17px !important;
+  margin: 0 0 0.5rem !important;
+  color: var(--rc-text);
+}
+.rc-card p {
+  font-size: 14px;
+  color: var(--rc-muted2);
+  margin: 0;
+  line-height: 1.55;
+}
+
+/* ── Stat bar ── */
+.rc-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border: 1px solid var(--rc-border);
+  border-top: none;
+  margin-bottom: 2rem;
+}
+@media (max-width: 640px) {
+  .rc-stats { grid-template-columns: repeat(2, 1fr); }
+}
+.rc-stat {
+  padding: 1.4rem 1.6rem;
+  border-top: 1px solid var(--rc-border);
+  border-right: 1px solid var(--rc-border);
+}
+.rc-stat-num {
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--rc-accent);
+  letter-spacing: -0.02em;
+  line-height: 1;
+  margin-bottom: 0.3rem;
+  white-space: nowrap;
+}
+.rc-stat-num--text {
+  font-size: 20px;
+  white-space: normal;
+}
+.rc-stat-label {
+  font-family: var(--rc-font-mono);
+  font-size: 10px;
+  color: var(--rc-muted);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* ── Tag ── */
+.rc-tag {
+  display: inline-block;
+  font-family: var(--rc-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 10px;
+  border: 1px solid var(--rc-border);
+  color: var(--rc-muted2);
+  border-radius: 2px;
+  margin: 0 0.3rem 0.3rem 0;
+}
+.rc-tag.accent { border-color: var(--rc-accent); color: var(--rc-accent); }
+
+@media (max-width: 640px) {
+  .rc-stat { border-right: none; }
+}

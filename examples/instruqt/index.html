@@ -1,0 +1,1754 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A declarative CLI that deploys hands-on lab infrastructure (Harvester HCI, Rancher Prime, SUSE Edge) on KVM.">
+      
+      
+      
+        <link rel="canonical" href="https://avaleror.github.io/rodeo-cli/examples/instruqt/">
+      
+      
+        <link rel="prev" href="../bare-metal/">
+      
+      
+        <link rel="next" href="../workshop/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/logo/favicon.ico">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Instruqt track - rodeo-cli</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/custom.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#example-instruqt-track-image-build" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="rodeo-cli" class="md-header__button md-logo" aria-label="rodeo-cli" data-md-component="logo">
+      
+  <img src="../../assets/logo/horseshoe-mark.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            rodeo-cli
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Instruqt track
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/avaleror/rodeo-cli" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    avaleror/rodeo-cli
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../get-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Get started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guide-rancher/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Profiles
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../custom-rodeos/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Create your own rodeo
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../fleet/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Fleet (multi-host workshops)
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/plan/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../bare-metal/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Examples
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../runbook/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Troubleshooting
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../architecture/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Architecture
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="rodeo-cli" class="md-nav__button md-logo" aria-label="rodeo-cli" data-md-component="logo">
+      
+  <img src="../../assets/logo/horseshoe-mark.svg" alt="logo">
+
+    </a>
+    rodeo-cli
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/avaleror/rodeo-cli" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    avaleror/rodeo-cli
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../get-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Get started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Profiles
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Profiles
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide-rancher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rancher Prime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide-harvester/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Harvester HCI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide-suse-edge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SUSE Edge
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../custom-rodeos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Create your own rodeo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../fleet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fleet (multi-host workshops)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    rodeo-plan.yaml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/definition/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    definition.yaml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Examples
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bare-metal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bare metal
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Instruqt track
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Instruqt track
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#how-it-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How it works
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#host-sizing-on-instruqt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Host sizing on Instruqt
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-1-install-rodeo-cli-on-the-builder" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 1: install rodeo-cli on the builder
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-2-set-deployment-target" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 2: set deployment target
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-3-deploy-the-lab" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 3: deploy the lab
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-4-hostimage-checklist-before-save" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 4: hostimage checklist (before Save)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-5-take-the-instruqt-snapshot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 5: take the Instruqt snapshot
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-6-track-setup-verify-on-an-attendee-instance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 6: track setup + verify on an attendee instance
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-firewalld-timing-constraint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The firewalld timing constraint
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#credentials-in-the-snapshot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Credentials in the snapshot
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting-instruqt-specific-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting Instruqt-specific issues
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Troubleshooting Instruqt-specific issues">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#console-stuck-on-please-wait-after-save-start-hostimage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Console stuck on "Please Wait" after Save / start hostimage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cluster-not-reachable-after-attendee-instance-boots" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cluster not reachable after attendee instance boots
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ipxe-install-hangs-during-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        iPXE install hangs during build
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#firewalld-drops-the-instruqt-management-connection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        firewalld drops the Instruqt management connection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#should-i-run-rodeo-deploy-finalise-on-instruqt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Should I run rodeo deploy --finalise on Instruqt?
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workshop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workshop fleet inventory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing & CI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../runbook/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#how-it-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How it works
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#host-sizing-on-instruqt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Host sizing on Instruqt
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-1-install-rodeo-cli-on-the-builder" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 1: install rodeo-cli on the builder
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-2-set-deployment-target" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 2: set deployment target
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-3-deploy-the-lab" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 3: deploy the lab
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-4-hostimage-checklist-before-save" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 4: hostimage checklist (before Save)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-5-take-the-instruqt-snapshot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 5: take the Instruqt snapshot
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-6-track-setup-verify-on-an-attendee-instance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 6: track setup + verify on an attendee instance
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-firewalld-timing-constraint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The firewalld timing constraint
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#credentials-in-the-snapshot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Credentials in the snapshot
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting-instruqt-specific-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting Instruqt-specific issues
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Troubleshooting Instruqt-specific issues">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#console-stuck-on-please-wait-after-save-start-hostimage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Console stuck on "Please Wait" after Save / start hostimage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cluster-not-reachable-after-attendee-instance-boots" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cluster not reachable after attendee instance boots
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ipxe-install-hangs-during-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        iPXE install hangs during build
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#firewalld-drops-the-instruqt-management-connection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        firewalld drops the Instruqt management connection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#should-i-run-rodeo-deploy-finalise-on-instruqt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Should I run rodeo deploy --finalise on Instruqt?
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="example-instruqt-track-image-build">Example: Instruqt track image build<a class="headerlink" href="#example-instruqt-track-image-build" title="Permanent link">&para;</a></h1>
+<p>This example shows how to build an Instruqt track with a pre-deployed Harvester lab. Attendees start with a running cluster — no waiting for iPXE install during the workshop.</p>
+<h2 id="how-it-works">How it works<a class="headerlink" href="#how-it-works" title="Permanent link">&para;</a></h2>
+<p>Instruqt gives you a <strong>builder instance</strong> where you deploy the lab. You then <strong>Save</strong> a hostimage (snapshot). When an attendee starts a challenge, they get a copy of that image.</p>
+<p>The key difference from bare metal: <strong>do not bake <code>finalise</code> into the hostimage.</strong> That phase enables VM autostart + <code>libvirt-guests</code>. If those are on when the image boots, nested KVM / virbr0 can race cloud-init and leave the Instruqt console on <strong>Please Wait</strong>. With <code>deployment_target: instruqt</code>, rodeo skips <code>finalise</code> automatically. Bring the lab up on every instance with <strong><code>rodeo start-if-needed</code></strong> in the track setup script instead.</p>
+<h2 id="host-sizing-on-instruqt">Host sizing on Instruqt<a class="headerlink" href="#host-sizing-on-instruqt" title="Permanent link">&para;</a></h2>
+<p>Use a generous builder (<code>n2-standard-32</code> or ~40 vCPU) with nested virtualization enabled:</p>
+<table>
+<thead>
+<tr>
+<th>Resource</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RAM</td>
+<td>128 GiB</td>
+</tr>
+<tr>
+<td>CPU</td>
+<td>32–40 vCPU</td>
+</tr>
+<tr>
+<td>Disk</td>
+<td>1–2 TB</td>
+</tr>
+<tr>
+<td>Nested virt</td>
+<td>Required</td>
+</tr>
+</tbody>
+</table>
+<p>Request the <code>geekohive</code> machine type in the Instruqt sandbox config if you are using SUSE's Instruqt organization.</p>
+<p><strong>Guest vCPU budget:</strong> keep Σ guest vCPU ≤ ~70% of host logical CPUs. When you seed with
+<code>deployment_target: instruqt</code> (<code>rodeo up</code> on an Instruqt host, or
+<code>rodeo up --deployment-target instruqt</code>), rodeo applies host-aware presets — typically
+<strong>6–8 vCPU / 20 GiB</strong> per Harvester node and <strong>4 vCPU / 8 GiB</strong> for Rancher on a
+32–40 vCPU builder. Override anytime with <code>-P resources.harvester.vcpu=…</code>.</p>
+<p>Guest disk cache defaults to <code>writeback</code>/<code>threads</code> on Instruqt (see <code>libvirt.disk_cache</code>
+in the plan reference) — better nested cloud I/O than bare-metal <code>none</code>/<code>native</code>.</p>
+<h2 id="step-1-install-rodeo-cli-on-the-builder">Step 1: install rodeo-cli on the builder<a class="headerlink" href="#step-1-install-rodeo-cli-on-the-builder" title="Permanent link">&para;</a></h2>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://raw.githubusercontent.com/avaleror/rodeo-cli/main/install.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span>bash
+</span></code></pre></div>
+<p>This clones the repo, sets up a Python environment internally, links <code>rodeo</code> as a system command, and installs host dependencies (KVM, libvirt, ansible, kubectl).</p>
+<h2 id="step-2-set-deployment-target">Step 2: set deployment target<a class="headerlink" href="#step-2-set-deployment-target" title="Permanent link">&para;</a></h2>
+<p>Create your lab directory and set the target to <code>instruqt</code>:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>rodeo<span class="w"> </span>new<span class="w"> </span>mylab<span class="w"> </span>--from<span class="w"> </span>harvester
+</span></code></pre></div>
+<p>Edit <code>~/.rodeo/profiles/mylab/rodeo-plan.yaml</code>:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">deployment_target</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">instruqt</span><span class="w">   </span><span class="c1"># critical — skip finalise (never bake it into the hostimage)</span>
+</span></code></pre></div>
+<p>Or use the bundled <code>harvester</code> profile directly and override at deploy time:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>rodeo<span class="w"> </span>deploy<span class="w"> </span>-P<span class="w"> </span><span class="nv">deployment_target</span><span class="o">=</span>instruqt
+</span></code></pre></div>
+<h2 id="step-3-deploy-the-lab">Step 3: deploy the lab<a class="headerlink" href="#step-3-deploy-the-lab" title="Permanent link">&para;</a></h2>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>rodeo<span class="w"> </span>up<span class="w"> </span>--profile<span class="w"> </span>harvester<span class="w"> </span>--yes
+</span></code></pre></div>
+<p><code>rodeo up</code> immediately wraps itself in a tmux session named <code>rodeo-harvester</code>. This is critical on Instruqt: the browser tab can time out or close during a 90–150 minute deploy, and without tmux the process dies and leaves the host in a broken state.</p>
+<p><strong>If your Instruqt tab closes or times out</strong>, re-open the terminal tab and re-attach:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>tmux<span class="w"> </span>attach<span class="w"> </span>-t<span class="w"> </span>rodeo-harvester
+</span></code></pre></div>
+<p>Detach without stopping the deploy: <code>Ctrl+b  d</code>.</p>
+<p>The <code>finalise</code> phase is skipped automatically when <code>deployment_target: instruqt</code>. That is what you want for a hostimage.</p>
+<p>Verify the cluster is healthy before Save:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>rodeo<span class="w"> </span>status
+</span></code></pre></div>
+<p>Expected: all 3 Harvester nodes Ready, VIP reachable, Rancher UI accessible.</p>
+<h2 id="step-4-hostimage-checklist-before-save">Step 4: hostimage checklist (before Save)<a class="headerlink" href="#step-4-hostimage-checklist-before-save" title="Permanent link">&para;</a></h2>
+<p>The success screen after deploy prints the same checklist. Confirm before you click <strong>Save</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Do <strong>not</strong> run <code>rodeo deploy --finalise</code></td>
+<td>Bakes <code>libvirt-guests</code> + VM autostart → can hang boot / <strong>Please Wait</strong></td>
+</tr>
+<tr>
+<td><code>firewall-cmd --list-ports</code> includes <strong>15778/tcp</strong> and <strong>15779/tcp</strong></td>
+<td>Instruqt terminal/editor agent ports</td>
+</tr>
+<tr>
+<td><code>systemctl is-enabled libvirt-guests</code> is <strong>disabled</strong></td>
+<td>Must stay off in the image</td>
+</tr>
+<tr>
+<td>Track setup will run <code>rodeo start-if-needed</code></td>
+<td>Starts VMs + re-applies DNAT/nft on every boot</td>
+</tr>
+</tbody>
+</table>
+<p>Optional: <code>rodeo stop --all --yes</code> before Save for cleaner nested guest disks (etcd/FS). Not required for agent connectivity.</p>
+<p><strong>Save captures disk state at click time.</strong> Running <code>finalise</code> <em>after</em> Save only changes the live builder; it does <strong>not</strong> update an already-saved hostimage. Re-Saving after finalise is how images get poisoned — don't do that for workshop hostimages.</p>
+<h2 id="step-5-take-the-instruqt-snapshot">Step 5: take the Instruqt snapshot<a class="headerlink" href="#step-5-take-the-instruqt-snapshot" title="Permanent link">&para;</a></h2>
+<p>Use the Instruqt UI (<strong>Save</strong> hostimage) or API. At this point the cluster may still be running on the builder, but VMs must <strong>not</strong> be set to autostart in the image — which is correct.</p>
+<h2 id="step-6-track-setup-verify-on-an-attendee-instance">Step 6: track setup + verify on an attendee instance<a class="headerlink" href="#step-6-track-setup-verify-on-an-attendee-instance" title="Permanent link">&para;</a></h2>
+<p><strong>Wire <code>rodeo start-if-needed</code> into the track's attendee boot/setup script</strong> (whatever runs when Instruqt starts a new instance from the hostimage). This is not optional for a healthy lab:</p>
+<ul>
+<li>Nested VMs do not autostart (by design — no finalise in image).</li>
+<li>The libvirt qemu hook that reapplies DNAT + <code>guest_input</code> accept only fires reliably on a genuine VM start — not on a cold hostimage boot with VMs left "as was."</li>
+<li><code>start-if-needed</code> is idempotent: starts host services + VMs if needed, then enforces nft rules.</li>
+</ul>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>rodeo<span class="w"> </span>start-if-needed
+</span></code></pre></div>
+<p>Check from inside the instance:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>rodeo<span class="w"> </span>status
+</span></code></pre></div>
+<p>If VMs are shut off or UIs are unreachable after boot, the setup script likely omitted <code>start-if-needed</code> — add it and re-test; do <strong>not</strong> "fix" by baking finalise into a new Save.</p>
+<h2 id="the-firewalld-timing-constraint">The firewalld timing constraint<a class="headerlink" href="#the-firewalld-timing-constraint" title="Permanent link">&para;</a></h2>
+<p>The <code>kvm_host</code> Ansible role <strong>disables, stops, and masks firewalld</strong> during host prep (early in the build, before any VM exists). This is intentional: on SLES 16, firewalld integrates with NetworkManager via D-Bus, and cloud-init doesn't assign a zone to the external NIC — starting firewalld before that's sorted out can drop the Instruqt management connection.</p>
+<p>firewalld itself is unmasked and started later, in the <code>cluster</code> phase — well before the snapshot, not by <code>finalise</code>. This is safe because that same step also runs, on Instruqt:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>firewall-cmd --zone=public --change-interface=&lt;ext-iface&gt; --permanent
+</span></code></pre></div>
+<p>The <code>--permanent</code> flag writes the interface→zone mapping into firewalld's own persisted config. On a fresh attendee boot, firewalld reads that mapping directly instead of negotiating a live zone assignment with NetworkManager over D-Bus — which is what removes the race in the first place. So firewalld being enabled and running in the snapshot is expected and fine.</p>
+<p>What actually matters before you snapshot: confirm this pinning step ran and picked the right interface. Check the deploy log for <code>Instruqt: pinning &lt;iface&gt; to public zone...</code>, and confirm with <code>firewall-cmd --get-active-zones</code> that your real management NIC shows under <code>public</code>. Re-check the same command on the first attendee boot from the snapshot — that's the actual test that the pinning held.</p>
+<p><code>finalise</code> must never be baked into the hostimage: it enables <code>libvirt-guests</code> + VM autostart, which races nested boot against the Instruqt agent and can leave the console on <strong>Please Wait</strong>.</p>
+<h2 id="credentials-in-the-snapshot">Credentials in the snapshot<a class="headerlink" href="#credentials-in-the-snapshot" title="Permanent link">&para;</a></h2>
+<p>Credentials are baked into the snapshot via <code>~/.rodeo/secrets.yaml</code>. All attendee instances share the same credentials. This is expected for workshop use — do not use production passwords.</p>
+<p>Default credential location on the Instruqt instance:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>cat<span class="w"> </span>~/.rodeo/secrets.yaml
+</span></code></pre></div>
+<h2 id="troubleshooting-instruqt-specific-issues">Troubleshooting Instruqt-specific issues<a class="headerlink" href="#troubleshooting-instruqt-specific-issues" title="Permanent link">&para;</a></h2>
+<h3 id="console-stuck-on-please-wait-after-save-start-hostimage">Console stuck on "Please Wait" after Save / start hostimage<a class="headerlink" href="#console-stuck-on-please-wait-after-save-start-hostimage" title="Permanent link">&para;</a></h3>
+<p>The Instruqt terminal and editor tabs talk to the <strong>agent on the host</strong> (TCP
+<strong>15778</strong> and <strong>15779</strong>), not to SSH alone. After <code>cluster</code> (or <code>boot</code>) unmasks
+and starts firewalld, those ports must be open on the public zone — otherwise a
+cold boot of the saved hostimage leaves the UI on <strong>Please Wait</strong> even when the
+OS is up.</p>
+<p>rodeo opens them when <code>deployment_target: instruqt</code> (Ansible <code>kvm_host</code> firewall
+tasks + re-assert in <code>_start_firewalld</code>). On an older image that was built before
+that fix, recover once then re-Save:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>sudo<span class="w"> </span>firewall-cmd<span class="w"> </span>--permanent<span class="w"> </span>--zone<span class="o">=</span>public<span class="w"> </span>--add-port<span class="o">=</span><span class="m">15778</span>/tcp
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>sudo<span class="w"> </span>firewall-cmd<span class="w"> </span>--permanent<span class="w"> </span>--zone<span class="o">=</span>public<span class="w"> </span>--add-port<span class="o">=</span><span class="m">15779</span>/tcp
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>sudo<span class="w"> </span>firewall-cmd<span class="w"> </span>--reload
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="c1"># or re-run: rodeo deploy --from cluster   # re-asserts ports for instruqt target</span>
+</span></code></pre></div>
+<p>Also confirm you did <strong>not</strong> bake <code>finalise</code> into the image before Save
+(<code>libvirt-guests</code> enabled + VM autostart can stall <code>network-online.target</code> and
+block the agent). Prefer <code>deployment_target: instruqt</code> and
+<code>rodeo start-if-needed</code> on attendee boot instead of finalise-in-image.</p>
+<h3 id="cluster-not-reachable-after-attendee-instance-boots">Cluster not reachable after attendee instance boots<a class="headerlink" href="#cluster-not-reachable-after-attendee-instance-boots" title="Permanent link">&para;</a></h3>
+<ol>
+<li>Check if VMs started: <code>virsh list --all</code></li>
+<li>If VMs are defined but not running, the track setup script probably did not run <code>rodeo start-if-needed</code> — run it now and add it to setup permanently. Do <strong>not</strong> bake <code>finalise</code> into a re-Save just to get autostart.</li>
+<li>If VMs <strong>are</strong> running but the Harvester/Rancher UI is still unreachable, this is almost always the nftables rules, not the VMs: the qemu hook that reapplies the DNAT + <code>guest_input</code>-accept rules does not reliably fire on hostimage boot. Run:
+   <div class="language-bash highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>rodeo<span class="w"> </span>start-if-needed
+</span></code></pre></div>
+   <code>rodeo start --all --yes</code> is <strong>not</strong> a substitute here — it starts VMs but does not touch nftables, so it won't fix this specific failure mode.</li>
+<li>Wire <code>rodeo start-if-needed</code> into the attendee boot/setup script so this self-heals on every instance start.</li>
+</ol>
+<h3 id="ipxe-install-hangs-during-build">iPXE install hangs during build<a class="headerlink" href="#ipxe-install-hangs-during-build" title="Permanent link">&para;</a></h3>
+<p>Instruqt nested KVM performance varies. If the iPXE install times out:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>rodeo<span class="w"> </span>logs<span class="w"> </span>harvester1<span class="w">   </span><span class="c1"># check where it is in the install</span>
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>rodeo<span class="w"> </span>deploy<span class="w"> </span>--from<span class="w"> </span>cluster<span class="w"> </span>--force<span class="w">   </span><span class="c1"># resume the cluster phase</span>
+</span></code></pre></div>
+<h3 id="firewalld-drops-the-instruqt-management-connection">firewalld drops the Instruqt management connection<a class="headerlink" href="#firewalld-drops-the-instruqt-management-connection" title="Permanent link">&para;</a></h3>
+<p>If you accidentally enabled firewalld before the snapshot and the builder instance loses connectivity:</p>
+<ul>
+<li>Access the instance via the Instruqt emergency console</li>
+<li>Run: <code>systemctl stop firewalld</code></li>
+<li>Restore connectivity, then re-snapshot with firewalld stopped</li>
+</ul>
+<h3 id="should-i-run-rodeo-deploy-finalise-on-instruqt">Should I run <code>rodeo deploy --finalise</code> on Instruqt?<a class="headerlink" href="#should-i-run-rodeo-deploy-finalise-on-instruqt" title="Permanent link">&para;</a></h3>
+<p><strong>For hostimages: no.</strong> Keep finalise out of the image and use <code>rodeo start-if-needed</code> on boot.</p>
+<p><code>finalise</code> remains available for bare metal (and rare advanced cases with <code>--finalise</code>). If you enable it on a builder and then Save, you risk the next hostimage start sticking on <strong>Please Wait</strong>.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.top", "navigation.indexes", "content.code.copy", "content.code.annotate", "toc.follow", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

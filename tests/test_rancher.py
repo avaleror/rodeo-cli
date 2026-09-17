@@ -177,6 +177,71 @@ def test_import_fails_when_cluster_never_active(cfg, monkeypatch, tmp_path):
     assert "did not reach Active" in phase.error
 
 
+def _run_import_and_capture_registration_setting(cfg, monkeypatch, tmp_path):
+    """Shared setup for the two tests below: drive _import_harvester() far enough
+    to apply the cluster-registration-url Setting, then bail before the (separately
+    tested) Active-wait, and return the JSON-decoded value of that Setting."""
+    import json as json_mod
+
+    phase = RancherPhase(cfg)
+    phase._api_token = "token"
+
+    def fake_ssh(self, script, timeout=60):
+        if "kubectl apply" in script:
+            return subprocess.CompletedProcess([], 0, stdout="configured", stderr="")
+        if ".status.clusterName" in script:
+            return subprocess.CompletedProcess([], 0, stdout="c-m-test123", stderr="")
+        if ".status.manifestUrl" in script:
+            return subprocess.CompletedProcess([], 0, stdout="https://rancher/manifest.yaml", stderr="")
+        return subprocess.CompletedProcess([], 0, stdout="", stderr="")
+
+    monkeypatch.setattr(RancherPhase, "_ssh_script", fake_ssh)
+
+    calls: list[dict] = []
+
+    def fake_run(*a, **k):
+        cmd = list(a[0]) if a else []
+        calls.append({"cmd": cmd, "input": k.get("input")})
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(rancher_mod.subprocess, "run", fake_run)
+
+    kube = tmp_path / "harvester-kubeconfig"
+    kube.write_text("dummy")
+    monkeypatch.setattr(rancher_mod.harvester, "harvester_kubeconfig_path", lambda: kube)
+    monkeypatch.setattr(RancherPhase, "_wait_cluster_active", lambda self: iter(()))
+
+    drain(phase._import_harvester())
+
+    registration_calls = [
+        c for c in calls if c["input"] and "cluster-registration-url" in c["input"]
+    ]
+    assert len(registration_calls) == 1, "expected exactly one cluster-registration-url apply"
+    setting_manifest = json_mod.loads(registration_calls[0]["input"])
+    return json_mod.loads(setting_manifest["value"])
+
+
+def test_import_sets_insecure_skip_tls_verify_for_self_signed_rancher(cfg, monkeypatch, tmp_path):
+    """Regression 2026-09-17: importing Harvester into a self-signed-TLS Rancher (AWS's
+    rancher_tls: secret) hung forever because the registration Setting's value was a bare
+    URL string instead of the {url, insecureSkipTLSVerify} JSON object Harvester's
+    setting-controller expects — and insecureSkipTLSVerify was never set at all. Without
+    it, Harvester's backend fetch of the manifest fails outright against a self-signed
+    cert (confirmed live: works with curl -k, fails without it). This never surfaced on
+    bare-metal/Instruqt because those use a real Let's Encrypt cert, which needs no skip."""
+    cfg["rancher_tls"] = {"source": "secret"}
+    value = _run_import_and_capture_registration_setting(cfg, monkeypatch, tmp_path)
+    assert value == {"url": "https://rancher/manifest.yaml", "insecureSkipTLSVerify": True}
+
+
+def test_import_does_not_skip_tls_verify_for_letsencrypt_rancher(cfg, monkeypatch, tmp_path):
+    """The default bare-metal/Instruqt path (trusted Let's Encrypt cert) must not
+    request TLS verification be skipped — there's no self-signed cert to work around."""
+    cfg["rancher_tls"] = {"source": "letsEncrypt"}
+    value = _run_import_and_capture_registration_setting(cfg, monkeypatch, tmp_path)
+    assert value == {"url": "https://rancher/manifest.yaml", "insecureSkipTLSVerify": False}
+
+
 def test_wait_ssh_cancellable(cfg, monkeypatch):
     def _fail(*a, **k):
         return subprocess.CompletedProcess(a, 255, stdout="", stderr="refused")

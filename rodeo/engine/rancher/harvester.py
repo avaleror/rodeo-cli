@@ -150,12 +150,25 @@ class HarvesterMixin:
 
         # Apply cluster-registration-url to Harvester — the native import mechanism.
         # Harvester's controller deploys cattle-cluster-agent from this setting.
+        #
+        # The setting's value is itself a JSON-encoded string of {url, insecureSkipTLSVerify}
+        # (see rodeo/host_context.py's suse-edge overlay for the same shape) — it is NOT the
+        # bare manifest URL. A bare string used to slip through here because bare-metal/Instruqt
+        # Rancher uses a real Let's Encrypt cert (self.tls_source == "letsEncrypt"), so Harvester's
+        # backend fetch never needed insecureSkipTLSVerify and a malformed value only ever
+        # surfaced as a silent "waiting for API" hang, not a hard failure. Self-signed Rancher
+        # (AWS's rancher_tls: secret) has no trusted CA, so the fetch fails outright without the
+        # flag — found live 2026-09-17 importing harvester-1.8.2-validation on AWS.
         yield LogLine("  Registering Harvester with Rancher via cluster-registration-url...")
+        registration_value = json.dumps({
+            "url": manifest_url,
+            "insecureSkipTLSVerify": self.tls_source != "letsEncrypt",
+        })
         setting_manifest = json.dumps({
             "apiVersion": "harvesterhci.io/v1beta1",
             "kind": "Setting",
             "metadata": {"name": "cluster-registration-url"},
-            "value": manifest_url,
+            "value": registration_value,
         })
         # Pass JSON via stdin — avoids all shell quoting issues (no bash -c / echo).
         r = self._run(

@@ -176,3 +176,27 @@ def test_seed_lab_preserves_existing_files_without_force(tmp_path):
     (lab / "definition.yaml").write_text("definition:\n  name: edited\n")
     seed_lab("test", lab, force=False)  # must not clobber existing files
     assert "edited" in (lab / "definition.yaml").read_text()
+
+
+def test_no_bundled_profile_reaches_aws_with_letsencrypt(tmp_path):
+    """Coherence invariant, not a per-profile test: rodeo's own managed
+    security group (rodeo/providers/aws.py MANAGED_SG_PORTS) only ever opens
+    22/8443/30002 to the operator's own IP — never 80 or 443. So no bundled
+    profile may resolve rancher_tls.source to 'letsEncrypt' once seeded for
+    deployment_target=aws, no matter what the profile's own bare-metal
+    default is. This is what should have caught the 2026-09-16 suse-edge
+    regression: that bug shipped because the test covering it was rewritten
+    to match the new (broken) value instead of asserting this rule. Any
+    *future* profile that ships (or grows) a rancher_tls default must clear
+    this bar too, automatically, without anyone remembering to special-case it."""
+    for profile in PROFILE_EXAMPLE:
+        lab = seed_lab(profile, tmp_path / f"aws-{profile}", deployment_target="aws")
+        plan = yaml.safe_load((lab / "rodeo-plan.yaml").read_text())
+        tls = plan.get("rancher_tls")
+        if tls is not None:
+            assert tls.get("source") != "letsEncrypt", (
+                f"profile {profile!r} seeds rancher_tls.source=letsEncrypt on aws, "
+                "but the managed security group never opens port 80/443 — the "
+                "ACME challenge can never complete. Use a self-signed source "
+                "(e.g. 'secret') via a host_context.py aws overlay instead."
+            )

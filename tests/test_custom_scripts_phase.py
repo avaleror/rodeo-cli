@@ -125,8 +125,28 @@ def test_non_executable_files_are_skipped(tmp_path):
     try:
         cfg = {"type": "suse-virt", "name": "t", "config_dir": str(tmp_path)}
         runner = DeployRunner(cfg, tmp_path)
-        _drain(runner.stream_custom_scripts())
+        events = _drain(runner.stream_custom_scripts())
     finally:
         subprocess_mod.run = orig
 
     assert called["n"] == 0
+    # Regression 2026-09-18: a custom/scripts/ that exists but holds nothing
+    # runnable (e.g. a stray placeholder, or scripts that lost +x) used to
+    # silently no-op with zero log output — the exact shape of the bug that
+    # let an incomplete AWS seed report success. Must now say something.
+    assert any("no executable scripts" in e.line for e in events if isinstance(e, LogLine))
+
+
+def test_empty_scripts_dir_stays_silent(tmp_path):
+    """A scripts/ dir with literally nothing in it (the common case for a
+    profile that ships no custom scripts at all) is not suspicious — no
+    warning needed, unlike one that has content but none of it runnable."""
+    scripts_dir = tmp_path / "custom" / "scripts"
+    scripts_dir.mkdir(parents=True)
+
+    cfg = {"type": "suse-virt", "name": "t", "config_dir": str(tmp_path)}
+    runner = DeployRunner(cfg, tmp_path)
+    events = _drain(runner.stream_custom_scripts())
+
+    assert events == []
+    assert runner._last_rc == 0

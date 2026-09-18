@@ -148,6 +148,7 @@ def seed_lab(
     dest.mkdir(parents=True, exist_ok=True)
     src = resolve_profile_source(profile)
 
+    copied: list[Path] = []
     for item in src.iterdir():
         target = dest / item.name
         if item.is_dir():
@@ -160,9 +161,59 @@ def seed_lab(
             if target.exists() and not force:
                 continue
             shutil.copy2(item, target)
+        copied.append(item)
+
+    _verify_seed_copy(src, dest, copied)
 
     normalize_plan(dest / "rodeo-plan.yaml", name=dest.name, deployment_target=deployment_target)
     return dest
+
+
+def _verify_seed_copy(src: Path, dest: Path, copied: list[Path]) -> None:
+    """Confirm every file actually copied this call landed in ``dest`` intact
+    — defense in depth, not a fix for a root cause we could pin down.
+
+    ``copied`` is the subset of ``src``'s top-level items this call actually
+    wrote (excludes anything left alone because it already existed at
+    ``dest`` and ``force`` was not set — e.g. a student's own hand-edits on a
+    re-run must not be flagged as "corrupt" just for differing from the
+    pristine source).
+
+    Found live 2026-09-18: seeding ``virt-workshop-aws`` on a fresh AWS host
+    somehow produced a ``custom/scripts/`` with a lone, unexplained
+    ``.gitkeep`` (that filename does not exist anywhere in this profile's
+    git history) instead of its 3 real scripts — even though the exact same
+    ``seed_lab()`` call reproduced correctly moments later on the identical
+    host. Root cause not confirmed (candidates: a first-write consistency
+    hiccup on a freshly-restored EBS root volume; something environment-
+    specific we didn't reproduce). Whatever it was, the failure mode is what
+    matters: ``rodeo up`` reported success on a half-seeded lab, and
+    ``stream_custom_scripts()`` then silently no-ops on a ``custom/scripts/``
+    that exists but holds no executable files (see ``runner.py`` — that is
+    by design, for profiles that legitimately ship none). A partial seed
+    must fail loudly right here instead of surfacing as a mystery hours
+    later. Only checks regular files (skips symlinks) — none of today's
+    bundled examples use them, and comparing size is more useful than a full
+    hash while remaining cheap for hundreds of small config files.
+    """
+    mismatches = []
+    for item in copied:
+        paths = item.rglob("*") if item.is_dir() else [item]
+        for path in paths:
+            if not path.is_file() or path.is_symlink():
+                continue
+            rel = path.relative_to(src)
+            target = dest / rel
+            if not target.is_file():
+                mismatches.append(f"{rel} (missing)")
+            elif target.stat().st_size != path.stat().st_size:
+                mismatches.append(f"{rel} (size mismatch)")
+    if mismatches:
+        raise RuntimeError(
+            f"seed_lab: incomplete copy from {src} to {dest} — "
+            f"{', '.join(sorted(mismatches))}. This should not happen; "
+            "delete the lab dir and retry (rodeo up --dir ... again)."
+        )
 
 
 def normalize_plan(

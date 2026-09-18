@@ -200,3 +200,62 @@ def test_no_bundled_profile_reaches_aws_with_letsencrypt(tmp_path):
                 "ACME challenge can never complete. Use a self-signed source "
                 "(e.g. 'secret') via a host_context.py aws overlay instead."
             )
+
+
+def test_seed_lab_verifies_every_bundled_profile_copies_cleanly(tmp_path):
+    """Baseline: every real bundled profile must pass the integrity check
+    seed_lab() now runs after copying (see _verify_seed_copy) — this would
+    fail loudly if any profile's source tree had a file that legitimately
+    can't be copied (permissions, a broken symlink, etc.)."""
+    for profile in PROFILE_EXAMPLE:
+        seed_lab(profile, tmp_path / f"integrity-{profile}")
+
+
+def test_verify_seed_copy_raises_on_missing_file(tmp_path):
+    """Regression 2026-09-18: seeding virt-workshop-aws on a fresh AWS host
+    once produced a custom/scripts/ with only a stray .gitkeep instead of its
+    3 real scripts — rodeo up reported success anyway, and custom_scripts
+    silently no-op'd on the missing pre-lab state. Root cause was never
+    pinned down (reproducing the exact same seed_lab() call immediately
+    after, on the same host, worked correctly), so the fix is defense in
+    depth: _verify_seed_copy (run by seed_lab after every copy) must fail
+    loudly on an incomplete result, whatever causes it."""
+    from rodeo.labseed import _verify_seed_copy
+
+    src = tmp_path / "src"
+    (src / "custom" / "scripts").mkdir(parents=True)
+    (src / "custom" / "scripts" / "50-image-cache.sh").write_text("#!/bin/sh\n")
+    (src / "custom" / "scripts" / "70-webserver-prod.sh").write_text("#!/bin/sh\n")
+
+    dest = tmp_path / "dest"
+    (dest / "custom" / "scripts").mkdir(parents=True)
+    (dest / "custom" / "scripts" / "50-image-cache.sh").write_text("#!/bin/sh\n")
+    # 70-webserver-prod.sh never made it — exactly the observed failure shape.
+    (dest / "custom" / "scripts" / ".gitkeep").touch()
+
+    try:
+        _verify_seed_copy(src, dest, copied=[src / "custom"])
+        assert False, "expected _verify_seed_copy to raise on a missing file"
+    except RuntimeError as exc:
+        assert "70-webserver-prod.sh" in str(exc)
+        assert "missing" in str(exc)
+
+
+def test_verify_seed_copy_ignores_items_not_freshly_copied(tmp_path):
+    """A force=False re-run skips items that already exist at dest (e.g. a
+    student's own hand-edits) — those must never be flagged as 'corrupt' just
+    for differing from the pristine source. Mirrors what
+    test_seed_lab_preserves_existing_files_without_force exercises through
+    the real seed_lab() call."""
+    from rodeo.labseed import _verify_seed_copy
+
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "definition.yaml").write_text("definition:\n  name: original\n")
+
+    dest = tmp_path / "dest"
+    dest.mkdir()
+    (dest / "definition.yaml").write_text("definition:\n  name: edited\n")
+
+    # definition.yaml was NOT in `copied` (force=False left it alone) — must not raise.
+    _verify_seed_copy(src, dest, copied=[])

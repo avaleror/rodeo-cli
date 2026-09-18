@@ -586,6 +586,14 @@ class DeployRunner:
             if f.is_file() and os.access(f, os.X_OK)
         )
         if not scripts:
+            # Distinguish "no custom scripts convention used" (nothing at all,
+            # the common case) from "the directory exists but nothing in it is
+            # runnable" (e.g. a stray placeholder or scripts that lost their
+            # +x bit) — the latter is worth a log line, not a silent no-op.
+            if any(scripts_dir.iterdir()):
+                yield LogLine(
+                    f"  ⚠ {scripts_dir} has no executable scripts — nothing to run."
+                )
             self._last_rc = 0
             return
 

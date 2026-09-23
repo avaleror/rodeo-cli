@@ -295,23 +295,50 @@ def build_ssh_target(
 def ssh_argv_for(target: SshTarget, *, remote_cmd: str | None = None) -> list[str]:
     from .ssh import ssh_opts
 
-    argv = ["ssh", "-i", target.identity_file, *ssh_opts()]
+    opts = ssh_opts()
     # Drop BatchMode for interactive shells (ssh_opts includes BatchMode=yes).
     if not remote_cmd:
         cleaned: list[str] = []
         i = 0
-        while i < len(argv):
-            if argv[i] == "-o" and i + 1 < len(argv) and argv[i + 1] == "BatchMode=yes":
+        while i < len(opts):
+            if opts[i] == "-o" and i + 1 < len(opts) and opts[i + 1] == "BatchMode=yes":
                 i += 2
                 continue
-            cleaned.append(argv[i])
+            cleaned.append(opts[i])
             i += 1
-        argv = cleaned
+        opts = cleaned
 
     if target.jump_host:
+        # A raw ProxyJump/-W tunnel authenticates the final hop from the
+        # *operator's* laptop — but nested VMs only ever trust the KVM/EC2
+        # host's own /root/.ssh/id_ed25519 (ensure_ssh_key.yml), a key that
+        # never leaves the host. So the second hop's authentication has to
+        # happen ON the jump host, not over a tunnel from here — nest a real
+        # ssh invocation as the jump's remote command instead. This also
+        # sidesteps ProxyJump's own implicit sub-connection never inheriting
+        # the outer -o StrictHostKeyChecking/UserKnownHostsFile overrides
+        # (confirmed: OpenSSH spawns a bare `ssh -l user -W [%h]:%p host` for
+        # it, with none of those options), which made every first-time
+        # `rodeo ssh host/vm` fail outright with "Host key verification
+        # failed" before ever reaching authentication.
         jump = f"{target.jump_user}@{target.jump_host}" if target.jump_user else target.jump_host
-        argv.extend(["-o", f"ProxyJump={jump}"])
-    argv.append(f"{target.user}@{target.host}")
+        inner = ["ssh", "-i", str(_HOST_ROOT_SSH_KEY), *opts, f"{target.user}@{target.host}"]
+        if remote_cmd:
+            inner.append(remote_cmd)
+        # /root/.ssh/id_ed25519 is root-owned — a non-root jump login (the
+        # normal case: AWS/cloud hosts provision as ec2-user + passwordless
+        # sudo, see providers/aws.py's _wait_ssh need_sudo gate) can't read it
+        # directly and needs sudo -n to run the inner ssh as root.
+        if target.jump_user and target.jump_user != "root":
+            inner = ["sudo", "-n", *inner]
+        argv = ["ssh", "-i", target.identity_file, *opts]
+        if not remote_cmd:
+            argv.append("-t")
+        argv.append(jump)
+        argv.extend(inner)
+        return argv
+
+    argv = ["ssh", "-i", target.identity_file, *opts, f"{target.user}@{target.host}"]
     if remote_cmd:
         argv.append(remote_cmd)
     return argv

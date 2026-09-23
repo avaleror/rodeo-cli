@@ -225,9 +225,44 @@ def test_build_ssh_target_host_vm_jump(managed_ssh, tmp_path, monkeypatch):
     assert t.jump_host == "203.0.113.10"
     assert t.jump_user == "ec2-user"
     argv = ssh_argv_for(t)
-    assert any(a.startswith("ProxyJump=") or a == "ProxyJump=ec2-user@203.0.113.10" for a in argv) or any(
-        "ProxyJump=ec2-user@203.0.113.10" in a for a in argv
+    # No ProxyJump: the nested VM only trusts the host's own root key, which
+    # never leaves the host, so the second hop must be a real ssh invocation
+    # nested as the jump's remote command, authenticated on the host itself.
+    assert "ProxyJump" not in " ".join(argv)
+    assert argv.count("ssh") == 2
+    assert "ec2-user@203.0.113.10" in argv
+    assert "root@192.168.122.10" in argv
+    assert str(tmp_path / "no-host-root-key") in argv
+    # Non-root jump login (ec2-user, the AWS default) can't read a root-owned
+    # key directly — the inner ssh needs sudo -n to read it as root.
+    assert argv.index("sudo") < argv.index("ssh", argv.index("ssh") + 1)
+
+
+def test_build_ssh_target_host_vm_jump_root_login_skips_sudo(
+    managed_ssh, tmp_path, monkeypatch
+):
+    ws = tmp_path / "workshop.yaml"
+    ws.write_text(
+        textwrap.dedent(
+            """
+            name: demo
+            lab:
+              dir: /root/lab
+            defaults:
+              ssh_user: root
+            hosts:
+              - id: student-01
+                ssh: 203.0.113.10
+                public_ip: 203.0.113.10
+            """
+        )
     )
+    monkeypatch.chdir(tmp_path)
+    cfg = {"vms": {"rancher": {"ip": "192.168.122.10", "user": "root"}}}
+    t = build_ssh_target("student-01/rancher", cfg=cfg)
+    assert t.jump_user == "root"
+    argv = ssh_argv_for(t)
+    assert "sudo" not in argv
 
 
 def test_unknown_target(managed_ssh, tmp_path, monkeypatch):

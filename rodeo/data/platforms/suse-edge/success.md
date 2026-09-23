@@ -7,7 +7,7 @@
   rodeo ssh eib            # <span lang="en" id="success.suse-edge.ssh-eib">shell into the EIB VM (build Elemental OS images here)</span>
   rodeo ssh <host>/<vm>    # <span lang="en" id="success.suse-edge.ssh-hop">from laptop: hop via KVM/EC2 host</span>
   <span lang="en" id="success.suse-edge.eib-edit">On the eib VM: fetch the eib-config Gitea repo to /home/eib-workspace/</span>
-    <span lang="en" id="success.suse-edge.eib-reg">→ get the MachineRegistration URL and fill in os-files/oem/elemental.yaml</span>
+    <span lang="en" id="success.suse-edge.eib-reg">→ get the MachineRegistration URL and fill in elemental/elemental_config.yaml</span>
     <span lang="en" id="success.suse-edge.eib-build">→ run EIB against one of the four definition files (base OS from Hauler: http://localhost:8080)</span>
   <span lang="en" id="success.suse-edge.pull-image">From the KVM host: rodeo pull-edge-image   # seed edge1/2/3 boot disks</span>
   rodeo start edge1 edge2 edge3              # <span lang="en" id="success.suse-edge.start-edges">boot edge nodes into Elemental</span>

@@ -73,9 +73,9 @@ class SuseEdgeProfile(RodeoProfile):
         return [
             "  rodeo ssh eib            # shell into the EIB VM (build Elemental OS images here)",
             "  rodeo ssh <host>/<vm>    # from laptop: hop via KVM/EC2 host",
-            "  On the eib VM: edit /home/eib-config/edge-definition.yaml",
-            "    → replace REPLACE_WITH_REGISTRATION_URL with the MachineRegistration URL",
-            "    → run EIB to build the Elemental OS image (base OS from Hauler: http://localhost:8080)",
+            "  On the eib VM: fetch the eib-config Gitea repo to /home/eib-workspace/",
+            "    → get the MachineRegistration URL and fill in elemental/elemental_config.yaml",
+            "    → run EIB against one of the four definition files (base OS from Hauler: http://localhost:8080)",
             "  From the KVM host: rodeo pull-edge-image   # seed edge1/2/3 boot disks",
             "  rodeo start edge1 edge2 edge3              # boot edge nodes into Elemental",
             f"  In Rancher: Fleet → Git Repos → {fleet_name} is waiting for edge clusters",

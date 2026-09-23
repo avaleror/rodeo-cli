@@ -238,6 +238,41 @@ def test_build_ssh_target_host_vm_jump(managed_ssh, tmp_path, monkeypatch):
     assert argv.index("sudo") < argv.index("ssh", argv.index("ssh") + 1)
 
 
+def test_ssh_argv_for_jump_quotes_compound_remote_cmd(managed_ssh, tmp_path, monkeypatch):
+    """A multi-statement remote_cmd must survive as ONE token to the jump's
+    shell, or the jump splits it and runs the tail end on itself instead of
+    forwarding it through the nested ssh to the destination VM (confirmed
+    live: `whoami; id` returned the VM's user for whoami and the jump host's
+    user for id).
+    """
+    ws = tmp_path / "workshop.yaml"
+    ws.write_text(
+        textwrap.dedent(
+            """
+            name: demo
+            lab:
+              dir: /root/lab
+            defaults:
+              ssh_user: ec2-user
+            hosts:
+              - id: student-01
+                ssh: 203.0.113.10
+                public_ip: 203.0.113.10
+            """
+        )
+    )
+    monkeypatch.chdir(tmp_path)
+    cfg = {"vms": {"rancher": {"ip": "192.168.122.10", "user": "root"}}}
+    t = build_ssh_target("student-01/rancher", cfg=cfg)
+    argv = ssh_argv_for(t, remote_cmd="whoami; id")
+    # Everything up to and including the jump target is unquoted argv; the
+    # compound remote_cmd must arrive as the single final element, still
+    # containing its semicolon literally (not split into separate argv
+    # entries by any shell along the way).
+    assert argv[-1] in ("whoami; id", "'whoami; id'")
+    assert argv.count("whoami; id") + argv.count("'whoami; id'") == 1
+
+
 def test_build_ssh_target_host_vm_jump_root_login_skips_sudo(
     managed_ssh, tmp_path, monkeypatch
 ):

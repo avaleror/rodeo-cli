@@ -321,6 +321,8 @@ def ssh_argv_for(target: SshTarget, *, remote_cmd: str | None = None) -> list[st
         # it, with none of those options), which made every first-time
         # `rodeo ssh host/vm` fail outright with "Host key verification
         # failed" before ever reaching authentication.
+        import shlex
+
         jump = f"{target.jump_user}@{target.jump_host}" if target.jump_user else target.jump_host
         inner = ["ssh", "-i", str(_HOST_ROOT_SSH_KEY), *opts, f"{target.user}@{target.host}"]
         if remote_cmd:
@@ -335,7 +337,16 @@ def ssh_argv_for(target: SshTarget, *, remote_cmd: str | None = None) -> list[st
         if not remote_cmd:
             argv.append("-t")
         argv.append(jump)
-        argv.extend(inner)
+        # ssh reconstructs a remote command line by joining all trailing argv
+        # elements with spaces — so a multi-statement remote_cmd (semicolons,
+        # &&, ||, redirects) must reach the jump as ONE shell-quoted token, or
+        # the jump's own shell splits it and runs everything after the first
+        # nested-ssh invocation directly on the jump host itself instead of on
+        # the destination VM (confirmed live: `whoami; id` returned the VM's
+        # user for `whoami` and the jump host's user for `id`).
+        argv.extend(inner[:-1] if remote_cmd else inner)
+        if remote_cmd:
+            argv.append(shlex.quote(inner[-1]))
         return argv
 
     argv = ["ssh", "-i", target.identity_file, *opts, f"{target.user}@{target.host}"]

@@ -87,6 +87,20 @@ class ElementalMixin:
                 f"    manufacturer: '${{System Information/Manufacturer}}'\n"
                 f"    productName: '${{System Information/Product Name}}'\n"
                 f"    registration: '{name}'\n"
+                # Without this block, elemental-register's self-install stops at
+                # an interactive "Destroying ALL data on /dev/vda, continue?"
+                # prompt (confirmed live) and never auto-powers-off — nothing
+                # pre-selects the target device or requests an unattended
+                # install. `poweroff` is intentionally lowercase (not
+                # `powerOff`): that's the actual YAML tag on Elemental's
+                # Install struct (rancher/elemental-operator api/v1beta1).
+                f"  config:\n"
+                f"    elemental:\n"
+                f"      registration:\n"
+                f"        auth: tpm\n"
+                f"      install:\n"
+                f"        device: /dev/vda\n"
+                f"        poweroff: true\n"
             )
 
         combined = "---\n" + "\n---\n".join(manifests)

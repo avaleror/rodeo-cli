@@ -111,6 +111,15 @@ class RancherPhase(
         # Rancher Prime UI extensions to reconcile after import (declarative, from
         # the definition's rancher.ui_extensions). Empty for profiles that declare none.
         self.ui_extensions = cfg.get("rancher_ui_extensions", []) or []
+        # A plan's versions block can pin one extension's version with
+        # "<extension-name>_ui_extension" (e.g. versions.elemental_ui_extension).
+        # Without this override, that field was silently ignored — the deployed
+        # version always came from the platform definition file's hardcoded
+        # default, regardless of what the plan requested.
+        self.ui_extensions = [
+            {**ext, "version": ver.get(f"{ext.get('name')}_ui_extension", ext.get("version"))}
+            for ext in self.ui_extensions
+        ]
 
         self.profile_type = cfg.get("type", "")
         # Default OFF: the rodeo/workshop model is that students import Harvester
@@ -130,7 +139,11 @@ class RancherPhase(
             n for n in cfg.get("vms", {}) if n.startswith("edge")
         ]
         self.edge_nodes = [
-            {"name": n, "ip": cfg.get("vms", {}).get(n, {}).get("ip", "")}
+            {
+                "name": n,
+                "ip": cfg.get("vms", {}).get(n, {}).get("ip", ""),
+                "mac": cfg.get("vms", {}).get(n, {}).get("mac", ""),
+            }
             for n in _edge_names
         ]
         try:
@@ -155,11 +168,45 @@ class RancherPhase(
         _leap_micro_raw_default = "https://download.opensuse.org/distribution/leap-micro/6.2/appliances/openSUSE-Leap-Micro.x86_64-Default.raw.xz"
         self.leap_micro_iso_url = eib_def.get("leap_micro_iso_url", _leap_micro_iso_default)
         self.leap_micro_raw_url = eib_def.get("leap_micro_raw_url", _leap_micro_raw_default)
+        # elemental-register / elemental-system-agent RPMs, side-loaded into
+        # Elemental-type EIB builds (edge1/edge2) so they don't need a SUSE
+        # Customer Center registration code — no paid entitlement required to
+        # run this lab. Source: openSUSE's public devel:UnifiedCore:Dev OBS
+        # project (no auth). These are a rolling dev channel, not a versioned
+        # release, so a plan can override both URLs if SUSE reorganizes it.
+        _elemental_register_default = (
+            "https://download.opensuse.org/repositories/devel:/UnifiedCore:/Dev/"
+            "standard_Micro_61/x86_64/elemental-register-1.8.0~dev-slfo.1.2.8.x86_64.rpm"
+        )
+        _elemental_system_agent_default = (
+            "https://download.opensuse.org/repositories/devel:/UnifiedCore:/Dev/"
+            "standard_Micro_61/x86_64/elemental-system-agent-0.3.13-slfo.1.1.8.x86_64.rpm"
+        )
+        self.elemental_register_rpm_url = eib_def.get(
+            "elemental_register_rpm_url", _elemental_register_default
+        )
+        self.elemental_system_agent_rpm_url = eib_def.get(
+            "elemental_system_agent_rpm_url", _elemental_system_agent_default
+        )
+        # Fixed lowercase names for the base images once staged locally — NOT
+        # derived from the upstream URL (hauler's `store add file` rejects
+        # uppercase reference names, and openSUSE's filenames are uppercase).
+        # Single source of truth: hauler.py stages files under these names,
+        # content.py's generated EIB definitions reference them by the same
+        # names, so the two can no longer drift out of sync with each other.
+        self.iso_fname     = "leap-micro-selfinstall.iso"
+        self.raw_fname_dl  = "leap-micro-default.raw.xz"
+        self.raw_fname     = "leap-micro-default.raw"
 
         el_cfg = cfg.get("elemental", {})
         _plan_name = cfg.get("name", "suse-edge").lower().replace("_", "-")
         self.elemental_reg_count    = int(el_cfg.get("registrations", 1))
         self.elemental_reg_prefix   = el_cfg.get("registration_prefix") or _plan_name
+        # SUSE Customer Center registration code, required by EIB to build
+        # Elemental-type images (edge1/edge2) unless the elemental-register /
+        # elemental-system-agent RPMs are side-loaded instead. Optional: a plan
+        # without Elemental image builds in scope simply never sets this.
+        self.elemental_scc_registration_code = el_cfg.get("scc_registration_code", "")
 
         # TLS mode: 'rancher' = Rancher self-signed cert + NodePort (default)
         #           'letsEncrypt' = Let's Encrypt cert via Traefik ingress + sslip.io hostname

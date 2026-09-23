@@ -22,17 +22,16 @@ class HaulerMixin:
         """
         prefix = self.elemental_reg_prefix
         reg_name = f"{prefix}-reg-1"
-        # Fixed lowercase names, not derived from the upstream URL: hauler's `store
-        # add file` reference-name parser rejects uppercase (confirmed live —
-        # "could not parse reference" with no name given; works once --name is
-        # lowercase), and openSUSE's filenames ("openSUSE-Leap-Micro...") are
-        # uppercase. Deterministic names also decouple us from upstream renames.
-        iso_fname = "leap-micro-selfinstall.iso"
-        raw_fname_dl = "leap-micro-default.raw.xz"
+        # Fixed lowercase names (self.iso_fname/raw_fname_dl/raw_fname, set once in
+        # RancherPhase.__init__ and shared with content.py) — hauler's `store add
+        # file` reference-name parser rejects uppercase, and openSUSE's filenames
+        # ("openSUSE-Leap-Micro...") are uppercase.
+        iso_fname = self.iso_fname
+        raw_fname_dl = self.raw_fname_dl
         # openSUSE ships the raw appliance .xz-compressed; EIB needs a plain .raw
         # baseImage, so it gets decompressed after staging (see the curl/xz block
-        # below). raw_fname is the name EIB definitions actually reference.
-        raw_fname = "leap-micro-default.raw"
+        # below). self.raw_fname (used in content.py) is the name EIB
+        # definitions actually reference.
         raw_decompress_cmd = f'xz -d -f "/home/eib-config/base-images/{raw_fname_dl}"\n'
 
         script = (
@@ -69,7 +68,19 @@ class HaulerMixin:
             f'curl -4 --http1.1 -fsSL --retry 5 --retry-delay 10 --retry-all-errors '
             f'-o "/tmp/{raw_fname_dl}" "{self.leap_micro_raw_url}"\n'
             f'$HAULER store add file "/tmp/{raw_fname_dl}" --name "{raw_fname_dl}" --store $STORE\n'
-            f'rm -f "/tmp/{raw_fname_dl}"\n\n'
+            f'rm -f "/tmp/{raw_fname_dl}"\n'
+            # elemental-register/elemental-system-agent RPMs — side-loaded into
+            # Elemental builds (edge1/edge2) so they need no SUSE Customer Center
+            # registration code. Fixed lowercase local names, decoupled from the
+            # upstream dev channel's exact (and possibly changing) filename.
+            f'curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors '
+            f'-o "/tmp/elemental-register.rpm" "{self.elemental_register_rpm_url}"\n'
+            f'$HAULER store add file "/tmp/elemental-register.rpm" --name "elemental-register.rpm" --store $STORE\n'
+            f'rm -f "/tmp/elemental-register.rpm"\n'
+            f'curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors '
+            f'-o "/tmp/elemental-system-agent.rpm" "{self.elemental_system_agent_rpm_url}"\n'
+            f'$HAULER store add file "/tmp/elemental-system-agent.rpm" --name "elemental-system-agent.rpm" --store $STORE\n'
+            f'rm -f "/tmp/elemental-system-agent.rpm"\n\n'
             # Enable and start Hauler services (service units written by cloud-init)
             "systemctl daemon-reload\n"
             "systemctl enable --now hauler-registry.service hauler-fileserver.service\n\n"
@@ -85,10 +96,13 @@ class HaulerMixin:
             # Stage Leap Micro base images from Hauler fileserver into eib-config/base-images
             # so participants can reference them by filename in EIB definition files without
             # needing internet. The ISO is for Elemental builds; the RAW is for standalone builds.
-            "mkdir -p /home/eib-config/scripts /home/eib-config/base-images /home/eib-output\n"
+            "mkdir -p /home/eib-config/scripts /home/eib-config/base-images "
+            "/home/eib-config/rpms /home/eib-output\n"
             f'curl -fsSL "http://localhost:8080/{iso_fname}" -o "/home/eib-config/base-images/{iso_fname}"\n'
             f'curl -fsSL "http://localhost:8080/{raw_fname_dl}" -o "/home/eib-config/base-images/{raw_fname_dl}"\n'
             f"{raw_decompress_cmd}\n"
+            f'curl -fsSL "http://localhost:8080/elemental-register.rpm" -o "/home/eib-config/rpms/elemental-register.rpm"\n'
+            f'curl -fsSL "http://localhost:8080/elemental-system-agent.rpm" -o "/home/eib-config/rpms/elemental-system-agent.rpm"\n'
             # k3s registry mirror script — EIB runs this during image build to embed
             # /etc/rancher/k3s/registries.yaml into the edge node OS so ALL container
             # pulls (docker.io, registry.suse.com, ghcr.io) go through the Hauler
@@ -111,26 +125,6 @@ class HaulerMixin:
             "EOF\n"
             "K3S_REG\n"
             "chmod +x /home/eib-config/scripts/99-k3s-registries.sh\n\n"
-            # Pre-stage EIB definition template for participants.
-            # EIB 1.3.3 does NOT have a top-level elemental: key — Elemental registration
-            # is configured via embeddedArtifacts (checked at build time from the Hauler store).
-            f"cat > /home/eib-config/edge-definition.yaml << '__EIB_DEF__'\n"
-            "apiVersion: 1.0\n\n"
-            "image:\n"
-            "  imageType: raw\n"
-            "  arch: x86_64\n"
-            f"  baseImage: {raw_fname}\n"
-            "  outputImageName: elemental-edge.raw\n\n"
-            "operatingSystem:\n"
-            "  kernelArgs:\n"
-            "    - net.ifnames=0\n"
-            "  scripts:\n"
-            "    - 99-k3s-registries.sh\n\n"
-            "embeddedArtifacts:\n"
-            "  registries:\n"
-            "    urls:\n"
-            f"      - {self.eib_ip}:5000\n"
-            "__EIB_DEF__\n"
         )
         yield LogLine(
             f"Populating Hauler store on eib VM ({self.eib_ip}) "
@@ -149,7 +143,8 @@ class HaulerMixin:
             f"http://{self.eib_ip}:5000  Fileserver: http://{self.eib_ip}:8080"
         )
         yield LogLine(
-            f"  EIB definition template: /home/eib-config/edge-definition.yaml\n"
+            "  Elemental register/system-agent RPMs staged (side-loaded, no SCC "
+            "registration code needed): /home/eib-config/rpms/\n"
             f"  Set registration URL: kubectl get machineregistration {reg_name} "
             f"-n fleet-default -o jsonpath='{{{{.status.registrationURL}}}}'"
         )

@@ -14,6 +14,27 @@ from ..runner import DeployEvent, LogLine
 class LabContentMixin:
     """Seed the Gitea mirror and Fleet GitRepo used by lab exercises."""
 
+    def _eib_elemental_packages_block(self) -> str:
+        """operatingSystem.packages for the two Elemental-path definitions
+        (edge1/edge2).
+
+        Default: side-load the elemental-register/elemental-system-agent RPMs
+        already staged at /home/eib-config/rpms/ (see hauler.py) via EIB's
+        rpms/ directory convention — no SUSE Customer Center entitlement
+        needed by anyone. noGPGCheck is required because we don't import the
+        openSUSE signing key for these dev-channel packages.
+
+        A plan can instead set elemental.scc_registration_code to use a real
+        SCC-registered zypper install if one is available — useful when the
+        side-loaded RPMs' version doesn't match a pinned elemental-operator.
+        """
+        code = self.elemental_scc_registration_code
+        # An unresolved "??..." secrets placeholder (never added to secrets.yaml)
+        # is not a real code — treat it the same as unset.
+        if code and not code.startswith("??"):
+            return f"  packages:\n    sccRegistrationCode: {code}\n"
+        return "  packages:\n    noGPGCheck: true\n"
+
     def _create_alien_geeko_fleet(self) -> Generator[DeployEvent, None, bool]:
         """Create a Fleet GitRepo for the demo app declared in cfg["alien_geeko"].
 
@@ -81,26 +102,35 @@ class LabContentMixin:
         """
         image = f"docker.io/gitea/gitea:{self.gitea_version}-rootless"
         gitea_url = f"http://localhost:{self.gitea_port}"
-        # Same filenames _populate_hauler stages onto the eib VM — the .raw (not
+        # Same filenames _populate_hauler stages onto the eib VM (self.iso_fname /
+        # self.raw_fname, set once in RancherPhase.__init__) — the .raw (not
         # .raw.xz) is what actually lands in base-images/ after decompression.
-        iso_fname = self.leap_micro_iso_url.split("/")[-1]
-        raw_fname_dl = self.leap_micro_raw_url.split("/")[-1]
-        raw_fname = raw_fname_dl[:-3] if raw_fname_dl.endswith(".xz") else raw_fname_dl
+        iso_fname = self.iso_fname
+        raw_fname = self.raw_fname
+        reg_name = f"{self.elemental_reg_prefix}-reg-1"
 
         # NMState network-config, one file per edge node, generated from the
-        # definition (name + IP + prefix + gateway + DNS). No node names or IPs
-        # are hardcoded here — add/remove/renumber edge nodes in definition.yaml
-        # and these regenerate to match.
+        # definition (name + IP + MAC + prefix + gateway + DNS). No node names,
+        # IPs or MACs are hardcoded here — add/remove/renumber edge nodes in
+        # definition.yaml and these regenerate to match.
         nmstate_blocks = ""
         for e in self.edge_nodes:
             nmstate_blocks += (
                 f"cat > \"$EIB_REPO/network-configs/{e['name']}.yaml\" << 'NM_EOF'\n"
                 "interfaces:\n  - name: eth0\n    type: ethernet\n    state: up\n"
+                # nmc (EIB's network config generator) rejects any ethernet
+                # interface with no mac-address: "Detected Ethernet interfaces
+                # without a MAC address" (confirmed live) — needed so EIB can
+                # match this static config to the right physical node at boot.
+                f"    mac-address: {e['mac']}\n"
                 f"    ipv4:\n      address:\n        - ip: {e['ip']}\n          prefix-length: {self.net_prefix}\n"
                 "      dhcp: false\n      enabled: true\n"
                 "routes:\n  config:\n    - destination: 0.0.0.0/0\n"
                 f"      next-hop-address: {self.gateway}\n      next-hop-interface: eth0\n"
-                f"dns-resolver:\n  config:\n    servers:\n      - {self.dns_server}\n"
+                # NMState's dns-resolver.config field is "server" (singular) —
+                # EIB's nmc tool rejects "servers": "unknown field `servers`,
+                # expected one of `server`, `search`, `options`" (confirmed live).
+                f"dns-resolver:\n  config:\n    server:\n      - {self.dns_server}\n"
                 "NM_EOF\n\n"
             )
 
@@ -214,77 +244,117 @@ class LabContentMixin:
             "fi\n\n"
             "EIB_REPO=/tmp/eib-config-repo\n"
             "rm -rf \"$EIB_REPO\"\n"
-            "mkdir -p \"$EIB_REPO/network-configs\" \"$EIB_REPO/scripts\" \"$EIB_REPO/elemental\" \"$EIB_REPO/network\"\n\n"
-            # .gitignore — keep build outputs and the transient network/ dir out of git
+            "mkdir -p \"$EIB_REPO/network-configs\" \"$EIB_REPO/scripts-available\" "
+            "\"$EIB_REPO/os-files/oem\" \"$EIB_REPO/network\"\n\n"
+            # .gitignore — keep build outputs and the transient network/ and
+            # custom/ dirs out of git. custom/scripts/ is per-build state (like
+            # network/): EIB auto-discovers and runs EVERYTHING under it with no
+            # way to select a subset, so it must hold only the current node's
+            # scripts, copied in from scripts-available/ right before each build
+            # — never pre-populated here with every node's scripts at once
+            # (confirmed live: edge1's Elemental build with all nodes' scripts
+            # present ran edge3's hostnamectl combustion script too, which fails
+            # this early in boot and drops the node into emergency mode).
             "cat > \"$EIB_REPO/.gitignore\" << 'GITIGNORE_EOF'\n"
-            "*.iso\n*.raw\n*.qcow2\nnetwork/\n.eib/\n"
+            "*.iso\n*.raw\n*.qcow2\nnetwork/\ncustom/\n.eib/\n"
             "GITIGNORE_EOF\n\n"
-            # Copy the registry mirror script already written by _populate_hauler
-            "cp /home/eib-config/scripts/99-k3s-registries.sh \"$EIB_REPO/scripts/\"\n\n"
-            # Hostname combustion scripts (edge3 and edge4 standalone path)
-            "cat > \"$EIB_REPO/scripts/10-hostname-edge3.sh\" << 'HNAME3_EOF'\n"
+            # Stage combustion scripts in scripts-available/ (like
+            # network-configs/) — not auto-discovered by EIB from here, so
+            # staging them is safe; each build copies only what it needs into
+            # custom/scripts/ right before running.
+            "cp /home/eib-config/scripts/99-k3s-registries.sh \"$EIB_REPO/scripts-available/\"\n\n"
+            # Hostname combustion scripts (edge3 and edge4 standalone path).
+            # Numbered 60- (not 10-): EIB reserves 00-49 for its own internal
+            # combustion scripts.
+            "cat > \"$EIB_REPO/scripts-available/60-hostname-edge3.sh\" << 'HNAME3_EOF'\n"
             "#!/bin/bash\nhostnamectl set-hostname edge3\nHNAME3_EOF\n"
-            "chmod +x \"$EIB_REPO/scripts/10-hostname-edge3.sh\"\n\n"
-            "cat > \"$EIB_REPO/scripts/10-hostname-edge4.sh\" << 'HNAME4_EOF'\n"
+            "chmod +x \"$EIB_REPO/scripts-available/60-hostname-edge3.sh\"\n\n"
+            "cat > \"$EIB_REPO/scripts-available/60-hostname-edge4.sh\" << 'HNAME4_EOF'\n"
             "#!/bin/bash\nhostnamectl set-hostname edge4\nHNAME4_EOF\n"
-            "chmod +x \"$EIB_REPO/scripts/10-hostname-edge4.sh\"\n\n"
+            "chmod +x \"$EIB_REPO/scripts-available/60-hostname-edge4.sh\"\n\n"
             # NMState network config templates — one per edge node, generated
             # above from the definition (see nmstate_blocks).
             + nmstate_blocks +
-            # Elemental registration config placeholder — filled in during Exercise 2
-            "cat > \"$EIB_REPO/elemental/elemental_config.yaml\" << 'ELEM_EOF'\n"
+            # Elemental registration config — filled in during Exercise 2, section 2.4.
+            # Lives under os-files/oem/ (EIB's directory convention for files that
+            # should land at the same path on the built image — no YAML field
+            # references it) so it lands at /oem/elemental.yaml on edge1/edge2.
+            "cat > \"$EIB_REPO/os-files/oem/elemental.yaml\" << 'ELEM_EOF'\n"
             "# Filled in during Exercise 2, section 2.4.\n"
             "# On the eib VM, after cloning this repo:\n"
             f"#   REGURL=$(ssh root@{self.rancher_ip} \\\n"
-            "#     \"kubectl get machineregistration suse-edge-reg-1 \\\n"
+            f"#     \"kubectl get machineregistration {reg_name} \\\n"
             "#      -n fleet-default -o jsonpath='{.status.registrationURL}'\")\n"
-            "#   curl -k \"$REGURL\" > elemental/elemental_config.yaml\n"
+            "#   curl -k \"$REGURL\" > os-files/oem/elemental.yaml\n"
             "ELEM_EOF\n\n"
-            # EIB definition files — Elemental ISO path (edge1, edge2)
+            # EIB definition files — schema notes (EIB 1.3.3, apiVersion 1.2):
+            #  - embeddedArtifactRegistry.registries needs apiVersion >= 1.2, and
+            #    EIB unconditionally requires a non-empty username/password on
+            #    every registry entry (pkg/image/validation/registry.go), even
+            #    for this unauthenticated local Hauler mirror — the values below
+            #    are placeholders EIB requires syntactically, not real secrets.
+            #  - there is no operatingSystem.files field; a file that should land
+            #    at the same path on the built image goes under os-files/ instead
+            #    (populated above at os-files/oem/elemental.yaml).
+            #  - there is no operatingSystem.scripts field either; combustion
+            #    scripts are auto-discovered from custom/scripts/ (populated above).
+            # EIB definition files — Elemental ISO path (edge1, edge2). By default
+            # these side-load the elemental-register/elemental-system-agent RPMs
+            # hauler.py already staged at /home/eib-config/rpms/ (mounted at
+            # /eib/rpms — see the podman run command in Exercise 3), so no SUSE
+            # Customer Center entitlement is needed. A plan can opt into a real
+            # SCC-registered install instead via elemental.scc_registration_code.
             "cat > \"$EIB_REPO/elemental-edge1-definition.yaml\" << '__DEF1__'\n"
-            "apiVersion: 1.0\n\n"
+            "apiVersion: 1.2\n\n"
             "image:\n  imageType: iso\n  arch: x86_64\n"
             f"  baseImage: {iso_fname}\n"
             "  outputImageName: elemental-edge1.iso\n\n"
-            "operatingSystem:\n  kernelArgs:\n    - net.ifnames=0\n  files:\n"
-            "    - sourcePath: elemental/elemental_config.yaml\n"
-            "      destinationPath: /oem/elemental.yaml\n\n"
-            "embeddedArtifacts:\n  registries:\n    urls:\n"
-            f"      - {self.eib_ip}:5000\n"
+            "operatingSystem:\n  kernelArgs:\n    - net.ifnames=0\n"
+            f"{self._eib_elemental_packages_block()}\n"
+            "embeddedArtifactRegistry:\n  registries:\n"
+            f"    - uri: {self.eib_ip}:5000\n"
+            "      authentication:\n        username: hauler\n        password: hauler\n"
             "__DEF1__\n\n"
             "cat > \"$EIB_REPO/elemental-edge2-definition.yaml\" << '__DEF2__'\n"
-            "apiVersion: 1.0\n\n"
+            "apiVersion: 1.2\n\n"
             "image:\n  imageType: iso\n  arch: x86_64\n"
             f"  baseImage: {iso_fname}\n"
             "  outputImageName: elemental-edge2.iso\n\n"
-            "operatingSystem:\n  kernelArgs:\n    - net.ifnames=0\n  files:\n"
-            "    - sourcePath: elemental/elemental_config.yaml\n"
-            "      destinationPath: /oem/elemental.yaml\n\n"
-            "embeddedArtifacts:\n  registries:\n    urls:\n"
-            f"      - {self.eib_ip}:5000\n"
+            "operatingSystem:\n  kernelArgs:\n    - net.ifnames=0\n"
+            f"{self._eib_elemental_packages_block()}\n"
+            "embeddedArtifactRegistry:\n  registries:\n"
+            f"    - uri: {self.eib_ip}:5000\n"
+            "      authentication:\n        username: hauler\n        password: hauler\n"
             "__DEF2__\n\n"
-            # EIB definition files — standalone cluster RAW path (edge3 RKE2, edge4 K3s)
+            # EIB definition files — standalone cluster RAW path (edge3 RKE2, edge4 K3s).
+            # No Elemental involved, so no SCC registration code is needed here.
+            # rawConfiguration.diskSize expands the base RAW disk before embedding
+            # content — without it, the image stays at the base OS's original size
+            # and the build fails ("insufficient available disk space", confirmed
+            # live: the base image needed ~1.3 GB more just for RKE2 + its images).
             "cat > \"$EIB_REPO/rke2-edge3-definition.yaml\" << '__DEF3__'\n"
-            "apiVersion: 1.0\n\n"
+            "apiVersion: 1.2\n\n"
             "image:\n  imageType: raw\n  arch: x86_64\n"
             f"  baseImage: {raw_fname}\n"
             "  outputImageName: rke2-edge3.raw\n\n"
-            "operatingSystem:\n  kernelArgs:\n    - net.ifnames=0\n  scripts:\n"
-            "    - 10-hostname-edge3.sh\n    - 99-k3s-registries.sh\n\n"
+            "operatingSystem:\n  kernelArgs:\n    - net.ifnames=0\n"
+            "  rawConfiguration:\n    diskSize: 15G\n\n"
             "kubernetes:\n  version: v1.35.3+rke2r3\n\n"
-            "embeddedArtifacts:\n  registries:\n    urls:\n"
-            f"      - {self.eib_ip}:5000\n"
+            "embeddedArtifactRegistry:\n  registries:\n"
+            f"    - uri: {self.eib_ip}:5000\n"
+            "      authentication:\n        username: hauler\n        password: hauler\n"
             "__DEF3__\n\n"
             "cat > \"$EIB_REPO/k3s-edge4-definition.yaml\" << '__DEF4__'\n"
-            "apiVersion: 1.0\n\n"
+            "apiVersion: 1.2\n\n"
             "image:\n  imageType: raw\n  arch: x86_64\n"
             f"  baseImage: {raw_fname}\n"
             "  outputImageName: k3s-edge4.raw\n\n"
-            "operatingSystem:\n  kernelArgs:\n    - net.ifnames=0\n  scripts:\n"
-            "    - 10-hostname-edge4.sh\n    - 99-k3s-registries.sh\n\n"
+            "operatingSystem:\n  kernelArgs:\n    - net.ifnames=0\n"
+            "  rawConfiguration:\n    diskSize: 15G\n\n"
             "kubernetes:\n  version: v1.35.5+k3s1\n\n"
-            "embeddedArtifacts:\n  registries:\n    urls:\n"
-            f"      - {self.eib_ip}:5000\n"
+            "embeddedArtifactRegistry:\n  registries:\n"
+            f"    - uri: {self.eib_ip}:5000\n"
+            "      authentication:\n        username: hauler\n        password: hauler\n"
             "__DEF4__\n\n"
             # Commit and push to local Gitea
             "git -C \"$EIB_REPO\" init\n"

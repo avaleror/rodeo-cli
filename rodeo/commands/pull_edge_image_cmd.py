@@ -1,11 +1,10 @@
 """rodeo pull-edge-image — seed edge node disks from the eib VM or a local image file.
 
-Two modes:
-  Remote (default): SSH to the eib VM, find the EIB-built RAW in /home/eib-output,
-  SCP it to the KVM host, convert to qcow2, and thin-clone for each edge node.
+Two modes, both format-aware from the file extension (.raw/.qcow2 vs .iso):
+  Remote (default): SSH to the eib VM, SCP the named image to the KVM host, then
+  apply the same .raw/.qcow2-vs-.iso handling as local mode below.
 
   Local (--local PATH): skip the SSH/SCP step and use an image already on the KVM host.
-  Format is auto-detected from the file extension:
     .raw    → convert to qcow2 base → thin clones (same path as remote)
     .qcow2  → use as backing file directly → thin clones
     .iso    → create a blank vda.qcow2 per node + redefine the domain XML so the ISO
@@ -183,9 +182,9 @@ def _local_iso(
 @config_options
 @click.option(
     "--image", "remote_image", default=None, metavar="PATH",
-    help="Path to the built RAW image on the eib VM. "
-         "Auto-detected from /home/eib-output/*.raw if omitted. "
-         "Ignored when --local is set.",
+    help="Path to the built .raw or .iso image on the eib VM. "
+         "Auto-detected from /home/eib-workspace, /home/eib-config or "
+         "/home/eib-output if omitted. Ignored when --local is set.",
 )
 @click.option(
     "--local", "local_image", default=None, metavar="PATH",
@@ -210,9 +209,11 @@ def pull_edge_image_cmd(
 ) -> None:
     """Seed edge node boot disks from the eib VM or a local image file.
 
+    Both modes are format-aware from the file extension:
+
     \b
-    Remote mode (default):
-      Pulls the EIB-built RAW from the eib VM, converts to qcow2, thin-clones.
+    Remote mode (default): pulls the named image from the eib VM, then applies
+    the same .raw/.iso handling as local mode below.
 
     \b
     Local mode (--local PATH):
@@ -268,23 +269,47 @@ def pull_edge_image_cmd(
         ssh_key = "/root/.ssh/id_ed25519" if os.geteuid() == 0 else str(Path.home() / ".ssh" / "id_ed25519")
 
     if not remote_image:
-        console.print(f"  Searching for RAW images on eib VM ({eib_ip})...")
-        # EIB 1.3.x writes the output image to the working dir (/home/eib-config).
-        # Also check /home/eib-output for images students may have moved there.
+        console.print(f"  Searching for built images on eib VM ({eib_ip})...")
+        # EIB 1.3.x writes the output image to the working dir. /home/eib-workspace
+        # is where the Gitea-cloned eib-config workspace (and its builds) actually
+        # live; /home/eib-config and /home/eib-output are checked too for images
+        # students or older flows may have placed there.
         r = subprocess.run(
             ["ssh", "-i", ssh_key, *ssh_opts(), f"root@{eib_ip}",
-             "find /home/eib-config /home/eib-output -maxdepth 1 -name '*.raw' 2>/dev/null | head -1"],
+             "find /home/eib-workspace /home/eib-config /home/eib-output -maxdepth 1 "
+             "\\( -name '*.raw' -o -name '*.iso' \\) 2>/dev/null | head -1"],
             capture_output=True, text=True, timeout=20,
         )
         remote_image = r.stdout.strip()
         if not remote_image:
             console.print(
-                "[red]✗  No .raw file found on the eib VM.[/red]\n"
+                "[red]✗  No .raw or .iso file found on the eib VM.[/red]\n"
                 "   Complete the EIB image build exercise first, then re-run this command.\n"
-                "   Or use --local /path/to/image.raw to use a local image."
+                "   Or use --local /path/to/image to use a local image."
             )
             raise SystemExit(1)
         console.print(f"  Found: {remote_image}")
+
+    remote_suffix = Path(remote_image).suffix.lower()
+    console.print(f"\n[dim]Copying {remote_image} from eib VM ({eib_ip}) — this may take several minutes...[/dim]")
+
+    if remote_suffix == ".iso":
+        # An ISO is boot media for a self-installer, never something to convert
+        # into a writable disk — copy it as-is and reuse the same CDROM-attach
+        # flow --local already uses (confirmed live: converting an ISO straight
+        # to a vda disk skips the CDROM entirely and leaves no blank install
+        # target, so the self-installer has nothing to install onto).
+        local_iso_path = image_dir / Path(remote_image).name
+        try:
+            subprocess.run(
+                ["scp", "-i", ssh_key, *_SCP_OPTS, f"root@{eib_ip}:{remote_image}", str(local_iso_path)],
+                check=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            console.print(f"[red]✗  scp failed: {exc}[/red]")
+            raise SystemExit(1)
+        _local_iso(local_iso_path, image_dir, edge_names, cfg, yes)
+        return
 
     remote_basename = Path(remote_image).stem
     base_qcow = image_dir / f"{remote_basename}-base.qcow2"
@@ -296,7 +321,6 @@ def pull_edge_image_cmd(
             console.print(f"  {p}")
         click.confirm("\nOverwrite?", abort=True)
 
-    console.print(f"\n[dim]Copying {remote_image} from eib VM ({eib_ip}) — this may take several minutes...[/dim]")
     tmp_raw = image_dir / f"{remote_basename}.raw.tmp"
     try:
         subprocess.run(

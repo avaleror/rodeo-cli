@@ -105,6 +105,13 @@ def story_facts(cfg: dict) -> dict:
         "harvester_nodes": harvester_nodes,
         "ssh_target": harvester_nodes[0] if harvester_nodes else next(iter(plan_vms), "rancher"),
         "edge_nodes": edge_nodes,
+        "alien_geeko_fleet_name": cfg.get("alien_geeko", {}).get("fleet_name", "alien-geeko"),
+        "alien_geeko_target_labels_str": "  ".join(
+            f"{k}={v}"
+            for k, v in cfg.get("alien_geeko", {}).get(
+                "target_labels", {"demo": "true", "edge-type": "x86-cluster"}
+            ).items()
+        ),
     }
 
 

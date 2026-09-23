@@ -66,6 +66,10 @@ class SuseEdgeProfile(RodeoProfile):
         return lines
 
     def success_next_steps(self, cfg: dict) -> list[str]:
+        ag = cfg.get("alien_geeko", {})
+        fleet_name = ag.get("fleet_name", "alien-geeko")
+        target_labels = ag.get("target_labels", {"demo": "true", "edge-type": "x86-cluster"})
+        selector = "  ".join(f"{k}={v}" for k, v in target_labels.items())
         return [
             "  rodeo ssh eib            # shell into the EIB VM (build Elemental OS images here)",
             "  rodeo ssh <host>/<vm>    # from laptop: hop via KVM/EC2 host",
@@ -74,8 +78,8 @@ class SuseEdgeProfile(RodeoProfile):
             "    → run EIB to build the Elemental OS image (base OS from Hauler: http://localhost:8080)",
             "  From the KVM host: rodeo pull-edge-image   # seed edge1/2/3 boot disks",
             "  rodeo start edge1 edge2 edge3              # boot edge nodes into Elemental",
-            "  In Rancher: Fleet → Git Repos → alien-geeko is waiting for edge clusters",
-            "    → label your edge cluster: demo=true  edge-type=x86-cluster",
+            f"  In Rancher: Fleet → Git Repos → {fleet_name} is waiting for edge clusters",
+            f"    → label your edge cluster: {selector}",
         ]
 
 

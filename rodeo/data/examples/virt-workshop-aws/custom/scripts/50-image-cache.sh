@@ -10,16 +10,32 @@
 # WHY THIS IMAGE: suse-virt-rodeo's own equivalent (SLES15-SP7-Minimal-VM) is
 # gated behind SUSE Customer Center — dl.suse.com URLs are signed and expire,
 # so there is no way to auto-download it on a self-hosted deploy with no SCC
-# registration. openSUSE Leap Micro's KVM appliance is freely downloadable,
-# no registration, stable distribution URL.
+# registration. Leap-16.0-Minimal-VM.x86_64-Cloud.qcow2 is the freely
+# downloadable, no-registration equivalent: same openSUSE distribution host,
+# confirmed ~1.42 GiB virtual size (read from the qcow2 header directly —
+# small enough for a plain 5Gi root-disk PVC, matching suse-virt-rodeo's own
+# SLES15-SP7-Minimal-VM/SLES-16.0-Minimal-VM sizing), and its own build SBOM
+# (Leap-16.0-Minimal-VM.x86_64-Cloud.json) lists both `cloud-init` and
+# `cloud-init-config-suse` as installed packages.
 #
-# NOT Leap 16.0's "Minimal-VM" appliance (used here until 2026-09-18): its
-# SBOM ships combustion, not cloud-init, so the NoCloud ISO Harvester/KubeVirt
+# NOT Leap-16.0-Minimal-VM.x86_64-kvm-and-xen.qcow2 (used here until
+# 2026-09-23) — same appliance family, different build variant: its SBOM
+# ships combustion only, not cloud-init, so the NoCloud ISO Harvester/KubeVirt
 # attaches for Exercise 2.8's user-data and 70-webserver-prod.sh's own
 # cloud-init both get silently ignored — the VM boots and qemu-guest-agent
 # connects fine, but no SSH key ever lands anywhere, in any user account.
-# Leap Micro ships both cloud-init and combustion, confirmed via its SBOM at
-# https://download.opensuse.org/distribution/leap-micro/6.2/appliances/openSUSE-Leap-Micro.x86_64-Default-qcow.json
+#
+# ALSO NOT openSUSE-Leap-Micro.x86_64-Default-qcow.qcow2 (used here
+# 2026-09-18 through 2026-09-23, after the kvm-and-xen mistake above) — that
+# one does ship cloud-init, but Leap Micro's btrfs layout reports a fixed
+# ~32 GiB virtualSize regardless of its ~1.5 GiB download (confirmed via
+# `virt-resize --shrink`: not a sparse/shrinkable image, per suse-virt-rodeo's
+# own track_scripts/setup-kvm-host, which hit the identical
+# FailedAttachVolume/"insufficient storage" failure on a 5Gi PVC before
+# switching away from it). Every VM built from it needs a 32-33 GiB root
+# disk instead of 5 GiB — a 6-7x jump that isn't reflected anywhere in this
+# workshop's or rodeo-cli's disk_gb sizing, and can exhaust a 3-node lab's
+# Longhorn capacity well before all 8 exercises' VMs are built.
 #
 # Idempotent: skips the download if the file is already present and its
 # checksum matches — safe to re-run on every `rodeo up` (this is a
@@ -32,8 +48,8 @@ set -uo pipefail
 log(){ echo ">>> [image-cache] $*"; }
 
 IMAGE_DIR="/var/lib/libvirt/images/workshop-cache"
-IMAGE_FILE="openSUSE-Leap-Micro.x86_64-Default-qcow.qcow2"
-IMAGE_URL="https://download.opensuse.org/distribution/leap-micro/6.2/appliances/${IMAGE_FILE}"
+IMAGE_FILE="Leap-16.0-Minimal-VM.x86_64-Cloud.qcow2"
+IMAGE_URL="https://download.opensuse.org/distribution/leap/16.0/appliances/${IMAGE_FILE}"
 IMAGE_HTTP_PORT=8889
 IMAGE_HTTP_BIND="192.168.122.1"
 
@@ -53,7 +69,7 @@ if [ -s "${IMAGE_DIR}/${IMAGE_FILE}" ]; then
 fi
 
 if [ "${need_download}" = "1" ]; then
-  log "downloading ${IMAGE_FILE} (~1.5 GiB) ..."
+  log "downloading ${IMAGE_FILE} (~322 MiB) ..."
   if ! curl -fsSL --max-time 300 -o "${IMAGE_DIR}/${IMAGE_FILE}.part" "${IMAGE_URL}"; then
     echo ">>> [image-cache] FAILED to download ${IMAGE_URL}" >&2
     exit 1

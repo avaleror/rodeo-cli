@@ -42,8 +42,8 @@ NS="prod"
 NET_NAME="service"
 NET="${NS}/${NET_NAME}"
 IMAGE_NS="official-images"
-IMAGE_HTTP_URL="http://192.168.122.1:8889/openSUSE-Leap-Micro.x86_64-Default-qcow.qcow2"
-IMAGE_DISPLAY_NAME="openSUSE-Leap-Micro.x86_64-Default-qcow.qcow2"
+IMAGE_HTTP_URL="http://192.168.122.1:8889/Leap-16.0-Minimal-VM.x86_64-Cloud.qcow2"
+IMAGE_DISPLAY_NAME="Leap-16.0-Minimal-VM.x86_64-Cloud.qcow2"
 VM_NAME="webserver-prod"
 
 for pubkey_file in /root/.rodeo/ssh/id_ed25519.pub /root/.ssh/id_ed25519.pub /root/.ssh/id_rsa.pub; do
@@ -154,13 +154,18 @@ IMAGE_SC="$(kubectl get virtualmachineimages.harvesterhci.io -n "${IMAGE_NS}" "$
 
 # The boot disk PVC must be >= the image's own virtual (logical) size, not its
 # download size — a qcow2's compressed download can be tiny while its
-# filesystem is much larger (this openSUSE image: ~308 MiB download, 24 GiB
-# virtual size). A too-small PVC never binds (Longhorn/Harvester can't shrink
-# the volume to fit) and the VM sits ErrorUnschedulable forever. Compute the
-# real floor from .status.virtualSize instead of hardcoding a value that only
-# happens to work for today's cached image. (Live-caught on rodeo-cli's
-# virt-workshop-aws profile 2026-09-12 with a hardcoded 5Gi — see that repo's
-# git history for the failure mode this avoids.)
+# filesystem is much larger. Compute the real floor from .status.virtualSize
+# instead of hardcoding a value that only happens to work for today's cached
+# image. (Live-caught on rodeo-cli's virt-workshop-aws profile 2026-09-12
+# with a hardcoded 5Gi — see that repo's git history for the failure mode
+# this avoids. Also why this script never hardcodes a *display* size in its
+# own comments beyond the DISK_GI floor below: the cached image has changed
+# more than once — currently Leap-16.0-Minimal-VM.x86_64-Cloud.qcow2, ~322
+# MiB download / ~1.42 GiB virtual size, comfortably under the 5Gi floor;
+# openSUSE Leap Micro, used 2026-09-18 through 2026-09-23, reported a fixed
+# ~32 GiB virtual size regardless of its own ~1.5 GiB download and forced
+# DISK_GI well past this floor on every VM — see 50-image-cache.sh's header
+# for why that image was dropped.)
 IMAGE_VIRTUAL_SIZE="$(kubectl get virtualmachineimages.harvesterhci.io -n "${IMAGE_NS}" "${IMAGE_NAME}" \
   -o jsonpath='{.status.virtualSize}' 2>/dev/null)"
 GIB=1073741824

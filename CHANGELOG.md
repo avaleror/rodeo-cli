@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.17.0](https://github.com/avaleror/rodeo-cli/compare/v0.16.1...v0.17.0) (2026-09-23)
+
+
+### Features
+
+* **aws:** auto-manage the security group instead of requiring an operator-supplied one ([787df16](https://github.com/avaleror/rodeo-cli/commit/787df169a12c59077a90e7b3c25b87148d083029))
+* bump Harvester 1.8.1 -&gt; 1.8.2, Rancher 2.14.1 -&gt; 2.14.5 (harvester-family only) ([e5ff956](https://github.com/avaleror/rodeo-cli/commit/e5ff95687db65ba04b2b81e172fcd90818d267f4))
+* **engine:** actually run custom/scripts/ — documented since config_dir shipped, never executed ([9ae7650](https://github.com/avaleror/rodeo-cli/commit/9ae7650dbae8fc58b75a06f79dd39f3a14a35d16))
+* **harvester-aws:** raise guest RAM to 24 GiB/Harvester-node, 16 GiB Rancher ([4a74a79](https://github.com/avaleror/rodeo-cli/commit/4a74a798eb5375ac31080ab4ce52c18101538588))
+* new harvester-aws profile — 3-node Harvester+Rancher pre-tuned for AWS ([23683cf](https://github.com/avaleror/rodeo-cli/commit/23683cf4903ef8e0f03489c4962beedb5c6d74f8))
+* new virt-workshop-aws profile — pre-lab state for suse-virt-workshop's exercises ([524ad34](https://github.com/avaleror/rodeo-cli/commit/524ad348eaedb50f95224411313ca5acfed4aacb))
+* Option A — AWS is a target, not a topology; fix suse-edge TLS regression ([4811e34](https://github.com/avaleror/rodeo-cli/commit/4811e34c74586889deb04b635457571e43e49cf2))
+* suse-edge-aws profile — AWS-tuned SUSE Edge 3.6 (Rancher+EIB+4 edge nodes) ([26afd56](https://github.com/avaleror/rodeo-cli/commit/26afd565a513e294e4c42d47484520dd9a51a0f7))
+* virt-workshop-aws-2n — genuine budget tier, 2-node Harvester on m8id.4xlarge ([810546f](https://github.com/avaleror/rodeo-cli/commit/810546fa9c1ee559d73300f7358eb2285d1a08d2))
+* **virt-workshop-aws:** pre-create daily-batch-processor for full chapter-4 parity ([8d5e9f2](https://github.com/avaleror/rodeo-cli/commit/8d5e9f27770c5b984aa9cc9439d9b3c7c340efa2))
+
+
+### Bug Fixes
+
+* **aws:** disk floor is a flat 300GB/Harvester-node, 60GB/Rancher-node, not a pool budget ([6d5e240](https://github.com/avaleror/rodeo-cli/commit/6d5e240907ae87fe688a89a0cceaae7be073b39d))
+* **aws:** harvester-2n needs 32 vCPU/128 GiB, not 8/64 — resize to m8id.8xlarge ([aed0368](https://github.com/avaleror/rodeo-cli/commit/aed0368f9d0e8fe97de75156c257529405a75bc9))
+* **aws:** harvester-aws must fit m8id.8xlarge too, not m8id.12xlarge ([b2763e5](https://github.com/avaleror/rodeo-cli/commit/b2763e5bddeff31f3ea624867781b06d14605f2c))
+* **aws:** managed-SG description used an em dash, which EC2's GroupDescription rejects ([96aca57](https://github.com/avaleror/rodeo-cli/commit/96aca573c7cd8044e81d114ffbeaae790873c751))
+* **aws:** NVMe disk floor was per Harvester node, not per pool — 3x overshoot ([192ee1b](https://github.com/avaleror/rodeo-cli/commit/192ee1bd3ad4795a24d6fd5356bb115b8904343b))
+* cluster-registration-url import fails against self-signed Rancher on AWS ([334e986](https://github.com/avaleror/rodeo-cli/commit/334e986b7bc1301bae7294ab76e572ec89713e80))
+* **profiles:** propagate mgmt_mac into cfg["vms"][name]["mac"] ([be4ed01](https://github.com/avaleror/rodeo-cli/commit/be4ed019fe55ebe5adae215fbc55cc07a41ad28a))
+* seed_lab() verifies its own copy; custom_scripts warns on empty dir ([cd6c95b](https://github.com/avaleror/rodeo-cli/commit/cd6c95b1f3ef613fe2da11625c43d5e97fa1fae2))
+* **ssh:** make rodeo ssh host/vm actually authenticate the nested hop ([1d0ab91](https://github.com/avaleror/rodeo-cli/commit/1d0ab91920414e2b8be85abb24d18d46ccd13c03))
+* **ssh:** quote remote_cmd across the host/vm nested hop ([91530b9](https://github.com/avaleror/rodeo-cli/commit/91530b9e388fb2af5f9375d164dcc981979879fd))
+* **suse-edge:** repair EIB build pipeline, ISO seeding, and registration config ([1a591dd](https://github.com/avaleror/rodeo-cli/commit/1a591dd699529213c983518870eaf01c7c00db93))
+* **suse-edge:** restore elemental/ as the registration config directory ([49d0a56](https://github.com/avaleror/rodeo-cli/commit/49d0a56e30182b3d95b36074318145db85c82867))
+* **suse-edge:** sync stale os-files/edge-definition.yaml text in success messages ([13009a2](https://github.com/avaleror/rodeo-cli/commit/13009a2810afba5ea4e575d7b3fd5cb7261d3b11))
+* **up:** _infer_lab_profile picks the longest match, not the first ([c64d00d](https://github.com/avaleror/rodeo-cli/commit/c64d00d461242da0aa2246144e92c6253f454dde))
+* **up:** hand ~/.rodeo back to the invoking user on AWS deploys too ([252fe7b](https://github.com/avaleror/rodeo-cli/commit/252fe7b6dc478cf3373610c50dd128da48b81601))
+* **virt-workshop-aws:** size webserver-prod's boot disk from image virtualSize ([7a74ece](https://github.com/avaleror/rodeo-cli/commit/7a74ece727ea6170fab7277af34e2b4f50d00166))
+* **virt-workshop-aws:** switch cached image to Leap-16.0-Minimal-VM Cloud build ([3eb5884](https://github.com/avaleror/rodeo-cli/commit/3eb5884c191556abedb9372f50bb9260ec530b0a))
+* **virt-workshop-aws:** sync bundled custom_scripts/checks with suse-virt-workshop ([9dfeb04](https://github.com/avaleror/rodeo-cli/commit/9dfeb04fff31294afe5aa5518a2e5e55d881899f))
+
+
+### Documentation
+
+* live-validate harvester-aws on m8id.8xlarge — full success ([2e1d9a1](https://github.com/avaleror/rodeo-cli/commit/2e1d9a14a3cba6cb0ebd363fc01304b34e959949))
+
 ## [0.16.1](https://github.com/avaleror/rodeo-cli/compare/v0.16.0...v0.16.1) (2026-09-10)
 
 

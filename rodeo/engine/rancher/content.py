@@ -245,7 +245,7 @@ class LabContentMixin:
             "EIB_REPO=/tmp/eib-config-repo\n"
             "rm -rf \"$EIB_REPO\"\n"
             "mkdir -p \"$EIB_REPO/network-configs\" \"$EIB_REPO/scripts-available\" "
-            "\"$EIB_REPO/os-files/oem\" \"$EIB_REPO/network\"\n\n"
+            "\"$EIB_REPO/elemental\" \"$EIB_REPO/network\"\n\n"
             # .gitignore — keep build outputs and the transient network/ and
             # custom/ dirs out of git. custom/scripts/ is per-build state (like
             # network/): EIB auto-discovers and runs EVERYTHING under it with no
@@ -276,16 +276,24 @@ class LabContentMixin:
             # above from the definition (see nmstate_blocks).
             + nmstate_blocks +
             # Elemental registration config — filled in during Exercise 2, section 2.4.
-            # Lives under os-files/oem/ (EIB's directory convention for files that
-            # should land at the same path on the built image — no YAML field
-            # references it) so it lands at /oem/elemental.yaml on edge1/edge2.
-            "cat > \"$EIB_REPO/os-files/oem/elemental.yaml\" << 'ELEM_EOF'\n"
+            # Lives in elemental/elemental_config.yaml — EIB's own dedicated,
+            # auto-detected directory for this (NOT the generic os-files/
+            # convention: confirmed against EIB's docs that only elemental/
+            # triggers EIB's Elemental-aware package resolution, which is what
+            # actually bundles elemental-register/elemental-system-agent into
+            # the image and wires up registration on first boot. A file dropped
+            # via os-files/ instead lands on disk but EIB never resolves those
+            # packages for it — confirmed live: install completed cleanly with
+            # correct networking, but the node never contacted the Elemental
+            # Operator at all, because elemental-register was never installed).
+            # No YAML field references this directory; EIB auto-discovers it.
+            "cat > \"$EIB_REPO/elemental/elemental_config.yaml\" << 'ELEM_EOF'\n"
             "# Filled in during Exercise 2, section 2.4.\n"
             "# On the eib VM, after cloning this repo:\n"
             f"#   REGURL=$(ssh root@{self.rancher_ip} \\\n"
             f"#     \"kubectl get machineregistration {reg_name} \\\n"
             "#      -n fleet-default -o jsonpath='{.status.registrationURL}'\")\n"
-            "#   curl -k \"$REGURL\" > os-files/oem/elemental.yaml\n"
+            "#   curl -k \"$REGURL\" > elemental/elemental_config.yaml\n"
             "ELEM_EOF\n\n"
             # EIB definition files — schema notes (EIB 1.3.3, apiVersion 1.2):
             #  - embeddedArtifactRegistry.registries needs apiVersion >= 1.2, and
@@ -293,9 +301,9 @@ class LabContentMixin:
             #    every registry entry (pkg/image/validation/registry.go), even
             #    for this unauthenticated local Hauler mirror — the values below
             #    are placeholders EIB requires syntactically, not real secrets.
-            #  - there is no operatingSystem.files field; a file that should land
-            #    at the same path on the built image goes under os-files/ instead
-            #    (populated above at os-files/oem/elemental.yaml).
+            #  - there is no operatingSystem.files field; the elemental/
+            #    directory above (not os-files/) is what actually bundles the
+            #    registration config for an Elemental build.
             #  - there is no operatingSystem.scripts field either; combustion
             #    scripts are auto-discovered from custom/scripts/ (populated above).
             # EIB definition files — Elemental ISO path (edge1, edge2). By default

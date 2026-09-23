@@ -171,6 +171,12 @@ class RodeoProfile(ABC):
             node["name"]: {
                 "ip": node["ip"],
                 "user": node.get("ssh_user", self._default_user(node)),
+                # mgmt_mac is present on every normalized vm_nodes entry (see
+                # inventory.py) — needed by e.g. suse-edge's generated NMState
+                # configs, which EIB's nmc tool refuses without an explicit
+                # mac-address (confirmed live: "Detected Ethernet interfaces
+                # without a MAC address" when this was missing).
+                "mac": node.get("mgmt_mac", ""),
             }
             for node in inv.get("vm_nodes", [])
         }

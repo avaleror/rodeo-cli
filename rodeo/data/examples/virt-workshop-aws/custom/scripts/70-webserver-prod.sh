@@ -1,5 +1,5 @@
 #!/bin/bash
-# virt-workshop-aws custom_scripts step 3/3.
+# suse-virt-workshop custom_scripts step 3/3.
 #
 # Pre-creates the two VMs suse-virt-rodeo's chapter 4 (The Rising Tide,
 # zero-downtime live migration) assumes exist before the student arrives:
@@ -11,10 +11,12 @@
 #                           04-the-rising-tide-live-migration/setup-kvm-host,
 #                           which pins it there for exactly this reason,
 #                           then releases the pin once placed)
-# On the Instruqt track these are baked into the saved cluster image; here,
-# since every AWS deploy starts from a genuinely blank cluster, this script
-# builds the same end state on top of the harvester profile's plain
-# harvester+rancher deploy: namespace, VM network, node labels, and both VMs.
+# On the Instruqt track these are baked into the saved cluster image; a
+# from-scratch `rodeo up` deploy starts from a genuinely blank cluster, so
+# this script builds the same end state on top of the plain harvester+rancher
+# deploy: namespace, VM network, node labels, and both VMs — bringing
+# Exercise 4.1 to parity with the Instruqt track instead of asking the
+# student to build it by hand.
 #
 # Runs after 50-image-cache.sh (needs the cached image already served) and
 # 60-nfs-backup-target.sh (order only, no direct dependency) as the last of
@@ -26,8 +28,10 @@
 # themselves) follows Harvester's standard "VM Network on the management
 # network" convention, but suse-virt-rodeo's own repo has this baked into
 # its image rather than scripted anywhere — there is no proven-working
-# manifest to copy. Live-verify VM connectivity after first deploy of this
-# profile; adjust here if the network doesn't come up as expected.
+# manifest to copy. Live-verified working on rodeo-cli's virt-workshop-aws
+# profile (same shape, AWS-hosted) 2026-09-12; re-verify VM connectivity
+# after a fresh deploy on your own KVM host too, since the bridge name
+# (`mgmt-br`) depends on how libvirt named it during `vms`/`cluster`.
 
 set -uo pipefail
 export KUBECONFIG="${KUBECONFIG:-/root/.rodeo/harvester-kubeconfig}"
@@ -38,8 +42,8 @@ NS="prod"
 NET_NAME="service"
 NET="${NS}/${NET_NAME}"
 IMAGE_NS="official-images"
-IMAGE_HTTP_URL="http://192.168.122.1:8889/Leap-16.0-Minimal-VM.x86_64-kvm-and-xen.qcow2"
-IMAGE_DISPLAY_NAME="Leap-16.0-Minimal-VM.x86_64-kvm-and-xen.qcow2"
+IMAGE_HTTP_URL="http://192.168.122.1:8889/openSUSE-Leap-Micro.x86_64-Default-qcow.qcow2"
+IMAGE_DISPLAY_NAME="openSUSE-Leap-Micro.x86_64-Default-qcow.qcow2"
 VM_NAME="webserver-prod"
 
 for pubkey_file in /root/.rodeo/ssh/id_ed25519.pub /root/.ssh/id_ed25519.pub /root/.ssh/id_rsa.pub; do
@@ -154,7 +158,9 @@ IMAGE_SC="$(kubectl get virtualmachineimages.harvesterhci.io -n "${IMAGE_NS}" "$
 # virtual size). A too-small PVC never binds (Longhorn/Harvester can't shrink
 # the volume to fit) and the VM sits ErrorUnschedulable forever. Compute the
 # real floor from .status.virtualSize instead of hardcoding a value that only
-# happens to work for today's cached image.
+# happens to work for today's cached image. (Live-caught on rodeo-cli's
+# virt-workshop-aws profile 2026-09-12 with a hardcoded 5Gi — see that repo's
+# git history for the failure mode this avoids.)
 IMAGE_VIRTUAL_SIZE="$(kubectl get virtualmachineimages.harvesterhci.io -n "${IMAGE_NS}" "${IMAGE_NAME}" \
   -o jsonpath='{.status.virtualSize}' 2>/dev/null)"
 GIB=1073741824
@@ -169,9 +175,9 @@ fi
 log "boot disk size: ${DISK_GI}Gi (image virtualSize=${IMAGE_VIRTUAL_SIZE:-unknown} bytes)"
 
 # --- VM creation (shared by webserver-prod and daily-batch-processor) -----
-# 1 vCPU / 1 GiB RAM each — matches suse-virt-workshop's own documented spec
-# for the student-created version of webserver-prod (Exercise 4.1); the boot
-# disk is sized dynamically above from the cached image's real virtual size.
+# 1 vCPU / 1 GiB RAM each — matches this workshop's own documented spec for
+# the student-created version of these VMs (old Exercise 4.1); the boot disk
+# is sized dynamically above from the cached image's real virtual size.
 # ``pin_node``, when set, forces initial scheduling onto that exact node
 # (kubernetes.io/hostname) instead of the normal stage=prod pool — used only
 # for daily-batch-processor's guaranteed first collision with webserver-prod.

@@ -8,6 +8,13 @@
 # dedicated dev-labeled node (checked before building this profile), so this
 # is a straight simplification, not a lost story.
 #
+# IMAGE_HTTP_URL/IMAGE_DISPLAY_NAME point at openSUSE Leap Micro, not the
+# older Leap 16.0 Minimal-VM appliance: that one's SBOM ships combustion,
+# not cloud-init, so the cloud-init user-data this script attaches gets
+# silently ignored — the VM boots and qemu-guest-agent connects, but no SSH
+# key ever lands anywhere. Keep this in sync with 50-image-cache.sh, which
+# actually downloads and serves the file this URL points at.
+#
 # Pre-creates the two VMs suse-virt-rodeo's chapter 4 (The Rising Tide,
 # zero-downtime live migration) assumes exist before the student arrives:
 #   webserver-prod          the payment gateway that gets live-migrated
@@ -45,8 +52,8 @@ NS="prod"
 NET_NAME="service"
 NET="${NS}/${NET_NAME}"
 IMAGE_NS="official-images"
-IMAGE_HTTP_URL="http://192.168.122.1:8889/Leap-16.0-Minimal-VM.x86_64-kvm-and-xen.qcow2"
-IMAGE_DISPLAY_NAME="Leap-16.0-Minimal-VM.x86_64-kvm-and-xen.qcow2"
+IMAGE_HTTP_URL="http://192.168.122.1:8889/openSUSE-Leap-Micro.x86_64-Default-qcow.qcow2"
+IMAGE_DISPLAY_NAME="openSUSE-Leap-Micro.x86_64-Default-qcow.qcow2"
 VM_NAME="webserver-prod"
 
 for pubkey_file in /root/.rodeo/ssh/id_ed25519.pub /root/.ssh/id_ed25519.pub /root/.ssh/id_rsa.pub; do

@@ -70,7 +70,10 @@ nav:
     - Harvester HCI: guide-harvester.md
     - SUSE Edge: guide-suse-edge.md
   - Create your own rodeo: custom-rodeos.md
-  - Fleet (multi-host workshops): fleet.md
+  - Fleet (multi-host workshops):
+    - Overview: fleet.md
+    - Claim portal (design): claim-portal.md
+    - Claim portal (implementation plan): claim-portal-plan.md
   - Reference:
     - rodeo-plan.yaml: reference/plan.md
     - definition.yaml: reference/definition.md

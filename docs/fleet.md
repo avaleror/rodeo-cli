@@ -17,6 +17,7 @@ See also: [Get started](get-started.md) (single host), [Architecture](architectu
 | **F2.1** | Shipped | Failure forensics | `rodeo fleet diagnose` |
 | **F4a** | Shipped (MVP) | AWS host-acquire | `rodeo fleet provision`, `deprovision` |
 | **F4b–d** | Roadmap | GCP → Vultr BM → Hetzner | — |
+| **F5** | Designed | Student claim portal: each student opens a link and gets their own lab | `rodeo fleet portal ...` ([design](claim-portal.md), [plan](claim-portal-plan.md)) |
 
 Host prerequisites (after [`install.sh`](https://github.com/avaleror/rodeo-cli/blob/main/install.sh) on each lab machine):
 
@@ -273,6 +274,10 @@ name doesn't map 1:1 to components: e.g. the `test` profile's example dir has
 no Rancher node at all). Set `lab.components: [harvester]` or
 `[rancher]` in the inventory to suppress the URL(s) that don't apply to your
 workshop.
+
+The access sheet is for the instructor. Giving each student their own lab (link,
+credentials, and reachability from any network) is the planned
+[claim portal (F5)](claim-portal.md).
 
 ---
 

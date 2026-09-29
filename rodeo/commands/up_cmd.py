@@ -433,21 +433,24 @@ def _resolve_aws_instance_choice(
 
     if not explicit and not tier_cli and not assume_yes:
         catalog = catalog_for_profile(lab_profile)
+        # Not every profile offers every tier (virt-workshop-aws has no budget).
+        tiers = [t for t in TIERS if t in catalog]
         console.print(f"\n[bold]AWS instance size[/bold] for profile [cyan]{lab_profile}[/cyan]:\n")
-        for i, tier in enumerate(TIERS, start=1):
+        for i, tier in enumerate(tiers, start=1):
             offer = catalog[tier]
             mark = " (default)" if tier == "recommended" else ""
             console.print(
                 f"  {i}) [bold]{tier}[/bold]{mark}  "
                 f"[cyan]{offer.instance_type}[/cyan]  — {offer.notes}"
             )
+        numbers = [str(i) for i in range(1, len(tiers) + 1)]
         choice = Prompt.ask(
             "\nPick a size",
-            choices=["1", "2", "3", "budget", "recommended", "performance"],
-            default="2",
+            choices=numbers + tiers,
+            default=str(tiers.index("recommended") + 1),
         )
-        if choice in ("1", "2", "3"):
-            tier_cli = TIERS[int(choice) - 1]
+        if choice in numbers:
+            tier_cli = tiers[int(choice) - 1]
         else:
             tier_cli = normalize_tier(choice)
 

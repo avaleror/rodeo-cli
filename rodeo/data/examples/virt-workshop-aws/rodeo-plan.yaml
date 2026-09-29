@@ -18,7 +18,7 @@ provider:
   type: aws
   region: eu-central-1          # <- set to your region
   subnet_id: subnet-CHANGE-ME   # <- must be in a VPC with an internet gateway
-  instance_tier: recommended    # budget | recommended | performance — see instance_catalog.py
+  instance_tier: recommended    # recommended | performance (no budget tier for this profile; see instance_catalog.py)
   # instance_type: m8id.8xlarge   # or pin explicitly instead of a tier
   associate_public_ip: true
   # security_group_ids: [sg-...] # omit to let rodeo create/manage one,

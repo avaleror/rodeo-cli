@@ -29,7 +29,8 @@ class InstanceOffer:
 
 
 # Profile → tier → offer. Sized for nested KVM (reject tiny types elsewhere).
-# Custom / unknown profiles fall back to ``harvester``.
+# Custom / unknown profiles fall back to ``harvester``. A profile may omit a
+# tier that has no sensible pick; asking for it is a ConfigError.
 AWS_PROFILE_TIERS: dict[str, dict[InstanceTier, InstanceOffer]] = {
     "rancher": {
         "budget": InstanceOffer(
@@ -98,11 +99,11 @@ AWS_PROFILE_TIERS: dict[str, dict[InstanceTier, InstanceOffer]] = {
         ),
     },
     # Same host sizing as harvester — custom/scripts/ (image cache, NFS, one
-    # pre-created VM) do not change the EC2 footprint.
+    # pre-created VM) do not change the EC2 footprint. No budget tier: the
+    # EBS-only m7i.16xlarge cost more than recommended ($3.43 vs $2.22/hr,
+    # eu-north-1, 2026-09-14) with slower Longhorn I/O. The cheaper path is
+    # the 2-node virt-workshop-aws-2n profile.
     "virt-workshop-aws": {
-        "budget": InstanceOffer(
-            "m7i.16xlarge", "budget", "64 vCPU / 256 GiB — 3-node + Rancher (EBS)"
-        ),
         "recommended": InstanceOffer(
             "m8id.8xlarge", "recommended",
             "32 vCPU / 128 GiB / a single ~1.9 TiB NVMe device — same as "
@@ -174,7 +175,7 @@ def normalize_tier(raw: str | None) -> InstanceTier:
 
 
 def catalog_for_profile(profile: str) -> dict[InstanceTier, InstanceOffer]:
-    """Return the three offers for a lab profile (fallback: harvester)."""
+    """Return the offers for a lab profile (fallback: harvester), in TIERS order."""
     name = _canonical_profile(profile)
     if name in AWS_PROFILE_TIERS:
         return AWS_PROFILE_TIERS[name]
@@ -184,7 +185,13 @@ def catalog_for_profile(profile: str) -> dict[InstanceTier, InstanceOffer]:
 def offer_for(profile: str, tier: str | InstanceTier) -> InstanceOffer:
     """Resolve one tier to an InstanceOffer for the profile."""
     t = normalize_tier(str(tier))
-    return catalog_for_profile(profile)[t]
+    catalog = catalog_for_profile(profile)
+    if t not in catalog:
+        raise ConfigError(
+            f"profile {_canonical_profile(profile)!r} has no {t!r} instance tier; "
+            f"choose one of {[x for x in TIERS if x in catalog]}"
+        )
+    return catalog[t]
 
 
 def resolve_instance_type(

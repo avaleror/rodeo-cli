@@ -28,12 +28,28 @@ def test_catalog_virt_workshop_aws_matches_harvester_sizing():
 def test_catalog_virt_workshop_aws_2n_budget_is_smaller_instance():
     """virt-workshop-aws-2n's budget tier is the actual point of the profile:
     a genuinely smaller/cheaper instance than the 3-node profile's, made
-    possible by dropping to 2 Harvester nodes — not just an EBS-only 3-node
-    box like virt-workshop-aws's own budget tier."""
+    possible by dropping to 2 Harvester nodes."""
     offer = catalog_for_profile("virt-workshop-aws-2n")["budget"]
     assert offer.instance_type == "m8id.4xlarge"
-    # The 3-node profile is untouched by adding the 2-node one.
-    assert catalog_for_profile("virt-workshop-aws")["budget"].instance_type == "m7i.16xlarge"
+
+
+def test_catalog_virt_workshop_aws_has_no_budget_tier():
+    """The 3-node profile's old budget pick (EBS-only m7i.16xlarge) cost more
+    than recommended; it was removed so the catalog matches the workshop docs
+    (recommended + performance only)."""
+    assert list(catalog_for_profile("virt-workshop-aws")) == ["recommended", "performance"]
+    with pytest.raises(ConfigError, match="no 'budget' instance tier"):
+        resolve_instance_type(profile="virt-workshop-aws", instance_tier="budget")
+    itype, _ = resolve_instance_type(profile="virt-workshop-aws", instance_tier="recommended")
+    assert itype == "m8id.8xlarge"
+
+
+def test_every_profile_offers_recommended():
+    """The default tier (and the interactive prompt's default) must always exist."""
+    from rodeo.providers.instance_catalog import AWS_PROFILE_TIERS
+
+    for name, tiers in AWS_PROFILE_TIERS.items():
+        assert "recommended" in tiers, name
 
 
 def test_catalog_suse_edge_recommended_has_local_nvme():

@@ -6,7 +6,6 @@ audience: maintainers, implementing AI or engineer
 repo: https://github.com/avaleror/rodeo-cli
 related:
   - docs/fleet.md
-  - docs/n8n-integration.md
   - rodeo/fleet/access.py
   - rodeo/providers/aws.py
   - rodeo/ssh_key.py
@@ -41,11 +40,8 @@ but students cannot get into them today:
    (`provider.student_access: open`) with safeguards, instead of IP allowlists
    (section 7).
 
-This is a deliberate exception to rule 3 of `docs/n8n-integration.md` ("no
-`rodeo serve` HTTP daemon"). That rule is scoped to the n8n Phase 0 layer. The
-portal is a separate feature, and its security constraints (section 6) keep the spirit
-of that plan's rule 4: no cloud credentials and no rodeo SSH key ever leave the
-instructor's machine.
+The portal's security constraints (section 6) keep one rule fixed: no cloud
+credentials and no rodeo SSH key ever leave the instructor's machine.
 
 ## 3. Goals and non-goals
 
@@ -62,7 +58,7 @@ instructor's machine.
 **Non-goals (v1)**
 
 - Sending email. The CLI outputs a CSV of personal links; the instructor mail-merges
-  or n8n sends them.
+  them.
 - A web admin UI. Instructor control is CLI-only (smaller attack surface, no admin
   password to manage).
 - SSO / OAuth login.
@@ -268,7 +264,7 @@ roster file, or `portal.enabled: true` on a provider fleet whose
 | `rodeo fleet portal export` | laptop to portal | Attendance CSV (name, email, lab). |
 | `rodeo fleet deprovision` | laptop | Also terminates the portal (`--keep-portal` to keep it). |
 
-All of them support `--output json` so the n8n plan can call them without parsing Rich
+All of them support `--output json` so scripts can call them without parsing Rich
 tables.
 
 ## 10. Code layout
@@ -313,4 +309,4 @@ Summary:
 3. **Should the instructor also get a read-only web view** (who claimed what) for
    the room screen? Currently excluded (CLI only).
 4. **Lab expiry shown to students** ("this lab is destroyed at 17:00"): easy to add if
-   `workshop.yaml` gains an `ends_at`, which the n8n plan also wants.
+   `workshop.yaml` gains an `ends_at`.

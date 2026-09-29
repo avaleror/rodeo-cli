@@ -279,6 +279,36 @@ The access sheet is for the instructor. Giving each student their own lab (link,
 credentials, and reachability from any network) is the planned
 [claim portal (F5)](claim-portal.md).
 
+### Student network access (AWS)
+
+A rodeo-managed security group only admits the operator's IP, so students cannot
+reach their labs by default. To let them in from any network without knowing their
+IP, set `provider.student_access: open` and open the lab UI ports once every lab is
+up:
+
+```yaml
+provider:
+  type: aws
+  student_access: open     # operator (default) | open
+```
+
+```bash
+rodeo fleet provision -f workshop.yaml     # ports stay operator-only
+rodeo fleet deploy -f workshop.yaml
+rodeo fleet status -f workshop.yaml        # wait until every host is complete
+rodeo fleet open-access -f workshop.yaml   # 8443/30002 open to 0.0.0.0/0
+rodeo fleet open-access --close -f workshop.yaml
+```
+
+`open-access` refuses unless every host has finished all phases and its Harvester
+and Rancher admin passwords are strong (16+ characters with upper, lower and digit).
+The check runs on each host and reports only strong / weak / missing; passwords never
+leave the host. The security group is shared by the whole workshop, so one host that
+is not ready blocks opening for all. Ports follow `lab.components`; SSH (`22`) always
+stays operator-only. Any later `fleet provision` closes the ports again. With
+`provider.security_group_ids` (BYO) rodeo changes nothing and asks you to open the
+ports yourself.
+
 ---
 
 ## OpenSSH requirements
@@ -399,6 +429,7 @@ hosts: []                           # empty → provision creates; or pre-seed s
 Validation rules (fail closed):
 
 - `provider.type` ∈ `{aws, gcp, vultr, hetzner}`.
+- `provider.student_access` ∈ `{operator, open}` when set (default `operator`); see [Student network access](#student-network-access-aws).
 - `provider.count` integer 1–64 when set; if `hosts:` non-empty and count omitted, ensure exactly those ids (reuse/create by `rodeo-host-id`).
 - SSH identity is managed under `~/.rodeo/ssh/id_ed25519` (auto-created; imported to EC2 as key pair `rodeo`). `defaults.identity_file` / `provider.key_name` are optional.
 - Type-specific required keys enforced by that adapter’s `validate()` only.

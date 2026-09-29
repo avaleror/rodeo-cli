@@ -33,6 +33,8 @@ _REQUIRED = ("region", "subnet_id")
 # defaults/main.yml and tasks/firewall.yml. If those ansible defaults ever
 # change, this tuple should move with them.
 MANAGED_SG_PORTS = (22, 8443, 30002)
+# Source added to lab UI ports by `rodeo fleet open-access` (never port 22).
+STUDENT_ACCESS_CIDR = "0.0.0.0/0"
 
 # Recommended default for performance-first Harvester labs (local NVMe).
 DEFAULT_INSTANCE_TYPE = "i7i.8xlarge"
@@ -398,14 +400,28 @@ class AwsHostProvider:
                 ) from exc
             return str(groups[0]["GroupId"])
 
-    def _reconcile_managed_sg_ingress(self, ec2: Any, sg_id: str, caller_cidr: str) -> None:
+    def _reconcile_managed_sg_ingress(
+        self,
+        ec2: Any,
+        sg_id: str,
+        caller_cidr: str,
+        open_ports: tuple[int, ...] = (),
+    ) -> None:
         """Desired state: exactly one ingress source (the caller's current
-        public IP) per managed port. Revokes any other CIDR on those ports —
-        safe because this SG is exclusively rodeo's, nothing else touches it —
-        and authorizes the current one. No-ops on repeat runs from the same IP."""
+        public IP) per managed port, plus ``0.0.0.0/0`` on ``open_ports``.
+        Revokes any other CIDR on those ports — safe because this SG is
+        exclusively rodeo's, nothing else touches it — and authorizes the
+        missing ones. No-ops on repeat runs from the same IP.
+
+        Only ``rodeo fleet open-access`` passes ``open_ports``; every other
+        caller keeps the operator-only default, so a re-provision closes any
+        port a previous open-access opened."""
         resp = ec2.describe_security_groups(GroupIds=[sg_id])
         perms = (resp.get("SecurityGroups") or [{}])[0].get("IpPermissions") or []
         for port in MANAGED_SG_PORTS:
+            desired = {caller_cidr}
+            if port in open_ports:
+                desired.add(STUDENT_ACCESS_CIDR)
             current = {
                 str(r.get("CidrIp"))
                 for perm in perms
@@ -415,9 +431,9 @@ class AwsHostProvider:
                 for r in perm.get("IpRanges") or []
                 if r.get("CidrIp")
             }
-            if current == {caller_cidr}:
+            if current == desired:
                 continue
-            stale = current - {caller_cidr}
+            stale = current - desired
             if stale:
                 ec2.revoke_security_group_ingress(
                     GroupId=sg_id,
@@ -430,7 +446,8 @@ class AwsHostProvider:
                         }
                     ],
                 )
-            if caller_cidr not in current:
+            missing = sorted(desired - current)
+            if missing:
                 ec2.authorize_security_group_ingress(
                     GroupId=sg_id,
                     IpPermissions=[
@@ -439,7 +456,15 @@ class AwsHostProvider:
                             "FromPort": port,
                             "ToPort": port,
                             "IpRanges": [
-                                {"CidrIp": caller_cidr, "Description": "rodeo operator IP"}
+                                {
+                                    "CidrIp": c,
+                                    "Description": (
+                                        "rodeo operator IP"
+                                        if c == caller_cidr
+                                        else "rodeo student access"
+                                    ),
+                                }
+                                for c in missing
                             ],
                         }
                     ],
@@ -475,6 +500,42 @@ class AwsHostProvider:
         caller_ip = self._caller_ip_fn()
         self._reconcile_managed_sg_ingress(ec2, sg_id, f"{caller_ip}/32")
         return [sg_id]
+
+    def set_student_access(
+        self,
+        config: dict[str, Any],
+        *,
+        workshop: str,
+        open_ports: tuple[int, ...],
+    ) -> str:
+        """Reconcile the workshop's managed SG to operator /32 plus
+        ``0.0.0.0/0`` on ``open_ports`` (empty = close). Returns the SG id.
+
+        Refuses BYO ``security_group_ids`` (not rodeo's to change) and a
+        workshop without a managed SG yet (nothing provisioned)."""
+        self.validate(config)
+        if config.get("security_group_ids"):
+            raise ConfigError(
+                "provider.security_group_ids is set: rodeo does not change a "
+                "security group it does not own. Open the lab ports on it yourself, "
+                "or omit security_group_ids so rodeo manages one."
+            )
+        bad = sorted(p for p in open_ports if p == 22 or p not in MANAGED_SG_PORTS)
+        if bad:
+            raise ConfigError(f"ports {bad} cannot be opened to students")
+        ec2 = self._client(config)
+        vpc_id = self._vpc_id_for_subnet(ec2, str(config["subnet_id"]))
+        sg_id = self._find_managed_sg(ec2, vpc_id=vpc_id, workshop=workshop)
+        if sg_id is None:
+            raise ConfigError(
+                f"no rodeo-managed security group for workshop {workshop!r} "
+                "(run `rodeo fleet provision` first)"
+            )
+        caller_ip = self._caller_ip_fn()
+        self._reconcile_managed_sg_ingress(
+            ec2, sg_id, f"{caller_ip}/32", open_ports=tuple(open_ports)
+        )
+        return sg_id
 
     def _cleanup_managed_sg(
         self,

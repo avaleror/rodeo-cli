@@ -1,10 +1,10 @@
 ---
 title: Fleet claim portal, implementation plan
-status: approved design, implementation not started
+status: approved design, F5.0 implemented (live check pending)
 audience: maintainers, implementing AI or engineer
 design: docs/claim-portal.md
 language: en
-last_updated: 2026-09-25
+last_updated: 2026-09-29
 ---
 
 # Fleet claim portal: implementation plan
@@ -51,7 +51,7 @@ that pins it.
 | R6 | Any fleet command that iterates `hosts[]` (deploy, retry, diagnose, status, access, doctor) would try to deploy a lab onto the portal. | `select_hosts` users | Portal lives in a separate top-level `portal:` block, never in `hosts[]`. Test: every fleet command's host list excludes it. | F5.2 |
 | R7 | The fleet-wide rodeo private key is planted at `/root/.ssh/id_ed25519` on every lab host, and nested VMs trust it (`ssh_targets.py`, `ensure_ssh_key.yml`, workshop scripts). Root on one host means root on all hosts. The nested hop was fixed only days ago (`1d0ab91`, `91530b9`). | `ssh_key.py`, `ssh_targets.py` | **Not changed in this project.** Students never get root: `student_ssh` defaults to `false`, and when enabled the student user is not in `wheel`, `libvirt` or sudoers. A per-host key is a separate ROADMAP item that needs a live `rodeo ssh host/vm` regression. | F5.4 |
 | R8 | `portal publish` reads `secrets.yaml` over SSH. If that output flows into a job file, `fleet diagnose` bundle or Rich error message, passwords leak to disk or terminal. | `fleet/ssh_exec.py`, `job.py`, `diagnose.py` | Publish uses its own call path that never logs stdout; errors print host id + exit code only. Test: a fake secret string never appears in captured logs, job files or exceptions. | F5.3 |
-| R9 | `student_access: open` exposes Harvester/Rancher logins. A hand-set weak password (`rodeo set-password`) would be exposed. | `secretgen.py` | Strength gate (16+ chars, upper, lower, digit) before publish and in `fleet deploy` when `open`. | F5.0, F5.3 |
+| R9 | `student_access: open` exposes Harvester/Rancher logins. A hand-set weak password (`rodeo set-password`) would be exposed. | `secretgen.py` | Strength gate (16+ chars, upper, lower, digit) before `fleet open-access` opens ports and before publish. | F5.0, F5.3 |
 
 ## 3. Phases
 
@@ -72,19 +72,27 @@ before the portal exists (instructor can still use `fleet access`).
   - `load_inventory` accepts every bundled example and `docs/examples/workshop.md`
     snippet unchanged.
 - **Change:** `_reconcile_managed_sg_ingress(..., open_ports=())`. Desired state per
-  port: operator `/32`, plus `0.0.0.0/0` for ports in `open_ports`. Only
-  `fleet_provision` computes `open_ports`, from `provider.student_access` and
-  `lab.components` (`22` is never included in this phase).
+  port: operator `/32`, plus `0.0.0.0/0` for ports in `open_ports`. Default unchanged,
+  so provision (fleet and single-host) stays operator-only and closes any open port on
+  re-run. `22` is never opened in this phase.
 - **Change:** `load_inventory` validates `provider.student_access: operator | open`
   (default `operator`); unknown values fail closed.
 - **Change:** password strength check helper in `secretgen.py`
-  (`is_strong_password`), used by `fleet deploy` post-check when `open`: a weak host
-  is reported as failed with a clear message, not silently exposed.
-- **Warning:** `fleet provision` prints the exposed ports and hosts when `open`.
-- **Tests:** operator to open, open to operator (rules revoked), idempotent re-run
-  makes no AWS calls, BYO `security_group_ids` untouched, single-host path never opens.
-- **Live:** 1-host fleet in eu-north-1, `student_access: open`; `:8443` reachable from
-  a phone on mobile data; flip back to `operator`, re-provision, unreachable again.
+  (`is_strong_password`).
+- **Change (decision 2026-09-29, replaces "open at provision"):** new
+  `rodeo fleet open-access [--close]` (`rodeo/fleet/student_access.py`,
+  `AwsHostProvider.set_student_access`). Opens only when `student_access: open` and
+  every host reports all phases complete and strong UI passwords (checked on the host,
+  only a verdict comes back). Ports from `lab.components`. Refuses BYO
+  `security_group_ids`. Opening at provision would expose the first-login screens
+  during the deploy (tester lab 2026-09-25).
+- **Note:** `fleet provision` prints a pointer to `open-access` when `open`.
+- **Tests:** operator to open, open to operator (rules revoked), re-provision closes,
+  idempotent re-run makes no AWS calls, BYO `security_group_ids` untouched, single-host
+  path never opens, gate refuses while any host is incomplete or weak.
+- **Live:** 1-host fleet in eu-north-1, `student_access: open`; `open-access` refused
+  mid-deploy; after deploy `:8443` reachable from a phone on mobile data;
+  `open-access --close`, unreachable again.
 
 ### F5.1 Portal service (local only, new code)
 

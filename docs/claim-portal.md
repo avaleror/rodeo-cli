@@ -200,23 +200,31 @@ provider:
 
 - `operator` (default, today's behaviour): exactly the operator `/32` on every managed
   port. Dev and test fleets stay as they are.
-- `open`: `_reconcile_managed_sg_ingress` desired state becomes operator `/32` plus
-  `0.0.0.0/0` on the lab UI ports (`8443`, `30002`), and on `22` only when
-  `portal.student_ssh: true`. Otherwise `22` stays operator-only. Anything else is
-  revoked, so switching back to `operator` and re-running provision closes the ports
-  again (idempotent, testable with the existing mocked EC2 pattern). IPv4 only; the
-  hosts have no public IPv6.
-- `open` prints a warning at provision time naming the exposed ports and hosts.
+- `open`: **allows** the lab UI ports (`8443`, `30002`) to be opened to `0.0.0.0/0`,
+  but provision never opens them. The operator runs `rodeo fleet open-access` once
+  every lab is up (decision, Andrés, 2026-09-29). `22` stays operator-only (until
+  `portal.student_ssh: true`, F5.4). IPv4 only; the hosts have no public IPv6.
+- Why a separate step: the tester lab on 2026-09-25 showed the ports must open only
+  **after** the deploy has set the Harvester/Rancher admin passwords, otherwise the
+  first-login screen is on the internet for the whole deploy. `fleet deploy` only
+  starts the runs and returns, so it cannot be the trigger either.
+- `rodeo fleet open-access` refuses unless **every** host reports all phases complete
+  and its UI admin passwords are strong. The managed SG is shared by the whole
+  workshop, so one unready host blocks the lot. On success, `_reconcile_managed_sg_ingress`
+  desired state becomes operator `/32` plus `0.0.0.0/0` on the component ports.
+- `rodeo fleet open-access --close`, or any later `fleet provision` run, reconciles
+  back to operator-only (idempotent, tested with the mocked EC2 pattern).
+- Provision prints a note when `open` is set, pointing at `open-access`.
 
 Safeguards that come with `open`:
 
 | Safeguard | Detail |
 |-----------|--------|
-| Strong passwords enforced | Before the portal publishes a lab (and in `fleet deploy` when `open`), rodeo checks the host's `secrets.yaml`: every UI admin password must be at least 16 chars with upper, lower and digit (what `secretgen.random_password` produces, about 95 bits). A weaker, hand-set password (e.g. via `rodeo set-password`) blocks that lab with a clear error instead of exposing it. |
+| Strong passwords enforced | Before `fleet open-access` opens the ports (and before the portal publishes a lab), rodeo checks the host's `secrets.yaml` **on the host**: every UI admin password must be at least 16 chars with upper, lower and digit (what `secretgen.random_password` produces, about 95 bits). The check prints only strong / weak / missing per key; the password never leaves the host. A weaker, hand-set password (e.g. via `rodeo set-password`) blocks opening with a clear error instead of exposing it. |
 | SSH key-only | The EC2 userdata already sets `ssh_pwauth: false` and `PermitRootLogin prohibit-password`; the student user only has a key. |
 | Minimal ports | Only the ports the lab's components use (`lab.components`), never the full `MANAGED_SG_PORTS` blindly. |
 | Short lifetime | Labs live for the workshop; the portal shows the teardown time and `fleet deprovision` closes everything. |
-| BYO security groups untouched | With `provider.security_group_ids` set, rodeo does not change rules; `open` then only warns that the operator must open the ports. |
+| BYO security groups untouched | With `provider.security_group_ids` set, rodeo does not change rules; `open-access` refuses and says the operator must open the ports. |
 
 Accepted residual risk: the Harvester and Rancher login pages are internet-visible for
 the workshop's duration and will be found by scanners. With random 95-bit passwords the
@@ -254,6 +262,7 @@ roster file, or `portal.enabled: true` on a provider fleet whose
 | Command | Runs where | What |
 |---------|-----------|------|
 | `rodeo fleet provision` | laptop | Also provisions the portal VM when `portal.enabled` (`--no-portal` to skip). |
+| `rodeo fleet open-access [--close]` | laptop | Opens the lab UI ports to `0.0.0.0/0` once every lab is complete with strong passwords (F5.0). |
 | `rodeo fleet portal up` | laptop to portal | Install rodeo + Caddy, write systemd units, start. Idempotent. |
 | `rodeo fleet portal publish` | laptop to hosts, then portal | For each host: check readiness (`rodeo status --output json`), read `secrets.yaml`, ensure student user/key if enabled, upsert the lab record. Labs not ready are published as `building`. Safe to run repeatedly; run it again after `fleet retry`. |
 | `rodeo fleet portal invite` | laptop | Roster tokens, writes `portal-invites.csv`. Re-running keeps existing tokens unless `--rotate`. |

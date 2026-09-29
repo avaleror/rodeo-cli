@@ -34,6 +34,7 @@ from ..fleet.provision import (
     provision_payload,
 )
 from ..fleet.status import fleet_status
+from ..fleet.student_access import fleet_open_access, open_access_payload
 from ..install_source import resolve_install_source
 
 console = Console()
@@ -676,6 +677,11 @@ def fleet_provision_cmd(
     if not no_write:
         console.print(f"\n  Updated: [cyan]{inventory_path}[/cyan]")
     console.print("  Next: [bold]rodeo fleet doctor -f …[/bold] then [bold]deploy[/bold]\n")
+    if inventory.student_access == "open":
+        console.print(
+            "  [yellow]student_access: open[/yellow]: lab UI ports stay operator-only "
+            "until every lab is up; then run [bold]rodeo fleet open-access -f …[/bold]\n"
+        )
 
 
 @fleet_cmd.command("deprovision")
@@ -745,4 +751,77 @@ def fleet_deprovision_cmd(
         console.print()
 
     if any(not r.ok for r in results):
+        raise SystemExit(1)
+
+
+@fleet_cmd.command("open-access")
+@_output_opt
+@_concurrency_opt(8)
+@click.option(
+    "--close",
+    is_flag=True,
+    default=False,
+    help="Remove 0.0.0.0/0 again (back to operator-only).",
+)
+@click.option(
+    "-f",
+    "--file",
+    "inventory_path",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Path to workshop.yaml inventory.",
+)
+def fleet_open_access_cmd(
+    inventory_path: Path,
+    close: bool,
+    concurrency: int,
+    output_fmt: str,
+) -> None:
+    """Open lab UI ports to the internet for students (needs student_access: open).
+
+    Refuses unless every host has finished all phases and its Harvester /
+    Rancher admin passwords are strong. The security group is shared by the
+    whole workshop, so this always covers every host. SSH (22) stays
+    operator-only. A later ``fleet provision`` closes the ports again.
+    """
+    try:
+        inventory = load_inventory(inventory_path)
+        result = fleet_open_access(inventory, close=close, concurrency=concurrency)
+    except ConfigError as exc:
+        console.print(f"[red]✗  {exc}[/red]")
+        raise SystemExit(1)
+
+    if output_fmt == "json":
+        click.echo(json.dumps(open_access_payload(result), indent=2, sort_keys=True))
+    elif result.action == "closed":
+        console.print(
+            f"\n  [green]✓[/green]  {inventory.name}: lab UI ports back to operator-only "
+            f"({result.security_group})\n"
+        )
+    else:
+        table = Table(title=f"Fleet open-access: {inventory.name}", show_header=True)
+        table.add_column("id", style="bold")
+        table.add_column("ready")
+        table.add_column("reason", overflow="fold")
+        for r in result.hosts:
+            table.add_row(
+                r.id,
+                "[green]yes[/green]" if r.ready else "[red]no[/red]",
+                r.reason or "",
+            )
+        console.print()
+        console.print(table)
+        ports = ", ".join(str(p) for p in result.ports)
+        if result.action == "opened":
+            console.print(
+                f"\n  [yellow]⚠  Ports {ports} are now open to 0.0.0.0/0 on "
+                f"{len(result.hosts)} host(s) ({result.security_group}).[/yellow]\n"
+                "  Close with [bold]rodeo fleet open-access --close -f …[/bold]\n"
+            )
+        else:
+            console.print(
+                f"\n  [red]✗  Not opened: every host must be ready before ports {ports} "
+                "are exposed.[/red]\n"
+            )
+    if result.action == "refused":
         raise SystemExit(1)

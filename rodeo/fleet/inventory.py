@@ -11,6 +11,10 @@ from ..config import ConfigError
 from ..install_source import DEFAULT_INSTALL_URL, resolve_install_source
 
 _VALID_TARGETS = frozenset({"baremetal", "instruqt"})
+# Who may reach the lab UI ports on a rodeo-managed AWS security group.
+# operator: this machine's /32 only (default). open: also 0.0.0.0/0, applied
+# only by `rodeo fleet open-access` after every lab is up with strong passwords.
+_VALID_STUDENT_ACCESS = frozenset({"operator", "open"})
 
 
 @dataclass(frozen=True)
@@ -62,6 +66,11 @@ class FleetInventory:
     @property
     def ssh_user(self) -> str:
         return str(self.defaults.get("ssh_user") or "root")
+
+    @property
+    def student_access(self) -> str:
+        """``provider.student_access`` (validated at load), ``operator`` if unset."""
+        return str((self.provider or {}).get("student_access") or "operator")
 
     @property
     def identity_file(self) -> str | None:
@@ -155,6 +164,14 @@ def load_inventory(path: str | Path) -> FleetInventory:
             if c < 1 or c > 64:
                 raise ConfigError("provider.count must be between 1 and 64")
             provider["count"] = c
+        if "student_access" in provider:
+            access = str(provider["student_access"] or "").strip().lower()
+            if access not in _VALID_STUDENT_ACCESS:
+                raise ConfigError(
+                    "provider.student_access must be one of "
+                    f"{sorted(_VALID_STUDENT_ACCESS)}, got: {provider['student_access']!r}"
+                )
+            provider["student_access"] = access
 
     hosts_raw = raw.get("hosts")
     if hosts_raw is None:

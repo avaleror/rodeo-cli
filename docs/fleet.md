@@ -311,10 +311,12 @@ ports yourself.
 
 ### Claim portal (F5)
 
-Students open one HTTPS page, enter the event code from your slide, their name,
-email and a 4-digit PIN of their choice, and get their own lab: Harvester and
-Rancher URLs with the admin passwords and, optionally, an SSH key for their lab
-host. You see who has which lab. Design: [claim-portal.md](claim-portal.md).
+Students open one HTTPS page and enter the **workshop code** you give them (from
+`portal info`, e.g. `RODEO-XVFD-20260930`; case, spaces and dashes do not matter).
+Only then do they see the lab board and the claim form: name, email and a 4-digit
+PIN of their choice. They get their own lab: Harvester and Rancher URLs with the
+admin passwords and, optionally, an SSH key for their lab host. You see who has
+which lab. Design: [claim-portal.md](claim-portal.md).
 
 ```yaml
 provider:
@@ -322,10 +324,11 @@ provider:
   student_access: open        # required: students must reach their labs
 portal:
   enabled: true
-  mode: open                  # open (event code + email) | roster (invite links) | both
+  mode: open                  # open (workshop code + email) | roster (invite links) | both
   # roster: students.csv      # roster / both: CSV with name,email[,host_id]
   student_ssh: true           # per-lab `student` user + key; opens :22 (key-only)
   title: SUSE Virtualization workshop
+  # code_letters: 4           # random letters in RODEO-XXXX-YYYYMMDD (4-8; 6 = 191M codes)
   # hostname: labs.example.com   # default portal-<ip>.sslip.io (Let's Encrypt)
   # instance_type: t3.small
 ```
@@ -337,7 +340,7 @@ rodeo fleet deploy -f workshop.yaml
 rodeo fleet open-access -f workshop.yaml   # once every lab is complete (adds :22 with student_ssh)
 rodeo fleet portal publish --watch -f workshop.yaml  # follow the deploy on the instructor page;
                                            # each lab is published the moment it is ready
-rodeo fleet portal info -f workshop.yaml   # URL + event code for the slide
+rodeo fleet portal info -f workshop.yaml   # URL + workshop code for the slide
 rodeo fleet portal status -f workshop.yaml # who has which lab
 rodeo fleet portal admin-link -f workshop.yaml  # instructor page (all lab credentials; do not project)
 rodeo fleet deprovision --yes -f workshop.yaml  # labs + portal (--keep-portal to keep it)
@@ -348,7 +351,7 @@ rodeo fleet deprovision --yes -f workshop.yaml  # labs + portal (--keep-portal t
 | `portal publish [--watch] [--interval 60]` | Push labs to the portal. With `--watch`: deploy progress per lab (phases done, current phase, elapsed, failures) on the instructor page, and each lab becomes claimable as soon as it is ready. Keep the laptop awake ([install.md](install.md#differences-and-things-to-know)) |
 | `portal status` / `export [-o file.csv]` | Claims: lab, name, email, how, when claimed, first opened |
 | `portal admin-link` | New secret link to the instructor page: every claim plus every lab's URLs, passwords and SSH key (the previous link stops working) |
-| `portal open` / `close` / `rotate-code` | Claim window and event code |
+| `portal open` / `close` / `rotate-code` | Claim window; a new workshop code (logs everyone out of the board; personal lab links keep working) |
 | `portal release LAB` / `revoke EMAIL` / `reassign EMAIL LAB` / `unlock EMAIL` | Fix mistakes during the workshop |
 | `portal invite [--rotate]` | Roster mode: reserve labs, write `<workshop>-invites.csv` (0600) with personal links |
 
@@ -358,13 +361,21 @@ What protects what:
   rodeo SSH key and no cloud credentials. The laptop pushes lab records to it over SSH,
   on stdin. The portal code is `rodeo/portal/` (standard library only), copied verbatim
   and run under a hardened systemd unit as an unprivileged user.
-- **Two pages:** the public front page shows the claim form and a board of every lab
-  (free / claimed / building) with the claimant's *name*, never their email or any
-  credential, so it can go on the room screen. The instructor page, behind a secret
-  link, shows emails and every lab's credentials.
+- **Workshop code first.** The portal's hostname is public within minutes (TLS
+  certificates are logged in Certificate Transparency), so the front page shows
+  nothing but a code field until the code is entered. After that a cookie (bound to
+  the current code, 24 h) shows the board of every lab (free / claimed / building)
+  with the claimant's *name*, never their email or any credential, and the claim
+  form. The default code has 4 random letters (331,776 codes); with the failure limit
+  below one address gets about 0.4% odds over an 8-hour workshop. Raise
+  `portal.code_letters` for more, and `rotate-code` if a code leaks.
+- **The instructor page**, behind a secret link, shows emails, deploy progress and
+  every lab's credentials.
 - **Claims:** personal links are 24 random bytes stored as SHA-256, PINs as scrypt,
-  5 wrong PINs lock an email, per-IP rate limit, CSRF on the form, no-store and CSP
-  headers. Logs never contain tokens, emails, PINs or passwords.
+  5 wrong PINs lock an email, CSRF on every form, no-store and CSP headers. Only
+  *failed* attempts (wrong code or PIN, unknown links) count against a limit of 30 per
+  10 minutes per address, so a whole classroom behind one NAT address can claim.
+  Logs never contain tokens, emails, codes, PINs or passwords.
 - **Student SSH:** a `student` user per lab host, key-only, with its own key generated
   on your laptop (`~/.rodeo/fleet/<workshop>/student-keys/`). Publish proves on every
   host that the user has no sudo, is in no privileged group and cannot read `/root`,
@@ -379,9 +390,14 @@ What protects what:
 ## OpenSSH requirements
 
 - Key-based auth with `BatchMode=yes` (no password prompts).
-- Host keys are not verified (`StrictHostKeyChecking=no`,
-  `UserKnownHostsFile=/dev/null`) — same trade-off as host→VM `rodeo/ssh.py`.
-  Workshop hosts are treated as ephemeral lab machines.
+- Host keys are trusted on first use and then pinned per workshop
+  (`StrictHostKeyChecking=accept-new`, `~/.rodeo/fleet/<workshop>/known_hosts`), because
+  fleet sends lab passwords and student keys over these connections. Provisioning
+  forgets the key of every address it creates (EC2 reuses public IPs). If a host is
+  rebuilt outside rodeo and SSH reports a changed host key, remove it with
+  `ssh-keygen -R <ip> -f ~/.rodeo/fleet/<workshop>/known_hosts`. Host→VM connections
+  inside a lab (`rodeo/ssh.py`) still skip verification: those VMs are recreated all
+  the time on a private network.
 - `ssh` on the laptop PATH; Agent / `ProxyJump` / `identity_file` work as usual.
 - On each remote: `rodeo` + `tmux` on PATH for the SSH user; typically `root@`.
 

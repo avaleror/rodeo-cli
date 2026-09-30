@@ -175,7 +175,7 @@ def _publish_env(tmp_path, monkeypatch, *, ready: bool, student_ssh=False, secre
         raise AssertionError(argv)
 
     monkeypatch.setattr(fp, "run_remote", fake_remote)
-    monkeypatch.setattr(fp, "rodeo_dir", lambda: tmp_path / "rodeo")
+    monkeypatch.setattr("rodeo.paths.rodeo_dir", lambda: tmp_path / "rodeo")
     return inv, pushed
 
 
@@ -254,3 +254,43 @@ def test_portal_up_script_pins_caddy_and_ships_the_package():
     assert "portal-1-2-3-4.sslip.io {" in s
     assert "--title 'T'\"'\"'x'" in s  # shell-quoted
     assert "id_ed25519" not in s  # no key material ever goes to the portal
+
+
+
+# ---------------------------------------------------------------- security review fixes
+@pytest.mark.parametrize("hid", ["../../etc", "a b", "x" * 64, "-lead", 'q"'])
+def test_unsafe_host_ids_fail_closed(tmp_path, hid):
+    p = _write(tmp_path, {"enabled": True})
+    data = yaml.safe_load(p.read_text())
+    data["hosts"] = [{"id": hid, "ssh": "1.2.3.4"}]
+    p.write_text(yaml.safe_dump(data))
+    with pytest.raises(ConfigError, match="must be letters"):
+        load_inventory(p)
+
+
+@pytest.mark.parametrize("name", ["labs.example.com\n}", "not a host", "x", "a..b.com"])
+def test_invalid_portal_hostname_fails_closed(tmp_path, name):
+    with pytest.raises(ConfigError, match="hostname"):
+        load_inventory(_write(tmp_path, {"enabled": True, "hostname": name}))
+
+
+@pytest.mark.parametrize("letters,ok", [(4, True), (8, True), (3, False), (9, False), ("x", False)])
+def test_code_letters_range(tmp_path, letters, ok):
+    p = _write(tmp_path, {"enabled": True, "code_letters": letters})
+    if ok:
+        assert load_inventory(p).portal.code_letters == letters
+    else:
+        with pytest.raises(ConfigError, match="code_letters"):
+            load_inventory(p)
+
+
+def test_portal_up_script_uses_private_temp_dir_and_code_letters():
+    s = fp.portal_up_script("portal-1-2-3-4.sslip.io", mode="open", title="T", code_letters=6)
+    assert "mktemp -d" in s and "/tmp/" not in s
+    assert "--code-letters 6" in s
+
+
+def test_student_keys_dir_is_sanitised(tmp_path, monkeypatch):
+    monkeypatch.setattr("rodeo.paths.rodeo_dir", lambda: tmp_path)
+    d = fp.student_keys_dir("../../evil")
+    assert d.is_relative_to(tmp_path / "fleet") and oct(d.stat().st_mode & 0o777) == "0o700"

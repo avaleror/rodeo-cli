@@ -29,7 +29,6 @@ from pathlib import Path
 from typing import Any
 
 from ..config import ConfigError
-from ..paths import rodeo_dir
 from ..providers import get_provider
 from .access import access_for_host
 from .fanout import fanout
@@ -43,7 +42,7 @@ from .inventory import (
     merge_portal,
     require_provider,
 )
-from .ssh_exec import run_remote
+from .ssh_exec import known_hosts_path, run_remote
 from .student_access import _PASSWORD_KEY, _check_host, student_ports
 
 PORTAL_PKG_DIR = Path(__file__).resolve().parents[1] / "portal"
@@ -200,7 +199,7 @@ def _caddyfile(fqdn: str) -> str:
 """
 
 
-def portal_up_script(fqdn: str, *, mode: str, title: str) -> str:
+def portal_up_script(fqdn: str, *, mode: str, title: str, code_letters: int = 4) -> str:
     """Idempotent install script run as root on the portal VM."""
     q = shlex.quote
     caddy_url = (
@@ -217,17 +216,18 @@ id {PORTAL_USER} >/dev/null 2>&1 || useradd --system --user-group --home-dir /va
 id rodeo-caddy >/dev/null 2>&1 || useradd --system --user-group --home-dir /var/lib/rodeo-caddy --shell /usr/sbin/nologin rodeo-caddy
 install -d -m 755 {REMOTE_APP_DIR} /etc/rodeo-portal
 install -d -m 700 -o {PORTAL_USER} -g {PORTAL_USER} /var/lib/rodeo-portal
+WORK=$(mktemp -d)  # private 0700 dir: no predictable /tmp names while running as root
+trap 'rm -rf "$WORK"' EXIT
 rm -rf {REMOTE_APP_DIR}/rodeo_portal
-base64 -d > /tmp/rodeo-portal.tgz <<'PKG'
+base64 -d > "$WORK/rodeo-portal.tgz" <<'PKG'
 {_package_b64()}
 PKG
-tar -xzf /tmp/rodeo-portal.tgz -C {REMOTE_APP_DIR} && rm -f /tmp/rodeo-portal.tgz
+tar -xzf "$WORK/rodeo-portal.tgz" -C {REMOTE_APP_DIR}
 chown -R root:root {REMOTE_APP_DIR} && chmod -R a+rX {REMOTE_APP_DIR}
 if [ "$(/usr/local/bin/caddy version 2>/dev/null | cut -d' ' -f1)" != "v{CADDY_VERSION}" ]; then
-  curl -fsSL -o /tmp/caddy.tgz {q(caddy_url)}
-  echo "{CADDY_SHA512}  /tmp/caddy.tgz" | sha512sum -c --quiet -
-  tar -xzf /tmp/caddy.tgz -C /tmp caddy && install -m 755 /tmp/caddy /usr/local/bin/caddy
-  rm -f /tmp/caddy.tgz /tmp/caddy
+  curl -fsSL -o "$WORK/caddy.tgz" {q(caddy_url)}
+  echo "{CADDY_SHA512}  $WORK/caddy.tgz" | sha512sum -c --quiet -
+  tar -xzf "$WORK/caddy.tgz" -C "$WORK" caddy && install -m 755 "$WORK/caddy" /usr/local/bin/caddy
 fi
 cat > /etc/rodeo-portal/Caddyfile <<'CADDY'
 {_caddyfile(fqdn)}CADDY
@@ -238,7 +238,7 @@ cat > /etc/systemd/system/rodeo-caddy.service <<'UNIT'
 if systemctl is-active -q firewalld; then
   firewall-cmd -q --permanent --add-service=http --add-service=https && firewall-cmd -q --reload
 fi
-{admin} init --mode {q(mode)} --title {q(title)} >/dev/null
+{admin} init --mode {q(mode)} --title {q(title)} --code-letters {int(code_letters)} >/dev/null
 systemctl daemon-reload
 systemctl enable -q rodeo-portal rodeo-caddy
 systemctl restart rodeo-portal rodeo-caddy
@@ -267,7 +267,8 @@ def portal_up(inventory: FleetInventory, *, wait: bool = True) -> str:
     portal = require_portal(inventory)
     url = portal_url(inventory)
     script = portal_up_script(url.removeprefix("https://"), mode=portal.mode,
-                              title=portal.title or inventory.name)
+                              title=portal.title or inventory.name,
+                              code_letters=portal.code_letters)
     res = run_remote(inventory, _portal_host(inventory), ["bash", "-s"], stdin=script,
                      timeout=600.0)
     if not res.ok or "PORTAL_UP" not in res.stdout:
@@ -306,7 +307,7 @@ def admin_link(inventory: FleetInventory) -> str:
 
 # ---------------------------------------------------------------- student SSH (F5.4)
 def student_keys_dir(workshop: str) -> Path:
-    d = rodeo_dir() / "fleet" / workshop / "student-keys"
+    d = known_hosts_path(workshop).parent / "student-keys"  # same sanitised workshop dir
     d.mkdir(parents=True, exist_ok=True)
     os.chmod(d, 0o700)
     return d

@@ -92,7 +92,7 @@ def test_wrong_pin_refused_and_locks_out(dbp):
 
 
 def test_bad_code_closed_and_roster_mode_refuse(dbp):
-    with pytest.raises(claims.ClaimError, match="event code"):
+    with pytest.raises(claims.ClaimError, match="workshop code"):
         _claim(dbp, "a@x.io", code="AAAA-AAAA")
     con = _con(dbp)
     with claims.write_tx(con):
@@ -105,7 +105,7 @@ def test_bad_code_closed_and_roster_mode_refuse(dbp):
         claims.set_setting(con, "open", "1")
         claims.set_setting(con, "mode", "roster")
     con.close()
-    with pytest.raises(claims.ClaimError, match="invite"):
+    with pytest.raises(claims.ClaimError, match="personal lab links"):
         _claim(dbp, "a@x.io")
 
 
@@ -233,3 +233,50 @@ def test_portal_package_is_stdlib_only_with_relative_imports():
                     assert node.module.split(".")[0] in stdlib | {"__future__"}, (
                         f"{f.name}: from {node.module}"
                     )
+
+
+def test_guessing_errors_are_marked_for_the_rate_limiter(dbp):
+    with pytest.raises(claims.GuessError):
+        _claim(dbp, "a@x.io", code="RODEO-AAAA-20000101")
+    _claim(dbp, "a@x.io", pin="1234")
+    with pytest.raises(claims.GuessError):
+        _claim(dbp, "a@x.io", pin="9999")
+    with pytest.raises(claims.ClaimError) as exc:
+        _claim(dbp, "not-an-email")
+    assert not isinstance(exc.value, claims.GuessError)
+
+
+def test_new_code_uses_today_and_unambiguous_letters():
+    from datetime import datetime, timezone
+
+    code = claims.new_code(today=datetime(2026, 9, 30, tzinfo=timezone.utc))
+    assert code.startswith("RODEO-") and code.endswith("-20260930")
+    assert not set(code.split("-")[1]) & set("IO01")
+    assert len(claims.new_code(99).split("-")[1]) == claims.CODE_LETTERS_MAX
+
+
+def test_code_letters_setting_survives_rotation(tmp_path):
+    p = str(tmp_path / "c.db")
+    migrate(p)
+    con = connect(p)
+    claims.ensure_defaults(con, code_letters=6)
+    assert len(claims.settings(con)["code"].split("-")[1]) == 6
+    assert len(claims.rotate_code(con).split("-")[1]) == 6
+    con.close()
+
+
+def test_access_token_is_bound_to_the_current_code(dbp):
+    con = _con(dbp)
+    tok = claims.access_token(con)
+    assert claims.has_access(con, tok) and not claims.has_access(con, "")
+    claims.rotate_code(con)
+    assert not claims.has_access(con, tok)
+    con.close()
+
+
+@pytest.mark.parametrize("bad", ["../x", "a b", "", "x" * 70, 'a"b', "a\r\nb"])
+def test_import_rejects_unsafe_lab_ids(dbp, bad):
+    con = _con(dbp)
+    with pytest.raises(claims.ClaimError, match="invalid lab id"):
+        claims.import_labs(con, [{"id": bad, "ready": True}])
+    con.close()

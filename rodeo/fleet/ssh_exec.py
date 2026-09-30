@@ -4,9 +4,11 @@ Separate from ``rodeo.ssh`` which is for host→VM lab connections.
 """
 from __future__ import annotations
 
+import re
 import shlex
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Sequence
 
 from .inventory import FleetHost, FleetInventory
@@ -50,18 +52,46 @@ def _identity(inventory: FleetInventory) -> str | None:
     return str(managed) if managed.is_file() else None
 
 
+def known_hosts_path(workshop: str) -> Path:
+    """Per-workshop known_hosts under ``~/.rodeo/fleet/<workshop>/``."""
+    from ..paths import rodeo_dir
+
+    safe = re.sub(r"[^A-Za-z0-9_.-]+", "-", workshop).strip(".-") or "default"
+    return rodeo_dir() / "fleet" / safe / "known_hosts"
+
+
+def forget_host_key(workshop: str, address: str) -> None:
+    """Drop ``address`` from the workshop's known_hosts (a new instance may reuse an
+    IP). Best effort: a missing file or ssh-keygen is not an error."""
+    path = known_hosts_path(workshop)
+    if not path.is_file() or not address:
+        return
+    try:
+        subprocess.run(["ssh-keygen", "-R", address, "-f", str(path)],
+                       capture_output=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    Path(f"{path}.old").unlink(missing_ok=True)
+
+
 def ssh_argv(
     inventory: FleetInventory,
     host: FleetHost,
     remote_command: str,
 ) -> list[str]:
-    """Build OpenSSH argv to run ``remote_command`` on ``host``."""
+    """Build OpenSSH argv to run ``remote_command`` on ``host``.
+
+    Host keys are trusted on first use and then pinned in a per-workshop known_hosts
+    file (``accept-new``): fresh hosts connect without a prompt, but a changed key on
+    a known address fails instead of silently sending lab secrets to an impostor.
+    Provisioning forgets the key of every address it (re)creates.
+    """
     argv = [
         "ssh",
         "-o", "BatchMode=yes",
         "-o", "ConnectTimeout=15",
-        "-o", "StrictHostKeyChecking=no",
-        "-o", "UserKnownHostsFile=/dev/null",
+        "-o", "StrictHostKeyChecking=accept-new",
+        "-o", f"UserKnownHostsFile={known_hosts_path(inventory.name)}",
     ]
     identity = _identity(inventory)
     if identity:
@@ -100,6 +130,7 @@ def run_remote(
     ``as_root=False`` runs it as the login user, for probes that check sudo itself.
     ``stdin`` feeds the remote command: use it for anything secret, never argv.
     """
+    known_hosts_path(inventory.name).parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     remote_command = " ".join(shlex.quote(a) for a in argv)
     if as_root and _remote_user(host, inventory) != "root":
         remote_command = f"sudo -n -H bash -lc {shlex.quote(remote_command)}"

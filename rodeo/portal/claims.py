@@ -19,7 +19,12 @@ from typing import Any, Iterator
 from .db import get_setting, set_setting
 
 MODES = ("open", "roster", "both")
-CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O, 1/I
+# Workshop code: RODEO-<letters>-<YYYYMMDD>. Letters only, no I/O (read aloud, typed
+# from a slide). 24**4 = 331,776 codes by default; the date adds no entropy, it only
+# tells people whether they have today's code. portal.code_letters raises it (4-8).
+CODE_LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ"
+CODE_LETTERS_MIN, CODE_LETTERS_MAX = 4, 8
+LAB_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$")
 PIN_LOCKOUT = 5
 EMAIL_RE = re.compile(r"^[^@\s<>\"'`]{1,64}@[^@\s<>\"'`]{1,190}\.[A-Za-z]{2,}$")
 TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{20,64}$")
@@ -29,13 +34,28 @@ class ClaimError(Exception):
     """Refusal shown to the student verbatim: never include secrets."""
 
 
+class GuessError(ClaimError):
+    """A refusal that means someone may be guessing (wrong code or PIN): counts
+    against the per-IP failure limit, unlike typos in name or email."""
+
+
 def now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
 
 
-def new_code() -> str:
-    pick = lambda n: "".join(secrets.choice(CODE_ALPHABET) for _ in range(n))  # noqa: E731
-    return f"{pick(4)}-{pick(4)}"
+def new_code(letters: int = CODE_LETTERS_MIN, *, today: datetime | None = None) -> str:
+    letters = max(CODE_LETTERS_MIN, min(CODE_LETTERS_MAX, int(letters)))
+    day = (today or datetime.now(timezone.utc)).strftime("%Y%m%d")
+    return f"RODEO-{''.join(secrets.choice(CODE_LETTERS) for _ in range(letters))}-{day}"
+
+
+def normalize_code(code: str) -> str:
+    """Case, spaces and dashes do not matter: 'rodeo xvfd 20260930' is accepted."""
+    return re.sub(r"[^A-Z0-9]", "", (code or "").upper())
+
+
+def code_matches(given: str, stored: str | None) -> bool:
+    return bool(stored) and hmac.compare_digest(normalize_code(given), normalize_code(stored or ""))
 
 
 def new_token() -> str:
@@ -80,10 +100,15 @@ def write_tx(con: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
         con.execute("COMMIT")
 
 
-def ensure_defaults(con: sqlite3.Connection, *, mode: str = "both", title: str = "") -> None:
+def ensure_defaults(con: sqlite3.Connection, *, mode: str = "both", title: str = "",
+                    code_letters: int | None = None) -> None:
     with write_tx(con):
+        if code_letters is not None:
+            set_setting(con, "code_letters", str(code_letters))
+        if get_setting(con, "secret") is None:  # keys the access cookie
+            set_setting(con, "secret", secrets.token_hex(32))
         if get_setting(con, "code") is None:
-            set_setting(con, "code", new_code())
+            set_setting(con, "code", new_code(int(get_setting(con, "code_letters", "4") or 4)))
         if get_setting(con, "open") is None:
             set_setting(con, "open", "1")
         if get_setting(con, "mode") is None:
@@ -101,12 +126,34 @@ def settings(con: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
+def rotate_code(con: sqlite3.Connection) -> str:
+    """New workshop code; every board session (access cookie) ends with it."""
+    with write_tx(con):
+        code = new_code(int(get_setting(con, "code_letters", "4") or 4))
+        set_setting(con, "code", code)
+    return code
+
+
+def access_token(con: sqlite3.Connection) -> str:
+    """Cookie value proving the workshop code was entered. Bound to the current
+    code, so rotating the code logs everyone out of the board."""
+    secret = get_setting(con, "secret") or ""
+    return hmac.new(secret.encode(), normalize_code(get_setting(con, "code") or "").encode(),
+                    hashlib.sha256).hexdigest()
+
+
+def has_access(con: sqlite3.Connection, cookie: str) -> bool:
+    return bool(cookie) and hmac.compare_digest(cookie, access_token(con))
+
+
 # ------------------------------------------------------------------ labs
 def import_labs(con: sqlite3.Connection, labs: list[dict[str, Any]]) -> int:
     """Upsert lab records. Never touches claims (publish is safe to repeat)."""
     with write_tx(con):
         for i, lab in enumerate(labs):
             lab_id = str(lab["id"])
+            if not LAB_ID_RE.match(lab_id):
+                raise ClaimError(f"invalid lab id {lab_id[:70]!r}")
             con.execute(
                 "INSERT INTO labs(id, ord, data, ready) VALUES(?, ?, ?, ?) "
                 "ON CONFLICT(id) DO UPDATE SET ord=excluded.ord, data=excluded.data, "
@@ -136,23 +183,23 @@ def claim_open(
     with write_tx(con):
         s = settings(con)
         if s["mode"] == "roster":
-            raise ClaimError("This workshop uses personal invite links. Check your email.")
+            raise ClaimError("This workshop uses personal lab links. Use the one your instructor sent you.")
         if not s["open"]:
             raise ClaimError("Claiming is closed. Ask your instructor.")
-        if not hmac.compare_digest((code or "").strip().upper(), s["code"] or ""):
-            raise ClaimError("That event code is not valid.")
+        if not code_matches(code, s["code"]):
+            raise GuessError("That workshop code is not valid.")
         row = con.execute("SELECT * FROM claims WHERE email=?", (email,)).fetchone()
         if row:
             if row["source"] != "open":
                 raise ClaimError("This email has a personal invite link. Use that link.")
             if row["bad_pins"] >= PIN_LOCKOUT:
-                raise ClaimError("Too many wrong PINs for this email. Ask your instructor.")
+                raise GuessError("Too many wrong PINs for this email. Ask your instructor.")
             if not check_pin(pin, row["pin_hash"]):
                 con.execute("UPDATE claims SET bad_pins=bad_pins+1 WHERE email=?", (email,))
                 # commit the counter, then refuse
                 con.execute("COMMIT")
                 con.execute("BEGIN IMMEDIATE")
-                raise ClaimError("This email already has a lab and the PIN does not match.")
+                raise GuessError("This email already has a lab and the PIN does not match.")
             con.execute(
                 "UPDATE claims SET token_hash=?, bad_pins=0 WHERE email=?", (sha256(token), email)
             )

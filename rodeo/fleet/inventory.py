@@ -1,6 +1,7 @@
 """Fleet / workshop inventory loading and host selection."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -30,6 +31,12 @@ class FleetHost:
 
 _VALID_PORTAL_MODES = frozenset({"open", "roster", "both"})
 PORTAL_HOST_ID = "portal"
+# Host ids end up in file names (student keys, known_hosts), HTTP headers and the
+# portal database; hostnames end up in the Caddyfile. Fail closed on anything else.
+_HOST_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$")
+_HOSTNAME_RE = re.compile(
+    r"^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$"
+)
 
 
 @dataclass(frozen=True)
@@ -38,10 +45,11 @@ class PortalConfig:
     command that fans out over hosts (deploy, status, diagnose, ...) can touch it."""
 
     enabled: bool = False
-    mode: str = "both"  # open (event code + email) | roster (invite links) | both
+    mode: str = "both"  # open (workshop code + email) | roster (invite links) | both
     roster: Path | None = None  # CSV name,email[,host_id]; resolved beside workshop.yaml
     student_ssh: bool = False  # per-lab `student` user + key, :22 opened by open-access
     title: str = ""
+    code_letters: int = 4  # random letters in RODEO-XXXX-YYYYMMDD (4-8)
     hostname: str | None = None  # default portal-<ip-dashed>.sslip.io
     instance_type: str | None = None
     host: str | None = None  # BYO portal machine (user@ip): skips provisioning
@@ -87,6 +95,15 @@ def _parse_portal(raw: Any, base: Path, provider: dict[str, Any] | None) -> Port
             "portal.enabled needs provider.student_access: open (students could not "
             "reach their labs otherwise)"
         )
+    hostname = str(raw["hostname"]).strip() if raw.get("hostname") else None
+    if hostname and not _HOSTNAME_RE.match(hostname):
+        raise ConfigError(f"portal.hostname is not a valid DNS name: {hostname[:80]!r}")
+    try:
+        code_letters = int(raw.get("code_letters", 4))
+    except (TypeError, ValueError) as exc:
+        raise ConfigError("portal.code_letters must be an integer (4-8)") from exc
+    if not 4 <= code_letters <= 8:
+        raise ConfigError("portal.code_letters must be between 4 and 8")
     labels = raw.get("labels") or {}
     return PortalConfig(
         enabled=enabled,
@@ -94,7 +111,8 @@ def _parse_portal(raw: Any, base: Path, provider: dict[str, Any] | None) -> Port
         roster=roster,
         student_ssh=bool(raw.get("student_ssh", False)),
         title=str(raw.get("title") or ""),
-        hostname=str(raw["hostname"]).strip() if raw.get("hostname") else None,
+        code_letters=code_letters,
+        hostname=hostname,
         instance_type=str(raw["instance_type"]).strip() if raw.get("instance_type") else None,
         host=str(raw["host"]).strip() if raw.get("host") else None,
         ssh=str(raw["ssh"]).strip() if raw.get("ssh") else None,
@@ -271,6 +289,11 @@ def load_inventory(path: str | Path) -> FleetInventory:
             raise ConfigError(f"hosts[{i}].id is required")
         if hid in seen:
             raise ConfigError(f"duplicate host id: {hid}")
+        if not _HOST_ID_RE.match(hid):
+            raise ConfigError(
+                f"hosts[{i}].id {hid[:70]!r} must be letters, digits, '.', '_' or '-' "
+                "(max 63, starting with a letter or digit)"
+            )
         if hid == PORTAL_HOST_ID:
             raise ConfigError(f"host id {PORTAL_HOST_ID!r} is reserved for the claim portal")
         if not ssh:

@@ -136,7 +136,7 @@ def test_progress_section_renders_bar_elapsed_and_stale_warning():
                    "phases": [{"name": "kvm_host", "done": True}], "error": None},
             "s2": {"state": "failed", "done": 1, "total": 6, "error": "phase vms: <boom>"}}
     html = progress_section(prog, (now - timedelta(seconds=40)).isoformat(), ["s1", "s2"], now=now)
-    assert "width:50%" in html and "40 min" in html and "cluster" in html
+    assert "<progress max=6 value=3>" in html and "40 min" in html and "cluster" in html
     assert "Updated 40 s ago" in html and "&lt;boom&gt;" in html
     stale = progress_section(prog, (now - timedelta(minutes=10)).isoformat(), ["s1"], now=now)
     assert "still running?" in stale

@@ -43,7 +43,7 @@ def _fail(exc: Exception) -> None:
 
 @click.group("portal")
 def portal_group() -> None:
-    """Student claim portal: students claim their own lab with an event code or invite link."""
+    """Student claim portal: students claim their own lab with a workshop code or invite link."""
 
 
 @portal_group.command("up")
@@ -136,7 +136,7 @@ def _watch(inventory_path: Path, *, concurrency: int, interval: int) -> None:
 @_json
 @_file
 def portal_info_cmd(inventory_path: Path, output_fmt: str) -> None:
-    """Portal URL, event code and whether claiming is open (for the slide)."""
+    """Portal URL, workshop code and whether claiming is open (for the slide)."""
     try:
         inventory = load_inventory(inventory_path)
         info = {**portal_admin(inventory, ["info"]), "url": portal_url(inventory)}
@@ -146,8 +146,8 @@ def portal_info_cmd(inventory_path: Path, output_fmt: str) -> None:
         click.echo(json.dumps(info, indent=2))
         return
     console.print(f"\n  URL         [bold]{info['url']}[/bold]")
-    if info["mode"] != "roster":
-        console.print(f"  Event code  [bold]{info['code']}[/bold]")
+    console.print(f"  Code        [bold]{info['code']}[/bold]  (students need it to open "
+                  "the portal)")
     console.print(f"  Mode        {info['mode']}")
     console.print(f"  Claiming    {'[green]open[/green]' if info['open'] else '[red]closed[/red]'}\n")
 
@@ -234,14 +234,14 @@ def _simple(name: str, help_: str, args: list[str] | None = None):
         except ConfigError as exc:
             _fail(exc)
         state = "open" if info.get("open") else "closed"
-        console.print(f"  [green]✓[/green]  claiming {state}; event code {info.get('code')}")
+        console.print(f"  [green]✓[/green]  claiming {state}; workshop code {info.get('code')}")
 
     return _cmd
 
 
 _simple("open", "Accept new claims.")
 _simple("close", "Stop accepting new claims (existing links keep working).")
-_simple("rotate-code", "Replace the event code (e.g. after it leaked).")
+_simple("rotate-code", "New workshop code (e.g. after it leaked); logs everyone out of the board.")
 
 
 @portal_group.command("release")

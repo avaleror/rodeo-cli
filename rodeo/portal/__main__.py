@@ -19,10 +19,15 @@ def _admin(args: argparse.Namespace) -> int:
     migrate()
     con = connect()
     try:
-        claims.ensure_defaults(con)
         cmd = args.cmd
+        if cmd != "init":
+            claims.ensure_defaults(con)
         if cmd == "init":
-            claims.ensure_defaults(con, mode=args.mode, title=args.title or "")
+            before = claims.get_setting(con, "code_letters")
+            claims.ensure_defaults(con, mode=args.mode, title=args.title or "",
+                                   code_letters=args.code_letters)
+            if before is not None and int(before) != args.code_letters:
+                claims.rotate_code(con)  # a longer code only helps once it replaces the old one
             with claims.write_tx(con):
                 claims.set_setting(con, "mode", args.mode)
             out: object = claims.settings(con)
@@ -50,8 +55,7 @@ def _admin(args: argparse.Namespace) -> int:
                 claims.set_setting(con, "open", "1" if cmd == "open" else "0")
             out = claims.settings(con)
         elif cmd == "rotate-code":
-            with claims.write_tx(con):
-                claims.set_setting(con, "code", claims.new_code())
+            claims.rotate_code(con)
             out = claims.settings(con)
         elif cmd == "release":
             out = {"lab": args.lab, "released": claims.release(con, args.lab)}
@@ -90,6 +94,8 @@ def main(argv: list[str] | None = None) -> int:
     init = asub.add_parser("init")
     init.add_argument("--mode", choices=claims.MODES, default="both")
     init.add_argument("--title", default="")
+    init.add_argument("--code-letters", type=int, default=claims.CODE_LETTERS_MIN,
+                      choices=range(claims.CODE_LETTERS_MIN, claims.CODE_LETTERS_MAX + 1))
     for name in ("import", "progress", "status", "export", "info", "open", "close", "rotate-code",
                  "admin-token"):
         asub.add_parser(name)

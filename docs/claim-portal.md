@@ -34,7 +34,7 @@ but students cannot get into them today:
 2. **Runs on a dedicated small VM**, provisioned and destroyed with the fleet. Not on a
    lab host, not on the laptop, not provider-specific serverless.
 3. **Both claim modes**, chosen per workshop: roster (personal links) and open
-   (event code + email).
+   (workshop code + email).
 4. Design doc first, then phased implementation.
 5. **Students need zero network knowledge.** Lab UI ports are opened to the internet
    (`provider.student_access: open`) with safeguards, instead of IP allowlists
@@ -137,7 +137,7 @@ that one workshop's labs, which are ephemeral anyway.
    0600, and the command reminds the operator it contains credentials-equivalent links.
 3. The student opens `https://<portal>/l/<token>` and sees their lab card.
 
-### 5.2 Open (event code)
+### 5.2 Open (workshop code)
 
 1. `rodeo fleet portal info` shows the portal URL and an event code
    (e.g. `WOLF-4821`, 8+ chars from an unambiguous alphabet), meant for a slide.
@@ -266,7 +266,7 @@ roster file, or `portal.enabled: true` on a provider fleet whose
 | `rodeo fleet portal up` | laptop to portal | Install rodeo + Caddy, write systemd units, start. Idempotent. |
 | `rodeo fleet portal publish` | laptop to hosts, then portal | For each host: check readiness (`rodeo status --output json`), read `secrets.yaml`, ensure student user/key if enabled, upsert the lab record. Labs not ready are published as `building`. Safe to run repeatedly; run it again after `fleet retry`. |
 | `rodeo fleet portal invite` | laptop | Roster tokens, writes `portal-invites.csv`. Re-running keeps existing tokens unless `--rotate`. |
-| `rodeo fleet portal info` | laptop | Portal URL, event code, open/closed. |
+| `rodeo fleet portal info` | laptop | Portal URL, workshop code, open/closed. |
 | `rodeo fleet portal status [--output json]` | laptop to portal | Lab, state, student, claimed-at. Also shown as a `student` column in `fleet status`. |
 | `rodeo fleet portal open / close / rotate-code` | laptop to portal | Claim window control. |
 | `rodeo fleet portal release <lab>` / `reassign <email> <lab>` / `revoke <email>` | laptop to portal | Fix mistakes during a workshop. |
@@ -349,3 +349,23 @@ Answers to section 12 and deliberate deviations, all from Andrés unless noted.
   ignores them when deciding whether the lab SG can go (R1).
 - **Not implemented yet:** `portal.close_after`, the `student` column in
   `fleet status`, GCP/Vultr/Hetzner portal VMs.
+
+## 14. Security review (2026-09-30)
+
+Review of `origin/main..docs/claim-portal`. All findings fixed on the branch:
+
+| # | Finding | Fix |
+|---|---------|-----|
+| 1 | Every claim counted against 10/min per IP: a classroom behind one NAT address would be locked out. | Only failed attempts count (wrong code or PIN, unknown links, bad admin token): 30 per 10 minutes per address. |
+| 2 | The public board showed attendee names to anyone; the `sslip.io` hostname is public via Certificate Transparency. | Workshop code gate (option a): the front page shows only a code field; a cookie bound to the current code then shows board and claim form. Code format `RODEO-XXXX-YYYYMMDD` (Andrés's choice), 4 random letters by default, `portal.code_letters` up to 8. |
+| 3 | Fleet SSH never verified host keys while it now moves lab passwords and student keys. | `accept-new` + per-workshop known_hosts; provisioning forgets re-created addresses. Host-to-VM hops inside a lab unchanged. |
+| 4 | Host ids reached file paths and HTTP headers; `portal.hostname` reached the Caddyfile unvalidated. | Validated at inventory load (and lab ids again on import); workshop names sanitised in local paths. |
+| 5 | Portal install script used fixed `/tmp` names as root. | `mktemp -d` work directory. |
+| 6 | Inline `style=` attributes were blocked by the portal's own CSP (empty progress bars). | CSS classes and native `<progress>`; a test asserts no page uses `style=`. |
+
+Accepted as designed: lab logins internet-visible behind strong passwords; anyone with
+the code can lock out an email (5 wrong PINs, `portal unlock`) or take labs under fake
+emails (`release`, `close`); a portal compromise exposes student-level credentials only;
+R7 (fleet-wide key in `/root/.ssh` on lab hosts). To verify live: `sshd -T` shows
+`passwordauthentication no`, and as `student`,
+`find / -xdev -name 'id_ed25519*' -readable` finds only the student's own key.

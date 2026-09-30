@@ -9,13 +9,17 @@ def _inv(**defaults) -> FleetInventory:
     return FleetInventory(name="demo", lab_dir="/root/lab", defaults=defaults, hosts=[])
 
 
-def test_ssh_argv_skips_host_key_verification():
+def test_ssh_argv_trusts_new_hosts_but_pins_known_ones(tmp_path, monkeypatch):
     """Workshop hosts are freshly provisioned and unknown to the laptop's
     known_hosts; BatchMode=yes alone would fail the first connection to every
-    host with "Host key verification failed" without this."""
+    host with "Host key verification failed". accept-new keeps that working,
+    and (security review 2026-09-30) a per-workshop known_hosts then pins the
+    key, where the old StrictHostKeyChecking=no + /dev/null trusted anything."""
+    monkeypatch.setattr("rodeo.paths.rodeo_dir", lambda: tmp_path)
     argv = ssh_argv(_inv(), FleetHost(id="h1", ssh="10.0.0.1"), "rodeo doctor")
-    assert "StrictHostKeyChecking=no" in argv
-    assert "UserKnownHostsFile=/dev/null" in argv
+    assert "StrictHostKeyChecking=accept-new" in argv
+    assert f"UserKnownHostsFile={tmp_path}/fleet/demo/known_hosts" in argv
+    assert "StrictHostKeyChecking=no" not in argv
     assert "BatchMode=yes" in argv
 
 
@@ -106,3 +110,28 @@ def test_run_remote_as_root_false_runs_as_login_user(monkeypatch):
     seen = _captured_remote(monkeypatch)
     run_remote(_inv(ssh_user="ec2-user"), FleetHost(id="h1", ssh="10.0.0.1"), ["sudo", "-n", "true"], as_root=False)
     assert seen["cmd"][-1] == "sudo -n true"
+
+
+def test_known_hosts_path_is_sanitised(tmp_path, monkeypatch):
+    from rodeo.fleet.ssh_exec import known_hosts_path
+
+    monkeypatch.setattr("rodeo.paths.rodeo_dir", lambda: tmp_path)
+    assert known_hosts_path("../../etc x").parent == tmp_path / "fleet" / "etc-x"
+
+
+def test_forget_host_key_removes_only_that_address(tmp_path, monkeypatch):
+    import subprocess
+
+    from rodeo.fleet.ssh_exec import forget_host_key, known_hosts_path
+
+    monkeypatch.setattr("rodeo.paths.rodeo_dir", lambda: tmp_path)
+    kh = known_hosts_path("demo")
+    kh.parent.mkdir(parents=True)
+    key = tmp_path / "k"
+    subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key)], check=True)
+    pub = (tmp_path / "k.pub").read_text().split()[:2]
+    kh.write_text(f"10.0.0.1 {' '.join(pub)}\n10.0.0.2 {' '.join(pub)}\n")
+    forget_host_key("demo", "10.0.0.1")
+    text = kh.read_text()
+    assert "10.0.0.1" not in text and "10.0.0.2" in text
+    assert not (tmp_path / "fleet" / "demo" / "known_hosts.old").exists()

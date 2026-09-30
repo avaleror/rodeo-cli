@@ -6,7 +6,7 @@ from typing import Any, Callable
 
 from ..config import ConfigError
 from ..fleet.inventory import FleetHost, FleetInventory
-from ..fleet.ssh_exec import run_remote
+from ..fleet.ssh_exec import forget_host_key, run_remote
 from ..ssh_key import (
     DEFAULT_EC2_KEY_NAME,
     build_ec2_userdata,
@@ -771,6 +771,8 @@ class AwsHostProvider:
                 action = "create"
             inst = self._wait_running(ec2, inst["InstanceId"], timeout=float(cfg.get("wait_timeout") or 600))
             public_ip = (inst.get("PublicIpAddress") or "").strip()
+            if action == "create":
+                forget_host_key(wait_spec.workshop, public_ip)  # EC2 reuses public IPs
             if not public_ip:
                 raise ConfigError(
                     f"AWS instance {inst['InstanceId']} ({host_id}) has no public IP — "
@@ -1149,6 +1151,8 @@ class AwsHostProvider:
             ec2.start_instances(InstanceIds=[inst["InstanceId"]])
         inst = self._wait_running(ec2, inst["InstanceId"], timeout=float(cfg.get("wait_timeout") or 600))
         ip = str(inst.get("PublicIpAddress") or "")
+        if action == "create":
+            forget_host_key(workshop, ip)
         host = ProvisionedHost(id=ROLE_PORTAL, ssh=ip, public_ip=ip,
                                labels={"provider": "aws", "provision_action": action},
                                provider_id=inst["InstanceId"])

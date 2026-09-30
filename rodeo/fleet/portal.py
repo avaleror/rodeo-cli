@@ -123,6 +123,9 @@ def _package_b64() -> str:
     with tarfile.open(fileobj=buf, mode="w:gz") as tar:
         for f in sorted(PORTAL_PKG_DIR.glob("*.py")):
             tar.add(f, arcname=f"rodeo_portal/{f.name}")
+        for f in sorted((PORTAL_PKG_DIR / "static").glob("*")):  # logo, fonts, licences
+            if f.is_file():
+                tar.add(f, arcname=f"rodeo_portal/static/{f.name}")
     return base64.b64encode(buf.getvalue()).decode()
 
 

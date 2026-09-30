@@ -262,3 +262,28 @@ def test_oversized_body_rejected(portal):
     s, _, _ = _req(portal["port"], "POST", "/claim", "x" * 5000,
                    {"Content-Type": "application/x-www-form-urlencoded"})
     assert s == 413
+
+
+# ---------------------------------------------------------------- SUSE branding assets
+def test_brand_assets_served_from_self_with_types_and_cache(portal):
+    for name, ctype in (("suse-logo.png", "image/png"), ("open-sans.woff2", "font/woff2"),
+                        ("source-sans-pro-700.woff2", "font/woff2")):
+        c = http.client.HTTPConnection("127.0.0.1", portal["port"], timeout=10)
+        c.request("GET", f"/static/{name}")
+        r = c.getresponse()
+        body = r.read()
+        assert r.status == 200 and r.headers["Content-Type"] == ctype and len(body) > 1000
+        assert "max-age" in r.headers["Cache-Control"]
+
+
+@pytest.mark.parametrize("path", ["/static/../web.py", "/static/OFL-OpenSans.txt",
+                                  "/static/", "/static/%2e%2e/db.py"])
+def test_static_route_is_an_allow_list(portal, path):
+    assert _req(portal["port"], "GET", path)[0] == 404
+
+
+def test_pages_reference_only_local_assets(portal, browser):
+    page = browser.get("/")[2]
+    assert "/static/suse-logo.png" in page and "fonts.googleapis" not in page
+    css = _req(portal["port"], "GET", "/s.css")[2]
+    assert "https://" not in css and "#00A651" in css

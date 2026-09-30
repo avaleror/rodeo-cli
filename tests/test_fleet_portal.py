@@ -342,3 +342,14 @@ def test_remote_secret_scripts_still_run(tmp_path, which):
                          env={"HOME": str(tmp_path), "PATH": "/usr/bin:/bin"}).stdout
     assert out.strip() == ("harvester_admin_password=strong" if which == "check"
                            else '{"harvester_admin_password": "Str0ngEnoughPassw0rdX"}')  # gitleaks:allow
+
+
+def test_package_ships_brand_assets_and_font_licences():
+    import base64
+    import io
+    import tarfile
+
+    names = tarfile.open(fileobj=io.BytesIO(base64.b64decode(fp._package_b64()))).getnames()
+    for n in ("suse-logo.png", "open-sans.woff2", "source-sans-pro-400.woff2",
+              "OFL-OpenSans.txt", "OFL-SourceSansPro.txt"):
+        assert f"rodeo_portal/static/{n}" in names

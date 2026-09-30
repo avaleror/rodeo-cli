@@ -33,6 +33,7 @@ from ..fleet.provision import (
     fleet_provision,
     provision_payload,
 )
+from ..fleet.portal import deprovision_portal, provision_portal
 from ..fleet.status import fleet_status
 from ..fleet.student_access import fleet_open_access, open_access_payload
 from ..install_source import resolve_install_source
@@ -616,6 +617,12 @@ def fleet_diagnose_cmd(
     help="Do not merge hosts into workshop.yaml.",
 )
 @click.option(
+    "--no-portal",
+    is_flag=True,
+    default=False,
+    help="Skip the claim portal VM even when portal.enabled.",
+)
+@click.option(
     "--host",
     "host_ids",
     multiple=True,
@@ -636,11 +643,12 @@ def fleet_provision_cmd(
     output_fmt: str,
     no_wait_ssh: bool,
     no_write: bool,
+    no_portal: bool,
 ) -> None:
     """Create or reuse cloud KVM hosts (F4); merge into workshop.yaml.
 
     Requires ``provider:`` in the inventory (AWS F4a). Install optional deps:
-    ``pip install 'rodeo-cli[aws]'``.
+    the ``[aws]`` extra (``pip install -e '.[aws]'`` in the checkout; docs/install.md).
     """
     try:
         inventory = load_inventory(inventory_path)
@@ -654,6 +662,19 @@ def fleet_provision_cmd(
     except ConfigError as exc:
         console.print(f"[red]✗  {exc}[/red]")
         raise SystemExit(1)
+
+    # Claim portal VM (F5.2) after the labs: a portal failure never undoes them,
+    # it reports and exits non-zero so a re-run converges.
+    portal_error: str | None = None
+    portal = inventory.portal
+    if (portal and portal.enabled and not portal.host and not no_portal
+            and not host_ids and not no_write):
+        try:
+            ph = provision_portal(inventory, inventory_path)
+            if ph is not None:
+                hosts = [*hosts, ph]
+        except ConfigError as exc:
+            portal_error = str(exc)
 
     payload = provision_payload(inventory.name, hosts, inventory_path=inventory_path)
     if output_fmt == "json":
@@ -682,6 +703,12 @@ def fleet_provision_cmd(
             "  [yellow]student_access: open[/yellow]: lab UI ports stay operator-only "
             "until every lab is up; then run [bold]rodeo fleet open-access -f …[/bold]\n"
         )
+    if portal_error:
+        console.print(f"  [red]✗  Portal VM: {portal_error}[/red]\n")
+        raise SystemExit(1)
+    if portal and portal.enabled and not no_portal:
+        console.print("  Portal: [bold]rodeo fleet portal up -f …[/bold] then, once labs are "
+                      "ready, [bold]rodeo fleet portal publish -f …[/bold]\n")
 
 
 @fleet_cmd.command("deprovision")
@@ -691,6 +718,12 @@ def fleet_provision_cmd(
     is_flag=True,
     default=False,
     help="Required — refuse to terminate without explicit confirmation.",
+)
+@click.option(
+    "--keep-portal",
+    is_flag=True,
+    default=False,
+    help="Leave the claim portal VM running (e.g. to keep the claim list).",
 )
 @click.option(
     "--host",
@@ -712,8 +745,11 @@ def fleet_deprovision_cmd(
     host_ids: tuple[str, ...],
     output_fmt: str,
     yes: bool,
+    keep_portal: bool,
 ) -> None:
-    """Terminate ownership-tagged cloud instances for this workshop (F4)."""
+    """Terminate ownership-tagged cloud instances for this workshop (F4).
+
+    Also terminates the claim portal VM unless ``--keep-portal`` or ``--host``."""
     if not yes:
         console.print(
             "[red]✗  Refusing to deprovision without --yes "
@@ -726,6 +762,8 @@ def fleet_deprovision_cmd(
             inventory,
             host_ids=list(host_ids) or None,
         )
+        if not host_ids and not keep_portal:
+            results = [*results, *deprovision_portal(inventory, inventory_path)]
     except ConfigError as exc:
         console.print(f"[red]✗  {exc}[/red]")
         raise SystemExit(1)
@@ -825,3 +863,8 @@ def fleet_open_access_cmd(
             )
     if result.action == "refused":
         raise SystemExit(1)
+
+
+from .fleet_portal_cmd import portal_group  # noqa: E402
+
+fleet_cmd.add_command(portal_group)

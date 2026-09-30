@@ -177,10 +177,18 @@ def fleet_open_access(
     if not inventory.hosts:
         raise ConfigError("no hosts in the inventory (run `rodeo fleet provision` first)")
     ports = tuple(sorted(set(student_ports(inventory).values())))
+    # Claim portal with student SSH (F5.4): key-only :22 for the per-lab
+    # unprivileged `student` user. Never opened otherwise.
+    student_ssh = bool(inventory.portal and inventory.portal.enabled and inventory.portal.student_ssh)
+    if student_ssh:
+        ports = (22, *ports)
     readiness = check_fleet_ready(inventory, concurrency=concurrency, timeout=timeout)
     if not all(r.ready for r in readiness):
         return OpenAccessResult(inventory.name, "refused", ports, None, readiness)
-    sg = provider.set_student_access(provider_cfg, workshop=inventory.name, open_ports=ports)
+    extra = {"allow_ssh": True} if student_ssh else {}
+    sg = provider.set_student_access(
+        provider_cfg, workshop=inventory.name, open_ports=ports, **extra
+    )
     return OpenAccessResult(inventory.name, "opened", ports, sg, readiness)
 
 

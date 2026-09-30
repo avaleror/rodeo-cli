@@ -15,7 +15,9 @@ from ..ssh_key import (
     resolve_ssh_identity,
 )
 from .base import (
+    ROLE_PORTAL,
     TAG_HOST_ID,
+    TAG_ROLE,
     TAG_MANAGED_BY,
     TAG_MANAGED_BY_VALUE,
     TAG_WORKSHOP,
@@ -35,6 +37,11 @@ _REQUIRED = ("region", "subnet_id")
 MANAGED_SG_PORTS = (22, 8443, 30002)
 # Source added to lab UI ports by `rodeo fleet open-access` (never port 22).
 STUDENT_ACCESS_CIDR = "0.0.0.0/0"
+# Claim portal VM (F5.2): its own SG. 80 is only for the ACME HTTP-01 challenge
+# (Caddy redirects everything else to 443); 22 stays operator-only.
+PORTAL_PUBLIC_PORTS = (80, 443)
+PORTAL_SG_RESOURCE = "portal-security-group"
+DEFAULT_PORTAL_INSTANCE_TYPE = "t3.small"
 
 # Recommended default for performance-first Harvester labs (local NVMe).
 DEFAULT_INSTANCE_TYPE = "i7i.8xlarge"
@@ -94,13 +101,25 @@ def _aws_error_parts(exc: BaseException) -> tuple[str, str]:
     return "", str(exc)
 
 
+def _tag(inst: dict[str, Any], key: str) -> str | None:
+    for t in inst.get("Tags") or []:
+        if t.get("Key") == key:
+            return str(t.get("Value"))
+    return None
+
+
 def _require_boto3():
     try:
         import boto3  # noqa: F401
         import botocore  # noqa: F401
     except ImportError as exc:
+        import sys
+
+        # rodeo-cli is not on PyPI: install the extra into the environment rodeo
+        # itself runs from (works for install.sh, a dev venv or pipx alike).
         raise ConfigError(
-            "AWS provider requires boto3 — install with: pip install 'rodeo-cli[aws]'"
+            "AWS provider requires boto3 (the [aws] extra). Install it with: "
+            f"{sys.executable} -m pip install 'boto3[crt]>=1.34'"
         ) from exc
 
 
@@ -507,6 +526,7 @@ class AwsHostProvider:
         *,
         workshop: str,
         open_ports: tuple[int, ...],
+        allow_ssh: bool = False,
     ) -> str:
         """Reconcile the workshop's managed SG to operator /32 plus
         ``0.0.0.0/0`` on ``open_ports`` (empty = close). Returns the SG id.
@@ -520,7 +540,9 @@ class AwsHostProvider:
                 "security group it does not own. Open the lab ports on it yourself, "
                 "or omit security_group_ids so rodeo manages one."
             )
-        bad = sorted(p for p in open_ports if p == 22 or p not in MANAGED_SG_PORTS)
+        bad = sorted(
+            p for p in open_ports if (p == 22 and not allow_ssh) or p not in MANAGED_SG_PORTS
+        )
         if bad:
             raise ConfigError(f"ports {bad} cannot be opened to students")
         ec2 = self._client(config)
@@ -817,6 +839,8 @@ class AwsHostProvider:
                 if tags.get(TAG_WORKSHOP) != spec.workshop:
                     continue
                 hid = tags.get(TAG_HOST_ID) or inst["InstanceId"]
+                if tags.get(TAG_ROLE) == ROLE_PORTAL:
+                    continue  # only deprovision_portal terminates the portal
                 if want is not None and hid not in want:
                     continue
                 targets.append((hid, inst["InstanceId"]))
@@ -854,8 +878,11 @@ class AwsHostProvider:
         if not config.get("security_group_ids"):
             terminated_ids = {iid for _, iid in targets}
             remaining = ec2.describe_instances(Filters=filters)
+            # The portal VM (F5.2) has its own SG and lifecycle: it must not keep
+            # the lab SG alive, or `fleet deprovision --keep-portal` leaks it.
             still_alive = any(
                 inst["InstanceId"] not in terminated_ids
+                and _tag(inst, TAG_ROLE) != ROLE_PORTAL
                 for res in remaining.get("Reservations") or []
                 for inst in res.get("Instances") or []
             )
@@ -1006,3 +1033,162 @@ class AwsHostProvider:
             f"SSH not ready on {host.id} ({host.public_ip}): {last_err[:200]} "
             "(waiting for login + passwordless sudo from cloud-init)"
         )
+
+    # ------------------------------------------------------------------ portal VM (F5.2)
+    def _find_portal_sg(self, ec2: Any, *, vpc_id: str, workshop: str) -> str | None:
+        resp = ec2.describe_security_groups(
+            Filters=[
+                {"Name": "vpc-id", "Values": [vpc_id]},
+                {"Name": f"tag:{TAG_MANAGED_BY}", "Values": [TAG_MANAGED_BY_VALUE]},
+                {"Name": f"tag:{TAG_WORKSHOP}", "Values": [workshop]},
+                {"Name": "tag:rodeo-resource", "Values": [PORTAL_SG_RESOURCE]},
+            ]
+        )
+        groups = resp.get("SecurityGroups") or []
+        return str(groups[0]["GroupId"]) if groups else None
+
+    def _ensure_portal_sg(self, ec2: Any, *, vpc_id: str, workshop: str) -> str:
+        """Own SG for the portal: 80/443 from anywhere, 22 from the operator /32.
+
+        Tagged ``rodeo-resource: portal-security-group`` so ``_find_managed_sg``
+        (lab SG lookup, filters on ``security-group``) can never return it."""
+        sg_id = self._find_portal_sg(ec2, vpc_id=vpc_id, workshop=workshop)
+        if sg_id is None:
+            name = f"rodeo-{workshop}-portal"
+            resp = ec2.create_security_group(
+                GroupName=name,
+                Description=f"rodeo-managed: {workshop} claim portal - HTTPS 443, ACME 80, SSH operator",
+                VpcId=vpc_id,
+                TagSpecifications=[{
+                    "ResourceType": "security-group",
+                    "Tags": [
+                        {"Key": TAG_MANAGED_BY, "Value": TAG_MANAGED_BY_VALUE},
+                        {"Key": TAG_WORKSHOP, "Value": workshop},
+                        {"Key": "rodeo-resource", "Value": PORTAL_SG_RESOURCE},
+                    ],
+                }],
+            )
+            sg_id = str(resp["GroupId"])
+        caller = f"{self._caller_ip_fn()}/32"
+        desired = {22: {caller}, **{p: {STUDENT_ACCESS_CIDR} for p in PORTAL_PUBLIC_PORTS}}
+        perms = (ec2.describe_security_groups(GroupIds=[sg_id]).get("SecurityGroups") or [{}])[0]
+        current: dict[int, set[str]] = {}
+        for perm in perms.get("IpPermissions") or []:
+            if perm.get("IpProtocol") == "tcp" and perm.get("FromPort") == perm.get("ToPort"):
+                current.setdefault(int(perm["FromPort"]), set()).update(
+                    str(r["CidrIp"]) for r in perm.get("IpRanges") or [] if r.get("CidrIp")
+                )
+        for port in sorted(set(desired) | set(current)):
+            want, have = desired.get(port, set()), current.get(port, set())
+            if have - want:
+                ec2.revoke_security_group_ingress(GroupId=sg_id, IpPermissions=[{
+                    "IpProtocol": "tcp", "FromPort": port, "ToPort": port,
+                    "IpRanges": [{"CidrIp": c} for c in sorted(have - want)]}])
+            if want - have:
+                ec2.authorize_security_group_ingress(GroupId=sg_id, IpPermissions=[{
+                    "IpProtocol": "tcp", "FromPort": port, "ToPort": port,
+                    "IpRanges": [{"CidrIp": c, "Description": "rodeo portal"}
+                                 for c in sorted(want - have)]}])
+        return sg_id
+
+    def _find_portal(self, ec2: Any, workshop: str) -> dict[str, Any] | None:
+        resp = ec2.describe_instances(Filters=[
+            {"Name": f"tag:{TAG_MANAGED_BY}", "Values": [TAG_MANAGED_BY_VALUE]},
+            {"Name": f"tag:{TAG_WORKSHOP}", "Values": [workshop]},
+            {"Name": f"tag:{TAG_ROLE}", "Values": [ROLE_PORTAL]},
+            {"Name": "instance-state-name", "Values": ["pending", "running", "stopping", "stopped"]},
+        ])
+        for res in resp.get("Reservations") or []:
+            for inst in res.get("Instances") or []:
+                return inst
+        return None
+
+    def provision_portal(
+        self,
+        config: dict[str, Any],
+        *,
+        workshop: str,
+        ssh_user: str,
+        instance_type: str | None = None,
+        wait_ssh: bool = True,
+        ssh_timeout: float = 600.0,
+    ) -> ProvisionedHost:
+        """Create or reuse the workshop's claim portal VM.
+
+        Unlike lab hosts: small instance, no nested virtualisation, its own SG, and
+        **no** ``plant_rodeo_ssh_key`` - only the public key reaches the portal (via
+        cloud-init), so a compromised portal cannot reach any lab host."""
+        self.validate(config)
+        ec2 = self._client(config)
+        cfg = dict(config)
+        cfg["ami"] = self.resolve_ami(ec2, cfg)
+        key_name = str(cfg.get("key_name") or DEFAULT_EC2_KEY_NAME).strip() or DEFAULT_EC2_KEY_NAME
+        ensure_ec2_key_pair(ec2, key_name=key_name)
+        identity = resolve_ssh_identity(None)
+        vpc_id = self._vpc_id_for_subnet(ec2, str(cfg["subnet_id"]))
+        sg_id = self._ensure_portal_sg(ec2, vpc_id=vpc_id, workshop=workshop)
+        inst = self._find_portal(ec2, workshop)
+        action = "reuse"
+        if inst is None:
+            portal_cfg = {
+                **cfg,
+                "key_name": key_name,
+                "instance_type": instance_type or DEFAULT_PORTAL_INSTANCE_TYPE,
+                "nested_virtualization": False,
+                "volume_size_gib": int(cfg.get("portal_volume_size_gib") or 20),
+                "security_group_ids": [sg_id],
+                "labels": {},
+            }
+            kwargs = self._run_instances_kwargs(
+                portal_cfg, host_id=ROLE_PORTAL, workshop=workshop, ssh_user=ssh_user,
+                extra_labels={TAG_ROLE: ROLE_PORTAL},
+            )
+            inst = ec2.run_instances(**kwargs)["Instances"][0]
+            action = "create"
+        elif inst["State"]["Name"] in ("stopped", "stopping"):
+            ec2.start_instances(InstanceIds=[inst["InstanceId"]])
+        inst = self._wait_running(ec2, inst["InstanceId"], timeout=float(cfg.get("wait_timeout") or 600))
+        ip = str(inst.get("PublicIpAddress") or "")
+        host = ProvisionedHost(id=ROLE_PORTAL, ssh=ip, public_ip=ip,
+                               labels={"provider": "aws", "provision_action": action},
+                               provider_id=inst["InstanceId"])
+        if wait_ssh:
+            spec = ProvisionSpec(workshop=workshop, host_ids=[ROLE_PORTAL], ssh_user=ssh_user,
+                                 identity_file=identity)
+            self._wait_ssh(spec, host, timeout=ssh_timeout)
+        return host
+
+    def deprovision_portal(self, config: dict[str, Any], *, workshop: str) -> list[DeprovisionResult]:
+        """Terminate the portal VM, then delete its SG once its ENI is gone."""
+        self.validate(config)
+        ec2 = self._client(config)
+        results: list[DeprovisionResult] = []
+        inst = self._find_portal(ec2, workshop)
+        if inst is not None:
+            ec2.terminate_instances(InstanceIds=[inst["InstanceId"]])
+            results.append(DeprovisionResult(id=ROLE_PORTAL, ok=True,
+                                             provider_id=inst["InstanceId"], detail="terminating"))
+        else:
+            results.append(DeprovisionResult(id=ROLE_PORTAL, ok=True, detail="no portal instance"))
+        try:
+            vpc_id = self._vpc_id_for_subnet(ec2, str(config["subnet_id"]))
+            sg_id = self._find_portal_sg(ec2, vpc_id=vpc_id, workshop=workshop)
+        except Exception:  # noqa: BLE001 - cleanup never fails the teardown
+            sg_id = None
+        if sg_id:
+            detail = "still attached - re-run deprovision in a minute"
+            for attempt in range(12):
+                try:
+                    ec2.delete_security_group(GroupId=sg_id)
+                    detail = "deleted"
+                    break
+                except Exception as exc:  # noqa: BLE001
+                    code, _ = _aws_error_parts(exc)
+                    if code != "DependencyViolation":
+                        detail = f"cleanup skipped ({code or 'error'})"
+                        break
+                    if attempt < 11:
+                        self._sleep(10)
+            results.append(DeprovisionResult(id="portal-security-group", ok=True,
+                                             provider_id=sg_id, detail=detail))
+        return results

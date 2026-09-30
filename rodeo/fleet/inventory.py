@@ -28,6 +28,81 @@ class FleetHost:
     ssh_user: str | None = None  # override defaults.ssh_user when ssh has no user@
 
 
+_VALID_PORTAL_MODES = frozenset({"open", "roster", "both"})
+PORTAL_HOST_ID = "portal"
+
+
+@dataclass(frozen=True)
+class PortalConfig:
+    """``portal:`` block (claim portal F5). Never part of ``hosts[]``, so no fleet
+    command that fans out over hosts (deploy, status, diagnose, ...) can touch it."""
+
+    enabled: bool = False
+    mode: str = "both"  # open (event code + email) | roster (invite links) | both
+    roster: Path | None = None  # CSV name,email[,host_id]; resolved beside workshop.yaml
+    student_ssh: bool = False  # per-lab `student` user + key, :22 opened by open-access
+    title: str = ""
+    hostname: str | None = None  # default portal-<ip-dashed>.sslip.io
+    instance_type: str | None = None
+    host: str | None = None  # BYO portal machine (user@ip): skips provisioning
+    # Written by `fleet provision` (like hosts[]):
+    ssh: str | None = None
+    public_ip: str | None = None
+    provider_id: str | None = None
+
+    @property
+    def fqdn(self) -> str | None:
+        if self.hostname:
+            return self.hostname
+        if self.public_ip:
+            return f"portal-{self.public_ip.replace('.', '-')}.sslip.io"
+        return None
+
+    @property
+    def target(self) -> str | None:
+        """SSH target for the portal machine (BYO ``host`` wins)."""
+        return self.host or self.ssh
+
+
+def _parse_portal(raw: Any, base: Path, provider: dict[str, Any] | None) -> PortalConfig | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ConfigError("portal: must be a mapping")
+    mode = str(raw.get("mode") or "both").strip().lower()
+    if mode not in _VALID_PORTAL_MODES:
+        raise ConfigError(
+            f"portal.mode must be one of {sorted(_VALID_PORTAL_MODES)}, got: {raw.get('mode')!r}"
+        )
+    enabled = bool(raw.get("enabled", True))
+    roster = None
+    if raw.get("roster"):
+        roster = (base / str(raw["roster"])).expanduser().resolve()
+        if enabled and not roster.is_file():
+            raise ConfigError(f"portal.roster file not found: {roster}")
+    if enabled and mode == "roster" and roster is None:
+        raise ConfigError("portal.mode: roster needs portal.roster (CSV name,email[,host_id])")
+    if enabled and provider is not None and str(provider.get("student_access") or "operator") != "open":
+        raise ConfigError(
+            "portal.enabled needs provider.student_access: open (students could not "
+            "reach their labs otherwise)"
+        )
+    labels = raw.get("labels") or {}
+    return PortalConfig(
+        enabled=enabled,
+        mode=mode,
+        roster=roster,
+        student_ssh=bool(raw.get("student_ssh", False)),
+        title=str(raw.get("title") or ""),
+        hostname=str(raw["hostname"]).strip() if raw.get("hostname") else None,
+        instance_type=str(raw["instance_type"]).strip() if raw.get("instance_type") else None,
+        host=str(raw["host"]).strip() if raw.get("host") else None,
+        ssh=str(raw["ssh"]).strip() if raw.get("ssh") else None,
+        public_ip=str(raw["public_ip"]).strip() if raw.get("public_ip") else None,
+        provider_id=str(labels.get("provider_id")) if isinstance(labels, dict) and labels.get("provider_id") else None,
+    )
+
+
 @dataclass
 class FleetInventory:
     """Parsed workshop.yaml."""
@@ -62,6 +137,8 @@ class FleetInventory:
     lab_components: list[str] | None = None
     # F4 host-acquire (optional)
     provider: dict[str, Any] | None = None
+    # F5 claim portal (optional)
+    portal: PortalConfig | None = None
 
     @property
     def ssh_user(self) -> str:
@@ -194,6 +271,8 @@ def load_inventory(path: str | Path) -> FleetInventory:
             raise ConfigError(f"hosts[{i}].id is required")
         if hid in seen:
             raise ConfigError(f"duplicate host id: {hid}")
+        if hid == PORTAL_HOST_ID:
+            raise ConfigError(f"host id {PORTAL_HOST_ID!r} is reserved for the claim portal")
         if not ssh:
             raise ConfigError(f"hosts[{i}].ssh is required (host or user@host)")
         seen.add(hid)
@@ -229,6 +308,7 @@ def load_inventory(path: str | Path) -> FleetInventory:
         install_url_explicit=install_url_explicit,
         lab_components=lab_components,
         provider=provider,
+        portal=_parse_portal(raw.get("portal"), p.parent, provider),
     )
 
 
@@ -372,3 +452,29 @@ def merge_provisioned_hosts(
     raw["hosts"] = [by_id[hid] for hid in order if hid in by_id]
     p.write_text(yaml.dump(raw, default_flow_style=False, sort_keys=False))
     return written
+
+
+def merge_portal(inventory_path: Path, *, ssh: str, public_ip: str, provider_id: str | None) -> None:
+    """Write the provisioned portal machine into workshop.yaml ``portal:`` (not hosts[])."""
+    p = Path(inventory_path).expanduser().resolve()
+    raw = yaml.safe_load(p.read_text()) or {}
+    portal = dict(raw.get("portal") or {})
+    portal["ssh"] = ssh
+    portal["public_ip"] = public_ip
+    labels = dict(portal.get("labels") or {})
+    if provider_id:
+        labels["provider_id"] = provider_id
+    portal["labels"] = labels
+    raw["portal"] = portal
+    p.write_text(yaml.dump(raw, default_flow_style=False, sort_keys=False))
+
+
+def clear_portal(inventory_path: Path) -> None:
+    """Drop provision-written portal fields after the portal VM is terminated."""
+    p = Path(inventory_path).expanduser().resolve()
+    raw = yaml.safe_load(p.read_text()) or {}
+    portal = raw.get("portal")
+    if isinstance(portal, dict):
+        for k in ("ssh", "public_ip", "labels"):
+            portal.pop(k, None)
+        p.write_text(yaml.dump(raw, default_flow_style=False, sort_keys=False))

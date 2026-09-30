@@ -287,3 +287,53 @@ def test_pages_reference_only_local_assets(portal, browser):
     assert "/static/suse-logo.png" in page and "fonts.googleapis" not in page
     css = _req(portal["port"], "GET", "/s.css")[2]
     assert "https://" not in css and "#00A651" in css
+
+
+# ---------------------------------------------------------------- workshop guide link
+GUIDE = "https://avaleror.github.io/suse-virt-workshop/"
+
+
+def _set_guide(portal, url):
+    con = connect(portal["db"])
+    claims.ensure_defaults(con, guide_url=url)
+    con.close()
+
+
+def test_guide_link_on_every_student_page(portal, browser):
+    _set_guide(portal, GUIDE)
+    _, h, _ = browser.claim()
+    lab = browser.get(h["Location"])[2]
+    assert "Workshop guide" in lab and f"href='{GUIDE}'" in lab
+    assert "rel='noopener noreferrer'" in lab
+    assert f"href='{GUIDE}'" in browser.get("/")[2]  # claim page / board
+    con = connect(portal["db"])
+    tok = claims.rotate_admin_token(con)
+    con.close()
+    assert GUIDE in _req(portal["port"], "GET", f"/admin/{tok}")[2]
+
+
+def test_guide_link_before_the_lab_is_ready(portal):
+    _set_guide(portal, "/guide/")
+    con = connect(portal["db"])
+    claims.import_labs(con, [{"id": "lab-01", "ready": False, "data": {}},
+                             {"id": "lab-02", "ready": True, "data": {}}])
+    con.close()
+    b = Browser(portal["port"])
+    b.enter(portal["code"])
+    _, h, _ = b.claim()
+    page = b.get(h["Location"])[2]
+    assert "href='/guide/'" in page and "target=_blank" not in page.split("href='/guide/'")[1][:40]
+
+
+def test_no_guide_configured_means_no_link(portal, browser):
+    _, h, _ = browser.claim()
+    assert "Workshop guide" not in browser.get(h["Location"])[2]
+
+
+@pytest.mark.parametrize("bad", ["javascript:alert(1)", "http://plain.example", "guide",
+                                 "https://x.io/\"onmouseover=", "//evil.example"])
+def test_unsafe_guide_urls_rejected(portal, bad):
+    con = connect(portal["db"])
+    with pytest.raises(claims.ClaimError):
+        claims.ensure_defaults(con, guide_url=bad)
+    con.close()

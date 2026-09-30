@@ -100,9 +100,17 @@ def write_tx(con: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
         con.execute("COMMIT")
 
 
+GUIDE_URL_RE = re.compile(r"^(https://[^\s\"'<>]{4,2000}|/(?!/)[A-Za-z0-9._~/-]{0,200})$")
+
+
 def ensure_defaults(con: sqlite3.Connection, *, mode: str = "both", title: str = "",
-                    code_letters: int | None = None) -> None:
+                    code_letters: int | None = None, guide_url: str | None = None) -> None:
+    """``guide_url``: None leaves it as is, "" removes it."""
+    if guide_url and not GUIDE_URL_RE.match(guide_url):
+        raise ClaimError("guide URL must be https://... or a /path on the portal")
     with write_tx(con):
+        if guide_url is not None:
+            set_setting(con, "guide_url", guide_url)
         if code_letters is not None:
             set_setting(con, "code_letters", str(code_letters))
         if get_setting(con, "secret") is None:  # keys the access cookie
@@ -123,6 +131,7 @@ def settings(con: sqlite3.Connection) -> dict[str, Any]:
         "open": get_setting(con, "open") == "1",
         "mode": get_setting(con, "mode", "both"),
         "title": get_setting(con, "title", ""),
+        "guide_url": get_setting(con, "guide_url", "") or "",
     }
 
 

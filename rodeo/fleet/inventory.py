@@ -34,6 +34,9 @@ PORTAL_HOST_ID = "portal"
 # Host ids end up in file names (student keys, known_hosts), HTTP headers and the
 # portal database; hostnames end up in the Caddyfile. Fail closed on anything else.
 _HOST_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$")
+# Workshop guide link shown to students: an https URL (e.g. GitHub Pages) or a path
+# served by the portal itself (e.g. /guide/). Nothing that could become javascript:.
+GUIDE_URL_RE = re.compile(r"^(https://[^\s\"'<>]{4,2000}|/(?!/)[A-Za-z0-9._~/-]{0,200})$")
 _HOSTNAME_RE = re.compile(
     r"^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$"
 )
@@ -50,6 +53,7 @@ class PortalConfig:
     student_ssh: bool = False  # per-lab `student` user + key, :22 opened by open-access
     title: str = ""
     code_letters: int = 4  # random letters in RODEO-XXXX-YYYYMMDD (4-8)
+    guide_url: str = ""  # workshop guide link on every student page (https URL or /path)
     hostname: str | None = None  # default portal-<ip-dashed>.sslip.io
     instance_type: str | None = None
     host: str | None = None  # BYO portal machine (user@ip): skips provisioning
@@ -104,6 +108,12 @@ def _parse_portal(raw: Any, base: Path, provider: dict[str, Any] | None) -> Port
         raise ConfigError("portal.code_letters must be an integer (4-8)") from exc
     if not 4 <= code_letters <= 8:
         raise ConfigError("portal.code_letters must be between 4 and 8")
+    guide_url = str(raw.get("guide_url") or "").strip()
+    if guide_url and not GUIDE_URL_RE.match(guide_url):
+        raise ConfigError(
+            "portal.guide_url must be an https:// URL or a path on the portal like /guide/, "
+            f"got: {guide_url[:80]!r}"
+        )
     labels = raw.get("labels") or {}
     return PortalConfig(
         enabled=enabled,
@@ -112,6 +122,7 @@ def _parse_portal(raw: Any, base: Path, provider: dict[str, Any] | None) -> Port
         student_ssh=bool(raw.get("student_ssh", False)),
         title=str(raw.get("title") or ""),
         code_letters=code_letters,
+        guide_url=guide_url,
         hostname=hostname,
         instance_type=str(raw["instance_type"]).strip() if raw.get("instance_type") else None,
         host=str(raw["host"]).strip() if raw.get("host") else None,

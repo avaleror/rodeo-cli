@@ -89,6 +89,8 @@ td{text-align:left;padding:11px 8px;border-bottom:1px solid var(--border);white-
 progress{width:120px;height:8px;vertical-align:middle;margin-right:8px;accent-color:var(--green)}
 .sub-row td{padding-top:0;white-space:normal}tr:has(+ .sub-row) td{border-bottom:0}
 .ph-done{color:var(--green-ink)}.ph-todo{color:var(--gray)}.mt{margin-top:16px}
+.guide{background:var(--green-dim);border-color:var(--green-border);border-top-color:var(--green)}.guide .btn{margin-top:14px}
+.guide-inline{margin:0 0 18px}.guide-inline .btn{margin-top:0}
 details.card summary{cursor:pointer;font-family:var(--font-head);font-size:16px}details.card summary b{margin-right:8px}
 footer{border-top:1px solid var(--border);background:var(--surface);color:var(--gray);font-size:13px;padding:22px 0}
 .footer-inner{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.footer-logo{height:20px;width:auto;opacity:.75}
@@ -139,9 +141,23 @@ def _page(title: str, body: str, *, heading: str = "", sub: str = "", badge: str
         + (f"<span class=nav-tag>{_e(tag)}</span>" if tag else "")
         + f"</div></nav>{hero}<main><div class=wrap>{body}</div></main>"
         "<footer><div class='wrap footer-inner'><img class=footer-logo src=/static/suse-logo.png alt=SUSE>"
-        "<span>Hands-on labs, deployed with rodeo</span></div></footer>"
+        "</div></footer>"
         "<script src=/s.js></script></body></html>"
     ).encode()
+
+
+def _guide(url: str, *, compact: bool = False) -> str:
+    """Workshop guide link: a card on the student's lab page, a button elsewhere.
+    The URL was validated (https:// or /path) when it was configured."""
+    if not url:
+        return ""
+    ext = url.startswith("https://")
+    target = " target=_blank rel='noopener noreferrer'" if ext else ""
+    btn = f"<a class=btn href='{_e(url)}'{target}>Open the workshop guide</a>"
+    if compact:
+        return f"<p class=guide-inline>{btn}</p>"
+    return ("<div class='card guide'><h2>Workshop guide</h2><p class=note>Step-by-step "
+            "exercises for this lab. Keep it open next to this page.</p>" + btn + "</div>")
 
 
 def _copyable(value: str) -> str:
@@ -160,8 +176,9 @@ def gate_page(title: str, csrf: str, *, err: str = "") -> bytes:
 
 
 def claim_form(title: str, csrf: str, *, mode: str, is_open: bool, err: str = "",
-               email: str = "", name: str = "", rows: list[dict[str, Any]] | None = None) -> bytes:
-    labs = board(rows or [])
+               email: str = "", name: str = "", rows: list[dict[str, Any]] | None = None,
+               guide_url: str = "") -> bytes:
+    labs = _guide(guide_url, compact=True) + board(rows or [])
     shell = {"heading": _e(title or "Hands-on labs"), "badge": "Hands-on lab", "product": title}
     if mode == "roster":
         return _page(title or "Hands-on labs", labs,
@@ -219,18 +236,19 @@ def board(rows: list[dict[str, Any]]) -> str:
             f"<th>Claimed by</th></tr></thead><tbody>{body}</tbody></table></div>")
 
 
-def lab_page(row: Any, token: str, *, title: str = "") -> bytes:
+def lab_page(row: Any, token: str, *, title: str = "", guide_url: str = "") -> bytes:
     lab_id = row["id"]
     who = row["name"] or row["email"]
     shell = {"heading": f"Your lab <span class=pill>{_e(lab_id)}</span>", "badge": "Your lab",
              "product": title, "tag": "Personal link",
              "sub": f"Assigned to {who}. Bookmark this page: it is your personal link. "
                     "Do not share it."}
+    guide = _guide(guide_url)
     if not row["ready"]:
         return _page(f"Lab {lab_id}", "<div class=card><h2>Still building</h2>"
-                     "<p>Your lab is not ready yet. This page refreshes every minute.</p></div>",
-                     refresh=60, **shell)
-    cards = _lab_cards(lab_id, json.loads(row["data"] or "{}"), f"/l/{token}/key",
+                     "<p>Your lab is not ready yet. This page refreshes every minute.</p></div>"
+                     + guide, refresh=60, **shell)
+    cards = guide + _lab_cards(lab_id, json.loads(row["data"] or "{}"), f"/l/{token}/key",
                        ssh_title="SSH to your lab host")
     return _page(f"Lab {lab_id}", cards + "<p class=note>The lab web UIs use self-signed "
                  "certificates. Accept the browser warning to continue.</p>", **shell)
@@ -337,9 +355,13 @@ def admin_page(s: dict[str, Any], rows: list[dict[str, Any]], labs: dict[str, di
             f"<span class=note>{who}{' &middot; ' + _e(host) if host else ''}</span></summary>"
             f"<div class=mt>{inner}</div></details>"
         )
+    guide = (f"<p class=note>Workshop guide shown to students: <a href='{_e(s['guide_url'])}' "
+             f"target=_blank rel='noopener noreferrer'>{_e(s['guide_url'])}</a></p>"
+             if s.get("guide_url") else
+             "<p class=note>No workshop guide link configured (portal.guide_url).</p>")
     return _page(
         "Instructor view",
-        f"<div class=stats>{stats}</div><div class='card tbl'><table><thead><tr><th>Lab</th>"
+        f"<div class=stats>{stats}</div>{guide}<div class='card tbl'><table><thead><tr><th>Lab</th>"
         "<th>State</th><th>Name</th><th>Email</th><th>Via</th><th>Claimed (UTC)</th>"
         f"<th>First opened</th></tr></thead><tbody>{body}</tbody></table></div>"
         + progress_section(progress or {}, progress_at, [r["lab"] for r in rows])
@@ -441,7 +463,8 @@ class Handler(BaseHTTPRequestHandler):
             rows = claims.status_rows(con) if allowed else []
         finally:
             con.close()
-        body = (claim_form(s["title"], tok, mode=s["mode"], is_open=s["open"], rows=rows, **kw)
+        body = (claim_form(s["title"], tok, mode=s["mode"], is_open=s["open"], rows=rows,
+                           guide_url=s["guide_url"], **kw)
                 if allowed else gate_page(s["title"], tok, err=gate_err))
         self._send(code, body, extra=[("Set-Cookie", f"csrf={tok}; Path=/{self._flags()}")])
 
@@ -496,10 +519,11 @@ class Handler(BaseHTTPRequestHandler):
                     ("Content-Disposition", f'attachment; filename="{row["id"]}.key"')])
             con = connect(self.db_path)
             try:
-                title = claims.settings(con)["title"]
+                st = claims.settings(con)
             finally:
                 con.close()
-            return self._send(200, lab_page(row, m.group(1), title=title))
+            return self._send(200, lab_page(row, m.group(1), title=st["title"],
+                                            guide_url=st["guide_url"]))
         m = re.fullmatch(r"/admin/([^/]+)(?:/key/([A-Za-z0-9_.-]+))?", path)
         if m:
             if self.limiter.over(self._ip()):

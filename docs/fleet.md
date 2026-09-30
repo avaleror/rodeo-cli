@@ -328,6 +328,7 @@ portal:
   # roster: students.csv      # roster / both: CSV with name,email[,host_id]
   student_ssh: true           # per-lab `student` user + key; opens :22 (key-only)
   title: SUSE Virtualization workshop
+  guide_url: https://avaleror.github.io/suse-virt-workshop/   # or /guide/ if served by the portal
   # code_letters: 4           # random letters in RODEO-XXXX-YYYYMMDD (4-8; 6 = 191M codes)
   # hostname: labs.example.com   # default portal-<ip>.sslip.io (Let's Encrypt)
   # instance_type: t3.small
@@ -369,6 +370,11 @@ What protects what:
   form. The default code has 4 random letters (331,776 codes); with the failure limit
   below one address gets about 0.4% odds over an 8-hour workshop. Raise
   `portal.code_letters` for more, and `rotate-code` if a code leaks.
+- **Workshop guide link:** with `portal.guide_url` every student page (claim page, and
+  their lab page above the credentials) links to the exercises: an `https://` URL such as
+  GitHub Pages, or a path served by the portal itself. The guide stays on GitHub Pages
+  by default because the portal is destroyed with the fleet, and students keep the guide
+  after the workshop. Change it with `portal up` at any time; claims are kept.
 - **The instructor page**, behind a secret link, shows emails, deploy progress and
   every lab's credentials.
 - **Claims:** personal links are 24 random bytes stored as SHA-256, PINs as scrypt,

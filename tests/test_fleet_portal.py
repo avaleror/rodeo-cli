@@ -353,3 +353,23 @@ def test_package_ships_brand_assets_and_font_licences():
     for n in ("suse-logo.png", "open-sans.woff2", "source-sans-pro-400.woff2",
               "OFL-OpenSans.txt", "OFL-SourceSansPro.txt"):
         assert f"rodeo_portal/static/{n}" in names
+
+
+@pytest.mark.parametrize("url,ok", [
+    ("https://avaleror.github.io/suse-virt-workshop/", True), ("/guide/", True), ("", True),
+    ("javascript:alert(1)", False), ("http://x.io", False), ("//evil.example", False),
+])
+def test_guide_url_validation(tmp_path, url, ok):
+    p = _write(tmp_path, {"enabled": True, "guide_url": url})
+    if ok:
+        assert load_inventory(p).portal.guide_url == url
+    else:
+        with pytest.raises(ConfigError, match="guide_url"):
+            load_inventory(p)
+
+
+def test_portal_up_passes_guide_url_quoted():
+    s = fp.portal_up_script("p.sslip.io", mode="open", title="T",
+                            guide_url="https://avaleror.github.io/suse-virt-workshop/")
+    assert "--guide-url https://avaleror.github.io/suse-virt-workshop/" in s
+    assert "--guide-url ''" in fp.portal_up_script("p.sslip.io", mode="open", title="T")

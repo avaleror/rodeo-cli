@@ -202,7 +202,8 @@ def _caddyfile(fqdn: str) -> str:
 """
 
 
-def portal_up_script(fqdn: str, *, mode: str, title: str, code_letters: int = 4) -> str:
+def portal_up_script(fqdn: str, *, mode: str, title: str, code_letters: int = 4,
+                     guide_url: str = "") -> str:
     """Idempotent install script run as root on the portal VM."""
     q = shlex.quote
     caddy_url = (
@@ -241,7 +242,7 @@ cat > /etc/systemd/system/rodeo-caddy.service <<'UNIT'
 if systemctl is-active -q firewalld; then
   firewall-cmd -q --permanent --add-service=http --add-service=https && firewall-cmd -q --reload
 fi
-{admin} init --mode {q(mode)} --title {q(title)} --code-letters {int(code_letters)} >/dev/null
+{admin} init --mode {q(mode)} --title {q(title)} --code-letters {int(code_letters)} --guide-url {q(guide_url)} >/dev/null
 systemctl daemon-reload
 systemctl enable -q rodeo-portal rodeo-caddy
 systemctl restart rodeo-portal rodeo-caddy
@@ -271,7 +272,8 @@ def portal_up(inventory: FleetInventory, *, wait: bool = True) -> str:
     url = portal_url(inventory)
     script = portal_up_script(url.removeprefix("https://"), mode=portal.mode,
                               title=portal.title or inventory.name,
-                              code_letters=portal.code_letters)
+                              code_letters=portal.code_letters,
+                              guide_url=portal.guide_url)
     res = run_remote(inventory, _portal_host(inventory), ["bash", "-s"], stdin=script,
                      timeout=600.0)
     if not res.ok or "PORTAL_UP" not in res.stdout:

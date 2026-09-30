@@ -1,6 +1,6 @@
 ---
 title: Fleet claim portal, implementation plan
-status: approved design, F5.0 implemented (live check pending)
+status: approved design; F5.0 live-checked 2026-09-30; F5.1-F5.4 implemented 2026-09-30, live end-to-end check pending
 audience: maintainers, implementing AI or engineer
 design: docs/claim-portal.md
 language: en

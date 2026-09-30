@@ -1,6 +1,6 @@
 ---
 title: Fleet claim portal (students get their own lab)
-status: approved design (2026-09-25), implementation not started
+status: approved design (2026-09-25); F5.0-F5.4 implemented 2026-09-30 (AWS), live end-to-end check pending
 plan: docs/claim-portal-plan.md
 audience: maintainers, implementing AI or engineer
 repo: https://github.com/avaleror/rodeo-cli
@@ -319,3 +319,33 @@ Summary:
    the room screen? Currently excluded (CLI only).
 4. **Lab expiry shown to students** ("this lab is destroyed at 17:00"): easy to add if
    `workshop.yaml` gains an `ends_at`.
+
+## 13. Decisions during implementation (2026-09-30)
+
+Answers to section 12 and deliberate deviations, all from Andrés unless noted.
+
+- **Open question 1 (Caddy):** not in the SLES 16 repos. `portal up` installs the
+  official static binary pinned by version and SHA-512 (`rodeo/fleet/portal.py`).
+- **Open question 2 (student SSH):** yes, students need SSH to their lab host.
+  `portal.student_ssh: true` implements F5.4 as designed (no sudo, no privileged
+  groups, cannot read `/root`, checked on every publish).
+- **Open question 3 (instructor web view):** yes, in addition to the CLI. A read-only
+  page at `/admin/<token>` with every claim and every lab's credentials and SSH key;
+  `rodeo fleet portal admin-link` issues a new token and revokes the previous one. No
+  write actions on the web, so no admin password.
+- **Public claim board:** the front page lists every lab with its state and the
+  claimant's name (never email or credentials), so students see who has which lab.
+- **No email sending** (considered and dropped 2026-09-30): the lab is shown on the
+  student's personal page right after claiming.
+- **Portal software:** instead of installing all of rodeo on the portal VM,
+  `portal up` copies only `rodeo/portal/` (standard library only, enforced by a test)
+  and runs it with the system `python3`. Same version as the CLI talking to it, and no
+  Ansible/libvirt dependencies on a machine that does not need them. `jinja2` is not
+  used: pages are built with `html.escape` on every value (tests cover escaping).
+- **Portal VM provisioning:** `AwsHostProvider.provision_portal()` /
+  `deprovision_portal()` rather than a `role` field threaded through the lab
+  `provision()`. Lab provisioning is untouched, which removes regression risk R3/R5 by
+  construction. Lab `deprovision` skips instances tagged `rodeo-role: portal` and
+  ignores them when deciding whether the lab SG can go (R1).
+- **Not implemented yet:** `portal.close_after`, the `student` column in
+  `fleet status`, GCP/Vultr/Hetzner portal VMs.

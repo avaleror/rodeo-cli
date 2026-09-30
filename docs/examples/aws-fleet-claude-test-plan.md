@@ -56,7 +56,7 @@ mkdir -p "$WORK_DIR" && cd "$WORK_DIR"
 # Confirm identity (do not print secret keys):
 aws sts get-caller-identity
 
-python3 -m pip install -U 'rodeo-cli[aws]'
+python3 -m pip install -e '.[aws]'   # in your rodeo-cli checkout
 # Or from a checkout: pip install -e '.[aws,dev]'
 rodeo --version
 ```

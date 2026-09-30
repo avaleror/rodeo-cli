@@ -65,6 +65,7 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Get started: get-started.md
+  - Install on Linux and macOS: install.md
   - Profiles:
     - Rancher Prime: guide-rancher.md
     - Harvester HCI: guide-harvester.md

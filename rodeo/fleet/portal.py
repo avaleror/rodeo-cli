@@ -43,7 +43,7 @@ from .inventory import (
     require_provider,
 )
 from .ssh_exec import known_hosts_path, run_remote
-from .student_access import _PASSWORD_KEY, _check_host, student_ports
+from .student_access import SECRETS_PATH_SNIPPET, _PASSWORD_KEY, _check_host, student_ports
 
 PORTAL_PKG_DIR = Path(__file__).resolve().parents[1] / "portal"
 REMOTE_APP_DIR = "/opt/rodeo-portal"
@@ -341,7 +341,17 @@ install -d -m 700 -o "$U" -g "$(id -gn "$U")" "$H/.ssh"
 printf '%s\\n' "$PUB" > "$H/.ssh/authorized_keys"
 chown "$U:$(id -gn "$U")" "$H/.ssh/authorized_keys"; chmod 600 "$H/.ssh/authorized_keys"
 chmod 700 /root
-if sudo -n -l -U "$U" 2>/dev/null | grep -q "may run"; then echo "student has sudo" >&2; exit 3; fi
+# Explicit deny, sorted last so it wins over distro rules: SLES 16 grants every user
+# "(ALL) ALL" with targetpw (safe only while root stays locked) and a NOPASSWD rule
+# for cloudguestregistryauth. Validated with visudo before it is installed.
+printf '%s ALL=(ALL) !ALL\n' "$U" > /etc/sudoers.d/.zz-rodeo-student.tmp
+chmod 440 /etc/sudoers.d/.zz-rodeo-student.tmp
+visudo -cqf /etc/sudoers.d/.zz-rodeo-student.tmp
+mv -f /etc/sudoers.d/.zz-rodeo-student.tmp /etc/sudoers.d/zz-rodeo-student
+# Ask sudo's own policy whether the student may run anything (runs nothing).
+for c in /usr/bin/true /bin/bash /usr/bin/cloudguestregistryauth; do
+  if sudo -n -l -U "$U" "$c" >/dev/null 2>&1; then echo "student may sudo $c" >&2; exit 3; fi
+done
 for g in wheel sudo libvirt kvm docker; do
   if id -nG "$U" | tr ' ' '\\n' | grep -qx "$g"; then echo "student in group $g" >&2; exit 3; fi
 done
@@ -362,11 +372,11 @@ def ensure_student_user(inventory: FleetInventory, host: FleetHost) -> str:
 # ---------------------------------------------------------------- publish (F5.3)
 # Prints the requested secrets.yaml values as one JSON object on stdout. Its
 # output is parsed and never echoed, logged or put into an error message (R8).
-READ_SECRETS_SCRIPT = """
+READ_SECRETS_SCRIPT = SECRETS_PATH_SNIPPET + """
 import json, os, sys
 want = sys.argv[1:]
 vals = {}
-with open(os.path.expanduser("~/.rodeo/secrets.yaml")) as fh:
+with open(_secrets_path()) as fh:
     for line in fh:
         key, sep, val = line.partition(":")
         if sep and key.strip() in want:

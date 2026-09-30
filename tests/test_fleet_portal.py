@@ -220,6 +220,11 @@ def test_publish_with_student_ssh_generates_per_lab_key(tmp_path, monkeypatch):
 def test_student_setup_script_proves_the_user_is_unprivileged():
     s = fp.STUDENT_SETUP_SCRIPT
     assert "sudo -n -l -U" in s and "exit 3" in s
+    # SLES 16 lets every user sudo with root's password (targetpw): deny explicitly,
+    # last, validated, and check real commands instead of grepping "may run".
+    assert "ALL=(ALL) !ALL" in s and "/etc/sudoers.d/zz-rodeo-student" in s
+    assert "visudo -cqf" in s and "/usr/bin/cloudguestregistryauth" in s
+    assert 'grep -q "may run"' not in s
     assert "test -r /root/.ssh/id_ed25519" in s and "chmod 700 /root" in s
     for g in ("wheel", "libvirt", "docker"):
         assert g in s
@@ -294,3 +299,46 @@ def test_student_keys_dir_is_sanitised(tmp_path, monkeypatch):
     monkeypatch.setattr("rodeo.paths.rodeo_dir", lambda: tmp_path)
     d = fp.student_keys_dir("../../evil")
     assert d.is_relative_to(tmp_path / "fleet") and oct(d.stat().st_mode & 0o777) == "0o700"
+
+
+# ---------------------------------------------------------------- live bug 2026-09-30
+def test_secrets_path_follows_sudo_user_like_invoking_home(tmp_path, monkeypatch):
+    """Under `sudo -n -H` HOME is /root but rodeo keeps state in SUDO_USER's home
+    (rodeo.paths.invoking_home). The remote scripts must look in the same place."""
+    import collections
+    import sys
+    import types
+
+    from rodeo.fleet.student_access import SECRETS_PATH_SNIPPET
+
+    ns: dict = {}
+    exec(SECRETS_PATH_SNIPPET, ns)  # noqa: S102 - the exact code shipped to hosts
+    P = collections.namedtuple("P", "pw_dir")
+    fake_pwd = types.SimpleNamespace(
+        getpwnam=lambda n: P("/home/ec2-user") if n == "ec2-user" else (_ for _ in ()).throw(KeyError(n))
+    )
+    monkeypatch.setitem(sys.modules, "pwd", fake_pwd)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("SUDO_USER", "ec2-user")
+    assert ns["_secrets_path"]() == "/home/ec2-user/.rodeo/secrets.yaml"
+    monkeypatch.setenv("SUDO_USER", "no-such-user")
+    assert ns["_secrets_path"]() == f"{tmp_path}/.rodeo/secrets.yaml"
+    monkeypatch.delenv("SUDO_USER")
+    assert ns["_secrets_path"]() == f"{tmp_path}/.rodeo/secrets.yaml"
+
+
+@pytest.mark.parametrize("which", ["check", "read"])
+def test_remote_secret_scripts_still_run(tmp_path, which):
+    import subprocess
+    import sys
+
+    from rodeo.fleet.student_access import PASSWORD_CHECK_SCRIPT
+
+    (tmp_path / ".rodeo").mkdir()
+    (tmp_path / ".rodeo" / "secrets.yaml").write_text('harvester_admin_password: "Str0ngEnoughPassw0rdX"\n')  # gitleaks:allow (fake)
+    script = PASSWORD_CHECK_SCRIPT if which == "check" else fp.READ_SECRETS_SCRIPT
+    out = subprocess.run([sys.executable, "-c", script, "harvester_admin_password"],
+                         capture_output=True, text=True, check=True,
+                         env={"HOME": str(tmp_path), "PATH": "/usr/bin:/bin"}).stdout
+    assert out.strip() == ("harvester_admin_password=strong" if which == "check"
+                           else '{"harvester_admin_password": "Str0ngEnoughPassw0rdX"}')  # gitleaks:allow

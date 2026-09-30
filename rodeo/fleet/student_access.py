@@ -31,15 +31,32 @@ _PASSWORD_KEY = {
     "rancher": "rancher_admin_password",
 }
 
+# Remote scripts run as root through `sudo -n -H bash -lc` when ssh_user is not
+# root, so HOME is /root while rodeo keeps its state in the *invoking* user's home
+# (rodeo.paths.invoking_home, via SUDO_USER). Mirror that lookup exactly, or the
+# scripts read /root/.rodeo and find nothing (live bug 2026-09-30).
+SECRETS_PATH_SNIPPET = """
+def _secrets_path():
+    import os
+    user = os.environ.get("SUDO_USER")
+    if user:
+        try:
+            import pwd
+            return os.path.join(pwd.getpwnam(user).pw_dir, ".rodeo", "secrets.yaml")
+        except KeyError:
+            pass
+    return os.path.expanduser("~/.rodeo/secrets.yaml")
+"""
+
 # Runs on the host with ``python3 -c``; argv = the secrets.yaml keys to check.
 # Prints ``key=strong|weak|missing`` per key and never the value. Keep the
 # rule in sync with secretgen.is_strong_password (pinned by a test).
-PASSWORD_CHECK_SCRIPT = f"""
+PASSWORD_CHECK_SCRIPT = SECRETS_PATH_SNIPPET + f"""
 import os, sys
 want = sys.argv[1:]
 vals = {{}}
 try:
-    with open(os.path.expanduser("~/.rodeo/secrets.yaml")) as fh:
+    with open(_secrets_path()) as fh:
         for line in fh:
             key, sep, val = line.partition(":")
             if sep and key.strip() in want:

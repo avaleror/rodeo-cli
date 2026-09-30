@@ -988,10 +988,12 @@ class AwsHostProvider:
         last_err = "no attempt"
         need_sudo = str(spec.ssh_user or "").strip() not in ("", "root")
         while time.monotonic() < deadline:
-            result = run_remote(inventory, fh, ["true"], timeout=20.0)
+            result = run_remote(inventory, fh, ["true"], timeout=20.0, as_root=False)
             if result.ok and need_sudo:
                 # cloud-init may finish SSH before sudoers drop-in is in place
-                sudo_ok = run_remote(inventory, fh, ["sudo", "-n", "true"], timeout=20.0)
+                sudo_ok = run_remote(
+                    inventory, fh, ["sudo", "-n", "true"], timeout=20.0, as_root=False
+                )
                 if sudo_ok.ok:
                     return
                 last_err = (sudo_ok.stderr or sudo_ok.stdout or "sudo -n not ready").strip()

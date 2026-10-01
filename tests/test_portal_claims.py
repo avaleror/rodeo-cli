@@ -41,10 +41,22 @@ def _code(p):
         con.close()
 
 
-def _claim(p, email, pin="1234", code=None, name="N"):
+PIN = "583920"
+OTHER_PIN = "739273"
+
+
+def _claim(p, email, pin=PIN, code=None, name="N"):
     con = _con(p)
     try:
         return claims.claim_open(con, code=code or _code(p), email=email, name=name, pin=pin)
+    finally:
+        con.close()
+
+
+def _recover(p, email, pin=PIN, code=None):
+    con = _con(p)
+    try:
+        return claims.recover(con, code=code or _code(p), email=email, pin=pin)
     finally:
         con.close()
 
@@ -68,9 +80,9 @@ def test_building_lab_is_never_claimed(dbp):
         _claim(dbp, "c@x.io")
 
 
-def test_reclaim_same_lab_new_link_old_link_dies(dbp):
+def test_recover_same_lab_new_link_old_link_dies(dbp):
     t1, lab = _claim(dbp, "a@x.io")
-    t2, lab2 = _claim(dbp, "A@X.io")  # email is case-insensitive
+    t2, lab2 = _recover(dbp, "A@X.io")  # email is case-insensitive
     assert lab2 == lab and t1 != t2
     con = _con(dbp)
     assert claims.lab_for_token(con, t1) is None
@@ -79,16 +91,59 @@ def test_reclaim_same_lab_new_link_old_link_dies(dbp):
 
 
 def test_wrong_pin_refused_and_locks_out(dbp):
-    _claim(dbp, "a@x.io", pin="1234")
+    _claim(dbp, "a@x.io")
     for _ in range(claims.PIN_LOCKOUT):
-        with pytest.raises(claims.ClaimError, match="PIN does not match"):
-            _claim(dbp, "a@x.io", pin="9999")
-    with pytest.raises(claims.ClaimError, match="Too many wrong PINs"):
-        _claim(dbp, "a@x.io", pin="1234")
+        with pytest.raises(claims.GuessError, match="No lab matches"):
+            _recover(dbp, "a@x.io", pin=OTHER_PIN)
+    with pytest.raises(claims.GuessError, match="Too many wrong PINs"):
+        _recover(dbp, "a@x.io")
     con = _con(dbp)
     claims.unlock(con, "a@x.io")
     con.close()
-    _claim(dbp, "a@x.io", pin="1234")
+    _recover(dbp, "a@x.io")
+
+
+def test_unknown_email_and_wrong_pin_look_the_same(dbp):
+    _claim(dbp, "a@x.io")
+    with pytest.raises(claims.GuessError) as unknown:
+        _recover(dbp, "nobody@x.io")
+    with pytest.raises(claims.GuessError) as wrong:
+        _recover(dbp, "a@x.io", pin=OTHER_PIN)
+    assert str(unknown.value) == str(wrong.value)
+
+
+def test_claiming_twice_points_to_recovery(dbp):
+    _claim(dbp, "a@x.io")
+    with pytest.raises(claims.ClaimError, match="Get my lab back"):
+        _claim(dbp, "a@x.io", name="Someone else")
+
+
+def test_two_students_may_share_a_pin(dbp):
+    """The email is the lookup key; a shared PIN opens only each one's own lab."""
+    _, a = _claim(dbp, "a@x.io")
+    _, b = _claim(dbp, "b@x.io")
+    assert _recover(dbp, "a@x.io")[1] == a and _recover(dbp, "b@x.io")[1] == b
+
+
+def test_recovery_works_while_claiming_is_closed(dbp):
+    _claim(dbp, "a@x.io")
+    con = _con(dbp)
+    with claims.write_tx(con):
+        claims.set_setting(con, "open", "0")
+    con.close()
+    assert _recover(dbp, "a@x.io")[1] == "lab-01"
+
+
+@pytest.mark.parametrize("pin", ["123456", "654321", "000000", "111111", "121212", "123123",
+                                 "112233", "998877", "345678", "901234", "484848", "135790"])
+def test_obvious_pins_refused(dbp, pin):
+    with pytest.raises(claims.ClaimError, match="too easy"):
+        _claim(dbp, "a@x.io", pin=pin)
+
+
+@pytest.mark.parametrize("pin", ["583920", "739273", "204816", "907315"])
+def test_ordinary_pins_accepted(pin):
+    assert claims.pin_problem(pin) is None
 
 
 def test_bad_code_closed_and_roster_mode_refuse(dbp):
@@ -110,9 +165,10 @@ def test_bad_code_closed_and_roster_mode_refuse(dbp):
 
 
 @pytest.mark.parametrize("email,pin,name,msg", [
-    ("not-an-email", "1234", "N", "valid email"),
-    ("a@x.io", "12a4", "N", "4 digits"),
-    ("a@x.io", "1234", "  ", "name"),
+    ("not-an-email", PIN, "N", "valid email"),
+    ("a@x.io", "12a456", "N", "6 digits"),
+    ("a@x.io", "5839", "N", "6 digits"),
+    ("a@x.io", PIN, "  ", "name"),
 ])
 def test_input_validation(dbp, email, pin, name, msg):
     with pytest.raises(claims.ClaimError, match=msg):
@@ -134,7 +190,7 @@ def test_concurrent_claims_assign_each_lab_once(tmp_path):
     def worker(i):
         c = connect(p)
         try:
-            _, lab = claims.claim_open(c, code=code, email=f"u{i}@x.io", name="U", pin="1111")
+            _, lab = claims.claim_open(c, code=code, email=f"u{i}@x.io", name="U", pin=PIN)
             with lock:
                 got.append(lab)
         except claims.ClaimError as exc:
@@ -201,11 +257,11 @@ def test_publish_upsert_keeps_claims(dbp):
 
 
 def test_secrets_stored_hashed(dbp):
-    t, _ = _claim(dbp, "a@x.io", pin="4321")
+    t, _ = _claim(dbp, "a@x.io", pin="804615")
     con = _con(dbp)
     row = con.execute("SELECT pin_hash, token_hash FROM claims").fetchone()
     con.close()
-    assert t not in row["token_hash"] and "4321" not in row["pin_hash"]
+    assert t not in row["token_hash"] and "804615" not in row["pin_hash"]
 
 
 def test_admin_token_rotation(dbp):
@@ -238,9 +294,12 @@ def test_portal_package_is_stdlib_only_with_relative_imports():
 def test_guessing_errors_are_marked_for_the_rate_limiter(dbp):
     with pytest.raises(claims.GuessError):
         _claim(dbp, "a@x.io", code="RODEO-AAAA-20000101")
-    _claim(dbp, "a@x.io", pin="1234")
+    _claim(dbp, "a@x.io")
     with pytest.raises(claims.GuessError):
-        _claim(dbp, "a@x.io", pin="9999")
+        _recover(dbp, "a@x.io", pin=OTHER_PIN)
+    with pytest.raises(claims.ClaimError) as weak:
+        _claim(dbp, "b@x.io", pin="123456")
+    assert not isinstance(weak.value, claims.GuessError)
     with pytest.raises(claims.ClaimError) as exc:
         _claim(dbp, "not-an-email")
     assert not isinstance(exc.value, claims.GuessError)

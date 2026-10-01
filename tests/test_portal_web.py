@@ -76,8 +76,11 @@ class Browser:
     def enter(self, code):
         return self.post("/enter", code=code)
 
-    def claim(self, email="ana@x.io", pin="1234", name="Ana"):
+    def claim(self, email="ana@x.io", pin="583920", name="Ana"):
         return self.post("/claim", email=email, pin=pin, name=name)
+
+    def recover(self, email="ana@x.io", pin="583920"):
+        return self.post("/recover", email=email, pin=pin)
 
 
 @pytest.fixture()
@@ -125,7 +128,9 @@ def test_rotating_the_code_ends_board_sessions_but_not_lab_links(portal, browser
     claims.rotate_code(con)
     con.close()
     _, _, page = browser.get("/")
-    assert "Workshop code" in page and "lab-01" not in page
+    # board and claim form hidden again (this browser still offers its own lab)
+    assert "Workshop code" in page and "Claimed by" not in page and "Get my lab</button>" not in page
+    assert Browser(portal["port"]).get("/")[2].count("lab-01") == 0
     assert browser.get(link)[0] == 200
 
 
@@ -157,7 +162,7 @@ def test_access_cookie_is_httponly_samesite(portal):
 
 
 def test_csrf_mismatch_rejected(portal, browser):
-    s, _, body = browser.post("/claim", csrf="aaaa", email="a@x.io", pin="1234", name="A")
+    s, _, body = browser.post("/claim", csrf="aaaa", email="a@x.io", pin="583920", name="A")
     assert s == 400 and "expired" in body
     s, _, _ = Browser(portal["port"]).post("/enter", csrf="aaaa", code=portal["code"])
     assert s == 400
@@ -337,3 +342,69 @@ def test_unsafe_guide_urls_rejected(portal, bad):
     with pytest.raises(claims.ClaimError):
         claims.ensure_defaults(con, guide_url=bad)
     con.close()
+
+
+# ---------------------------------------------------------------- getting back to your lab
+def test_remembered_device_offers_continue_even_before_the_code(portal, browser):
+    _, h, _ = browser.claim(name="Ana Lopez")
+    link = h["Location"]
+    page = browser.get("/")[2]
+    assert "Welcome back, Ana Lopez" in page and f"href='{link}'" in page
+    con = connect(portal["db"])
+    claims.rotate_code(con)  # board access gone, the remembered lab is not
+    con.close()
+    page = browser.get("/")[2]
+    assert "Workshop code" in page and f"href='{link}'" in page
+
+
+def test_opening_a_personal_link_remembers_the_device(portal, browser):
+    _, h, _ = browser.claim()
+    phone = Browser(portal["port"])
+    phone.get(h["Location"])
+    assert "Continue to your lab" in phone.get("/")[2]
+
+
+def test_forget_this_device(portal, browser):
+    browser.claim()
+    assert "Continue to your lab" in browser.get("/")[2]
+    s, h, _ = browser.post("/forget")
+    assert s == 303 and any(v.startswith("lab=;") and "Max-Age=0" in v
+                            for v in h.get_all("Set-Cookie"))
+    assert "Continue to your lab" not in browser.get("/")[2]
+
+
+def test_recover_on_a_new_device_with_email_and_pin_only(portal, browser):
+    _, h, _ = browser.claim(name="Ana")
+    old = h["Location"]
+    laptop = Browser(portal["port"])
+    laptop.enter(portal["code"])
+    s, h2, _ = laptop.recover()
+    assert s == 303 and h2["Location"] != old
+    assert "lab-01" in laptop.get(h2["Location"])[2]
+    assert browser.get(old)[0] == 404  # the old link stops working
+    assert "Continue to your lab" in laptop.get("/")[2]
+
+
+def test_failed_recovery_opens_the_form_with_a_generic_error(portal, browser):
+    browser.claim()
+    other = Browser(portal["port"])
+    other.enter(portal["code"])
+    s, _, page = other.recover(pin="739273")
+    assert s == 403 and "No lab matches that email and PIN" in page
+    assert "<details class='card recover' open>" in page
+
+
+def test_wrong_recovery_pins_count_as_failed_attempts(portal, browser):
+    browser.claim()
+    other = Browser(portal["port"])
+    other.enter(portal["code"])
+    for i in range(RATE_LIMIT):
+        other.recover(email=f"x{i}@x.io", pin="739273")
+    assert other.recover()[0] == 429
+
+
+def test_claim_form_asks_for_a_six_digit_pin_and_refuses_obvious_ones(browser):
+    page = browser.get("/")[2]
+    assert "6-digit PIN" in page and 'pattern="[0-9]{6}"' in page
+    s, _, page = browser.claim(pin="123456")
+    assert s == 403 and "too easy to guess" in page

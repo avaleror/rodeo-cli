@@ -174,20 +174,44 @@ def import_labs(con: sqlite3.Connection, labs: list[dict[str, Any]]) -> int:
 
 
 # ------------------------------------------------------------------ open claim
+PIN_LENGTH = 6
+# Obvious choices an attacker would try first (the email is the lookup key, so two
+# students sharing a PIN is harmless; a *guessable* PIN is the risk).
+_COMMON_PINS = frozenset({
+    "123123", "121212", "112233", "111222", "123321", "102030", "159753", "147258",
+    "258369", "696969", "131313", "101010", "202020", "456456", "789789", "654321",
+    "100000", "999999", "111000", "000111", "246810", "135790", "142536", "741852",
+})
+
+
+def pin_problem(pin: str) -> str | None:
+    """Why ``pin`` is not acceptable for a new claim, or None."""
+    if not re.fullmatch(rf"\d{{{PIN_LENGTH}}}", pin or ""):
+        return f"The PIN must be {PIN_LENGTH} digits."
+    steps = {(int(b) - int(a)) % 10 for a, b in zip(pin, pin[1:])}
+    if len(set(pin)) <= 2 or steps in ({1}, {9}) or pin in _COMMON_PINS:
+        return "That PIN is too easy to guess. Choose a less obvious one."
+    pairs = (pin[0] == pin[1] and pin[2] == pin[3] and pin[4] == pin[5])  # 998877, 113355
+    if len({pin[:2], pin[2:4], pin[4:]}) == 1 or pin[:3] == pin[3:] or pairs:
+        return "That PIN is too easy to guess. Choose a less obvious one."
+    return None
+
+
 def claim_open(
     con: sqlite3.Connection, *, code: str, email: str, name: str, pin: str
 ) -> tuple[str, str]:
-    """Return ``(token, lab_id)``: a fresh personal link for this email's lab.
+    """New claim: return ``(token, lab_id)`` for the next free *ready* lab.
 
-    A new email gets the next free *ready* lab. A known email with the right PIN
-    gets its same lab back under a new link (the old link stops working).
+    An email that already has a lab is refused here; it gets its lab back with
+    :func:`recover` (email + PIN), never by claiming again.
     """
     email = normalize_email(email)
     name = (name or "").strip()[:80]
     if not name:
         raise ClaimError("Enter your name.")
-    if not re.fullmatch(r"\d{4}", pin or ""):
-        raise ClaimError("The PIN must be 4 digits.")
+    problem = pin_problem(pin)
+    if problem:
+        raise ClaimError(problem)
     token = new_token()
     with write_tx(con):
         s = settings(con)
@@ -197,22 +221,11 @@ def claim_open(
             raise ClaimError("Claiming is closed. Ask your instructor.")
         if not code_matches(code, s["code"]):
             raise GuessError("That workshop code is not valid.")
-        row = con.execute("SELECT * FROM claims WHERE email=?", (email,)).fetchone()
-        if row:
-            if row["source"] != "open":
+        existing = con.execute("SELECT source FROM claims WHERE email=?", (email,)).fetchone()
+        if existing is not None:
+            if existing["source"] != "open":
                 raise ClaimError("This email has a personal invite link. Use that link.")
-            if row["bad_pins"] >= PIN_LOCKOUT:
-                raise GuessError("Too many wrong PINs for this email. Ask your instructor.")
-            if not check_pin(pin, row["pin_hash"]):
-                con.execute("UPDATE claims SET bad_pins=bad_pins+1 WHERE email=?", (email,))
-                # commit the counter, then refuse
-                con.execute("COMMIT")
-                con.execute("BEGIN IMMEDIATE")
-                raise GuessError("This email already has a lab and the PIN does not match.")
-            con.execute(
-                "UPDATE claims SET token_hash=?, bad_pins=0 WHERE email=?", (sha256(token), email)
-            )
-            return token, row["lab_id"]
+            raise ClaimError("This email already has a lab. Use \u201cGet my lab back\u201d below.")
         lab = con.execute(
             "SELECT id FROM labs WHERE ready=1 AND id NOT IN (SELECT lab_id FROM claims) "
             "ORDER BY ord LIMIT 1"
@@ -225,6 +238,37 @@ def claim_open(
             (lab["id"], email, name, hash_pin(pin), sha256(token), now()),
         )
         return token, lab["id"]
+
+
+_NO_MATCH = "No lab matches that email and PIN."
+
+
+def recover(con: sqlite3.Connection, *, code: str, email: str, pin: str) -> tuple[str, str]:
+    """Lost link: email + PIN return the same lab under a new link (the old one stops
+    working). Works while claiming is closed. Unknown email and wrong PIN give the
+    same answer; five wrong PINs lock the email until ``portal unlock``."""
+    email = normalize_email(email)
+    if not re.fullmatch(rf"\d{{{PIN_LENGTH}}}", pin or ""):
+        raise ClaimError(f"The PIN must be {PIN_LENGTH} digits.")
+    token = new_token()
+    with write_tx(con):
+        s = settings(con)
+        if s["mode"] == "roster":
+            raise ClaimError("This workshop uses personal lab links. Use the one your instructor sent you.")
+        if not code_matches(code, s["code"]):
+            raise GuessError("That workshop code is not valid.")
+        row = con.execute("SELECT * FROM claims WHERE email=?", (email,)).fetchone()
+        if row is None or row["source"] != "open":
+            raise GuessError(_NO_MATCH)
+        if row["bad_pins"] >= PIN_LOCKOUT:
+            raise GuessError("Too many wrong PINs for this email. Ask your instructor.")
+        if not check_pin(pin, row["pin_hash"]):
+            con.execute("UPDATE claims SET bad_pins=bad_pins+1 WHERE email=?", (email,))
+            con.execute("COMMIT")  # keep the counter, then refuse
+            con.execute("BEGIN IMMEDIATE")
+            raise GuessError(_NO_MATCH)
+        con.execute("UPDATE claims SET token_hash=?, bad_pins=0 WHERE email=?", (sha256(token), email))
+        return token, row["lab_id"]
 
 
 # ------------------------------------------------------------------ roster

@@ -141,11 +141,15 @@ that one workshop's labs, which are ephemeral anyway.
 
 1. `rodeo fleet portal info` shows the portal URL and an event code
    (e.g. `WOLF-4821`, 8+ chars from an unambiguous alphabet), meant for a slide.
-2. The student enters code + email + a 4-digit PIN they choose.
+2. The student enters the code once, then name + email + a 6-digit PIN they choose
+   (obvious PINs refused).
 3. In one sqlite transaction the portal assigns the next free, *ready* lab and returns
    a personal link (`/l/<token>`) plus a cookie. The page tells them to bookmark it.
-4. Lost link: re-enter code + email + PIN, get the same lab. The PIN stops someone
-   who only knows a classmate's email from opening their lab.
+4. Lost link: the same browser remembers the lab (cookie, 3 days, "forget this
+   device" available); on another device a separate "get it back" form takes email +
+   PIN only and returns the same lab under a new link. The PIN stops someone who only
+   knows a classmate's email from opening their lab. (Decision 2026-10-01: the name is
+   not used for recovery: it is public on the board and typed inconsistently.)
 5. No labs left: "No free labs, ask your instructor." Claiming can be closed
    (`portal close`) or auto-closed (`portal.close_after: 2h`).
 

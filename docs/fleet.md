@@ -313,10 +313,23 @@ ports yourself.
 
 Students open one HTTPS page and enter the **workshop code** you give them (from
 `portal info`, e.g. `RODEO-XVFD-20260930`; case, spaces and dashes do not matter).
-Only then do they see the lab board and the claim form: name, email and a 4-digit
-PIN of their choice. They get their own lab: Harvester and Rancher URLs with the
-admin passwords and, optionally, an SSH key for their lab host. You see who has
-which lab. Design: [claim-portal.md](claim-portal.md).
+Only then do they see the lab board and the claim form: name, email and a 6-digit
+PIN of their choice (obvious ones such as 123456 or 111111 are refused). They get
+their own lab: Harvester and Rancher URLs with the admin passwords and, optionally,
+an SSH key for their lab host. You see who has which lab. Design:
+[claim-portal.md](claim-portal.md).
+
+Getting back to a lab:
+
+1. **Same device:** the browser remembers the lab for 3 days; reopening the portal
+   shows "Continue to your lab", even before the workshop code. "Not you? Forget this
+   device" clears it on shared computers.
+2. **Another device:** "Already have a lab? Get it back" asks only for email and PIN
+   (the email finds the lab, the PIN proves it is theirs, so two students sharing a
+   PIN is harmless). It returns the same lab under a new link; the old link stops
+   working. It works while claiming is closed. Five wrong PINs lock the email.
+3. **Anything else:** you have every lab on the instructor page, and
+   `rodeo fleet portal unlock EMAIL` clears a lockout.
 
 ```yaml
 provider:

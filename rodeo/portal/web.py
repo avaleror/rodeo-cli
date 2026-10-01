@@ -33,6 +33,9 @@ MAX_BODY = 4096
 RATE_LIMIT = 30
 RATE_WINDOW = 600.0
 ACCESS_MAX_AGE = 24 * 3600
+# "Remember this device": the student's personal link token in an HttpOnly cookie, so
+# reopening the portal offers "Continue to your lab" with nothing to type.
+LAB_COOKIE_MAX_AGE = 3 * 24 * 3600
 
 # SUSE branding, matching SUSE-Technical-Marketing/suse-virt-storylane: SUSE green on
 # white, Source Sans Pro headings, Open Sans body. Fonts and logo are served by the
@@ -91,6 +94,8 @@ progress{width:120px;height:8px;vertical-align:middle;margin-right:8px;accent-co
 .ph-done{color:var(--green-ink)}.ph-todo{color:var(--gray)}.mt{margin-top:16px}
 .guide{background:var(--green-dim);border-color:var(--green-border);border-top-color:var(--green)}.guide .btn{margin-top:14px}
 .guide-inline{margin:0 0 18px}.guide-inline .btn{margin-top:0}
+.forget{margin:6px 0 0}.linkbtn{background:none;border:0;padding:0;color:var(--gray);font:inherit;font-size:13px;text-decoration:underline;cursor:pointer}
+details.recover summary{font-weight:600;cursor:pointer}details.recover[open] summary{margin-bottom:14px}
 details.card summary{cursor:pointer;font-family:var(--font-head);font-size:16px}details.card summary b{margin-right:8px}
 footer{border-top:1px solid var(--border);background:var(--surface);color:var(--gray);font-size:13px;padding:22px 0}
 .footer-inner{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.footer-logo{height:20px;width:auto;opacity:.75}
@@ -164,10 +169,38 @@ def _copyable(value: str) -> str:
     return f"<code>{_e(value)}</code><button class=cp type=button data-v='{_e(value)}'>copy</button>"
 
 
-def gate_page(title: str, csrf: str, *, err: str = "") -> bytes:
-    """First page: only the workshop code. Nothing about labs or people before it."""
+def _forget_form(csrf: str) -> str:
+    return (f"<form method=post action=/forget class=forget><input type=hidden name=csrf value='{_e(csrf)}'>"
+            "<button class=linkbtn type=submit>Not you? Forget this device</button></form>")
+
+
+def _continue(mine: Any, csrf: str) -> str:
+    """Card for a browser that already holds a lab (remembered device)."""
+    if mine is None:
+        return ""
+    return (f"<div class='card guide'><h2>Welcome back, {_e(mine['name'] or 'student')}</h2>"
+            f"<p class=note>This device remembers your lab <b>{_e(mine['id'])}</b>.</p>"
+            f"<p class=guide-inline><a class=btn href='/l/{_e(mine['token'])}'>Continue to your lab</a></p>"
+            + _forget_form(csrf) + "</div>")
+
+
+def _recover_form(csrf: str, *, email: str = "", err: str = "") -> str:
+    """Lost link on a new device: email + PIN, nothing else."""
     msg = f"<p class=err role=alert>{_e(err)}</p>" if err else ""
-    return _page(title or "Hands-on labs", f"""<form class=card method=post action=/enter>{msg}
+    opened = " open" if err else ""
+    return (f"<details class='card recover'{opened}><summary>Already have a lab? Get it back</summary>{msg}"
+            f"<form method=post action=/recover><input type=hidden name=csrf value='{_e(csrf)}'>"
+            f"<label for=r-email>Email</label><input id=r-email name=email type=email required maxlength=254 autocomplete=email value='{_e(email)}'>"
+            "<label for=r-pin>Your 6-digit PIN</label><input id=r-pin name=pin required inputmode=numeric pattern='[0-9]{6}' minlength=6 maxlength=6 autocomplete=off>"
+            "<div class=hint>Locked out or forgot your PIN? Ask your instructor.</div>"
+            "<button class=btn type=submit>Get my lab back</button></form></details>")
+
+
+def gate_page(title: str, csrf: str, *, err: str = "", mine: Any = None) -> bytes:
+    """First page: only the workshop code. Nothing about labs or people before it
+    (except, on a remembered device, a way back to that student's own lab)."""
+    msg = f"<p class=err role=alert>{_e(err)}</p>" if err else ""
+    return _page(title or "Hands-on labs", _continue(mine, csrf) + f"""<form class=card method=post action=/enter>{msg}
 <input type=hidden name=csrf value='{_e(csrf)}'>
 <label for=code>Workshop code</label><input id=code name=code required maxlength=40 autocomplete=off autocapitalize=characters spellcheck=false placeholder="RODEO-ABCD-20260930">
 <button class=btn type=submit>Continue</button></form>""",
@@ -177,23 +210,25 @@ def gate_page(title: str, csrf: str, *, err: str = "") -> bytes:
 
 def claim_form(title: str, csrf: str, *, mode: str, is_open: bool, err: str = "",
                email: str = "", name: str = "", rows: list[dict[str, Any]] | None = None,
-               guide_url: str = "") -> bytes:
+               guide_url: str = "", mine: Any = None, recover_err: str = "") -> bytes:
     labs = _guide(guide_url, compact=True) + board(rows or [])
+    back = _continue(mine, csrf)
     shell = {"heading": _e(title or "Hands-on labs"), "badge": "Hands-on lab", "product": title}
     if mode == "roster":
-        return _page(title or "Hands-on labs", labs,
+        return _page(title or "Hands-on labs", back + labs,
                      sub="Open the personal link your instructor sent you to get your lab.", **shell)
+    recover = _recover_form(csrf, email=email if recover_err else "", err=recover_err)
     if not is_open:
-        return _page(title or "Hands-on labs", labs,
+        return _page(title or "Hands-on labs", back + recover + labs,
                      sub="Claiming is closed. Ask your instructor.", **shell)
     msg = f"<p class=err role=alert>{_e(err)}</p>" if err else ""
-    return _page(title or "Hands-on labs", f"""<form class=card method=post action=/claim>{msg}
+    return _page(title or "Hands-on labs", back + f"""<form class=card method=post action=/claim>{msg}
 <input type=hidden name=csrf value='{_e(csrf)}'>
 <label for=name>Your name</label><input id=name name=name required maxlength=80 autocomplete=name value='{_e(name)}'>
 <label for=email>Email</label><input id=email name=email type=email required maxlength=254 autocomplete=email value='{_e(email)}'>
-<label for=pin>4-digit PIN</label><input id=pin name=pin required inputmode=numeric pattern="[0-9]{{4}}" maxlength=4 autocomplete=off>
-<div class=hint>Choose any 4 digits. If you lose your lab link, the same email and PIN bring it back.</div>
-<button class=btn type=submit>Get my lab</button></form>{labs}""",
+<label for=pin>6-digit PIN</label><input id=pin name=pin required inputmode=numeric pattern="[0-9]{{6}}" minlength=6 maxlength=6 autocomplete=off>
+<div class=hint>Choose 6 digits that are not obvious (not 123456 or 111111). On another device, your email and this PIN get your lab back.</div>
+<button class=btn type=submit>Get my lab</button></form>{recover}{labs}""",
                  sub="Claim your personal lab: it is yours for the whole workshop.", **shell)
 
 
@@ -236,7 +271,8 @@ def board(rows: list[dict[str, Any]]) -> str:
             f"<th>Claimed by</th></tr></thead><tbody>{body}</tbody></table></div>")
 
 
-def lab_page(row: Any, token: str, *, title: str = "", guide_url: str = "") -> bytes:
+def lab_page(row: Any, token: str, *, title: str = "", guide_url: str = "",
+             csrf: str = "") -> bytes:
     lab_id = row["id"]
     who = row["name"] or row["email"]
     shell = {"heading": f"Your lab <span class=pill>{_e(lab_id)}</span>", "badge": "Your lab",
@@ -250,8 +286,9 @@ def lab_page(row: Any, token: str, *, title: str = "", guide_url: str = "") -> b
                      + guide, refresh=60, **shell)
     cards = guide + _lab_cards(lab_id, json.loads(row["data"] or "{}"), f"/l/{token}/key",
                        ssh_title="SSH to your lab host")
+    forget = _forget_form(csrf) if csrf else ""
     return _page(f"Lab {lab_id}", cards + "<p class=note>The lab web UIs use self-signed "
-                 "certificates. Accept the browser warning to continue.</p>", **shell)
+                 "certificates. Accept the browser warning to continue.</p>" + forget, **shell)
 
 
 STALE_AFTER = 180  # seconds without a progress push before the page warns
@@ -453,19 +490,31 @@ class Handler(BaseHTTPRequestHandler):
         self._send(429, _page("Slow down", "", heading="Too many attempts",
                               sub="Wait a few minutes and try again."))
 
+    def _mine(self, con: Any) -> Any:
+        """The lab this browser remembers (lab cookie), as a dict, or None."""
+        token = self._cookie("lab")
+        row = claims.lab_for_token(con, token) if token else None
+        return None if row is None else {"id": row["id"], "name": row["name"], "token": token}
+
+    def _lab_cookie(self, token: str, *, forget: bool = False) -> str:
+        age = 0 if forget else LAB_COOKIE_MAX_AGE
+        return f"lab={'' if forget else token}; Path=/; Max-Age={age}{self._flags()}"
+
     def _front(self, code: int = 200, *, gate_err: str = "", **kw: Any) -> None:
-        """Code gate, or (with a valid access cookie) claim form + lab board."""
+        """Code gate, or (with a valid access cookie) claim form + lab board. A
+        remembered lab shows "Continue to your lab" on both."""
         tok = self._csrf() or secrets.token_urlsafe(16)
         con = connect(self.db_path)
         try:
             s = claims.settings(con)
             allowed = claims.has_access(con, self._cookie("access"))
             rows = claims.status_rows(con) if allowed else []
+            mine = self._mine(con)
         finally:
             con.close()
         body = (claim_form(s["title"], tok, mode=s["mode"], is_open=s["open"], rows=rows,
-                           guide_url=s["guide_url"], **kw)
-                if allowed else gate_page(s["title"], tok, err=gate_err))
+                           guide_url=s["guide_url"], mine=mine, **kw)
+                if allowed else gate_page(s["title"], tok, err=gate_err, mine=mine))
         self._send(code, body, extra=[("Set-Cookie", f"csrf={tok}; Path=/{self._flags()}")])
 
     def _redirect(self, location: str, cookie: str | None = None) -> None:
@@ -522,8 +571,11 @@ class Handler(BaseHTTPRequestHandler):
                 st = claims.settings(con)
             finally:
                 con.close()
+            csrf = self._csrf() or secrets.token_urlsafe(16)
             return self._send(200, lab_page(row, m.group(1), title=st["title"],
-                                            guide_url=st["guide_url"]))
+                                            guide_url=st["guide_url"], csrf=csrf),
+                              extra=[("Set-Cookie", self._lab_cookie(m.group(1))),
+                                     ("Set-Cookie", f"csrf={csrf}; Path=/{self._flags()}")])
         m = re.fullmatch(r"/admin/([^/]+)(?:/key/([A-Za-z0-9_.-]+))?", path)
         if m:
             if self.limiter.over(self._ip()):
@@ -560,7 +612,7 @@ class Handler(BaseHTTPRequestHandler):
         return {k: v[0] for k, v in parse_qs(raw).items()}
 
     def do_POST(self) -> None:  # noqa: N802
-        if self.path not in ("/enter", "/claim"):
+        if self.path not in ("/enter", "/claim", "/recover", "/forget"):
             return self._send(404, b"", "text/plain")
         f = self._read_form()
         if f is None:
@@ -572,6 +624,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._front(400, gate_err="Your session expired. Please submit again.",
                                err="Your session expired. Please submit again.",
                                email=email, name=name)
+        if self.path == "/forget":
+            return self._redirect("/", self._lab_cookie("", forget=True))
         if self.limiter.over(self._ip()):
             return self._slow_down()
         con = connect(self.db_path)
@@ -586,17 +640,23 @@ class Handler(BaseHTTPRequestHandler):
                                            f"{self._flags()}")
             if not claims.has_access(con, self._cookie("access")):
                 return self._redirect("/")  # code rotated or never entered
+            current = claims.settings(con)["code"] or ""
             try:
-                token, _ = claims.claim_open(con, code=claims.settings(con)["code"] or "",
-                                             email=email, name=name, pin=f.get("pin", ""))
+                if self.path == "/recover":
+                    token, _ = claims.recover(con, code=current, email=email, pin=f.get("pin", ""))
+                else:
+                    token, _ = claims.claim_open(con, code=current, email=email, name=name,
+                                                 pin=f.get("pin", ""))
             except claims.ClaimError as exc:
                 if isinstance(exc, claims.GuessError):
                     self.limiter.fail(self._ip())
                 con.close()
+                if self.path == "/recover":
+                    return self._front(403, recover_err=str(exc), email=email)
                 return self._front(403, err=str(exc), email=email, name=name)
         finally:
             con.close()
-        self._redirect(f"/l/{token}")
+        self._redirect(f"/l/{token}", self._lab_cookie(token))
 
 
 def make_server(host: str, port: int, *, db_path: str | None = None,

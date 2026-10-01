@@ -408,3 +408,52 @@ def test_claim_form_asks_for_a_six_digit_pin_and_refuses_obvious_ones(browser):
     assert "6-digit PIN" in page and 'pattern="[0-9]{6}"' in page
     s, _, page = browser.claim(pin="123456")
     assert s == 403 and "too easy to guess" in page
+
+
+# ---------------------------------------------------------------- privacy notice
+def test_privacy_page_is_public_and_lists_the_real_cookies(portal):
+    from rodeo.portal.web import ACCESS_MAX_AGE, LAB_COOKIE_MAX_AGE, _span
+
+    s, _, page = Browser(portal["port"]).get("/privacy")
+    assert s == 200 and "What we keep" in page and "deleted when the workshop ends" in page
+    for name in ("csrf", "access", "lab"):
+        assert f"<code>{name}</code>" in page
+    assert _span(ACCESS_MAX_AGE) == "24 hours" and _span(ACCESS_MAX_AGE) in page
+    assert _span(LAB_COOKIE_MAX_AGE) == "3 days" and _span(LAB_COOKIE_MAX_AGE) in page
+    assert "do not store personal data" not in page  # it would not be true
+
+
+def test_the_privacy_page_matches_the_cookies_actually_set(portal, browser):
+    """If someone changes a cookie, this fails until /privacy is updated too."""
+    from rodeo.portal.web import ACCESS_MAX_AGE, LAB_COOKIE_MAX_AGE
+
+    b = Browser(portal["port"])
+    _, h, _ = b.get("/")
+    csrf = [v for v in h.get_all("Set-Cookie") if v.startswith("csrf=")][0]
+    assert "Max-Age" not in csrf and "Expires" not in csrf  # session cookie, as documented
+    _, h, _ = b.enter(portal["code"])
+    assert f"Max-Age={ACCESS_MAX_AGE}" in [v for v in h.get_all("Set-Cookie") if v.startswith("access=")][0]
+    _, h, _ = b.claim()
+    assert f"Max-Age={LAB_COOKIE_MAX_AGE}" in [v for v in h.get_all("Set-Cookie") if v.startswith("lab=")][0]
+    names = {v.split("=", 1)[0] for v in h.get_all("Set-Cookie")} | {"csrf", "access"}
+    assert names <= {"csrf", "access", "lab"}
+
+
+def test_footer_privacy_line_on_every_page_and_note_under_claim_form(portal, browser):
+    con = connect(portal["db"])
+    tok = claims.rotate_admin_token(con)
+    con.close()
+    _, h, _ = browser.claim()
+    pages = [Browser(portal["port"]).get("/")[2], browser.get("/")[2], browser.get(h["Location"])[2],
+             _req(portal["port"], "GET", f"/admin/{tok}")[2], browser.get("/privacy")[2]]
+    for page in pages:
+        assert "Essential cookies only" in page and "href=/privacy" in page
+    other = Browser(portal["port"])
+    other.enter(portal["code"])
+    assert "used only to assign your lab" in other.get("/")[2]
+
+
+def test_logs_do_not_contain_ip_addresses(portal, browser, capsys):
+    browser.claim()
+    browser.get("/privacy")
+    assert "127.0.0.1" not in capsys.readouterr().err

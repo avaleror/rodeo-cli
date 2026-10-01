@@ -339,6 +339,11 @@ Answers to section 12 and deliberate deviations, all from Andrés unless noted.
   write actions on the web, so no admin password.
 - **Public claim board:** the front page lists every lab with its state and the
   claimant's name (never email or credentials), so students see who has which lab.
+- **Privacy notice** (2026-10-01): footer line on every page + note under the claim
+  form + a public `/privacy` page. Only essential cookies (`csrf`, `access`, `lab`), so
+  no consent banner. Wording states what *is* kept (name, email, hashed PIN, claim
+  times; deleted with the portal VM; the instructor can export it) rather than "no
+  personal data", which would be false. Suggested: privacy-team review of the text.
 - **No email sending** (considered and dropped 2026-09-30): the lab is shown on the
   student's personal page right after claiming.
 - **Portal software:** instead of installing all of rodeo on the portal VM,

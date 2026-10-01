@@ -331,6 +331,13 @@ Getting back to a lab:
 3. **Anything else:** you have every lab on the instructor page, and
    `rodeo fleet portal unlock EMAIL` clears a lockout.
 
+Privacy: every page has a footer line ("we only keep your name and email for this
+workshop, deleted when it ends; essential cookies only") linking to `/privacy`, and
+the claim form repeats it where data is entered. `/privacy` (public, no code needed)
+explains what is kept, for how long, and the three cookies (`csrf`, `access`, `lab`);
+its durations come from the same constants that set the cookies, and a test fails if
+they drift. Have your privacy team review the wording before a public event.
+
 ```yaml
 provider:
   type: aws

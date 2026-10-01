@@ -99,7 +99,11 @@ details.recover summary{font-weight:600;cursor:pointer}details.recover[open] sum
 details.card summary{cursor:pointer;font-family:var(--font-head);font-size:16px}details.card summary b{margin-right:8px}
 footer{border-top:1px solid var(--border);background:var(--surface);color:var(--gray);font-size:13px;padding:22px 0}
 .footer-inner{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.footer-logo{height:20px;width:auto;opacity:.75}
-@media (max-width:640px){.nav-tag{display:none}.logo-img{height:22px}.logo-product{font-size:14px}pre{white-space:pre-wrap;word-break:break-all}dl{grid-template-columns:1fr;gap:2px}dd{margin-bottom:10px}.card{padding:18px}.tbl{padding:4px 12px}.hero{padding:32px 0 24px}}
+.footer-privacy{max-width:560px;text-align:right;line-height:1.5}.footer-privacy a{color:var(--gray);text-decoration:underline}
+.privacy-note{color:var(--gray);font-size:13px;margin:14px 0 0}.privacy-note a{color:var(--gray);text-decoration:underline}
+.privacy h2{margin-top:6px}.privacy p,.privacy ul{margin:0 0 12px}.privacy li{margin-bottom:6px}.privacy .card .tbl{padding:0}
+.privacy td{white-space:normal;vertical-align:top}.privacy td:last-child{white-space:nowrap}
+@media (max-width:640px){.footer-privacy{text-align:left}.nav-tag{display:none}.logo-img{height:22px}.logo-product{font-size:14px}pre{white-space:pre-wrap;word-break:break-all}dl{grid-template-columns:1fr;gap:2px}dd{margin-bottom:10px}.card{padding:18px}.tbl{padding:4px 12px}.hero{padding:32px 0 24px}}
 """
 _JS = (
     "document.querySelectorAll('.cp').forEach(function(b){b.addEventListener('click',function(){"
@@ -146,6 +150,8 @@ def _page(title: str, body: str, *, heading: str = "", sub: str = "", badge: str
         + (f"<span class=nav-tag>{_e(tag)}</span>" if tag else "")
         + f"</div></nav>{hero}<main><div class=wrap>{body}</div></main>"
         "<footer><div class='wrap footer-inner'><img class=footer-logo src=/static/suse-logo.png alt=SUSE>"
+        "<span class=footer-privacy>Privacy: we only keep your name and email for this workshop, "
+        "deleted when it ends. Essential cookies only. <a href=/privacy>Details</a></span>"
         "</div></footer>"
         "<script src=/s.js></script></body></html>"
     ).encode()
@@ -167,6 +173,50 @@ def _guide(url: str, *, compact: bool = False) -> str:
 
 def _copyable(value: str) -> str:
     return f"<code>{_e(value)}</code><button class=cp type=button data-v='{_e(value)}'>copy</button>"
+
+
+def _span(seconds: float) -> str:
+    """Human duration for the privacy page, from the constants the code uses."""
+    seconds = int(seconds)
+    if seconds > 86400 and seconds % 86400 == 0:
+        n, unit = seconds // 86400, "day"
+    elif seconds % 3600 == 0:
+        n, unit = seconds // 3600, "hour"
+    else:
+        n, unit = max(1, seconds // 60), "minute"
+    return f"{n} {unit}{'' if n == 1 else 's'}"
+
+
+def privacy_page(title: str) -> bytes:
+    """Plain-language privacy notice. Keep it true to the code: every duration below
+    comes from the constants that set the cookies and the failure limit."""
+    cookies = (
+        ("csrf", "Protects the forms on this site from forged submissions.",
+         "Until you close the browser"),
+        ("access", "Remembers that you entered the workshop code.", _span(ACCESS_MAX_AGE)),
+        ("lab", "Remembers this device so “Continue to your lab” can take you back. "
+                "“Forget this device” removes it.", _span(LAB_COOKIE_MAX_AGE)),
+    )
+    rows = "".join(f"<tr><td><code>{n}</code></td><td>{_e(why)}</td><td>{_e(life)}</td></tr>"
+                   for n, why, life in cookies)
+    body = f"""<div class='privacy'>
+<div class=card><h2>What we keep</h2>
+<ul><li><b>Your name and email</b>, to assign your lab and to give it back to you if you lose the page.</li>
+<li><b>Your PIN</b>, stored only as a one-way hash: nobody can read it, including the instructor.</li>
+<li><b>When you claimed and first opened your lab.</b></li></ul>
+<p>This is kept only on this workshop's own server. Your instructor can see which lab you have, with your name and email, to help you during the workshop, and can export that list (for example for attendance).</p></div>
+<div class=card><h2>How long</h2>
+<p>Everything above is deleted when the workshop ends and this server is shut down.</p></div>
+<div class=card><h2>What we do not do</h2>
+<ul><li>No tracking, analytics or advertising, and nothing is shared with third parties. Even the fonts and logo are served by this server.</li>
+<li>Your network address is not stored. To stop password guessing, the addresses of failed attempts are kept in memory for at most {_e(_span(RATE_WINDOW))} and never written to disk.</li></ul></div>
+<div class=card><h2>Cookies</h2>
+<p>Only these three, all needed for the portal to work. None of them tracks you.</p>
+<div class=tbl><table><thead><tr><th>Name</th><th>Purpose</th><th>Lasts</th></tr></thead><tbody>{rows}</tbody></table></div></div>
+<div class=card><h2>Questions</h2><p>Ask your instructor.</p></div>
+<p><a class=btn href=/>Back to the portal</a></p></div>"""
+    return _page("Privacy", body, heading="Privacy", badge="Your data",
+                 sub="What this lab portal keeps, why, and for how long.", product=title)
 
 
 def _forget_form(csrf: str) -> str:
@@ -228,7 +278,8 @@ def claim_form(title: str, csrf: str, *, mode: str, is_open: bool, err: str = ""
 <label for=email>Email</label><input id=email name=email type=email required maxlength=254 autocomplete=email value='{_e(email)}'>
 <label for=pin>6-digit PIN</label><input id=pin name=pin required inputmode=numeric pattern="[0-9]{{6}}" minlength=6 maxlength=6 autocomplete=off>
 <div class=hint>Choose 6 digits that are not obvious (not 123456 or 111111). On another device, your email and this PIN get your lab back.</div>
-<button class=btn type=submit>Get my lab</button></form>{recover}{labs}""",
+<button class=btn type=submit>Get my lab</button>
+<p class=privacy-note>Your name and email are used only to assign your lab and are deleted after the workshop. <a href=/privacy>Privacy details</a></p></form>{recover}{labs}""",
                  sub="Claim your personal lab: it is yours for the whole workshop.", **shell)
 
 
@@ -540,6 +591,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, _JS.encode(), "application/javascript")
         if path == "/healthz":
             return self._send(200, b"ok", "text/plain")
+        if path == "/privacy":
+            con = connect(self.db_path)
+            try:
+                title = claims.settings(con)["title"]
+            finally:
+                con.close()
+            return self._send(200, privacy_page(title))
         if path.startswith("/static/"):
             name = path[len("/static/"):]
             if name in STATIC_FILES:  # fixed allow-list: no path handling at all

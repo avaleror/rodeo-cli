@@ -141,7 +141,7 @@ lab_in_a_box:
 
   source:
     repo: https://github.com/SUSE-Technical-Marketing/lab-in-a-box
-    ref: 698506e6a40d495e303a276bfa3f0aa3912bf504
+    ref: 13800a34889a14bedc334307c5aaba8af547a81e
   parallel: 4
   # Every instance's SMLM also answers to the name its image was installed with,
   # inside that instance's own network (libvirt DNS).

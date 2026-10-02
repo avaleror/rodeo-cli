@@ -414,7 +414,7 @@ The `lab_in_a_box:` block holds the knobs that exist only on the lab-in-a-box si
 lab_in_a_box:
   source:                               # type: lab-in-a-box only — which lab-in-a-box to run
     repo: https://github.com/SUSE-Technical-Marketing/lab-in-a-box
-    ref: 698506e6a40d495e303a276bfa3f0aa3912bf504   # branch, tag or SHA
+    ref: 13800a34889a14bedc334307c5aaba8af547a81e   # branch, tag or SHA
   parallel: 4                           # setup_lab.py --parallel=N
   root_password: "??universal_pwd"      # root password of every VM
   images:                               # base images: become ISO_URL/ISO_SHA256[_URL] in lab.json;

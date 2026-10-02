@@ -31,7 +31,7 @@ from .paths import rodeo_dir
 # lab_in_a_box.source.repo / .ref, then these defaults. RODEO_LABINABOX_PATH
 # (a local checkout) replaces the fetch altogether.
 LIAB_REPO = "https://github.com/SUSE-Technical-Marketing/lab-in-a-box"
-LIAB_REF = "698506e6a40d495e303a276bfa3f0aa3912bf504"
+LIAB_REF = "13800a34889a14bedc334307c5aaba8af547a81e"
 LIAB_REPO_ENV = "RODEO_LABINABOX_REPO"
 LIAB_REF_ENV = "RODEO_LABINABOX_REF"
 LIAB_PATH_ENV = "RODEO_LABINABOX_PATH"

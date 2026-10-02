@@ -46,6 +46,15 @@ FULL_SECRETS = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _root_ssh_in_tmp(tmp_path, monkeypatch):
+    """Point the phase's /root/.ssh key paths into tmp_path."""
+    ssh = tmp_path / "root-ssh"
+    monkeypatch.setattr(phase, "_ROOT_KEY", ssh / "id_rsa")
+    monkeypatch.setattr(phase, "_ROOT_ED25519_KEY", ssh / "id_ed25519")
+    monkeypatch.setattr(phase, "_AUTHORIZED_KEYS", ssh / "authorized_keys")
+
+
 # ── labinabox_host: pure helpers ───────────────────────────────────────────
 
 def test_source_defaults_and_validation():

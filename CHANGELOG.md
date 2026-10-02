@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.20.0](https://github.com/avaleror/rodeo-cli/compare/v0.19.0...v0.20.0) (2026-10-02)
+
+
+### Features
+
+* **lab-in-a-box:** deploy the latest release by default ([752a477](https://github.com/avaleror/rodeo-cli/commit/752a4771803c55ad86c051f7044eda170ef8743c))
+* **lab-in-a-box:** deploy the latest release by default ([1e4c8e7](https://github.com/avaleror/rodeo-cli/commit/1e4c8e78064b881701fe56d521ab69de7c5b1830))
+
 ## [0.19.0](https://github.com/avaleror/rodeo-cli/compare/v0.18.0...v0.19.0) (2026-10-02)
 
 

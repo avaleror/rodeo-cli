@@ -66,6 +66,42 @@ def test_source_defaults_and_validation():
         host.source({"lab_in_a_box": {"source": {"ref": "main; rm -rf /"}}})
 
 
+_LS_REMOTE = (
+    "aaa\trefs/tags/1.9.2\n"
+    "bbb\trefs/tags/1.10.0\n"
+    "ccc\trefs/tags/1.9.4\n"
+    "ddd\trefs/tags/nightly\n"
+    "eee\trefs/tags/2.0.0-rc1\n"
+)
+
+
+def test_latest_tag_is_the_highest_version_not_the_last_string():
+    assert host.latest_tag(_LS_REMOTE) == "1.10.0"
+    assert host.latest_tag("aaa\trefs/tags/v1.2\nbbb\trefs/tags/v1.11\n") == "v1.11"
+    assert host.latest_tag("aaa\trefs/tags/nightly\n") is None
+
+
+def test_default_ref_is_latest_and_resolves_to_a_tag():
+    assert host.source({})[1] == host.LIAB_LATEST
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        return _Completed(stdout=_LS_REMOTE)
+
+    assert host.resolve_ref("https://x/lab-in-a-box", "latest", run=run) == "1.10.0"
+    assert calls == [["git", "ls-remote", "--tags", "--refs", "https://x/lab-in-a-box"]]
+    assert host.resolve_ref("https://x/lab-in-a-box", "1.9.2", run=run) == "1.9.2"
+    assert len(calls) == 1
+
+
+def test_resolve_latest_fails_clearly():
+    with pytest.raises(ConfigError, match="source.ref"):
+        host.resolve_ref("https://x", "latest", run=lambda *a, **k: _Completed(128, stderr="unreachable"))
+    with pytest.raises(ConfigError, match="no version tags"):
+        host.resolve_ref("https://x", "latest", run=lambda *a, **k: _Completed(stdout="a\trefs/tags/x\n"))
+
+
 def test_source_env_overrides_beat_the_plan(monkeypatch):
     plan = {"lab_in_a_box": {"source": {"repo": "https://example/plan", "ref": "plan-ref"}}}
     monkeypatch.setenv("RODEO_LABINABOX_REPO", "https://github.com/fork/lab-in-a-box")
@@ -423,6 +459,35 @@ def test_host_phase_prepares_host(tmp_path, host_sandbox, monkeypatch):
             "--add-forward-port=port=443:proto=tcp:toport=443:toaddr=192.168.122.20"] in calls
     # Images are lab-in-a-box's job: rodeo only asks for Last-Modified (age check).
     assert not any(c[0] == "curl" and "-o" in c for c in calls)
+
+
+def test_host_phase_fetches_the_resolved_latest_release(tmp_path, host_sandbox, monkeypatch):
+    monkeypatch.delenv(host.LIAB_PATH_ENV)
+    monkeypatch.setattr(host, "resolve_ref", lambda repo, ref: "1.10.0")
+    cfg = _smlm_cfg(tmp_path, FULL_SECRETS)
+    cfg["lab_in_a_box"].pop("source", None)
+    runner = _Runner(cfg, tmp_path)
+    lines = [e.line for e in phase.stream_labinabox_host(runner) if isinstance(e, LogLine)]
+    assert "lab-in-a-box latest release: 1.10.0" in lines
+    fetch = next(c for c in runner.streamed if "fetch" in c)
+    assert fetch[-1] == "1.10.0"
+    assert str(host.checkout_dir("1.10.0")) in fetch
+
+
+def test_host_phase_stops_when_latest_cannot_be_resolved(tmp_path, host_sandbox, monkeypatch):
+    monkeypatch.delenv(host.LIAB_PATH_ENV)
+
+    def fail(repo, ref):
+        raise ConfigError("cannot resolve lab-in-a-box 'latest'")
+
+    monkeypatch.setattr(host, "resolve_ref", fail)
+    cfg = _smlm_cfg(tmp_path, FULL_SECRETS)
+    cfg["lab_in_a_box"].pop("source", None)
+    runner = _Runner(cfg, tmp_path)
+    lines = [e.line for e in phase.stream_labinabox_host(runner) if isinstance(e, LogLine)]
+    assert runner._last_rc == 1
+    assert any("cannot resolve lab-in-a-box 'latest'" in line for line in lines)
+    assert not any("fetch" in c for c in runner.streamed)
 
 
 def test_host_phase_refuses_foreign_lab_creation_cfg(tmp_path, host_sandbox):

@@ -26,12 +26,14 @@ from pathlib import Path
 from .config import ConfigError
 from .paths import rodeo_dir
 
-# Upstream lab-in-a-box and the ref rodeo deploys by default. Precedence:
+# Upstream lab-in-a-box and the ref rodeo deploys by default; LIAB_LATEST
+# resolves to the highest version tag at deploy time. Precedence:
 # RODEO_LABINABOX_REPO / RODEO_LABINABOX_REF, then the plan's
 # lab_in_a_box.source.repo / .ref, then these defaults. RODEO_LABINABOX_PATH
 # (a local checkout) replaces the fetch altogether.
 LIAB_REPO = "https://github.com/SUSE-Technical-Marketing/lab-in-a-box"
-LIAB_REF = "698506e6a40d495e303a276bfa3f0aa3912bf504"
+LIAB_LATEST = "latest"
+LIAB_REF = LIAB_LATEST
 LIAB_REPO_ENV = "RODEO_LABINABOX_REPO"
 LIAB_REF_ENV = "RODEO_LABINABOX_REF"
 LIAB_PATH_ENV = "RODEO_LABINABOX_PATH"
@@ -57,6 +59,45 @@ def source(cfg: dict) -> tuple[str, str]:
     if not _REF_RE.match(ref) or ".." in ref or ref.startswith("-"):
         raise ConfigError(f"lab-in-a-box ref '{ref}' is not a valid git ref")
     return repo, ref
+
+
+_VERSION_TAG_RE = re.compile(r"^v?(\d+(?:\.\d+)*)$")
+
+
+def latest_tag_command(repo: str) -> list[str]:
+    """git command listing the repo's tags (one "<sha>\trefs/tags/<tag>" per line)."""
+    return ["git", "ls-remote", "--tags", "--refs", repo]
+
+
+def latest_tag(ls_remote_output: str) -> str | None:
+    """Highest version tag (``1.9.4`` or ``v1.9.4``) in ``git ls-remote --tags`` output."""
+    best: tuple[tuple[int, ...], str] | None = None
+    for line in ls_remote_output.splitlines():
+        tag = line.rpartition("refs/tags/")[2].strip()
+        match = _VERSION_TAG_RE.match(tag)
+        if match:
+            key = tuple(int(n) for n in match.group(1).split("."))
+            if best is None or key > best[0]:
+                best = (key, tag)
+    return best[1] if best else None
+
+
+def resolve_ref(repo: str, ref: str, run=subprocess.run) -> str:
+    """The ref to fetch: *ref* itself, or the highest version tag when it is LIAB_LATEST.
+
+    Raises ConfigError when the tags can't be listed or none is a version.
+    """
+    if ref != LIAB_LATEST:
+        return ref
+    proc = run(latest_tag_command(repo), capture_output=True, text=True, timeout=60)
+    tag = latest_tag(proc.stdout) if proc.returncode == 0 else None
+    if tag is None:
+        detail = (proc.stderr or "").strip()[:200] if proc.returncode else "no version tags"
+        raise ConfigError(
+            f"cannot resolve lab-in-a-box '{LIAB_LATEST}' from {repo}: {detail}; "
+            "set lab_in_a_box.source.ref (or RODEO_LABINABOX_REF) to a tag, branch or SHA"
+        )
+    return tag
 
 
 def checkout_dir(ref: str) -> Path:

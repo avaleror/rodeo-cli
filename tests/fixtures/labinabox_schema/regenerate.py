@@ -3,10 +3,10 @@
 
     python3 tests/fixtures/labinabox_schema/regenerate.py <lab-in-a-box checkout>
 
-Run it against the lab-in-a-box ref rodeo pins (rodeo/labinabox_host.py:LIAB_REF)
-whenever that pin moves. The snapshot holds only field names — enough for
-tests/test_labinabox_platform.py to catch rodeo emitting a lab.json field that
-lab-in-a-box doesn't know.
+Run it against the lab-in-a-box release rodeo deploys (the highest version tag
+when rodeo/labinabox_host.py:LIAB_REF is "latest") whenever a new one ships.
+The snapshot holds only field names — enough for tests/test_labinabox_platform.py
+to catch rodeo emitting a lab.json field that lab-in-a-box doesn't know.
 """
 import json
 import subprocess

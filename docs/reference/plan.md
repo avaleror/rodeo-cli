@@ -402,8 +402,9 @@ the source of truth, in two ways:
 
 - `type: lab-in-a-box` deploys through it. rodeo prepares the host (packages,
   libvirt network and DNS, firewall forwards for `exposed_services`, base
-  images, secrets), installs a pinned lab-in-a-box, and runs its `setup_lab.py`.
-  The phases are `kvm_host`, `labinabox_host`, `labinabox` and `custom_scripts`.
+  images, secrets), installs lab-in-a-box (its latest release unless
+  `source.ref` says otherwise), and runs its `setup_lab.py`. The phases are
+  `kvm_host`, `labinabox_host`, `labinabox` and `custom_scripts`.
   `rodeo clean` runs its `destroy_lab.py`.
 - `rodeo export --format lab-in-a-box` only writes the `lab.json`, for a
   lab-in-a-box automation node you run yourself.
@@ -414,7 +415,7 @@ The `lab_in_a_box:` block holds the knobs that exist only on the lab-in-a-box si
 lab_in_a_box:
   source:                               # type: lab-in-a-box only — which lab-in-a-box to run
     repo: https://github.com/SUSE-Technical-Marketing/lab-in-a-box
-    ref: 698506e6a40d495e303a276bfa3f0aa3912bf504   # branch, tag or SHA
+    ref: latest                         # latest (highest version tag, default), tag, branch or SHA
   parallel: 4                           # setup_lab.py --parallel=N
   root_password: "??universal_pwd"      # root password of every VM
   images:                               # base images: become ISO_URL/ISO_SHA256[_URL] in lab.json;

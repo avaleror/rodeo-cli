@@ -10,7 +10,16 @@ class ElementalMixin:
     """Elemental OS management (suse-edge)."""
 
     def _install_elemental(self) -> Generator[DeployEvent, None, bool]:
-        """Install Elemental Operator CRDs + Operator, UI extension, and MachineRegistrations."""
+        """Install Elemental Operator CRDs + Operator, then (suse-edge) the lab content.
+
+        For suse-edge this also re-reconciles the declared Rancher UI extensions at
+        the very end. The rancher phase already reconciled them once, but that runs
+        before this phase installs the Elemental Operator, so the OS Manager /
+        Elemental extension went in ahead of the CRDs its pages read. The
+        reconcile skips extensions already at their pinned version, so this
+        second pass is a no-op after a good first pass and a retry after a
+        failed one.
+        """
         namespace = "cattle-elemental-system"
         script = (
             "set -euo pipefail\n"
@@ -53,6 +62,13 @@ class ElementalMixin:
                 return False
             if not (yield from self._create_alien_geeko_fleet()):
                 return False
+            # Non-fatal by design, same as the rancher phase: a UI extension
+            # problem must never fail a deploy whose backend is healthy. Only a
+            # user cancel stops the phase.
+            if self.ui_extensions:
+                yield LogLine("Reconciling Rancher UI extensions now that the Elemental Operator is installed...")
+                if not (yield from self._reconcile_ui_extensions()) and self.error == "cancelled":
+                    return False
         return True
     def _create_machine_registrations(self) -> Generator[DeployEvent, None, bool]:
         """Create Elemental MachineRegistration CRs in fleet-default.
@@ -87,11 +103,11 @@ class ElementalMixin:
                 f"    manufacturer: '${{System Information/Manufacturer}}'\n"
                 f"    productName: '${{System Information/Product Name}}'\n"
                 f"    registration: '{name}'\n"
-                # Without this block, elemental-register's self-install stops at
-                # an interactive "Destroying ALL data on /dev/vda, continue?"
-                # prompt (confirmed live) and never auto-powers-off — nothing
-                # pre-selects the target device or requests an unattended
-                # install. `poweroff` is intentionally lowercase (not
+                # install.device/poweroff configure Elemental's own installer
+                # (elemental-toolkit). They do NOT reach the openSUSE Leap Micro
+                # SelfInstall ISO this lab builds with EIB: that ISO has its own
+                # installer, which always asks two confirmations (confirmed live,
+                # 2026-10-02). `poweroff` is intentionally lowercase (not
                 # `powerOff`): that's the actual YAML tag on Elemental's
                 # Install struct (rancher/elemental-operator api/v1beta1).
                 f"  config:\n"

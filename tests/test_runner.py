@@ -154,12 +154,27 @@ def test_vars_file_wires_plan_and_is_private(fake_profile, fake_cfg, tmp_path):
     assert "dns_domain" not in data
 
 
-def test_vars_file_unknown_version_disables_checksum(fake_profile, fake_cfg, tmp_path):
+def test_vars_file_unknown_version_refuses_unverified_iso(fake_profile, fake_cfg, tmp_path):
     fake_cfg["versions"] = {"harvester": "9.9.9"}
-    vars_file = DeployRunner(fake_cfg, tmp_path)._write_vars_file()
-    data = yaml.safe_load(vars_file.read_text())
-    # Empty string overrides the role default so get_url skips the check
-    # instead of failing the download against the wrong checksum.
+    with pytest.raises(RuntimeError, match="No pinned sha512 checksum"):
+        DeployRunner(fake_cfg, tmp_path)._write_vars_file()
+
+
+def test_vars_file_plan_checksum_overrides_unknown_version(fake_profile, fake_cfg, tmp_path):
+    fake_cfg["versions"] = {
+        "harvester": "9.9.9",
+        "harvester_iso_checksum": "sha512:" + "ab" * 64,
+    }
+    data = yaml.safe_load(DeployRunner(fake_cfg, tmp_path)._write_vars_file().read_text())
+    assert data["harvester_iso_checksum"] == "sha512:" + "ab" * 64
+    assert data["rodeo_plan_name"] == "test-plan"
+
+
+def test_vars_file_rancher_only_skips_iso_checksum(fake_profile, fake_cfg, tmp_path):
+    fake_cfg["versions"] = {"harvester": "9.9.9"}
+    fake_cfg["vms"] = {"rancher": {"ip": "10.0.0.9", "user": "root"}}
+    fake_cfg["harvester_node_names"] = []
+    data = yaml.safe_load(DeployRunner(fake_cfg, tmp_path)._write_vars_file().read_text())
     assert data["harvester_iso_checksum"] == ""
 
 

@@ -1,8 +1,8 @@
-# rodeo-plan.yaml — SUSE Edge 3.6 rodeo deployment plan.
+# rodeo-plan.yaml — SUSE Edge 3.7 rodeo deployment plan.
 #
 # What this deploys:
-#   - 1 Rancher Prime 2.14.1 VM (K3s + Elemental Operator + Fleet)
-#   - 1 Edge Image Builder 1.3.3.1 VM (openSUSE Leap Micro 6.2)
+#   - 1 Rancher Prime 2.15.1 VM (K3s + Elemental Operator + Fleet)
+#   - 1 Edge Image Builder 1.3.4 VM (openSUSE Leap Micro 6.2)
 #   - 4 edge node VMs (blank disk + virtual TPM 2.0, started as a lab exercise)
 #
 # Lab flow:
@@ -11,9 +11,9 @@
 #   3. Students attach the image to each edge node and start them.
 #   4. Edge nodes register with Elemental Operator in Rancher via TPM.
 #
-# Versions: SUSE Edge 3.6
-#   Rancher Prime 2.14.1 / K3s v1.35.5+k3s1 / cert-manager v1.20.1
-#   Elemental Operator 1.9.0 / EIB 1.3.3.1 / openSUSE Leap Micro 6.2
+# Versions: SUSE Edge 3.7
+#   Rancher Prime 2.15.1 / K3s v1.36.3+k3s1 / cert-manager v1.20.1
+#   Elemental Operator 1.9.2 / EIB 1.3.4 / openSUSE Leap Micro 6.2
 
 name: suse-edge-rodeo
 type: suse-edge
@@ -41,13 +41,13 @@ resources:
     disk_gb: 20
 
 versions:
-  rancher: "2.14.1"
-  k3s: "v1.35.5+k3s1"
+  rancher: "2.15.1"
+  k3s: "v1.36.3+k3s1"
   cert_manager: "v1.20.1"
-  elemental_operator_crds: "1.9.0"
-  elemental_operator: "1.9.0"
-  elemental_ui_extension: "3.0.1"
-  eib: "1.3.3.1"
+  elemental_operator_crds: "1.9.2"
+  elemental_operator: "1.9.2"
+  elemental_ui_extension: "3.0.3"
+  eib: "1.3.4"
 
 storage:
   image_dir: /var/lib/libvirt/images

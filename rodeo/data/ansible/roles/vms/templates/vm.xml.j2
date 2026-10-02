@@ -1,6 +1,7 @@
 <domain type='kvm'>
   <name>{{ item.name }}</name>
   <uuid>{{ item.uuid }}</uuid>
+  <description>rodeo:plan={{ rodeo_plan_name | default('default') }}</description>
   <memory unit='MiB'>{{ libvirt_flavors[item.flavor].memory_mib }}</memory>
   <vcpu placement='static'>{{ libvirt_flavors[item.flavor].vcpu }}</vcpu>
   <iothreads>1</iothreads>

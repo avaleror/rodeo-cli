@@ -89,9 +89,9 @@ class DeployComplete(DeployEvent):
     pass
 
 
-# Known Harvester ISO checksums (releases.rancher.com). When the plan pins a
-# version not listed here, the checksum is passed empty so get_url skips
-# verification instead of failing against the 1.8.1 role default.
+# Known Harvester ISO checksums (releases.rancher.com). A plan that will
+# download a Harvester ISO must hit this map, or set versions.harvester_iso_checksum.
+# An unknown version is a hard failure, not an unverified download.
 _HARVESTER_ISO_CHECKSUMS = {
     "1.8.2": "sha512:3f53f3a38b6496b86e8f23912999bb32ac7d93caba5b1245598390145dae369fd1dd54fff0fbc8839b13ebae8be295695bbf33356920a979b684ea75e5d18625",
     "1.8.1": "sha512:b1950e7d0543b813711e1b5006eafe1bb042cc3625449180a987a21d31bc70de9111df270b7911fafbfbd53a86b834f7f8f3fbfcd2ad81ee86fa2d9f1bd8a5a0",
@@ -162,8 +162,9 @@ class DeployRunner:
             else 0
         )
 
-        # Opt-in drift reconcile: memory/vcpu/DHCP-host mismatch clears the
-        # vms phase cache so deploy re-enters it instead of skipping.
+        # Drift reconcile is the default. Memory/vcpu/DHCP-host mismatch clears
+        # the vms phase cache so deploy re-enters it instead of skipping.
+        # --no-reconcile keeps phase-cache-only behaviour.
         if self.reconcile and not self.force and "vms" in profile.phases:
             from ..drift import collect_drift
 
@@ -202,13 +203,6 @@ class DeployRunner:
                     yield LogLine("  ✓  collections installed")
 
         vars_file = self._write_vars_file()
-
-        version = self.cfg.get("versions", {}).get("harvester", "1.8.1")
-        if version not in _HARVESTER_ISO_CHECKSUMS:
-            yield LogLine(
-                f"  ⚠  No known ISO checksum for Harvester {version} — "
-                "the download will not be verified."
-            )
 
         guard_active = (
             self.cfg.get("deployment_target", "baremetal") == "instruqt"
@@ -850,6 +844,17 @@ class DeployRunner:
             )
 
         version = ver.get("harvester", "1.8.2")
+        checksum = (
+            ver.get("harvester_iso_checksum")
+            or _HARVESTER_ISO_CHECKSUMS.get(version, "")
+        )
+        if needs_harvester and not str(checksum).startswith("sha512:"):
+            raise RuntimeError(
+                f"No pinned sha512 checksum for Harvester {version}. "
+                "Refusing to download the ISO unverified. Pin the digest in "
+                "rodeo/engine/runner.py or set versions.harvester_iso_checksum: "
+                "sha512:<digest> in the plan."
+            )
         vars_data = {
             "network_mode":          net.get("mode", "nat"),
             "host_bridge":           net.get("host_bridge", "br0"),
@@ -859,10 +864,11 @@ class DeployRunner:
             "libvirt_network_gateway": net.get("gateway", "192.168.122.1"),
             # Consumed by kvm_host firewall.yml (Instruqt agent ports 15778/15779).
             "deployment_target":     self.cfg.get("deployment_target", "baremetal"),
+            "rodeo_plan_name":       self._plan_name,
             "harvester_os_password": harvester_os_password,
             "rancher_vm_password":   rancher_vm_password,
             "harvester_version":     version,
-            "harvester_iso_checksum": _HARVESTER_ISO_CHECKSUMS.get(version, ""),
+            "harvester_iso_checksum": checksum,
             # Nested structure matches what roles/vms actually consumes
             # (vm.xml.j2, images.yml) — flat per-flavor keys are not read.
             "libvirt_flavors": {

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rodeo-cli"
-version = "0.16.1"
+version = "0.17.0"
 description = "Deploy and manage SUSE/Rancher learning labs (rodeos) on KVM"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -23,7 +23,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7", "pytest-cov", "ruff==0.15.16"]
+dev = ["pytest>=7", "pytest-cov", "ruff==0.15.16", "pip-audit>=2.9"]
 # boto3[crt] (not plain boto3): the "aws login" credential provider — the
 # console-session flow SUSE accounts use — needs awscrt, and without it
 # every call fails with a bare MissingDependencyException at provision time.

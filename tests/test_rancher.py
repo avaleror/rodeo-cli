@@ -486,3 +486,62 @@ def test_configure_api_clears_first_login_even_when_already_set(cfg, monkeypatch
     assert ok is True
     assert setpassword_calls["n"] == 0  # confirms this is the "already set" branch
     assert cleared["n"] == 1  # first-login must still be cleared
+
+
+def _elemental_phase(cfg, monkeypatch, order, reconcile_result=True, error=""):
+    """suse-edge RancherPhase with every elemental step stubbed to record its order."""
+    phase = RancherPhase(cfg)
+    phase.profile_type = "suse-edge"
+    phase.ui_extensions = [{"name": "elemental", "version": "3.0.3", "repo": {}}]
+
+    def ok_ssh(self, script, timeout=120):
+        order.append("operator")
+        return subprocess.CompletedProcess([], 0, "", "")
+
+    def step(name):
+        def _fn(self):
+            order.append(name)
+            return True
+            yield  # unreachable: makes this a generator fn
+        return _fn
+
+    def fake_reconcile(self):
+        order.append("ui-reconcile")
+        self.error = error
+        return reconcile_result
+        yield  # unreachable
+
+    monkeypatch.setattr(RancherPhase, "_ssh_script", ok_ssh)
+    for name in ("_add_extension_repos", "_create_machine_registrations", "_populate_hauler",
+                 "_deploy_gitea", "_create_alien_geeko_fleet"):
+        monkeypatch.setattr(RancherPhase, name, step(name))
+    monkeypatch.setattr(RancherPhase, "_reconcile_ui_extensions", fake_reconcile)
+    return phase
+
+
+def test_suse_edge_reconciles_ui_extensions_after_elemental_operator(cfg, monkeypatch):
+    """The rancher phase reconciles UI extensions before the Elemental Operator
+    exists. The elemental phase re-runs the (idempotent) reconcile as its last
+    step, so the OS Manager/Elemental extension always lands after its CRDs."""
+    order: list[str] = []
+    phase = _elemental_phase(cfg, monkeypatch, order)
+    _, ok = drain(phase._install_elemental())
+    assert ok is True
+    assert order[0] == "operator"
+    assert order[-1] == "ui-reconcile"
+
+
+def test_elemental_ui_reconcile_failure_is_non_fatal(cfg, monkeypatch):
+    """A UI extension problem must not fail an otherwise healthy deploy."""
+    order: list[str] = []
+    phase = _elemental_phase(cfg, monkeypatch, order, reconcile_result=False, error="")
+    _, ok = drain(phase._install_elemental())
+    assert ok is True
+
+
+def test_elemental_ui_reconcile_cancel_stops_phase(cfg, monkeypatch):
+    """A user cancel during the reconcile still stops the phase."""
+    order: list[str] = []
+    phase = _elemental_phase(cfg, monkeypatch, order, reconcile_result=False, error="cancelled")
+    _, ok = drain(phase._install_elemental())
+    assert ok is False

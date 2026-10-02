@@ -478,8 +478,8 @@ def test_fleet_deploy_pushes_secrets_via_stdin_first(monkeypatch, tmp_path):
     (tmp_path / ".rodeo" / "secrets.yaml").write_text('scc_regcode: "REG-123"\n')
     calls = []
 
-    def fake_run(inventory, host, argv, *, timeout=120.0, input_text=None):
-        calls.append((host.id, argv[-1], input_text))
+    def fake_run(inventory, host, argv, *, timeout=120.0, as_root=True, stdin=None):
+        calls.append((host.id, argv[-1], stdin))
         return RemoteResult(host.id, 0, f"STARTED:rodeo-fleet-demo-{host.id}\n", "")
 
     monkeypatch.setattr("rodeo.fleet.deploy.run_remote", fake_run)

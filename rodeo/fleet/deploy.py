@@ -80,7 +80,7 @@ def operator_secret_lines(inventory: FleetInventory, secrets: dict[str, Any]) ->
 
 def push_operator_secrets(inventory: FleetInventory, host: FleetHost, lines: str, *, timeout: float):
     return run_remote(inventory, host, ["bash", "-c", _PUSH_SECRETS_SCRIPT],
-                      timeout=timeout, input_text=lines)
+                      timeout=timeout, stdin=lines)
 
 
 def deploy_remote_script(inventory: FleetInventory, session: str) -> str:

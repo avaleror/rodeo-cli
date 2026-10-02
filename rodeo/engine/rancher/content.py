@@ -295,7 +295,7 @@ class LabContentMixin:
             "#      -n fleet-default -o jsonpath='{.status.registrationURL}'\")\n"
             "#   curl -k \"$REGURL\" > elemental/elemental_config.yaml\n"
             "ELEM_EOF\n\n"
-            # EIB definition files — schema notes (EIB 1.3.3, apiVersion 1.2):
+            # EIB definition files — schema notes (EIB 1.3.x, apiVersion 1.2):
             #  - embeddedArtifactRegistry.registries needs apiVersion >= 1.2, and
             #    EIB unconditionally requires a non-empty username/password on
             #    every registry entry (pkg/image/validation/registry.go), even
@@ -347,7 +347,7 @@ class LabContentMixin:
             "  outputImageName: rke2-edge3.raw\n\n"
             "operatingSystem:\n  kernelArgs:\n    - net.ifnames=0\n"
             "  rawConfiguration:\n    diskSize: 15G\n\n"
-            "kubernetes:\n  version: v1.35.3+rke2r3\n\n"
+            "kubernetes:\n  version: v1.36.3+rke2r1\n\n"
             "embeddedArtifactRegistry:\n  registries:\n"
             f"    - uri: {self.eib_ip}:5000\n"
             "      authentication:\n        username: hauler\n        password: hauler\n"
@@ -359,7 +359,7 @@ class LabContentMixin:
             "  outputImageName: k3s-edge4.raw\n\n"
             "operatingSystem:\n  kernelArgs:\n    - net.ifnames=0\n"
             "  rawConfiguration:\n    diskSize: 15G\n\n"
-            "kubernetes:\n  version: v1.35.5+k3s1\n\n"
+            "kubernetes:\n  version: v1.36.3+k3s1\n\n"
             "embeddedArtifactRegistry:\n  registries:\n"
             f"    - uri: {self.eib_ip}:5000\n"
             "      authentication:\n        username: hauler\n        password: hauler\n"

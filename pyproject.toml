@@ -23,7 +23,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7", "pytest-cov", "ruff==0.15.16", "pip-audit>=2.9"]
+dev = ["pytest>=7", "pytest-cov", "ruff==0.16.9", "pip-audit>=2.9"]
 # boto3[crt] (not plain boto3): the "aws login" credential provider — the
 # console-session flow SUSE accounts use — needs awscrt, and without it
 # every call fails with a bare MissingDependencyException at provision time.

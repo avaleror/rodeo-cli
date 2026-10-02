@@ -29,6 +29,24 @@ def random_password(length: int = 16) -> str:
             return pw
 
 
+STRONG_PASSWORD_MIN_LENGTH = 16
+
+
+def is_strong_password(pw: str) -> bool:
+    """Strong enough to sit on an internet-facing login (``student_access: open``).
+
+    16+ characters with upper, lower and digit. Every password
+    :func:`random_password` generates passes; the check exists for hand-set
+    ones (``rodeo set-password``).
+    """
+    return (
+        len(pw) >= STRONG_PASSWORD_MIN_LENGTH
+        and any(c.isupper() for c in pw)
+        and any(c.islower() for c in pw)
+        and any(c.isdigit() for c in pw)
+    )
+
+
 def gen_token() -> str:
     """Random Harvester cluster join token."""
     return secrets.token_urlsafe(24)

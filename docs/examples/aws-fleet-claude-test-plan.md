@@ -56,7 +56,7 @@ mkdir -p "$WORK_DIR" && cd "$WORK_DIR"
 # Confirm identity (do not print secret keys):
 aws sts get-caller-identity
 
-python3 -m pip install -U 'rodeo-cli[aws]'
+python3 -m pip install -e '.[aws]'   # in your rodeo-cli checkout
 # Or from a checkout: pip install -e '.[aws,dev]'
 rodeo --version
 ```
@@ -146,7 +146,7 @@ or `aws ec2 describe-instances`).
 
 ## Part B — Fleet multi-host (AWS provision + fan-out)
 
-Goal: `count >= 2` EC2 hosts, `fleet doctor` → `deploy` → poll `status` →
+Goal: `count >= 2` EC2 hosts, `fleet deploy` → `doctor` → poll `status` →
 `access` → `deprovision`.
 
 Use a **new** subdirectory so Part A state does not collide.
@@ -201,15 +201,7 @@ rodeo ssh student-01 -- 'uname -a'
 rodeo ssh student-02 -- 'uname -a'
 ```
 
-### B2 — Doctor (readiness)
-
-```bash
-rodeo fleet doctor -f workshop.yaml -j 2
-```
-
-**Pass when:** exit 0 (KVM / nested virt / tools / profile fit OK on every host).
-
-### B3 — Deploy (async fan-out)
+### B2 — Deploy (async fan-out)
 
 ```bash
 rodeo fleet deploy -f workshop.yaml -j 2
@@ -217,6 +209,17 @@ rodeo fleet deploy -f workshop.yaml -j 2
 
 **Pass when:** exit 0 quickly; `workshop.job.yaml` exists (chmod 600); host states
 are `running` or already `ok`.
+
+### B3 — Doctor (readiness)
+
+Doctor runs `rodeo` on each host, and freshly provisioned hosts only get it from
+`fleet deploy`. Run it before deploy and it fails with `rodeo: command not found`.
+
+```bash
+rodeo fleet doctor -f workshop.yaml -j 2
+```
+
+**Pass when:** exit 0 (KVM / nested virt / tools / profile fit OK on every host).
 
 ### B4 — Poll status until done
 

@@ -283,6 +283,13 @@ def refresh_job_from_status(
     status_results = fleet_status(
         inventory, hosts, concurrency=concurrency, timeout=timeout
     )
+    apply_status_to_job(job, status_results)
+    save_job(job, job_path_for(inventory_path))
+    return job
+
+
+def apply_status_to_job(job: FleetJob, status_results: list[Any]) -> FleetJob:
+    """Update job host states from already-collected ``rodeo status`` results."""
     for sr in status_results:
         rec = job.hosts.get(sr.id) or HostJobRecord(state="pending")
         if not sr.ok or not sr.report:
@@ -328,7 +335,6 @@ def refresh_job_from_status(
                 )
             else:
                 job.set_host(sr.id, state="running", last_error=None)
-    save_job(job, job_path_for(inventory_path))
     return job
 
 

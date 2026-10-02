@@ -12,6 +12,10 @@ from ..config import ConfigError
 from ..install_source import DEFAULT_INSTALL_URL, resolve_install_source
 
 _VALID_TARGETS = frozenset({"baremetal", "instruqt"})
+# Who may reach the lab UI ports on a rodeo-managed AWS security group.
+# operator: this machine's /32 only (default). open: also 0.0.0.0/0, applied
+# only by `rodeo fleet open-access` after every lab is up with strong passwords.
+_VALID_STUDENT_ACCESS = frozenset({"operator", "open"})
 
 
 @dataclass(frozen=True)
@@ -23,6 +27,109 @@ class FleetHost:
     public_ip: str | None = None
     labels: dict[str, str] = field(default_factory=dict)
     ssh_user: str | None = None  # override defaults.ssh_user when ssh has no user@
+
+
+_VALID_PORTAL_MODES = frozenset({"open", "roster", "both"})
+PORTAL_HOST_ID = "portal"
+# Host ids end up in file names (student keys, known_hosts), HTTP headers and the
+# portal database; hostnames end up in the Caddyfile. Fail closed on anything else.
+_HOST_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$")
+# Workshop guide link shown to students: an https URL (e.g. GitHub Pages) or a path
+# served by the portal itself (e.g. /guide/). Nothing that could become javascript:.
+GUIDE_URL_RE = re.compile(r"^(https://[^\s\"'<>]{4,2000}|/(?!/)[A-Za-z0-9._~/-]{0,200})$")
+_HOSTNAME_RE = re.compile(
+    r"^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$"
+)
+
+
+@dataclass(frozen=True)
+class PortalConfig:
+    """``portal:`` block (claim portal F5). Never part of ``hosts[]``, so no fleet
+    command that fans out over hosts (deploy, status, diagnose, ...) can touch it."""
+
+    enabled: bool = False
+    mode: str = "both"  # open (workshop code + email) | roster (invite links) | both
+    roster: Path | None = None  # CSV name,email[,host_id]; resolved beside workshop.yaml
+    student_ssh: bool = False  # per-lab `student` user + key, :22 opened by open-access
+    title: str = ""
+    code_letters: int = 4  # random letters in RODEO-XXXX-YYYYMMDD (4-8)
+    guide_url: str = ""  # workshop guide link on every student page (https URL or /path)
+    hostname: str | None = None  # default portal-<ip-dashed>.sslip.io
+    instance_type: str | None = None
+    host: str | None = None  # BYO portal machine (user@ip): skips provisioning
+    # Written by `fleet provision` (like hosts[]):
+    ssh: str | None = None
+    public_ip: str | None = None
+    provider_id: str | None = None
+
+    @property
+    def fqdn(self) -> str | None:
+        if self.hostname:
+            return self.hostname
+        if self.public_ip:
+            return f"portal-{self.public_ip.replace('.', '-')}.sslip.io"
+        return None
+
+    @property
+    def target(self) -> str | None:
+        """SSH target for the portal machine (BYO ``host`` wins)."""
+        return self.host or self.ssh
+
+
+def _parse_portal(raw: Any, base: Path, provider: dict[str, Any] | None) -> PortalConfig | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ConfigError("portal: must be a mapping")
+    mode = str(raw.get("mode") or "both").strip().lower()
+    if mode not in _VALID_PORTAL_MODES:
+        raise ConfigError(
+            f"portal.mode must be one of {sorted(_VALID_PORTAL_MODES)}, got: {raw.get('mode')!r}"
+        )
+    enabled = bool(raw.get("enabled", True))
+    roster = None
+    if raw.get("roster"):
+        roster = (base / str(raw["roster"])).expanduser().resolve()
+        if enabled and not roster.is_file():
+            raise ConfigError(f"portal.roster file not found: {roster}")
+    if enabled and mode == "roster" and roster is None:
+        raise ConfigError("portal.mode: roster needs portal.roster (CSV name,email[,host_id])")
+    if enabled and provider is not None and str(provider.get("student_access") or "operator") != "open":
+        raise ConfigError(
+            "portal.enabled needs provider.student_access: open (students could not "
+            "reach their labs otherwise)"
+        )
+    hostname = str(raw["hostname"]).strip() if raw.get("hostname") else None
+    if hostname and not _HOSTNAME_RE.match(hostname):
+        raise ConfigError(f"portal.hostname is not a valid DNS name: {hostname[:80]!r}")
+    try:
+        code_letters = int(raw.get("code_letters", 4))
+    except (TypeError, ValueError) as exc:
+        raise ConfigError("portal.code_letters must be an integer (4-8)") from exc
+    if not 4 <= code_letters <= 8:
+        raise ConfigError("portal.code_letters must be between 4 and 8")
+    guide_url = str(raw.get("guide_url") or "").strip()
+    if guide_url and not GUIDE_URL_RE.match(guide_url):
+        raise ConfigError(
+            "portal.guide_url must be an https:// URL or a path on the portal like /guide/, "
+            f"got: {guide_url[:80]!r}"
+        )
+    labels = raw.get("labels") or {}
+    return PortalConfig(
+        enabled=enabled,
+        mode=mode,
+        roster=roster,
+        student_ssh=bool(raw.get("student_ssh", False)),
+        title=str(raw.get("title") or ""),
+        code_letters=code_letters,
+        guide_url=guide_url,
+        hostname=hostname,
+        instance_type=str(raw["instance_type"]).strip() if raw.get("instance_type") else None,
+        host=str(raw["host"]).strip() if raw.get("host") else None,
+        ssh=str(raw["ssh"]).strip() if raw.get("ssh") else None,
+        public_ip=str(raw["public_ip"]).strip() if raw.get("public_ip") else None,
+        provider_id=str(labels.get("provider_id")) if isinstance(labels, dict) and labels.get("provider_id") else None,
+    )
 
 
 @dataclass
@@ -59,6 +166,7 @@ class FleetInventory:
     lab_components: list[str] | None = None
     # F4 host-acquire (optional)
     provider: dict[str, Any] | None = None
+
     # Secrets only the operator has (e.g. a lab's operator_secrets: SCC regcode,
     # pre-built image URL): copied by name from the laptop's ~/.rodeo/secrets.yaml
     # to each host before `rodeo up` — over SSH stdin, never in workshop.yaml.
@@ -66,10 +174,17 @@ class FleetInventory:
     # Extra student UIs for the access sheet, {name: host port} — e.g. a
     # lab-in-a-box lab's exposed_services ({"smlm": 443}).
     ui_ports: dict[str, int] = field(default_factory=dict)
+    # F5 claim portal (optional)
+    portal: PortalConfig | None = None
 
     @property
     def ssh_user(self) -> str:
         return str(self.defaults.get("ssh_user") or "root")
+
+    @property
+    def student_access(self) -> str:
+        """``provider.student_access`` (validated at load), ``operator`` if unset."""
+        return str((self.provider or {}).get("student_access") or "operator")
 
     @property
     def identity_file(self) -> str | None:
@@ -175,6 +290,14 @@ def load_inventory(path: str | Path) -> FleetInventory:
             if c < 1 or c > 64:
                 raise ConfigError("provider.count must be between 1 and 64")
             provider["count"] = c
+        if "student_access" in provider:
+            access = str(provider["student_access"] or "").strip().lower()
+            if access not in _VALID_STUDENT_ACCESS:
+                raise ConfigError(
+                    "provider.student_access must be one of "
+                    f"{sorted(_VALID_STUDENT_ACCESS)}, got: {provider['student_access']!r}"
+                )
+            provider["student_access"] = access
 
     hosts_raw = raw.get("hosts")
     if hosts_raw is None:
@@ -197,6 +320,13 @@ def load_inventory(path: str | Path) -> FleetInventory:
             raise ConfigError(f"hosts[{i}].id is required")
         if hid in seen:
             raise ConfigError(f"duplicate host id: {hid}")
+        if not _HOST_ID_RE.match(hid):
+            raise ConfigError(
+                f"hosts[{i}].id {hid[:70]!r} must be letters, digits, '.', '_' or '-' "
+                "(max 63, starting with a letter or digit)"
+            )
+        if hid == PORTAL_HOST_ID:
+            raise ConfigError(f"host id {PORTAL_HOST_ID!r} is reserved for the claim portal")
         if not ssh:
             raise ConfigError(f"hosts[{i}].ssh is required (host or user@host)")
         seen.add(hid)
@@ -234,6 +364,7 @@ def load_inventory(path: str | Path) -> FleetInventory:
         provider=provider,
         operator_secrets=list(secrets_raw),
         ui_ports={str(k): int(v) for k, v in ui_raw.items()},
+        portal=_parse_portal(raw.get("portal"), p.parent, provider),
     )
 
 
@@ -377,3 +508,29 @@ def merge_provisioned_hosts(
     raw["hosts"] = [by_id[hid] for hid in order if hid in by_id]
     p.write_text(yaml.dump(raw, default_flow_style=False, sort_keys=False))
     return written
+
+
+def merge_portal(inventory_path: Path, *, ssh: str, public_ip: str, provider_id: str | None) -> None:
+    """Write the provisioned portal machine into workshop.yaml ``portal:`` (not hosts[])."""
+    p = Path(inventory_path).expanduser().resolve()
+    raw = yaml.safe_load(p.read_text()) or {}
+    portal = dict(raw.get("portal") or {})
+    portal["ssh"] = ssh
+    portal["public_ip"] = public_ip
+    labels = dict(portal.get("labels") or {})
+    if provider_id:
+        labels["provider_id"] = provider_id
+    portal["labels"] = labels
+    raw["portal"] = portal
+    p.write_text(yaml.dump(raw, default_flow_style=False, sort_keys=False))
+
+
+def clear_portal(inventory_path: Path) -> None:
+    """Drop provision-written portal fields after the portal VM is terminated."""
+    p = Path(inventory_path).expanduser().resolve()
+    raw = yaml.safe_load(p.read_text()) or {}
+    portal = raw.get("portal")
+    if isinstance(portal, dict):
+        for k in ("ssh", "public_ip", "labels"):
+            portal.pop(k, None)
+        p.write_text(yaml.dump(raw, default_flow_style=False, sort_keys=False))

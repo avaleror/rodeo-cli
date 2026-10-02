@@ -61,7 +61,8 @@ pip install -e '.[aws]'   # in your rodeo-cli checkout; see ../install.md
 # Subscribe once: AWS Marketplace → openSUSE Leap
 # SSH key: auto ~/.rodeo/ssh/id_ed25519 → EC2 key pair "rodeo"
 rodeo fleet provision -f workshop.yaml
-rodeo fleet doctor -f workshop.yaml
+rodeo fleet deploy -f workshop.yaml     # installs rodeo on each host, starts the lab
+rodeo fleet doctor -f workshop.yaml     # needs rodeo on the host, so after deploy
 rodeo ssh student-01
 rodeo ssh student-01/rancher
 rodeo fleet deprovision -f workshop.yaml --yes

@@ -16,6 +16,9 @@ def isolated_env(tmp_path, monkeypatch):
     """Keep ~/.rodeo state/vars and secrets inside tmp_path for every test."""
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.delenv("RODEO_PASSWORD", raising=False)
+    for var in ("RODEO_REPO", "RODEO_INSTALL_URL_TEMPLATE", "RODEO_LABINABOX_REPO",
+                "RODEO_LABINABOX_REF", "RODEO_LABINABOX_PATH"):
+        monkeypatch.delenv(var, raising=False)
     return tmp_path
 
 

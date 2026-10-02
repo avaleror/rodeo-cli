@@ -5,6 +5,9 @@
 #   curl -fsSL https://raw.githubusercontent.com/avaleror/rodeo-cli/main/install.sh | bash
 #   bash install.sh [--ref v0.10.5] [--dir /opt/rodeo-cli]
 #
+#   RODEO_REPO=<git url>  clone/update from this repository instead of upstream
+#   RODEO_REF=<ref>       default ref when --ref is not given (main)
+#
 # Usage (development):
 #   bash install.sh --dev [--dir /path/to/rodeo-cli]
 #
@@ -24,7 +27,7 @@
 
 set -euo pipefail
 
-RODEO_REPO="https://github.com/avaleror/rodeo-cli.git"
+RODEO_REPO="${RODEO_REPO:-https://github.com/avaleror/rodeo-cli.git}"
 RODEO_REF="${RODEO_REF:-main}"
 RODEO_BIN="/usr/local/bin/rodeo"
 DEV=0
@@ -104,7 +107,7 @@ else
     # Self-heal the remote first. Hosts cloned single-branch (or pinned to a
     # since-deleted branch) otherwise strand here: fetch/pull only ever touch
     # that one branch and silently no-op, leaving the host on old code. Force a
-    # normal wildcard refspec and the canonical URL before fetching.
+    # normal wildcard refspec and the RODEO_REPO URL before fetching.
     git -C "$RODEO_DIR" remote set-url origin "$RODEO_REPO"
     git -C "$RODEO_DIR" config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
     # Fetch everything (all branches + tags), forcing tracking-ref updates.

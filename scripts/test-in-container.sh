@@ -3,8 +3,9 @@
 #
 # Mirrors .github/workflows/ci.yml's test job: for each Python version,
 # install the package with dev extras into a fresh python:<v>-slim container
-# and run ruff + the full unit suite. Nothing runs on (or writes to) the host
-# checkout — the repo is mounted read-only and copied inside the container.
+# and run ruff + the full unit suite as an unprivileged user (uid 1000).
+# Nothing runs on (or writes to) the host checkout — the repo is mounted
+# read-only and copied inside the container.
 #
 # Usage:
 #   scripts/test-in-container.sh              # Python 3.10 and 3.12 (like CI)
@@ -43,10 +44,12 @@ for v in "${versions[@]}"; do
         # present on CI's ubuntu runner but not in slim images.
         apt-get update -qq >/dev/null
         apt-get install -y -qq --no-install-recommends openssh-client git >/dev/null
-        cp -r /src /work && cd /work
+        useradd -m -u 1000 tester
+        cp -r /src /work && chown -R tester /work && cd /work
         pip install -q -e '.[dev]' >/dev/null
-        ruff check rodeo tests
-        pytest tests/ ${pytest_args[*]:-}
+        # Lint and tests run unprivileged, as on CI: root would read paths
+        # such as /root/.ssh that a non-root runner cannot.
+        runuser -u tester -- bash -c 'ruff check rodeo tests && pytest tests/ ${pytest_args[*]:-}'
     " || rc=1
 done
 exit "${rc}"

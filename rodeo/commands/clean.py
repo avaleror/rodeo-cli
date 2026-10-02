@@ -10,7 +10,8 @@ from pathlib import Path
 import click
 from rich.console import Console
 
-from ..engine.libvirt import LibvirtDriver, discover_rodeo_vm_names, names_safe_to_clean
+from ..engine.libvirt import LibvirtDriver, discover_rodeo_vm_names, domain_name, names_safe_to_clean
+
 
 from ..config import load_config
 from ..privilege import ensure_root, is_root
@@ -27,6 +28,74 @@ def _virsh(*args: str, uri: str | None = None) -> None:
         cmd.extend(["-c", uri])
     cmd.extend(args)
     subprocess.run(cmd, check=False, capture_output=True)
+
+
+def _destroy_labinabox_lab(cfg: dict) -> None:
+    """lab-in-a-box names its VMs by FQDN and owns their disks and DNS records:
+    let its own destroy_lab.py remove them, from the lab.json the deploy wrote."""
+    from .. import labinabox_host as host
+    from ..engine.labinabox_phase import LAB_JSON_RELPATH
+    from ..labinabox_host import LIAB_BIN
+
+    tgt = host.target(cfg)
+    if tgt["host"]:
+        # Remote lab-in-a-box host: destroy_lab.py there, only for the lab
+        # carrying this plan's owner marker (never someone else's lab).
+        from ..ssh_key import ensure_rodeo_ssh_key
+
+        plan = cfg.get("name", "rodeo")
+        console.print(f"  [dim]destroy[/dim]  lab-in-a-box lab on {tgt['host']} ({host.remote_lab_dir(plan)})")
+        r = subprocess.run(host.remote_ssh(tgt, str(ensure_rodeo_ssh_key())) + [host.remote_destroy_command(plan)],
+                           check=False)
+        if r.returncode != 0:
+            console.print(f"  [yellow]⚠[/yellow]  remote destroy exited {r.returncode} (no lab of this plan there?)")
+        return
+
+    lab_json = Path(cfg.get("config_dir") or cfg.get("plan_dir") or ".") / LAB_JSON_RELPATH
+    destroy = LIAB_BIN / "destroy_lab.py"
+    if not (lab_json.is_file() and destroy.is_file()):
+        console.print("  [dim]skip[/dim]     lab-in-a-box destroy (no deployed lab.json)")
+        return
+    console.print(f"  [dim]destroy[/dim]  lab-in-a-box lab ({lab_json})")
+    r = subprocess.run([str(destroy), str(lab_json)], check=False)
+    if r.returncode != 0:
+        console.print(f"  [yellow]⚠[/yellow]  destroy_lab.py exited {r.returncode}")
+    if host.effective_mode(cfg) == "existing":
+        return  # someone else's lab-in-a-box host: its network/firewall/hosts aren't ours
+
+    spec = host.cloud(cfg)
+    if spec:
+        # Cloud VMs (destroy_lab.py deleted them): drop rodeo's credentials file —
+        # one per lab, see lab_in_a_box.cloud.account — and the learned addresses.
+        from ..engine.labinabox_phase import NODES_RELPATH
+
+        creds = host.credentials_path(spec["account"])
+        if spec["settings"] and host.credentials_are_rodeo_managed(creds):
+            creds.unlink()
+        (lab_json.parent.parent / NODES_RELPATH).unlink(missing_ok=True)
+        lab_json.unlink()
+        return
+
+    # This lab's own host setup: port forwards, /etc/hosts block, and (instance > 0)
+    # its own libvirt network. Other labs/instances on the host are left alone.
+    import json
+
+    from ..engine import labinabox_phase
+    from ..instances import instance_number
+    from ..inventory import build_inventory
+
+    lab = json.loads(lab_json.read_text())
+    inv = build_inventory(cfg)
+    net_name = inv.get("libvirt_network", {}).get("name") if instance_number(cfg) else None
+    services = (inv.get("_raw_topology") or {}).get("exposed_services") or []
+    for cmd in host.teardown_commands(lab, services, net_name, cfg.get("libvirt", {}).get("uri", "qemu:///system")):
+        subprocess.run(cmd, check=False, capture_output=True)
+    if services:
+        subprocess.run(["firewall-cmd", "--reload"], check=False, capture_output=True)
+    hosts = labinabox_phase.ETC_HOSTS
+    if hosts.exists():
+        hosts.write_text(host.replace_hosts_block(hosts.read_text(), cfg.get("name", "rodeo"), None))
+    lab_json.unlink()
 
 
 @click.command("clean")
@@ -99,6 +168,9 @@ def clean_cmd(
 
     console.print()
 
+    if cfg and cfg.get("type") == "lab-in-a-box":
+        _destroy_labinabox_lab(cfg)
+
     # If not --hard, do graceful stop first (VMs via ACPI shutdown) so clean happens on stopped infra.
     # This ensures 'rodeo clean' (even without explicit 'rodeo stop') leaves clean state; --hard for immediate force.
     if not hard:
@@ -106,12 +178,13 @@ def clean_cmd(
             uri = (cfg or {"libvirt": {"uri": "qemu:///system"}})["libvirt"]["uri"]
             with LibvirtDriver(uri) as lv:
                 for vm in vm_names:
-                    if lv.is_running(vm):
+                    dom = domain_name(cfg, vm)
+                    if lv.is_running(dom):
                         console.print(f"  [dim]graceful stop (before destroy)[/dim] {vm}")
-                        lv.shutdown(vm)
+                        lv.shutdown(dom)
                         # short wait
                         for _ in range(15):
-                            if not lv.is_running(vm):
+                            if not lv.is_running(dom):
                                 break
                             time.sleep(2)
         except Exception as exc:
@@ -127,9 +200,9 @@ def clean_cmd(
         with LibvirtDriver(uri) as lv:
             for vm in vm_names:
                 console.print(f"  [dim]destroy[/dim]  {vm}")
-                lv.destroy(vm)
-                lv.undefine(vm)
-            others = sorted(set(lv.list_all_domain_names()) - set(vm_names))
+                lv.destroy(domain_name(cfg, vm))
+                lv.undefine(domain_name(cfg, vm))
+            others = sorted(set(lv.list_all_domain_names()) - {domain_name(cfg, v) for v in vm_names})
             if others and not do_force_net:
                 console.print(
                     f"  [yellow]keep[/yellow]     libvirt default network "
@@ -146,8 +219,8 @@ def clean_cmd(
 
         for vm in vm_names:
             console.print(f"  [dim]destroy[/dim]  {vm} (virsh)")
-            _virsh("destroy", vm, uri=uri)
-            _virsh("undefine", "--nvram", vm, uri=uri)
+            _virsh("destroy", domain_name(cfg, vm), uri=uri)
+            _virsh("undefine", "--nvram", domain_name(cfg, vm), uri=uri)
 
         try:
             res = subprocess.run(

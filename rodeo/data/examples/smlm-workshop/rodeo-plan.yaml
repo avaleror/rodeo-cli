@@ -1,0 +1,338 @@
+# rodeo-plan.yaml — SUSE Multi-Linux Hands-on Workshop (smlm-workshop profile)
+#
+# Rebuilds the Instruqt track SUSE-Technical-Marketing/instruqt-SMLM
+# (tracks/smlms, branch main) as nested VMs on this host. rodeo prepares the
+# host; lab-in-a-box creates the VMs and configures SUSE Multi-Linux Manager
+# from the `smlm` section below — the declarative version of the track's
+# setup-smlm / setup-zbastion scripts.
+#
+# The SMLM server boots from a pre-built image with every software channel
+# already synced: syncing them at deploy time takes hours. Build it once with
+# bake/ (see bake/README.md), then give rodeo its URL, sha256 and the admin
+# password it was built with (operator_secrets below).
+#
+# Host requirement: ~30 GiB RAM free, ~450 GB disk.
+#
+# No credential is written in this file: every ??key resolves from
+# ~/.rodeo/secrets.yaml. rodeo up generates the lab's own passwords and asks
+# for the operator_secrets once.
+
+type: lab-in-a-box
+name: smlm-workshop
+deployment_target: baremetal   # change to instruqt if building an Instruqt image
+
+resources:
+  smlm:
+    memory_mib: 16384
+    vcpu: 8
+    disk_gb: 200        # must be >= the baked image's virtual size
+  el7:
+    memory_mib: 1024
+    vcpu: 1
+    disk_gb: 20
+  sles:
+    memory_mib: 2048
+    vcpu: 2
+    disk_gb: 30
+  ubuntu:
+    memory_mib: 2048
+    vcpu: 1
+    disk_gb: 20
+
+# Values only the operator has — rodeo up asks for them instead of generating.
+operator_secrets:
+  - smlm_image_url            # where the baked SMLM server image is published
+  - smlm_image_sha256         # printed by bake/export-image.sh
+  - smlm_image_admin_pass     # admin password the image was baked with
+  - sles15sp5_image_url       # SLES15-SP5 Minimal VM (Cloud) — needs a SUSE account:
+  - sles15sp5_image_sha256    #   an authenticated/mirror https:// URL, or file:// for a local copy
+  - sles15sp6_image_url
+  - sles15sp6_image_sha256
+
+lab_in_a_box:
+  # Needs a lab-in-a-box release with smlm_preinstalled / smlm_image_admin_pass /
+  # smlm_salt_auto_accept / smlm_bootstrap_scripts / ssh_pwauth support: bump
+  # ref to the upstream commit that adds them.
+  # How the SMLM server is built:
+  #   image   (default) boot the pre-built, channel-synced image (see bake/) — minutes
+  #   scratch install SMLM here from SUSE's SMLM Server BYOS image and sync every
+  #           channel from SCC — hours; needs your SMLM regcode + SCC mirror credentials.
+  #   aws     every VM in an AWS account (pre-built private AMI from bake/'s aws variant).
+  # Select one by changing `variant:` below, then `rodeo up` (it asks for that variant's values).
+  variant: image
+  variants:
+    image: {}
+    scratch:
+      notice: >-
+        building the SMLM server from scratch: the channel sync from SCC takes hours.
+        The deploy finishes before it does; the zz* clients register by themselves once
+        their channels are synced (lab-in-a-box retries in the background).
+      operator_secrets:
+        - scc_regcode
+        - scc_mirror_user
+        - scc_mirror_password
+        - smlm_byos_image_url       # SUSE's SMLM Server BYOS qcow2 (see bake/README.md)
+        - smlm_byos_image_sha256
+      images:
+        - {name: smlm-workshop-server.qcow2, remove: true}
+        - name: SUSE-Multi-Linux-Manager-Server-BYOS.qcow2
+          url: "??smlm_byos_image_url"
+          sha256: "??smlm_byos_image_sha256"
+      nodes:
+        smlm:
+          ISO_IMAGE: SUSE-Multi-Linux-Manager-Server-BYOS.qcow2
+      sections:
+        smlm:
+          smlm_preinstalled: null
+          smlm_image_admin_pass: null
+          smlm_byos: "true"
+          smlm_scc_regcode: "??scc_regcode"
+          smlm_scc_user: "??scc_mirror_user"
+          smlm_scc_password: "??scc_mirror_password"
+          smlm_email: admin@rodeo.lab
+          smlm_org: chamaleonair
+          smlm_ssl_country: CH
+          smlm_ssl_state: LU
+          smlm_ssl_city: Luzern
+          smlm_ssl_org: chamaleonair
+          smlm_ssl_ou: IT
+          smlm_ssl_email: admin@rodeo.lab
+          # Base channels; every activation key's child channels are added too.
+          smlm_channels:
+            - sle-product-sles15-sp5-pool-x86_64
+            - sle-product-sles15-sp6-pool-x86_64
+            - ubuntu-2404-amd64-main-amd64
+            - res-7-ltss-updates-x86_64
+    # aws: every VM in an AWS account instead of nested KVM. The SMLM server boots
+    # the private AMI from bake/ (variant aws, export-ami.sh); the clients boot AMIs
+    # you pick in your region. Needs AWS_SECURITY_GROUP_ID for the web UI port.
+    aws:
+      operator_secrets:
+        - aws_access_key_id
+        - aws_secret_access_key
+        - aws_security_group_id
+        - smlm_image_ami            # printed by bake/export-ami.sh
+        - centos7_ami
+        - sles15sp5_ami
+        - sles15sp6_ami
+        - ubuntu2404_ami
+      cloud:
+        cloudtype: aws
+        account: smlm-workshop
+        settings:
+          AWS_REGION: eu-north-1
+          AWS_ACCESS_KEY_ID: "??aws_access_key_id"
+          AWS_SECRET_ACCESS_KEY: "??aws_secret_access_key"
+          AWS_SECURITY_GROUP_ID: "??aws_security_group_id"
+      nodes:
+        smlm: {ISO_IMAGE: "??smlm_image_ami", config_method: cloud-init, cloud_instance_type: m7i.2xlarge}
+        centos7: &el7aws
+          ISO_IMAGE: "??centos7_ami"
+          config_method: cloud-init
+          VM_BOOT: null
+          VM_DSK_BUS: null
+          VM_NET_MODEL: null
+        zzcentos7: *el7aws
+        sles15: {ISO_IMAGE: "??sles15sp5_ami"}
+        zzsles15a: {ISO_IMAGE: "??sles15sp6_ami"}
+        zzsles15b: {ISO_IMAGE: "??sles15sp6_ami"}
+        zzsles15c: {ISO_IMAGE: "??sles15sp6_ami"}
+        ubuntu2404lts: {ISO_IMAGE: "??ubuntu2404_ami"}
+
+  source:
+    repo: https://github.com/SUSE-Technical-Marketing/lab-in-a-box
+    ref: 698506e6a40d495e303a276bfa3f0aa3912bf504
+  parallel: 4
+  # Every instance's SMLM also answers to the name its image was installed with,
+  # inside that instance's own network (libvirt DNS).
+  dns_aliases:
+    smlm: [smlm.rodeo.lab]
+  # Root password of every VM — the track's UNIVERSAL_PWD.
+  root_password: "??universal_pwd"
+
+  # Base images. lab-in-a-box downloads each one (ISO_URL) into its ISO_LOC on
+  # the KVM host when it isn't there yet, and only uses it once the sha256 matches.
+  images:
+    - name: smlm-workshop-server.qcow2
+      url: "??smlm_image_url"
+      sha256: "??smlm_image_sha256"
+      max_age_days: 45          # warn at deploy when the published image is older
+    - name: CentOS-7-x86_64-GenericCloud-2211.qcow2
+      # CentOS 7 is EOL: add your own mirror to this list if cloud.centos.org
+      # drops it — mirrors are tried in order, all checked against the sha256.
+      url:
+        - https://cloud.centos.org/centos/7/images/CentOS-7-x86_64-GenericCloud-2211.qcow2
+      sha256: 284aab2b23d91318f169ff464bce4d53404a15a0618ceb34562838c59af4adea
+    - name: ubuntu-24.04-server-cloudimg-amd64.img
+      url: https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img
+      sha256_url: https://cloud-images.ubuntu.com/releases/24.04/release/SHA256SUMS
+    - name: SLES15-SP5-Minimal-VM.x86_64-Cloud-GM.qcow2
+      url: "??sles15sp5_image_url"
+      sha256: "??sles15sp5_image_sha256"
+    - name: SLES15-SP6-Minimal-VM.x86_64-Cloud-GM.qcow2
+      url: "??sles15sp6_image_url"
+      sha256: "??sles15sp6_image_sha256"
+
+  nodes:
+    smlm:
+      ISO_IMAGE: smlm-workshop-server.qcow2
+      # Baked from SUSE's SL Micro based SMLM Server BYOS image: first-boot setup via
+      # Ignition/Combustion (lab-in-a-box's default config_method), not cloud-init.
+      config_method: ""
+      addons: [smlm]
+    # centos7, sles15 and ubuntu2404lts are registered by the students during
+    # the challenges. The zz* machines arrive already registered, under the
+    # system names the exercises use (as the track's setup-zz* scripts do).
+    centos7: &el7
+      ISO_IMAGE: CentOS-7-x86_64-GenericCloud-2211.qcow2
+      config_method: virt_customize
+      VM_BOOT: uefi=off
+      VM_DSK_BUS: sata
+      VM_NET_MODEL: e1000
+    zzcentos7:
+      <<: *el7
+      addons:
+        - client_registration:
+            client_registration_activation_key: 1-liberty7ltss
+            client_registration_profile_name: airco-dh4a-prod
+    sles15:
+      ISO_IMAGE: SLES15-SP5-Minimal-VM.x86_64-Cloud-GM.qcow2
+      ssh_pwauth: "true"
+    zzsles15a: &sp6
+      ISO_IMAGE: SLES15-SP6-Minimal-VM.x86_64-Cloud-GM.qcow2
+      ssh_pwauth: "true"
+      addons:
+        - client_registration:
+            client_registration_activation_key: 1-sles15sp6
+            client_registration_profile_name: at-ct-pro
+    zzsles15b:
+      <<: *sp6
+      addons:
+        - client_registration:
+            client_registration_activation_key: 1-sles15sp6
+            client_registration_profile_name: at-ft-pro
+    zzsles15c:
+      <<: *sp6
+      addons:
+        - client_registration:
+            client_registration_activation_key: 1-sles15sp6
+            client_registration_profile_name: at-ct-qa
+    ubuntu2404lts:
+      ISO_IMAGE: ubuntu-24.04-server-cloudimg-amd64.img
+      network_renderer: networkd
+      ssh_pwauth: "true"
+
+  # lab-in-a-box addon sections, passed through as-is (install_smlm.py's
+  # "smlm" JSON section). Mirrors track_scripts/setup-smlm + setup-zbastion.
+  sections:
+    smlm:
+      smlm_deployment: podman
+      smlm_preinstalled: "true"
+      smlm_image_admin_pass: "??smlm_image_admin_pass"
+      smlm_admin_user: admin
+      smlm_admin_pass: "??smlm_admin_password"
+      smlm_salt_auto_accept: "true"
+      smlm_bootstrap_scripts:
+        - name: generic_bootstrap.sh
+          url: https://raw.githubusercontent.com/SUSE-Technical-Marketing/lab-setup/aa08f64788307d750d3ec46ae889e6aca8fe392f/scripts/smlm/generic_bootstrap.sh
+      smlm_users:
+        - username: myadmin
+          password: "??universal_pwd"
+          first_name: My
+          last_name: Admin
+          email: myadmin@rodeo.lab
+          roles: [satellite_admin, org_admin]
+      smlm_orgs:
+        - name: trainning
+          admin_user: vega
+          admin_pass: "??universal_pwd"
+          admin_email: vega@rodeo.lab
+          admin_first_name: vega
+          admin_last_name: workshop
+          prefix: "Dr."
+      smlm_activation_keys:
+        - smlm_activation_key: sles15sp5
+          smlm_activation_key_desc: "SLES15 SP5"
+          smlm_activation_key_base_channel: sle-product-sles15-sp5-pool-x86_64
+          smlm_activation_key_child_channels: >-
+            managertools-sle15-pool-x86_64-sp5 managertools-sle15-updates-x86_64-sp5
+            sle-module-basesystem15-sp5-pool-x86_64 sle-module-basesystem15-sp5-updates-x86_64
+            sle-module-server-applications15-sp5-pool-x86_64 sle-module-server-applications15-sp5-updates-x86_64
+            sle-module-python3-15-sp5-pool-x86_64 sle-module-python3-15-sp5-updates-x86_64
+        - smlm_activation_key: sles15sp6
+          smlm_activation_key_desc: "SLES15 SP6"
+          smlm_activation_key_base_channel: sle-product-sles15-sp6-pool-x86_64
+          smlm_activation_key_child_channels: >-
+            managertools-sle15-pool-x86_64-sp6 managertools-sle15-updates-x86_64-sp6
+            sle-module-basesystem15-sp6-pool-x86_64 sle-module-basesystem15-sp6-updates-x86_64
+            sle-module-server-applications15-sp6-pool-x86_64 sle-module-server-applications15-sp6-updates-x86_64
+            sle-module-python3-15-sp6-pool-x86_64 sle-module-python3-15-sp6-updates-x86_64
+            sle15-sp6-installer-updates-x86_64
+        - smlm_activation_key: ubuntu2404
+          smlm_activation_key_desc: "Ubuntu 2404 LTS"
+          smlm_activation_key_base_channel: ubuntu-2404-amd64-main-amd64
+          smlm_activation_key_child_channels: >-
+            managertools-ubuntu2404-updates-amd64 ubuntu-2404-amd64-main-security-amd64
+            ubuntu-2404-amd64-main-updates-amd64
+        - smlm_activation_key: liberty7ltss
+          smlm_activation_key_desc: "SUSE Multi-Linux Support 7 with LTS"
+          smlm_activation_key_base_channel: res-7-ltss-updates-x86_64
+          smlm_activation_key_child_channels: >-
+            managertools-el7-pool-x86_64-lbt7 managertools-el7-updates-x86_64-lbt7
+      # Groups and "application" values the exercises use, as setup-zbastion
+      # creates them. The member systems are the zz* clients (registered under
+      # these names, see nodes above); airco-dh4a-qa is centos7 once a student
+      # registers it in challenge 03, so it joins on a later `rodeo up`.
+      # lab-in-a-box runs this section before the clients exist, so membership
+      # and values land on the second pass (custom/scripts/10-smlm-config.sh).
+      smlm_system_groups:
+        - {name: airtrain, description: airtrain, systems: [at-ft-pro, at-ct-pro, at-ct-qa]}
+        - {name: being, description: being}
+        - {name: cisne, description: cisne}
+        - {name: prod, description: prod, systems: [at-ft-pro, at-ct-pro]}
+        - {name: qa, description: qa, systems: [at-ct-qa]}
+        - {name: dev, description: dev}
+        - {name: airco, description: airco}
+      smlm_custom_info_keys:
+        - name: application
+          description: Main business application running on the system
+      smlm_system_custom_values:
+        - {system: at-ft-pro, key: application, value: fuselage systems}
+        - {system: at-ct-pro, key: application, value: controltech 2}
+        - {system: at-ct-qa, key: application, value: controltech 2}
+
+    # How the zz* clients reach SMLM (install_client_registration; "uyuni" is
+    # its name for the podman/mgrctl server shape, which SMLM here uses too).
+    # The server keeps the name the pre-built image was installed with
+    # (smlm.rodeo.lab — see dns_aliases) in every lab instance; the automation
+    # side reaches it by this instance's own name and address.
+    client_registration:
+      client_registration_server: smlm.rodeo.lab
+      client_registration_server_type: uyuni
+      client_registration_server_node: "${node_fqdn:smlm}"
+      client_registration_server_ip: "${node_ip:smlm}"
+      client_registration_admin_user: admin
+      client_registration_admin_pass: "??smlm_admin_password"
+
+# The Instruqt track this lab is for, fetched into ./workshop at deploy time.
+workshop:
+  repo: https://github.com/SUSE-Technical-Marketing/instruqt-SMLM
+  branch: main
+  track: smlms
+  skip_vms: [zbastion]
+  facts:
+    COMPANY_NAME: Chameleon Airlines
+    SMLM_URL: https://smlm.rodeo.lab
+    SMLM_USERNAME: myadmin
+    UNIVERSAL_PWD: "??universal_pwd"
+  # Also build ./workshop-guide.pdf with the track's own tools/build_pdf.py
+  # (needs pandoc + Chromium on this host; skipped with a warning otherwise).
+  pdf: true
+  # Rendered into ./workshop-guide/ with these swaps, so the challenges can be
+  # followed without Instruqt.
+  replace:
+    "smlm.${_SANDBOX_ID}.instruqt.io": smlm.rodeo.lab
+
+ansible:
+  path: null
+  inventory: deployer/inventory.local

@@ -29,6 +29,25 @@ rodeo status --output json
 
 ---
 
+## Labs with operator secrets or other UIs
+
+Some labs need values only you have (a lab's `operator_secrets`, e.g. an SCC
+regcode or a pre-built image URL). List them in `workshop.yaml`: `fleet deploy`
+copies just those keys from your `~/.rodeo/secrets.yaml` to each host (over SSH
+stdin, 0600) before `rodeo up`. It stops without touching any host if one is
+missing. `ui_ports` adds columns to `fleet access`:
+
+```yaml
+lab:
+  profile: smlm-workshop
+  dir: /root/rodeo-lab
+  components: []                 # no Harvester/Rancher UI in this lab
+  ui_ports: {smlm: 443}
+  operator_secrets: [smlm_image_url, smlm_image_sha256, smlm_image_admin_pass,
+                     sles15sp5_image_url, sles15sp5_image_sha256,
+                     sles15sp6_image_url, sles15sp6_image_sha256]
+```
+
 ## Roadmap
 
 What is **not** shipped yet for Fleet. Full checklist: [ROADMAP Phase I](https://github.com/avaleror/rodeo-cli/blob/main/ROADMAP.md#phase-i--fleet--workshop-fan-out).

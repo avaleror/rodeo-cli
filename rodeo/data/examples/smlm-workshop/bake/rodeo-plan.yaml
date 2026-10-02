@@ -1,0 +1,122 @@
+# rodeo-plan.yaml — build the pre-synced SMLM server image for smlm-workshop.
+#
+# Run on a host with internet access and SUSE Customer Center credentials, ONCE
+# per image refresh (monthly, or per SMLM minor release) — never from the
+# workshop lab itself. Steps: see README.md in this directory.
+#
+# It starts from SUSE's own SUSE Multi-Linux Manager Server BYOS image (bring
+# your own subscription), registers it with your regcode, installs SMLM as
+# smlm.rodeo.lab (lab-in-a-box install_smlm, podman mode, smlm_byos) and adds
+# every channel the workshop's activation keys use. Channel content then
+# downloads for hours; generalise.sh waits for it and scrubs credentials, and
+# the result is kept PRIVATE in your account:
+#   kvm (default) export-image.sh → a qcow2 the workshop plan downloads
+#   aws           export-ami.sh   → a private AMI for the workshop's aws variant
+
+type: lab-in-a-box
+name: smlm-workshop-bake
+deployment_target: baremetal
+
+resources:
+  smlm:
+    memory_mib: 16384
+    vcpu: 8
+    disk_gb: 200        # the workshop plan's smlm disk_gb must be >= this
+
+# Only the operator has these. smlm_image_admin_pass is generated here and
+# must be handed to whoever deploys the workshop (it is an operator secret there).
+operator_secrets:
+  - scc_regcode               # SMLM subscription registration code
+  - scc_mirror_user           # SCC organization mirroring credentials
+  - scc_mirror_password
+  - smlm_byos_image_url       # SUSE's SMLM Server BYOS qcow2: authenticated/mirror https:// or file://
+  - smlm_byos_image_sha256
+
+lab_in_a_box:
+  source:
+    repo: https://github.com/SUSE-Technical-Marketing/lab-in-a-box
+    ref: 698506e6a40d495e303a276bfa3f0aa3912bf504
+  root_password: "??smlm_image_root_pass"
+  # Downloaded by lab-in-a-box into its ISO_LOC when missing, checked against sha256.
+  images:
+    - name: SUSE-Multi-Linux-Manager-Server-BYOS.qcow2
+      url: "??smlm_byos_image_url"
+      sha256: "??smlm_byos_image_sha256"
+  nodes:
+    smlm:
+      ISO_IMAGE: SUSE-Multi-Linux-Manager-Server-BYOS.qcow2
+      # SUSE's KVM image is SL Micro based: first-boot setup via Ignition/Combustion
+      # (lab-in-a-box's default config_method), not cloud-init.
+      config_method: ""
+      addons: [smlm]
+  # aws: bake in an AWS account from SUSE's SMLM Server BYOS AMI instead
+  # (set `variant: aws` here, then `rodeo up`), then export-ami.sh.
+  variant: kvm
+  variants:
+    kvm: {}
+    aws:
+      operator_secrets:
+        - aws_access_key_id
+        - aws_secret_access_key
+        - smlm_byos_ami           # SUSE's SMLM Server BYOS AMI ID in your region
+      cloud:
+        cloudtype: aws
+        account: smlm-bake
+        settings:
+          AWS_REGION: eu-north-1
+          AWS_ACCESS_KEY_ID: "??aws_access_key_id"
+          AWS_SECRET_ACCESS_KEY: "??aws_secret_access_key"
+      nodes:
+        smlm:
+          ISO_IMAGE: "??smlm_byos_ami"
+          config_method: cloud-init
+          cloud_instance_type: m7i.2xlarge
+  sections:
+    smlm:
+      smlm_deployment: podman
+      smlm_byos: "true"
+      smlm_scc_regcode: "??scc_regcode"
+      smlm_scc_user: "??scc_mirror_user"
+      smlm_scc_password: "??scc_mirror_password"
+      smlm_admin_user: admin
+      smlm_admin_pass: "??smlm_image_admin_pass"
+      smlm_email: admin@rodeo.lab
+      smlm_org: chamaleonair
+      smlm_ssl_country: CH
+      smlm_ssl_state: LU
+      smlm_ssl_city: Luzern
+      smlm_ssl_org: chamaleonair
+      smlm_ssl_ou: IT
+      smlm_ssl_email: admin@rodeo.lab
+      # Every base + child channel of the workshop's activation keys.
+      smlm_channels:
+        - sle-product-sles15-sp5-pool-x86_64
+        - managertools-sle15-pool-x86_64-sp5
+        - managertools-sle15-updates-x86_64-sp5
+        - sle-module-basesystem15-sp5-pool-x86_64
+        - sle-module-basesystem15-sp5-updates-x86_64
+        - sle-module-server-applications15-sp5-pool-x86_64
+        - sle-module-server-applications15-sp5-updates-x86_64
+        - sle-module-python3-15-sp5-pool-x86_64
+        - sle-module-python3-15-sp5-updates-x86_64
+        - sle-product-sles15-sp6-pool-x86_64
+        - managertools-sle15-pool-x86_64-sp6
+        - managertools-sle15-updates-x86_64-sp6
+        - sle-module-basesystem15-sp6-pool-x86_64
+        - sle-module-basesystem15-sp6-updates-x86_64
+        - sle-module-server-applications15-sp6-pool-x86_64
+        - sle-module-server-applications15-sp6-updates-x86_64
+        - sle-module-python3-15-sp6-pool-x86_64
+        - sle-module-python3-15-sp6-updates-x86_64
+        - sle15-sp6-installer-updates-x86_64
+        - ubuntu-2404-amd64-main-amd64
+        - managertools-ubuntu2404-updates-amd64
+        - ubuntu-2404-amd64-main-security-amd64
+        - ubuntu-2404-amd64-main-updates-amd64
+        - res-7-ltss-updates-x86_64
+        - managertools-el7-pool-x86_64-lbt7
+        - managertools-el7-updates-x86_64-lbt7
+
+ansible:
+  path: null
+  inventory: deployer/inventory.local

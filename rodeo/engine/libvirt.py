@@ -308,6 +308,13 @@ class LibvirtDriver:
 RODEO_VM_HINTS = ("harvester", "rancher", "edge", "eib", "rodeo")
 
 
+
+def domain_name(cfg: dict | None, vm: str) -> str:
+    """libvirt domain of a lab VM: its short name, unless the platform names
+    domains differently (lab-in-a-box names them by FQDN — vms.<vm>.domain)."""
+    return ((cfg or {}).get("vms", {}).get(vm) or {}).get("domain") or vm
+
+ 
 def plan_from_domain_xml(xml: str) -> str | None:
     """Return the plan name stamped in a domain description, or None."""
     match = _PLAN_MARKER_RE.search(xml or "")

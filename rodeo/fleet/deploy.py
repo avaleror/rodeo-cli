@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from ..config import ConfigError
 from .bootstrap import bootstrap_script
 from .fanout import fanout
 from ..service.status import cacheable_phases_complete, phase_is_no_cache
@@ -55,6 +56,31 @@ def start_up_script(inventory: FleetInventory, session: str) -> str:
         f'echo "STARTED:{session}"; '
         f"fi"
     )
+
+
+# Writes `key: "value"` lines from stdin into ~/.rodeo/secrets.yaml (0600),
+# replacing any existing line for the same key. Keys are validated names.
+_PUSH_SECRETS_SCRIPT = (
+    'umask 077; mkdir -p "$HOME/.rodeo"; f="$HOME/.rodeo/secrets.yaml"; touch "$f"; chmod 600 "$f"; '
+    'while IFS= read -r line; do k="${line%%:*}"; '
+    'grep -v "^${k}:" "$f" > "$f.tmp" || true; mv "$f.tmp" "$f"; chmod 600 "$f"; '
+    'printf "%s\\n" "$line" >> "$f"; done'
+)
+
+
+def operator_secret_lines(inventory: FleetInventory, secrets: dict[str, Any]) -> str:
+    """The `key: "value"` lines to push; raises ConfigError naming any missing key."""
+    missing = [k for k in inventory.operator_secrets if secrets.get(k) in (None, "")]
+    if missing:
+        raise ConfigError(
+            "lab.operator_secrets not in your ~/.rodeo/secrets.yaml: " + ", ".join(missing)
+        )
+    return "".join(f"{k}: {json.dumps(str(secrets[k]))}\n" for k in inventory.operator_secrets)
+
+
+def push_operator_secrets(inventory: FleetInventory, host: FleetHost, lines: str, *, timeout: float):
+    return run_remote(inventory, host, ["bash", "-c", _PUSH_SECRETS_SCRIPT],
+                      timeout=timeout, stdin=lines)
 
 
 def deploy_remote_script(inventory: FleetInventory, session: str) -> str:
@@ -190,7 +216,23 @@ def fleet_deploy(
             if h.id not in job.hosts:
                 job.hosts[h.id] = HostJobRecord(state="pending")
 
+    secret_lines = ""
+    if inventory.operator_secrets:
+        import yaml
+
+        from ..secretgen import secrets_path
+
+        local = secrets_path()
+        secret_lines = operator_secret_lines(
+            inventory, (yaml.safe_load(local.read_text()) or {}) if local.exists() else {})
+
     def _work(h: FleetHost) -> HostDeployResult:
+        if secret_lines:
+            pushed = push_operator_secrets(inventory, h, secret_lines, timeout=min(timeout, 60.0))
+            if not pushed.ok:
+                return HostDeployResult(id=h.id, ok=False, state="failed",
+                                        error=f"could not copy operator secrets: {pushed.stderr[:200]}",
+                                        tmux=None, detail=None)
         return _deploy_one(inventory, h, timeout=timeout, force=force)
 
     results = fanout(hosts, _work, concurrency=workers)

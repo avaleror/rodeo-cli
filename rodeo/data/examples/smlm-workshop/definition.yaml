@@ -1,0 +1,177 @@
+# definition.yaml — SUSE Multi-Linux Hands-on Workshop (smlm-workshop profile)
+#
+# Topology of the Instruqt track SUSE-Technical-Marketing/instruqt-SMLM
+# (tracks/smlms) as nested VMs, built by lab-in-a-box. Machine names match the
+# track so its assignments apply unchanged. The track's zbastion VM is not
+# needed: its setup work is the declarative `smlm` section in rodeo-plan.yaml.
+#
+# Addresses are fixed on purpose: the SMLM server image is built once ahead of
+# time (see bake/) for smlm.rodeo.lab at 192.168.122.20, and every deploy of
+# this lab reuses that name and address.
+
+apiVersion: 1.0
+definition:
+  name: smlm-workshop
+  description: "SUSE Multi-Linux Manager workshop — SMLM server + SLES, CentOS 7 and Ubuntu clients"
+
+  start_order:
+    - smlm
+    - centos7
+    - zzcentos7
+    - sles15
+    - zzsles15a
+    - zzsles15b
+    - zzsles15c
+    - ubuntu2404lts
+  harvester_node_names: []
+  harvester_ready_count: 0
+
+  network:
+    name: default
+    bridge: virbr0
+    mode: nat
+    cidr: 192.168.122.0/24
+    gateway: 192.168.122.1
+    domain: rodeo.lab
+
+  node_templates:
+    smlm:
+      flavor: smlm
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          model: virtio
+          ip_family: static
+    el7:
+      flavor: el7
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          model: virtio
+          ip_family: static
+    sles:
+      flavor: sles
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          model: virtio
+          ip_family: static
+    ubuntu:
+      flavor: ubuntu
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          model: virtio
+          ip_family: static
+
+  # The SMLM web UI (the track's smlm-www tab) on the host's own port 443.
+  exposed_services:
+    - name: smlm-web
+      description: "SUSE Multi-Linux Manager web UI"
+      host_port: 443
+      guest_port: 443
+      target: smlm
+      proto: tcp
+
+  storage:
+    device: ""
+    mount_point: /var/lib/libvirt/images
+    libvirt_pool_name: default
+    libvirt_pool_path: /var/lib/libvirt/images
+    image_dir: /var/lib/libvirt/images
+
+  components:
+    - name: smlm
+      description: "SUSE Multi-Linux Manager server (lab-in-a-box install_smlm, podman mode)"
+      nodes: ["smlm"]
+    - name: host-network-prep
+      description: "libvirt network, firewalld DNAT, sysctls for the nested KVM lab"
+      on_host: true
+
+  host_prep:
+    sysctls:
+      - net.bridge.bridge-nf-call-iptables=0
+      - net.bridge.bridge-nf-call-ip6tables=0
+    selinux_mode: permissive
+    libvirt:
+      ovmf_code: /usr/share/qemu/ovmf-x86_64-4m-code.bin
+      ovmf_vars_template: /usr/share/qemu/ovmf-x86_64-4m-vars.bin
+      use_modular_daemons: true
+    network:
+      unmanaged_interfaces:
+        - virbr0
+      rp_filter_loose: false
+
+  nodes:
+    - name: smlm
+      template: smlm
+      hostname: smlm
+      ip: "192.168.122.20"
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          mac: "02:00:00:5A:00:20"
+      mgmt_mac: "02:00:00:5A:00:20"
+    - name: centos7
+      template: el7
+      hostname: centos7
+      ip: "192.168.122.31"
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          mac: "02:00:00:5A:00:31"
+      mgmt_mac: "02:00:00:5A:00:31"
+    - name: zzcentos7
+      template: el7
+      hostname: zzcentos7
+      ip: "192.168.122.32"
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          mac: "02:00:00:5A:00:32"
+      mgmt_mac: "02:00:00:5A:00:32"
+    - name: sles15
+      template: sles
+      hostname: sles15
+      ip: "192.168.122.41"
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          mac: "02:00:00:5A:00:41"
+      mgmt_mac: "02:00:00:5A:00:41"
+    - name: zzsles15a
+      template: sles
+      hostname: zzsles15a
+      ip: "192.168.122.42"
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          mac: "02:00:00:5A:00:42"
+      mgmt_mac: "02:00:00:5A:00:42"
+    - name: zzsles15b
+      template: sles
+      hostname: zzsles15b
+      ip: "192.168.122.43"
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          mac: "02:00:00:5A:00:43"
+      mgmt_mac: "02:00:00:5A:00:43"
+    - name: zzsles15c
+      template: sles
+      hostname: zzsles15c
+      ip: "192.168.122.44"
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          mac: "02:00:00:5A:00:44"
+      mgmt_mac: "02:00:00:5A:00:44"
+    - name: ubuntu2404lts
+      template: ubuntu
+      hostname: ubuntu2404lts
+      ip: "192.168.122.51"
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          mac: "02:00:00:5A:00:51"
+      mgmt_mac: "02:00:00:5A:00:51"

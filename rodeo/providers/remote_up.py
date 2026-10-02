@@ -15,6 +15,7 @@ from ..fleet.ssh_exec import run_remote
 from ..install_source import (
     DEFAULT_INSTALL_URL,
     bootstrap_fragment,
+    default_install_url,
     resolve_install_source,
 )
 from ..paths import rodeo_state_dir
@@ -180,7 +181,7 @@ def _fleet_inventory_for(
             "identity_file": identity,
         },
         hosts=[],
-        install_url=str(provider_cfg.get("install_url") or _DEFAULT_INSTALL),
+        install_url=str(provider_cfg.get("install_url") or default_install_url()),
     )
     fh = FleetHost(
         id=host.id,

@@ -57,6 +57,8 @@ _BASE_DEFAULTS: dict[str, Any] = {
 # Markers that identify a lab directory, so commands can be run from anywhere
 # inside it without passing --config-dir (auto-detected from the working directory).
 _LAB_MARKERS = ("rodeo-plan.yaml", "definition.yaml")
+# Per-lab secrets (0600, next to rodeo-plan.yaml) — override ~/.rodeo/secrets.yaml.
+LAB_SECRETS_FILE = ".rodeo-secrets.yaml"
 
 
 def _resolve_secrets_path() -> Path:
@@ -306,6 +308,17 @@ def load_config(
         except yaml.YAMLError as exc:
             raise ConfigError(f"{secrets_path}: invalid YAML: {exc}")
 
+    # A lab's own secrets (e.g. one set of generated passwords per lab instance)
+    # win over the global file; see secretgen.ensure_plan_secrets.
+    lab_dir = Path(config_dir) if config_dir is not None else (plan_path.parent if plan_path.exists() else None)
+    if lab_dir is not None:
+        lab_secrets = lab_dir / LAB_SECRETS_FILE
+        if lab_secrets.exists():
+            try:
+                secrets = {**secrets, **(yaml.safe_load(lab_secrets.read_text()) or {})}
+            except yaml.YAMLError as exc:
+                raise ConfigError(f"{lab_secrets}: invalid YAML: {exc}")
+
     cfg = _resolve_secrets(cfg, secrets)
 
     env_path = os.environ.get("RODEO_ANSIBLE_PATH")
@@ -314,6 +327,15 @@ def load_config(
 
     if config_dir is not None:
         cfg["config_dir"] = str(Path(config_dir).resolve())
+    if plan_path.exists():
+        # The lab's own directory even without a definition.yaml (config_dir unset).
+        cfg["plan_dir"] = str(plan_path.resolve().parent)
+
+    try:
+        from .profiles import get_profile
+        cfg = get_profile(cfg.get("type", _BASE_DEFAULTS["type"])).finalize_cfg(cfg)
+    except (ImportError, ValueError):
+        pass
 
     return cfg
 

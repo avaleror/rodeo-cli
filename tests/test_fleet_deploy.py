@@ -434,3 +434,79 @@ def test_require_deploy_config_missing(tmp_path):
 
     with pytest.raises(ConfigError, match="lab.source"):
         require_deploy_config(inv)
+
+
+# ── operator secrets (lab.operator_secrets) ─────────────────────────────────
+
+def test_operator_secrets_parse_and_validate(tmp_path):
+    inv = load_inventory(_workshop(tmp_path, extra_lab="operator_secrets: [scc_regcode, smlm_image_url]"))
+    assert inv.operator_secrets == ["scc_regcode", "smlm_image_url"]
+    with pytest.raises(ConfigError, match="operator_secrets"):
+        load_inventory(_workshop(tmp_path, extra_lab='operator_secrets: ["a;b"]'))
+
+
+def test_operator_secret_lines(tmp_path):
+    from rodeo.fleet.deploy import operator_secret_lines
+
+    inv = load_inventory(_workshop(tmp_path, extra_lab="operator_secrets: [a, b]"))
+    assert operator_secret_lines(inv, {"a": 'x "y"', "b": 2, "c": "not pushed"}) == 'a: "x \\"y\\""\nb: "2"\n'
+    with pytest.raises(ConfigError, match="b"):
+        operator_secret_lines(inv, {"a": "x"})
+
+
+def test_push_script_merges_into_remote_secrets(tmp_path):
+    from rodeo.fleet.deploy import _PUSH_SECRETS_SCRIPT
+
+    home = tmp_path / "home"
+    (home / ".rodeo").mkdir(parents=True)
+    (home / ".rodeo" / "secrets.yaml").write_text('harvester_token: "keep"\nscc_regcode: "old"\n')
+    subprocess.run(["bash", "-c", _PUSH_SECRETS_SCRIPT], input='scc_regcode: "NEW"\nsmlm_image_url: "https://x"\n',
+                   env={"HOME": str(home), "PATH": "/usr/bin:/bin"}, check=True, text=True)
+    import yaml
+
+    f = home / ".rodeo" / "secrets.yaml"
+    assert yaml.safe_load(f.read_text()) == {"harvester_token": "keep", "scc_regcode": "NEW",
+                                             "smlm_image_url": "https://x"}
+    assert oct(f.stat().st_mode & 0o777) == "0o600"
+
+
+def test_fleet_deploy_pushes_secrets_via_stdin_first(monkeypatch, tmp_path):
+    path = _workshop(tmp_path, extra_lab="operator_secrets: [scc_regcode]")
+    inv = load_inventory(path)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".rodeo").mkdir(exist_ok=True)
+    (tmp_path / ".rodeo" / "secrets.yaml").write_text('scc_regcode: "REG-123"\n')
+    calls = []
+
+    def fake_run(inventory, host, argv, *, timeout=120.0, as_root=True, stdin=None):
+        calls.append((host.id, argv[-1], stdin))
+        return RemoteResult(host.id, 0, f"STARTED:rodeo-fleet-demo-{host.id}\n", "")
+
+    monkeypatch.setattr("rodeo.fleet.deploy.run_remote", fake_run)
+    results, _, _ = fleet_deploy(inv, inv.hosts, inventory_path=path, concurrency=1, force=True)
+    assert all(r.ok for r in results)
+    h1 = [c for c in calls if c[0] == "h1"]
+    assert h1[0][2] == 'scc_regcode: "REG-123"\n'            # pushed first, via stdin
+    assert all("REG-123" not in c[1] for c in calls)         # never in a command line
+
+
+def test_fleet_deploy_refuses_missing_operator_secret(monkeypatch, tmp_path):
+    path = _workshop(tmp_path, extra_lab="operator_secrets: [scc_regcode]")
+    inv = load_inventory(path)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr("rodeo.fleet.deploy.run_remote",
+                        lambda *a, **k: pytest.fail("no host may be touched"))
+    with pytest.raises(ConfigError, match="scc_regcode"):
+        fleet_deploy(inv, inv.hosts, inventory_path=path, concurrency=1, force=True)
+
+
+def test_access_sheet_ui_ports(tmp_path):
+    from rodeo.fleet.access import access_payload, fleet_access
+
+    inv = load_inventory(_workshop(tmp_path, extra_lab="components: []\n              ui_ports: {smlm: 443}"))
+    rows = fleet_access(inv, inv.hosts)
+    assert rows[0].harvester_url is None and rows[0].rancher_url is None
+    assert rows[0].other_urls == {"smlm": "https://203.0.113.1:443"}
+    assert access_payload("demo", rows)["hosts"][0]["other_urls"] == {"smlm": "https://203.0.113.1:443"}
+    with pytest.raises(ConfigError, match="ui_ports"):
+        load_inventory(_workshop(tmp_path, extra_lab="ui_ports: {smlm: 99999}"))

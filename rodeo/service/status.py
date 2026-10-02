@@ -55,6 +55,15 @@ def vip_reachable(vip: str) -> bool:
         return False
 
 
+def _is_cloud_lab(cfg: dict) -> bool:
+    """A lab-in-a-box lab whose VMs live in a cloud account (not libvirt domains)."""
+    if cfg.get("type") != "lab-in-a-box":
+        return False
+    from ..labinabox_host import cloud
+
+    return cloud(cfg) is not None
+
+
 def status_report(cfg: dict) -> dict[str, Any]:
     """Return a JSON-serializable status report for the loaded plan."""
     profile = get_profile(cfg.get("type", "suse-virt"))
@@ -66,21 +75,27 @@ def status_report(cfg: dict) -> dict[str, Any]:
     vm_names = list(cfg.get("vms", {}).keys()) or list(profile.vm_names)
     vms: list[dict[str, Any]] = []
     libvirt_error: str | None = None
-    try:
-        from ..engine.libvirt import LibvirtDriver
+    if _is_cloud_lab(cfg):  # VMs in a cloud account: ask lab-in-a-box, not libvirt
+        from ..labinabox_host import cloud_power
 
-        uri = cfg.get("libvirt", {}).get("uri", "qemu:///system")
-        with LibvirtDriver(uri) as lv:
-            for vm in lv.list_vms(vm_names):
-                vms.append(
-                    {
-                        "name": vm.name,
-                        "state": vm.state,
-                        "autostart": bool(vm.autostart),
-                    }
-                )
-    except RuntimeError as exc:
-        libvirt_error = str(exc)
+        vms = [{"name": n, "state": st, "autostart": False}
+               for n, st in cloud_power(cfg, "status", vm_names).items()]
+    else:
+        try:
+            from ..engine.libvirt import LibvirtDriver, domain_name
+
+            uri = cfg.get("libvirt", {}).get("uri", "qemu:///system")
+            with LibvirtDriver(uri) as lv:
+                for name, vm in zip(vm_names, lv.list_vms([domain_name(cfg, n) for n in vm_names])):
+                    vms.append(
+                        {
+                            "name": name,
+                            "state": vm.state,
+                            "autostart": bool(vm.autostart),
+                        }
+                    )
+        except RuntimeError as exc:
+            libvirt_error = str(exc)
 
     phases_out: dict[str, dict[str, Any]] = {}
     stored = state.get("phases") or {}

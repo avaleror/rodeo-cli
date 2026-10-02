@@ -631,6 +631,18 @@ class DeployRunner:
 
         self._last_rc = 1 if failed else 0
 
+    def stream_labinabox_host(self) -> Iterator[DeployEvent]:
+        """lab-in-a-box platform: prepare this host (see labinabox_phase.py)."""
+        from .labinabox_phase import stream_labinabox_host
+
+        yield from stream_labinabox_host(self)
+
+    def stream_labinabox(self) -> Iterator[DeployEvent]:
+        """lab-in-a-box platform: build the lab with setup_lab.py (see labinabox_phase.py)."""
+        from .labinabox_phase import stream_labinabox
+
+        yield from stream_labinabox(self)
+
     def stream_finalise(self) -> Iterator[DeployEvent]:
         vm_names = list(self.cfg.get("vms", {}).keys())
         successes = 0

@@ -26,8 +26,8 @@ ansible-lint rodeo/data/ansible
 ```
 
 To keep your host clean (or when the host has a live libvirt that interferes
-with the stop/start tests), run the same checks in throwaway containers —
-this mirrors the CI matrix exactly:
+with the stop/start tests), run the same checks in throwaway containers, as a
+non-root user — this mirrors the CI matrix exactly:
 
 ```bash
 scripts/test-in-container.sh                 # Python 3.10 + 3.12, ruff + pytest

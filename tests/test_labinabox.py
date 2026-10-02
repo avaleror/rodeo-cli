@@ -26,11 +26,11 @@ def test_rancher_profile_maps_to_lab_json(tmp_path):
     cfg = _rancher_cfg(tmp_path)
     lab, warnings = build_lab_json(cfg)
 
-    # Node keyed by FQDN, with the definition's IP/MAC and pinned NETWORK.
+    # Node keyed by FQDN, with the definition's IP/MAC and pinned BRIDGE.
     node = lab["nodes"]["rancher.rodeo.lab"]
     assert node["myip"] == "192.168.122.9"
     assert node["mymac"] == "02:00:00:0D:62:E9"
-    assert node["NETWORK"] == "bridge=virbr0,mac.address=02:00:00:0D:62:E9"
+    assert node["BRIDGE"] == "virbr0"
 
     # Sizing from the profile's resources block, stringified for the shell.
     assert node["VM_MEM"] == "8192"

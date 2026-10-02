@@ -12,6 +12,7 @@ from .commands.doctor_cmd import doctor_cmd
 from .commands.init_cmd import init_cmd
 from .commands.install_deps import install_deps_cmd
 from .commands.install_extensions_cmd import install_extensions_cmd
+from .commands.instances_cmd import instances_cmd
 from .commands.bootstrap_cmd import bootstrap_cmd
 from .commands.export_cmd import export_cmd
 from .commands.generate_cmd import generate_cmd
@@ -86,6 +87,7 @@ cli.add_command(generate_cmd,     name="generate")
 cli.add_command(init_cmd,         name="init")
 cli.add_command(plan_cmd,         name="plan")
 cli.add_command(export_cmd,       name="export")
+cli.add_command(instances_cmd,    name="instances")
 cli.add_command(story_cmd,        name="story")
 cli.add_command(deploy_cmd,       name="deploy")
 cli.add_command(clean_cmd,        name="clean")

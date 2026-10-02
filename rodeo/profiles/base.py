@@ -139,6 +139,10 @@ class RodeoProfile(ABC):
         """Profile-specific config keys merged on top of the common shape. Override as needed."""
         return {}
 
+    def finalize_cfg(self, cfg: dict) -> dict:
+        """Last pass over the fully merged config (plan + secrets). Override as needed."""
+        return cfg
+
     def _default_user(self, node: dict) -> str:
         """SSH user for an inventory node when the definition doesn't set one. Override as needed."""
         return "root"

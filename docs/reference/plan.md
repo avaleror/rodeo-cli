@@ -231,7 +231,17 @@ ref, so `install.sh` and the code it installs cannot disagree. An explicit
 and the ref is still passed to it. `--ref` beats `provider.ref`; an invalid
 ref is rejected **before** any instance is launched, so a typo costs nothing.
 `--ref` applies only when the laptop is the AWS control plane; anywhere else
-it warns and is ignored. Fleet has the same mechanism —
+it warns and is ignored.
+
+To test a fork without editing plans, set environment variables where `rodeo`
+runs:
+
+| Variable | Effect |
+|---|---|
+| `RODEO_REPO` | git URL `install.sh` clones and updates from; passed on to remote bootstraps. A GitHub URL also points the default install URL at that repository's `install.sh` |
+| `RODEO_INSTALL_URL_TEMPLATE` | install.sh URL with a `{ref}` placeholder, for non-GitHub mirrors |
+
+A configured `install_url` still wins over both. Fleet has the same mechanism —
 [`fleet deploy --ref` / `lab.ref`](../fleet.md#which-rodeo-cli-the-hosts-run).
 
 **AWS API credentials** (boto3 — never in the plan): `~/.aws/credentials` /
@@ -383,30 +393,183 @@ English source — the payoff screen never fails.
 
 ---
 
-## lab_in_a_box — exporting to lab-in-a-box
+## lab_in_a_box — deploying with, or exporting to, lab-in-a-box
 
-`rodeo export --format lab-in-a-box` renders the lab as the `lab.json` that
-[lab-in-a-box](https://github.com/SUSE-Technical-Marketing/lab-in-a-box)'s
-`setup_lab.sh` / `destroy_lab.sh` consume (tested against release 1.0.0). The
-plan and definition stay the source of truth; the optional `lab_in_a_box:`
-block holds the knobs that only exist on the lab-in-a-box side:
+[lab-in-a-box](https://github.com/SUSE-Technical-Marketing/lab-in-a-box) builds
+VMs and runs addons (SUSE Multi-Linux Manager, Uyuni, NeuVector, ...) from a
+`lab.json`. rodeo renders that file from the plan and definition, which stay
+the source of truth, in two ways:
+
+- `type: lab-in-a-box` deploys through it. rodeo prepares the host (packages,
+  libvirt network and DNS, firewall forwards for `exposed_services`, base
+  images, secrets), installs a pinned lab-in-a-box, and runs its `setup_lab.py`.
+  The phases are `kvm_host`, `labinabox_host`, `labinabox` and `custom_scripts`.
+  `rodeo clean` runs its `destroy_lab.py`.
+- `rodeo export --format lab-in-a-box` only writes the `lab.json`, for a
+  lab-in-a-box automation node you run yourself.
+
+The `lab_in_a_box:` block holds the knobs that exist only on the lab-in-a-box side:
 
 ```yaml
 lab_in_a_box:
-  iso_image: openSUSE-Leap-15.6.qcow2   # base qcow2 in lab-in-a-box's ISO_LOC (required to deploy)
-  config_method: cloud-init             # cloud-init (default) | iso-cloud-init | "" (ignition/combustion)
+  source:                               # type: lab-in-a-box only — which lab-in-a-box to run
+    repo: https://github.com/SUSE-Technical-Marketing/lab-in-a-box
+    ref: 698506e6a40d495e303a276bfa3f0aa3912bf504   # branch, tag or SHA
+  parallel: 4                           # setup_lab.py --parallel=N
+  root_password: "??universal_pwd"      # root password of every VM
+  images:                               # base images: become ISO_URL/ISO_SHA256[_URL] in lab.json;
+                                        # lab-in-a-box downloads + verifies them into ISO_LOC
+    - name: ubuntu-24.04-server-cloudimg-amd64.img
+      url: https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img
+      sha256_url: https://cloud-images.ubuntu.com/releases/24.04/release/SHA256SUMS   # or sha256: <hex>
+  nodes:                                # per-node lab.json keys, by short node name
+    ubuntu2404lts: {ISO_IMAGE: ubuntu-24.04-server-cloudimg-amd64.img, ssh_pwauth: "true"}
+    smlm: {ISO_IMAGE: smlm.qcow2, addons: [smlm]}
+  iso_image: openSUSE-Leap-15.6.qcow2   # common base image for nodes without their own
+  config_method: cloud-init             # cloud-init (default) | virt_customize | "" (ignition/combustion)
   cluster_name: mgmt                    # kcluster name (also its DNS record: <name>.<domain>)
   cluster_type: k3s                     # k3s (default) | rke2
   clu_rel: stable                       # install channel — exact version pins don't carry over
-  addons: [rancher]                     # override the derived install_<addon> list
-  sections:                             # verbatim extra/override lab.json sections
-    rancher: {rancher_rel: stable}
+  addons: [rancher]                     # override the derived kcluster install_<addon> list
+  sections:                             # verbatim lab.json sections (addon config)
+    smlm: {smlm_deployment: podman, smlm_admin_pass: "??smlm_admin_password"}
 ```
 
-Not carried over (warned at export time): PXE-booted Harvester nodes
-(lab-in-a-box has no PXE — use `--skip-unsupported` to export the rest),
-exposed-service host port-forwards, storage/image-dir selection, and exact
-k3s/rke2 version pins.
+**Variants:** `lab_in_a_box.variants.<name>` overlays the block, and
+`lab_in_a_box.variant` picks one (`-P lab_in_a_box.variant=<name>`). In an
+overlay, dicts merge, `null` deletes a key, and `images` merge by name
+(`remove: true` drops one). A variant can add `operator_secrets` and a `notice`
+logged at deploy. Only the selected variant's secrets are asked for.
+`smlm-workshop` uses this to switch between booting its pre-built server
+(`image`) and building it from stock SLES (`scratch`).
+
+An image's `url` can also be a list of mirrors, tried in order and all checked
+against the same checksum.
+
+**Secrets:** every credential is a `??key`. `rodeo up` generates any plain
+`??key` the plan references that `~/.rodeo/secrets.yaml` lacks. Keys listed
+under a top-level `operator_secrets:` are the exception: those are values only
+you have, such as an SCC regcode or a pre-built image's password, and `rodeo up`
+asks for them instead (under `--yes` it stops and says which ones to add). The
+rendered `lab.json` holds the resolved values, so it is written `0600` to
+`<lab>/.labinabox/`. The deploy stops if any `??` value is still unresolved.
+
+To test another lab-in-a-box without editing the plan, set
+`RODEO_LABINABOX_REPO` and/or `RODEO_LABINABOX_REF`; each takes precedence over
+the matching `source:` key. For a local lab-in-a-box checkout, set
+`RODEO_LABINABOX_PATH=/path/to/lab-in-a-box`; it takes precedence over all of them.
+These variables are read on the host that runs `rodeo up`.
+
+**Existing lab-in-a-box host:** by default (`target.mode: auto`) rodeo installs
+lab-in-a-box on the host it runs on. It uses an existing one instead when that
+host already has lab-in-a-box set up (a `/etc/lab_creation.cfg` rodeo didn't
+write), or when `target.host` names a remote automation node:
+
+```yaml
+lab_in_a_box:
+  target:
+    mode: auto            # auto | managed | existing
+    host: automation.example.lab   # remote lab-in-a-box host (rodeo's key in its authorized_keys)
+    ssh_user: root
+    libvirt_uri: qemu+ssh://root@kvm1.example.lab/system   # its hypervisor, for status/start/stop
+```
+
+With an existing lab-in-a-box, rodeo skips `kvm_host` and leaves that host's
+install, network, firewall and keys alone. The lab has to fit that host's own
+network: set `network.bridge`/`cidr`/`gateway`/`domain` in `definition.yaml`,
+and anything else under `sections.common` (e.g. `mydns`).
+
+A remote host gets `lab.json` over SSH stdin into `~/.rodeo-labs/<plan>/` (mode
+0600, with an owner marker). `setup_lab.py` runs there and its output streams
+back. `rodeo clean` runs `destroy_lab.py` there, but only for a lab carrying this
+plan's marker. `rodeo ssh <vm>` hops through the host.
+
+Every deploy, in either mode, first checks `lab.json` against the installed
+lab-in-a-box's own schema (`lab_schema`) and stops, naming the fields, if that
+lab-in-a-box is too old for the plan.
+
+**VMs in a cloud account instead of nested KVM:** with `lab_in_a_box.cloud`,
+lab-in-a-box creates every node in a cloud account through its own compute
+backends: aws, gcp, hetzner, alibaba, scaleway, upcloud, ovhcloud, exoscale. The
+rodeo host then only runs lab-in-a-box, so it needs no KVM (a laptop or a small
+VM will do):
+
+```yaml
+lab_in_a_box:
+  iso_image: ami-0123456789abcdef0      # a provider image (AMI, image name/ID), per region
+  cloud:
+    cloudtype: aws
+    account: aws-lab                    # credential file name — one per lab (clean removes it)
+    settings:                           # the backend's keys, as in lab-in-a-box's README
+      AWS_REGION: eu-north-1
+      AWS_ACCESS_KEY_ID: "??aws_access_key_id"
+      AWS_SECRET_ACCESS_KEY: "??aws_secret_access_key"
+  nodes:
+    vm1: {cloud_instance_type: t3.large}
+```
+
+rodeo writes the account to `/etc/lab_creation/credentials/<account>.yaml` (0600).
+Any `??key` in `settings` is always asked for, never generated. Nodes get no static
+IP/MAC: the provider assigns them. rodeo reads the addresses back after the deploy,
+so `rodeo ssh <vm>` and the success screen use them.
+
+Leave out `settings` to use an account that already exists on the lab-in-a-box
+host, e.g. an encrypted one made with `setup_credentials.py`.
+
+`rodeo status`/`start`/`stop`/`restart` ask lab-in-a-box's `vm_power.py`, on every
+provider.
+
+`exposed_services` become each target VM's `open_ports`. lab-in-a-box opens them
+with the provider's own mechanism:
+
+| Provider | How the port is opened |
+|---|---|
+| aws | security-group rules (needs `AWS_SECURITY_GROUP_ID`) |
+| gcp | a firewall rule plus a network tag on the VM |
+| alibaba | rules on `ALIBABA_SECURITY_GROUP_ID` |
+| exoscale | a per-VM security group |
+| hetzner, scaleway, upcloud, ovhcloud | nothing to open: they let inbound traffic in by default, unless you added your own firewall |
+
+**Several instances on one host:** a top-level `instance: N` (1–99; 0 is the
+plan as written) moves a lab-in-a-box lab out of the way of other copies:
+
+| | instance 0 | instance N |
+|---|---|---|
+| libvirt network / bridge | `default` / `virbr0` | `rodeo-iN` / `rbrN` |
+| subnet, node IPs | as defined | third octet + N |
+| DNS domain | as defined | `iN.<domain>` |
+| MACs | as defined | third byte = N |
+| exposed host ports | as defined | + N × `instance_port_stride` (1000) |
+
+Generated passwords go to the lab's own `.rodeo-secrets.yaml`, so every instance
+gets its own; operator secrets stay in `~/.rodeo/secrets.yaml`.
+`rodeo instances new <profile> --count N` seeds numbered labs, `rodeo instances
+up` deploys them one after another, `rodeo instances list` shows them (plus how
+many more fit in this host's free RAM and disk), and `rodeo instances clean`
+removes them.
+
+In addon sections, `${node_fqdn:<vm>}` and `${node_ip:<vm>}` stand for that lab's
+own node. `lab_in_a_box.dns_aliases: {<vm>: [name, ...]}` adds names a node answers
+to inside its instance's network, e.g. the fixed name a pre-built server image was
+installed with.
+
+**Workshop tracks:** a top-level `workshop:` block fetches an Instruqt track
+into `<lab>/workshop` at deploy time. It then warns about track machines with no
+lab VM and about assignment variables with no value:
+
+```yaml
+workshop:
+  repo: https://github.com/SUSE-Technical-Marketing/instruqt-SMLM
+  branch: main
+  track: smlms
+  skip_vms: [zbastion]                  # machines the lab replaces on purpose
+  facts: {SMLM_USERNAME: myadmin}       # [[ Instruqt-Var ]] values, shown on the success screen
+```
+
+Not carried over by `rodeo export` (warned at export time): PXE-booted
+Harvester nodes (lab-in-a-box has no PXE — use `--skip-unsupported` to export
+the rest), exposed-service host port-forwards, storage/image-dir selection, and
+exact k3s/rke2 version pins.
 
 ---
 

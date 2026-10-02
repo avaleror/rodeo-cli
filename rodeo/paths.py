@@ -54,6 +54,11 @@ def harvester_kubeconfig_path() -> Path:
     return rodeo_dir() / "harvester-kubeconfig"
 
 
+def i18n_db_path() -> Path:
+    """SQLite database of translated lab-content strings (rodeo.i18n)."""
+    return rodeo_dir() / "i18n.db"
+
+
 def fix_invoking_ownership() -> None:
     """Hand ``~/.rodeo`` back to the invoking user after a self-escalated run.
 

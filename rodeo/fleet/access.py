@@ -1,7 +1,7 @@
 """Fleet access sheet — student UI URLs (no secrets)."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from .inventory import FleetHost, FleetInventory, host_public_ip
@@ -14,6 +14,7 @@ class HostAccess:
     harvester_url: str | None
     rancher_url: str | None
     note: str | None = None
+    other_urls: dict[str, str] = field(default_factory=dict)
 
 
 def access_for_host(inventory: FleetInventory, host: FleetHost) -> HostAccess:
@@ -35,6 +36,7 @@ def access_for_host(inventory: FleetInventory, host: FleetHost) -> HostAccess:
         harvester_url=f"https://{ip}:{inventory.harvester_ui_port}" if show_harvester else None,
         rancher_url=f"https://{ip}:{inventory.rancher_ui_port}" if show_rancher else None,
         note="passwords on the host in ~/.rodeo/secrets.yaml — not printed here",
+        other_urls={name: f"https://{ip}:{port}" for name, port in inventory.ui_ports.items()},
     )
 
 
@@ -54,6 +56,7 @@ def access_payload(workshop: str, rows: list[HostAccess]) -> dict[str, Any]:
                 "public_ip": r.public_ip,
                 "harvester_url": r.harvester_url,
                 "rancher_url": r.rancher_url,
+                "other_urls": r.other_urls,
                 "note": r.note,
             }
             for r in rows

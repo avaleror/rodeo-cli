@@ -37,6 +37,7 @@ rodeo profiles
 | `harvester-2n` | bundled | suse-virt | 2-node Harvester + Rancher Prime |
 | `harvester` | bundled | suse-virt | 3-node Harvester HCI + Rancher Prime |
 | `suse-edge` | bundled | suse-edge | Rancher + Elemental + EIB + edge nodes (SUSE Edge 3.6) |
+| `smlm-workshop` | bundled | lab-in-a-box | SUSE Multi-Linux Manager + 8 clients, built by lab-in-a-box |
 | *(yours)* | custom | any | whatever you scaffold and edit |
 
 ---

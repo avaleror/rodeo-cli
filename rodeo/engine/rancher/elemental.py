@@ -87,11 +87,11 @@ class ElementalMixin:
                 f"    manufacturer: '${{System Information/Manufacturer}}'\n"
                 f"    productName: '${{System Information/Product Name}}'\n"
                 f"    registration: '{name}'\n"
-                # Without this block, elemental-register's self-install stops at
-                # an interactive "Destroying ALL data on /dev/vda, continue?"
-                # prompt (confirmed live) and never auto-powers-off — nothing
-                # pre-selects the target device or requests an unattended
-                # install. `poweroff` is intentionally lowercase (not
+                # install.device/poweroff configure Elemental's own installer
+                # (elemental-toolkit). They do NOT reach the openSUSE Leap Micro
+                # SelfInstall ISO this lab builds with EIB: that ISO has its own
+                # installer, which always asks two confirmations (confirmed live,
+                # 2026-10-02). `poweroff` is intentionally lowercase (not
                 # `powerOff`): that's the actual YAML tag on Elemental's
                 # Install struct (rancher/elemental-operator api/v1beta1).
                 f"  config:\n"

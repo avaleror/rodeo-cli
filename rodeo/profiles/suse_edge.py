@@ -61,12 +61,12 @@ class SuseEdgeProfile(RodeoProfile):
         edge_nodes = [(n, v) for n, v in cfg.get("vms", {}).items() if n.startswith("edge")]
         if not edge_nodes:
             return []
-        lines = ["[bold]Edge node reference[/bold]  (static DHCP — MAC determines IP)"]
+        lines = ["[bold]Edge node reference[/bold]  (static IP baked into each EIB image, matched by MAC)"]
         lines.append("  node    MAC                  IP")
         for name, info in sorted(edge_nodes):
             mac = info.get("mac", "—")
             ip = info.get("ip", "—")
-            lines.append(f"  {name:<7} {mac:<20} {ip}  (DHCP pre-assigned)")
+            lines.append(f"  {name:<7} {mac:<20} {ip}")
         lines.append("")
         return lines
 

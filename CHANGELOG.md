@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.18.0](https://github.com/avaleror/rodeo-cli/compare/v0.17.0...v0.18.0) (2026-10-02)
+
+
+### Features
+
+* **fleet:** student claim portal (F5) ([#53](https://github.com/avaleror/rodeo-cli/issues/53)) ([e50ff2b](https://github.com/avaleror/rodeo-cli/commit/e50ff2ba8d43afdafaa00141c9c4b25a67e6d704))
+
+
+### Documentation
+
+* **fleet:** run fleet doctor after deploy on provisioned hosts ([#65](https://github.com/avaleror/rodeo-cli/issues/65)) ([59b58f7](https://github.com/avaleror/rodeo-cli/commit/59b58f7ea6390c7c0c8977de5459eb0123e28798))
+
 ## [0.17.0](https://github.com/avaleror/rodeo-cli/compare/v0.16.1...v0.17.0) (2026-10-02)
 
 

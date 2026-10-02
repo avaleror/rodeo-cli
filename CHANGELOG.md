@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.19.0](https://github.com/avaleror/rodeo-cli/compare/v0.18.0...v0.19.0) (2026-10-02)
+
+
+### Features
+
+* incorporate lab-in-a-box as an engine, changes to make it easier to test betas,etc.. ([c12188d](https://github.com/avaleror/rodeo-cli/commit/c12188d7644f2a086535940e18655f729d3ec805))
+
+
+### Bug Fixes
+
+* **fleet:** use run_remote stdin for operator secrets ([f567eb6](https://github.com/avaleror/rodeo-cli/commit/f567eb648e3c8f629cd5290ed1ff43556298f3ce))
+
 ## [0.18.0](https://github.com/avaleror/rodeo-cli/compare/v0.17.0...v0.18.0) (2026-10-02)
 
 

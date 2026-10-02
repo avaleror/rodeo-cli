@@ -8,6 +8,8 @@ from rich.console import Console
 
 from ..config import ConfigError, load_config, validate_config
 from ..drift import DriftReport, collect_drift, inspect_host
+from ..engine.libvirt import LibvirtDriver, names_safe_to_clean
+from ..inventory import plan_vm_rows
 from ..profiles import get_profile
 from ..state import load_state
 from ._options import config_options
@@ -36,6 +38,7 @@ def plan_cmd(config_path: str, config_dir: str | None, params: tuple[str, ...], 
     if actual is None:
         console.print("\n[yellow]⚠  libvirt not reachable on host — showing desired state only.[/yellow]")
     report = collect_drift(cfg, actual=actual)
+    _print_foreign_vms(cfg)
     create, change, ok = _print_vms(report)
     _print_network(report)
     downloads = _print_storage(cfg)
@@ -59,6 +62,24 @@ def plan_cmd(config_path: str, config_dir: str | None, params: tuple[str, ...], 
         console.print("  Run [bold]rodeo deploy[/bold] to apply.\n")
     else:
         console.print("  [bold green]Nothing to do — deployment matches the plan.[/bold green]\n")
+
+
+def _print_foreign_vms(cfg: dict) -> None:
+    """Warn when a planned name is already stamped for a different plan."""
+    planned = [name for name, _ in plan_vm_rows(cfg)]
+    if not planned:
+        return
+    try:
+        with LibvirtDriver(cfg["libvirt"]["uri"]) as lv:
+            xml_by_name = {name: lv.domain_xml(name) for name in planned}
+    except Exception:
+        return
+    _, foreign = names_safe_to_clean(planned, xml_by_name, cfg.get("name", "default"))
+    for name, owner in foreign:
+        console.print(
+            f"[yellow]⚠  {name} exists and is owned by plan {owner}. "
+            "rodeo clean will skip it.[/yellow]"
+        )
 
 
 def _inspect_host(cfg: dict) -> dict | None:

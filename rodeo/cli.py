@@ -15,6 +15,7 @@ from .commands.install_extensions_cmd import install_extensions_cmd
 from .commands.bootstrap_cmd import bootstrap_cmd
 from .commands.export_cmd import export_cmd
 from .commands.generate_cmd import generate_cmd
+from .commands.list_cmd import list_cmd
 from .commands.logs import logs_cmd
 from .commands.new_cmd import new_cmd
 from .commands.plan_cmd import plan_cmd
@@ -95,6 +96,7 @@ cli.add_command(status_cmd,            name="status")
 cli.add_command(watch_cmd,        name="watch")
 cli.add_command(restart_cmd,      name="restart")
 cli.add_command(ssh_cmd,          name="ssh")
+cli.add_command(list_cmd,         name="list")
 cli.add_command(logs_cmd,         name="logs")
 cli.add_command(attach_cmd,       name="attach")
 cli.add_command(self_update_cmd,      name="self-update")

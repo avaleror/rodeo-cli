@@ -56,7 +56,7 @@ hosts: []
 ```
 
 ```bash
-pip install 'rodeo-cli[aws]'
+pip install -e '.[aws]'   # in your rodeo-cli checkout; see ../install.md
 # Creds: ~/.aws/credentials  OR  AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY
 # Subscribe once: AWS Marketplace → openSUSE Leap
 # SSH key: auto ~/.rodeo/ssh/id_ed25519 → EC2 key pair "rodeo"
@@ -88,7 +88,7 @@ provider:
 ```
 
 ```bash
-pip install 'rodeo-cli[aws]'
+pip install -e '.[aws]'   # in your rodeo-cli checkout; see ../install.md
 rodeo up --yes --profile harvester --target aws --instance-tier recommended
 rodeo ssh primary
 rodeo ssh primary/rancher

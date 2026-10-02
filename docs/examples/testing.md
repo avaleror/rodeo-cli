@@ -103,7 +103,7 @@ and nothing else: the default AMI (SLES 16 PAYG) needs no Marketplace
 subscription, and `i7i.8xlarge` supports nested virt.
 
 ```bash
-pip install 'rodeo-cli[aws]'
+pip install -e '.[aws]'   # in your rodeo-cli checkout; see ../install.md
 # Provision path (recommended tier → m8id.8xlarge for harvester; region capacity checked first):
 rodeo up --yes --profile harvester --target aws --instance-tier recommended
 # Or BYO: SSH to an existing m8id.8xlarge (or similar), set deployment_target: aws, then:

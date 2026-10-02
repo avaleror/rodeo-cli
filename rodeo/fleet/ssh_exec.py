@@ -66,8 +66,11 @@ def run_remote(
     argv: Sequence[str],
     *,
     timeout: float = 120.0,
+    input_text: str | None = None,
 ) -> RemoteResult:
     """Run ``argv`` on the remote host (joined with shlex) via OpenSSH.
+
+    ``input_text`` is fed to the remote command's stdin (for secrets: never argv).
 
     ``argv`` is the remote command tokens (e.g. ``[\"rodeo\", \"doctor\", \"--output\", \"json\"]``).
     """
@@ -76,6 +79,7 @@ def run_remote(
     try:
         proc = subprocess.run(
             cmd,
+            input=input_text,
             capture_output=True,
             text=True,
             timeout=timeout,

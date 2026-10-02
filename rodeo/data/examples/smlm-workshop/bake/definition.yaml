@@ -1,0 +1,74 @@
+# definition.yaml — image build for the smlm-workshop SMLM server (bake/)
+#
+# Only the SMLM server, with the SAME name, address and MAC the workshop lab
+# uses (../definition.yaml): the image built here is booted as-is by every
+# workshop deploy, so its hostname and certificate must already match.
+
+apiVersion: 1.0
+definition:
+  name: smlm-workshop-bake
+  description: "Build the pre-synced SMLM server image for smlm-workshop"
+
+  start_order:
+    - smlm
+  harvester_node_names: []
+  harvester_ready_count: 0
+
+  network:
+    name: default
+    bridge: virbr0
+    mode: nat
+    cidr: 192.168.122.0/24
+    gateway: 192.168.122.1
+    domain: rodeo.lab
+
+  node_templates:
+    smlm:
+      flavor: smlm
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          model: virtio
+          ip_family: static
+
+  exposed_services: []
+
+  storage:
+    device: ""
+    mount_point: /var/lib/libvirt/images
+    libvirt_pool_name: default
+    libvirt_pool_path: /var/lib/libvirt/images
+    image_dir: /var/lib/libvirt/images
+
+  components:
+    - name: smlm
+      description: "SUSE Multi-Linux Manager server (lab-in-a-box install_smlm, podman mode)"
+      nodes: ["smlm"]
+    - name: host-network-prep
+      description: "libvirt network, firewalld DNAT, sysctls for the nested KVM lab"
+      on_host: true
+
+  host_prep:
+    sysctls:
+      - net.bridge.bridge-nf-call-iptables=0
+      - net.bridge.bridge-nf-call-ip6tables=0
+    selinux_mode: permissive
+    libvirt:
+      ovmf_code: /usr/share/qemu/ovmf-x86_64-4m-code.bin
+      ovmf_vars_template: /usr/share/qemu/ovmf-x86_64-4m-vars.bin
+      use_modular_daemons: true
+    network:
+      unmanaged_interfaces:
+        - virbr0
+      rp_filter_loose: false
+
+  nodes:
+    - name: smlm
+      template: smlm
+      hostname: smlm
+      ip: "192.168.122.20"
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          mac: "02:00:00:5A:00:20"
+      mgmt_mac: "02:00:00:5A:00:20"

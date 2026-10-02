@@ -261,6 +261,12 @@ class LibvirtDriver:
 RODEO_VM_HINTS = ("harvester", "rancher", "edge", "eib", "rodeo")
 
 
+def domain_name(cfg: dict | None, vm: str) -> str:
+    """libvirt domain of a lab VM: its short name, unless the platform names
+    domains differently (lab-in-a-box names them by FQDN — vms.<vm>.domain)."""
+    return ((cfg or {}).get("vms", {}).get(vm) or {}).get("domain") or vm
+
+
 def discover_rodeo_vm_names(uri: str = "qemu:///system") -> list[str]:
     """Names of rodeo-managed domains on the host, empty if none/unreachable.
 

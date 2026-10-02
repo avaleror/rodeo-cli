@@ -248,7 +248,7 @@ def _resource_needs(cfg: dict) -> tuple[int, int]:
             elif name.startswith("edge"):
                 r = res.get("edge-node", {})
             else:
-                r = {}
+                r = res.get(vms[name].get("flavor", ""), {})
             need_mib += r.get("memory_mib", 0)
             need_gb  += r.get("disk_gb", 0)
         if need_mib > 0 or need_gb > 0:
@@ -290,15 +290,26 @@ def run_preflight(cfg: dict, root: Path, phases_to_run: list[str] | None = None)
     from .state import is_phase_done
 
     plan_name = cfg.get("name", "rodeo")
-    vms_already_deployed = is_phase_done("vms", plan_name)
+    # The phase that creates the VMs: rodeo's own, or lab-in-a-box's setup_lab.py.
+    vm_phase = "labinabox" if cfg.get("type") == "lab-in-a-box" else "vms"
+    vms_already_deployed = is_phase_done(vm_phase, plan_name)
     check_resources = (
-        (phases_to_run is None or "vms" in phases_to_run) and not vms_already_deployed
+        (phases_to_run is None or vm_phase in phases_to_run) and not vms_already_deployed
     )
 
     checks: list[tuple[str, bool, str, bool]] = []
     checks.append(("root", os.geteuid() == 0, "not running as root — some phases require root", False))
-    checks.append(("/dev/kvm", Path("/dev/kvm").exists(), "/dev/kvm not found — is KVM enabled?", False))
-    checks.append(("nested virt", _nested_enabled(), "nested virtualization not enabled in kvm module", False))
+    # lab-in-a-box labs whose VMs run in a cloud account need no KVM here at all.
+    cloud_vms = False
+    if cfg.get("type") == "lab-in-a-box":
+        from .labinabox_host import cloud
+
+        cloud_vms = cloud(cfg) is not None
+    if cloud_vms:
+        check_resources = False
+    else:
+        checks.append(("/dev/kvm", Path("/dev/kvm").exists(), "/dev/kvm not found — is KVM enabled?", False))
+        checks.append(("nested virt", _nested_enabled(), "nested virtualization not enabled in kvm module", False))
 
     if check_resources:
         need_mib, need_gb = _resource_needs(cfg)

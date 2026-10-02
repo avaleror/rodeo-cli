@@ -115,3 +115,72 @@ def ensure_secrets_file(path: Path | None = None, force: bool = False) -> tuple[
     token = gen_token()
     write_secrets_file(path, password, token)
     return password, token, True
+
+
+def plan_secret_keys(obj: object) -> set[str]:
+    """Every plain ``??key`` placeholder in a plan (not the ??env:/??file:/??cmd: forms)."""
+    keys: set[str] = set()
+    if isinstance(obj, str):
+        spec = obj[2:] if obj.startswith("??") else ""
+        if spec and ":" not in spec:
+            keys.add(spec)
+    elif isinstance(obj, dict):
+        for value in obj.values():
+            keys |= plan_secret_keys(value)
+    elif isinstance(obj, list):
+        for value in obj:
+            keys |= plan_secret_keys(value)
+    return keys
+
+
+def _read_secrets(path: Path) -> dict:
+    import yaml
+
+    try:
+        return yaml.safe_load(path.read_text()) or {}
+    except (OSError, yaml.YAMLError):
+        return {}
+
+
+def append_secret(path: Path, key: str, value: str) -> None:
+    """Add one key to secrets.yaml (0600), keeping every existing line and comment."""
+    import json
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    existing = path.read_text() if path.exists() else ""
+    sep = "" if not existing or existing.endswith("\n") else "\n"
+    # JSON string quoting is valid YAML and safe for any character.
+    path.write_text(f"{existing}{sep}{key}: {json.dumps(value)}\n")
+    path.chmod(stat.S_IRUSR | stat.S_IWUSR)  # 0600
+
+
+def ensure_plan_secrets(
+    plan: dict, path: Path | None = None, lab_path: Path | None = None,
+) -> tuple[list[str], list[str]]:
+    """Generate the plan's missing ``??key`` secrets. Return (generated, missing_operator).
+
+    Keys listed in the plan's ``operator_secrets:`` are never generated — they
+    are values only the operator has (an SCC regcode, the admin password a
+    pre-built image was made with) and are returned as missing instead.
+    Generated ones go to ``lab_path`` (the lab's own .rodeo-secrets.yaml, so
+    every lab instance gets its own) when given, else to the global file.
+    """
+    from .labinabox import apply_variant
+
+    from .labinabox_host import cloud_secret_keys
+
+    plan = apply_variant(plan)  # secrets of unselected lab-in-a-box variants aren't needed
+    path = path or secrets_path()
+    # Cloud credentials are always the operator's: never generate a random one.
+    operator = {str(k) for k in plan.get("operator_secrets") or []} | cloud_secret_keys(plan)
+    have = {**_read_secrets(path), **(_read_secrets(lab_path) if lab_path else {})}
+    generated, missing = [], []
+    for key in sorted(plan_secret_keys(plan)):
+        if have.get(key) not in (None, ""):
+            continue
+        if key in operator:
+            missing.append(key)
+            continue
+        append_secret(lab_path or path, key, random_password())
+        generated.append(key)
+    return generated, missing

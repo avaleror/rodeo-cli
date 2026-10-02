@@ -181,7 +181,8 @@
       # start (before all other rules) so DNAT'd packets are accepted.
       # Anchoring to the reject handle via `insert handle H` inserts after H on
       # some nftables versions; inserting without a handle is always position 0.
-      [ "$1" = "default" ] || exit 0
+      # default, plus the per-instance networks of lab-in-a-box labs (rodeo-iN).
+      case "$1" in default|rodeo-i*) ;; *) exit 0 ;; esac
       case "$2" in started|plugged|updated) ;; *) exit 0 ;; esac
 
       # Wait for libvirt to set up the guest_input chain (up to 5 s).

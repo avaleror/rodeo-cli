@@ -469,16 +469,24 @@ def fleet_access_cmd(
     else:
         table = Table(title=f"Fleet access — {inventory.name}", show_header=True)
         table.add_column("id", style="bold")
-        table.add_column("Harvester")
-        table.add_column("Rancher")
+        extra = list(inventory.ui_ports)
+        show_hv = any(r.harvester_url for r in rows) or not extra
+        show_rn = any(r.rancher_url for r in rows) or not extra
+        if show_hv:
+            table.add_column("Harvester")
+        if show_rn:
+            table.add_column("Rancher")
+        for name in extra:
+            table.add_column(name)
         table.add_column("note", overflow="fold")
         for r in rows:
-            table.add_row(
-                r.id,
-                r.harvester_url or "—",
-                r.rancher_url or "—",
-                (r.note or "")[:80],
-            )
+            cells = [r.id]
+            if show_hv:
+                cells.append(r.harvester_url or "—")
+            if show_rn:
+                cells.append(r.rancher_url or "—")
+            cells += [r.other_urls.get(name, "—") for name in extra]
+            table.add_row(*cells, (r.note or "")[:80])
         console.print()
         console.print(table)
         console.print(

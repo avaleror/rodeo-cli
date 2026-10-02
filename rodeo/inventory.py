@@ -96,6 +96,11 @@ def build_inventory(cfg: dict) -> dict:
     plan_name = cfg.get("name", profile_name)  # used for deterministic generation
     config_dir = cfg.get("config_dir")
     topology = _load_topology(profile_name, config_dir)
+    if profile_name == "lab-in-a-box":
+        # Several instances of one lab on a host: see rodeo/instances.py.
+        from .instances import apply_to_topology, instance_number, port_stride
+
+        topology = apply_to_topology(topology, instance_number(cfg), port_stride(cfg))
 
     raw_nodes = topology.get("nodes", [])
     node_templates = topology.get("node_templates", {})

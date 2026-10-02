@@ -21,6 +21,8 @@ from pathlib import Path
 import click
 from rich.console import Console
 
+from ..install_source import default_install_url, repo_url
+
 console = Console()
 
 # Repo root is three levels up from this file:
@@ -100,7 +102,7 @@ def run_self_update(branch: str | None = None) -> None:
         console.print(
             f"[red]✗  {_REPO_ROOT} is not a git repo — cannot self-update.[/red]\n"
             "Re-run the install script to get a fresh clone:\n"
-            "  curl -fsSL https://raw.githubusercontent.com/avaleror/rodeo-cli/main/install.sh | bash"
+            f"  curl -fsSL {default_install_url()} | bash"
         )
         raise SystemExit(1)
 
@@ -145,7 +147,7 @@ def run_self_update(branch: str | None = None) -> None:
             console.print(
                 f"[red]✗  branch '{target_branch}' does not exist on {remote}.[/red]\n"
                 f"    The clone's origin ({origin_url}) may be a fork or stale mirror.\n"
-                "    Re-run install.sh against avaleror/rodeo-cli to reset the remote."
+                f"    Re-run install.sh to reset the remote to {repo_url()}."
             )
         else:
             console.print(f"[red]✗  git fetch {remote} {target_branch} failed:[/red]\n{err}")

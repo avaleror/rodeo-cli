@@ -53,3 +53,8 @@ HANDOFF.md
 
 # mkdocs build output (deployed to gh-pages branch, not committed to main)
 /site/
+
+# lab-in-a-box platform: rendered lab.json with resolved secrets (lab dir)
+.labinabox/
+# per-lab generated secrets (lab dirs)
+.rodeo-secrets.yaml

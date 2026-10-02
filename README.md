@@ -49,6 +49,12 @@ rodeo up
 
 That is it. The installer clones the repo, sets up a Python environment internally, and links `rodeo` as a system command. No venv to activate, no PATH to set, no sudo prefix — ever.
 
+To install from a fork, set `RODEO_REPO` (and optionally `RODEO_REF`) for the installer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/<you>/rodeo-cli/main/install.sh | RODEO_REPO=https://github.com/<you>/rodeo-cli.git bash
+```
+
 `rodeo up` self-escalates with sudo, auto-detects an existing lab dir, and ends with the URLs and credentials to log in. It also wraps itself in a **tmux session** automatically, so a dropped SSH or Instruqt connection does not kill a running deploy. Re-attach any time with `tmux attach -t rodeo-<profile>`.
 
 Use `--no-tmux` to skip the tmux wrap in scripts.
@@ -74,8 +80,9 @@ rodeo up --profile suse-edge      # SUSE Edge: Rancher + Elemental + EIB + edge 
 | `harvester-2n` | `suse-virt` | 2-node Harvester + Rancher Prime | ~56 GiB |
 | `harvester` | `suse-virt` | 3-node Harvester HCI + Rancher Prime | ~60 GiB |
 | `suse-edge` | `suse-edge` | Rancher + Elemental + EIB + edge nodes (SUSE Edge 3.6) | ~40 GiB |
+| `smlm-workshop` | `lab-in-a-box` | SUSE Multi-Linux Manager + 8 clients (instruqt-SMLM workshop), built by lab-in-a-box | ~30 GiB |
 
-`rodeo doctor` recommends the largest profile that fits available RAM. `rodeo profiles` lists all profiles including any you create yourself. Each profile picks one of three **engine types** (`rancher`, `suse-virt`, `suse-edge`) that decides which pipeline phases run.
+`rodeo doctor` recommends the largest profile that fits available RAM. `rodeo profiles` lists all profiles including any you create yourself. Each profile picks one of four **engine types** (`rancher`, `suse-virt`, `suse-edge`, `lab-in-a-box`) that decides which pipeline phases run.
 
 You can scaffold and customize your own:
 
@@ -100,7 +107,8 @@ Full walkthrough: [Create your own rodeo](docs/custom-rodeos.md).
 | `install-deps` | Install host packages (KVM, libvirt, ansible, kubectl). `--story` adds rmstory + multilang from their GitHub release distro packages |
 | `init` | Create `rodeo-plan.yaml` and `~/.rodeo/secrets.yaml` |
 | `plan` | Preview what deploy would change (no changes made) |
-| `export` | Render the lab spec for another deployer — currently lab-in-a-box `lab.json` |
+| `instances` | Several copies of a lab-in-a-box lab on one host: `instances new <profile> --count N`, `instances list` |
+| `export` | Render the lab spec for another deployer — currently lab-in-a-box `lab.json` (`type: lab-in-a-box` labs deploy through it directly) |
 | `story` | Render the workshop hand-out (`story render`) — languages and story variants via rmstory, topology facts filled in |
 | `deploy` | Run the phase pipeline. Flags: `--from PHASE`, `--force`, `--reconcile` (default on) / `--no-reconcile`, `--check`, `--no-tui`, `-P key=value` |
 | `status` | VM states, VIP reachability, phase progress |

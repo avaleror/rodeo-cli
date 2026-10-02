@@ -51,6 +51,7 @@ To pick a specific profile instead of letting `rodeo up` choose:
 | `harvester-2n` | 2-node Harvester HCI + Rancher | ~56 GiB |
 | `harvester` | 3-node Harvester HCI + Rancher | ~60 GiB |
 | `suse-edge` | Rancher + Elemental + EIB + edge nodes | ~40 GiB |
+| `smlm-workshop` | SUSE Multi-Linux Manager workshop (lab-in-a-box) | ~30 GiB |
 
 Full walkthroughs live in the profile guides: [Rancher Prime](guide-rancher.md), [Harvester HCI](guide-harvester.md), [SUSE Edge](guide-suse-edge.md).
 

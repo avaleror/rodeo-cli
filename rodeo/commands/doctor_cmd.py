@@ -106,6 +106,8 @@ def doctor_cmd(output_fmt: str) -> None:
         )
         console.print(f"  {marker} [bold]{tier['name']}[/bold]  {tier['label']}  ({ok})")
 
+    _print_lab_images()
+
     console.print()
     if fits:
         console.print(
@@ -140,3 +142,32 @@ def _mark(ok: bool, label: str) -> str:
 
 def _warn_mark(ok: bool, label: str) -> str:
     return f"[green]✓[/green]  {label}" if ok else f"[yellow]⚠[/yellow]  {label}"
+
+
+def _print_lab_images() -> None:
+    """Inside a lab-in-a-box lab dir: how old its pre-built images are (max_age_days)."""
+    from ..config import ConfigError, find_lab_dir, load_config
+    from ..labinabox_host import image_ages
+
+    lab = find_lab_dir()
+    if lab is None or not (lab / "rodeo-plan.yaml").exists():
+        return
+    try:
+        cfg = load_config(lab / "rodeo-plan.yaml")
+        if cfg.get("type") != "lab-in-a-box":
+            return
+        ages = image_ages(cfg)
+    except (ConfigError, ValueError):
+        return  # e.g. image secrets not set yet — `rodeo up` explains that
+    if not ages:
+        return
+    console.print()
+    console.print(f"[bold]Pre-built images[/bold] ({lab.name})")
+    for name, age, max_age in ages:
+        if age is None:
+            console.print(f"  [yellow]⚠[/yellow]  {name}: age unknown (no Last-Modified)")
+        elif age > max_age:
+            console.print(f"  [yellow]⚠[/yellow]  {name}: {int(age)} days old — over max_age_days "
+                          f"{max_age}, rebuild it")
+        else:
+            console.print(f"  [green]✓[/green]  {name}: {int(age)} days old (max {max_age})")

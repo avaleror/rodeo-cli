@@ -114,6 +114,17 @@ AWS_PROFILE_TIERS: dict[str, dict[InstanceTier, InstanceOffer]] = {
             "m7i.metal-24xl", "performance", "bare metal — max nested performance"
         ),
     },
+    # lab-in-a-box SMLM workshop: ~30 GiB RAM of VMs, ~450 GB of disk.
+    "smlm-workshop": {
+        "recommended": InstanceOffer(
+            "m8id.4xlarge", "recommended",
+            "16 vCPU / 64 GiB / a single 950 GB NVMe device — SMLM server "
+            "(16 GiB) + 8 small clients with room for the ~200 GB server image",
+        ),
+        "performance": InstanceOffer(
+            "m7i.metal-24xl", "performance", "bare metal — max nested performance"
+        ),
+    },
     # Budget-tier sibling of virt-workshop-aws: 2-node Harvester (no etcd HA,
     # like harvester-2n). m8id.4xlarge is the actual intent of this profile's
     # "budget" tier.

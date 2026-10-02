@@ -1,6 +1,7 @@
 """Fleet / workshop inventory loading and host selection."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -58,6 +59,13 @@ class FleetInventory:
     lab_components: list[str] | None = None
     # F4 host-acquire (optional)
     provider: dict[str, Any] | None = None
+    # Secrets only the operator has (e.g. a lab's operator_secrets: SCC regcode,
+    # pre-built image URL): copied by name from the laptop's ~/.rodeo/secrets.yaml
+    # to each host before `rodeo up` — over SSH stdin, never in workshop.yaml.
+    operator_secrets: list[str] = field(default_factory=list)
+    # Extra student UIs for the access sheet, {name: host port} — e.g. a
+    # lab-in-a-box lab's exposed_services ({"smlm": 443}).
+    ui_ports: dict[str, int] = field(default_factory=dict)
 
     @property
     def ssh_user(self) -> str:
@@ -132,6 +140,18 @@ def load_inventory(path: str | Path) -> FleetInventory:
         ):
             raise ConfigError("lab.components must be a list of strings")
         lab_components = [c.strip().lower() for c in components_raw]
+
+    secrets_raw = lab.get("operator_secrets") or []
+    if not isinstance(secrets_raw, list) or not all(
+        isinstance(k, str) and re.fullmatch(r"[A-Za-z0-9_]+", k) for k in secrets_raw
+    ):
+        raise ConfigError("lab.operator_secrets must be a list of secret names (letters, digits, _)")
+
+    ui_raw = lab.get("ui_ports") or {}
+    if not isinstance(ui_raw, dict) or not all(
+        isinstance(p, int) and 0 < p < 65536 for p in ui_raw.values()
+    ):
+        raise ConfigError("lab.ui_ports must map UI names to host port numbers")
 
     defaults = raw.get("defaults") or {}
     if not isinstance(defaults, dict):
@@ -212,6 +232,8 @@ def load_inventory(path: str | Path) -> FleetInventory:
         install_url_explicit=install_url_explicit,
         lab_components=lab_components,
         provider=provider,
+        operator_secrets=list(secrets_raw),
+        ui_ports={str(k): int(v) for k, v in ui_raw.items()},
     )
 
 

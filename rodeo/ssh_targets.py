@@ -262,6 +262,14 @@ def build_ssh_target(
 
     # Bare name: VM on local plan, else KVM host id
     vms = cfg.get("vms") or {}
+    remote_liab = ((cfg.get("lab_in_a_box") or {}).get("target") or {}).get("host")
+    if name in vms and remote_liab:
+        # lab-in-a-box VMs on a remote automation host: hop through it; the
+        # inner ssh runs there with that host's own keys (which its VMs trust).
+        user, ip = resolve_vm_on_plan(cfg, name)
+        tgt = cfg["lab_in_a_box"]["target"]
+        return SshTarget(user=login_user or user, host=ip, identity_file=identity,
+                         jump_user=str(tgt.get("ssh_user") or "root"), jump_host=str(remote_liab))
     if name in vms:
         user, ip = resolve_vm_on_plan(cfg, name)
         if login_user:

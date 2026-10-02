@@ -123,6 +123,7 @@ The Harvester path is the outlier: it needs `pxe_server` (iPXE/TFTP/HTTP) and a 
 | `suse-edge` | `suse-edge` | Rancher + Elemental + EIB + 4 edge nodes (SUSE Edge 3.6; AWS: same profile + `--target aws`) |
 | `virt-workshop-aws` | `suse-virt` | Workshop overlay on harvester topology (`custom/scripts/` for image cache / NFS / sample VMs) |
 | `virt-workshop-aws-2n` | `suse-virt` | 2-node workshop overlay (budget instance tier) |
+| `smlm-workshop` | `lab-in-a-box` | SMLM server (pre-built image) + SLES / CentOS 7 / Ubuntu clients for the instruqt-SMLM track; VMs and SMLM config by lab-in-a-box |
 
 `virt-workshop-aws` / `virt-workshop-aws-2n` are workshop-specific overlays (custom scripts for suse-virt-workshop), not AWS twins of `harvester`.
 

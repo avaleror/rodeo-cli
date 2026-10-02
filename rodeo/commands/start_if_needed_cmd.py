@@ -20,7 +20,7 @@ from rich.console import Console
 
 from ..config import load_config
 from ..inventory import _load_topology
-from ..engine.libvirt import LibvirtDriver, discover_rodeo_vm_names
+from ..engine.libvirt import LibvirtDriver, discover_rodeo_vm_names, domain_name
 from .start_cmd import _start_host_services
 
 console = Console()
@@ -69,6 +69,12 @@ def start_if_needed_cmd(config_dir: str | None, config_path: str) -> None:
     # host rather than assuming a fixed 3-node Harvester set.
     vm_names = list((cfg or {}).get("vms", {}).keys()) or discover_rodeo_vm_names(uri)
 
+    from ._cloud_vms import is_cloud_lab, power
+
+    if is_cloud_lab(cfg):
+        power(cfg, "start", vm_names, console)
+        return
+
     if components:
         _start_host_services(components)
 
@@ -76,14 +82,15 @@ def start_if_needed_cmd(config_dir: str | None, config_path: str) -> None:
         with LibvirtDriver(uri) as lv:
             ordered = [v for v in start_order if v in vm_names] or vm_names
             for name in ordered:
-                if lv.is_running(name):
+                dom = domain_name(cfg, name)
+                if lv.is_running(dom):
                     console.print(f"  [dim]already running[/dim] {name}")
                     continue
                 console.print(f"  [dim]start[/dim] {name}")
                 try:
-                    lv.start(name)
+                    lv.start(dom)
                     deadline = time.time() + 30
-                    while not lv.is_running(name) and time.time() < deadline:
+                    while not lv.is_running(dom) and time.time() < deadline:
                         time.sleep(1)
                     console.print(f"    [dim]started[/dim] {name}")
                 except Exception as exc:

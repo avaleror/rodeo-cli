@@ -48,7 +48,7 @@ from ..privilege import (
 )
 from ..paths import fix_invoking_ownership, invoking_home
 from ..providers.remote_up import execute_aws_up, on_ec2
-from ..secretgen import ensure_secrets_file
+from ..secretgen import append_secret, ensure_plan_secrets, ensure_secrets_file, secrets_path
 from .deploy import execute_deploy
 
 console = Console()
@@ -262,6 +262,8 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
     _, _, created = ensure_secrets_file()
     where = "~/.rodeo/secrets.yaml"
     console.print(f"[green]✓[/green]  Secrets {'generated' if created else 'found'} ({where}).")
+    if lab is not None and (lab / "rodeo-plan.yaml").exists():
+        _ensure_plan_secrets(lab / "rodeo-plan.yaml", assume_yes)
 
     if no_deploy:
         console.print("\n[bold]Ready.[/bold] To deploy when you are:")
@@ -507,6 +509,32 @@ def _persist_plan_overlays(lab: Path, cfg: dict) -> None:
 # --------------------------------------------------------------------------- #
 # Steps
 # --------------------------------------------------------------------------- #
+
+def _ensure_plan_secrets(plan_path: Path, assume_yes: bool) -> None:
+    """Generate the plan's own ??key secrets; ask for the operator-supplied ones."""
+    import yaml
+
+    plan = yaml.safe_load(plan_path.read_text()) or {}
+    from ..config import LAB_SECRETS_FILE
+
+    generated, missing = ensure_plan_secrets(plan, lab_path=plan_path.parent / LAB_SECRETS_FILE)
+    if generated:
+        console.print(f"[green]✓[/green]  Generated lab secrets: {', '.join(generated)}")
+    if not missing:
+        return
+    if assume_yes:
+        console.print(
+            f"[red]✗[/red]  This lab needs secrets only you can provide: {', '.join(missing)}\n"
+            f"   Add them to {secrets_path()} (key: \"value\") and re-run."
+        )
+        raise SystemExit(1)
+    for key in missing:
+        value = Prompt.ask(f"Value for secret [bold]{key}[/bold]", password=True)
+        if not value:
+            raise SystemExit(f"{key} is required.")
+        append_secret(secrets_path(), key, value)
+    console.print(f"[green]✓[/green]  Saved {', '.join(missing)} to {secrets_path()}")
+
 
 def _print_host(host: dict) -> None:
     t = Table(show_header=False, box=None, pad_edge=False)

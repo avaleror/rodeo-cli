@@ -175,6 +175,44 @@ def test_explicit_install_url_wins_over_the_ref():
     assert ref == "v0.15.0"
 
 
+def test_rodeo_repo_on_github_moves_the_installer_url(monkeypatch):
+    from rodeo.install_source import default_install_url, repo_url
+
+    monkeypatch.setenv("RODEO_REPO", "https://github.com/fork/rodeo-cli.git")
+    assert repo_url() == "https://github.com/fork/rodeo-cli.git"
+    assert install_url_for_ref("dev") == (
+        "https://raw.githubusercontent.com/fork/rodeo-cli/dev/install.sh"
+    )
+    assert resolve_install_source({"type": "aws"}) == (
+        "https://raw.githubusercontent.com/fork/rodeo-cli/main/install.sh", None
+    )
+    assert default_install_url().endswith("/fork/rodeo-cli/main/install.sh")
+
+
+def test_install_url_template_override(monkeypatch):
+    from rodeo.install_source import INSTALL_URL_TEMPLATE
+
+    monkeypatch.setenv("RODEO_REPO", "https://git.internal/rodeo-cli.git")
+    assert install_url_for_ref("v1") == INSTALL_URL_TEMPLATE.format(ref="v1")
+    monkeypatch.setenv("RODEO_INSTALL_URL_TEMPLATE", "https://mirror.internal/{ref}/install.sh")
+    assert install_url_for_ref("v1") == "https://mirror.internal/v1/install.sh"
+    monkeypatch.setenv("RODEO_INSTALL_URL_TEMPLATE", "https://mirror.internal/install.sh")
+    with pytest.raises(ConfigError):
+        install_url_for_ref("v1")
+
+
+def test_bootstrap_forwards_rodeo_repo(monkeypatch):
+    from rodeo.install_source import bootstrap_fragment
+
+    assert "RODEO_REPO" not in bootstrap_fragment(install_url="https://x/install.sh", ref="main")
+    monkeypatch.setenv("RODEO_REPO", "https://github.com/fork/rodeo-cli.git")
+    frag = bootstrap_fragment(install_url="https://x/install.sh", ref="main")
+    assert "| RODEO_REPO=https://github.com/fork/rodeo-cli.git bash -s -- --ref main" in frag
+    assert "RODEO_REPO=https://github.com/fork/rodeo-cli.git bash;" in bootstrap_fragment(
+        install_url="https://x/install.sh"
+    )
+
+
 def test_provider_ref_is_honoured_and_the_flag_beats_it():
     assert resolve_install_source({"type": "aws", "ref": "v0.15.0"})[1] == "v0.15.0"
     assert resolve_install_source({"type": "aws", "ref": "v0.15.0"}, ref="main")[1] == "main"

@@ -19,7 +19,7 @@ from ..config import load_config
 from ..inventory import _load_topology
 from ..privilege import ensure_root, is_root
 from ._options import config_options
-from ..engine.libvirt import LibvirtDriver, discover_rodeo_vm_names
+from ..engine.libvirt import LibvirtDriver, discover_rodeo_vm_names, domain_name
 
 console = Console()
 
@@ -197,6 +197,13 @@ def stop_cmd(config_path: str, config_dir: str | None, params: tuple[str, ...], 
         infra = node_templates.get(t, {}).get("infra_type", t)
         console.print(f"  [dim]infra_type={infra}[/dim] for {v}")
 
+    from ._cloud_vms import is_cloud_lab, power
+
+    if not all and is_cloud_lab(cfg):
+        ok = power(cfg, "stop", vm_names, console)
+        console.print("\n[bold green]✓  Stop complete.[/bold green]\n" if ok else "")
+        return
+
     # 1. Stop host services from components (reverse for dependents).
     if components:
         _stop_host_services(components)
@@ -207,12 +214,12 @@ def stop_cmd(config_path: str, config_dir: str | None, params: tuple[str, ...], 
         with LibvirtDriver(uri) as lv:
             # If we have stop_order, use intersection with vm_names in that order.
             ordered = [v for v in stop_order if v in vm_names] or vm_names
-            _stop_vms(lv, ordered)
+            _stop_vms(lv, [domain_name(cfg, v) for v in ordered])
     except RuntimeError as exc:
         console.print(f"[yellow]⚠  {exc} — falling back to virsh shutdown[/yellow]")
         for name in ( [v for v in stop_order if v in vm_names] or vm_names ):
             try:
-                subprocess.run(["virsh", "-c", uri, "shutdown", name], check=False, capture_output=True)
+                subprocess.run(["virsh", "-c", uri, "shutdown", domain_name(cfg, name)], check=False, capture_output=True)
                 console.print(f"  [dim]virsh shutdown[/dim] {name}")
             except Exception:
                 pass

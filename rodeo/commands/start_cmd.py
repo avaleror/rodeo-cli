@@ -22,7 +22,7 @@ from ..config import load_config
 from ..inventory import _load_topology
 from ..privilege import ensure_root, is_root
 from ._options import config_options
-from ..engine.libvirt import LibvirtDriver, discover_rodeo_vm_names
+from ..engine.libvirt import LibvirtDriver, discover_rodeo_vm_names, domain_name
 
 console = Console()
 
@@ -163,6 +163,13 @@ def start_cmd(config_path: str, config_dir: str | None, params: tuple[str, ...],
     else:
         vm_names = list((cfg or {}).get("vms", {}).keys()) or discover_rodeo_vm_names(uri0)
 
+    from ._cloud_vms import is_cloud_lab, power
+
+    if not all and is_cloud_lab(cfg):
+        ok = power(cfg, "start", vm_names, console)
+        console.print("\n[bold green]✓  Start complete.[/bold green]\n" if ok else "")
+        return
+
     # Start host services first (forward).
     if components:
         _start_host_services(components)
@@ -185,7 +192,7 @@ def start_cmd(config_path: str, config_dir: str | None, params: tuple[str, ...],
             ordered = [v for v in start_order if v in vm_names] or vm_names
             net = (cfg or {}).get("network", {})
             for idx, name in enumerate(ordered):
-                if name not in defined:
+                if domain_name(cfg, name) not in defined:
                     # A name from start_order/vm_names that was never deployed
                     # (e.g. harvester3 on a 2-node lab). Skip, do not crash.
                     console.print(f"  [dim]skip (not defined on this host)[/dim] {name}")
@@ -199,13 +206,13 @@ def start_cmd(config_path: str, config_dir: str | None, params: tuple[str, ...],
                             "     [bold]rodeo pull-edge-image[/bold]"
                         )
                         continue
-                if lv.is_running(name):
+                if lv.is_running(domain_name(cfg, name)):
                     console.print(f"  [dim]skip (already running)[/dim] {name}")
                 else:
                     console.print(f"  [dim]start[/dim] {name}")
-                    lv.start(name)
+                    lv.start(domain_name(cfg, name))
                     start_t = time.time()
-                    while not lv.is_running(name) and time.time() - start_t < 30:
+                    while not lv.is_running(domain_name(cfg, name)) and time.time() - start_t < 30:
                         time.sleep(1)
                     console.print(f"    [dim]started[/dim] {name}")
                 # Before starting Rancher, wait for the Harvester VIP so the
@@ -222,7 +229,7 @@ def start_cmd(config_path: str, config_dir: str | None, params: tuple[str, ...],
         console.print(f"[yellow]⚠  {exc} — falling back to virsh[/yellow]")
         for name in ( [v for v in start_order if v in vm_names] or vm_names ):
             try:
-                subprocess.run(["virsh", "-c", uri, "start", name], check=False, capture_output=True)
+                subprocess.run(["virsh", "-c", uri, "start", domain_name(cfg, name)], check=False, capture_output=True)
                 console.print(f"  [dim]virsh start[/dim] {name}")
             except Exception:
                 pass

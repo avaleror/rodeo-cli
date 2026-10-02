@@ -17,7 +17,7 @@ console = Console()
 def restart_cmd(vm: str, config_path: str, config_dir: str | None, hard: bool) -> None:
     """Restart a VM (ACPI shutdown + start). Use 'all' to cycle every VM."""
     from ..config import load_config
-    from ..engine.libvirt import LibvirtDriver
+    from ..engine.libvirt import LibvirtDriver, domain_name
 
     if config_dir is None:
         ctx = click.get_current_context()
@@ -30,9 +30,17 @@ def restart_cmd(vm: str, config_path: str, config_dir: str | None, hard: bool) -
         raise SystemExit(1)
     targets = vm_names if vm == "all" else [vm]
 
+    from ._cloud_vms import is_cloud_lab, power
+
+    if is_cloud_lab(cfg):
+        if not power(cfg, "restart", targets, console):
+            raise SystemExit(1)
+        return
+
     with LibvirtDriver(cfg["libvirt"]["uri"]) as lv:
         for name in targets:
-            info = lv.get_vm(name)
+            dom = domain_name(cfg, name)
+            info = lv.get_vm(dom)
             if info.state == "not found":
                 console.print(f"[yellow]  {name}: not found, skipping[/yellow]")
                 continue
@@ -40,18 +48,18 @@ def restart_cmd(vm: str, config_path: str, config_dir: str | None, hard: bool) -
             if info.state == "running":
                 console.print(f"  [dim]shutting down[/dim]  {name}...", end="")
                 if hard:
-                    lv.destroy(name)
+                    lv.destroy(dom)
                 else:
-                    lv.shutdown(name)
+                    lv.shutdown(dom)
                 # wait up to 90s for clean stop
                 for _ in range(90):
                     time.sleep(1)
-                    if not lv.is_running(name):
+                    if not lv.is_running(dom):
                         break
                 console.print(" [green]stopped[/green]")
 
             console.print(f"  [dim]starting[/dim]      {name}...", end="")
-            lv.start(name)
+            lv.start(dom)
             console.print(" [green]started[/green]")
 
     console.print()

@@ -17,6 +17,7 @@ See also: [Get started](get-started.md) (single host), [Architecture](architectu
 | **F2.1** | Shipped | Failure forensics | `rodeo fleet diagnose` |
 | **F4a** | Shipped (MVP) | AWS host-acquire | `rodeo fleet provision`, `deprovision` |
 | **F4b–d** | Roadmap | GCP → Vultr BM → Hetzner | — |
+| **F5** | Preview (AWS) | Student claim portal: each student opens a link and gets their own lab | `rodeo fleet open-access`, `rodeo fleet portal ...` ([design](claim-portal.md), [plan](claim-portal-plan.md)) |
 
 Host prerequisites (after [`install.sh`](https://github.com/avaleror/rodeo-cli/blob/main/install.sh) on each lab machine):
 
@@ -40,7 +41,7 @@ OpenSSH-only.
 
 | Order | Provider | Status |
 |-------|----------|--------|
-| **F4a** | **AWS** (`boto3`, `pip install 'rodeo-cli[aws]'`) | **MVP shipped** — create/reuse by tags, wait running + SSH, write `hosts[]`, terminate tagged only |
+| **F4a** | **AWS** (`boto3`, the `[aws]` extra: see [Install](install.md)) | **MVP shipped** — create/reuse by tags, wait running + SSH, write `hosts[]`, terminate tagged only |
 | **F4b** | **GCP** (`google-cloud-compute`) | Planned |
 | **F4c** | **Vultr Bare Metal** (`[vultr]` extra) | Planned — after GCP; real metal for nested KVM |
 | **F4d** | **Hetzner Cloud** (`hcloud`) | Planned — after Vultr; nested KVM must be validated |
@@ -52,7 +53,7 @@ Changing the nested phase engine for multi-host.
 (terminate only — edit or re-provision to refresh YAML); auto SG later.
 
 ```bash
-pip install 'rodeo-cli[aws]'   # once, on the laptop
+pip install -e '.[aws]'        # once, in your rodeo-cli checkout (see install.md)
 # AWS API creds (boto3 — never in YAML). Either:
 #   ~/.aws/credentials  (+ optional AWS_PROFILE / ~/.aws/config)
 #   or AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY (+ optional AWS_SESSION_TOKEN)
@@ -112,8 +113,8 @@ lab:
   # ref: main                        # rodeo-cli git ref the hosts should run
   # install_url: https://…           # fork or air-gapped mirror of install.sh
 defaults:
-  ssh_user: ec2-user                 # AMI user (ec2-user / sles / root)
-  # identity_file: ignored — rodeo uses managed ~/.rodeo/ssh/id_ed25519
+  ssh_user: ec2-user                 # AMI user (ec2-user / sles / root); non-root runs via sudo -n
+  # identity_file: optional; default is the managed ~/.rodeo/ssh/id_ed25519
 hosts:
   - id: student-01
     ssh: 203.0.113.11               # host or user@host
@@ -278,14 +279,155 @@ no Rancher node at all). Set `lab.components: [harvester]` or
 `[rancher]` in the inventory to suppress the URL(s) that don't apply to your
 workshop.
 
+The access sheet is for the instructor. To give each student their own lab (link,
+credentials, and reachability from any network), use the
+[claim portal](#claim-portal-f5).
+
+### Student network access (AWS)
+
+A rodeo-managed security group only admits the operator's IP, so students cannot
+reach their labs by default. To let them in from any network without knowing their
+IP, set `provider.student_access: open` and open the lab UI ports once every lab is
+up:
+
+```yaml
+provider:
+  type: aws
+  student_access: open     # operator (default) | open
+```
+
+```bash
+rodeo fleet provision -f workshop.yaml     # ports stay operator-only
+rodeo fleet deploy -f workshop.yaml
+rodeo fleet status -f workshop.yaml        # wait until every host is complete
+rodeo fleet open-access -f workshop.yaml   # 8443/30002 open to 0.0.0.0/0
+rodeo fleet open-access --close -f workshop.yaml
+```
+
+`open-access` refuses unless every host has finished all phases and its Harvester
+and Rancher admin passwords are strong (16+ characters with upper, lower and digit).
+The check runs on each host and reports only strong / weak / missing; passwords never
+leave the host. The security group is shared by the whole workshop, so one host that
+is not ready blocks opening for all. Ports follow `lab.components`; SSH (`22`) always
+stays operator-only. Any later `fleet provision` closes the ports again. With
+`provider.security_group_ids` (BYO) rodeo changes nothing and asks you to open the
+ports yourself.
+
+### Claim portal (F5)
+
+Students open one HTTPS page and enter the **workshop code** you give them (from
+`portal info`, e.g. `RODEO-XVFD-20260930`; case, spaces and dashes do not matter).
+Only then do they see the lab board and the claim form: name, email and a 6-digit
+PIN of their choice (obvious ones such as 123456 or 111111 are refused). They get
+their own lab: Harvester and Rancher URLs with the admin passwords and, optionally,
+an SSH key for their lab host. You see who has which lab. Design:
+[claim-portal.md](claim-portal.md).
+
+Getting back to a lab:
+
+1. **Same device:** the browser remembers the lab for 3 days; reopening the portal
+   shows "Continue to your lab", even before the workshop code. "Not you? Forget this
+   device" clears it on shared computers.
+2. **Another device:** "Already have a lab? Get it back" asks only for email and PIN
+   (the email finds the lab, the PIN proves it is theirs, so two students sharing a
+   PIN is harmless). It returns the same lab under a new link; the old link stops
+   working. It works while claiming is closed. Five wrong PINs lock the email.
+3. **Anything else:** you have every lab on the instructor page, and
+   `rodeo fleet portal unlock EMAIL` clears a lockout.
+
+Privacy: every page has a footer line ("we only keep your name and email for this
+workshop, deleted when it ends; essential cookies only") linking to `/privacy`, and
+the claim form repeats it where data is entered. `/privacy` (public, no code needed)
+explains what is kept, for how long, and the three cookies (`csrf`, `access`, `lab`);
+its durations come from the same constants that set the cookies, and a test fails if
+they drift. Have your privacy team review the wording before a public event.
+
+```yaml
+provider:
+  type: aws
+  student_access: open        # required: students must reach their labs
+portal:
+  enabled: true
+  mode: open                  # open (workshop code + email) | roster (invite links) | both
+  # roster: students.csv      # roster / both: CSV with name,email[,host_id]
+  student_ssh: true           # per-lab `student` user + key; opens :22 (key-only)
+  title: SUSE Virtualization workshop
+  guide_url: https://avaleror.github.io/suse-virt-workshop/   # or /guide/ if served by the portal
+  # code_letters: 4           # random letters in RODEO-XXXX-YYYYMMDD (4-8; 6 = 191M codes)
+  # hostname: labs.example.com   # default portal-<ip>.sslip.io (Let's Encrypt)
+  # instance_type: t3.small
+```
+
+```bash
+rodeo fleet provision -f workshop.yaml     # labs + a small portal VM (own SG: 443/80 open, 22 operator)
+rodeo fleet portal up -f workshop.yaml     # portal service + Caddy with a real TLS certificate
+rodeo fleet deploy -f workshop.yaml
+rodeo fleet open-access -f workshop.yaml   # once every lab is complete (adds :22 with student_ssh)
+rodeo fleet portal publish --watch -f workshop.yaml  # follow the deploy on the instructor page;
+                                           # each lab is published the moment it is ready
+rodeo fleet portal info -f workshop.yaml   # URL + workshop code for the slide
+rodeo fleet portal status -f workshop.yaml # who has which lab
+rodeo fleet portal admin-link -f workshop.yaml  # instructor page (all lab credentials; do not project)
+rodeo fleet deprovision --yes -f workshop.yaml  # labs + portal (--keep-portal to keep it)
+```
+
+| Instructor command | What |
+|--------------------|------|
+| `portal publish [--watch] [--interval 60]` | Push labs to the portal. With `--watch`: deploy progress per lab (phases done, current phase, elapsed, failures) on the instructor page, and each lab becomes claimable as soon as it is ready. Keep the laptop awake ([install.md](install.md#differences-and-things-to-know)) |
+| `portal status` / `export [-o file.csv]` | Claims: lab, name, email, how, when claimed, first opened |
+| `portal admin-link` | New secret link to the instructor page: every claim plus every lab's URLs, passwords and SSH key (the previous link stops working) |
+| `portal open` / `close` / `rotate-code` | Claim window; a new workshop code (logs everyone out of the board; personal lab links keep working) |
+| `portal release LAB` / `revoke EMAIL` / `reassign EMAIL LAB` / `unlock EMAIL` | Fix mistakes during the workshop |
+| `portal invite [--rotate]` | Roster mode: reserve labs, write `<workshop>-invites.csv` (0600) with personal links |
+
+What protects what:
+
+- **The portal is passive.** It never connects to lab hosts or cloud APIs and holds no
+  rodeo SSH key and no cloud credentials. The laptop pushes lab records to it over SSH,
+  on stdin. The portal code is `rodeo/portal/` (standard library only), copied verbatim
+  and run under a hardened systemd unit as an unprivileged user.
+- **Workshop code first.** The portal's hostname is public within minutes (TLS
+  certificates are logged in Certificate Transparency), so the front page shows
+  nothing but a code field until the code is entered. After that a cookie (bound to
+  the current code, 24 h) shows the board of every lab (free / claimed / building)
+  with the claimant's *name*, never their email or any credential, and the claim
+  form. The default code has 4 random letters (331,776 codes); with the failure limit
+  below one address gets about 0.4% odds over an 8-hour workshop. Raise
+  `portal.code_letters` for more, and `rotate-code` if a code leaks.
+- **Workshop guide link:** with `portal.guide_url` every student page (claim page, and
+  their lab page above the credentials) links to the exercises: an `https://` URL such as
+  GitHub Pages, or a path served by the portal itself. The guide stays on GitHub Pages
+  by default because the portal is destroyed with the fleet, and students keep the guide
+  after the workshop. Change it with `portal up` at any time; claims are kept.
+- **The instructor page**, behind a secret link, shows emails, deploy progress and
+  every lab's credentials.
+- **Claims:** personal links are 24 random bytes stored as SHA-256, PINs as scrypt,
+  5 wrong PINs lock an email, CSRF on every form, no-store and CSP headers. Only
+  *failed* attempts (wrong code or PIN, unknown links) count against a limit of 30 per
+  10 minutes per address, so a whole classroom behind one NAT address can claim.
+  Logs never contain tokens, emails, codes, PINs or passwords.
+- **Student SSH:** a `student` user per lab host, key-only, with its own key generated
+  on your laptop (`~/.rodeo/fleet/<workshop>/student-keys/`). Publish proves on every
+  host that the user has no sudo, is in no privileged group and cannot read `/root`,
+  where the fleet-wide rodeo key lives; any failed check aborts. Students never get
+  root on a lab host.
+- `publish` is safe to re-run (after a `fleet retry`, or when a lab finishes later):
+  labs that are not ready are shown to students as "still building" and are never
+  assigned.
+
 ---
 
 ## OpenSSH requirements
 
 - Key-based auth with `BatchMode=yes` (no password prompts).
-- Host keys are not verified (`StrictHostKeyChecking=no`,
-  `UserKnownHostsFile=/dev/null`) — same trade-off as host→VM `rodeo/ssh.py`.
-  Workshop hosts are treated as ephemeral lab machines.
+- Host keys are trusted on first use and then pinned per workshop
+  (`StrictHostKeyChecking=accept-new`, `~/.rodeo/fleet/<workshop>/known_hosts`), because
+  fleet sends lab passwords and student keys over these connections. Provisioning
+  forgets the key of every address it creates (EC2 reuses public IPs). If a host is
+  rebuilt outside rodeo and SSH reports a changed host key, remove it with
+  `ssh-keygen -R <ip> -f ~/.rodeo/fleet/<workshop>/known_hosts`. Host→VM connections
+  inside a lab (`rodeo/ssh.py`) still skip verification: those VMs are recreated all
+  the time on a private network.
 - `ssh` on the laptop PATH; Agent / `ProxyJump` / `identity_file` work as usual.
 - On each remote: `rodeo` + `tmux` on PATH for the SSH user; typically `root@`.
 
@@ -398,6 +540,7 @@ hosts: []                           # empty → provision creates; or pre-seed s
 Validation rules (fail closed):
 
 - `provider.type` ∈ `{aws, gcp, vultr, hetzner}`.
+- `provider.student_access` ∈ `{operator, open}` when set (default `operator`); see [Student network access](#student-network-access-aws).
 - `provider.count` integer 1–64 when set; if `hosts:` non-empty and count omitted, ensure exactly those ids (reuse/create by `rodeo-host-id`).
 - SSH identity is managed under `~/.rodeo/ssh/id_ed25519` (auto-created; imported to EC2 as key pair `rodeo`). `defaults.identity_file` / `provider.key_name` are optional.
 - Type-specific required keys enforced by that adapter’s `validate()` only.

@@ -9,6 +9,9 @@ TAG_MANAGED_BY_VALUE = "rodeo"
 TAG_WORKSHOP = "rodeo-workshop"
 TAG_HOST_ID = "rodeo-host-id"
 SINGLE_HOST_ID = "primary"
+# Claim portal VM (F5.2): tagged so lab-only logic can tell it apart from labs.
+TAG_ROLE = "rodeo-role"
+ROLE_PORTAL = "portal"
 
 
 def ownership_tags(workshop: str, host_id: str) -> dict[str, str]:

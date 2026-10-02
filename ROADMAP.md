@@ -322,6 +322,14 @@ over OpenSSH (workshop inventory). Engine/phases stay single-host. See [docs/fle
   - [ ] F4c — **Vultr Bare Metal** (API `/v2/bare-metals`, optional `[vultr]` extra) — after GCP
   - [ ] F4d — **Hetzner Cloud** (`hcloud`) — after Vultr; nested-KVM must be validated for labs
   - Equinix Metal: **out of scope** (service sunset)
+- [ ] F5: Claim portal, so each student gets their own lab with zero network knowledge. Design: [docs/claim-portal.md](docs/claim-portal.md), plan: [docs/claim-portal-plan.md](docs/claim-portal-plan.md). All opt-in; no change to existing fleets or single-host AWS.
+  - [ ] F5.0: baseline tests pinning today's SG/provision/deprovision behaviour, then `provider.student_access: open` + password strength gate
+  - [ ] F5.1: portal service (`rodeo portal serve|admin`), roster + event-code claim flows, new code only
+  - [ ] F5.2: portal VM lifecycle (own SG, `role: portal` skips key planting, Caddy + TLS, deprovision without SG leaks)
+  - [ ] F5.3: `rodeo fleet portal publish|invite|status|...`, secrets never logged
+  - [ ] F5.4: optional student SSH (off by default, no sudo)
+  - [ ] F5.5: docs, CHANGELOG
+- [ ] Per-host nested-hop key: today every lab host carries the fleet-wide rodeo private key in `/root/.ssh/id_ed25519`, so root on one host is root on all. Replace with a per-host key; needs a live `rodeo ssh host/vm` regression. Prerequisite for ever giving students root on their host.
 
 ---
 

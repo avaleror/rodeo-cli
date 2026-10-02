@@ -265,12 +265,15 @@ class LabContentMixin:
             "cp /home/eib-config/scripts/99-k3s-registries.sh \"$EIB_REPO/scripts-available/\"\n\n"
             # Hostname combustion scripts (edge3 and edge4 standalone path).
             # Numbered 60- (not 10-): EIB reserves 00-49 for its own internal
-            # combustion scripts.
+            # combustion scripts. They write /etc/hostname directly: combustion
+            # runs in an initrd chroot without systemd as PID 1, so the old
+            # `hostnamectl set-hostname` failed and dropped every edge3/edge4
+            # first boot into emergency mode (confirmed live, AWS 2026-10-02).
             "cat > \"$EIB_REPO/scripts-available/60-hostname-edge3.sh\" << 'HNAME3_EOF'\n"
-            "#!/bin/bash\nhostnamectl set-hostname edge3\nHNAME3_EOF\n"
+            "#!/bin/bash\n# Runs inside combustion (an initrd chroot): hostnamectl cannot work here.\necho edge3 > /etc/hostname\nHNAME3_EOF\n"
             "chmod +x \"$EIB_REPO/scripts-available/60-hostname-edge3.sh\"\n\n"
             "cat > \"$EIB_REPO/scripts-available/60-hostname-edge4.sh\" << 'HNAME4_EOF'\n"
-            "#!/bin/bash\nhostnamectl set-hostname edge4\nHNAME4_EOF\n"
+            "#!/bin/bash\n# Runs inside combustion (an initrd chroot): hostnamectl cannot work here.\necho edge4 > /etc/hostname\nHNAME4_EOF\n"
             "chmod +x \"$EIB_REPO/scripts-available/60-hostname-edge4.sh\"\n\n"
             # NMState network config templates — one per edge node, generated
             # above from the definition (see nmstate_blocks).
@@ -306,6 +309,13 @@ class LabContentMixin:
             #    registration config for an Elemental build.
             #  - there is no operatingSystem.scripts field either; combustion
             #    scripts are auto-discovered from custom/scripts/ (populated above).
+            # No net.ifnames=0 kernel arg (removed 2026-10-02, live-verified on
+            # AWS): the Leap Micro 6.2 SelfInstall ISO now boots straight into
+            # the installed OS without the image's kernel args, so combustion's
+            # nmc bound the static-IP connection to "enp1s0" while every later
+            # boot named the NIC "eth0" — the node lost its IP after its first
+            # reboot. Predictable names on every boot keep the name stable; the
+            # NMState files can still say eth0 because nmc matches by MAC.
             # EIB definition files — Elemental ISO path (edge1, edge2). By default
             # these side-load the elemental-register/elemental-system-agent RPMs
             # hauler.py already staged at /home/eib-config/rpms/ (mounted at
@@ -317,7 +327,7 @@ class LabContentMixin:
             "image:\n  imageType: iso\n  arch: x86_64\n"
             f"  baseImage: {iso_fname}\n"
             "  outputImageName: elemental-edge1.iso\n\n"
-            "operatingSystem:\n  kernelArgs:\n    - net.ifnames=0\n"
+            "operatingSystem:\n"
             f"{self._eib_elemental_packages_block()}\n"
             "embeddedArtifactRegistry:\n  registries:\n"
             f"    - uri: {self.eib_ip}:5000\n"
@@ -328,7 +338,7 @@ class LabContentMixin:
             "image:\n  imageType: iso\n  arch: x86_64\n"
             f"  baseImage: {iso_fname}\n"
             "  outputImageName: elemental-edge2.iso\n\n"
-            "operatingSystem:\n  kernelArgs:\n    - net.ifnames=0\n"
+            "operatingSystem:\n"
             f"{self._eib_elemental_packages_block()}\n"
             "embeddedArtifactRegistry:\n  registries:\n"
             f"    - uri: {self.eib_ip}:5000\n"
@@ -340,13 +350,17 @@ class LabContentMixin:
             # content — without it, the image stays at the base OS's original size
             # and the build fails ("insufficient available disk space", confirmed
             # live: the base image needed ~1.3 GB more just for RKE2 + its images).
+            # edge3 (RKE2) gets 30G, edge4 (K3s) 15G: at 15G the RKE2 v1.36 node sat
+            # at 87% after Rancher's import agent landed, kubelet raised
+            # DiskPressure and evicted every workload pod (confirmed live, AWS
+            # 2026-10-02). The RAW file is sparse, so the extra size costs nothing.
             "cat > \"$EIB_REPO/rke2-edge3-definition.yaml\" << '__DEF3__'\n"
             "apiVersion: 1.2\n\n"
             "image:\n  imageType: raw\n  arch: x86_64\n"
             f"  baseImage: {raw_fname}\n"
             "  outputImageName: rke2-edge3.raw\n\n"
-            "operatingSystem:\n  kernelArgs:\n    - net.ifnames=0\n"
-            "  rawConfiguration:\n    diskSize: 15G\n\n"
+            "operatingSystem:\n"
+            "  rawConfiguration:\n    diskSize: 30G\n\n"
             "kubernetes:\n  version: v1.36.3+rke2r1\n\n"
             "embeddedArtifactRegistry:\n  registries:\n"
             f"    - uri: {self.eib_ip}:5000\n"
@@ -357,13 +371,22 @@ class LabContentMixin:
             "image:\n  imageType: raw\n  arch: x86_64\n"
             f"  baseImage: {raw_fname}\n"
             "  outputImageName: k3s-edge4.raw\n\n"
-            "operatingSystem:\n  kernelArgs:\n    - net.ifnames=0\n"
+            "operatingSystem:\n"
             "  rawConfiguration:\n    diskSize: 15G\n\n"
             "kubernetes:\n  version: v1.36.3+k3s1\n\n"
             "embeddedArtifactRegistry:\n  registries:\n"
             f"    - uri: {self.eib_ip}:5000\n"
             "      authentication:\n        username: hauler\n        password: hauler\n"
             "__DEF4__\n\n"
+            # Standalone RAW nodes (edge3/edge4) get the KVM host's SSH key for
+            # root, so Exercise 4.2/6.2's `ssh root@192.168.122.33/34` works. The
+            # eib VM's authorized_keys already holds exactly that key (it is how
+            # rodeo itself reaches this VM). EIB requires createHomeDir: true
+            # whenever a user has sshKeys.
+            "HOSTKEY=$(grep -m1 -E '^ssh-' /root/.ssh/authorized_keys)\n"
+            "for f in rke2-edge3 k3s-edge4; do\n"
+            "  sed -i \"/^operatingSystem:\\$/a\\\\  users:\\\\n    - username: root\\\\n      createHomeDir: true\\\\n      sshKeys:\\\\n        - $HOSTKEY\" \"$EIB_REPO/$f-definition.yaml\"\n"
+            "done\n\n"
             # Commit and push to local Gitea
             "git -C \"$EIB_REPO\" init\n"
             "git -C \"$EIB_REPO\" config user.email \"rodeo@rodeo.local\"\n"

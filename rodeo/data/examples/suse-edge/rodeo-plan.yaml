@@ -46,7 +46,7 @@ versions:
   cert_manager: "v1.20.1"
   elemental_operator_crds: "1.9.2"
   elemental_operator: "1.9.2"
-  elemental_ui_extension: "3.0.1"
+  elemental_ui_extension: "3.0.3"
   eib: "1.3.4"
 
 storage:

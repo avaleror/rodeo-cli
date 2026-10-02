@@ -18,8 +18,8 @@ def test_suse_virt_declares_harvester_ui_extension():
 
 def test_suse_virt_versions_bumped_without_touching_suse_edge():
     """2026-09-16: Harvester 1.8.1 -> 1.8.2, Rancher 2.14.1 -> 2.14.5 for the
-    suse-virt (Harvester-family) profiles only. SUSE Edge stays on Rancher
-    2.14.1 for now — its own versions dict extends the same shared
+    suse-virt (Harvester-family) profiles only. 2026-10-02: SUSE Edge moves to
+    3.7 (Rancher 2.15.1 / K3s v1.36.3) on its own — its versions dict extends the same shared
     BASE_VERSIONS constant, so this guards against a future edit to
     BASE_VERSIONS accidentally dragging Edge's Rancher version along."""
     from rodeo.profiles.suse_edge import SuseEdgeProfile
@@ -29,7 +29,8 @@ def test_suse_virt_versions_bumped_without_touching_suse_edge():
     assert virt_versions["rancher"] == "2.14.5"
 
     edge_versions = SuseEdgeProfile().default_cfg().get("versions", {})
-    assert edge_versions["rancher"] == "2.14.1"
+    assert edge_versions["rancher"] == "2.15.1"
+    assert edge_versions["k3s"] == "v1.36.3+k3s1"
 
 
 def test_rancher_phase_reads_ui_extensions():

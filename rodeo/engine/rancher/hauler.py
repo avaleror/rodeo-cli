@@ -103,15 +103,18 @@ class HaulerMixin:
             f"{raw_decompress_cmd}\n"
             f'curl -fsSL "http://localhost:8080/elemental-register.rpm" -o "/home/eib-config/rpms/elemental-register.rpm"\n'
             f'curl -fsSL "http://localhost:8080/elemental-system-agent.rpm" -o "/home/eib-config/rpms/elemental-system-agent.rpm"\n'
-            # k3s registry mirror script — EIB runs this during image build to embed
-            # /etc/rancher/k3s/registries.yaml into the edge node OS so ALL container
-            # pulls (docker.io, registry.suse.com, ghcr.io) go through the Hauler
-            # registry at boot time, keeping edge nodes fully airgapped.
+            # Registry mirror script — runs as a combustion script on first boot to
+            # write registries.yaml so ALL container pulls (docker.io,
+            # registry.suse.com, ghcr.io) go through the Hauler registry,
+            # keeping edge nodes fully airgapped. Writes both paths: K3s reads
+            # /etc/rancher/k3s/, RKE2 (edge3) reads /etc/rancher/rke2/ — the
+            # k3s-only version silently left the RKE2 node without the mirror.
             f"cat > /home/eib-config/scripts/99-k3s-registries.sh << 'K3S_REG'\n"
             "#!/bin/bash\n"
             "set -euo pipefail\n"
-            "mkdir -p /etc/rancher/k3s\n"
-            "cat > /etc/rancher/k3s/registries.yaml << 'EOF'\n"
+            "for d in /etc/rancher/k3s /etc/rancher/rke2; do\n"
+            "mkdir -p \"$d\"\n"
+            "cat > \"$d/registries.yaml\" << 'EOF'\n"
             "mirrors:\n"
             '  "docker.io":\n'
             "    endpoint:\n"
@@ -123,6 +126,7 @@ class HaulerMixin:
             "    endpoint:\n"
             f'      - "http://{self.eib_ip}:5000"\n'
             "EOF\n"
+            "done\n"
             "K3S_REG\n"
             "chmod +x /home/eib-config/scripts/99-k3s-registries.sh\n\n"
         )

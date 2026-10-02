@@ -1,4 +1,4 @@
-"""SUSE Edge 3.6 rodeo profile — Rancher Prime + Elemental + EIB + edge nodes on KVM."""
+"""SUSE Edge 3.7 rodeo profile — Rancher Prime + Elemental + EIB + edge nodes on KVM."""
 from __future__ import annotations
 
 from .base import BASE_VERSIONS, RodeoProfile
@@ -24,14 +24,19 @@ class SuseEdgeProfile(RodeoProfile):
         "edge4":   {"ip": "192.168.122.34", "user": "root"},
     }
 
-    # SUSE Edge 3.6 component versions.
-    # Management cluster uses K3s (lab) — production SUSE Edge uses RKE2 v1.35.3+rke2r3.
+    # SUSE Edge 3.7 component versions.
+    # Management cluster uses K3s (lab) — production SUSE Edge uses RKE2 v1.36.3+rke2r1.
+    # Rancher/K3s are pinned here instead of inherited from BASE_VERSIONS: Rancher
+    # 2.15 needs Kubernetes >= 1.36 support (chart kubeVersion < 1.37.0-0), while
+    # the Harvester-family profiles still run 2.14.x on 1.35.
     versions = {
         **BASE_VERSIONS,
-        "elemental_operator_crds": "1.9.0",
-        "elemental_operator":      "1.9.0",
-        "elemental_ui_extension":  "3.0.1",
-        "eib":                     "1.3.3.1",
+        "rancher":                 "2.15.1",
+        "k3s":                     "v1.36.3+k3s1",
+        "elemental_operator_crds": "1.9.2",
+        "elemental_operator":      "1.9.2",
+        "elemental_ui_extension":  "3.0.3",
+        "eib":                     "1.3.4",
     }
 
     resources = {
@@ -56,12 +61,12 @@ class SuseEdgeProfile(RodeoProfile):
         edge_nodes = [(n, v) for n, v in cfg.get("vms", {}).items() if n.startswith("edge")]
         if not edge_nodes:
             return []
-        lines = ["[bold]Edge node reference[/bold]  (static DHCP — MAC determines IP)"]
+        lines = ["[bold]Edge node reference[/bold]  (static IP baked into each EIB image, matched by MAC)"]
         lines.append("  node    MAC                  IP")
         for name, info in sorted(edge_nodes):
             mac = info.get("mac", "—")
             ip = info.get("ip", "—")
-            lines.append(f"  {name:<7} {mac:<20} {ip}  (DHCP pre-assigned)")
+            lines.append(f"  {name:<7} {mac:<20} {ip}")
         lines.append("")
         return lines
 

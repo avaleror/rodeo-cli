@@ -1,10 +1,13 @@
 ---
+# Owned by nobody (65534): with root_squash, root on a lab VM writes as
+# nobody, so a root-owned 0755 directory would be read-only for every client.
+# Still not world-writable.
 - name: Create NFS export directory
   ansible.builtin.file:
     path: /srv/nfs/lab
     state: directory
-    owner: root
-    group: root
+    owner: "65534"
+    group: "65534"
     mode: "0755"
 
 - name: Configure NFS export for lab VM subnet

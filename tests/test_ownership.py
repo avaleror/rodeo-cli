@@ -39,3 +39,5 @@ def test_nfs_role_has_no_fixed_password():
     assert "no_root_squash" not in text
     assert "state: absent" in text
     assert 'mode: "0755"' in text
+    # root_squash maps client root to nobody; the export must be writable by it.
+    assert 'owner: "65534"' in text

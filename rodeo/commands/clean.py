@@ -10,7 +10,7 @@ from pathlib import Path
 import click
 from rich.console import Console
 
-from ..engine.libvirt import LibvirtDriver, discover_rodeo_vm_names
+from ..engine.libvirt import LibvirtDriver, discover_rodeo_vm_names, names_safe_to_clean
 
 from ..config import load_config
 from ..privilege import ensure_root, is_root
@@ -73,6 +73,17 @@ def clean_cmd(
         vm_names = discover_rodeo_vm_names(uri0)
     else:
         vm_names = list( (cfg or {}).get("vms", {}).keys() ) or discover_rodeo_vm_names(uri0)
+        plan_name = (cfg or {}).get("name", "default")
+        try:
+            with LibvirtDriver(uri0) as lv:
+                xml_by_name = {name: lv.domain_xml(name) for name in vm_names}
+            vm_names, foreign = names_safe_to_clean(vm_names, xml_by_name, plan_name)
+        except Exception:
+            foreign = []
+        for name, owner in foreign:
+            console.print(
+                f"[yellow]⚠  skip {name}: owned by plan {owner}, not {plan_name}[/yellow]"
+            )
 
     # Confirmation: tailor message for --all vs normal per-plan clean.
     if not yes:

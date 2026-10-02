@@ -1,35 +1,31 @@
 ---
-- name: Create NFS export directory (world-writable for lab use)
+# Owned by nobody (65534): with root_squash, root on a lab VM writes as
+# nobody, so a root-owned 0755 directory would be read-only for every client.
+# Still not world-writable.
+- name: Create NFS export directory
   ansible.builtin.file:
     path: /srv/nfs/lab
     state: directory
-    owner: root
-    group: root
-    mode: '0777'
+    owner: "65534"
+    group: "65534"
+    mode: "0755"
 
 - name: Configure NFS export for lab VM subnet
   ansible.builtin.copy:
     dest: /etc/exports.d/rodeo-lab.conf
     owner: root
     group: root
-    mode: '0644'
+    mode: "0644"
     content: |
-      /srv/nfs/lab {{ libvirt_network_cidr }}(rw,sync,no_subtree_check,no_root_squash)
+      /srv/nfs/lab {{ libvirt_network_cidr }}(rw,sync,no_subtree_check,root_squash)
   notify: reload nfs exports
 
-- name: Create backups user for NFS access
+# Older releases created a host login with a password committed in git.
+# Drop it on the next kvm_host run. NFS here is IP-restricted, not user auth.
+- name: Remove legacy backups login
   ansible.builtin.user:
     name: backups
-    comment: "NFS backup user"
-    shell: /bin/bash
-    home: /home/backups
-    create_home: true
-    state: present
-
-- name: Set password for backups user
-  ansible.builtin.shell: echo 'backups:weakestLink' | chpasswd
-  no_log: true
-  changed_when: false
+    state: absent
 
 - name: Enable and start NFS server
   ansible.builtin.systemd:

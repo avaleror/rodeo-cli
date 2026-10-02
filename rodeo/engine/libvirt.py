@@ -2,9 +2,13 @@
 from __future__ import annotations
 
 import contextlib
+import re
 import subprocess
 from dataclasses import dataclass
 from typing import Optional
+
+PLAN_MARKER_PREFIX = "rodeo:plan="
+_PLAN_MARKER_RE = re.compile(r"rodeo:plan=([A-Za-z0-9_.-]+)")
 
 _libvirt = None  # type: ignore[assignment]
 _AVAILABLE = False
@@ -144,6 +148,49 @@ class LibvirtDriver:
                 vms.append(VMInfo(name=name, state="not found"))
         return vms
 
+    def domain_xml(self, name: str) -> str:
+        """Domain XML, or empty string when the domain is missing."""
+        try:
+            return self.conn.lookupByName(name).XMLDesc()
+        except _libvirt.libvirtError:
+            return ""
+
+    def domains_owned_by(self, plan: str) -> list[str]:
+        """Domain names whose description is ``rodeo:plan=<plan>``."""
+        owned: list[str] = []
+        try:
+            domains = self.conn.listAllDomains()
+        except _libvirt.libvirtError:
+            return owned
+        for dom in domains:
+            try:
+                xml = dom.XMLDesc()
+                name = dom.name()
+            except _libvirt.libvirtError:
+                continue
+            if plan_from_domain_xml(xml) == plan:
+                owned.append(name)
+        return sorted(owned)
+
+    def ownership_map(self) -> dict[str, list[str]]:
+        """Map plan name to the domains stamped for it. Unmarked domains are omitted."""
+        grouped: dict[str, list[str]] = {}
+        try:
+            domains = self.conn.listAllDomains()
+        except _libvirt.libvirtError:
+            return grouped
+        for dom in domains:
+            try:
+                owner = plan_from_domain_xml(dom.XMLDesc())
+                name = dom.name()
+            except _libvirt.libvirtError:
+                continue
+            if owner:
+                grouped.setdefault(owner, []).append(name)
+        for names in grouped.values():
+            names.sort()
+        return grouped
+
     def list_all_domain_names(self) -> list[str]:
         """Names of every domain on the host (any state) — used to detect
         non-rodeo VMs before tearing down shared resources."""
@@ -259,6 +306,33 @@ class LibvirtDriver:
 # host instead of assuming a fixed node list — so no phantom "harvester3" is
 # invented on a 2-node, rancher-only or edge lab.
 RODEO_VM_HINTS = ("harvester", "rancher", "edge", "eib", "rodeo")
+
+
+def plan_from_domain_xml(xml: str) -> str | None:
+    """Return the plan name stamped in a domain description, or None."""
+    match = _PLAN_MARKER_RE.search(xml or "")
+    return match.group(1) if match else None
+
+
+def names_safe_to_clean(
+    planned: list[str],
+    xml_by_name: dict[str, str],
+    plan: str,
+) -> tuple[list[str], list[tuple[str, str]]]:
+    """Split planned names into ones this plan may destroy, and foreign collisions.
+
+    Domains with no marker are treated as legacy labs and stay cleanable.
+    A domain stamped for a different plan is left alone.
+    """
+    safe: list[str] = []
+    foreign: list[tuple[str, str]] = []
+    for name in planned:
+        owner = plan_from_domain_xml(xml_by_name.get(name, ""))
+        if owner and owner != plan:
+            foreign.append((name, owner))
+        else:
+            safe.append(name)
+    return safe, foreign
 
 
 def discover_rodeo_vm_names(uri: str = "qemu:///system") -> list[str]:

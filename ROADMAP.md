@@ -69,11 +69,11 @@ and broader topology/pxe reconcile (V2).
 
 Mark libvirt objects with the plan that owns them, so the hypervisor is the source of truth, not a state file.
 
-- [ ] Write `rodeo:plan=<name>` into domain XML (`<description>`) via `vm.xml.j2`
-- [ ] `LibvirtDriver.domains_owned_by(plan)` — query by marker
-- [ ] `rodeo list` — plans on this host and the VMs each owns
-- [ ] `rodeo destroy` — delete only owned domains + their disks (replaces `clean`'s glob patterns)
-- [ ] `rodeo plan` flags foreign VMs colliding with planned names
+- [x] Write `rodeo:plan=<name>` into domain XML (`<description>`) via `vm.xml.j2`
+- [x] `LibvirtDriver.domains_owned_by(plan)` — query by marker
+- [x] `rodeo list` — plans on this host and the VMs each owns
+- [x] `rodeo clean` skips a domain stamped for a different plan. `rodeo destroy` stays the AWS host terminate command (it shipped that way). `--all` is still an explicit host reset by name hint. Disk globs stay for artifacts that are not libvirt domains.
+- [x] `rodeo plan` flags foreign VMs colliding with planned names
 
 ### B2 — Auto-reconciliation: phase-skip consults live state, not just the state file (~1 week, opt-in rollout)
 

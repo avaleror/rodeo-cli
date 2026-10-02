@@ -675,7 +675,7 @@ def fleet_provision_cmd(
     console.print(table)
     if not no_write:
         console.print(f"\n  Updated: [cyan]{inventory_path}[/cyan]")
-    console.print("  Next: [bold]rodeo fleet doctor -f …[/bold] then [bold]deploy[/bold]\n")
+    console.print("  Next: [bold]rodeo fleet deploy -f …[/bold] then [bold]doctor[/bold]\n")
 
 
 @fleet_cmd.command("deprovision")

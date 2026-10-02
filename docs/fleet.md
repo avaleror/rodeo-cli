@@ -58,8 +58,8 @@ pip install 'rodeo-cli[aws]'   # once, on the laptop
 #   or AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY (+ optional AWS_SESSION_TOKEN)
 # SSH: rodeo auto-manages ~/.rodeo/ssh/id_ed25519 and imports EC2 key pair "rodeo"
 rodeo fleet provision -f workshop.yaml    # create/reuse → write hosts[]
-rodeo fleet doctor -f workshop.yaml
-rodeo fleet deploy -f workshop.yaml
+rodeo fleet deploy -f workshop.yaml       # installs rodeo on each host, starts the lab
+rodeo fleet doctor -f workshop.yaml       # needs rodeo on the host, so after deploy
 rodeo fleet deprovision -f workshop.yaml --yes
 ```
 
@@ -141,6 +141,10 @@ rodeo fleet status -f workshop.yaml --host student-01 -j 4
 ```
 
 - Exit `0` only when every selected host succeeds.
+- Both run `rodeo` on the host, so they fail with `rodeo: command not found` until
+  it is installed. On hosts from `rodeo fleet provision` that happens in
+  `rodeo fleet deploy`, so run doctor after deploy. On BYO hosts that already ran
+  `install.sh`, doctor works before deploy too.
 - **doctor:** remote process exit is not enough — fleet also checks KVM, nested
   virt, core tools, and that a bundled profile fits RAM
   (`rodeo/fleet/doctor.py::_readiness_problems`).
@@ -154,8 +158,8 @@ rodeo fleet status -f workshop.yaml --host student-01 -j 4
 ### Instructor flow
 
 ```bash
-rodeo fleet doctor -f workshop.yaml -j 8
 rodeo fleet deploy -f workshop.yaml -j 4
+rodeo fleet doctor -f workshop.yaml -j 8     # after deploy: it needs rodeo on the host
 rodeo fleet status -f workshop.yaml          # poll until phases complete
 rodeo fleet diagnose -f workshop.yaml        # pull logs for failed hosts
 rodeo fleet retry -f workshop.yaml --failed-only

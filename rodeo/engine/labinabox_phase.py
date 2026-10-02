@@ -195,12 +195,20 @@ def _stream_managed_host(runner: "DeployRunner", lab: dict) -> Iterator["DeployE
         )
         runner._last_rc = 1
         return
-    # 1. lab-in-a-box checkout (pinned) and install.
+    # 1. lab-in-a-box checkout (source ref) and install.
     checkout = host.local_override()
     if checkout is not None:
         yield LogLine(f"Using local lab-in-a-box checkout {checkout} ({host.LIAB_PATH_ENV})")
     else:
         repo, ref = host.source(cfg)
+        if ref == host.LIAB_LATEST:
+            try:
+                ref = host.resolve_ref(repo, ref)
+            except ConfigError as exc:
+                yield LogLine(f"  ✗  {exc}")
+                runner._last_rc = 1
+                return
+            yield LogLine(f"lab-in-a-box latest release: {ref}")
         checkout = host.checkout_dir(ref)
         checkout.parent.mkdir(parents=True, exist_ok=True)
         yield LogLine(f"Fetching lab-in-a-box {ref} from {repo}...")

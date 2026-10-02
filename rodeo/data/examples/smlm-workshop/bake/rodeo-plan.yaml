@@ -35,7 +35,7 @@ operator_secrets:
 lab_in_a_box:
   source:
     repo: https://github.com/SUSE-Technical-Marketing/lab-in-a-box
-    ref: 698506e6a40d495e303a276bfa3f0aa3912bf504
+    ref: latest
   root_password: "??smlm_image_root_pass"
   # Downloaded by lab-in-a-box into its ISO_LOC when missing, checked against sha256.
   images:

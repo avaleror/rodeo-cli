@@ -1,10 +1,24 @@
+# Keeps pinned dependencies current (actions are pinned to commit SHAs, so they
+# never update on their own). Monthly and grouped: at most one PR per ecosystem.
+# Security updates are not affected by the schedule; GitHub opens them right away.
 version: 2
 updates:
   - package-ecosystem: pip
     directory: "/"
     schedule:
-      interval: weekly
+      interval: monthly
+    groups:
+      pip:
+        patterns: ["*"]
+    ignore:
+      # ruff is 0.x: every minor release adds lint rules that fail CI on
+      # existing code. Bump it by hand together with the code fixes.
+      - dependency-name: ruff
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
-      interval: weekly
+      interval: monthly
+    groups:
+      github-actions:
+        patterns: ["*"]

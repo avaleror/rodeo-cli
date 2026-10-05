@@ -13,9 +13,12 @@ Ironic's shared volume on emptyDir (the chart's default when no size is set).
 """
 from __future__ import annotations
 
+import hashlib
 import shlex
+import subprocess
 import threading
 import time
+from pathlib import Path
 from typing import Generator, Iterator
 
 import yaml
@@ -30,6 +33,25 @@ _IMAGE_CACHE_IMAGE = "registry.suse.com/suse/nginx:1.21"
 # Same directory the Metal3 chart's media server uses on the node.
 _IMAGE_CACHE_DIR = "/opt/media"
 _CHARTS = "oci://registry.suse.com/edge/charts"
+_BASE_IMAGE_FILE = "SL-Micro.x86_64-6.2-Base-GM.raw.xz"
+
+# 01-fix-growfs.sh from the 3.7 docs (50.2.2): required so the root partition
+# fills the disk Metal3 writes the image to.
+_GROWFS_SCRIPT = """#!/bin/bash
+growfs() {
+  mnt="$1"
+  dev="$(findmnt --fstab --target ${mnt} --evaluate --real --output SOURCE --noheadings)"
+  # /dev/sda3 -> /dev/sda, /dev/nvme0n1p3 -> /dev/nvme0n1
+  parent_dev="/dev/$(lsblk --nodeps -rno PKNAME "${dev}")"
+  # Last number in the device name: /dev/nvme0n1p42 -> 42
+  partnum="$(echo "${dev}" | sed 's/^.*[^0-9]\\([0-9]\\+\\)$/\\1/')"
+  ret=0
+  growpart "$parent_dev" "$partnum" || ret=$?
+  [ $ret -eq 0 ] || [ $ret -eq 1 ] || exit 1
+  /usr/lib/systemd/systemd-growfs "$mnt"
+}
+growfs /
+"""
 
 
 class TelcoPhase(RancherPhase):
@@ -62,6 +84,25 @@ class TelcoPhase(RancherPhase):
         self.image_cache_port = int(cache.get("port", 8080))
         self.image_cache_hostname = cache.get("hostname", "imagecache.local")
         self.dns_domain = cfg.get("network", {}).get("dns_domain", "rodeo.lab")
+        self.image_name = cache.get("image_name", "eibimage-downstream-cluster.raw")
+        self.eib_image = f"registry.suse.com/edge/3.7/edge-image-builder:{ver.get('eib', '1.3.4')}"
+        self.image_dir = Path(cfg.get("storage", {}).get("image_dir", "/var/lib/libvirt/images"))
+        base = telco.get("base_image", {}).get("path") or str(self.image_dir / _BASE_IMAGE_FILE)
+        self.base_raw = Path(base[:-3] if base.endswith(".xz") else base)
+        self.eib_dir = self.image_dir / "eib-telco"
+        cred = cfg.get("credentials", {})
+        self.scc_code = cred.get("scc_registration_code", "")
+        self.node_root_password = cred.get("mgmt_root_password", "")
+        bmc = telco.get("bmc", {})
+        self.bmc_address = bmc.get("address", "192.168.122.1")
+        self.bmc_port = int(bmc.get("port", 8000))
+        self.bmc_username = bmc.get("username", "admin")
+        self.bmc_password = cred.get("bmc_password", "")
+        self.sites = telco.get("sites", {})
+        self.ENROLL_TIMEOUT = int(telco.get("enroll_timeout", 2400))
+        self._site_nodes = {
+            n["name"]: n for n in _inventory_nodes(cfg) if n["name"] in self.sites
+        }
         self.success = False
 
     # ---------- boot ----------
@@ -131,6 +172,273 @@ class TelcoPhase(RancherPhase):
             yield LogLine("  done.")
         self.setup_done = True
         self.success = True
+
+    # ---------- images: downstream image (EIB) into the mgmt image cache ----------
+
+    def eib_definition(self, root_password_hash: str, ssh_public_key: str) -> dict:
+        """3.7 downstream image definition (docs 50.2.1), DHCP, no Telco extras."""
+        return {
+            "apiVersion": "1.3",
+            "image": {
+                "imageType": "raw",
+                "arch": "x86_64",
+                "baseImage": self.base_raw.name,
+                "outputImageName": self.image_name,
+            },
+            "operatingSystem": {
+                # Mandatory for the Metal3 ignition flow.
+                "kernelArgs": ["ignition.platform.id=openstack"],
+                "systemd": {
+                    "disable": [
+                        "rebootmgr",
+                        "transactional-update.timer",
+                        "transactional-update-cleanup.timer",
+                        "fstrim",
+                        "time-sync.target",
+                    ],
+                },
+                "users": [{
+                    "username": "root",
+                    "encryptedPassword": root_password_hash,
+                    "sshKeys": [ssh_public_key],
+                    "createHomeDir": True,
+                }],
+                "packages": {
+                    # jq is required by the rke2-preinstall unit in the student YAML.
+                    "packageList": ["jq"],
+                    "sccRegistrationCode": self.scc_code,
+                },
+            },
+        }
+
+    def _image_cache_key(self, definition_yaml: str) -> str:
+        st = self.base_raw.stat()
+        material = "\n".join([self.eib_image, self.base_raw.name, str(st.st_size), definition_yaml, _GROWFS_SCRIPT])
+        return hashlib.sha256(material.encode()).hexdigest()
+
+    def stream_images(self) -> Iterator[DeployEvent]:
+        if not self.scc_code:
+            self.error = "credentials.scc_registration_code is empty; EIB needs it to install jq"
+            yield LogLine(f"  ✗ {self.error}")
+            return
+        if not self.base_raw.is_file():
+            self.error = f"SL Micro base image {self.base_raw} not found (the vms phase unpacks it)"
+            yield LogLine(f"  ✗ {self.error}")
+            return
+        pub = Path(f"{self.ssh_key}.pub")
+        if not pub.is_file():
+            self.error = f"SSH public key {pub} not found"
+            yield LogLine(f"  ✗ {self.error}")
+            return
+        hashed = self._run(["openssl", "passwd", "-6", "-stdin"], timeout=30, input=self.node_root_password)
+        if hashed.returncode != 0 or not self.node_root_password:
+            self.error = "could not hash credentials.mgmt_root_password for the downstream image"
+            yield LogLine(f"  ✗ {self.error}")
+            return
+        definition = yaml.safe_dump(
+            self.eib_definition(hashed.stdout.strip(), pub.read_text().strip()),
+            default_flow_style=False, sort_keys=False,
+        )
+        # The hash covers the SL Micro image, EIB tag and definition, but not the
+        # random salt in the password hash, so key on the plain inputs instead.
+        key = self._image_cache_key(
+            definition.replace(hashed.stdout.strip(), "<root-hash>")
+        )
+        output = self.eib_dir / self.image_name
+        marker = self.eib_dir / ".rodeo-build-key"
+        if output.is_file() and marker.is_file() and marker.read_text().strip() == key:
+            yield LogLine(f"  {self.image_name} is current (same inputs), skipping the EIB build.")
+        else:
+            yield LogLine(f"Building {self.image_name} with {self.eib_image} (10-30 min)...")
+            if not (yield from self._eib_build(definition)):
+                return
+            marker.write_text(key + "\n")
+        yield LogLine(f"Publishing {self.image_name} to the image cache on mgmt...")
+        if not (yield from self._publish_image(output)):
+            return
+        self.success = True
+
+    def _eib_build(self, definition: str) -> Generator[DeployEvent, None, bool]:
+        d = self.eib_dir
+        (d / "base-images").mkdir(parents=True, exist_ok=True)
+        (d / "custom" / "scripts").mkdir(parents=True, exist_ok=True)
+        d.chmod(0o700)
+        base_link = d / "base-images" / self.base_raw.name
+        if not base_link.exists():
+            try:
+                base_link.hardlink_to(self.base_raw)
+            except OSError:
+                subprocess.run(["cp", "--reflink=auto", str(self.base_raw), str(base_link)], check=True)
+        growfs = d / "custom" / "scripts" / "01-fix-growfs.sh"
+        growfs.write_text(_GROWFS_SCRIPT)
+        growfs.chmod(0o755)
+        defn = d / "downstream-cluster-config.yaml"
+        # Holds the SCC code: root-only while it exists, removed after the build.
+        defn.touch(mode=0o600)
+        defn.write_text(definition)
+        (d / self.image_name).unlink(missing_ok=True)
+        cmd = [
+            "podman", "run", "--rm", "--privileged",
+            "-v", f"{d}:/eib", self.eib_image,
+            "build", "--definition-file", defn.name,
+        ]
+        try:
+            rc = yield from self._stream_local(cmd, timeout=3600)
+        finally:
+            defn.unlink(missing_ok=True)
+        if rc != 0 or not (d / self.image_name).is_file():
+            self.error = f"EIB build failed (rc={rc}); see {d}/_build for the logs"
+            return False
+        return True
+
+    def _publish_image(self, output: Path) -> Generator[DeployEvent, None, bool]:
+        local_sum = hashlib.sha256()
+        with output.open("rb") as f:
+            for chunk in iter(lambda: f.read(1 << 22), b""):
+                local_sum.update(chunk)
+        digest = local_sum.hexdigest()
+        have = self._ssh_run(f"cat {_IMAGE_CACHE_DIR}/{self.image_name}.sha256 2>/dev/null", timeout=15)
+        if have.returncode == 0 and have.stdout.split()[:1] == [digest]:
+            yield LogLine(f"  mgmt already serves this {self.image_name} (sha256 {digest[:12]}…).")
+            return True
+        r = self._run(
+            ["scp", "-i", str(self.ssh_key), *_ssh_opts(), str(output),
+             f"root@{self.rancher_ip}:{_IMAGE_CACHE_DIR}/{self.image_name}.partial"],
+            timeout=1800,
+        )
+        if r.returncode != 0:
+            self.error = f"copy to mgmt failed: {r.stderr.strip()}"
+            return False
+        script = (
+            "set -euo pipefail\n"
+            f"cd {_IMAGE_CACHE_DIR}\n"
+            f"echo '{digest}  {self.image_name}.partial' | sha256sum -c --quiet\n"
+            f"mv {self.image_name}.partial {self.image_name}\n"
+            # The checksum file Metal3MachineTemplate.image.checksum points at.
+            f"echo '{digest}  {self.image_name}' > {self.image_name}.sha256\n"
+            f"chmod 644 {self.image_name} {self.image_name}.sha256\n"
+            f"curl -sfI http://127.0.0.1:{self.image_cache_port}/{self.image_name} >/dev/null\n"
+        )
+        if not (yield from self._script_step(script, 300, "image cache publish failed")):
+            return False
+        yield LogLine(f"  http://{self.image_cache_hostname}:{self.image_cache_port}/{self.image_name} (sha256 {digest[:12]}…)")
+        return True
+
+    def _stream_local(self, cmd: list[str], timeout: int) -> Generator[DeployEvent, None, int]:
+        """Run a long local command, streaming its output as log lines."""
+        t0 = time.monotonic()
+        try:
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        except OSError as exc:
+            yield LogLine(f"  {exc}")
+            return 127
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            if line.strip():
+                yield LogLine(f"  {line.rstrip()}")
+            if self._stop.is_set() or time.monotonic() - t0 > timeout:
+                proc.kill()
+                break
+        return proc.wait()
+
+    # ---------- enroll: BareMetalHosts on mgmt ----------
+
+    def baremetalhost_manifest(self) -> str:
+        """BMC Secret + BareMetalHost per site host (3.7 docs, chapter 52)."""
+        docs: list[dict] = []
+        for name, site in self.sites.items():
+            node = self._site_nodes.get(name, {})
+            ns = site.get("namespace", "default")
+            if ns != "default":
+                docs.append({"apiVersion": "v1", "kind": "Namespace", "metadata": {"name": ns}})
+            docs.append({
+                "apiVersion": "v1",
+                "kind": "Secret",
+                "metadata": {"name": f"{name}-bmc-credentials", "namespace": ns},
+                "type": "Opaque",
+                "stringData": {"username": self.bmc_username, "password": self.bmc_password},
+            })
+            docs.append({
+                "apiVersion": "metal3.io/v1alpha1",
+                "kind": "BareMetalHost",
+                "metadata": {"name": name, "namespace": ns, "labels": dict(site.get("labels", {}))},
+                "spec": {
+                    "architecture": "x86_64",
+                    "online": True,
+                    "bootMACAddress": node.get("mgmt_mac", ""),
+                    # The libvirt guests have one virtio disk.
+                    "rootDeviceHints": {"deviceName": "/dev/vda"},
+                    "bmc": {
+                        "address": (
+                            f"redfish-virtualmedia://{self.bmc_address}:{self.bmc_port}"
+                            f"/redfish/v1/Systems/{node.get('uuid', '')}"
+                        ),
+                        "disableCertificateVerification": True,
+                        "credentialsName": f"{name}-bmc-credentials",
+                    },
+                },
+            })
+        return yaml.safe_dump_all(docs, default_flow_style=False, sort_keys=False)
+
+    def stream_enroll(self) -> Iterator[DeployEvent]:
+        if not self.bmc_password:
+            self.error = "credentials.bmc_password is empty"
+            yield LogLine(f"  ✗ {self.error}")
+            return
+        missing = [n for n in self.sites if not self._site_nodes.get(n, {}).get("uuid")]
+        if missing:
+            self.error = f"no libvirt UUID/MAC for {', '.join(missing)} in the definition"
+            yield LogLine(f"  ✗ {self.error}")
+            return
+        yield LogLine(f"Registering {', '.join(self.sites)} as BareMetalHosts...")
+        script = (
+            "set -euo pipefail\n"
+            f"export KUBECONFIG={self.KUBECONFIG}\n"
+            "kubectl apply -f - <<'RODEO_BMH_EOF'\n"
+            f"{self.baremetalhost_manifest()}"
+            "RODEO_BMH_EOF\n"
+        )
+        if not (yield from self._script_step(script, 120, "BareMetalHost apply failed")):
+            yield LogLine(f"  ✗ {self.error}")
+            return
+        yield LogLine("Waiting for inspection to finish (state available, up to 20 min per the docs)...")
+        if not (yield from self._wait_available()):
+            yield LogLine(f"  ✗ {self.error}")
+            return
+        self.success = True
+
+    def _wait_available(self) -> Generator[DeployEvent, None, bool]:
+        script = (
+            f"export KUBECONFIG={self.KUBECONFIG}\n"
+            "kubectl get bmh -A --no-headers"
+            " -o custom-columns=NAME:.metadata.name,STATE:.status.provisioning.state,ERR:.status.errorMessage\n"
+        )
+        t0 = time.monotonic()
+        last = ""
+        while True:
+            elapsed = time.monotonic() - t0
+            r = self._ssh_script(script, timeout=30)
+            states = {}
+            for line in r.stdout.splitlines():
+                parts = line.split(None, 2)
+                if len(parts) >= 2 and parts[0] in self.sites:
+                    states[parts[0]] = (parts[1], parts[2] if len(parts) > 2 and parts[2] != "<none>" else "")
+            summary = ", ".join(f"{n}={st}" for n, (st, _) in sorted(states.items()))
+            if len(states) == len(self.sites) and all(st == "available" for st, _ in states.values()):
+                yield ProgressUpdate("BareMetalHosts available", elapsed, self.ENROLL_TIMEOUT)
+                yield LogLine(f"  {summary}")
+                return True
+            errors = [f"{n}: {e}" for n, (_, e) in states.items() if e]
+            if elapsed >= self.ENROLL_TIMEOUT:
+                self.error = f"BareMetalHosts not available after {self.ENROLL_TIMEOUT // 60} min ({summary}) {'; '.join(errors)}"
+                return False
+            yield ProgressUpdate("BareMetalHosts available", elapsed, self.ENROLL_TIMEOUT)
+            if summary != last or errors:
+                m, s = divmod(int(elapsed), 60)
+                yield LogLine(f"  {m:02d}:{s:02d}  {summary or 'no hosts yet'}" + (f"  ({'; '.join(errors)})" if errors else ""))
+                last = summary
+            if self._sleep(self.ROLLOUT_POLL):
+                return False
 
     # ---------- steps ----------
 
@@ -360,3 +668,18 @@ class TelcoPhase(RancherPhase):
             yield LogLine(f"  {m:02d}:{s:02d} / {self.ROLLOUT_TIMEOUT // 60}:00, {r.stdout.strip()}")
             if self._sleep(self.ROLLOUT_POLL):
                 return False
+
+
+def _ssh_opts() -> list[str]:
+    from ..ssh import ssh_opts
+
+    return list(ssh_opts())
+
+
+def _inventory_nodes(cfg: dict) -> list[dict]:
+    from .. import inventory
+
+    try:
+        return inventory.build_inventory(cfg).get("vm_nodes", [])
+    except Exception:
+        return []

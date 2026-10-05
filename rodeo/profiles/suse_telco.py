@@ -3,11 +3,13 @@
 The phase list is the order `rodeo plan` shows. kvm_host (host prep), vms
 (libvirt network, mgmt disk from the SL Micro base image plus a combustion
 seed, blank site disks, domain definitions) and bmc (sushy-tools, the emulated
-Redfish BMC for site-co and site-ran) run through Ansible. boot starts mgmt
-only (Metal3 owns the site hosts' power) and mgmt installs the management
-stack; both run TelcoPhase (rodeo/engine/telco.py). images and enroll are not
-implemented yet, and stay out of the phase cache so a later implementation is
-not skipped as already done.
+Redfish BMC for site-co and site-ran) run through Ansible. The rest runs
+TelcoPhase (rodeo/engine/telco.py): boot starts mgmt only (Metal3 owns the site
+hosts' power), mgmt installs the management stack, images builds the
+downstream image with EIB on the KVM host and publishes it to the mgmt image
+cache, and enroll registers the site hosts as BareMetalHosts and waits for
+them to be available. `rodeo up` is done at that point: students apply the
+workshop's manifests/ themselves.
 
 Versions are the SUSE Telco Cloud 3.7.0 release notes, component table
 (documentation.suse.com/suse-telco/3.7, Appendix "Release Notes"). Helm-installed
@@ -22,11 +24,11 @@ class SuseTelcoProfile(RodeoProfile):
     name = "suse-telco"
     phases = [
         "kvm_host",
-        "images",
         "vms",
         "bmc",
         "boot",
         "mgmt",
+        "images",
         "enroll",
         "finalise",
         "custom_scripts",
@@ -138,9 +140,18 @@ class SuseTelcoProfile(RodeoProfile):
             "bmc_allowed_instances": [n["uuid"] for n in nodes if n["name"] in sites],
         }
 
+    # Phases TelcoPhase runs, mapped to its stream methods.
+    _TELCO_PHASES = {
+        "boot": "stream_boot",
+        "mgmt": "stream_mgmt",
+        "images": "stream_images",
+        "enroll": "stream_enroll",
+    }
+
     def run_phase(self, phase, runner, vars_file):
-        """boot and mgmt run TelcoPhase; every other phase uses the shared dispatch."""
-        if phase not in ("boot", "mgmt"):
+        """Telco phases run TelcoPhase; every other phase uses the shared dispatch."""
+        method = self._TELCO_PHASES.get(phase)
+        if method is None:
             yield from super().run_phase(phase, runner, vars_file)
             return
         from ..engine.telco import TelcoPhase
@@ -148,13 +159,15 @@ class SuseTelcoProfile(RodeoProfile):
         if phase == "boot":
             yield from runner._start_firewalld()
         telco = TelcoPhase(runner.cfg, stop=runner.stop)
-        yield from (telco.stream_boot() if phase == "boot" else telco.stream_mgmt())
+        yield from getattr(telco, method)()
         runner._last_rc = 0 if telco.success else 1
 
     def success_next_steps(self, cfg: dict) -> list[str]:
+        mgmt = cfg.get("vms", {}).get("mgmt", {}).get("ip", "192.168.122.10")
         return [
-            "  rodeo plan                 # mgmt, site-co, site-ran on 192.168.122.0/24",
-            "  This slice does not boot VMs or install Metal3 yet.",
+            f"  ssh root@{mgmt} kubectl get bmh -A     # site-co and site-ran, state available",
+            "  In the workshop repo: kubectl apply -f manifests/downstream-single.yaml   (lab 04)",
+            "  Rancher imports site-co-01 through the Turtles auto-import label",
         ]
 
 

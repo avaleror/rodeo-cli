@@ -23,11 +23,11 @@ def test_profile_phase_order_and_edge_unchanged():
     telco = get_profile("suse-telco")
     assert telco.phases == [
         "kvm_host",
-        "images",
         "vms",
         "bmc",
         "boot",
         "mgmt",
+        "images",
         "enroll",
         "finalise",
         "custom_scripts",
@@ -75,7 +75,7 @@ def test_plan_renders_telco_topology(tmp_path):
     assert "site-ran" in out
     assert "16384 MiB / 8 vcpu" in out
     assert "8192 MiB / 4 vcpu" in out
-    for phase in ("kvm_host", "images", "vms", "bmc", "boot", "mgmt", "enroll", "finalise", "custom_scripts"):
+    for phase in ("kvm_host", "vms", "bmc", "boot", "mgmt", "images", "enroll", "finalise", "custom_scripts"):
         assert phase in out
     assert "elemental pending" not in out
     assert "pxe_server pending" not in out
@@ -572,4 +572,216 @@ def test_run_phase_routes_boot_and_mgmt_to_telco(monkeypatch, tmp_path):
     list(prof.run_phase("boot", r, None))
     list(prof.run_phase("mgmt", r, None))
     assert calls == ["firewalld", "boot", "mgmt"]
+    assert r._last_rc == 0
+
+
+# --- images + enroll phases ---
+
+def _phase_with_base(monkeypatch, tmp_path, scc="SCC-TEST-CODE"):
+    from rodeo.engine.telco import TelcoPhase
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    cfg = _telco_cfg()
+    cfg["storage"] = {"image_dir": str(tmp_path / "images")}
+    cfg["credentials"].update({
+        "rancher_admin_password": "Rancher-Secret-123",  # gitleaks:allow (fake fixture)
+        "mgmt_root_password": "Mgmt-Secret-123",  # gitleaks:allow (fake fixture)
+        "scc_registration_code": scc,
+    })
+    cfg["ssh"] = {"identity_file": str(tmp_path / "id_ed25519")}
+    (tmp_path / "id_ed25519.pub").write_text("ssh-ed25519 AAAAtest rodeo\n")
+    (tmp_path / "images").mkdir(exist_ok=True)
+    base = tmp_path / "images" / "SL-Micro.x86_64-6.2-Base-GM.raw"
+    if not base.exists():
+        base.write_bytes(b"base")
+    return TelcoPhase(cfg)
+
+
+def test_eib_definition_matches_37_docs(monkeypatch, tmp_path):
+    p = _phase_with_base(monkeypatch, tmp_path)
+    d = p.eib_definition("$6$hash", "ssh-ed25519 KEY")
+    assert d["apiVersion"] == "1.3"
+    assert d["image"] == {
+        "imageType": "raw",
+        "arch": "x86_64",
+        "baseImage": "SL-Micro.x86_64-6.2-Base-GM.raw",
+        "outputImageName": "eibimage-downstream-cluster.raw",
+    }
+    os_ = d["operatingSystem"]
+    assert os_["kernelArgs"] == ["ignition.platform.id=openstack"]
+    assert os_["systemd"]["disable"] == [
+        "rebootmgr", "transactional-update.timer", "transactional-update-cleanup.timer",
+        "fstrim", "time-sync.target",
+    ]
+    assert os_["packages"] == {"packageList": ["jq"], "sccRegistrationCode": "SCC-TEST-CODE"}
+    assert os_["users"][0]["sshKeys"] == ["ssh-ed25519 KEY"]
+
+
+def test_growfs_scripts_match_docs():
+    from pathlib import Path
+
+    import rodeo
+    from rodeo.engine.telco import _GROWFS_SCRIPT
+
+    body = _GROWFS_SCRIPT.split("growfs() {", 1)[1]
+    combustion = (
+        Path(rodeo.__file__).parent / "data/ansible/roles/vms/templates/telco-combustion-script.j2"
+    ).read_text()
+    for line in body.splitlines():
+        if line.strip() and not line.strip().startswith("#"):
+            assert line.strip() in combustion, line
+
+
+class _Recorder:
+    def __init__(self, tmp_path, have_digest=""):
+        self.cmds: list = []
+        self.tmp_path = tmp_path
+        self.have_digest = have_digest
+
+    def run(self, cmd, timeout, input=None):
+        self.cmds.append((cmd, input))
+        if cmd[:2] == ["openssl", "passwd"]:
+            return _sp.CompletedProcess(cmd, 0, stdout="$6$salt$hash\n", stderr="")
+        if "cat /opt/media/" in " ".join(cmd):
+            out = f"{self.have_digest}  eibimage-downstream-cluster.raw\n" if self.have_digest else ""
+            return _sp.CompletedProcess(cmd, 0 if out else 1, stdout=out, stderr="")
+        return _sp.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+
+def _fake_eib(phase, builds):
+    def stream_local(cmd, timeout):
+        builds.append(cmd)
+        defn = phase.eib_dir / "downstream-cluster-config.yaml"
+        assert defn.is_file() and oct(defn.stat().st_mode & 0o777) == "0o600"
+        assert "SCC-TEST-CODE" in defn.read_text()
+        (phase.eib_dir / phase.image_name).write_bytes(b"built-image")
+        return 0
+        yield
+
+    phase._stream_local = stream_local
+
+
+def test_images_builds_once_then_reuses(monkeypatch, tmp_path):
+    p = _phase_with_base(monkeypatch, tmp_path)
+    rec = _Recorder(tmp_path)
+    p._run = rec.run
+    builds: list = []
+    _fake_eib(p, builds)
+    list(p.stream_images())
+    assert p.success, p.error
+    assert builds and builds[0][:4] == ["podman", "run", "--rm", "--privileged"]
+    assert "registry.suse.com/edge/3.7/edge-image-builder:1.3.4" in builds[0]
+    assert not (p.eib_dir / "downstream-cluster-config.yaml").exists()  # SCC code removed
+    assert (p.eib_dir / "base-images" / "SL-Micro.x86_64-6.2-Base-GM.raw").is_file()
+    assert (p.eib_dir / "custom/scripts/01-fix-growfs.sh").is_file()
+    publish = next(i for c, i in rec.cmds if i and "sha256sum -c" in i)
+    assert "eibimage-downstream-cluster.raw.sha256" in publish
+    assert any(c[0] == "scp" for c, _ in rec.cmds)
+
+    p2 = _phase_with_base(monkeypatch, tmp_path)
+    p2._run = _Recorder(tmp_path).run
+    builds2: list = []
+    _fake_eib(p2, builds2)
+    list(p2.stream_images())
+    assert p2.success and builds2 == []  # same inputs: no rebuild
+
+
+def test_images_skips_copy_when_mgmt_has_it(monkeypatch, tmp_path):
+    import hashlib
+
+    p = _phase_with_base(monkeypatch, tmp_path)
+    digest = hashlib.sha256(b"built-image").hexdigest()
+    rec = _Recorder(tmp_path, have_digest=digest)
+    p._run = rec.run
+    _fake_eib(p, [])
+    list(p.stream_images())
+    assert p.success
+    assert not any(c[0] == "scp" for c, _ in rec.cmds)
+
+
+def test_images_requires_scc_code(monkeypatch, tmp_path):
+    p = _phase_with_base(monkeypatch, tmp_path, scc="")
+    list(p.stream_images())
+    assert not p.success
+    assert "scc_registration_code" in p.error
+
+
+def test_baremetalhosts_match_workshop_selectors(monkeypatch, tmp_path):
+    p = _phase_with_base(monkeypatch, tmp_path)
+    docs = list(yaml.safe_load_all(p.baremetalhost_manifest()))
+    kinds = [(d["kind"], d["metadata"]["name"]) for d in docs]
+    assert ("Namespace", "northline") in kinds
+    assert kinds.index(("Namespace", "northline")) < kinds.index(("BareMetalHost", "site-ran"))
+    bmh = {d["metadata"]["name"]: d for d in docs if d["kind"] == "BareMetalHost"}
+    co, ran = bmh["site-co"], bmh["site-ran"]
+    # manifests/downstream-single.yaml hostSelector
+    assert co["metadata"]["namespace"] == "default"
+    assert co["metadata"]["labels"] == {"cluster-role": "control-plane", "site": "site-co"}
+    # manifests/site-ran.yaml hostSelector
+    assert ran["metadata"]["namespace"] == "northline"
+    assert ran["metadata"]["labels"] == {
+        "cluster-role": "control-plane", "deploy-region": "northline", "cluster-type": "site-ran",
+    }
+    assert co["spec"]["bootMACAddress"] == "02:00:00:0F:62:21"
+    assert ran["spec"]["bootMACAddress"] == "02:00:00:0F:62:32"
+    assert co["spec"]["bmc"]["address"] == (
+        "redfish-virtualmedia://192.168.122.1:8000/redfish/v1/Systems/"
+        "a1000002-0f00-4000-8000-000000000021"
+    )
+    assert co["spec"]["bmc"]["disableCertificateVerification"] is True
+    assert co["spec"]["online"] is True
+    assert co["spec"]["rootDeviceHints"] == {"deviceName": "/dev/vda"}
+    secret = next(d for d in docs if d["kind"] == "Secret" and d["metadata"]["name"] == "site-co-bmc-credentials")
+    assert secret["stringData"] == {"username": "admin", "password": "Bmc-Secret-123"}
+
+
+def test_enroll_waits_for_available_and_reports_errors(monkeypatch, tmp_path):
+    p = _phase_with_base(monkeypatch, tmp_path)
+    answers = iter([
+        "site-co registering <none>\nsite-ran registering Failed to get power state\n",
+        "site-co inspecting <none>\nsite-ran inspecting <none>\n",
+        "site-co available <none>\nsite-ran available <none>\n",
+    ])
+
+    def run(cmd, timeout, input=None):
+        if input and "get bmh" in input:
+            return _sp.CompletedProcess(cmd, 0, stdout=next(answers), stderr="")
+        return _sp.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    p._run = run
+    p._sleep = lambda s: False
+    lines = [getattr(e, "text", getattr(e, "line", str(e))) for e in p.stream_enroll()]
+    assert p.success, p.error
+    assert any("Failed to get power state" in str(x) for x in lines)
+
+
+def test_run_phase_routes_images_and_enroll(monkeypatch):
+    from rodeo.engine import telco as telco_mod
+
+    calls: list[str] = []
+
+    class FakePhase:
+        def __init__(self, cfg, stop=None):
+            self.success = True
+
+        def stream_images(self):
+            calls.append("images")
+            yield from ()
+
+        def stream_enroll(self):
+            calls.append("enroll")
+            yield from ()
+
+    monkeypatch.setattr(telco_mod, "TelcoPhase", FakePhase)
+
+    class FakeRunner:
+        cfg = _telco_cfg()
+        stop = None
+        _last_rc = None
+
+    r = FakeRunner()
+    prof = get_profile("suse-telco")
+    list(prof.run_phase("images", r, None))
+    list(prof.run_phase("enroll", r, None))
+    assert calls == ["images", "enroll"]
     assert r._last_rc == 0

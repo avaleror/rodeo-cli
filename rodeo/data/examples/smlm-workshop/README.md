@@ -14,7 +14,7 @@ track's `setup-smlm` and `setup-zbastion` scripts.
 | VM | Role | Base image |
 |---|---|---|
 | `smlm` | SMLM server (podman), web UI on host port 443 | pre-built (`bake/`) |
-| `centos7`, `zzcentos7` | RES 7 / Liberty clients | CentOS 7 GenericCloud 2211 |
+| `centos7`, `zzcentos7` | CentOS 7 clients | CentOS 7 GenericCloud 2211 |
 | `sles15` | SLES 15 SP5 client (upgrade exercise) | SLES15-SP5 Minimal VM Cloud |
 | `zzsles15a/b/c` | SLES 15 SP6 clients | SLES15-SP6 Minimal VM Cloud |
 | `ubuntu2404lts` | Ubuntu client | Ubuntu 24.04 cloud image |
@@ -112,6 +112,11 @@ starts, under the system names the exercises use:
 | `zzsles15b` | `at-ft-pro` | `1-sles15sp6` |
 | `zzsles15c` | `at-ct-qa` | `1-sles15sp6` |
 | `zzcentos7` | `airco-dh4a-prod` | `1-liberty7ltss` |
+
+Activation key `1-liberty7ltss` keeps the track's name but uses the CentOS 7
+channels (`centos7-x86_64`, `centos7-updates-x86_64` and the EL7 client tools for
+CentOS 7): SUSE Liberty Linux 7 LTSS channels need an SCC subscription that
+includes them.
 
 `custom/scripts/10-smlm-config.sh` then puts them into their system groups and
 sets their `application` values. The students register `centos7` (as

@@ -112,9 +112,10 @@ lab_in_a_box:
         - managertools-ubuntu2404-updates-amd64
         - ubuntu-2404-amd64-main-security-amd64
         - ubuntu-2404-amd64-main-updates-amd64
-        - res-7-ltss-updates-x86_64
-        - managertools-el7-pool-x86_64-lbt7
-        - managertools-el7-updates-x86_64-lbt7
+        - centos7-x86_64
+        - centos7-updates-x86_64
+        - managertools-el7-pool-x86_64-centos7
+        - managertools-el7-updates-x86_64-centos7
 
 ansible:
   path: null

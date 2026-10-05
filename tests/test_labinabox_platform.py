@@ -318,7 +318,7 @@ def test_bake_plan_loads_with_only_the_smlm_node(tmp_path):
     node = lab_json["nodes"]["smlm.rodeo.lab"]
     assert node["myip"] == "192.168.122.20" and node["mymac"] == "02:00:00:5A:00:20"
     channels = lab_json["smlm"]["smlm_channels"]
-    assert "res-7-ltss-updates-x86_64" in channels and "sle15-sp6-installer-updates-x86_64" in channels
+    assert "centos7-x86_64" in channels and "sle15-sp6-installer-updates-x86_64" in channels
 
 
 # ── phases ──────────────────────────────────────────────────────────────────
@@ -854,7 +854,7 @@ def test_scratch_variant_builds_smlm_from_the_byos_image(tmp_path):
     assert "smlm_preinstalled" not in section and "smlm_image_admin_pass" not in section
     assert section["smlm_byos"] == "true"
     assert section["smlm_scc_regcode"] == "REG" and section["smlm_scc_password"] == "p"
-    assert "res-7-ltss-updates-x86_64" in section["smlm_channels"]
+    assert "centos7-x86_64" in section["smlm_channels"]
     assert section["smlm_activation_keys"][0]["smlm_activation_key"] == "sles15sp5"   # kept from base
     assert not any(n.get("ISO_IMAGE") == "smlm-workshop-server.qcow2" for n in lab["nodes"].values())
     assert unresolved_placeholders(lab) == []

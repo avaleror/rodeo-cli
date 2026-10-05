@@ -101,7 +101,7 @@ lab_in_a_box:
             - sle-product-sles15-sp5-pool-x86_64
             - sle-product-sles15-sp6-pool-x86_64
             - ubuntu-2404-amd64-main-amd64
-            - res-7-ltss-updates-x86_64
+            - centos7-x86_64
     # aws: every VM in an AWS account instead of nested KVM. The SMLM server boots
     # the private AMI from bake/ (variant aws, export-ami.sh); the clients boot AMIs
     # you pick in your region. Needs AWS_SECURITY_GROUP_ID for the web UI port.
@@ -274,10 +274,11 @@ lab_in_a_box:
             managertools-ubuntu2404-updates-amd64 ubuntu-2404-amd64-main-security-amd64
             ubuntu-2404-amd64-main-updates-amd64
         - smlm_activation_key: liberty7ltss
-          smlm_activation_key_desc: "SUSE Multi-Linux Support 7 with LTS"
-          smlm_activation_key_base_channel: res-7-ltss-updates-x86_64
+          smlm_activation_key_desc: "CentOS 7"
+          smlm_activation_key_base_channel: centos7-x86_64
           smlm_activation_key_child_channels: >-
-            managertools-el7-pool-x86_64-lbt7 managertools-el7-updates-x86_64-lbt7
+            centos7-updates-x86_64
+            managertools-el7-pool-x86_64-centos7 managertools-el7-updates-x86_64-centos7
       # Groups and "application" values the exercises use, as setup-zbastion
       # creates them. The member systems are the zz* clients (registered under
       # these names, see nodes above); airco-dh4a-qa is centos7 once a student

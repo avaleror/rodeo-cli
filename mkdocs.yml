@@ -71,6 +71,7 @@ nav:
     - Harvester HCI: guide-harvester.md
     - SUSE Edge: guide-suse-edge.md
   - Create your own rodeo: custom-rodeos.md
+  - Rodeo Builder: rodeo-builder.md
   - Fleet (multi-host workshops):
     - Overview: fleet.md
     - Claim portal (design): claim-portal.md

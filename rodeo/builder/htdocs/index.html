@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rodeo Builder — rodeo-cli</title>
+  <meta name="description" content="Compose a new rodeo: a lab engine and story chapters, downloaded as a ready-to-install profile.">
+  <link rel="icon" href="assets/horseshoe-mark.svg" type="image/svg+xml">
+  <script src="theme.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&amp;family=Syne:wght@400;600;700;800&amp;display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="hdr">
+    <div class="brand">
+      <img id="logo" class="logo" src="assets/horseshoe-mark.svg" alt="rodeo-cli">
+      <span class="wordmark">rodeo<span class="acc">-cli</span></span>
+      <span class="tag">builder · <span id="version">__RODEOVERSION__</span></span>
+    </div>
+    <div class="hdr-right">
+      <span id="counts" class="counts"></span>
+      <button id="themeBtn" class="btn" type="button">Light</button>
+      <button id="downloadBtn" class="btn primary" type="button">Download rodeo</button>
+    </div>
+  </header>
+
+  <main class="cols">
+    <aside class="col left" aria-label="Chapter library">
+      <div class="col-head">
+        <h2>Chapter library · <span id="libCount">0</span></h2>
+        <button id="newChapterBtn" class="btn outline sm" type="button">+ New</button>
+      </div>
+      <label class="sr-only" for="search">Search chapters</label>
+      <input id="search" class="input" type="search" placeholder="Search chapters" autocomplete="off">
+      <div id="library"></div>
+    </aside>
+
+    <section class="col center" aria-label="Rodeo">
+      <h2 class="sec"><span class="num">01</span> Lab engine</h2>
+      <div id="engines" class="engines" role="radiogroup" aria-label="Lab engine"></div>
+      <div id="enginePanel" class="panel"></div>
+      <h2 class="sec"><span class="num">02</span> Chapters <span id="coverage" class="status"></span></h2>
+      <div id="chapterList" class="lab"></div>
+    </section>
+
+    <aside class="col right" aria-label="Rodeo settings and files">
+      <div class="tabs" role="tablist">
+        <button type="button" role="tab" data-tab="rodeo" class="on">rodeo</button>
+        <button type="button" role="tab" data-tab="plan">plan.yaml</button>
+        <button type="button" role="tab" data-tab="story">story</button>
+      </div>
+      <div id="tab-rodeo" class="tabpane">
+        <label class="label" for="name">Name</label>
+        <input id="name" class="input mono" autocomplete="off" spellcheck="false">
+        <label class="label" for="title">Story title</label>
+        <input id="title" class="input" autocomplete="off">
+        <label class="label" for="lang">Language</label>
+        <select id="lang" class="select"></select>
+        <label class="label" for="target">Deployment target</label>
+        <select id="target" class="select">
+          <option value="baremetal">baremetal</option>
+          <option value="instruqt">instruqt</option>
+        </select>
+        <span class="label">Story variant</span>
+        <div id="variants" class="chips"></div>
+        <div id="estimate" class="est"></div>
+      </div>
+      <div id="tab-plan" class="tabpane" hidden>
+        <div class="term">
+          <div class="term-bar"><i></i><i></i><i></i><span>rodeo-plan.yaml</span></div>
+          <pre id="planPreview"></pre>
+        </div>
+      </div>
+      <div id="tab-story" class="tabpane" hidden>
+        <ul id="fileList" class="files"></ul>
+        <div class="term">
+          <div class="term-bar"><i></i><i></i><i></i><span id="fileName"></span></div>
+          <pre id="filePreview"></pre>
+        </div>
+      </div>
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    </aside>
+  </main>
+
+  <div id="newModal" class="backdrop" hidden>
+    <form id="newForm" class="modal" role="dialog" aria-modal="true" aria-labelledby="newTitle">
+      <h2 id="newTitle">New chapter</h2>
+      <label class="label" for="ncTitle">Title</label>
+      <input id="ncTitle" class="input" required autocomplete="off">
+      <span class="label">Workshop</span>
+      <div id="ncWorkshops" class="chips"></div>
+      <label class="label" for="ncMins">Minutes</label>
+      <input id="ncMins" class="input mono" type="number" min="1" max="240" value="10">
+      <span class="label">Requires from the lab</span>
+      <div id="ncNeeds" class="chips"></div>
+      <label class="label" for="ncBody">Markdown (rmstory spans)</label>
+      <textarea id="ncBody" class="textarea" spellcheck="false"></textarea>
+      <div class="modal-foot">
+        <div class="checks">
+          <label><input id="ncCheck" type="checkbox"> Add a check script</label>
+          <label><input id="ncAppend" type="checkbox" checked> Append to this rodeo</label>
+        </div>
+        <div>
+          <button id="ncCancel" class="btn" type="button">Cancel</button>
+          <button class="btn primary" type="submit">Create</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div id="embedOverlay" class="backdrop" hidden>
+    <div class="embed" role="dialog" aria-modal="true" aria-labelledby="embedTitle">
+      <div class="embed-head">
+        <strong id="embedTitle">lab-in-a-box lab-builder</strong>
+        <span id="embedNote" class="muted mono"></span>
+        <button id="embedClose" class="btn" type="button">Close</button>
+      </div>
+      <iframe id="embedFrame" title="lab-in-a-box lab-builder"></iframe>
+    </div>
+  </div>
+
+  <div id="editor" class="editor" hidden role="dialog" aria-modal="true" aria-labelledby="edTitle">
+    <div class="ed-head">
+      <h2 id="edTitle">Story editor · rmstory</h2>
+      <span id="edChapter"></span>
+      <span id="edPath" class="path"></span>
+      <span id="edSummary" class="summary"></span>
+      <button id="edDone" class="btn primary" type="button">Done</button>
+    </div>
+    <div class="ed-body">
+      <div class="ed-left">
+        <div class="toolbar">
+          <span class="lbl">Mark selection as</span>
+          <button type="button" class="btn sm" data-mark="translatable">Translatable</button>
+          <button type="button" class="btn sm" data-mark="invariant">Invariant</button>
+          <button type="button" class="btn sm" data-mark="nolang">No-lang</button>
+          <span class="lbl">Story variant</span>
+          <span id="edHist" class="chips"></span>
+          <button id="edRemove" type="button" class="btn sm">Remove span</button>
+        </div>
+        <label class="sr-only" for="edSource">Chapter source</label>
+        <textarea id="edSource" class="textarea source" spellcheck="false"></textarea>
+        <span class="label">Tagged preview</span>
+        <div id="edPreview" class="preview"></div>
+      </div>
+      <div class="ed-right">
+        <div class="tabs" role="tablist">
+          <button type="button" data-edtab="spans" class="on">spans</button>
+          <button type="button" data-edtab="stories">stories</button>
+          <button type="button" data-edtab="translations">translations</button>
+        </div>
+        <div id="edtab-spans"><ul id="spanList" class="span-list"></ul></div>
+        <div id="edtab-stories" hidden>
+          <div class="addon-add">
+            <label class="sr-only" for="newVariant">New story variant</label>
+            <input id="newVariant" class="input mono" placeholder="new variant id" autocomplete="off">
+            <button id="addVariant" type="button" class="btn sm">Add</button>
+          </div>
+          <div id="storiesView"></div>
+        </div>
+        <div id="edtab-translations" hidden><div id="translationsView"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="popover" class="popover" hidden></div>
+
+  <script src="logic.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

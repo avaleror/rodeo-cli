@@ -1,0 +1,7 @@
+# Chapter metadata for the Rodeo Builder: title of this set, and per chapter file
+# the minutes it takes and the lab capabilities it needs. rmstory ignores this file.
+title: First ride
+chapters:
+  - file: 01-welcome.md
+    mins: 10
+    needs: [rancher]

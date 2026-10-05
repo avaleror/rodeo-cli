@@ -217,7 +217,7 @@ def test_smlm_workshop_lab_json(tmp_path):
     assert len(lab["nodes"]) == 8
     smlm = lab["nodes"]["smlm.rodeo.lab"]
     assert smlm["myip"] == "192.168.122.20" and smlm["addons"] == ["smlm"]
-    assert smlm["VM_MEM"] == "16384" and smlm["VM_DSK"] == "200"
+    assert smlm["VM_MEM"] == "16384" and smlm["VM_DSK"] == "300"
     centos = lab["nodes"]["centos7.rodeo.lab"]
     assert centos["config_method"] == "virt_customize" and centos["VM_BOOT"] == "uefi=off"
     assert lab["nodes"]["zzcentos7.rodeo.lab"]["VM_DSK_BUS"] == "sata"  # YAML anchor survived
@@ -290,7 +290,7 @@ def test_smlm_cfg_vms_flavors_and_sizing(tmp_path):
         "domain": "smlm.rodeo.lab"}
     need_mib, need_gb = _resource_needs(cfg)
     assert need_mib == 16384 + 2 * 1024 + 4 * 2048 + 2048
-    assert need_gb == 200 + 2 * 20 + 4 * 30 + 20 + 20
+    assert need_gb == 300 + 2 * 20 + 4 * 30 + 20 + 20
 
 
 def test_vars_file_needs_no_harvester_secrets(tmp_path):

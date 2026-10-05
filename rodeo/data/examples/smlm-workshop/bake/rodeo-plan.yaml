@@ -21,7 +21,7 @@ resources:
   smlm:
     memory_mib: 16384
     vcpu: 8
-    disk_gb: 200        # the workshop plan's smlm disk_gb must be >= this
+    disk_gb: 300        # the synced server uses ~215 GB; the workshop plan's smlm disk_gb must be >= this
 
 # Only the operator has these. smlm_image_admin_pass is generated here and
 # must be handed to whoever deploys the workshop (it is an operator secret there).

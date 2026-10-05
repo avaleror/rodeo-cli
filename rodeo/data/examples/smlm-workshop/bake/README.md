@@ -19,7 +19,8 @@ a workshop deploy. `rodeo up` never runs any of this.
   - **AWS (`variant: aws`):** a SLES 15 SP7 BYOS AMI ID in your region, plus AWS
     credentials for the account the bake runs in.
 - **Your organization's SCC mirroring credentials**, used to sync the channels.
-- **For KVM:** a host with internet access (~30 GiB RAM, ~300 GB free disk).
+- **For KVM:** a host with internet access (~30 GiB RAM, ~450 GB free disk). The synced
+  server uses about 215 GB, and `export-image.sh` writes a compressed copy of similar size.
 
 `rodeo up` asks once for everything it needs: `scc_regcode`, `scc_mirror_user`,
 `scc_mirror_password`, and `sles15sp7_image_url` + `sles15sp7_image_sha256`, or for

@@ -19,7 +19,8 @@ track's `setup-smlm` and `setup-zbastion` scripts.
 | `zzsles15a/b/c` | SLES 15 SP6 clients | SLES15-SP6 Minimal VM Cloud |
 | `ubuntu2404lts` | Ubuntu client | Ubuntu 24.04 cloud image |
 
-It needs about 30 GiB of RAM and about 450 GB of disk.
+It needs about 30 GiB of RAM and about 500 GB of disk: the downloaded server image
+(~215 GB) plus the SMLM VM's own copy of it, and the clients.
 
 ## Before the first deploy
 

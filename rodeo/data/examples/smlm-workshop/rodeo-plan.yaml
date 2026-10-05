@@ -11,7 +11,7 @@
 # bake/ (see bake/README.md), then give rodeo its URL, sha256 and the admin
 # password it was built with (operator_secrets below).
 #
-# Host requirement: ~30 GiB RAM free, ~450 GB disk.
+# Host requirement: ~30 GiB RAM free, ~500 GB disk.
 #
 # No credential is written in this file: every ??key resolves from
 # ~/.rodeo/secrets.yaml. rodeo up generates the lab's own passwords and asks
@@ -25,7 +25,7 @@ resources:
   smlm:
     memory_mib: 16384
     vcpu: 8
-    disk_gb: 200        # must be >= the baked image's virtual size
+    disk_gb: 300        # must be >= the baked image's virtual size
   el7:
     memory_mib: 1024
     vcpu: 1

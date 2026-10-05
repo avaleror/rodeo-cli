@@ -24,8 +24,8 @@ It needs about 30 GiB of RAM and about 450 GB of disk.
 ## Before the first deploy
 
 1. **Build the SMLM server image** with `bake/`, once per refresh (see
-   `bake/README.md`). It starts from SUSE's SMLM Server **BYOS** image, registered
-   with your own subscription code. The result stays private in your account. You
+   `bake/README.md`). It starts from SLES 15 SP7, registered with your SMLM
+   registration code. The result stays private in your account. You
    get an image URL and sha256 (or, for AWS, an AMI ID) plus the admin password it
    was built with.
 2. **Have a download URL and sha256 for the SLES base images**
@@ -41,15 +41,16 @@ and Ubuntu images need no input.
 
 ## Without a pre-built image
 
-`scratch` builds the SMLM server on the deploying host itself, from SUSE's SMLM
-Server BYOS qcow2 registered with your code. It installs SMLM and syncs every
+`scratch` builds the SMLM server on the deploying host itself, from SLES 15 SP7
+registered with your SMLM registration code. It installs SMLM and syncs every
 channel from SCC, which takes hours.
 
 Set `variant: scratch` under `lab_in_a_box:` in `rodeo-plan.yaml`, then run
 `rodeo up`, which asks for the values this variant needs.
 
-It needs your SMLM registration code, SCC mirror credentials and the BYOS image's
-URL/sha256 instead of the pre-built image values. The deploy finishes
+It needs your SMLM registration code, SCC mirror credentials and the
+`SLES15-SP7-Minimal-VM.x86_64-Cloud-GM.qcow2` URL/sha256 instead of the pre-built
+image values. The deploy finishes
 before the sync does; the `zz*` clients register by themselves once their
 channels are ready.
 

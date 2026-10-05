@@ -48,10 +48,9 @@ podman logout --all >/dev/null 2>&1 || true
 mgrctl exec -- sh -c 'rm -rf /root/.spacecmd /root/.bash_history' || true
 rm -rf /root/.spacecmd /root/.bash_history
 SUSEConnect --cleanup >/dev/null 2>&1 || true
+# cloud-init runs again on the next boot, so every deploy's own network,
+# hostname and keys apply to this image.
 cloud-init clean --logs --seed >/dev/null 2>&1 || true
-# SL Micro (SUSE's KVM SMLM Server image): run Ignition/Combustion again on the
-# next boot, so every deploy's own network/hostname/keys apply to this image.
-rm -f /boot/writable/firstboot_happened
 rm -f /etc/ssh/ssh_host_*
 truncate -s 0 /etc/machine-id
 sync

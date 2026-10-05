@@ -55,7 +55,7 @@ lab_in_a_box:
   # ref to the upstream commit that adds them.
   # How the SMLM server is built:
   #   image   (default) boot the pre-built, channel-synced image (see bake/) — minutes
-  #   scratch install SMLM here from SUSE's SMLM Server BYOS image and sync every
+  #   scratch install SMLM here on SLES 15 SP7 and sync every
   #           channel from SCC — hours; needs your SMLM regcode + SCC mirror credentials.
   #   aws     every VM in an AWS account (pre-built private AMI from bake/'s aws variant).
   # Select one by changing `variant:` below, then `rodeo up` (it asks for that variant's values).
@@ -71,21 +71,20 @@ lab_in_a_box:
         - scc_regcode
         - scc_mirror_user
         - scc_mirror_password
-        - smlm_byos_image_url       # SUSE's SMLM Server BYOS qcow2 (see bake/README.md)
-        - smlm_byos_image_sha256
+        - sles15sp7_image_url       # SLES 15 SP7 Minimal VM Cloud qcow2 (see bake/README.md)
+        - sles15sp7_image_sha256
       images:
         - {name: smlm-workshop-server.qcow2, remove: true}
-        - name: SUSE-Multi-Linux-Manager-Server-BYOS.qcow2
-          url: "??smlm_byos_image_url"
-          sha256: "??smlm_byos_image_sha256"
+        - name: SLES15-SP7-Minimal-VM.x86_64-Cloud-GM.qcow2
+          url: "??sles15sp7_image_url"
+          sha256: "??sles15sp7_image_sha256"
       nodes:
         smlm:
-          ISO_IMAGE: SUSE-Multi-Linux-Manager-Server-BYOS.qcow2
+          ISO_IMAGE: SLES15-SP7-Minimal-VM.x86_64-Cloud-GM.qcow2
       sections:
         smlm:
           smlm_preinstalled: null
           smlm_image_admin_pass: null
-          smlm_byos: "true"
           smlm_scc_regcode: "??scc_regcode"
           smlm_scc_user: "??scc_mirror_user"
           smlm_scc_password: "??scc_mirror_password"
@@ -175,9 +174,7 @@ lab_in_a_box:
   nodes:
     smlm:
       ISO_IMAGE: smlm-workshop-server.qcow2
-      # Baked from SUSE's SL Micro based SMLM Server BYOS image: first-boot setup via
-      # Ignition/Combustion (lab-in-a-box's default config_method), not cloud-init.
-      config_method: ""
+      config_method: cloud-init
       addons: [smlm]
     # centos7, sles15 and ubuntu2404lts are registered by the students during
     # the challenges. The zz* machines arrive already registered, under the

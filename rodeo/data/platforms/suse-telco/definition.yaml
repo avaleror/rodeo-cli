@@ -1,0 +1,142 @@
+# definition.yaml — SUSE Telco Cloud 3.7 topology.
+#
+# Three libvirt guests on one NAT bridge, 192.168.125.0/24 (virbr125).
+# This slice declares the machines. It does not create them, build images,
+# or install Metal3.
+#
+#   mgmt      management cluster, image cache, Ironic (later)
+#   site-co   first downstream host; nested virt so KubeVirt can start (later)
+#   site-ran  second downstream host; no KubeVirt
+#
+# CPU and RAM are starting sizes, not a measured pin. Disk is a placeholder
+# until the first image boot.
+
+apiVersion: 1.0
+definition:
+  name: suse-telco
+  description: "SUSE Telco Cloud 3.7: Rancher Prime management cluster and two downstream hosts"
+
+  start_order:
+    - mgmt
+
+  harvester_node_names: []
+  harvester_ready_count: 0
+
+  network:
+    name: telco
+    bridge: virbr125
+    mode: nat
+    cidr: 192.168.125.0/24
+    gateway: 192.168.125.1
+    domain: northline.telco
+    dhcp_range:
+      start: 192.168.125.100
+      end: 192.168.125.254
+
+  node_templates:
+    mgmt:
+      flavor: mgmt
+      ssh_user: root
+      infra_type: mgmt
+      interfaces:
+        - role: mgmt
+          model: virtio
+          ip_family: static
+
+    site:
+      flavor: site
+      ssh_user: root
+      infra_type: site
+      interfaces:
+        - role: mgmt
+          model: virtio
+          ip_family: static
+
+  # Rancher on NodePort 30002 with a rodeo-managed cert. The firewall
+  # compiler still looks for a node named rancher, so this slice emits
+  # no DNAT rule.
+  exposed_services:
+    - name: rancher
+      description: "Rancher Prime NodePort"
+      host_port: 30002
+      guest_port: 30002
+      target: mgmt
+      proto: tcp
+
+  storage:
+    device: ""
+    mount_point: /var/lib/libvirt/images
+    fs_type: xfs
+    libvirt_pool_name: default
+    libvirt_pool_path: /var/lib/libvirt/images
+    image_dir: /var/lib/libvirt/images
+
+  components:
+    - name: mgmt
+      description: "Management cluster VM (SL Micro, RKE2, Rancher Prime, Metal3, Turtles — later)"
+      nodes: ["mgmt"]
+    - name: downstream-hosts
+      description: "site-co and site-ran, enrolled later as BareMetalHosts"
+      nodes: ["site-co", "site-ran"]
+
+  versions:
+    rancher: "2.15.1"
+    rke2: "v1.36.3+rke2r1"
+    cert_manager: "v1.20.1"
+    turtles: "307.0.8+up0.27.0"
+    metal3: "307.0.31+up0.16.0"
+
+  host_prep:
+    sysctls:
+      - net.bridge.bridge-nf-call-iptables=0
+      - net.bridge.bridge-nf-call-ip6tables=0
+    selinux_mode: permissive
+    libvirt:
+      ovmf_code: /usr/share/qemu/ovmf-x86_64-4m-code.bin
+      ovmf_vars_template: /usr/share/qemu/ovmf-x86_64-4m-vars.bin
+      use_modular_daemons: true
+    network:
+      unmanaged_interfaces:
+        - virbr125
+      rp_filter_loose: false
+
+  # MAC prefix 0F, distinct from suse-virt (0D) and suse-edge (0E).
+  nodes:
+    - name: mgmt
+      template: mgmt
+      index: 0
+      hostname: mgmt
+      uuid: "a1000001-0f00-4000-8000-000000000010"
+      ip: "192.168.125.10"
+      config_iso_name: ""
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          mac: "02:00:00:0F:62:10"
+      mgmt_mac: "02:00:00:0F:62:10"
+
+    - name: site-co
+      template: site
+      index: 1
+      hostname: site-co
+      uuid: "a1000002-0f00-4000-8000-000000000021"
+      ip: "192.168.125.21"
+      config_iso_name: ""
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          mac: "02:00:00:0F:62:21"
+      mgmt_mac: "02:00:00:0F:62:21"
+
+    - name: site-ran
+      template: site
+      index: 2
+      hostname: site-ran
+      uuid: "a1000003-0f00-4000-8000-000000000022"
+      ip: "192.168.125.22"
+      config_iso_name: ""
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          mac: "02:00:00:0F:62:22"
+      mgmt_mac: "02:00:00:0F:62:22"

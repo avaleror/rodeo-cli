@@ -1,0 +1,59 @@
+# rodeo-plan.yaml — SUSE Telco Cloud 3.7.
+#
+# Declares the lab. This slice does not boot the guests.
+# AWS is `rodeo up --target aws` from a plan that still says baremetal.
+# The flag wins. See the profile notes in rodeo/profiles/suse_telco.py.
+
+name: suse-telco-rodeo
+type: suse-telco
+
+deployment_target: baremetal
+
+network:
+  mode: nat
+  gateway: "192.168.125.1"
+  dns_domain: northline.telco
+  rancher_ip: "192.168.125.10"
+
+resources:
+  mgmt:
+    memory_mib: 16384
+    vcpu: 8
+    disk_gb: 80
+  site:
+    memory_mib: 8192
+    vcpu: 4
+    disk_gb: 40
+
+versions:
+  rancher: "2.15.1"
+  rke2: "v1.36.3+rke2r1"
+  cert_manager: "v1.20.1"
+  turtles: "307.0.8+up0.27.0"
+  metal3: "307.0.31+up0.16.0"
+
+storage:
+  image_dir: /var/lib/libvirt/images
+
+libvirt:
+  uri: qemu:///system
+
+ansible:
+  path: null
+  inventory: deployer/inventory.local
+
+rancher_tls:
+  source: secret
+
+credentials:
+  rancher_admin_password: "??rancher_admin_password"
+
+alien_geeko:
+  image: docker.io/avaleror/telco-site-console:latest
+  fleet_repo: https://github.com/avaleror/telco-site-console.git
+  fleet_branch: main
+  fleet_name: telco-site-console
+  fleet_namespace: fleet-default
+  target_labels:
+    demo: "true"
+    site-type: downstream

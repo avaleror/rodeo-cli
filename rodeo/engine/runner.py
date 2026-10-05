@@ -918,8 +918,9 @@ class DeployRunner:
             profile = get_profile(self.cfg.get("type", "suse-virt"))
         except ValueError:
             profile = None
-        if profile is not None:
-            vars_data.update(profile.ansible_vars(self.cfg))
+        extra_vars = getattr(profile, "ansible_vars", None)
+        if extra_vars is not None:
+            vars_data.update(extra_vars(self.cfg))
 
         # Wire the full vm_nodes (with MACs, UUIDs, interfaces, etc.) from the centralized
         # definition (rodeo/data/profiles/suse-virt/topology.yaml via inventory.py).

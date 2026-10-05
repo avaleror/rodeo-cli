@@ -60,6 +60,15 @@ ansible:
   path: null
   inventory: deployer/inventory.local
 
+# SL Micro 6.2 base image for mgmt. It is only on the SUSE Linux Micro
+# download page (login), so stage it on the KVM host before `rodeo up`, or set
+# url to a location the host can fetch. sha256 is checked when set.
+telco:
+  base_image:
+    path: /var/lib/libvirt/images/SL-Micro.x86_64-6.2-Base-GM.raw.xz
+    url: ""
+    sha256: ""
+
 # Rancher's self-signed cert on NodePort 30002. No public 80/443.
 rancher_tls:
   source: rancher
@@ -69,6 +78,8 @@ credentials:
   scc_registration_code: "??scc_registration_code"
   # Emulated Redfish BMC (sushy-tools) for site-co and site-ran. Generated.
   bmc_password: "??bmc_password"
+  # Console password for the mgmt VM. Generated. SSH is key-only.
+  mgmt_root_password: "??mgmt_root_password"
 
 # Only the operator has these. rodeo asks for them, it never generates them.
 operator_secrets:

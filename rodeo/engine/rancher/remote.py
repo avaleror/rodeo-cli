@@ -15,6 +15,10 @@ from ..runner import DeployEvent, LogLine, ProgressUpdate
 class RemoteExecMixin:
     """Remote execution + HTTP plumbing shared by every RancherPhase concern."""
 
+    # Kubeconfig on the management VM for every remote kubectl/helm call.
+    # K3s for the Harvester and Edge profiles; suse-telco's RKE2 phase overrides it.
+    KUBECONFIG = "/etc/rancher/k3s/k3s.yaml"
+
     # ---------- SSH helpers ----------
 
     @staticmethod

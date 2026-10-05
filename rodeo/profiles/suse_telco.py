@@ -1,9 +1,13 @@
 """SUSE Telco Cloud 3.7 profile: management cluster and two downstream hosts.
 
-The phase list is the order `rodeo plan` shows. kvm_host (host prep) and bmc
-(sushy-tools, the emulated Redfish BMC for site-co and site-ran) run through
-Ansible. images, vms, boot and enroll are not implemented yet, and stay out of
-the phase cache so a later implementation is not skipped as already done.
+The phase list is the order `rodeo plan` shows. kvm_host (host prep), vms
+(libvirt network, mgmt disk from the SL Micro base image plus a combustion
+seed, blank site disks, domain definitions) and bmc (sushy-tools, the emulated
+Redfish BMC for site-co and site-ran) run through Ansible. boot starts mgmt
+only (Metal3 owns the site hosts' power) and mgmt installs the management
+stack; both run TelcoPhase (rodeo/engine/telco.py). images and enroll are not
+implemented yet, and stay out of the phase cache so a later implementation is
+not skipped as already done.
 
 Versions are the SUSE Telco Cloud 3.7.0 release notes, component table
 (documentation.suse.com/suse-telco/3.7, Appendix "Release Notes"). Helm-installed
@@ -22,12 +26,13 @@ class SuseTelcoProfile(RodeoProfile):
         "vms",
         "bmc",
         "boot",
+        "mgmt",
         "enroll",
         "finalise",
         "custom_scripts",
     ]
     vm_names = ["mgmt", "site-co", "site-ran"]
-    ansible_phases = frozenset(["kvm_host", "bmc"])
+    ansible_phases = frozenset(["kvm_host", "vms", "bmc"])
     guarded_phases = frozenset(["finalise", "custom_scripts"])
     no_cache_phases = frozenset(["images", "vms", "bmc", "enroll", "custom_scripts"])
 
@@ -99,7 +104,31 @@ class SuseTelcoProfile(RodeoProfile):
         bmc = telco.get("bmc", {})
         sites = set(telco.get("sites", {}))
         nodes = inventory.build_inventory(cfg).get("vm_nodes", [])
+        resources = cfg.get("resources", {})
+        image_dir = cfg.get("storage", {}).get("image_dir", "/var/lib/libvirt/images")
+        base = telco.get("base_image", {})
+        mgmt_ip = next((n["ip"] for n in nodes if n["name"] == "mgmt"), "192.168.122.10")
+        cache = telco.get("image_cache", {})
         return {
+            # --- vms role ---
+            "libvirt_flavors": {
+                flavor: {
+                    "memory_mib": resources.get(flavor, {}).get("memory_mib", spec["memory_mib"]),
+                    "vcpu": resources.get(flavor, {}).get("vcpu", spec["vcpu"]),
+                    "disk_gb": resources.get(flavor, {}).get("disk_gb", spec["disk_gb"]),
+                }
+                for flavor, spec in self.resources.items()
+            },
+            "telco_base_image": {
+                "path": base.get("path") or f"{image_dir}/{_BASE_IMAGE_FILE}",
+                "url": base.get("url", ""),
+                "sha256": base.get("sha256", ""),
+            },
+            "mgmt_root_password": cfg.get("credentials", {}).get("mgmt_root_password", ""),
+            # Metal3MachineTemplates fetch the downstream image from
+            # http://imagecache.local:8080, served from mgmt.
+            "lab_extra_dns_hosts": [{"ip": mgmt_ip, "hostname": cache.get("hostname", "imagecache.local")}],
+            # --- bmc role ---
             "bmc_listen_ip": bmc.get("address", "192.168.122.1"),
             "bmc_port": int(bmc.get("port", 8000)),
             "bmc_username": bmc.get("username", "admin"),
@@ -109,12 +138,29 @@ class SuseTelcoProfile(RodeoProfile):
             "bmc_allowed_instances": [n["uuid"] for n in nodes if n["name"] in sites],
         }
 
+    def run_phase(self, phase, runner, vars_file):
+        """boot and mgmt run TelcoPhase; every other phase uses the shared dispatch."""
+        if phase not in ("boot", "mgmt"):
+            yield from super().run_phase(phase, runner, vars_file)
+            return
+        from ..engine.telco import TelcoPhase
+
+        if phase == "boot":
+            yield from runner._start_firewalld()
+        telco = TelcoPhase(runner.cfg, stop=runner.stop)
+        yield from (telco.stream_boot() if phase == "boot" else telco.stream_mgmt())
+        runner._last_rc = 0 if telco.success else 1
+
     def success_next_steps(self, cfg: dict) -> list[str]:
         return [
             "  rodeo plan                 # mgmt, site-co, site-ran on 192.168.122.0/24",
             "  This slice does not boot VMs or install Metal3 yet.",
         ]
 
+
+# The SUSE Linux Micro download page name for the 3.7 base image (release notes,
+# component table). The instructor stages it on the KVM host.
+_BASE_IMAGE_FILE = "SL-Micro.x86_64-6.2-Base-GM.raw.xz"
 
 # Rancher's own self-signed cert on a NodePort. No public 80/443.
 _RANCHER_TLS = {

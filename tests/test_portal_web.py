@@ -457,3 +457,19 @@ def test_logs_do_not_contain_ip_addresses(portal, browser, capsys):
     browser.claim()
     browser.get("/privacy")
     assert "127.0.0.1" not in capsys.readouterr().err
+
+
+def test_ssh_card_shows_the_student_port():
+    from rodeo.portal.web import _lab_cards
+    data = {"ssh": {"user": "student", "host": "1.2.3.4", "port": 2222, "private_key": "K"}}
+    html = _lab_cards("lab-01", data, "/key", ssh_title="SSH")
+    assert "ssh -p 2222 -i lab-01.key student@1.2.3.4" in html
+    assert "<code>2222</code>" in html
+
+
+def test_ssh_card_without_port_falls_back_to_22():
+    from rodeo.portal.web import _lab_cards
+    for port in (None, "x"):
+        data = {"ssh": {"user": "student", "host": "1.2.3.4", "port": port, "private_key": "K"}}
+        html = _lab_cards("lab-01", data, "/key", ssh_title="SSH")
+        assert "ssh -i lab-01.key student@1.2.3.4" in html

@@ -10,7 +10,7 @@ import yaml
 
 from rodeo.config import ConfigError
 from rodeo.fleet import portal as fp
-from rodeo.fleet.inventory import load_inventory
+from rodeo.fleet.inventory import STUDENT_SSH_PORT, load_inventory
 from rodeo.fleet.ssh_exec import RemoteResult
 from rodeo.providers.aws import AwsHostProvider
 from rodeo.providers.base import ProvisionSpec
@@ -85,14 +85,52 @@ def test_lab_deprovision_never_terminates_portal_and_still_deletes_lab_sg(manage
     assert [r.detail for r in out] == ["terminating", "deleted"]
 
 
-def test_student_access_refuses_ssh_unless_allowed(managed_ssh, no_wait):  # noqa: F811
+def test_student_access_never_opens_port_22(managed_ssh, no_wait):  # noqa: F811
+    """The fleet-wide rodeo key logs in on :22 as root and ssh_user, so :22 never
+    opens to the internet, not even with student SSH (Cursor review on #53)."""
     fake = _FakeEC2WithSG()
     p = _aws(fake)
     p.provision(ProvisionSpec(workshop="demo", host_ids=["s1"], ssh_user="root", wait_ssh=False), _provider())
-    with pytest.raises(ConfigError, match=r"\[22\]"):
-        p.set_student_access(_provider(), workshop="demo", open_ports=(22, 8443))
-    sg = p.set_student_access(_provider(), workshop="demo", open_ports=(22, 8443), allow_ssh=True)
+    for allow in (False, True):
+        with pytest.raises(ConfigError, match=r"\[22\]"):
+            p.set_student_access(_provider(), workshop="demo", open_ports=(22, 8443), allow_ssh=allow)
+
+
+def test_student_ssh_port_opens_only_with_allow_ssh(managed_ssh, no_wait):  # noqa: F811
+    fake = _FakeEC2WithSG()
+    p = _aws(fake)
+    p.provision(ProvisionSpec(workshop="demo", host_ids=["s1"], ssh_user="root", wait_ssh=False), _provider())
+    with pytest.raises(ConfigError, match=rf"\[{STUDENT_SSH_PORT}\]"):
+        p.set_student_access(_provider(), workshop="demo", open_ports=(STUDENT_SSH_PORT, 8443))
+    sg = p.set_student_access(_provider(), workshop="demo", open_ports=(STUDENT_SSH_PORT, 8443),
+                              allow_ssh=True)
+    rules = _sg_rules(fake, sg)
+    assert rules[STUDENT_SSH_PORT] == {"0.0.0.0/0"}  # no operator rule: the operator uses :22
+    assert rules[22] == {"203.0.113.9/32"}
+
+
+def test_closing_access_removes_the_student_ssh_port(managed_ssh, no_wait):  # noqa: F811
+    fake = _FakeEC2WithSG()
+    p = _aws(fake)
+    p.provision(ProvisionSpec(workshop="demo", host_ids=["s1"], ssh_user="root", wait_ssh=False), _provider())
+    p.set_student_access(_provider(), workshop="demo", open_ports=(STUDENT_SSH_PORT,), allow_ssh=True)
+    sg = p.set_student_access(_provider(), workshop="demo", open_ports=())
+    assert not _sg_rules(fake, sg).get(STUDENT_SSH_PORT)
+    assert _sg_rules(fake, sg)[22] == {"203.0.113.9/32"}
+
+
+def test_open_access_closes_22_left_open_by_older_releases(managed_ssh, no_wait):  # noqa: F811
+    """v0.18.0 and v0.19.0 opened :22 to 0.0.0.0/0 with student_ssh. Re-running
+    open-access with this release takes that rule away."""
+    fake = _FakeEC2WithSG()
+    p = _aws(fake)
+    p.provision(ProvisionSpec(workshop="demo", host_ids=["s1"], ssh_user="root", wait_ssh=False), _provider())
+    sg = next(g["GroupId"] for g in fake.security_groups.values() if g["GroupName"] == "rodeo-demo")
+    fake.authorize_security_group_ingress(GroupId=sg, IpPermissions=[
+        {"IpProtocol": "tcp", "FromPort": 22, "ToPort": 22, "IpRanges": [{"CidrIp": "0.0.0.0/0"}]}])
     assert "0.0.0.0/0" in _sg_rules(fake, sg)[22]
+    p.set_student_access(_provider(), workshop="demo", open_ports=(STUDENT_SSH_PORT, 8443), allow_ssh=True)
+    assert _sg_rules(fake, sg)[22] == {"203.0.113.9/32"}
 
 
 # ---------------------------------------------------------------- inventory
@@ -210,6 +248,7 @@ def test_publish_with_student_ssh_generates_per_lab_key(tmp_path, monkeypatch):
     rows = fp.portal_publish(inv)
     lab = json.loads(pushed["stdin"])[0]
     assert rows[0].ssh and lab["data"]["ssh"]["user"] == "student"
+    assert lab["data"]["ssh"]["port"] == STUDENT_SSH_PORT
     assert "PRIVATE KEY" in lab["data"]["ssh"]["private_key"]
     assert pushed["student_pub"].startswith("ssh-ed25519 ")
     key = tmp_path / "rodeo" / "fleet" / "ws" / "student-keys" / "student-01"
@@ -228,6 +267,22 @@ def test_student_setup_script_proves_the_user_is_unprivileged():
     assert "test -r /root/.ssh/id_ed25519" in s and "chmod 700 /root" in s
     for g in ("wheel", "libvirt", "docker"):
         assert g in s
+
+
+def test_student_setup_script_runs_a_student_only_sshd_off_port_22():
+    s = fp.STUDENT_SETUP_SCRIPT
+    assert f"P={STUDENT_SSH_PORT}" in s and "rodeo-student-sshd" in s
+    for line in ("PermitRootLogin no", "PasswordAuthentication no", "KbdInteractiveAuthentication no"):
+        assert line in s
+    assert "AllowUsers %s" in s
+    # Validated before install, proven after: only the student, key only, listening.
+    assert '"$SSHD" -t -f "$CFG.tmp"' in s
+    for check in ("allowusers $U", "permitrootlogin no", "passwordauthentication no", "ss -Hltn"):
+        assert check in s
+    # A restart (config change) must not drop open student sessions.
+    assert "KillMode=process" in s
+    # The main sshd on :22 is never touched.
+    assert "/etc/ssh/sshd_config" not in s.replace("/etc/ssh/rodeo-student-sshd_config", "")
 
 
 # ---------------------------------------------------------------- invite + install

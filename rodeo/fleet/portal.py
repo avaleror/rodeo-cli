@@ -34,6 +34,7 @@ from .access import access_for_host
 from .fanout import fanout
 from .inventory import (
     PORTAL_HOST_ID,
+    STUDENT_SSH_PORT,
     FleetHost,
     FleetInventory,
     PortalConfig,
@@ -361,6 +362,68 @@ for g in wheel sudo libvirt kvm docker; do
   if id -nG "$U" | tr ' ' '\\n' | grep -qx "$g"; then echo "student in group $g" >&2; exit 3; fi
 done
 if runuser -u "$U" -- test -r /root/.ssh/id_ed25519; then echo "student can read the rodeo key" >&2; exit 3; fi
+# Students log in through their own sshd on STUDENT_SSH_PORT, never on :22. The
+# security group keeps :22 operator-only, so the fleet-wide rodeo key (root and
+# ssh_user) is never usable from the internet, and root on one lab can't reach
+# the others over their public IPs. This sshd lets only the student in, by key.
+P={STUDENT_SSH_PORT}
+SSHD=$(command -v sshd || echo /usr/sbin/sshd)
+CFG=/etc/ssh/rodeo-student-sshd_config
+UNIT=/etc/systemd/system/rodeo-student-sshd.service
+{{
+  printf 'Port %s\\n' "$P"
+  printf 'AllowUsers %s\\n' "$U"
+  printf '%s\\n' 'PermitRootLogin no' 'PasswordAuthentication no' \\
+    'KbdInteractiveAuthentication no' 'PubkeyAuthentication yes' \\
+    'AuthorizedKeysFile .ssh/authorized_keys' 'UsePAM yes' \\
+    'PidFile /run/rodeo-student-sshd.pid' 'Subsystem sftp internal-sftp'
+  for k in /etc/ssh/ssh_host_*_key; do printf 'HostKey %s\\n' "$k"; done
+}} > "$CFG.tmp"
+chmod 600 "$CFG.tmp"
+"$SSHD" -t -f "$CFG.tmp"
+CHANGED=0
+cmp -s "$CFG.tmp" "$CFG" || CHANGED=1
+mv -f "$CFG.tmp" "$CFG"
+cat > "$UNIT.tmp" <<UNITEOF
+[Unit]
+Description=rodeo claim portal: student-only sshd on port $P
+After=network.target
+
+[Service]
+ExecStartPre=$SSHD -t -f $CFG
+ExecStart=$SSHD -D -e -f $CFG
+ExecReload=/bin/kill -HUP \\$MAINPID
+# Restarting the listener must not end students' open sessions.
+KillMode=process
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+UNITEOF
+cmp -s "$UNIT.tmp" "$UNIT" || CHANGED=1
+mv -f "$UNIT.tmp" "$UNIT"
+if command -v getenforce >/dev/null 2>&1 && [ "$(getenforce)" = Enforcing ]; then
+  command -v semanage >/dev/null 2>&1 || zypper -n -q in policycoreutils-python-utils >/dev/null
+  semanage port -a -t ssh_port_t -p tcp "$P" 2>/dev/null || semanage port -m -t ssh_port_t -p tcp "$P"
+fi
+if systemctl is-active -q firewalld 2>/dev/null; then
+  firewall-cmd -q --add-port="$P/tcp" && firewall-cmd -q --permanent --add-port="$P/tcp"
+fi
+systemctl daemon-reload
+systemctl enable -q rodeo-student-sshd
+if [ "$CHANGED" = 1 ] || ! systemctl is-active -q rodeo-student-sshd; then
+  systemctl restart rodeo-student-sshd
+fi
+# Prove it: only the student, key only, and actually listening.
+EFF=$("$SSHD" -T -f "$CFG")
+printf '%s\\n' "$EFF" | grep -qx "allowusers $U" || {{ echo "student sshd allows more than $U" >&2; exit 3; }}
+printf '%s\\n' "$EFF" | grep -qx "permitrootlogin no" || {{ echo "student sshd permits root" >&2; exit 3; }}
+printf '%s\\n' "$EFF" | grep -qx "passwordauthentication no" || {{ echo "student sshd allows passwords" >&2; exit 3; }}
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  ss -Hltn "sport = :$P" | grep -q LISTEN && break
+  sleep 1
+done
+ss -Hltn "sport = :$P" | grep -q LISTEN || {{ echo "student sshd is not listening on $P" >&2; exit 3; }}
 echo STUDENT_OK
 """
 
@@ -423,7 +486,8 @@ def _lab_record(inventory: FleetInventory, host: FleetHost, *, timeout: float) -
     if require_portal(inventory).student_ssh:
         user = ensure_student_user(inventory, host)
         private, _ = ensure_student_key(inventory.name, host.id)
-        data["ssh"] = {"user": user, "host": host_public_ip(host), "private_key": private}
+        data["ssh"] = {"user": user, "host": host_public_ip(host), "port": STUDENT_SSH_PORT,
+                       "private_key": private}
         ssh = True
     return {"id": host.id, "ready": True, "data": data}, PublishRow(host.id, True, None, ssh)
 

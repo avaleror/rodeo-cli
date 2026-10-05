@@ -16,6 +16,10 @@ _VALID_TARGETS = frozenset({"baremetal", "instruqt"})
 # operator: this machine's /32 only (default). open: also 0.0.0.0/0, applied
 # only by `rodeo fleet open-access` after every lab is up with strong passwords.
 _VALID_STUDENT_ACCESS = frozenset({"operator", "open"})
+# Student SSH (portal.student_ssh) runs on its own sshd on this port, which only
+# lets the `student` user in. Port 22 stays operator-only, so the fleet-wide
+# rodeo key (root, ssh_user) is never usable from the internet.
+STUDENT_SSH_PORT = 2222
 
 
 @dataclass(frozen=True)

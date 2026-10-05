@@ -406,3 +406,24 @@ Fix:
 
 Root on a lab can still read the planted key (R7), but no other lab accepts it from
 the internet any more. The per-host nested key that removes R7 is still to do.
+
+## 14c. Workshop code against distributed guessing (2026-10-05)
+
+The same Cursor review (MEDIUM) found that the default code was 4 letters from 24,
+about 331k codes or 18 bits (the date isn't secret), and failed attempts were only
+limited per address (30 per 10 minutes). Many addresses together could walk the code
+space during a workshop and claim labs without the spoken code.
+
+Fix:
+
+- Default `portal.code_letters` is now **6** (about 191M codes). 4 to 8 still work.
+- Wrong workshop codes also count against **200 per 10 minutes for the whole portal**
+  (`CODE_FAIL_LIMIT_ALL` in `rodeo/portal/web.py`). Over 8 hours that's at most 9,600
+  guesses from any number of addresses: about 0.005% odds against 6 letters, 2.9%
+  against 4.
+- Hitting the cap can't lock the class out: it only pauses `/enter`, so people who
+  haven't typed the code yet wait a few minutes. Everyone who already entered it keeps
+  their access cookie (24 h), and claims, recovery and lab links don't use the cap.
+  The counter holds no addresses.
+- Existing portals: the next `portal up` after upgrading rotates the code to the new
+  length, as any `code_letters` change does.

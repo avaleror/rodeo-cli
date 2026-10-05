@@ -203,7 +203,7 @@ def _caddyfile(fqdn: str) -> str:
 """
 
 
-def portal_up_script(fqdn: str, *, mode: str, title: str, code_letters: int = 4,
+def portal_up_script(fqdn: str, *, mode: str, title: str, code_letters: int = 6,
                      guide_url: str = "") -> str:
     """Idempotent install script run as root on the portal VM."""
     q = shlex.quote

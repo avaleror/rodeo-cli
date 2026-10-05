@@ -20,10 +20,12 @@ from .db import get_setting, set_setting
 
 MODES = ("open", "roster", "both")
 # Workshop code: RODEO-<letters>-<YYYYMMDD>. Letters only, no I/O (read aloud, typed
-# from a slide). 24**4 = 331,776 codes by default; the date adds no entropy, it only
-# tells people whether they have today's code. portal.code_letters raises it (4-8).
+# from a slide). 24**6, about 191M codes by default; the date adds no entropy, it only
+# tells people whether they have today's code. portal.code_letters sets it (4-8).
 CODE_LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ"
 CODE_LETTERS_MIN, CODE_LETTERS_MAX = 4, 8
+# 6 letters = 24**6, about 191M codes (4 was about 330k, Cursor review on #53).
+CODE_LETTERS_DEFAULT = 6
 LAB_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$")
 PIN_LOCKOUT = 5
 EMAIL_RE = re.compile(r"^[^@\s<>\"'`]{1,64}@[^@\s<>\"'`]{1,190}\.[A-Za-z]{2,}$")
@@ -43,7 +45,7 @@ def now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
 
 
-def new_code(letters: int = CODE_LETTERS_MIN, *, today: datetime | None = None) -> str:
+def new_code(letters: int = CODE_LETTERS_DEFAULT, *, today: datetime | None = None) -> str:
     letters = max(CODE_LETTERS_MIN, min(CODE_LETTERS_MAX, int(letters)))
     day = (today or datetime.now(timezone.utc)).strftime("%Y%m%d")
     return f"RODEO-{''.join(secrets.choice(CODE_LETTERS) for _ in range(letters))}-{day}"
@@ -116,7 +118,7 @@ def ensure_defaults(con: sqlite3.Connection, *, mode: str = "both", title: str =
         if get_setting(con, "secret") is None:  # keys the access cookie
             set_setting(con, "secret", secrets.token_hex(32))
         if get_setting(con, "code") is None:
-            set_setting(con, "code", new_code(int(get_setting(con, "code_letters", "4") or 4)))
+            set_setting(con, "code", new_code(int(get_setting(con, "code_letters") or CODE_LETTERS_DEFAULT)))
         if get_setting(con, "open") is None:
             set_setting(con, "open", "1")
         if get_setting(con, "mode") is None:
@@ -138,7 +140,7 @@ def settings(con: sqlite3.Connection) -> dict[str, Any]:
 def rotate_code(con: sqlite3.Connection) -> str:
     """New workshop code; every board session (access cookie) ends with it."""
     with write_tx(con):
-        code = new_code(int(get_setting(con, "code_letters", "4") or 4))
+        code = new_code(int(get_setting(con, "code_letters") or CODE_LETTERS_DEFAULT))
         set_setting(con, "code", code)
     return code
 

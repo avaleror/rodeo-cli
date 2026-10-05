@@ -93,8 +93,8 @@ def browser(portal):
 # ---------------------------------------------------------------- code gate
 def test_code_format():
     code = claims.new_code()
-    assert re.fullmatch(r"RODEO-[A-HJ-NP-Z]{4}-\d{8}", code), code
-    assert re.fullmatch(r"RODEO-[A-Z]{6}-\d{8}", claims.new_code(6))
+    assert re.fullmatch(r"RODEO-[A-HJ-NP-Z]{6}-\d{8}", code), code
+    assert re.fullmatch(r"RODEO-[A-HJ-NP-Z]{4}-\d{8}", claims.new_code(4))
 
 
 def test_gate_hides_board_and_claim_form_until_code_entered(portal):
@@ -473,3 +473,53 @@ def test_ssh_card_without_port_falls_back_to_22():
         data = {"ssh": {"user": "student", "host": "1.2.3.4", "port": port, "private_key": "K"}}
         html = _lab_cards("lab-01", data, "/key", ssh_title="SSH")
         assert "ssh -i lab-01.key student@1.2.3.4" in html
+
+
+# ---------------------------------------------------------------- portal-wide code cap
+class _FromIP(Browser):
+    """A browser behind Caddy, seen from its own client address."""
+
+    def __init__(self, port, ip):
+        super().__init__(port)
+        self.ip = ip
+
+    def _hdr(self):
+        return {**super()._hdr(), "X-Forwarded-For": self.ip}
+
+
+def test_wrong_codes_are_capped_across_all_addresses(tmp_path):
+    """Many addresses together can't walk the code space (Cursor review on #53): past
+    the portal-wide cap, /enter pauses for newcomers, but a student who already
+    entered the code keeps claiming."""
+    from rodeo.portal.web import RateLimiter
+    p = str(tmp_path / "portal.db")
+    migrate(p)
+    con = connect(p)
+    claims.ensure_defaults(con, mode="both", title="W")
+    claims.import_labs(con, [{"id": "lab-01", "ready": True, "data": {"components": []}}])
+    code = claims.settings(con)["code"]
+    con.close()
+    srv = make_server("127.0.0.1", 0, db_path=p, secure_cookie=False)
+    srv.RequestHandlerClass.code_limiter = RateLimiter(limit=5)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    port = srv.server_address[1]
+    try:
+        inside = _FromIP(port, "198.51.100.1")
+        assert inside.enter(code)[0] == 303
+        # 5 wrong codes, each from a different address: no per-address limit is hit.
+        for i in range(5):
+            assert _FromIP(port, f"203.0.113.{i + 1}").enter("RODEO-ZZZZZZ-20260101")[0] == 403
+        # Now even the right code waits, from a fresh address.
+        s, _, body = _FromIP(port, "203.0.113.99").enter(code)
+        assert s == 429 and "wrong codes" in body
+        # The student who already entered is not affected.
+        assert inside.claim()[0] == 303
+    finally:
+        srv.shutdown()
+
+
+def test_default_code_has_six_letters():
+    letters = claims.new_code().split("-")[1]
+    assert len(letters) == claims.CODE_LETTERS_DEFAULT == 6
+    assert set(letters) <= set(claims.CODE_LETTERS)
+

@@ -32,6 +32,10 @@ MAX_BODY = 4096
 # a whole classroom behind one NAT address claims freely.
 RATE_LIMIT = 30
 RATE_WINDOW = 600.0
+# Wrong workshop codes from *all* addresses together, so many addresses can't walk
+# the code space (Cursor review on #53). Hitting it only delays newcomers: students
+# who already entered the code keep their access cookie.
+CODE_FAIL_LIMIT_ALL = 200
 ACCESS_MAX_AGE = 24 * 3600
 # "Remember this device": the student's personal link token in an HttpOnly cookie, so
 # reopening the portal offers "Continue to your lab" with nothing to type.
@@ -502,6 +506,7 @@ class Handler(BaseHTTPRequestHandler):
     sys_version = ""
     db_path: str | None = None
     limiter = RateLimiter()
+    code_limiter = RateLimiter(limit=CODE_FAIL_LIMIT_ALL)
     secure_cookie = True
 
     def log_message(self, fmt: str, *args: Any) -> None:
@@ -545,6 +550,11 @@ class Handler(BaseHTTPRequestHandler):
     def _slow_down(self) -> None:
         self._send(429, _page("Slow down", "", heading="Too many attempts",
                               sub="Wait a few minutes and try again."))
+
+    def _codes_paused(self) -> None:
+        self._send(429, _page("Slow down", "", heading="Too many wrong codes",
+                              sub="This portal got too many wrong workshop codes. Wait a few "
+                                  "minutes and try again, or ask your instructor."))
 
     def _mine(self, con: Any) -> Any:
         """The lab this browser remembers (lab cookie), as a dict, or None."""
@@ -694,8 +704,12 @@ class Handler(BaseHTTPRequestHandler):
         con = connect(self.db_path)
         try:
             if self.path == "/enter":
+                if self.code_limiter.over("*"):
+                    con.close()
+                    return self._codes_paused()
                 if not claims.code_matches(f.get("code", ""), claims.settings(con)["code"]):
                     self.limiter.fail(self._ip())
+                    self.code_limiter.fail("*")
                     con.close()
                     return self._front(403, gate_err="That workshop code is not valid.")
                 access = claims.access_token(con)
@@ -725,7 +739,8 @@ class Handler(BaseHTTPRequestHandler):
 def make_server(host: str, port: int, *, db_path: str | None = None,
                 secure_cookie: bool = True) -> ThreadingHTTPServer:
     handler = type("PortalHandler", (Handler,), {
-        "db_path": db_path, "limiter": RateLimiter(), "secure_cookie": secure_cookie,
+        "db_path": db_path, "limiter": RateLimiter(),
+        "code_limiter": RateLimiter(limit=CODE_FAIL_LIMIT_ALL), "secure_cookie": secure_cookie,
     })
     srv = ThreadingHTTPServer((host, port), handler)
     srv.daemon_threads = True

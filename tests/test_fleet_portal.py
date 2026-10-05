@@ -344,6 +344,10 @@ def test_code_letters_range(tmp_path, letters, ok):
             load_inventory(p)
 
 
+def test_code_letters_default_is_six(tmp_path):
+    assert load_inventory(_write(tmp_path, {"enabled": True})).portal.code_letters == 6
+
+
 def test_portal_up_script_uses_private_temp_dir_and_code_letters():
     s = fp.portal_up_script("portal-1-2-3-4.sslip.io", mode="open", title="T", code_letters=6)
     assert "mktemp -d" in s and "/tmp/" not in s

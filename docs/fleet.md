@@ -411,9 +411,8 @@ What protects what:
   the current code, 24 h) shows the board of every lab (free / claimed / building)
   with the claimant's *name*, never their email or any credential, and the claim
   form. The default code has 6 random letters (about 191M codes). Wrong codes are
-  also capped across all addresses together (200 per 10 minutes), so even many
-  addresses at once get at most 9,600 guesses in an 8-hour workshop: about 0.005%
-  odds. Set `portal.code_letters` (4-8) to change the length, and `rotate-code` if a
+  also capped across all addresses together (200 per 10 minutes), so even 1,000
+  addresses at once get about 0.06% odds over an 8-hour workshop. Set `portal.code_letters` (4-8) to change the length, and `rotate-code` if a
   code leaks. After upgrading, the next `portal up` on an existing portal rotates its
   code to the new length (set `code_letters: 4` to keep the old one).
 - **Workshop guide link:** with `portal.guide_url` every student page (claim page, and
@@ -428,8 +427,8 @@ What protects what:
   *failed* attempts (wrong code or PIN, unknown links) count against a limit of 30 per
   10 minutes per address, so a whole classroom behind one NAT address can claim.
   Wrong workshop codes also count against 200 per 10 minutes for the whole portal.
-  When that is hit, only people who haven't entered the code yet wait a few minutes;
-  everyone who has keeps their 24 h access.
+  Past that, only addresses that already sent 3 wrong codes wait; new students still
+  get in, and everyone who entered keeps their 24 h access.
   Logs never contain tokens, emails, codes, PINs or passwords.
 - **Student SSH:** a `student` user per lab host, key-only, with its own key generated
   on your laptop (`~/.rodeo/fleet/<workshop>/student-keys/`). Publish proves on every

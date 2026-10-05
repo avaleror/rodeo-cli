@@ -418,12 +418,14 @@ Fix:
 
 - Default `portal.code_letters` is now **6** (about 191M codes). 4 to 8 still work.
 - Wrong workshop codes also count against **200 per 10 minutes for the whole portal**
-  (`CODE_FAIL_LIMIT_ALL` in `rodeo/portal/web.py`). Over 8 hours that's at most 9,600
-  guesses from any number of addresses: about 0.005% odds against 6 letters, 2.9%
-  against 4.
-- Hitting the cap can't lock the class out: it only pauses `/enter`, so people who
-  haven't typed the code yet wait a few minutes. Everyone who already entered it keeps
-  their access cookie (24 h), and claims, recovery and lab links don't use the cap.
-  The counter holds no addresses.
+  (`CODE_FAIL_LIMIT_ALL` in `rodeo/portal/web.py`).
+- Past the cap, only addresses that already sent 3 or more wrong codes in the window
+  wait (`CODE_FAILS_WHILE_CAPPED`). Fresh addresses, so real students, still get in
+  with the right code, and everyone who already entered keeps their access cookie
+  (24 h); claims, recovery and lab links don't use the cap. So flooding wrong codes
+  can't close the gate for the class (Cursor review on #77). The price: past the cap,
+  each new attacking address still gets 2 guesses per window. With 1,000 addresses
+  over 8 hours that's about 105k guesses, about 0.06% odds against 6 letters (0.75%
+  without the portal-wide cap).
 - Existing portals: the next `portal up` after upgrading rotates the code to the new
   length, as any `code_letters` change does.

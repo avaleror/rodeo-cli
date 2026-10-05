@@ -489,8 +489,9 @@ class _FromIP(Browser):
 
 def test_wrong_codes_are_capped_across_all_addresses(tmp_path):
     """Many addresses together can't walk the code space (Cursor review on #53): past
-    the portal-wide cap, /enter pauses for newcomers, but a student who already
-    entered the code keeps claiming."""
+    the portal-wide cap, addresses that already sent wrong codes wait, while fresh
+    addresses and students who already entered still get in, so flooding can't close
+    the gate for the class (Cursor review on #77)."""
     from rodeo.portal.web import RateLimiter
     p = str(tmp_path / "portal.db")
     migrate(p)
@@ -506,13 +507,21 @@ def test_wrong_codes_are_capped_across_all_addresses(tmp_path):
     try:
         inside = _FromIP(port, "198.51.100.1")
         assert inside.enter(code)[0] == 303
-        # 5 wrong codes, each from a different address: no per-address limit is hit.
-        for i in range(5):
-            assert _FromIP(port, f"203.0.113.{i + 1}").enter("RODEO-ZZZZZZ-20260101")[0] == 403
-        # Now even the right code waits, from a fresh address.
-        s, _, body = _FromIP(port, "203.0.113.99").enter(code)
+        # An attacker address sends wrong codes until the portal-wide cap (5) is hit.
+        bad = _FromIP(port, "203.0.113.7")
+        for _ in range(5):
+            assert bad.enter("RODEO-ZZZZZZ-20260101")[0] == 403
+        # Past the cap, that address waits, even with the right code...
+        s, _, body = bad.enter(code)
         assert s == 429 and "wrong codes" in body
-        # The student who already entered is not affected.
+        # ...an address with a couple of typos still gets its answer...
+        typo = _FromIP(port, "203.0.113.8")
+        assert typo.enter("RODEO-ZZZZZZ-20260101")[0] == 403
+        assert typo.enter("RODEO-ZZZZZZ-20260102")[0] == 403
+        assert typo.enter(code)[0] == 303
+        # ...a fresh address (a real student) gets in with the right code...
+        assert _FromIP(port, "198.51.100.2").enter(code)[0] == 303
+        # ...and the student who already entered keeps claiming.
         assert inside.claim()[0] == 303
     finally:
         srv.shutdown()

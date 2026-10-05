@@ -58,3 +58,5 @@ HANDOFF.md
 .labinabox/
 # per-lab generated secrets (lab dirs)
 .rodeo-secrets.yaml
+# static Rodeo Builder, built by scripts/build-builder-static.py in the docs workflow
+docs/builder/

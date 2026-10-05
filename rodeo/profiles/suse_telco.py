@@ -1,9 +1,9 @@
 """SUSE Telco Cloud 3.7 profile: management cluster and two downstream hosts.
 
-The phase list is the order `rodeo plan` shows. This slice does not build
-images, install Metal3, or create libvirt guests. kvm_host, images, vms, and
-enroll stay out of the phase cache so a later implementation is not skipped
-as already done.
+The phase list is the order `rodeo plan` shows. kvm_host (host prep) and bmc
+(sushy-tools, the emulated Redfish BMC for site-co and site-ran) run through
+Ansible. images, vms, boot and enroll are not implemented yet, and stay out of
+the phase cache so a later implementation is not skipped as already done.
 
 Versions are the SUSE Telco Cloud 3.7.0 release notes, component table
 (documentation.suse.com/suse-telco/3.7, Appendix "Release Notes"). Helm-installed
@@ -20,15 +20,16 @@ class SuseTelcoProfile(RodeoProfile):
         "kvm_host",
         "images",
         "vms",
+        "bmc",
         "boot",
         "enroll",
         "finalise",
         "custom_scripts",
     ]
     vm_names = ["mgmt", "site-co", "site-ran"]
-    ansible_phases = frozenset()
+    ansible_phases = frozenset(["kvm_host", "bmc"])
     guarded_phases = frozenset(["finalise", "custom_scripts"])
-    no_cache_phases = frozenset(["kvm_host", "images", "vms", "enroll", "custom_scripts"])
+    no_cache_phases = frozenset(["images", "vms", "bmc", "enroll", "custom_scripts"])
 
     static_vms = {
         "mgmt": {"ip": "192.168.122.10", "user": "root"},
@@ -59,6 +60,13 @@ class SuseTelcoProfile(RodeoProfile):
         "eib": "1.3.4",
         "kiwi_builder": "10.2.29.1",
         "telco_examples_ref": "e4ec0b0a7349a635c1c5efd94bdefeaedbfa847c",
+        # Not part of the Telco Cloud stack: the lab's emulated BMC. Metal3's
+        # image, release-38.0 build of 2026-10-05 (matches Ironic 38.0.0),
+        # pinned by digest because the tags are rebuilt daily.
+        "sushy_tools_image": (
+            "quay.io/metal3-io/sushy-tools@sha256:"
+            "8e9fca1fe63ecdfde4361ad7c315066d57989c3263725a40176d6fcf948d490d"
+        ),
     }
 
     # CPU and RAM are the workshop starting sizes. Disk is a placeholder
@@ -81,6 +89,24 @@ class SuseTelcoProfile(RodeoProfile):
             },
             "telco": _TELCO,
             "alien_geeko": _ALIEN_GEEKO,
+        }
+
+    def ansible_vars(self, cfg: dict) -> dict:
+        """Vars for the bmc role: listen address, credentials, allowed guests."""
+        from .. import inventory
+
+        telco = cfg.get("telco", {})
+        bmc = telco.get("bmc", {})
+        sites = set(telco.get("sites", {}))
+        nodes = inventory.build_inventory(cfg).get("vm_nodes", [])
+        return {
+            "bmc_listen_ip": bmc.get("address", "192.168.122.1"),
+            "bmc_port": int(bmc.get("port", 8000)),
+            "bmc_username": bmc.get("username", "admin"),
+            "bmc_password": cfg.get("credentials", {}).get("bmc_password", ""),
+            "bmc_image": cfg.get("versions", {}).get("sushy_tools_image", ""),
+            # Only the site hosts get a BMC. Metal3 can never power-cycle mgmt.
+            "bmc_allowed_instances": [n["uuid"] for n in nodes if n["name"] in sites],
         }
 
     def success_next_steps(self, cfg: dict) -> list[str]:

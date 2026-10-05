@@ -139,6 +139,14 @@ class RodeoProfile(ABC):
         """Profile-specific config keys merged on top of the common shape. Override as needed."""
         return {}
 
+    def ansible_vars(self, cfg: dict) -> dict:
+        """Profile-specific vars merged into the Ansible vars file. Override as needed.
+
+        Lets a profile feed its own roles (e.g. suse-telco's bmc role) without
+        adding profile checks to DeployRunner._write_vars_file.
+        """
+        return {}
+
     def finalize_cfg(self, cfg: dict) -> dict:
         """Last pass over the fully merged config (plan + secrets). Override as needed."""
         return cfg

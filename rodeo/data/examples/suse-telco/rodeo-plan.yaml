@@ -67,6 +67,8 @@ rancher_tls:
 credentials:
   rancher_admin_password: "??rancher_admin_password"
   scc_registration_code: "??scc_registration_code"
+  # Emulated Redfish BMC (sushy-tools) for site-co and site-ran. Generated.
+  bmc_password: "??bmc_password"
 
 # Only the operator has these. rodeo asks for them, it never generates them.
 operator_secrets:

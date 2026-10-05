@@ -372,7 +372,7 @@ portal:
   student_ssh: true           # per-lab `student` user + key, own sshd on :2222 (key-only)
   title: SUSE Virtualization workshop
   guide_url: https://avaleror.github.io/suse-virt-workshop/   # or /guide/ if served by the portal
-  # code_letters: 4           # random letters in RODEO-XXXX-YYYYMMDD (4-8; 6 = 191M codes)
+  # code_letters: 6           # random letters in RODEO-XXXXXX-YYYYMMDD (4-8; 6 = 191M codes)
   # hostname: labs.example.com   # default portal-<ip>.sslip.io (Let's Encrypt)
   # instance_type: t3.small
 ```
@@ -410,9 +410,11 @@ What protects what:
   nothing but a code field until the code is entered. After that a cookie (bound to
   the current code, 24 h) shows the board of every lab (free / claimed / building)
   with the claimant's *name*, never their email or any credential, and the claim
-  form. The default code has 4 random letters (331,776 codes); with the failure limit
-  below one address gets about 0.4% odds over an 8-hour workshop. Raise
-  `portal.code_letters` for more, and `rotate-code` if a code leaks.
+  form. The default code has 6 random letters (about 191M codes). Wrong codes are
+  also capped across all addresses together (200 per 10 minutes), so even 1,000
+  addresses at once get about 0.06% odds over an 8-hour workshop. Set `portal.code_letters` (4-8) to change the length, and `rotate-code` if a
+  code leaks. After upgrading, the next `portal up` on an existing portal rotates its
+  code to the new length (set `code_letters: 4` to keep the old one).
 - **Workshop guide link:** with `portal.guide_url` every student page (claim page, and
   their lab page above the credentials) links to the exercises: an `https://` URL such as
   GitHub Pages, or a path served by the portal itself. The guide stays on GitHub Pages
@@ -424,6 +426,9 @@ What protects what:
   5 wrong PINs lock an email, CSRF on every form, no-store and CSP headers. Only
   *failed* attempts (wrong code or PIN, unknown links) count against a limit of 30 per
   10 minutes per address, so a whole classroom behind one NAT address can claim.
+  Wrong workshop codes also count against 200 per 10 minutes for the whole portal.
+  Past that, only addresses that already sent 3 wrong codes wait; new students still
+  get in, and everyone who entered keeps their 24 h access.
   Logs never contain tokens, emails, codes, PINs or passwords.
 - **Student SSH:** a `student` user per lab host, key-only, with its own key generated
   on your laptop (`~/.rodeo/fleet/<workshop>/student-keys/`). Publish proves on every

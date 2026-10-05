@@ -2,7 +2,7 @@
 
 Technical reference for contributors and maintainers. For deploying a workshop, see [User guide](get-started.md).
 
-**Version:** 0.20.0 <!-- x-release-please-version -->
+**Version:** 0.20.1 <!-- x-release-please-version -->
 **License:** GPL-3.0-or-later
 
 ---

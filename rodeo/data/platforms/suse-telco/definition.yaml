@@ -1,6 +1,7 @@
 # definition.yaml — SUSE Telco Cloud 3.7 topology.
 #
-# Three libvirt guests on one NAT bridge, 192.168.125.0/24 (virbr125).
+# Three libvirt guests on libvirt's default NAT network, 192.168.122.0/24
+# (virbr0), the same network every other profile uses.
 # This slice declares the machines. It does not create them, build images,
 # or install Metal3.
 #
@@ -23,15 +24,15 @@ definition:
   harvester_ready_count: 0
 
   network:
-    name: telco
-    bridge: virbr125
+    name: default
+    bridge: virbr0
     mode: nat
-    cidr: 192.168.125.0/24
-    gateway: 192.168.125.1
+    cidr: 192.168.122.0/24
+    gateway: 192.168.122.1
     domain: northline.telco
     dhcp_range:
-      start: 192.168.125.100
-      end: 192.168.125.254
+      start: 192.168.122.100
+      end: 192.168.122.254
 
   node_templates:
     mgmt:
@@ -41,7 +42,7 @@ definition:
       interfaces:
         - role: mgmt
           model: virtio
-          ip_family: static
+          ip_family: dhcp
 
     site:
       flavor: site
@@ -50,7 +51,7 @@ definition:
       interfaces:
         - role: mgmt
           model: virtio
-          ip_family: static
+          ip_family: dhcp
 
   # Rancher on NodePort 30002 with a rodeo-managed cert. The firewall
   # compiler still looks for a node named rancher, so this slice emits
@@ -79,12 +80,7 @@ definition:
       description: "site-co and site-ran, enrolled later as BareMetalHosts"
       nodes: ["site-co", "site-ran"]
 
-  versions:
-    rancher: "2.15.1"
-    rke2: "v1.36.3+rke2r1"
-    cert_manager: "v1.20.1"
-    turtles: "307.0.8+up0.27.0"
-    metal3: "307.0.31+up0.16.0"
+  # Versions live in rodeo/profiles/suse_telco.py (3.7.0 release notes).
 
   host_prep:
     sysctls:
@@ -97,7 +93,7 @@ definition:
       use_modular_daemons: true
     network:
       unmanaged_interfaces:
-        - virbr125
+        - virbr0
       rp_filter_loose: false
 
   # MAC prefix 0F, distinct from suse-virt (0D) and suse-edge (0E).
@@ -107,7 +103,7 @@ definition:
       index: 0
       hostname: mgmt
       uuid: "a1000001-0f00-4000-8000-000000000010"
-      ip: "192.168.125.10"
+      ip: "192.168.122.10"
       config_iso_name: ""
       ssh_user: root
       interfaces:
@@ -120,7 +116,7 @@ definition:
       index: 1
       hostname: site-co
       uuid: "a1000002-0f00-4000-8000-000000000021"
-      ip: "192.168.125.21"
+      ip: "192.168.122.21"
       config_iso_name: ""
       ssh_user: root
       interfaces:
@@ -128,15 +124,18 @@ definition:
           mac: "02:00:00:0F:62:21"
       mgmt_mac: "02:00:00:0F:62:21"
 
+    # site-ran-01 comes from the ClusterClass, whose MetalLB pool announces the
+    # control-plane endpoint 192.168.122.22/32. The host itself takes .32 so the
+    # VIP never equals the node address.
     - name: site-ran
       template: site
       index: 2
       hostname: site-ran
-      uuid: "a1000003-0f00-4000-8000-000000000022"
-      ip: "192.168.125.22"
+      uuid: "a1000003-0f00-4000-8000-000000000032"
+      ip: "192.168.122.32"
       config_iso_name: ""
       ssh_user: root
       interfaces:
         - role: mgmt
-          mac: "02:00:00:0F:62:22"
-      mgmt_mac: "02:00:00:0F:62:22"
+          mac: "02:00:00:0F:62:32"
+      mgmt_mac: "02:00:00:0F:62:32"

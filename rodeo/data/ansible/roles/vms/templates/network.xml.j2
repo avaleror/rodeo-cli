@@ -10,9 +10,11 @@
   <domain name='{{ lab_dns_domain }}' localOnly='yes'/>
   <dns>
     <!-- Harvester floating VIP — cluster API + UI -->
+{% if harvester_vip %}
     <host ip='{{ harvester_vip }}'>
       <hostname>virtualization.{{ lab_dns_domain }}</hostname>
     </host>
+{% endif %}
 {% for node in vm_nodes %}
     <host ip='{{ node.ip }}'>
       <hostname>{{ node.hostname }}.{{ lab_dns_domain }}</hostname>

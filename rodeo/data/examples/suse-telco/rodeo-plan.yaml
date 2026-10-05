@@ -1,8 +1,14 @@
-# rodeo-plan.yaml — SUSE Telco Cloud 3.7.
+# rodeo-plan.yaml: SUSE Telco Cloud 3.7 workshop (Northline).
 #
-# Declares the lab. This slice does not boot the guests.
-# AWS is `rodeo up --target aws` from a plan that still says baremetal.
-# The flag wins. See the profile notes in rodeo/profiles/suse_telco.py.
+# This file exists twice and the copies must stay identical: the workshop repo
+# (avaleror/suse-telco-workshop) and rodeo-cli's bundled example.
+# `rodeo up --target aws` seeds the EC2 host from this bundled copy, not from
+# the workshop checkout, so the two must not drift.
+#
+# Bare metal is the default. `rodeo up --target aws` wins over
+# deployment_target and writes `aws` back into this file.
+#
+# rodeo does not apply the workshop's manifests/. Students apply those files.
 
 name: suse-telco-rodeo
 type: suse-telco
@@ -11,9 +17,9 @@ deployment_target: baremetal
 
 network:
   mode: nat
-  gateway: "192.168.125.1"
+  gateway: "192.168.122.1"
   dns_domain: northline.telco
-  rancher_ip: "192.168.125.10"
+  rancher_ip: "192.168.122.10"
 
 resources:
   mgmt:
@@ -25,12 +31,24 @@ resources:
     vcpu: 4
     disk_gb: 40
 
+# SUSE Telco Cloud 3.7.0 release notes, component table. Helm components are
+# chart versions. App versions are in the comments.
 versions:
+  suse_telco_cloud: "3.7.0"
   rancher: "2.15.1"
   rke2: "v1.36.3+rke2r1"
   cert_manager: "v1.20.1"
-  turtles: "307.0.8+up0.27.0"
-  metal3: "307.0.31+up0.16.0"
+  turtles_providers: "307.0.8+up0.27.0"      # Turtles 0.27.0; CAPI v1.13.3, CAPM3 v1.13.2, RKE2 providers v0.25.0
+  metal3: "307.0.31+up0.16.0"                # Metal3 0.16.0; BMO 0.13.3, Ironic 38.0.0, IPA 3.0.10
+  metallb: "307.0.3+up0.16.1"                # MetalLB 0.16.1
+  endpoint_copier_operator: "307.0.1+up0.3.0"
+  longhorn: "1.12.1"                         # SUSE Storage
+  kubevirt: "307.0.3+up0.8.0"                # KubeVirt 1.8.3 (lab 07)
+  cdi: "307.0.3+up0.8.0"                     # CDI 1.65.0 (lab 07)
+  kubevirt_dashboard_extension: "307.0.5+up1.4.2"
+  eib: "1.3.4"
+  kiwi_builder: "10.2.29.1"
+  telco_examples_ref: "e4ec0b0a7349a635c1c5efd94bdefeaedbfa847c"   # release-3.7
 
 storage:
   image_dir: /var/lib/libvirt/images
@@ -42,12 +60,19 @@ ansible:
   path: null
   inventory: deployer/inventory.local
 
+# Rancher's self-signed cert on NodePort 30002. No public 80/443.
 rancher_tls:
-  source: secret
+  source: rancher
 
 credentials:
   rancher_admin_password: "??rancher_admin_password"
+  scc_registration_code: "??scc_registration_code"
 
+# Only the operator has these. rodeo asks for them, it never generates them.
+operator_secrets:
+  - scc_registration_code
+
+# Block name stays alien_geeko in v1. The values are the Northline console.
 alien_geeko:
   image: docker.io/avaleror/telco-site-console:latest
   fleet_repo: https://github.com/avaleror/telco-site-console.git

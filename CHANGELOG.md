@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.20.1](https://github.com/avaleror/rodeo-cli/compare/v0.20.0...v0.20.1) (2026-10-05)
+
+
+### Bug Fixes
+
+* **portal:** 6-letter workshop code by default, portal-wide wrong-code cap ([#77](https://github.com/avaleror/rodeo-cli/issues/77)) ([d663bed](https://github.com/avaleror/rodeo-cli/commit/d663beddd002bf230debea6c23e6051d4856bdd6))
+* **portal:** serve student SSH on its own sshd, never open :22 ([#75](https://github.com/avaleror/rodeo-cli/issues/75)) ([9186577](https://github.com/avaleror/rodeo-cli/commit/9186577989f4537eaebe74ab9daa3be7ac30b0c1))
+
 ## [0.20.0](https://github.com/avaleror/rodeo-cli/compare/v0.19.0...v0.20.0) (2026-10-02)
 
 

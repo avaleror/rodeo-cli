@@ -5,8 +5,9 @@
 
 Run it against the lab-in-a-box release rodeo deploys (the highest version tag
 when rodeo/labinabox_host.py:LIAB_REF is "latest") whenever a new one ships.
-The snapshot holds only field names — enough for tests/test_labinabox_platform.py
-to catch rodeo emitting a lab.json field that lab-in-a-box doesn't know.
+The snapshot holds field names and which common/node fields are required — enough
+for tests/test_labinabox_platform.py to catch rodeo emitting a lab.json field that
+lab-in-a-box doesn't know, or leaving out one it requires.
 """
 import json
 import subprocess
@@ -29,6 +30,10 @@ def main() -> None:
         "common": sorted(f["name"] for f in base["common"]["fields"]),
         "nodes": sorted(f["name"] for f in base["nodes"]["fields"]),
         "kclusters": sorted(f["name"] for f in base["kclusters"]["fields"]),
+        "required": {
+            section: sorted(f["name"] for f in base[section]["fields"] if f.get("required"))
+            for section in ("common", "nodes")
+        },
         "addons": {
             addon: sorted(f["name"] for f in _schema(
                 checkout, str(checkout / "scripts" / f"install_{addon}.py"), "json")["fields"])

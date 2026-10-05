@@ -647,6 +647,24 @@ def test_smlm_workshop_lab_json_only_uses_known_lab_in_a_box_fields(tmp_path):
     assert unknown_fields(lab, _SCHEMA) == []
 
 
+def test_smlm_workshop_lab_json_has_every_required_lab_in_a_box_field(tmp_path):
+    lab, _ = build_lab_json(_smlm_cfg(tmp_path, FULL_SECRETS))
+    every_node_has_image = all(n.get("ISO_IMAGE") for n in lab["nodes"].values())
+    missing = [f"common.{k}" for k in _SCHEMA["required"]["common"]
+               if k not in lab["common"] and not (k == "ISO_IMAGE" and every_node_has_image)]
+    missing += [f"nodes.{n}.{k}" for n, v in lab["nodes"].items()
+                for k in _SCHEMA["required"]["nodes"] if k not in v]
+    assert missing == []
+
+
+def test_common_sizing_is_the_largest_node_value(tmp_path):
+    lab, _ = build_lab_json(_smlm_cfg(tmp_path, FULL_SECRETS))
+    for key in ("VM_MEM", "VM_CPU", "VM_DSK"):
+        assert lab["common"][key] == str(max(int(n[key]) for n in lab["nodes"].values()))
+    smlm = next(v for k, v in lab["nodes"].items() if k.startswith("smlm."))
+    assert lab["common"]["VM_MEM"] == smlm["VM_MEM"] == "16384"
+
+
 def test_unknown_fields_reports_what_an_older_lab_in_a_box_lacks():
     from rodeo.labinabox import unknown_fields
 

@@ -21,7 +21,7 @@ from ..providers import get_provider
 from ..secretgen import STRONG_PASSWORD_MIN_LENGTH
 from ..service.status import cacheable_phases_complete
 from .fanout import fanout
-from .inventory import FleetHost, FleetInventory, require_provider
+from .inventory import STUDENT_SSH_PORT, FleetHost, FleetInventory, require_provider
 from .ssh_exec import run_remote
 from .status import fleet_status
 
@@ -194,11 +194,12 @@ def fleet_open_access(
     if not inventory.hosts:
         raise ConfigError("no hosts in the inventory (run `rodeo fleet provision` first)")
     ports = tuple(sorted(set(student_ports(inventory).values())))
-    # Claim portal with student SSH (F5.4): key-only :22 for the per-lab
-    # unprivileged `student` user. Never opened otherwise.
+    # Claim portal with student SSH (F5.4): the per-lab `student` user on its
+    # own key-only sshd (STUDENT_SSH_PORT, set up by publish). :22 is never
+    # opened to students: the fleet-wide rodeo key works there.
     student_ssh = bool(inventory.portal and inventory.portal.enabled and inventory.portal.student_ssh)
     if student_ssh:
-        ports = (22, *ports)
+        ports = (STUDENT_SSH_PORT, *ports)
     readiness = check_fleet_ready(inventory, concurrency=concurrency, timeout=timeout)
     if not all(r.ready for r in readiness):
         return OpenAccessResult(inventory.name, "refused", ports, None, readiness)

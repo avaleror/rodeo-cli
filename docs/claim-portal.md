@@ -79,7 +79,7 @@ credentials and no rodeo SSH key ever leave the instructor's machine.
   rodeo fleet portal status/close/release ──SSH──►  rodeo portal admin (local CLI)
 
   Students ──HTTPS :443──►  Caddy ──►  rodeo portal serve (127.0.0.1)
-  Students ──HTTPS :8443/:30002 (+ :22 opt.)────────────────────────────►  their host
+  Students ──HTTPS :8443/:30002 (+ SSH :2222 opt.)──────────────────────►  their host
 ```
 
 Key property: **the portal is passive.** It never connects to lab hosts or cloud APIs,
@@ -174,7 +174,7 @@ UIs. Pages send `Cache-Control: no-store` and `Referrer-Policy: no-referrer`.
 | Portal compromise | Portal stores only student-level creds for this workshop; no cloud creds, no rodeo key, no admin web UI. Short-lived: destroyed at deprovision. Encrypted root volume where the provider supports it. |
 | Guessing the event code | 8+ char code, per-IP rate limit and lockout on the claim endpoint, `portal close` to stop claiming, `portal rotate-code`. |
 | Leaked personal link | Tokens stored hashed; `portal release <lab>` or `portal revoke <email>` invalidates the token. |
-| Student escalates to other labs | **Student user has no sudo and cannot read `/root`.** This is mandatory while the fleet-wide rodeo key is planted in `/root/.ssh/` (section 1). `:22` is opened to the internet only when `student_ssh: true`, key-only. |
+| Student escalates to other labs | **Student user has no sudo and cannot read `/root`.** This is mandatory while the fleet-wide rodeo key is planted in `/root/.ssh/` (section 1). `:22` is never opened to the internet; with `student_ssh: true` students get `:2222`, a separate sshd that accepts only `student`, by key (section 14b). |
 | Lab UIs reachable from the internet (`student_access: open`) | Enforced strong per-host passwords, only the component ports, short lifetime. See section 7. |
 | Credentials in transit | Laptop to hosts and to portal: SSH only. Students to portal: HTTPS only (HTTP redirects, HSTS). |
 | Secrets in logs | Server logs method, path template and status only; never tokens, PINs, emails or passwords. |
@@ -206,8 +206,10 @@ provider:
   port. Dev and test fleets stay as they are.
 - `open`: **allows** the lab UI ports (`8443`, `30002`) to be opened to `0.0.0.0/0`,
   but provision never opens them. The operator runs `rodeo fleet open-access` once
-  every lab is up (decision, Andrés, 2026-09-29). `22` stays operator-only (until
-  `portal.student_ssh: true`, F5.4). IPv4 only; the hosts have no public IPv6.
+  every lab is up (decision, Andrés, 2026-09-29). `22` always stays operator-only.
+  With `portal.student_ssh: true` (F5.4) students get `2222` instead, served by a
+  separate sshd that only lets the `student` user in (section 14b). IPv4 only; the
+  hosts have no public IPv6.
 - Why a separate step: the tester lab on 2026-09-25 showed the ports must open only
   **after** the deploy has set the Harvester/Rancher admin passwords, otherwise the
   first-login screen is on the internet for the whole deploy. `fleet deploy` only
@@ -245,7 +247,7 @@ portal:
   enabled: true
   mode: both                 # roster | open | both
   roster: students.csv       # roster / both
-  student_ssh: false         # create a per-lab 'student' user + key, open :22 to students
+  student_ssh: false         # per-lab 'student' user + key, on its own sshd at :2222
   close_after: 2h            # optional: stop accepting new claims
   # instance_type: t3.small  # provider-specific override
   # hostname: labs.example.com   # instead of portal-<ip>.sslip.io
@@ -378,3 +380,52 @@ emails (`release`, `close`); a portal compromise exposes student-level credentia
 R7 (fleet-wide key in `/root/.ssh` on lab hosts). To verify live: `sshd -T` shows
 `passwordauthentication no`, and as `student`,
 `find / -xdev -name 'id_ed25519*' -readable` finds only the student's own key.
+
+## 14b. Student SSH off port 22 (2026-10-05)
+
+The Cursor security review of PR #53 found that `student_ssh: true` made
+`open-access` open `:22` to `0.0.0.0/0`. That sshd also accepts the fleet-wide rodeo
+key for root and `ssh_user` (`ec2-user`, NOPASSWD sudo). So whoever got the operator's
+key could log in as root from anywhere, and root on one lab could use the key in
+`/root/.ssh/id_ed25519` (R7) to reach every other lab over their public IPs. It
+shipped in v0.18.0 and v0.19.0.
+
+Fix:
+
+- `:22` is never opened to students. `set_student_access` refuses it outright, and
+  `open-access` takes away a `0.0.0.0/0` rule on `:22` left by an older release.
+- Publish sets up `rodeo-student-sshd`, a second sshd on `:2222` with its own config
+  (`/etc/ssh/rodeo-student-sshd_config`): `AllowUsers student`, no root, no
+  passwords. The main sshd is not touched, so the operator can't be locked out.
+  The config is validated with `sshd -t` before install, the service restarts only
+  when it changed (`KillMode=process` keeps open sessions), and publish proves the
+  effective settings and the listener before reporting the lab ready.
+- The managed SG has no operator rule on `:2222`; `open-access` adds `0.0.0.0/0` there
+  and any later `provision` or `--close` removes it.
+- The portal shows `ssh -p 2222 -i <lab>.key student@<ip>`.
+
+Root on a lab can still read the planted key (R7), but no other lab accepts it from
+the internet any more. The per-host nested key that removes R7 is still to do.
+
+## 14c. Workshop code against distributed guessing (2026-10-05)
+
+The same Cursor review (MEDIUM) found that the default code was 4 letters from 24,
+about 331k codes or 18 bits (the date isn't secret), and failed attempts were only
+limited per address (30 per 10 minutes). Many addresses together could walk the code
+space during a workshop and claim labs without the spoken code.
+
+Fix:
+
+- Default `portal.code_letters` is now **6** (about 191M codes). 4 to 8 still work.
+- Wrong workshop codes also count against **200 per 10 minutes for the whole portal**
+  (`CODE_FAIL_LIMIT_ALL` in `rodeo/portal/web.py`).
+- Past the cap, only addresses that already sent 3 or more wrong codes in the window
+  wait (`CODE_FAILS_WHILE_CAPPED`). Fresh addresses, so real students, still get in
+  with the right code, and everyone who already entered keeps their access cookie
+  (24 h); claims, recovery and lab links don't use the cap. So flooding wrong codes
+  can't close the gate for the class (Cursor review on #77). The price: past the cap,
+  each new attacking address still gets 2 guesses per window. With 1,000 addresses
+  over 8 hours that's about 105k guesses, about 0.06% odds against 6 letters (0.75%
+  without the portal-wide cap).
+- Existing portals: the next `portal up` after upgrading rotates the code to the new
+  length, as any `code_letters` change does.

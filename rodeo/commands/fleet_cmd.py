@@ -828,7 +828,8 @@ def fleet_open_access_cmd(
     Refuses unless every host has finished all phases and its Harvester /
     Rancher admin passwords are strong. The security group is shared by the
     whole workshop, so this always covers every host. SSH (22) stays
-    operator-only. A later ``fleet provision`` closes the ports again.
+    operator-only; with ``portal.student_ssh`` students get their own sshd on
+    2222. A later ``fleet provision`` closes the ports again.
     """
     try:
         inventory = load_inventory(inventory_path)

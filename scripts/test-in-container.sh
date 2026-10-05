@@ -40,10 +40,10 @@ for v in "${versions[@]}"; do
     echo "===== python ${v} ====="
     "${engine}" run --rm -e DEBIAN_FRONTEND=noninteractive -v "${repo}:/src:ro,z" "docker.io/library/python:${v}-slim" bash -c "
         set -euo pipefail
-        # ssh-keygen (ssh_key.py) and git are host tools the suite expects,
+        # ssh-keygen (ssh_key.py), git and node (the builder logic.js tests) are host tools the suite expects,
         # present on CI's ubuntu runner but not in slim images.
         apt-get update -qq >/dev/null
-        apt-get install -y -qq --no-install-recommends openssh-client git >/dev/null
+        apt-get install -y -qq --no-install-recommends openssh-client git nodejs >/dev/null
         useradd -m -u 1000 tester
         cp -r /src /work && chown -R tester /work && cd /work
         pip install -q -e '.[dev]' >/dev/null

@@ -95,7 +95,7 @@ def main(argv: list[str] | None = None) -> int:
     init.add_argument("--mode", choices=claims.MODES, default="both")
     init.add_argument("--title", default="")
     init.add_argument("--guide-url", default=None, help='workshop guide link ("" removes it)')
-    init.add_argument("--code-letters", type=int, default=claims.CODE_LETTERS_MIN,
+    init.add_argument("--code-letters", type=int, default=claims.CODE_LETTERS_DEFAULT,
                       choices=range(claims.CODE_LETTERS_MIN, claims.CODE_LETTERS_MAX + 1))
     for name in ("import", "progress", "status", "export", "info", "open", "close", "rotate-code",
                  "admin-token"):

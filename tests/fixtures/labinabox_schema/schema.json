@@ -77,6 +77,17 @@
   "mgm_node",
   "mydomain"
  ],
+ "required": {
+  "common": [
+   "ISO_IMAGE",
+   "VM_CPU",
+   "VM_DSK",
+   "VM_MEM"
+  ],
+  "nodes": [
+   "myip"
+  ]
+ },
  "addons": {
   "smlm": [
    "smlm_access_groups",
@@ -168,7 +179,6 @@
    "smlm_snippets",
    "smlm_ssl_city",
    "smlm_ssl_country",
-   "smlm_ssl_email",
    "smlm_ssl_org",
    "smlm_ssl_ou",
    "smlm_ssl_password",

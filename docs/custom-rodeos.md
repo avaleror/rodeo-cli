@@ -9,6 +9,9 @@ $EDITOR ~/.rodeo/profiles/mylab/definition.yaml
 rodeo up --profile mylab              # deploy your edited lab
 ```
 
+Prefer composing in the browser? The [Rodeo Builder](rodeo-builder.md) picks the lab engine,
+orders story chapters and downloads the profile.
+
 ---
 
 ## Two words that both sound like "profile"

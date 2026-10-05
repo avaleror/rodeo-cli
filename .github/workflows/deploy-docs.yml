@@ -8,6 +8,10 @@ on:
       - "docs/**"
       - "mkdocs.yml"
       - "requirements-docs.txt"
+      - "rodeo/builder/**"
+      - "rodeo/data/examples/**"
+      - "rodeo/data/platforms/**"
+      - "scripts/build-builder-static.py"
       - ".github/workflows/deploy-docs.yml"
   workflow_dispatch:
 
@@ -26,5 +30,23 @@ jobs:
           cache: pip
 
       - run: pip install -r requirements-docs.txt
+
+      # The Rodeo Builder's add-on picker lists the add-ons of lab-in-a-box's
+      # latest release (the ref rodeo deploys by default).
+      - name: Fetch lab-in-a-box (latest release)
+        id: liab
+        run: |
+          repo=https://github.com/SUSE-Technical-Marketing/lab-in-a-box
+          ref=$(git ls-remote --tags --refs "$repo" | sed 's|.*refs/tags/||' \
+                | grep -E '^v?[0-9]+(\.[0-9]+)*$' | sort -V | tail -1)
+          test -n "$ref"
+          git clone -q --depth 1 --branch "$ref" "$repo" "$RUNNER_TEMP/lab-in-a-box"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+      - name: Build the static Rodeo Builder into docs/builder/
+        run: >-
+          python3 scripts/build-builder-static.py
+          --labinabox "$RUNNER_TEMP/lab-in-a-box"
+          --labinabox-version "${{ steps.liab.outputs.ref }}"
 
       - run: mkdocs gh-deploy --force

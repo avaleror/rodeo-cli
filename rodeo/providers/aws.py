@@ -5,7 +5,7 @@ import time
 from typing import Any, Callable
 
 from ..config import ConfigError
-from ..fleet.inventory import FleetHost, FleetInventory
+from ..fleet.inventory import STUDENT_SSH_PORT, FleetHost, FleetInventory
 from ..fleet.ssh_exec import forget_host_key, run_remote
 from ..ssh_key import (
     DEFAULT_EC2_KEY_NAME,
@@ -437,8 +437,10 @@ class AwsHostProvider:
         port a previous open-access opened."""
         resp = ec2.describe_security_groups(GroupIds=[sg_id])
         perms = (resp.get("SecurityGroups") or [{}])[0].get("IpPermissions") or []
-        for port in MANAGED_SG_PORTS:
-            desired = {caller_cidr}
+        # The student SSH port has no operator rule (the operator uses :22): it
+        # exists only while open-access has it open, and is removed otherwise.
+        for port in (*MANAGED_SG_PORTS, STUDENT_SSH_PORT):
+            desired = set() if port == STUDENT_SSH_PORT else {caller_cidr}
             if port in open_ports:
                 desired.add(STUDENT_ACCESS_CIDR)
             current = {
@@ -540,8 +542,13 @@ class AwsHostProvider:
                 "security group it does not own. Open the lab ports on it yourself, "
                 "or omit security_group_ids so rodeo manages one."
             )
+        # :22 is never opened: the fleet-wide rodeo key logs in there as root
+        # and ssh_user. Student SSH has its own port and sshd (student only).
         bad = sorted(
-            p for p in open_ports if (p == 22 and not allow_ssh) or p not in MANAGED_SG_PORTS
+            p for p in open_ports
+            if p == 22
+            or (p == STUDENT_SSH_PORT and not allow_ssh)
+            or p not in (*MANAGED_SG_PORTS, STUDENT_SSH_PORT)
         )
         if bad:
             raise ConfigError(f"ports {bad} cannot be opened to students")

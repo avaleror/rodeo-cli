@@ -11,7 +11,7 @@
 # bake/ (see bake/README.md), then give rodeo its URL, sha256 and the admin
 # password it was built with (operator_secrets below).
 #
-# Host requirement: ~30 GiB RAM free, ~450 GB disk.
+# Host requirement: ~30 GiB RAM free, ~500 GB disk.
 #
 # No credential is written in this file: every ??key resolves from
 # ~/.rodeo/secrets.yaml. rodeo up generates the lab's own passwords and asks
@@ -25,7 +25,7 @@ resources:
   smlm:
     memory_mib: 16384
     vcpu: 8
-    disk_gb: 200        # must be >= the baked image's virtual size
+    disk_gb: 300        # must be >= the baked image's virtual size
   el7:
     memory_mib: 1024
     vcpu: 1
@@ -55,7 +55,7 @@ lab_in_a_box:
   # ref to the upstream commit that adds them.
   # How the SMLM server is built:
   #   image   (default) boot the pre-built, channel-synced image (see bake/) — minutes
-  #   scratch install SMLM here from SUSE's SMLM Server BYOS image and sync every
+  #   scratch install SMLM here on SLES 15 SP7 and sync every
   #           channel from SCC — hours; needs your SMLM regcode + SCC mirror credentials.
   #   aws     every VM in an AWS account (pre-built private AMI from bake/'s aws variant).
   # Select one by changing `variant:` below, then `rodeo up` (it asks for that variant's values).
@@ -71,21 +71,20 @@ lab_in_a_box:
         - scc_regcode
         - scc_mirror_user
         - scc_mirror_password
-        - smlm_byos_image_url       # SUSE's SMLM Server BYOS qcow2 (see bake/README.md)
-        - smlm_byos_image_sha256
+        - sles15sp7_image_url       # SLES 15 SP7 Minimal VM Cloud qcow2 (see bake/README.md)
+        - sles15sp7_image_sha256
       images:
         - {name: smlm-workshop-server.qcow2, remove: true}
-        - name: SUSE-Multi-Linux-Manager-Server-BYOS.qcow2
-          url: "??smlm_byos_image_url"
-          sha256: "??smlm_byos_image_sha256"
+        - name: SLES15-SP7-Minimal-VM.x86_64-Cloud-GM.qcow2
+          url: "??sles15sp7_image_url"
+          sha256: "??sles15sp7_image_sha256"
       nodes:
         smlm:
-          ISO_IMAGE: SUSE-Multi-Linux-Manager-Server-BYOS.qcow2
+          ISO_IMAGE: SLES15-SP7-Minimal-VM.x86_64-Cloud-GM.qcow2
       sections:
         smlm:
           smlm_preinstalled: null
           smlm_image_admin_pass: null
-          smlm_byos: "true"
           smlm_scc_regcode: "??scc_regcode"
           smlm_scc_user: "??scc_mirror_user"
           smlm_scc_password: "??scc_mirror_password"
@@ -96,13 +95,12 @@ lab_in_a_box:
           smlm_ssl_city: Luzern
           smlm_ssl_org: chamaleonair
           smlm_ssl_ou: IT
-          smlm_ssl_email: admin@rodeo.lab
           # Base channels; every activation key's child channels are added too.
           smlm_channels:
             - sle-product-sles15-sp5-pool-x86_64
             - sle-product-sles15-sp6-pool-x86_64
             - ubuntu-2404-amd64-main-amd64
-            - res-7-ltss-updates-x86_64
+            - centos7-x86_64
     # aws: every VM in an AWS account instead of nested KVM. The SMLM server boots
     # the private AMI from bake/ (variant aws, export-ami.sh); the clients boot AMIs
     # you pick in your region. Needs AWS_SECURITY_GROUP_ID for the web UI port.
@@ -176,9 +174,7 @@ lab_in_a_box:
   nodes:
     smlm:
       ISO_IMAGE: smlm-workshop-server.qcow2
-      # Baked from SUSE's SL Micro based SMLM Server BYOS image: first-boot setup via
-      # Ignition/Combustion (lab-in-a-box's default config_method), not cloud-init.
-      config_method: ""
+      config_method: cloud-init
       addons: [smlm]
     # centos7, sles15 and ubuntu2404lts are registered by the students during
     # the challenges. The zz* machines arrive already registered, under the
@@ -275,10 +271,11 @@ lab_in_a_box:
             managertools-ubuntu2404-updates-amd64 ubuntu-2404-amd64-main-security-amd64
             ubuntu-2404-amd64-main-updates-amd64
         - smlm_activation_key: liberty7ltss
-          smlm_activation_key_desc: "SUSE Multi-Linux Support 7 with LTS"
-          smlm_activation_key_base_channel: res-7-ltss-updates-x86_64
+          smlm_activation_key_desc: "CentOS 7"
+          smlm_activation_key_base_channel: centos7-x86_64
           smlm_activation_key_child_channels: >-
-            managertools-el7-pool-x86_64-lbt7 managertools-el7-updates-x86_64-lbt7
+            centos7-updates-x86_64
+            managertools-el7-pool-x86_64-centos7 managertools-el7-updates-x86_64-centos7
       # Groups and "application" values the exercises use, as setup-zbastion
       # creates them. The member systems are the zz* clients (registered under
       # these names, see nodes above); airco-dh4a-qa is centos7 once a student

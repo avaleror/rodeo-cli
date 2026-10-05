@@ -16,6 +16,10 @@ _VALID_TARGETS = frozenset({"baremetal", "instruqt"})
 # operator: this machine's /32 only (default). open: also 0.0.0.0/0, applied
 # only by `rodeo fleet open-access` after every lab is up with strong passwords.
 _VALID_STUDENT_ACCESS = frozenset({"operator", "open"})
+# Student SSH (portal.student_ssh) runs on its own sshd on this port, which only
+# lets the `student` user in. Port 22 stays operator-only, so the fleet-wide
+# rodeo key (root, ssh_user) is never usable from the internet.
+STUDENT_SSH_PORT = 2222
 
 
 @dataclass(frozen=True)
@@ -52,7 +56,7 @@ class PortalConfig:
     roster: Path | None = None  # CSV name,email[,host_id]; resolved beside workshop.yaml
     student_ssh: bool = False  # per-lab `student` user + key, :22 opened by open-access
     title: str = ""
-    code_letters: int = 4  # random letters in RODEO-XXXX-YYYYMMDD (4-8)
+    code_letters: int = 6  # random letters in RODEO-XXXXXX-YYYYMMDD (4-8)
     guide_url: str = ""  # workshop guide link on every student page (https URL or /path)
     hostname: str | None = None  # default portal-<ip-dashed>.sslip.io
     instance_type: str | None = None
@@ -103,7 +107,7 @@ def _parse_portal(raw: Any, base: Path, provider: dict[str, Any] | None) -> Port
     if hostname and not _HOSTNAME_RE.match(hostname):
         raise ConfigError(f"portal.hostname is not a valid DNS name: {hostname[:80]!r}")
     try:
-        code_letters = int(raw.get("code_letters", 4))
+        code_letters = int(raw.get("code_letters", 6))
     except (TypeError, ValueError) as exc:
         raise ConfigError("portal.code_letters must be an integer (4-8)") from exc
     if not 4 <= code_letters <= 8:

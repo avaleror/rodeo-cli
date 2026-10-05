@@ -296,10 +296,15 @@ def _lab_cards(lab_id: str, data: dict[str, Any], key_href: str, *, ssh_title: s
     ssh = data.get("ssh")
     if ssh:
         key = f"{lab_id}.key"
-        cmd = f"ssh -i {key} {ssh['user']}@{ssh['host']}"
+        # Student SSH has its own port (not 22); records published before it had none.
+        raw_port = str(ssh.get("port") or "")
+        port = int(raw_port) if raw_port.isdigit() else 22
+        port_opt = f"-p {port} " if port != 22 else ""
+        cmd = f"ssh {port_opt}-i {key} {ssh['user']}@{ssh['host']}"
         cards += (
             f"<div class=card><h2>{_e(ssh_title)}</h2><dl>"
-            f"<dt>User</dt><dd>{_copyable(ssh['user'])}</dd><dt>Host</dt><dd>{_copyable(ssh['host'])}</dd></dl>"
+            f"<dt>User</dt><dd>{_copyable(ssh['user'])}</dd><dt>Host</dt><dd>{_copyable(ssh['host'])}</dd>"
+            f"<dt>Port</dt><dd>{_copyable(str(port))}</dd></dl>"
             f"<p><a class=btn href='{_e(key_href)}' download='{_e(key)}'>Download SSH key</a></p>"
             "<p class=note>Then, in the folder where you saved it:</p>"
             f"<pre>chmod 600 {_e(key)}\n{_e(cmd)}</pre></div>"

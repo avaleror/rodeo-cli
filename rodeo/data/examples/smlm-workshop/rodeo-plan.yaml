@@ -96,7 +96,6 @@ lab_in_a_box:
           smlm_ssl_city: Luzern
           smlm_ssl_org: chamaleonair
           smlm_ssl_ou: IT
-          smlm_ssl_email: admin@rodeo.lab
           # Base channels; every activation key's child channels are added too.
           smlm_channels:
             - sle-product-sles15-sp5-pool-x86_64

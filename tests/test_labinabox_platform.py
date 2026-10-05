@@ -217,7 +217,7 @@ def test_smlm_workshop_lab_json(tmp_path):
     assert len(lab["nodes"]) == 8
     smlm = lab["nodes"]["smlm.rodeo.lab"]
     assert smlm["myip"] == "192.168.122.20" and smlm["addons"] == ["smlm"]
-    assert smlm["VM_MEM"] == "16384" and smlm["VM_DSK"] == "200"
+    assert smlm["VM_MEM"] == "16384" and smlm["VM_DSK"] == "300"
     centos = lab["nodes"]["centos7.rodeo.lab"]
     assert centos["config_method"] == "virt_customize" and centos["VM_BOOT"] == "uefi=off"
     assert lab["nodes"]["zzcentos7.rodeo.lab"]["VM_DSK_BUS"] == "sata"  # YAML anchor survived
@@ -290,7 +290,7 @@ def test_smlm_cfg_vms_flavors_and_sizing(tmp_path):
         "domain": "smlm.rodeo.lab"}
     need_mib, need_gb = _resource_needs(cfg)
     assert need_mib == 16384 + 2 * 1024 + 4 * 2048 + 2048
-    assert need_gb == 200 + 2 * 20 + 4 * 30 + 20 + 20
+    assert need_gb == 300 + 2 * 20 + 4 * 30 + 20 + 20
 
 
 def test_vars_file_needs_no_harvester_secrets(tmp_path):
@@ -318,7 +318,7 @@ def test_bake_plan_loads_with_only_the_smlm_node(tmp_path):
     node = lab_json["nodes"]["smlm.rodeo.lab"]
     assert node["myip"] == "192.168.122.20" and node["mymac"] == "02:00:00:5A:00:20"
     channels = lab_json["smlm"]["smlm_channels"]
-    assert "res-7-ltss-updates-x86_64" in channels and "sle15-sp6-installer-updates-x86_64" in channels
+    assert "centos7-x86_64" in channels and "sle15-sp6-installer-updates-x86_64" in channels
 
 
 # ── phases ──────────────────────────────────────────────────────────────────
@@ -647,6 +647,24 @@ def test_smlm_workshop_lab_json_only_uses_known_lab_in_a_box_fields(tmp_path):
     assert unknown_fields(lab, _SCHEMA) == []
 
 
+def test_smlm_workshop_lab_json_has_every_required_lab_in_a_box_field(tmp_path):
+    lab, _ = build_lab_json(_smlm_cfg(tmp_path, FULL_SECRETS))
+    every_node_has_image = all(n.get("ISO_IMAGE") for n in lab["nodes"].values())
+    missing = [f"common.{k}" for k in _SCHEMA["required"]["common"]
+               if k not in lab["common"] and not (k == "ISO_IMAGE" and every_node_has_image)]
+    missing += [f"nodes.{n}.{k}" for n, v in lab["nodes"].items()
+                for k in _SCHEMA["required"]["nodes"] if k not in v]
+    assert missing == []
+
+
+def test_common_sizing_is_the_largest_node_value(tmp_path):
+    lab, _ = build_lab_json(_smlm_cfg(tmp_path, FULL_SECRETS))
+    for key in ("VM_MEM", "VM_CPU", "VM_DSK"):
+        assert lab["common"][key] == str(max(int(n[key]) for n in lab["nodes"].values()))
+    smlm = next(v for k, v in lab["nodes"].items() if k.startswith("smlm."))
+    assert lab["common"]["VM_MEM"] == smlm["VM_MEM"] == "16384"
+
+
 def test_unknown_fields_reports_what_an_older_lab_in_a_box_lacks():
     from rodeo.labinabox import unknown_fields
 
@@ -819,24 +837,24 @@ def test_clean_on_remote_host_checks_ownership(tmp_path, monkeypatch):
 # ── §11: variants (image / scratch), mirrors, no Instruqt in the lab ────────
 
 SCRATCH_SECRETS = {**FULL_SECRETS, "scc_regcode": "REG", "scc_mirror_user": "u", "scc_mirror_password": "p",
-                   "smlm_byos_image_url": "file:///srv/byos.qcow2", "smlm_byos_image_sha256": "e" * 64}
+                   "sles15sp7_image_url": "file:///srv/sles15sp7.qcow2", "sles15sp7_image_sha256": "e" * 64}
 
 
-def test_scratch_variant_builds_smlm_from_the_byos_image(tmp_path):
+def test_scratch_variant_builds_smlm_on_sles15sp7(tmp_path):
     from rodeo.labinabox import unknown_fields
 
     cfg = _smlm_cfg(tmp_path, SCRATCH_SECRETS)
     cfg["lab_in_a_box"]["variant"] = "scratch"
     lab, _ = build_lab_json(cfg)
     smlm = lab["nodes"]["smlm.rodeo.lab"]
-    assert smlm["ISO_IMAGE"] == "SUSE-Multi-Linux-Manager-Server-BYOS.qcow2"
-    assert smlm["ISO_URL"] == "file:///srv/byos.qcow2" and smlm["addons"] == ["smlm"]
-    assert smlm["config_method"] == ""                               # SL Micro: Ignition/Combustion
+    assert smlm["ISO_IMAGE"] == "SLES15-SP7-Minimal-VM.x86_64-Cloud-GM.qcow2"
+    assert smlm["ISO_URL"] == "file:///srv/sles15sp7.qcow2" and smlm["addons"] == ["smlm"]
+    assert smlm["config_method"] == "cloud-init"
     section = lab["smlm"]
     assert "smlm_preinstalled" not in section and "smlm_image_admin_pass" not in section
-    assert section["smlm_byos"] == "true"
+    assert "smlm_byos" not in section
     assert section["smlm_scc_regcode"] == "REG" and section["smlm_scc_password"] == "p"
-    assert "res-7-ltss-updates-x86_64" in section["smlm_channels"]
+    assert "centos7-x86_64" in section["smlm_channels"]
     assert section["smlm_activation_keys"][0]["smlm_activation_key"] == "sles15sp5"   # kept from base
     assert not any(n.get("ISO_IMAGE") == "smlm-workshop-server.qcow2" for n in lab["nodes"].values())
     assert unresolved_placeholders(lab) == []
@@ -852,7 +870,7 @@ def test_variant_secrets_only_for_the_selected_variant(tmp_path):
     assert "smlm_image_url" in missing and "scc_regcode" not in missing
     plan["lab_in_a_box"]["variant"] = "scratch"
     _, missing = ensure_plan_secrets(plan, tmp_path / "s2.yaml")
-    assert "scc_regcode" in missing and "smlm_byos_image_sha256" in missing
+    assert "scc_regcode" in missing and "sles15sp7_image_sha256" in missing
     assert "smlm_image_url" not in missing and "smlm_image_admin_pass" not in missing
 
 
@@ -1442,7 +1460,7 @@ def test_start_and_stop_commands_for_a_cloud_lab(tmp_path, monkeypatch):
     assert calls == ["start", "stop"]
 
 
-# ── BYOS image + aws variants ───────────────────────────────────────────────
+# ── SLES 15 SP7 bake + aws variants ───────────────────────────────────────────────
 
 AWS_SECRETS = {**FULL_SECRETS, "aws_access_key_id": "AKIAX", "aws_secret_access_key": "s3cr3t",
                "aws_security_group_id": "sg-1", "smlm_image_ami": "ami-0smlm", "centos7_ami": "ami-0c7",
@@ -1479,26 +1497,32 @@ def test_aws_variant_asks_only_for_aws_values(tmp_path):
     assert not {"smlm_image_url", "smlm_image_sha256", "sles15sp5_image_url"} & set(missing)  # qcow2s unused
 
 
-def test_bake_starts_from_the_byos_image(tmp_path):
+def test_bake_starts_from_sles15sp7(tmp_path):
     from rodeo.labinabox import unknown_fields
 
     lab_dir = seed_lab("smlm-workshop", tmp_path / "lab")
     (tmp_path / ".rodeo").mkdir(exist_ok=True)
     (tmp_path / ".rodeo" / "secrets.yaml").write_text(yaml.safe_dump({**SCRATCH_SECRETS, **AWS_SECRETS,
-                                                                        "smlm_byos_ami": "ami-0byos"}))
+                                                                        "sles15sp7_ami": "ami-0sp7"}))
     plan = lab_dir / "bake" / "rodeo-plan.yaml"
     lab, _ = build_lab_json(load_config(plan))
     node = lab["nodes"]["smlm.rodeo.lab"]
-    assert node["ISO_IMAGE"] == "SUSE-Multi-Linux-Manager-Server-BYOS.qcow2" and node["config_method"] == ""
-    assert lab["smlm"]["smlm_byos"] == "true"
+    assert node["ISO_IMAGE"] == "SLES15-SP7-Minimal-VM.x86_64-Cloud-GM.qcow2"
+    assert node["config_method"] == "cloud-init" and "smlm_byos" not in lab["smlm"]
     data = yaml.safe_load(plan.read_text())
     data["lab_in_a_box"]["variant"] = "aws"
     plan.write_text(yaml.safe_dump(data))
     lab, _ = build_lab_json(load_config(plan))
     node = lab["nodes"]["smlm.rodeo.lab"]
-    assert node["ISO_IMAGE"] == "ami-0byos" and lab["common"]["cloud_account"] == "smlm-bake"
+    assert node["ISO_IMAGE"] == "ami-0sp7" and lab["common"]["cloud_account"] == "smlm-bake"
     lab["common"]["ROOT_PWD_HASH"] = "$6$x"
     assert unknown_fields(lab, _SCHEMA) == []
+
+
+def test_workshop_boots_the_baked_server_with_cloud_init(tmp_path):
+    lab, _ = build_lab_json(_smlm_cfg(tmp_path, FULL_SECRETS))
+    smlm = lab["nodes"]["smlm.rodeo.lab"]
+    assert smlm["ISO_IMAGE"] == "smlm-workshop-server.qcow2" and smlm["config_method"] == "cloud-init"
 
 
 def test_bake_scripts_are_valid_bash():

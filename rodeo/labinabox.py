@@ -364,6 +364,12 @@ def build_lab_json(cfg: dict, *, skip_unsupported: bool = False) -> tuple[dict, 
         # In rodeo's NAT network libvirt's dnsmasq answers DNS on the gateway.
         common["mydns"] = gateway
     common["mydomain"] = domain
+    # lab-in-a-box requires common VM_MEM / VM_CPU / VM_DSK; node values override
+    # them, so common carries the largest of each.
+    for key in ("VM_MEM", "VM_CPU", "VM_DSK"):
+        values = [int(n[key]) for n in nodes.values() if str(n.get(key, "")).isdigit()]
+        if values:
+            common[key] = str(max(values))
     # rodeo guests are cloud-init provisioned (lab-in-a-box's default empty
     # config_method means ignition/combustion, which fits SLE Micro images).
     common["config_method"] = overlay.get("config_method", "cloud-init")

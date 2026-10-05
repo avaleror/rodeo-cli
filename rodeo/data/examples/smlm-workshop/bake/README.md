@@ -9,26 +9,28 @@ a workshop deploy. `rodeo up` never runs any of this.
 
 ## What you need
 
-- **A subscription you bring yourself:** the bake starts from SUSE's own SUSE Multi-Linux
-  Manager Server **BYOS** image and registers it with your SMLM registration code.
-  Get the image from your SUSE account:
-  - **KVM (default):** the SMLM Server qcow2. Give its download URL and sha256: an
-    authenticated or mirror `https://` URL, or `file:///path` for a local copy.
-    lab-in-a-box downloads it and checks it before first use.
-  - **AWS (`variant: aws`):** the SMLM Server BYOS AMI ID in your region, plus
-    AWS credentials for the account the bake runs in.
+- **SLES 15 SP7 and your SMLM registration code:** the bake starts from SLES 15 SP7
+  and registers it with your SMLM registration code: the base product, the Containers
+  module and the SUSE Multi-Linux Manager Server extension.
+  - **KVM (default):** the `SLES15-SP7-Minimal-VM.x86_64-Cloud-GM.qcow2` image from your
+    SUSE account. Give its download URL and sha256: an authenticated or mirror `https://`
+    URL, or `file:///path` for a local copy. lab-in-a-box downloads it and checks it
+    before first use. SUSE publishes the sha256 next to the image (`<image>.sha256`).
+  - **AWS (`variant: aws`):** a SLES 15 SP7 BYOS AMI ID in your region, plus AWS
+    credentials for the account the bake runs in.
 - **Your organization's SCC mirroring credentials**, used to sync the channels.
-- **For KVM:** a host with internet access (~30 GiB RAM, ~300 GB free disk).
+- **For KVM:** a host with internet access (~30 GiB RAM, ~450 GB free disk). The synced
+  server uses about 215 GB, and `export-image.sh` writes a compressed copy of similar size.
 
 `rodeo up` asks once for everything it needs: `scc_regcode`, `scc_mirror_user`,
-`scc_mirror_password`, and `smlm_byos_image_url` + `smlm_byos_image_sha256`, or for
-AWS `aws_access_key_id`, `aws_secret_access_key` and `smlm_byos_ami`. It stores
+`scc_mirror_password`, and `sles15sp7_image_url` + `sles15sp7_image_sha256`, or for
+AWS `aws_access_key_id`, `aws_secret_access_key` and `sles15sp7_ami`. It stores
 them in `~/.rodeo/secrets.yaml`. They are never written to a plan or to git.
 
 ## Steps
 
 1. Deploy the bake lab from this directory. For AWS, first set `variant: aws`
-   under `lab_in_a_box:` in `rodeo-plan.yaml`. The bake registers SUSE's image with
+   under `lab_in_a_box:` in `rodeo-plan.yaml`. The bake registers SLES 15 SP7 with
    your code, installs SMLM as `smlm.rodeo.lab`, and adds every channel the
    workshop's activation keys use:
 
@@ -75,13 +77,10 @@ them in `~/.rodeo/secrets.yaml`. They are never written to a plan or to git.
 
 ## Not verified live yet
 
-- The channel-sync completion check (the `Sync completed` log marker).
-- The `mgr-sync list credentials` output format that `generalise.sh` inspects.
-- The `mgradm install --ssl-*` subject flags that lab-in-a-box passes.
-- Registering SUSE's BYOS image (`transactional-update register` on its SL Micro
-  base), and that its KVM image takes Ignition/Combustion (lab-in-a-box's default
-  `config_method`) rather than cloud-init.
-- That removing `/boot/writable/firstboot_happened` makes the baked qcow2 apply each
-  deploy's own network settings on its first boot (needed for lab instances).
+The KVM bake has run on a SLES 16 host (nested KVM): registration, the SMLM install
+and adding the channels work. Still unchecked:
 
-Check all three on the first real bake.
+- The `mgr-sync list credentials` output format that `generalise.sh` inspects.
+- That `cloud-init clean` in `generalise.sh` makes the baked qcow2 apply each
+  deploy's own network settings on its first boot (needed for lab instances).
+- The `aws` variant.

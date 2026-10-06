@@ -1,0 +1,33 @@
+# Chapter sources outside rodeo-cli, for the Rodeo Builder's chapter library.
+# scripts/build-builder-static.py fetches each one (sparse, shallow git clone)
+# and lists its chapters next to the bundled story/ chapters.
+#
+#   id         library group id
+#   title      library group title
+#   engine     lab engine the chapters run on (suse-virt, rancher, suse-edge, lab-in-a-box)
+#   profile    bundled profile they run on (the rodeo's base)
+#   format     instruqt: <path>/<challenge>/assignment.md (front-matter title)
+#              markdown: <path>/*.md (title from the first heading, "**Time:** N min")
+#   workshop   take repo/ref/path from this bundled profile's `workshop:` block
+#   repo, ref, path   otherwise: where the chapters are
+#   checks     markdown only: check script per chapter, {n} = the file's leading number
+#   needs      capabilities every chapter of the source needs
+sources:
+  - id: smlm-workshop
+    title: SMLM workshop
+    engine: lab-in-a-box
+    profile: smlm-workshop
+    format: instruqt
+    workshop: smlm-workshop
+    needs: [smlm]
+
+  - id: virt-workshop
+    title: Virtualization workshop
+    engine: suse-virt
+    profile: virt-workshop-aws
+    format: markdown
+    repo: https://github.com/avaleror/suse-virt-workshop
+    ref: main
+    path: docs/exercises
+    checks: checks/check-exercise-{n}.sh
+    needs: [harvester, kubevirt, rancher]

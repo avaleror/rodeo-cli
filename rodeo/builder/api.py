@@ -14,8 +14,10 @@ from . import discovery
 
 class Api:
     def __init__(self, labinabox_checkout: Path | None = None,
-                 lab_builder_url: str = discovery.LAB_BUILDER_URL, labinabox_version: str = ""):
+                 lab_builder_url: str = discovery.LAB_BUILDER_URL, labinabox_version: str = "",
+                 source_checkouts: dict[str, Path] | None = None):
         self.labinabox_checkout = labinabox_checkout
+        self.source_checkouts = source_checkouts or {}
         self.lab_builder_url = lab_builder_url
         self.labinabox_version = labinabox_version
 
@@ -23,7 +25,7 @@ class Api:
         if action == "engines":
             return discovery.engines()
         if action == "workshops":
-            return discovery.workshops()
+            return discovery.workshops(self.source_checkouts)
         if action == "labinabox":
             return discovery.labinabox(self.labinabox_checkout, self.lab_builder_url,
                                        self.labinabox_version)

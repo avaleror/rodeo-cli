@@ -1,4 +1,4 @@
-// Rodeo Builder logic.js — run with `node --test tests/builder/` (tests/test_builder.py does).
+// Rodeo Builder logic.js — run with `node --test tests/builder/logic.test.js` (tests/test_builder.py does).
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
@@ -135,6 +135,12 @@ test("files lay out the profile directory", () => {
   assert.match(out["story/chapters.yaml"].content, /file: 01-welcome\.md\n {4}mins: 10\n {4}needs: \[rancher\]\n {4}check: check-welcome\.sh/);
   assert.equal(out["checks/check-welcome.sh"].mode, 0o755);
   assert.match(out["README.md"].content, /rodeo new demo --from rancher/);
+});
+
+test("a chapter's own check script replaces the stub", () => {
+  const stub = RB.checkScript({ id: "a", title: "A" });
+  assert.match(stub, /no check written yet/);
+  assert.equal(RB.checkScript({ id: "a", title: "A", check_script: "#!/bin/sh\nexit 0\n" }), "#!/bin/sh\nexit 0\n");
 });
 
 test("labJsonAddons reads add-on names from a lab.json", () => {

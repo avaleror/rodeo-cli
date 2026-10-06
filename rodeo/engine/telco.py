@@ -33,7 +33,6 @@ _IMAGE_CACHE_IMAGE = "registry.suse.com/suse/nginx:1.21"
 # Same directory the Metal3 chart's media server uses on the node.
 _IMAGE_CACHE_DIR = "/opt/media"
 _CHARTS = "oci://registry.suse.com/edge/charts"
-_BASE_IMAGE_FILE = "SL-Micro.x86_64-6.2-Base-GM.raw.xz"
 
 # 01-fix-growfs.sh from the 3.7 docs (50.2.2): required so the root partition
 # fills the disk Metal3 writes the image to.
@@ -72,9 +71,19 @@ class TelcoPhase(RancherPhase):
     )
 
     def __init__(self, cfg: dict, stop: threading.Event | None = None) -> None:
+        from ..profiles.suse_telco import resolve_edition
+
         super().__init__(cfg, stop=stop)
         ver = cfg.get("versions", {})
         telco = cfg.get("telco", {})
+        edition = resolve_edition(cfg)
+        self.edition = edition["edition"]
+        self.rancher_name = edition["rancher_name"]
+        self.os_name = edition["os_name"]
+        self.package_repo = edition["package_repo"]
+        # Instance attributes shadow RemoteExecMixin's Prime defaults.
+        self.RANCHER_REPO_NAME = edition["rancher_repo"]["name"]
+        self.RANCHER_REPO_URL = edition["rancher_repo"]["url"]
         self.rke2_version = ver.get("rke2", "v1.36.3+rke2r1")
         self.metal3_version = ver.get("metal3", "")
         self.turtles_providers_version = ver.get("turtles_providers", "")
@@ -87,7 +96,7 @@ class TelcoPhase(RancherPhase):
         self.image_name = cache.get("image_name", "eibimage-downstream-cluster.raw")
         self.eib_image = f"registry.suse.com/edge/3.7/edge-image-builder:{ver.get('eib', '1.3.4')}"
         self.image_dir = Path(cfg.get("storage", {}).get("image_dir", "/var/lib/libvirt/images"))
-        base = telco.get("base_image", {}).get("path") or str(self.image_dir / _BASE_IMAGE_FILE)
+        base = edition["base_image"]["path"]
         self.base_raw = Path(base[:-3] if base.endswith(".xz") else base)
         self.eib_dir = self.image_dir / "eib-telco"
         cred = cfg.get("credentials", {})
@@ -154,7 +163,8 @@ class TelcoPhase(RancherPhase):
             ("Waiting for the RKE2 node to be Ready", self._wait_rke2_ready),
             ("Installing Helm", self._install_helm),
             (f"Installing cert-manager {self.cert_mgr_version}", self._install_cert_manager),
-            (f"Installing Rancher Prime {self.rancher_version} (may take 10+ min)", self._install_rancher),
+            (f"Installing {self.rancher_name} {self.rancher_version} from {self.RANCHER_REPO_URL}"
+             " (may take 10+ min)", self._install_rancher),
             (f"Exposing Rancher on NodePort {self.nodeport}", self._expose_nodeport),
             (f"Waiting for Rancher /ping on {self.rancher_api}", self._wait_ping),
             ("Configuring Rancher admin password and server-url", self._configure_api),
@@ -174,6 +184,20 @@ class TelcoPhase(RancherPhase):
         self.success = True
 
     # ---------- images: downstream image (EIB) into the mgmt image cache ----------
+
+    def eib_packages(self) -> dict:
+        """jq for the downstream image, from a public repo unless an SCC code is set.
+
+        EIB accepts additionalRepos or sccRegistrationCode (EIB 1.3 docs,
+        installing-packages). The SCC code only means something for SUSE Linux
+        Micro, so the opensource edition never sends it.
+        """
+        packages: dict = {"packageList": ["jq"]}
+        if self.edition == "product" and self.scc_code:
+            packages["sccRegistrationCode"] = self.scc_code
+        else:
+            packages["additionalRepos"] = [{"url": self.package_repo}]
+        return packages
 
     def eib_definition(self, root_password_hash: str, ssh_public_key: str) -> dict:
         """3.7 downstream image definition (docs 50.2.1), DHCP, no Telco extras."""
@@ -203,11 +227,8 @@ class TelcoPhase(RancherPhase):
                     "sshKeys": [ssh_public_key],
                     "createHomeDir": True,
                 }],
-                "packages": {
-                    # jq is required by the rke2-preinstall unit in the student YAML.
-                    "packageList": ["jq"],
-                    "sccRegistrationCode": self.scc_code,
-                },
+                # jq is required by the rke2-preinstall unit in the student YAML.
+                "packages": self.eib_packages(),
             },
         }
 
@@ -217,10 +238,8 @@ class TelcoPhase(RancherPhase):
         return hashlib.sha256(material.encode()).hexdigest()
 
     def stream_images(self) -> Iterator[DeployEvent]:
-        if not self.scc_code:
-            self.error = "credentials.scc_registration_code is empty; EIB needs it to install jq"
-            yield LogLine(f"  ✗ {self.error}")
-            return
+        source = "SUSE repositories (SCC code)" if "sccRegistrationCode" in self.eib_packages() else self.package_repo
+        yield LogLine(f"  {self.os_name} base image, jq from {source}")
         if not self.base_raw.is_file():
             self.error = f"SL Micro base image {self.base_raw} not found (the vms phase unpacks it)"
             yield LogLine(f"  ✗ {self.error}")

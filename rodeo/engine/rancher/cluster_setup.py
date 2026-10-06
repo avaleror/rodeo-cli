@@ -83,7 +83,7 @@ class ClusterSetupMixin:
         script = (
             "set -euo pipefail\n"
             f"export KUBECONFIG={self.KUBECONFIG}\n"
-            "helm repo add rancher-prime https://charts.rancher.com/server-charts/prime || true\n"
+            f"helm repo add {self.RANCHER_REPO_NAME} {self.RANCHER_REPO_URL} || true\n"
             "helm repo add jetstack https://charts.jetstack.io || true\n"
             "helm repo update\n"
             f"kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/{v}/cert-manager.crds.yaml\n"
@@ -141,7 +141,7 @@ class ClusterSetupMixin:
             f"{values_yaml}"
             f"{marker}\n"
             f"chmod 600 {remote_values}\n"
-            f"helm upgrade --install rancher rancher-prime/rancher"
+            f"helm upgrade --install rancher {self.RANCHER_REPO_NAME}/rancher"
             f" --namespace cattle-system --create-namespace"
             f" --version {version}"
             f" -f {remote_values}"

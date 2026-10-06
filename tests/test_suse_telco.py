@@ -124,15 +124,15 @@ def test_example_plan_matches_profile_versions(tmp_path):
         assert profile[key] == value, key
 
 
-def test_scc_code_is_operator_secret(tmp_path):
+def test_example_plan_needs_no_operator_secret(tmp_path):
     from rodeo.secretgen import ensure_plan_secrets
 
     lab = seed_lab("suse-telco", tmp_path / "suse-telco")
     plan = yaml.safe_load((lab / "rodeo-plan.yaml").read_text())
-    secrets = tmp_path / "secrets.yaml"
-    generated, missing = ensure_plan_secrets(plan, path=secrets)
-    assert "scc_registration_code" in missing
-    assert "scc_registration_code" not in generated
+    _, missing = ensure_plan_secrets(plan, path=tmp_path / "secrets.yaml")
+    assert missing == []
+    assert "scc_registration_code" not in plan["credentials"]
+    assert plan["edition"] == "product"
 
 
 def test_site_ran_vip_is_not_a_node_address():
@@ -404,7 +404,7 @@ def test_example_plan_generates_mgmt_password(tmp_path):
     plan = yaml.safe_load((lab / "rodeo-plan.yaml").read_text())
     generated, _ = ensure_plan_secrets(plan, path=tmp_path / "secrets.yaml")
     assert "mgmt_root_password" in generated
-    assert plan["telco"]["base_image"]["path"].endswith("SL-Micro.x86_64-6.2-Base-GM.raw.xz")
+    assert "telco" not in plan  # the edition supplies the base image
 
 
 # --- boot + mgmt phases (TelcoPhase) ---
@@ -577,11 +577,12 @@ def test_run_phase_routes_boot_and_mgmt_to_telco(monkeypatch, tmp_path):
 
 # --- images + enroll phases ---
 
-def _phase_with_base(monkeypatch, tmp_path, scc="SCC-TEST-CODE"):
+def _phase_with_base(monkeypatch, tmp_path, scc="SCC-TEST-CODE", edition="product"):
     from rodeo.engine.telco import TelcoPhase
 
     monkeypatch.setenv("HOME", str(tmp_path))
     cfg = _telco_cfg()
+    cfg["edition"] = edition
     cfg["storage"] = {"image_dir": str(tmp_path / "images")}
     cfg["credentials"].update({
         "rancher_admin_password": "Rancher-Secret-123",  # gitleaks:allow (fake fixture)
@@ -699,11 +700,35 @@ def test_images_skips_copy_when_mgmt_has_it(monkeypatch, tmp_path):
     assert not any(c[0] == "scp" for c, _ in rec.cmds)
 
 
-def test_images_requires_scc_code(monkeypatch, tmp_path):
+def test_jq_source_per_edition(monkeypatch, tmp_path):
+    bci = "https://updates.suse.com/SUSE/Products/SLE-BCI/16.0/x86_64/product/"
+    leap = "https://download.opensuse.org/distribution/leap/16.0/repo/oss/"
     p = _phase_with_base(monkeypatch, tmp_path, scc="")
+    assert p.eib_packages() == {"packageList": ["jq"], "additionalRepos": [{"url": bci}]}
+    p = _phase_with_base(monkeypatch, tmp_path, scc="SCC-TEST-CODE")
+    assert p.eib_packages() == {"packageList": ["jq"], "sccRegistrationCode": "SCC-TEST-CODE"}
+    p = _phase_with_base(monkeypatch, tmp_path, scc="SCC-TEST-CODE", edition="opensource")
+    assert p.eib_packages() == {"packageList": ["jq"], "additionalRepos": [{"url": leap}]}
+
+
+def test_images_build_without_scc(monkeypatch, tmp_path):
+    p = _phase_with_base(monkeypatch, tmp_path, scc="")
+    p._run = _Recorder(tmp_path).run
+    builds: list = []
+
+    def stream_local(cmd, timeout):
+        builds.append(cmd)
+        defn = (p.eib_dir / "downstream-cluster-config.yaml").read_text()
+        assert "sccRegistrationCode" not in defn
+        assert "SLE-BCI/16.0" in defn
+        (p.eib_dir / p.image_name).write_bytes(b"built-image")
+        return 0
+        yield
+
+    p._stream_local = stream_local
     list(p.stream_images())
-    assert not p.success
-    assert "scc_registration_code" in p.error
+    assert p.success, p.error
+    assert builds
 
 
 def test_baremetalhosts_match_workshop_selectors(monkeypatch, tmp_path):
@@ -785,3 +810,78 @@ def test_run_phase_routes_images_and_enroll(monkeypatch):
     list(prof.run_phase("enroll", r, None))
     assert calls == ["images", "enroll"]
     assert r._last_rc == 0
+
+
+# --- editions ---
+
+def test_editions_resolve():
+    from rodeo.profiles.suse_telco import resolve_edition
+
+    prod = resolve_edition({"type": "suse-telco"})
+    assert prod["edition"] == "product"
+    assert prod["base_image"] == {
+        "path": "/var/lib/libvirt/images/SL-Micro.x86_64-6.2-Base-GM.raw.xz", "url": "", "sha256": "",
+    }
+    assert prod["rancher_repo"]["url"] == "https://charts.rancher.com/server-charts/prime"
+    oss = resolve_edition({"edition": "opensource"})
+    assert oss["base_image"]["path"].endswith("openSUSE-Leap-Micro.x86_64-6.2-Base-Build12.9.raw.xz")
+    assert oss["base_image"]["url"].startswith("https://download.opensuse.org/distribution/leap-micro/6.2/")
+    assert len(oss["base_image"]["sha256"]) == 64
+    assert oss["rancher_repo"] == {
+        "name": "rancher-stable", "url": "https://releases.rancher.com/server-charts/stable",
+    }
+
+
+def test_edition_plan_overrides_win_and_unknown_is_rejected():
+    import pytest
+
+    from rodeo.config import ConfigError
+    from rodeo.profiles.suse_telco import resolve_edition
+
+    r = resolve_edition({"edition": "opensource", "telco": {"base_image": {"path": "/x/mine.raw", "url": ""}}})
+    assert r["base_image"]["path"] == "/x/mine.raw"
+    assert r["base_image"]["url"].startswith("https://download.opensuse.org/")  # empty plan value = unset
+    with pytest.raises(ConfigError, match="edition 'enterprise'"):
+        resolve_edition({"edition": "enterprise"})
+
+
+def test_finalize_cfg_writes_the_resolved_edition(tmp_path, monkeypatch):
+    from rodeo.config import load_config
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    lab = seed_lab("suse-telco", tmp_path / "suse-telco")
+    plan = yaml.safe_load((lab / "rodeo-plan.yaml").read_text())
+    plan["edition"] = "opensource"
+    (lab / "rodeo-plan.yaml").write_text(yaml.safe_dump(plan))
+    (tmp_path / ".rodeo").mkdir(exist_ok=True)
+    (tmp_path / ".rodeo/secrets.yaml").write_text(yaml.safe_dump({
+        "rancher_admin_password": "x", "bmc_password": "y", "mgmt_root_password": "z",  # gitleaks:allow (fake)
+    }))
+    cfg = load_config("rodeo-plan.yaml", config_dir=str(lab))
+    assert cfg["edition"] == "opensource"
+    assert cfg["telco"]["base_image"]["sha256"] == (
+        "7631c18a7bee561812e468a06eb67080f6bcdd7b3fcb2b87820059feee50fd60"
+    )
+    assert cfg["telco"]["rancher_repo"]["name"] == "rancher-stable"
+    assert cfg["telco"]["sites"]["site-ran"]["namespace"] == "northline"  # profile data kept
+
+
+def test_opensource_installs_community_rancher(monkeypatch, tmp_path):
+    p = _phase_with_base(monkeypatch, tmp_path, edition="opensource")
+    assert p.base_raw.name == "openSUSE-Leap-Micro.x86_64-6.2-Base-Build12.9.raw"
+    assert p.rancher_name == "Rancher"
+    scripts, _ = _run_mgmt(p)
+    joined = "\n".join(scripts)
+    assert "helm repo add rancher-stable https://releases.rancher.com/server-charts/stable" in joined
+    assert "helm upgrade --install rancher rancher-stable/rancher" in joined
+    assert "rancher-prime" not in joined
+
+
+def test_product_keeps_rancher_prime(monkeypatch, tmp_path):
+    from rodeo.engine.rancher import RancherPhase
+
+    assert RancherPhase.RANCHER_REPO_NAME == "rancher-prime"
+    assert RancherPhase.RANCHER_REPO_URL == "https://charts.rancher.com/server-charts/prime"
+    p = _phase_with_base(monkeypatch, tmp_path)
+    scripts, _ = _run_mgmt(p)
+    assert any("rancher-prime/rancher" in s for s in scripts)

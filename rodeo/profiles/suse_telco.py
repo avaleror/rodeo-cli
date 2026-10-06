@@ -17,6 +17,7 @@ components carry the chart version, because that is what `helm --version` takes.
 """
 from __future__ import annotations
 
+from ..config import ConfigError
 from .base import BASE_VERSIONS, RodeoProfile
 
 
@@ -98,6 +99,13 @@ class SuseTelcoProfile(RodeoProfile):
             "alien_geeko": _ALIEN_GEEKO,
         }
 
+    def finalize_cfg(self, cfg: dict) -> dict:
+        """Resolve `edition` into concrete base image, Rancher repo and package repo."""
+        resolved = resolve_edition(cfg)
+        cfg["edition"] = resolved.pop("edition")
+        cfg.setdefault("telco", {}).update(resolved)
+        return cfg
+
     def ansible_vars(self, cfg: dict) -> dict:
         """Vars for the bmc role: listen address, credentials, allowed guests."""
         from .. import inventory
@@ -107,8 +115,7 @@ class SuseTelcoProfile(RodeoProfile):
         sites = set(telco.get("sites", {}))
         nodes = inventory.build_inventory(cfg).get("vm_nodes", [])
         resources = cfg.get("resources", {})
-        image_dir = cfg.get("storage", {}).get("image_dir", "/var/lib/libvirt/images")
-        base = telco.get("base_image", {})
+        base = resolve_edition(cfg)["base_image"]
         mgmt_ip = next((n["ip"] for n in nodes if n["name"] == "mgmt"), "192.168.122.10")
         cache = telco.get("image_cache", {})
         return {
@@ -121,11 +128,7 @@ class SuseTelcoProfile(RodeoProfile):
                 }
                 for flavor, spec in self.resources.items()
             },
-            "telco_base_image": {
-                "path": base.get("path") or f"{image_dir}/{_BASE_IMAGE_FILE}",
-                "url": base.get("url", ""),
-                "sha256": base.get("sha256", ""),
-            },
+            "telco_base_image": base,
             "mgmt_root_password": cfg.get("credentials", {}).get("mgmt_root_password", ""),
             # Metal3MachineTemplates fetch the downstream image from
             # http://imagecache.local:8080, served from mgmt.
@@ -171,9 +174,85 @@ class SuseTelcoProfile(RodeoProfile):
         ]
 
 
-# The SUSE Linux Micro download page name for the 3.7 base image (release notes,
-# component table). The instructor stages it on the KVM host.
-_BASE_IMAGE_FILE = "SL-Micro.x86_64-6.2-Base-GM.raw.xz"
+# `edition` in the plan picks what the lab is built from. Both editions use the
+# same Telco Cloud 3.7 pins and the same open-source charts and images from
+# registry.suse.com (Metal3, Turtles providers, IPA, KubeVirt): public, no login.
+#
+#   product     SUSE Linux Micro 6.2 + Rancher Prime. The SL Micro image is on
+#               the SUSE download page (login), so the instructor stages it.
+#   opensource  openSUSE Leap Micro 6.2 + community Rancher. Everything is an
+#               anonymous download, so rodeo fetches the image itself.
+#
+# Neither needs an SCC code. The only package added to the downstream image is
+# jq (the student YAML's rke2-preinstall unit uses it), and EIB installs it from
+# a public repository. In product, credentials.scc_registration_code, when set,
+# switches that to SUSE's own repositories.
+EDITIONS: dict[str, dict] = {
+    "product": {
+        "label": "SUSE Telco Cloud (SUSE Linux Micro 6.2, Rancher Prime)",
+        "os_name": "SUSE Linux Micro 6.2",
+        "rancher_name": "Rancher Prime",
+        "base_image": {
+            "file": "SL-Micro.x86_64-6.2-Base-GM.raw.xz",
+            "url": "",
+            "sha256": "",
+        },
+        "rancher_repo": {
+            "name": "rancher-prime",
+            "url": "https://charts.rancher.com/server-charts/prime",
+        },
+        # SLE BCI 16.0: public, signed with the SUSE key SL Micro already trusts.
+        "package_repo": "https://updates.suse.com/SUSE/Products/SLE-BCI/16.0/x86_64/product/",
+    },
+    "opensource": {
+        "label": "Open source (openSUSE Leap Micro 6.2, Rancher)",
+        "os_name": "openSUSE Leap Micro 6.2",
+        "rancher_name": "Rancher",
+        "base_image": {
+            "file": "openSUSE-Leap-Micro.x86_64-6.2-Base-Build12.9.raw.xz",
+            "url": (
+                "https://download.opensuse.org/distribution/leap-micro/6.2/appliances/"
+                "openSUSE-Leap-Micro.x86_64-6.2-Base-Build12.9.raw.xz"
+            ),
+            # From the .sha256 next to the image on download.opensuse.org, 2026-10-06.
+            "sha256": "7631c18a7bee561812e468a06eb67080f6bcdd7b3fcb2b87820059feee50fd60",
+        },
+        "rancher_repo": {
+            "name": "rancher-stable",
+            "url": "https://releases.rancher.com/server-charts/stable",
+        },
+        "package_repo": "https://download.opensuse.org/distribution/leap/16.0/repo/oss/",
+    },
+}
+DEFAULT_EDITION = "product"
+
+
+def resolve_edition(cfg: dict) -> dict:
+    """Edition settings for this plan; non-empty plan values under telco win."""
+    edition = str(cfg.get("edition") or DEFAULT_EDITION).strip().lower()
+    if edition not in EDITIONS:
+        raise ConfigError(
+            f"edition '{edition}' is not one of: {', '.join(EDITIONS)}"
+        )
+    spec = EDITIONS[edition]
+    telco = cfg.get("telco", {}) or {}
+    image_dir = cfg.get("storage", {}).get("image_dir", "/var/lib/libvirt/images")
+    plan_base = {k: v for k, v in (telco.get("base_image") or {}).items() if v}
+    base = {
+        "path": f"{image_dir}/{spec['base_image']['file']}",
+        "url": spec["base_image"]["url"],
+        "sha256": spec["base_image"]["sha256"],
+        **plan_base,
+    }
+    return {
+        "edition": edition,
+        "edition_label": spec["label"],
+        "os_name": spec["os_name"],
+        "rancher_name": spec["rancher_name"],
+        "base_image": base,
+        "rancher_repo": {**spec["rancher_repo"], **(telco.get("rancher_repo") or {})},
+        "package_repo": telco.get("package_repo") or spec["package_repo"],
+    }
 
 # Rancher's own self-signed cert on a NodePort. No public 80/443.
 _RANCHER_TLS = {

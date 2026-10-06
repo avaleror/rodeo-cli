@@ -1,0 +1,176 @@
+---
+# sushy-tools as the lab's Redfish BMC. Metal3 drives site guests through it
+# with redfish-virtualmedia://<bmc_listen_ip>:<bmc_port>/redfish/v1/Systems/<uuid>.
+# Runs as a rootful podman container managed by a systemd Quadlet unit.
+
+- name: Check the BMC inputs
+  ansible.builtin.assert:
+    that:
+      - bmc_password is defined
+      - bmc_password | length > 0
+      - bmc_image | length > 0
+      - bmc_allowed_instances | length > 0
+    fail_msg: >-
+      bmc role needs bmc_password (credentials.bmc_password, '??bmc_password' in
+      rodeo-plan.yaml), a pinned bmc_image and at least one allowed instance UUID.
+    quiet: true
+  no_log: true
+
+- name: Install podman
+  community.general.zypper:
+    name: podman
+    state: present
+
+- name: Read the libvirt network state
+  ansible.builtin.command: virsh net-info {{ libvirt_network_name | default('default') }}
+  register: _bmc_net
+  changed_when: false
+  failed_when: false
+
+- name: Require the libvirt network the BMC binds to
+  ansible.builtin.assert:
+    that:
+      - _bmc_net.rc == 0
+      - _bmc_net.stdout is search('Active:\s+yes')
+    fail_msg: >-
+      libvirt network '{{ libvirt_network_name | default('default') }}' is not active,
+      so {{ bmc_listen_ip }} does not exist yet. Run the vms phase first.
+    quiet: true
+
+- name: Create the BMC config directory
+  ansible.builtin.file:
+    path: "{{ bmc_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+# Self-signed, like a real BMC out of the box. BareMetalHosts set
+# disableCertificateVerification: true.
+- name: Create the BMC TLS key and certificate
+  ansible.builtin.command: >-
+    openssl req -x509 -newkey rsa:3072 -nodes -days 825
+    -subj "/CN={{ bmc_listen_ip }}"
+    -addext "subjectAltName=IP:{{ bmc_listen_ip }}"
+    -keyout {{ bmc_dir }}/sushy.key -out {{ bmc_dir }}/sushy.crt
+  args:
+    creates: "{{ bmc_dir }}/sushy.crt"
+  notify: restart sushy
+
+- name: Pull the pinned sushy-tools image
+  ansible.builtin.command: podman pull {{ bmc_image }}
+  register: _bmc_pull
+  changed_when: false
+  retries: 3
+  delay: 10
+  until: _bmc_pull.rc == 0
+
+# sushy only accepts bcrypt digests. The image already ships the bcrypt module,
+# so hash inside it instead of adding host packages. The password goes in on
+# stdin, never argv. Exit 10 means the file was (re)written.
+- name: Write the BMC htpasswd file (bcrypt)
+  ansible.builtin.command:
+    argv:
+      - podman
+      - run
+      - --rm
+      - -i
+      - --security-opt
+      - label=disable
+      - -e
+      - "BMC_USER={{ bmc_username }}"
+      - -v
+      - "{{ bmc_dir }}:/etc/sushy"
+      - --entrypoint
+      - python3
+      - "{{ bmc_image }}"
+      - -c
+      - |
+        import os, sys, bcrypt
+        user = os.environ["BMC_USER"]
+        pw = sys.stdin.read().encode()
+        path = "/etc/sushy/htpasswd"
+        try:
+            name, digest = open(path).read().strip().split(":", 1)
+            if name == user and bcrypt.checkpw(pw, digest.encode()):
+                sys.exit(0)
+        except (OSError, ValueError):
+            pass
+        with open(path, "w") as f:
+            f.write(user + ":" + bcrypt.hashpw(pw, bcrypt.gensalt()).decode() + "\n")
+        sys.exit(10)
+    stdin: "{{ bmc_password }}"
+    stdin_add_newline: false
+  register: _bmc_htpasswd
+  changed_when: _bmc_htpasswd.rc == 10
+  failed_when: _bmc_htpasswd.rc not in [0, 10]
+  no_log: true
+  notify: restart sushy
+
+- name: Restrict the htpasswd file
+  ansible.builtin.file:
+    path: "{{ bmc_dir }}/htpasswd"
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Render the sushy-tools config
+  ansible.builtin.template:
+    src: sushy-emulator.conf.j2
+    dest: "{{ bmc_dir }}/sushy-emulator.conf"
+    owner: root
+    group: root
+    mode: "0600"
+  notify: restart sushy
+
+- name: Install the Quadlet unit
+  ansible.builtin.template:
+    src: rodeo-sushy.container.j2
+    dest: /etc/containers/systemd/{{ bmc_service }}.container
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart sushy
+
+- name: Start the BMC service
+  ansible.builtin.systemd:
+    name: "{{ bmc_service }}"
+    state: started
+    daemon_reload: true
+
+- name: Apply pending BMC restarts
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for the BMC to listen
+  ansible.builtin.wait_for:
+    host: "{{ bmc_listen_ip }}"
+    port: "{{ bmc_port }}"
+    timeout: 120
+
+- name: Check the BMC rejects anonymous requests
+  ansible.builtin.uri:
+    url: "https://{{ bmc_listen_ip }}:{{ bmc_port }}/redfish/v1/Systems"
+    validate_certs: false
+    status_code: 401
+
+- name: Check the BMC answers with credentials
+  ansible.builtin.uri:
+    url: "https://{{ bmc_listen_ip }}:{{ bmc_port }}/redfish/v1/Systems"
+    url_username: "{{ bmc_username }}"
+    url_password: "{{ bmc_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    return_content: true
+  register: _bmc_systems
+  retries: 6
+  delay: 5
+  until: _bmc_systems.status == 200
+  no_log: true
+
+- name: Report the systems the BMC exposes
+  ansible.builtin.debug:
+    msg: >-
+      sushy-tools on https://{{ bmc_listen_ip }}:{{ bmc_port }} exposes
+      {{ _bmc_systems.json.Members | default([]) | length }} of
+      {{ bmc_allowed_instances | length }} site guests
+      (guests appear once the vms phase defines them).

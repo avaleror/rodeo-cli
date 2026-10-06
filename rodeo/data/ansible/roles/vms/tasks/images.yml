@@ -173,6 +173,11 @@
   ansible.builtin.include_tasks: eib_image.yml
   when: (vm_nodes | selectattr('flavor', 'equalto', 'eib') | list | length) > 0
 
+# --- SUSE Telco Cloud: mgmt from the SL Micro base image, blank site disks ---
+- name: Provision the telco mgmt and site host disks
+  ansible.builtin.include_tasks: telco_image.yml
+  when: (vm_nodes | selectattr('flavor', 'in', ['mgmt', 'site']) | list | length) > 0
+
 # --- Edge nodes: OVMF vars only (no blank disks) ---
 # Edge nodes boot from an Elemental OS RAW image built on the EIB VM (participant
 # exercise). Disk images are thin-cloned from the EIB output by 'rodeo pull-edge-image'

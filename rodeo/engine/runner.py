@@ -911,6 +911,17 @@ class DeployRunner:
         if harvester_token:
             vars_data["harvester_token"] = harvester_token
 
+        # Profile-specific role vars (e.g. suse-telco's bmc role). A type with
+        # no registered profile simply adds none.
+        from ..profiles import get_profile
+        try:
+            profile = get_profile(self.cfg.get("type", "suse-virt"))
+        except ValueError:
+            profile = None
+        extra_vars = getattr(profile, "ansible_vars", None)
+        if extra_vars is not None:
+            vars_data.update(extra_vars(self.cfg))
+
         # Wire the full vm_nodes (with MACs, UUIDs, interfaces, etc.) from the centralized
         # definition (rodeo/data/profiles/suse-virt/topology.yaml via inventory.py).
         # This makes the definition the source for both Python side and Ansible provisioning

@@ -1,0 +1,308 @@
+"""SUSE Telco Cloud 3.7 profile: management cluster and two downstream hosts.
+
+The phase list is the order `rodeo plan` shows. kvm_host (host prep), vms
+(libvirt network, mgmt disk from the SL Micro base image plus a combustion
+seed, blank site disks, domain definitions) and bmc (sushy-tools, the emulated
+Redfish BMC for site-co and site-ran) run through Ansible. The rest runs
+TelcoPhase (rodeo/engine/telco.py): boot starts mgmt only (Metal3 owns the site
+hosts' power), mgmt installs the management stack, images builds the
+downstream image with EIB on the KVM host and publishes it to the mgmt image
+cache, and enroll registers the site hosts as BareMetalHosts and waits for
+them to be available. `rodeo up` is done at that point: students apply the
+workshop's manifests/ themselves.
+
+Versions are the SUSE Telco Cloud 3.7.0 release notes, component table
+(documentation.suse.com/suse-telco/3.7, Appendix "Release Notes"). Helm-installed
+components carry the chart version, because that is what `helm --version` takes.
+"""
+from __future__ import annotations
+
+from ..config import ConfigError
+from .base import BASE_VERSIONS, RodeoProfile
+
+
+class SuseTelcoProfile(RodeoProfile):
+    name = "suse-telco"
+    phases = [
+        "kvm_host",
+        "vms",
+        "bmc",
+        "boot",
+        "mgmt",
+        "images",
+        "enroll",
+        "finalise",
+        "custom_scripts",
+    ]
+    vm_names = ["mgmt", "site-co", "site-ran"]
+    ansible_phases = frozenset(["kvm_host", "vms", "bmc"])
+    guarded_phases = frozenset(["finalise", "custom_scripts"])
+    no_cache_phases = frozenset(["images", "vms", "bmc", "enroll", "custom_scripts"])
+
+    static_vms = {
+        "mgmt": {"ip": "192.168.122.10", "user": "root"},
+        "site-co": {"ip": "192.168.122.21", "user": "root"},
+        "site-ran": {"ip": "192.168.122.32", "user": "root"},
+    }
+
+    # Management cluster is RKE2. The inherited k3s key is unused here.
+    versions = {
+        **BASE_VERSIONS,
+        "suse_telco_cloud": "3.7.0",
+        "rancher": "2.15.1",
+        "rke2": "v1.36.3+rke2r1",
+        "cert_manager": "v1.20.1",
+        # Turtles itself ships inside Rancher (on by default since 2.13; image
+        # v0.27.1). This is the providers chart: CAPI v1.13.3, CAPM3 v1.13.2,
+        # RKE2 bootstrap and control plane v0.25.0.
+        "turtles_providers": "307.0.8+up0.27.0",
+        # Metal3 0.16.0: baremetal-operator 0.13.3, Ironic 38.0.0, IPA 3.0.10.
+        "metal3": "307.0.31+up0.16.0",
+        "metallb": "307.0.3+up0.16.1",
+        "endpoint_copier_operator": "307.0.1+up0.3.0",
+        "longhorn": "1.12.1",
+        # KubeVirt 1.8.3, CDI 1.65.0, dashboard extension 1.4.2 (lab 07 only).
+        "kubevirt": "307.0.3+up0.8.0",
+        "cdi": "307.0.3+up0.8.0",
+        "kubevirt_dashboard_extension": "307.0.5+up1.4.2",
+        "eib": "1.3.4",
+        "kiwi_builder": "10.2.29.1",
+        "telco_examples_ref": "e4ec0b0a7349a635c1c5efd94bdefeaedbfa847c",
+        # Not part of the Telco Cloud stack: the lab's emulated BMC. Metal3's
+        # image, release-38.0 build of 2026-10-05 (matches Ironic 38.0.0),
+        # pinned by digest because the tags are rebuilt daily.
+        "sushy_tools_image": (
+            "quay.io/metal3-io/sushy-tools@sha256:"
+            "8e9fca1fe63ecdfde4361ad7c315066d57989c3263725a40176d6fcf948d490d"
+        ),
+    }
+
+    # CPU and RAM are the workshop starting sizes. Disk is a placeholder
+    # until the first image boot, not a measured pin.
+    resources = {
+        "mgmt": {"memory_mib": 16384, "vcpu": 8, "disk_gb": 80},
+        "site": {"memory_mib": 8192, "vcpu": 4, "disk_gb": 40},
+    }
+
+    def extra_cfg(self) -> dict:
+        return {
+            "harvester_node_names": [],
+            "rancher_tls": _RANCHER_TLS,
+            "network": {
+                "mode": "nat",
+                "gateway": "192.168.122.1",
+                "dns_domain": "northline.telco",
+                "vip": "",
+                "rancher_ip": "192.168.122.10",
+            },
+            "telco": _TELCO,
+            "alien_geeko": _ALIEN_GEEKO,
+        }
+
+    def finalize_cfg(self, cfg: dict) -> dict:
+        """Resolve `edition` into concrete base image, Rancher repo and package repo."""
+        resolved = resolve_edition(cfg)
+        cfg["edition"] = resolved.pop("edition")
+        cfg.setdefault("telco", {}).update(resolved)
+        return cfg
+
+    def ansible_vars(self, cfg: dict) -> dict:
+        """Vars for the bmc role: listen address, credentials, allowed guests."""
+        from .. import inventory
+
+        telco = cfg.get("telco", {})
+        bmc = telco.get("bmc", {})
+        sites = set(telco.get("sites", {}))
+        nodes = inventory.build_inventory(cfg).get("vm_nodes", [])
+        resources = cfg.get("resources", {})
+        base = resolve_edition(cfg)["base_image"]
+        mgmt_ip = next((n["ip"] for n in nodes if n["name"] == "mgmt"), "192.168.122.10")
+        cache = telco.get("image_cache", {})
+        return {
+            # --- vms role ---
+            "libvirt_flavors": {
+                flavor: {
+                    "memory_mib": resources.get(flavor, {}).get("memory_mib", spec["memory_mib"]),
+                    "vcpu": resources.get(flavor, {}).get("vcpu", spec["vcpu"]),
+                    "disk_gb": resources.get(flavor, {}).get("disk_gb", spec["disk_gb"]),
+                }
+                for flavor, spec in self.resources.items()
+            },
+            "telco_base_image": base,
+            "mgmt_root_password": cfg.get("credentials", {}).get("mgmt_root_password", ""),
+            # Metal3MachineTemplates fetch the downstream image from
+            # http://imagecache.local:8080, served from mgmt.
+            "lab_extra_dns_hosts": [{"ip": mgmt_ip, "hostname": cache.get("hostname", "imagecache.local")}],
+            # --- bmc role ---
+            "bmc_listen_ip": bmc.get("address", "192.168.122.1"),
+            "bmc_port": int(bmc.get("port", 8000)),
+            "bmc_username": bmc.get("username", "admin"),
+            "bmc_password": cfg.get("credentials", {}).get("bmc_password", ""),
+            "bmc_image": cfg.get("versions", {}).get("sushy_tools_image", ""),
+            # Only the site hosts get a BMC. Metal3 can never power-cycle mgmt.
+            "bmc_allowed_instances": [n["uuid"] for n in nodes if n["name"] in sites],
+        }
+
+    # Phases TelcoPhase runs, mapped to its stream methods.
+    _TELCO_PHASES = {
+        "boot": "stream_boot",
+        "mgmt": "stream_mgmt",
+        "images": "stream_images",
+        "enroll": "stream_enroll",
+    }
+
+    def run_phase(self, phase, runner, vars_file):
+        """Telco phases run TelcoPhase; every other phase uses the shared dispatch."""
+        method = self._TELCO_PHASES.get(phase)
+        if method is None:
+            yield from super().run_phase(phase, runner, vars_file)
+            return
+        from ..engine.telco import TelcoPhase
+
+        if phase == "boot":
+            yield from runner._start_firewalld()
+        telco = TelcoPhase(runner.cfg, stop=runner.stop)
+        yield from getattr(telco, method)()
+        runner._last_rc = 0 if telco.success else 1
+
+    def success_next_steps(self, cfg: dict) -> list[str]:
+        mgmt = cfg.get("vms", {}).get("mgmt", {}).get("ip", "192.168.122.10")
+        return [
+            f"  ssh root@{mgmt} kubectl get bmh -A     # site-co and site-ran, state available",
+            "  In the workshop repo: kubectl apply -f manifests/downstream-single.yaml   (lab 04)",
+            "  Rancher imports site-co-01 through the Turtles auto-import label",
+        ]
+
+
+# `edition` in the plan picks what the lab is built from. Both editions use the
+# same Telco Cloud 3.7 pins and the same open-source charts and images from
+# registry.suse.com (Metal3, Turtles providers, IPA, KubeVirt): public, no login.
+#
+#   product     SUSE Linux Micro 6.2 + Rancher Prime. The SL Micro image is on
+#               the SUSE download page (login), so the instructor stages it.
+#   opensource  openSUSE Leap Micro 6.2 + community Rancher. Everything is an
+#               anonymous download, so rodeo fetches the image itself.
+#
+# Neither needs an SCC code. The only package added to the downstream image is
+# jq (the student YAML's rke2-preinstall unit uses it), and EIB installs it from
+# a public repository. In product, credentials.scc_registration_code, when set,
+# switches that to SUSE's own repositories.
+EDITIONS: dict[str, dict] = {
+    "product": {
+        "label": "SUSE Telco Cloud (SUSE Linux Micro 6.2, Rancher Prime)",
+        "os_name": "SUSE Linux Micro 6.2",
+        "rancher_name": "Rancher Prime",
+        "base_image": {
+            "file": "SL-Micro.x86_64-6.2-Base-GM.raw.xz",
+            "url": "",
+            "sha256": "",
+        },
+        "rancher_repo": {
+            "name": "rancher-prime",
+            "url": "https://charts.rancher.com/server-charts/prime",
+        },
+        # SLE BCI 16.0: public, signed with the SUSE key SL Micro already trusts.
+        "package_repo": "https://updates.suse.com/SUSE/Products/SLE-BCI/16.0/x86_64/product/",
+    },
+    "opensource": {
+        "label": "Open source (openSUSE Leap Micro 6.2, Rancher)",
+        "os_name": "openSUSE Leap Micro 6.2",
+        "rancher_name": "Rancher",
+        "base_image": {
+            "file": "openSUSE-Leap-Micro.x86_64-6.2-Base-Build12.9.raw.xz",
+            "url": (
+                "https://download.opensuse.org/distribution/leap-micro/6.2/appliances/"
+                "openSUSE-Leap-Micro.x86_64-6.2-Base-Build12.9.raw.xz"
+            ),
+            # From the .sha256 next to the image on download.opensuse.org, 2026-10-06.
+            "sha256": "7631c18a7bee561812e468a06eb67080f6bcdd7b3fcb2b87820059feee50fd60",
+        },
+        "rancher_repo": {
+            "name": "rancher-stable",
+            "url": "https://releases.rancher.com/server-charts/stable",
+        },
+        "package_repo": "https://download.opensuse.org/distribution/leap/16.0/repo/oss/",
+    },
+}
+DEFAULT_EDITION = "product"
+
+
+def resolve_edition(cfg: dict) -> dict:
+    """Edition settings for this plan; non-empty plan values under telco win."""
+    edition = str(cfg.get("edition") or DEFAULT_EDITION).strip().lower()
+    if edition not in EDITIONS:
+        raise ConfigError(
+            f"edition '{edition}' is not one of: {', '.join(EDITIONS)}"
+        )
+    spec = EDITIONS[edition]
+    telco = cfg.get("telco", {}) or {}
+    image_dir = cfg.get("storage", {}).get("image_dir", "/var/lib/libvirt/images")
+    plan_base = {k: v for k, v in (telco.get("base_image") or {}).items() if v}
+    base = {
+        "path": f"{image_dir}/{spec['base_image']['file']}",
+        "url": spec["base_image"]["url"],
+        "sha256": spec["base_image"]["sha256"],
+        **plan_base,
+    }
+    return {
+        "edition": edition,
+        "edition_label": spec["label"],
+        "os_name": spec["os_name"],
+        "rancher_name": spec["rancher_name"],
+        "base_image": base,
+        "rancher_repo": {**spec["rancher_repo"], **(telco.get("rancher_repo") or {})},
+        "package_repo": telco.get("package_repo") or spec["package_repo"],
+    }
+
+# Rancher's own self-signed cert on a NodePort. No public 80/443.
+_RANCHER_TLS = {
+    "source": "rancher",
+}
+
+# What the enroll and images phases build, matched to the workshop manifests.
+# Labels are the hostSelector values in manifests/downstream-single.yaml and
+# manifests/site-ran.yaml. site-ran's host lives in namespace northline because
+# its Metal3MachineTemplate does, so enroll creates that namespace first.
+_TELCO = {
+    "bmc": {
+        # sushy-tools on the KVM host, libvirt driver, Redfish virtual media.
+        "address": "192.168.122.1",
+        "port": 8000,
+    },
+    "image_cache": {
+        "hostname": "imagecache.local",
+        "port": 8080,
+        # One downstream image for both sites, built by EIB from SL Micro 6.2 Base.
+        "image_name": "eibimage-downstream-cluster.raw",
+    },
+    "sites": {
+        "site-co": {
+            "namespace": "default",
+            "cluster": "site-co-01",
+            "control_plane_endpoint": "192.168.122.21",
+            "labels": {"cluster-role": "control-plane", "site": "site-co"},
+        },
+        "site-ran": {
+            "namespace": "northline",
+            "cluster": "site-ran-01",
+            "control_plane_endpoint": "192.168.122.22",
+            "labels": {
+                "cluster-role": "control-plane",
+                "deploy-region": "northline",
+                "cluster-type": "site-ran",
+            },
+        },
+    },
+}
+
+_ALIEN_GEEKO = {
+    "image": "docker.io/avaleror/telco-site-console:latest",
+    "fleet_repo": "https://github.com/avaleror/telco-site-console.git",
+    "fleet_branch": "main",
+    "fleet_name": "telco-site-console",
+    "fleet_namespace": "fleet-default",
+    "target_labels": {
+        "demo": "true",
+        "site-type": "downstream",
+    },
+}

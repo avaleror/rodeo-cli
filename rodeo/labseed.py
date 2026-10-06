@@ -27,6 +27,7 @@ PROFILE_EXAMPLE = {
     "virt-workshop-aws": "virt-workshop-aws",  # harvester topology + custom/scripts/ (image cache, NFS, pre-created VM) for suse-virt-workshop
     "virt-workshop-aws-2n": "virt-workshop-aws-2n",  # budget tier: 2-node Harvester (like harvester-2n) + same custom/scripts/, sized for m8id.4xlarge
     "suse-edge": "suse-edge",               # Rancher + Elemental + EIB + 4 edge nodes (SUSE Edge 3.6)
+    "suse-telco": "suse-telco",             # Telco Cloud 3.7: mgmt + site-co + site-ran (topology only)
     "smlm-workshop": "smlm-workshop",       # lab-in-a-box: SUSE Multi-Linux Manager + 8 clients (instruqt-SMLM track)
 }
 

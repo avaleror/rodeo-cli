@@ -163,6 +163,25 @@ AWS_PROFILE_TIERS: dict[str, dict[InstanceTier, InstanceOffer]] = {
             "m7i.metal-24xl", "performance", "bare metal — max nested performance"
         ),
     },
+    # Starting sizes for the telco guest set (8+4+4 vCPU, 16+8+8 GiB). Not
+    # measured. Recommended covers labs 01-06. Performance is the metal size
+    # already used in this catalog, for nested KubeVirt on site-co.
+    "suse-telco": {
+        "budget": InstanceOffer(
+            "m7i.4xlarge", "budget",
+            "16 vCPU / 64 GiB, EBS only — same vCPU/RAM as recommended, no "
+            "local NVMe. Starting pick, not measured.",
+        ),
+        "recommended": InstanceOffer(
+            "m8id.4xlarge", "recommended",
+            "16 vCPU / 64 GiB / a single 950 GB NVMe device — labs 01-06 "
+            "starting size, not measured",
+        ),
+        "performance": InstanceOffer(
+            "m7i.metal-24xl", "performance",
+            "bare metal — lab 07 nested KubeVirt starting size, not measured",
+        ),
+    },
 }
 
 _DEFAULT_PROFILE_KEY = "harvester"

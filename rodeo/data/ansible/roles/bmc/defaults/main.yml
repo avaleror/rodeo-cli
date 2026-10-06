@@ -1,0 +1,20 @@
+---
+# Emulated Redfish BMC (sushy-tools) for labs whose guests Metal3 enrolls as
+# BareMetalHosts (suse-telco). Every value is passed in by the profile's
+# ansible_vars() hook; these are fallbacks only.
+
+# Bind to the libvirt network gateway only: guests reach it, the public NIC
+# does not. Binding needs virbr0 up, so this role runs after the vms phase.
+bmc_listen_ip: "192.168.122.1"
+bmc_port: 8000
+bmc_username: admin
+# bmc_password has no default on purpose: it comes from ~/.rodeo/secrets.yaml.
+
+# Pinned by digest in the profile. Empty fails the role.
+bmc_image: ""
+# libvirt UUIDs sushy may expose. Empty would expose every domain on the host.
+bmc_allowed_instances: []
+
+bmc_dir: /etc/rodeo/sushy
+bmc_service: rodeo-sushy
+bmc_libvirt_uri: "qemu:///system"

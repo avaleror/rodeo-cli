@@ -6,8 +6,20 @@
   <vcpu placement='static'>{{ libvirt_flavors[item.flavor].vcpu }}</vcpu>
   <iothreads>1</iothreads>
   <cpu mode='host-passthrough' check='none' migratable='on'/>
+{% if item.flavor in ('mgmt', 'site') %}
+  <!-- UEFI by firmware auto-selection, no Secure Boot. sushy-tools rewrites
+       hand-picked loader paths to Debian ones that do not exist on SLES, so
+       Metal3-managed guests must not pin a loader. -->
+  <os firmware='efi'>
+    <type arch='x86_64' machine='q35'>hvm</type>
+    <firmware>
+      <feature enabled='no' name='secure-boot'/>
+      <feature enabled='no' name='enrolled-keys'/>
+    </firmware>
+{% else %}
   <os>
     <type arch='x86_64' machine='q35'>hvm</type>
+{% endif %}
 {% if item.flavor in ('harvester', 'eib', 'edge-node') %}
     <loader readonly='yes' type='pflash'>{{ ovmf_code }}</loader>
     <nvram template='{{ ovmf_vars_template }}'>{{ image_dir }}/{{ item.name }}-ovmf-vars.fd</nvram>
@@ -58,6 +70,16 @@
       <target dev='sda' bus='sata'/>
       <readonly/>
     </disk>
+{% elif item.flavor == 'mgmt' %}
+    <!-- combustion seed for the SL Micro first boot -->
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <source file='{{ image_dir }}/{{ item.name }}-combustion.iso'/>
+      <target dev='sda' bus='sata'/>
+      <readonly/>
+    </disk>
+{% elif item.flavor == 'site' %}
+    <!-- No CD-ROM: sushy-tools adds a SATA one when Ironic inserts virtual media. -->
 {% elif item.flavor == 'edge-node' %}
     <!-- Edge nodes have no CDROM at deploy time. Students attach the EIB-built
          Elemental OS ISO as a lab exercise and start the VM to boot from it. -->

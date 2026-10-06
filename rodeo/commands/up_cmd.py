@@ -430,7 +430,16 @@ def _resolve_aws_instance_choice(
         resolve_instance_type,
     )
 
+    from ..providers.aws import default_region
+
     provider = dict(cfg.get("provider") or {})
+    # No provider block (or a partial one): any profile still deploys with
+    # `rodeo up --profile <name> --target aws`. The defaults are written back
+    # to the plan so re-runs and `rodeo destroy --cloud` use the same values.
+    provider.setdefault("type", "aws")
+    if not str(provider.get("region") or "").strip():
+        provider["region"] = default_region()
+        console.print(f"[dim]provider.region not set, using {provider['region']}[/dim]")
     explicit = str(provider.get("instance_type") or "").strip()
     tier_cli = instance_tier or str(provider.get("instance_tier") or "").strip() or None
 
@@ -465,6 +474,12 @@ def _resolve_aws_instance_choice(
     provider["instance_type"] = itype
     if tier_used:
         provider["instance_tier"] = tier_used
+    if not str(provider.get("subnet_id") or "").strip():
+        provider["subnet_id"] = AwsHostProvider().default_subnet(provider, instance_type=itype)
+        console.print(
+            f"[dim]provider.subnet_id not set, using {provider['subnet_id']} "
+            f"(default VPC, {provider['region']})[/dim]"
+        )
     provider["lab_profile"] = lab_profile
     cfg = {**cfg, "provider": provider}
 
@@ -483,7 +498,7 @@ def _resolve_aws_instance_choice(
 
 
 def _persist_plan_overlays(lab: Path, cfg: dict) -> None:
-    """Write host-context resource/storage overlays back into rodeo-plan.yaml."""
+    """Write host-context overlays and the resolved provider back into rodeo-plan.yaml."""
     import yaml as _yaml
 
     plan_path = lab / "rodeo-plan.yaml"
@@ -498,6 +513,11 @@ def _persist_plan_overlays(lab: Path, cfg: dict) -> None:
         storage = data.setdefault("storage", {})
         if isinstance(storage, dict):
             storage.update({k: v for k, v in cfg["storage"].items() if k in ("backend",)})
+    if isinstance(cfg.get("provider"), dict):
+        # lab_profile is a runtime hint for the instance catalog, not plan data.
+        provider = data.setdefault("provider", {})
+        if isinstance(provider, dict):
+            provider.update({k: v for k, v in cfg["provider"].items() if k != "lab_profile"})
     if isinstance(cfg.get("libvirt"), dict):
         libvirt = data.setdefault("libvirt", {})
         if isinstance(libvirt, dict):

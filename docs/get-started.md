@@ -100,8 +100,11 @@ to pin it, or to push a new commit onto a host that already has rodeo. See
 
 ```bash
 pip install -e '.[aws]'   # in your rodeo-cli checkout; see install.md
-rodeo up --yes --profile harvester --target aws --instance-tier recommended
+rodeo up --yes --profile rancher --target aws
 ```
+
+No `provider:` block needed: rodeo uses `eu-north-1` (or `$RODEO_AWS_REGION`)
+and the region's default VPC public subnet, and writes them to the lab plan.
 
 See [Fleet](fleet.md) and [Fleet roadmap](fleet.md#roadmap).
 

@@ -137,6 +137,12 @@ test("files lay out the profile directory", () => {
   assert.match(out["README.md"].content, /rodeo new demo --from rancher/);
 });
 
+test("a chapter's own check script replaces the stub", () => {
+  const stub = RB.checkScript({ id: "a", title: "A" });
+  assert.match(stub, /no check written yet/);
+  assert.equal(RB.checkScript({ id: "a", title: "A", check_script: "#!/bin/sh\nexit 0\n" }), "#!/bin/sh\nexit 0\n");
+});
+
 test("labJsonAddons reads add-on names from a lab.json", () => {
   const lab = { nodes: { "a.lab": { addons: ["smlm", { client_registration: {} }] }, "b.lab": {} } };
   assert.deepEqual(RB.labJsonAddons(lab), ["client_registration", "smlm"]);

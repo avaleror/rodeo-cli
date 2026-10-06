@@ -29,7 +29,7 @@ function el(tag, props = {}, ...children) {
 
 const state = {
   engines: [], capabilities: [], workshops: [], liab: { builder_url: "", addons: [], imports: [] },
-  engine: "rancher", mode: "link", importProfile: "", labAddons: [], labJson: null,
+  engine: "rancher", base: null, planEdited: null, mode: "link", importProfile: "", labAddons: [], labJson: null,
   chapters: [], custom: [], name: "my-rodeo", title: "My rodeo", lang: "en", target: "baremetal",
   variant: "", extraVariants: [], query: "", open: {}, newWorkshop: "custom", fileView: "rodeo-plan.yaml",
   editing: -1, edTab: "spans", drag: null,
@@ -56,9 +56,38 @@ function provided() {
 function missing(chapter) { const p = provided(); return (chapter.needs || []).filter((n) => !p.has(n)); }
 
 function libraryGroups() {
-  const groups = state.workshops.map((w) => ({ id: w.id, title: w.title, sub: w.source, chapters: w.chapters }));
+  const groups = state.workshops.map((w) => ({ id: w.id, title: w.title, sub: w.source, chapters: w.chapters,
+    engine: w.engine, profile: w.profile, plan: w.plan }));
   groups.push({ id: "custom", title: "My chapters", sub: "created in this builder", chapters: state.custom });
   return groups;
+}
+
+// The engine and base profile a library group's chapters run on.
+function groupMatches(g) {
+  if (!g.engine || g.engine !== state.engine) return false;
+  if (g.engine === "lab-in-a-box") return liabImported() && importBase().profile === g.profile;
+  return baseProfile() === g.profile;
+}
+
+function useGroup(g) {
+  if (!confirmPlanDrop()) return;
+  state.engine = g.engine;
+  state.planEdited = null;
+  if (g.engine === "lab-in-a-box") {
+    state.base = null;
+    state.mode = "import";
+    state.importProfile = g.profile;
+    state.labJson = null;
+  } else {
+    state.base = g.profile === engine().base ? null : { profile: g.profile, plan: g.plan };
+  }
+  render();
+  toast("Lab engine " + g.engine + " with the " + g.profile + " profile, as " + g.title + " needs");
+}
+
+function confirmPlanDrop() {
+  return state.planEdited === null ||
+    window.confirm("plan.yaml was edited by hand. Changing the lab engine regenerates it and drops those edits. Continue?");
 }
 
 function libKey(groupId, chapterId) { return groupId + "/" + chapterId; }
@@ -71,15 +100,23 @@ function allVariants() {
 
 function baseProfile() {
   if (isLiab()) return liabImported() ? importBase().profile : "";
+  if (state.base) return state.base.profile;
   return engine() ? engine().base : "";
 }
 
 function story() { return { language: state.lang, id: state.variant }; }
 
+function planOptions() { return { name: state.name, target: state.target, story: story() }; }
+
+function generatedPlan() {
+  if (liabImported()) return RB.planFromBase(importBase().plan, planOptions());
+  if (isLiab()) return RB.planLabinabox({ ...planOptions(), addons: state.labAddons });
+  return RB.planFromBase(state.base ? state.base.plan : engine().plan, planOptions());
+}
+
+// A hand-edited plan keeps every edit; name, deployment_target and story follow the rodeo tab.
 function plan() {
-  if (liabImported()) return RB.planFromBase(importBase().plan, { name: state.name, target: state.target, story: story() });
-  if (isLiab()) return RB.planLabinabox({ name: state.name, target: state.target, story: story(), addons: state.labAddons });
-  return RB.planFromBase(engine().plan, { name: state.name, target: state.target, story: story() });
+  return state.planEdited === null ? generatedPlan() : RB.planFromBase(state.planEdited, planOptions());
 }
 
 function rodeo() {
@@ -114,9 +151,15 @@ function renderLibrary() {
       el("button", { class: "group-head", type: "button", "aria-expanded": String(open),
         onclick: () => { state.open[g.id] = !open; renderLibrary(); } },
         el("span", { class: "chev", text: open ? "▾" : "▸" }),
-        el("span", {}, el("span", { class: "group-title", text: g.title }), el("span", { class: "group-sub", text: g.sub }))),
-      g.chapters.length ? el("button", { class: "btn sm", type: "button", text: "+ all " + g.chapters.length,
-        onclick: () => { for (const c of g.chapters) addChapter(g, c); } }) : null);
+        el("span", { class: "group-text" }, el("span", { class: "group-title", text: g.title }),
+          el("span", { class: "group-sub", text: g.sub }))),
+      el("div", { class: "group-actions" },
+        g.engine ? el("span", { class: "chip" + (groupMatches(g) ? " ok" : ""), title: "Runs on the " + g.engine +
+          " engine with the " + g.profile + " profile", text: g.engine + (g.profile && g.profile !== g.engine ? " · " + g.profile : "") }) : null,
+        g.engine && !groupMatches(g) ? el("button", { class: "btn sm outline", type: "button", text: "use",
+          title: "Switch the lab engine to " + g.engine + " (" + g.profile + ")", onclick: () => useGroup(g) }) : null,
+        g.chapters.length ? el("button", { class: "btn sm", type: "button", text: "+ all " + g.chapters.length,
+          onclick: () => { for (const c of g.chapters) addChapter(g, c); } }) : null));
     const cards = el("div", { class: "cards" });
     if (open) {
       if (!list.length) cards.append(el("div", { class: "empty", text: g.id === "custom" ? "No chapters yet: + New." : "No chapters." }));
@@ -142,14 +185,36 @@ function renderLibrary() {
 
 function gib(mib) { return Math.round(mib / 1024) + " GiB"; }
 
+function selectEngine(name) {
+  if (name === state.engine && !state.base) return;
+  if (!confirmPlanDrop()) return;
+  state.engine = name;
+  state.base = null;
+  state.planEdited = null;
+  render();
+}
+
+function engineSummary(e) {
+  if (e.external) return "VMs, clusters and add-ons you choose";
+  const r = e.resources;
+  return r.nodes + (r.nodes === 1 ? " VM" : " VMs") + " · " + gib(r.memory_mib) + " RAM";
+}
+
 function renderEngines() {
   const box = $("#engines");
-  box.replaceChildren(...state.engines.map((e) => el("button", {
-    class: "engine" + (e.name === state.engine ? " on" : ""), type: "button", role: "radio",
-    "aria-checked": String(e.name === state.engine),
-    onclick: () => { state.engine = e.name; render(); },
-  }, el("span", { class: "engine-name", text: e.name }),
-  el("span", { class: "engine-sub", text: e.external ? "external · lab-in-a-box" : e.title }))));
+  box.replaceChildren(...state.engines.map((e) => {
+    const on = e.name === state.engine;
+    return el("button", {
+      class: "engine" + (on ? " on" : ""), type: "button", role: "radio", "aria-checked": String(on),
+      onclick: () => selectEngine(e.name),
+    }, el("span", { class: "engine-top" }, el("span", { class: "radio", "aria-hidden": "true" }),
+      el("span", { class: "engine-name", text: e.name }), on ? el("span", { class: "selected", text: "selected" }) : null),
+    el("span", { class: "engine-title", text: e.title }),
+    el("span", { class: "engine-sub", text: engineSummary(e) }),
+    e.provides.length ? el("span", { class: "engine-provides", text: e.provides.join(" · ") }) : null);
+  }));
+  const e = engine();
+  $("#engineNow").textContent = e ? "· " + e.name + (baseProfile() && baseProfile() !== e.name ? " · " + baseProfile() : "") : "";
   renderEnginePanel();
 }
 
@@ -207,8 +272,17 @@ function renderEnginePanel() {
   if (!e.external) {
     const r = e.resources;
     box.append(el("h3", { text: e.title }),
-      el("p", { class: "mono muted", text: r.nodes + " nodes · " + gib(r.memory_mib) + " RAM · " + r.vcpu + " vCPU · base profile " + e.base }),
-      el("p", { text: e.note }), el("span", { class: "label", text: "Provides" }), chipList(e.provides, "ok"));
+      el("p", { class: "mono muted", text: r.nodes + " VMs · " + gib(r.memory_mib) + " RAM · " + r.vcpu + " vCPU (" + e.base + " profile)" }),
+      el("p", { text: e.note }));
+    if (state.base) {
+      box.append(el("p", {}, "Base profile ", el("strong", { class: "mono", text: state.base.profile }),
+        ": the chapters of that workshop need its extra setup. ",
+        el("button", { class: "btn link", type: "button", text: "Use " + e.base + " instead",
+          onclick: () => { if (confirmPlanDrop()) { state.base = null; state.planEdited = null; render(); } } })));
+    } else {
+      box.append(el("p", {}, "Base profile ", el("strong", { class: "mono", text: e.base })));
+    }
+    box.append(el("span", { class: "label", text: "Provides" }), chipList(e.provides, "ok"));
     return;
   }
   const modes = [["link", "Open in Lab Builder"], ["embed", "Embed here"], ["import", "Import existing lab"]];
@@ -356,9 +430,34 @@ function renderSettings() {
   $("#counts").textContent = state.chapters.length + " chapters · " + mins + " min · " + state.engine;
 }
 
+function renderPlanEditor(text) {
+  const ed = $("#planEditor"), edited = state.planEdited !== null;
+  if (document.activeElement !== ed && ed.value !== text) ed.value = text;
+  const tabs = /^\t/m.test(ed.value);
+  const st = $("#planState");
+  st.textContent = tabs ? "YAML does not allow tab indentation" : edited ? "edited by hand" +
+    (isLiab() && !liabImported() ? " · add-on changes no longer apply" : "") : "generated from the rodeo tab";
+  st.classList.toggle("warn", tabs);
+  $("#planReset").hidden = !edited;
+}
+
+function onPlanInput(ev) {
+  const text = ev.target.value;
+  state.planEdited = text;
+  const name = /^name:[ \t]*(.+?)[ \t]*(?:#.*)?$/m.exec(text);
+  if (name && RB.slugify(name[1].replace(/^["']|["']$/g, ""))) state.name = RB.slugify(name[1].replace(/^["']|["']$/g, ""));
+  const target = /^deployment_target:[ \t]*["']?([\w-]+)/m.exec(text);
+  if (target) {
+    const sel = $("#target");
+    if (![...sel.options].some((o) => o.value === target[1])) sel.append(el("option", { value: target[1], text: target[1] }));
+    state.target = target[1];
+  }
+  render();
+}
+
 function renderFiles() {
   const files = RB.files(rodeo());
-  $("#planPreview").textContent = files[0].content;
+  renderPlanEditor(files[0].content);
   if (!files.some((f) => f.path === state.fileView)) state.fileView = "rodeo-plan.yaml";
   $("#fileList").replaceChildren(...files.map((f) => el("li", {}, el("button", {
     type: "button", class: state.fileView === f.path ? "on" : "", text: state.name + "/" + f.path,
@@ -727,6 +826,9 @@ function bind() {
   themeBtn.addEventListener("click", () => { window.RBTheme.toggle(); showTheme(); });
   showTheme();
   $("#downloadBtn").addEventListener("click", download);
+  $("#planEditor").addEventListener("input", onPlanInput);
+  $("#planEditor").addEventListener("blur", () => renderFiles());
+  $("#planReset").addEventListener("click", () => { state.planEdited = null; render(); toast("plan.yaml regenerated"); });
   $("#newChapterBtn").addEventListener("click", openNewChapter);
   $("#newForm").addEventListener("submit", createChapter);
   $("#ncCancel").addEventListener("click", () => { $("#newModal").hidden = true; });

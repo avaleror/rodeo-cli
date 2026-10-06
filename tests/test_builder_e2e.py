@@ -29,10 +29,11 @@ REPO = Path(__file__).resolve().parent.parent
 
 
 @pytest.fixture(scope="module")
-def site(tmp_path_factory):
+def site(tmp_path_factory, markdown_source):
     out = tmp_path_factory.mktemp("site") / "builder"
     subprocess.run([sys.executable, str(REPO / "scripts" / "build-builder-static.py"), "--output", str(out),
-                    "--lab-builder-url", "http://127.0.0.1:9/lab-builder/"], check=True, capture_output=True)
+                    "--lab-builder-url", "http://127.0.0.1:9/lab-builder/", "--no-fetch-sources",
+                    "--source", "virt-workshop=" + str(markdown_source)], check=True, capture_output=True)
     handler = functools.partial(SimpleHTTPRequestHandler, directory=str(out))
     handler.log_message = lambda *a, **k: None
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
@@ -77,10 +78,10 @@ def test_loads_engines_library_and_previews(page):
     assert page.locator(".engine").count() == 4
     assert page.locator(".engine.on .engine-name").inner_text() == "rancher"
     assert "First ride" in page.locator("#library").inner_text()
-    assert page.locator("#libCount").inner_text() == "1"
+    assert page.locator("#libCount").inner_text() == "3"
     assert "provides" in page.locator("#enginePanel").inner_text().lower()
     page.click("[data-tab=plan]")
-    assert "name: my-rodeo" in page.locator("#planPreview").inner_text()
+    assert "name: my-rodeo" in page.locator("#planEditor").input_value()
 
 
 def test_compose_native_rodeo_and_download(page):
@@ -175,3 +176,54 @@ def test_upload_lab_json_brings_its_addons(page, tmp_path):
     page.set_input_files("#enginePanel input[type=file]", files=[{"name": "bad.json", "mimeType": "application/json",
                                                                   "buffer": b"{}"}])
     assert "Not a lab-in-a-box lab.json" in page.locator("#toast").inner_text()
+
+
+def test_selected_engine_is_marked(page):
+    selected = page.locator(".engine.on")
+    assert selected.count() == 1
+    assert selected.locator(".engine-name").inner_text() == "rancher"
+    assert selected.locator(".selected").inner_text().lower() == "selected"
+    assert page.locator(".engine .selected").count() == 1
+    assert "rancher" in page.locator("#engineNow").inner_text()
+    page.click(".engine >> text=suse-virt")
+    assert page.locator(".engine.on .engine-name").inner_text() == "suse-virt"
+    assert page.locator(".engine.on").get_attribute("aria-checked") == "true"
+
+
+def test_source_group_switches_engine_and_base(page):
+    library = page.locator("#library").inner_text()
+    assert "Virtualization workshop" in library and "Exercise 1: The Arrival" in library
+    group = page.locator(".group", has_text="Virtualization workshop")
+    group.get_by_role("button", name="use", exact=True).click()
+    assert page.locator(".engine.on .engine-name").inner_text() == "suse-virt"
+    assert "virt-workshop-aws" in page.locator("#engineNow").inner_text()
+    assert group.get_by_role("button", name="use", exact=True).count() == 0
+    group.locator(".card", has_text="The Arrival").click()
+    assert page.locator("#coverage").inner_text() == "lab covers every chapter"
+    files = _zip(page)
+    assert "rodeo new my-rodeo --from virt-workshop-aws" in files["my-rodeo/README.md"]
+    assert files["my-rodeo/checks/check-the-arrival.sh"] == "#!/bin/bash\necho ok\n"
+    assert "**Time:** 30 min" in files["my-rodeo/story/01-the-arrival.md"]
+
+
+def test_plan_yaml_can_be_edited(page):
+    page.click("[data-tab=plan]")
+    editor = page.locator("#planEditor")
+    assert "generated" in page.locator("#planState").inner_text()
+    editor.fill(editor.input_value() + "\n# hand edit\nextra_key: 42\n")
+    assert "edited by hand" in page.locator("#planState").inner_text()
+    assert not page.locator("#planReset").is_hidden()
+    editor.fill(editor.input_value().replace("name: my-rodeo", "name: Edited Name"))
+    page.click("[data-tab=rodeo]")
+    assert page.locator("#name").input_value() == "edited-name"
+    page.select_option("#target", "instruqt")
+    files = _zip(page)
+    plan = yaml.safe_load(files["edited-name/rodeo-plan.yaml"])
+    assert plan["extra_key"] == 42 and plan["name"] == "edited-name" and plan["deployment_target"] == "instruqt"
+    page.once("dialog", lambda d: d.dismiss())
+    page.click(".engine >> text=suse-edge")
+    assert page.locator(".engine.on .engine-name").inner_text() == "rancher"
+    page.click("[data-tab=plan]")
+    page.click("#planReset")
+    assert "extra_key" not in page.locator("#planEditor").input_value()
+    assert page.locator("#planReset").is_hidden()

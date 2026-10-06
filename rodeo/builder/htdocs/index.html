@@ -37,7 +37,7 @@
     </aside>
 
     <section class="col center" aria-label="Rodeo">
-      <h2 class="sec"><span class="num">01</span> Lab engine</h2>
+      <h2 class="sec"><span class="num">01</span> Lab engine <span id="engineNow" class="now"></span></h2>
       <div id="engines" class="engines" role="radiogroup" aria-label="Lab engine"></div>
       <div id="enginePanel" class="panel"></div>
       <h2 class="sec"><span class="num">02</span> Chapters <span id="coverage" class="status"></span></h2>
@@ -67,10 +67,17 @@
         <div id="estimate" class="est"></div>
       </div>
       <div id="tab-plan" class="tabpane" hidden>
+        <div class="plan-bar">
+          <span id="planState" class="mono muted"></span>
+          <button id="planReset" class="btn sm" type="button" hidden>Reset to generated</button>
+        </div>
         <div class="term">
           <div class="term-bar"><i></i><i></i><i></i><span>rodeo-plan.yaml</span></div>
-          <pre id="planPreview"></pre>
+          <label class="sr-only" for="planEditor">rodeo-plan.yaml</label>
+          <textarea id="planEditor" class="plan-editor" spellcheck="false" autocomplete="off"></textarea>
         </div>
+        <p class="note muted">Edit freely: your changes are kept and downloaded. <code>name</code>,
+          <code>deployment_target</code> and <code>story</code> stay in sync with the rodeo tab.</p>
       </div>
       <div id="tab-story" class="tabpane" hidden>
         <ul id="fileList" class="files"></ul>

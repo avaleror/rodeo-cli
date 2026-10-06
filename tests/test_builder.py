@@ -103,7 +103,7 @@ def test_api_dispatch():
 
 
 def test_static_data_raises_when_an_answer_fails(monkeypatch):
-    def broken():
+    def broken(*_):
         raise OSError("disk gone")
     monkeypatch.setattr(discovery, "workshops", broken)
     assert Api().dispatch("workshops") == (500, {"error": "disk gone"})
@@ -171,7 +171,8 @@ BUILD = REPO / "scripts" / "build-builder-static.py"
 
 def test_static_build_embeds_every_answer(tmp_path):
     out = tmp_path / "builder"
-    r = subprocess.run([sys.executable, str(BUILD), "--output", str(out), "--lab-builder-url", "https://x/lb/"],
+    r = subprocess.run([sys.executable, str(BUILD), "--output", str(out), "--lab-builder-url", "https://x/lb/",
+                        "--no-fetch-sources"],
                        capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
     assert sorted(p.name for p in out.iterdir()) == ["app.js", "assets", "index.html", "logic.js", "style.css", "theme.js"]
@@ -186,7 +187,72 @@ def test_static_build_embeds_every_answer(tmp_path):
 
 
 def test_static_build_fails_without_data(tmp_path):
-    r = subprocess.run([sys.executable, str(BUILD), "--output", str(tmp_path / "b"), "--labinabox", str(tmp_path / "missing")],
+    r = subprocess.run([sys.executable, str(BUILD), "--output", str(tmp_path / "b"), "--labinabox", str(tmp_path / "missing"),
+                        "--no-fetch-sources"],
                        capture_output=True, text=True)
     assert r.returncode != 0 and "lab-in-a-box add-ons" in r.stderr
     assert not (tmp_path / "b").exists()
+
+
+# ── chapter sources outside rodeo-cli ───────────────────────────────────────
+
+def test_chapter_sources_resolve_the_smlm_workshop_block():
+    sources = {s["id"]: s for s in discovery.chapter_sources()}
+    smlm = sources["smlm-workshop"]
+    assert smlm["repo"] == "https://github.com/SUSE-Technical-Marketing/instruqt-SMLM"
+    assert (smlm["ref"], smlm["path"], smlm["engine"], smlm["format"]) == ("main", "tracks/smlms", "lab-in-a-box", "instruqt")
+    virt = sources["virt-workshop"]
+    assert (virt["engine"], virt["profile"], virt["format"]) == ("suse-virt", "virt-workshop-aws", "markdown")
+
+
+def test_chapter_sources_reject_incomplete_entries(tmp_path, monkeypatch):
+    bad = tmp_path / "sources.yaml"
+    bad.write_text("sources:\n  - {id: x, title: X, engine: rancher, profile: rancher, format: pdf, repo: r, ref: m, path: p}\n")
+    monkeypatch.setattr(discovery, "SOURCES_FILE", bad)
+    with pytest.raises(ValueError, match="chapter source x"):
+        discovery.chapter_sources()
+
+
+def test_source_fetch_commands_are_sparse_and_shallow(tmp_path):
+    virt = next(s for s in discovery.chapter_sources() if s["id"] == "virt-workshop")
+    clone, sparse = discovery.source_fetch_commands(virt, tmp_path / "v")
+    assert clone[:8] == ["git", "clone", "-q", "--depth", "1", "--filter=blob:none", "--sparse", "--branch"]
+    assert sparse[-2:] == ["/docs/exercises/*.md", "/checks/*"]
+    smlm = next(s for s in discovery.chapter_sources() if s["id"] == "smlm-workshop")
+    assert discovery.source_fetch_commands(smlm, tmp_path / "s")[1][-2:] == [
+        "/tracks/smlms/*/assignment.md", "/tracks/smlms/*/check-*"]
+
+
+def test_instruqt_and_markdown_chapters(instruqt_source, markdown_source):
+    sources = {s["id"]: s for s in discovery.chapter_sources()}
+    smlm = discovery.source_chapters(sources["smlm-workshop"], instruqt_source)
+    assert [(c["id"], c["title"], c["mins"], c["check"]) for c in smlm] == [
+        ("intro", "Welcome!", 20, False), ("manage", "Managing distros", 20, True)]
+    assert smlm[1]["body"] == "Body of 02-manage\n" and smlm[1]["check_script"].startswith("#!/bin/bash")
+    assert smlm[0]["needs"] == ["smlm"]
+    virt = discovery.source_chapters(sources["virt-workshop"], markdown_source)
+    assert [(c["id"], c["title"], c["mins"], c["check"]) for c in virt] == [
+        ("the-arrival", "Exercise 1: The Arrival", 30, True), ("bonus-final", "Bonus", 10, False)]
+    assert virt[0]["check_script"] == "#!/bin/bash\necho ok\n"
+
+
+def test_workshops_list_fetched_sources_after_the_bundled_ones(markdown_source):
+    shops = discovery.workshops({"virt-workshop": markdown_source})["workshops"]
+    assert [w["id"] for w in shops] == ["rancher-lab-config", "virt-workshop"]
+    virt = shops[1]
+    assert virt["source"] == "https://github.com/avaleror/suse-virt-workshop/tree/main/docs/exercises"
+    assert yaml.safe_load(virt["plan"])["name"] and virt["profile"] == "virt-workshop-aws"
+    assert shops[0]["profile"] == "rancher" and yaml.safe_load(shops[0]["plan"])["type"] == "rancher"
+
+
+def test_static_build_with_local_sources(tmp_path, instruqt_source, markdown_source):
+    out = tmp_path / "builder"
+    r = subprocess.run([sys.executable, str(BUILD), "--output", str(out), "--no-fetch-sources",
+                        "--source", "smlm-workshop=" + str(instruqt_source),
+                        "--source", "virt-workshop=" + str(markdown_source)],
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert "3 workshops, 5 chapters" in r.stderr
+    bad = subprocess.run([sys.executable, str(BUILD), "--output", str(tmp_path / "b2"), "--source", "nope"],
+                         capture_output=True, text=True)
+    assert bad.returncode != 0 and "ID=CHECKOUT" in bad.stderr

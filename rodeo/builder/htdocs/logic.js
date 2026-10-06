@@ -282,7 +282,9 @@ const RB = (() => {
       (ids.length ? ids.map((i) => "- " + yamlScalar(i)).join("\n") + "\n" : "[]\n");
   }
 
+  // The chapter's own check script when its source has one, else a stub.
   function checkScript(ch) {
+    if (ch.check_script) return ch.check_script;
     return "#!/bin/bash\n# Self-check for \"" + ch.title.replace(/"/g, "'") + "\": exit 0 when the chapter is done.\n" +
       "# Run from the lab host:  ./checks/check-" + ch.id + ".sh\nset -uo pipefail\n\n" +
       "echo \"check-" + ch.id + ": no check written yet\" >&2\nexit 1\n";

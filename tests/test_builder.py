@@ -119,7 +119,9 @@ needs_node = pytest.mark.skipif(NODE is None, reason="node is not installed")
 
 @needs_node
 def test_logic_js_unit_tests():
-    r = subprocess.run([NODE, "--test", str(REPO / "tests" / "builder")], capture_output=True, text=True)
+    files = sorted(str(f) for f in (REPO / "tests" / "builder").glob("*.test.js"))
+    assert files
+    r = subprocess.run([NODE, "--test", *files], capture_output=True, text=True)
     assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-2000:]
 
 

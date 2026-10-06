@@ -1,4 +1,4 @@
-// Rodeo Builder logic.js — run with `node --test tests/builder/` (tests/test_builder.py does).
+// Rodeo Builder logic.js — run with `node --test tests/builder/logic.test.js` (tests/test_builder.py does).
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");

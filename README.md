@@ -62,7 +62,8 @@ Use `--no-tmux` to skip the tmux wrap in scripts.
 To pick a specific profile:
 
 ```bash
-rodeo up --profile rancher        # Rancher Prime only, ~10 GiB RAM
+rodeo up --profile rancher-test   # Rancher + single-node K3s and RKE2 clusters, ~18 GiB RAM
+rodeo up --profile rancher        # Rancher + K3s, RKE2 and 3-node RKE2 clusters, ~30 GiB RAM
 rodeo up --profile harvester-ha   # 3-node Harvester HA, ~52 GiB RAM
 rodeo up --profile harvester      # full lab: 3-node Harvester + Rancher, ~60 GiB RAM
 rodeo up --profile suse-edge      # SUSE Edge: Rancher + Elemental + EIB + edge nodes
@@ -74,7 +75,8 @@ rodeo up --profile suse-edge      # SUSE Edge: Rancher + Elemental + EIB + edge 
 
 | Profile | Engine type | What it deploys | RAM needed |
 |---------|-------------|----------------|-----------|
-| `rancher` | `rancher` | 1 VM: Rancher Prime on K3s | ~10 GiB |
+| `rancher-test` | `rancher-test` | Rancher Prime on K3s + single-node K3s and RKE2 clusters (3 VMs) | ~18 GiB |
+| `rancher` | `rancher` | Rancher Prime on K3s + single-node K3s, single-node RKE2 and 3-node RKE2 clusters (6 VMs) | ~30 GiB |
 | `test` | `suse-virt` | 2-node Harvester cluster, no Rancher | ~36 GiB |
 | `harvester-ha` | `suse-virt` | 3-node Harvester, no Rancher (3-member etcd HA) | ~52 GiB |
 | `harvester-2n` | `suse-virt` | 2-node Harvester + Rancher Prime | ~56 GiB |

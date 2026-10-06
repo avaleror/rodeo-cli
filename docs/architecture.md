@@ -14,7 +14,7 @@ Technical reference for contributors and maintainers. For deploying a workshop, 
 The stack it builds depends on the chosen **engine type** (see [Engine types & profiles](#engine-types-profiles)):
 
 - **`suse-virt`** — a 3-node Harvester HCI cluster (+ optional Rancher Prime)
-- **`rancher`** — a single VM running Rancher Prime on K3s
+- **`rancher`**: Rancher Prime on K3s plus K3s/RKE2 clusters Rancher provisions on lab VMs (`rancher-test` is the 2-cluster variant)
 - **`suse-edge`** — Rancher Prime + Elemental + Edge Image Builder + edge nodes
 
 Every profile shares the same foundation: host networking, firewalld DNAT, DNS, storage, and phase orchestration on nested KVM/libvirt. The tool runs on **cloud instances**, **Instruqt builder VMs**, **local VMs**, or **bare metal** — anywhere you have KVM and enough RAM/disk.
@@ -106,16 +106,17 @@ Since PR #4 the three profile classes are thin: `RodeoProfile` (`profiles/base.p
 | Engine type | Phase pipeline | Boot method | Stack |
 |-------------|----------------|-------------|-------|
 | `suse-virt` | `kvm_host → vms → pxe_server → cluster → rancher → apply → finalise` | iPXE network install (UEFI) | Harvester HCI cluster (+ optional Rancher Prime) |
-| `rancher` | `kvm_host → vms → boot → rancher → apply → finalise` | cloud-init image | 1 VM: Rancher Prime on K3s |
+| `rancher` | `kvm_host → vms → boot → rancher → downstream → apply → finalise` | cloud-init image | Rancher Prime on K3s + Rancher-provisioned K3s/RKE2 clusters |
 | `suse-edge` | `kvm_host → vms → boot → rancher → elemental → apply → finalise` | cloud-init image | Rancher Prime + Elemental Operator + EIB + edge nodes |
 
-The Harvester path is the outlier: it needs `pxe_server` (iPXE/TFTP/HTTP) and a `cluster` phase that network-installs each node and waits for the VIP. The cloud-image profiles skip both — a single `boot` phase starts the network and VMs directly. `suse-edge` adds one phase, `elemental`, which installs the Elemental Operator after Rancher so edge nodes can register over TPM. `rancher`/`elemental` phases are skipped automatically when a topology has no Rancher node.
+The Harvester path is the outlier: it needs `pxe_server` (iPXE/TFTP/HTTP) and a `cluster` phase that network-installs each node and waits for the VIP. The cloud-image profiles skip both: a single `boot` phase starts the network and VMs directly. `suse-edge` adds one phase, `elemental`, which installs the Elemental Operator after Rancher so edge nodes can register over TPM. `rancher`/`elemental`/`downstream` phases are skipped automatically when a topology has no Rancher node. The `rancher` profiles add `downstream`, which creates K3s/RKE2 custom clusters in Rancher and registers their nodes.
 
 ### Bundled profiles
 
 | Profile | Engine type | Topology |
 |---------|-------------|----------|
-| `rancher` | `rancher` | 1 VM: Rancher Prime on K3s |
+| `rancher-test` | `rancher-test` | Rancher Prime + single-node K3s and RKE2 clusters |
+| `rancher` | `rancher` | Rancher Prime + single-node K3s, single-node RKE2 and 3-node RKE2 clusters |
 | `test` | `suse-virt` | 2-node Harvester, no Rancher |
 | `harvester-ha` | `suse-virt` | 3-node Harvester, no Rancher (etcd HA) |
 | `harvester-2n` | `suse-virt` | 2-node Harvester + Rancher Prime |
@@ -209,7 +210,8 @@ rodeo/
 │   └── libvirt.py         LibvirtDriver
 ├── profiles/
 │   ├── base.py            RodeoProfile — shared config assembly + phase dispatch
-│   ├── rancher.py         Rancher Prime on K3s (1 VM)
+│   ├── rancher.py         Rancher Prime on K3s + K3s/RKE2 downstream clusters
+│   ├── rancher_test.py    Rancher Prime on K3s + single-node K3s and RKE2
 │   ├── suse_virt.py       Harvester HCI + Rancher (default workshop profile)
 │   └── suse_edge.py       SUSE Edge 3.6 (Rancher + Elemental + EIB + edge nodes)
 ├── commands/              Thin CLI wrappers

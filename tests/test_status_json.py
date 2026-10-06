@@ -97,6 +97,7 @@ def test_status_report_phases_complete_when_cacheable_done(monkeypatch):
                 "vms": {"completed": True},
                 "boot": {"completed": True},
                 "rancher": {"completed": True},
+                "downstream": {"completed": True},
                 "finalise": {"completed": True},
             }
         },

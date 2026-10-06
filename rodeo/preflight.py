@@ -33,7 +33,8 @@ CORE_PY_MODULES = ("libvirt", "lxml")
 # Beginner-facing profiles, smallest first, with the RAM each realistically needs.
 # `up`/`doctor` recommend the largest profile whose need fits available RAM.
 PROFILE_SIZING = [
-    {"name": "rancher", "ram_gib": 10, "label": "Rancher Prime on K3s (1 VM, no Harvester)"},
+    {"name": "rancher-test", "ram_gib": 18, "label": "Rancher Prime + single-node K3s and RKE2 clusters"},
+    {"name": "rancher", "ram_gib": 30, "label": "Rancher Prime + K3s, RKE2 and 3-node RKE2 clusters"},
     {"name": "test", "ram_gib": 36, "label": "2-node Harvester (no Rancher)"},
     {"name": "harvester-ha", "ram_gib": 52, "label": "3-node Harvester, no Rancher (etcd HA)"},
     {"name": "harvester", "ram_gib": 72, "label": "3-node Harvester + Rancher Prime"},
@@ -238,6 +239,9 @@ def _resource_needs(cfg: dict) -> tuple[int, int]:
 
     if vms:
         need_mib = need_gb = 0
+        from .inventory import vm_flavor_map
+
+        flavors = vm_flavor_map(cfg)
         for name in vms:
             if name.startswith("harvester"):
                 r = res.get("harvester", {})
@@ -248,7 +252,7 @@ def _resource_needs(cfg: dict) -> tuple[int, int]:
             elif name.startswith("edge"):
                 r = res.get("edge-node", {})
             else:
-                r = res.get(vms[name].get("flavor", ""), {})
+                r = res.get(flavors.get(name) or vms[name].get("flavor", ""), {})
             need_mib += r.get("memory_mib", 0)
             need_gb  += r.get("disk_gb", 0)
         if need_mib > 0 or need_gb > 0:

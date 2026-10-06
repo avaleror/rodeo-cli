@@ -37,7 +37,8 @@ To pick a specific profile instead of letting `rodeo up` choose:
   <span class="rc-dot red"></span><span class="rc-dot yellow"></span><span class="rc-dot green"></span>
   <span class="rc-terminal-title">bash</span>
 </div>
-<div class="rc-terminal-body"><span class="rc-cmd">$</span> rodeo up --profile rancher        <span class="rc-val"># Rancher Prime only, ~10 GiB RAM</span>
+<div class="rc-terminal-body"><span class="rc-cmd">$</span> rodeo up --profile rancher-test   <span class="rc-val"># Rancher + single-node K3s and RKE2, ~18 GiB RAM</span>
+<span class="rc-cmd">$</span> rodeo up --profile rancher        <span class="rc-val"># Rancher + K3s, RKE2 and 3-node RKE2, ~30 GiB RAM</span>
 <span class="rc-cmd">$</span> rodeo up --profile harvester-ha   <span class="rc-val"># 3-node Harvester HA, ~52 GiB RAM</span>
 <span class="rc-cmd">$</span> rodeo up --profile harvester      <span class="rc-val"># 3-node Harvester + Rancher, ~60 GiB RAM</span>
 <span class="rc-cmd">$</span> rodeo up --profile suse-edge      <span class="rc-val"># Rancher + Elemental + EIB + edge nodes</span></div>
@@ -47,7 +48,8 @@ To pick a specific profile instead of letting `rodeo up` choose:
 
 | Profile | What it builds | RAM |
 |---|---|---|
-| `rancher` | Rancher Prime on K3s, single VM | ~10 GiB |
+| `rancher-test` | Rancher Prime + single-node K3s and RKE2 clusters | ~18 GiB |
+| `rancher` | Rancher Prime + single-node K3s, single-node RKE2 and 3-node RKE2 clusters | ~30 GiB |
 | `test` | 2-node Harvester cluster, no Rancher | ~36 GiB |
 | `harvester-ha` | 3-node Harvester HCI, no Rancher | ~52 GiB |
 | `harvester-2n` | 2-node Harvester HCI + Rancher | ~56 GiB |

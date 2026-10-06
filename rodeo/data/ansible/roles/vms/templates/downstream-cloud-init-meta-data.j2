@@ -1,0 +1,2 @@
+instance-id: {{ item.name }}-vm
+local-hostname: {{ item.hostname | default(item.name) }}

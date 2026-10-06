@@ -10,6 +10,8 @@ import subprocess
 from rich.console import Console
 from rich.panel import Panel
 
+from .inventory import harvester_vm_names
+
 console = Console()
 
 
@@ -85,8 +87,7 @@ def render_success(cfg: dict) -> None:
     except Exception:
         profile = None
 
-    vms = cfg.get("vms", {})
-    harvester_nodes = [n for n in vms if n not in ("rancher", "eib") and not n.startswith("edge")]
+    harvester_nodes = harvester_vm_names(cfg)
     has_harvester = bool(harvester_nodes)
     has_rancher = _has_rancher(cfg)
 

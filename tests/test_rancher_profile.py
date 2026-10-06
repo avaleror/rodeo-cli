@@ -1,4 +1,4 @@
-"""Rancher-only profile and RancherPhase standalone mode."""
+"""Rancher profile (no Harvester) and RancherPhase standalone mode."""
 from __future__ import annotations
 
 import yaml
@@ -11,20 +11,23 @@ from rodeo.profiles import get_profile
 
 def test_profile_phases_skip_harvester():
     p = get_profile("rancher")
-    assert p.phases == ["kvm_host", "vms", "boot", "rancher", "apply", "finalise", "custom_scripts"]
+    assert p.phases == [
+        "kvm_host", "vms", "boot", "rancher", "downstream", "apply", "finalise", "custom_scripts",
+    ]
     assert "pxe_server" not in p.phases
     assert "cluster" not in p.phases
-    # 'boot' starts the network + VM in place of the Harvester ClusterPhase.
+    # 'boot' starts the network + VMs in place of the Harvester ClusterPhase.
     assert "boot" in p.phases
-    assert p.vm_names == ["rancher"]
+    assert p.vm_names == ["rancher", "k3s", "rke2", "rke2-ha1", "rke2-ha2", "rke2-ha3"]
 
 
-def test_inventory_has_single_rancher_node():
+def test_inventory_has_rancher_and_downstream_nodes():
     inv = inventory.build_inventory({"type": "rancher", "name": "r"})
-    nodes = inv["vm_nodes"]
-    assert len(nodes) == 1
-    assert nodes[0]["name"] == "rancher"
-    assert nodes[0]["flavor"] == "rancher"
+    nodes = {n["name"]: n["flavor"] for n in inv["vm_nodes"]}
+    assert nodes == {
+        "rancher": "rancher", "k3s": "k3s-node", "rke2": "rke2-node",
+        "rke2-ha1": "rke2-node", "rke2-ha2": "rke2-node", "rke2-ha3": "rke2-node",
+    }
     assert inv["harvester_node_names"] == []
 
 
@@ -50,4 +53,4 @@ def test_seed_and_load_rancher_lab(tmp_path):
     secretgen.ensure_secrets_file(tmp_path / ".rodeo" / "secrets.yaml")
     cfg = config.load_config("rodeo-plan.yaml", config_dir=str(lab))
     config.validate_config(cfg)
-    assert list(cfg["vms"]) == ["rancher"]
+    assert list(cfg["vms"]) == ["rancher", "k3s", "rke2", "rke2-ha1", "rke2-ha2", "rke2-ha3"]

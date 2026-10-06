@@ -63,7 +63,8 @@ def _default_labs_root() -> Path:
 
 @click.command("up")
 @click.option("--profile", "profile", default=None,
-              help="Lab to deploy: 'rancher' (1 VM), 'test' (2-node Harvester), 'harvester-ha' "
+              help="Lab to deploy: 'rancher-test' (Rancher + 2 single-node clusters), 'rancher' "
+                   "(Rancher + 3 clusters), 'test' (2-node Harvester), 'harvester-ha' "
                    "(3-node Harvester, no Rancher), or 'harvester' (3-node + Rancher). Or a custom "
                    "profile name. Default: recommended for your RAM.")
 @click.option("--name", default=None, help="Lab name (used for the lab directory).")

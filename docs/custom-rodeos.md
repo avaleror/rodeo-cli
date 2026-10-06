@@ -34,7 +34,8 @@ rodeo profiles
 
 | Profile | Kind | type | What it is |
 |---------|------|------|------------|
-| `rancher` | bundled | rancher | 1 VM, Rancher Prime on K3s (smallest) |
+| `rancher-test` | bundled | rancher-test | Rancher Prime + single-node K3s and RKE2 clusters (smallest) |
+| `rancher` | bundled | rancher | Rancher Prime + single-node K3s, single-node RKE2 and 3-node RKE2 clusters |
 | `test` | bundled | suse-virt | 2-node Harvester, no Rancher |
 | `harvester-ha` | bundled | suse-virt | 3-node Harvester, no Rancher (etcd HA) |
 | `harvester-2n` | bundled | suse-virt | 2-node Harvester + Rancher Prime |

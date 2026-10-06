@@ -403,7 +403,9 @@ class ClusterSetupMixin:
         writes the WRONG cert — the agent then rejects the real chain. Pulling the
         CA from the live handshake is version- and topology-independent.
         """
-        if self.standalone:
+        # Downstream clusters' agents verify the served CA too, so standalone
+        # Rancher labs with downstream clusters sync it like Harvester labs do.
+        if self.standalone and not getattr(self, "downstream_clusters", None):
             return
 
         # Extract the issuer (2nd) cert from the chain served on the agent-facing

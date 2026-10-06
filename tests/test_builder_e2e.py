@@ -43,7 +43,14 @@ def site(tmp_path_factory, markdown_source):
 
 
 @pytest.fixture()
-def page(site):
+def page(site, monkeypatch):
+    # conftest points HOME at a temp dir; Playwright finds its browsers under the
+    # real user's ~/.cache/ms-playwright unless PLAYWRIGHT_BROWSERS_PATH says otherwise.
+    if not os.environ.get("PLAYWRIGHT_BROWSERS_PATH"):
+        import pwd
+
+        real_home = Path(pwd.getpwuid(os.getuid()).pw_dir)
+        monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(real_home / ".cache" / "ms-playwright"))
     with sync_api.sync_playwright() as p:
         try:
             browser = p.chromium.launch()

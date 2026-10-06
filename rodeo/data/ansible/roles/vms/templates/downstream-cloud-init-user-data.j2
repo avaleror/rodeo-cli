@@ -1,0 +1,21 @@
+#cloud-config
+hostname: {{ item.hostname | default(item.name) }}
+# Key-based root login is how rodeo registers the node with Rancher. The
+# password stays as a console/debug fallback.
+disable_root: false
+users:
+  - name: root
+    lock_passwd: false
+    ssh_authorized_keys:
+      - {{ ssh_public_key }}
+chpasswd:
+  list: |
+    root:{{ rancher_vm_password }}
+  expire: false
+ssh_pwauth: true
+runcmd:
+  # Test lab: Rancher installs K3s/RKE2 without their SELinux policy packages,
+  # and Rancher's docs require firewalld off for the CNI.
+  - [sh, -c, "setenforce 0 || true"]
+  - [sh, -c, "sed -i 's/^SELINUX=enforcing/SELINUX=permissive/' /etc/selinux/config || true"]
+  - [sh, -c, "systemctl disable --now firewalld 2>/dev/null || true"]

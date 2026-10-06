@@ -1,6 +1,7 @@
-# definition.yaml — Rancher-only rodeo (Rancher Prime on K3s, no Harvester).
+# definition.yaml: Rancher rodeo (Rancher Prime on K3s, no Harvester).
 #
-# The laptop-sized lab: one VM, learn Rancher / Fleet / cluster management.
+# Rancher plus three downstream clusters it provisions: a single-node K3s, a
+# single-node RKE2 and a 3-node RKE2 (etcd HA). Minimal sizing, for testing.
 # Same declarative model as suse-virt; the renderer (inventory.py) compiles this
 # into vm_nodes, DHCP leases, libvirt network, and host_prep. See the suse-virt
 # definition for the full annotated reference.
@@ -8,11 +9,17 @@
 apiVersion: 1.0
 definition:
   name: rancher
-  description: "Rancher Prime on K3s — single VM, no Harvester (smallest lab)"
+  description: "Rancher Prime on K3s + Rancher-provisioned K3s, RKE2 and 3-node RKE2 clusters"
 
-  # Only the rancher VM. No Harvester cluster, so no start gaps / VIP / etcd.
+  # Rancher first, then the downstream nodes. No Harvester cluster, so no
+  # start gaps / VIP. Rancher provisions K3s/RKE2 on the nodes (downstream phase).
   start_order:
     - rancher
+    - k3s
+    - rke2
+    - rke2-ha1
+    - rke2-ha2
+    - rke2-ha3
   harvester_node_names: []
   harvester_ready_count: 0
 
@@ -32,6 +39,24 @@ definition:
       flavor: rancher
       ssh_user: root
       infra_type: rancher
+      interfaces:
+        - role: mgmt
+          model: virtio
+          ip_family: static
+
+    k3s-node:
+      flavor: k3s-node
+      ssh_user: root
+      infra_type: k3s
+      interfaces:
+        - role: mgmt
+          model: virtio
+          ip_family: static
+
+    rke2-node:
+      flavor: rke2-node
+      ssh_user: root
+      infra_type: rke2
       interfaces:
         - role: mgmt
           model: virtio
@@ -59,9 +84,26 @@ definition:
       nodes: ["rancher"]
       exposed:
         - rancher
+    - name: downstream-clusters
+      description: "K3s/RKE2 clusters provisioned by Rancher on the lab VMs"
+      nodes: [k3s, rke2, rke2-ha1, rke2-ha2, rke2-ha3]
     - name: host-network-prep
       description: "libvirt network, firewalld DNAT, sysctls for the nested KVM lab"
       on_host: true
+
+  # Downstream clusters Rancher provisions (custom clusters, every node runs
+  # etcd + control plane + worker). distro: k3s | rke2. The Kubernetes version
+  # comes from versions.downstream_k3s / versions.downstream_rke2 in the profile.
+  downstream_clusters:
+    - name: k3s-single
+      distro: k3s
+      nodes: [k3s]
+    - name: rke2-single
+      distro: rke2
+      nodes: [rke2]
+    - name: rke2-ha
+      distro: rke2
+      nodes: [rke2-ha1, rke2-ha2, rke2-ha3]
 
   # Rancher VM cloud-init (the K3s + Helm + Rancher install is in RancherPhase).
   rancher:
@@ -98,3 +140,63 @@ definition:
         - role: mgmt
           mac: "02:00:00:0D:62:E9"
       mgmt_mac: "02:00:00:0D:62:E9"
+    - name: k3s
+      template: k3s-node
+      index: 1
+      hostname: k3s
+      uuid: "9941852c-fbca-46df-b83b-cdffb6bc8436"
+      ip: "192.168.122.41"
+      config_iso_name: ""
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          mac: "02:00:00:0D:6A:41"
+      mgmt_mac: "02:00:00:0D:6A:41"
+    - name: rke2
+      template: rke2-node
+      index: 2
+      hostname: rke2
+      uuid: "cf40d5eb-bbb3-4ba6-9d77-332132e8c3d8"
+      ip: "192.168.122.42"
+      config_iso_name: ""
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          mac: "02:00:00:0D:6A:42"
+      mgmt_mac: "02:00:00:0D:6A:42"
+    - name: rke2-ha1
+      template: rke2-node
+      index: 3
+      hostname: rke2-ha1
+      uuid: "e8879475-1791-4d89-90e1-19be6ac1ea24"
+      ip: "192.168.122.51"
+      config_iso_name: ""
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          mac: "02:00:00:0D:6A:51"
+      mgmt_mac: "02:00:00:0D:6A:51"
+    - name: rke2-ha2
+      template: rke2-node
+      index: 4
+      hostname: rke2-ha2
+      uuid: "d0741fbc-8860-4c47-a1cd-8145dde6d943"
+      ip: "192.168.122.52"
+      config_iso_name: ""
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          mac: "02:00:00:0D:6A:52"
+      mgmt_mac: "02:00:00:0D:6A:52"
+    - name: rke2-ha3
+      template: rke2-node
+      index: 5
+      hostname: rke2-ha3
+      uuid: "810a39a1-efa6-47ca-812d-2969fc26b7ed"
+      ip: "192.168.122.53"
+      config_iso_name: ""
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          mac: "02:00:00:0D:6A:53"
+      mgmt_mac: "02:00:00:0D:6A:53"

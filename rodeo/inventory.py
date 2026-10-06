@@ -156,6 +156,10 @@ def build_inventory(cfg: dict) -> dict:
         "harvester": topology.get("harvester", {}),
         "rancher": topology.get("rancher", {}),
 
+        # Downstream K3s/RKE2 clusters Rancher provisions on lab VMs (rancher
+        # profiles): [{name, distro, nodes: [vm names]}]. Empty everywhere else.
+        "downstream_clusters": topology.get("downstream_clusters", []),
+
         # Host prep expectations (sysctls, selinux, ovmf, network rules) declared in definition for the Harvester recipe.
         # Passed through so runner can emit vars for kvm_host / vms roles. See Phase 1 of the EIB plan.
         "host_prep": _compile_host_prep(topology),
@@ -472,6 +476,29 @@ def _fallback_flavor_name(vm_name: str) -> str:
     if vm_name.startswith("edge"):
         return "edge-node"
     return "harvester"
+
+
+def downstream_node_names(cfg: dict) -> set[str]:
+    """VMs that belong to a Rancher-provisioned downstream cluster."""
+    return {
+        name
+        for cluster in cfg.get("downstream_clusters") or []
+        if isinstance(cluster, dict)
+        for name in cluster.get("nodes") or []
+    }
+
+
+def harvester_vm_names(cfg: dict) -> list[str]:
+    """Harvester node names by the shared name heuristic.
+
+    Everything that is not the Rancher VM, the EIB VM, an edge node or a
+    downstream cluster node.
+    """
+    skip = downstream_node_names(cfg)
+    return [
+        n for n in cfg.get("vms", {})
+        if n not in ("rancher", "eib") and not n.startswith("edge") and n not in skip
+    ]
 
 
 def plan_vm_rows(cfg: dict) -> list[tuple[str, dict]]:

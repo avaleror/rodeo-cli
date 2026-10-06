@@ -50,6 +50,7 @@ _STREAM_PHASES: dict[str, tuple[str, bool]] = {
     "cluster":         ("stream_cluster",        False),
     "rancher":         ("stream_rancher",        True),
     "elemental":       ("stream_elemental",      True),
+    "downstream":      ("stream_downstream",     True),
     "apply":           ("stream_apply",          False),
     "custom_scripts":  ("stream_custom_scripts", False),
     "finalise":        ("stream_finalise",        False),
@@ -130,6 +131,11 @@ class RodeoProfile(ABC):
             # The RancherPhase reconciles these to their pinned versions after import.
             "rancher_ui_extensions": ui_extensions,
         }
+        # Rancher-provisioned K3s/RKE2 clusters on lab VMs. Only set when the
+        # definition declares some, so every other profile's config is unchanged.
+        downstream = inv.get("downstream_clusters") if inv is not None else None
+        if downstream:
+            cfg["downstream_clusters"] = downstream
         cfg.update(self.extra_cfg())
         # Return a deep copy so callers that merge/mutate the config in place
         # never corrupt the shared class-attribute defaults for later calls.
@@ -231,7 +237,7 @@ def default_success_next_steps(cfg: dict) -> list[str]:
     resolve to a registered profile.
     """
     vms = cfg.get("vms", {})
-    harvester_nodes = [
+    harvester_nodes = _inv.harvester_vm_names(cfg) if _inv is not None else [
         n for n in vms if n not in ("rancher", "eib") and not n.startswith("edge")
     ]
     has_harvester = bool(harvester_nodes)

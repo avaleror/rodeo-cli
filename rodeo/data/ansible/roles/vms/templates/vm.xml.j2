@@ -58,6 +58,13 @@
       <target dev='sda' bus='sata'/>
       <readonly/>
     </disk>
+{% elif item.flavor in ('k3s-node', 'rke2-node') %}
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <source file='{{ image_dir }}/{{ item.name }}-cloud-init.iso'/>
+      <target dev='sda' bus='sata'/>
+      <readonly/>
+    </disk>
 {% elif item.flavor == 'edge-node' %}
     <!-- Edge nodes have no CDROM at deploy time. Students attach the EIB-built
          Elemental OS ISO as a lab exercise and start the VM to boot from it. -->

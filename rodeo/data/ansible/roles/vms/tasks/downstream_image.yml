@@ -1,0 +1,98 @@
+---
+# Downstream cluster nodes (k3s-node / rke2-node flavors, rancher profiles):
+# a thin qcow2 overlay per node on one shared Leap 16 Cloud base, plus a
+# per-node cloud-init seed. Rancher installs K3s/RKE2 on them later
+# (downstream phase), so the image carries nothing but SSH access.
+
+- name: Download openSUSE Leap 16 Cloud image (cloud-init pre-installed)
+  ansible.builtin.include_role:
+    name: common
+    tasks_from: curl_fetch
+  vars:
+    curl_fetch_url: "{{ leap16_url }}"
+    curl_fetch_dest: "{{ image_dir }}/Leap-16.0-Cloud.qcow2"
+
+- name: Build the downstream node base disk (enable cloud-init services)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    tmp='{{ image_dir }}/downstream-base.qcow2.building'
+    rm -f "$tmp"
+    qemu-img convert -f qcow2 -O qcow2 \
+      '{{ image_dir }}/Leap-16.0-Cloud.qcow2' "$tmp"
+    virt-customize -a "$tmp" \
+      --run-command 'systemctl enable cloud-init-local.service cloud-init.service cloud-config.service cloud-final.service'
+    mv "$tmp" '{{ image_dir }}/downstream-base.qcow2'
+  args:
+    executable: /bin/bash
+    creates: "{{ image_dir }}/downstream-base.qcow2"
+  environment:
+    LIBGUESTFS_BACKEND: direct
+
+- name: Create downstream node disks (overlay on the base, flavor size)
+  ansible.builtin.command: >
+    qemu-img create -f qcow2 -F qcow2
+    -b '{{ image_dir }}/downstream-base.qcow2'
+    '{{ image_dir }}/{{ item.name }}-vda.qcow2'
+    {{ libvirt_flavors[item.flavor].disk_gb }}G
+  args:
+    creates: "{{ image_dir }}/{{ item.name }}-vda.qcow2"
+  loop: "{{ downstream_nodes }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Create downstream cloud-init staging directories
+  ansible.builtin.file:
+    path: "/tmp/{{ item.name }}-cloud-init"
+    state: directory
+    mode: '0700'
+  loop: "{{ downstream_nodes }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Write downstream cloud-init meta-data
+  ansible.builtin.template:
+    src: downstream-cloud-init-meta-data.j2
+    dest: "/tmp/{{ item.name }}-cloud-init/meta-data"
+    mode: '0600'
+  loop: "{{ downstream_nodes }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Write downstream cloud-init user-data
+  ansible.builtin.template:
+    src: downstream-cloud-init-user-data.j2
+    dest: "/tmp/{{ item.name }}-cloud-init/user-data"
+    mode: '0600'
+  loop: "{{ downstream_nodes }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Write downstream cloud-init network-config
+  ansible.builtin.template:
+    src: downstream-cloud-init-network-config.j2
+    dest: "/tmp/{{ item.name }}-cloud-init/network-config"
+    mode: '0600'
+  loop: "{{ downstream_nodes }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# No creates: guard, the seed is always rebuilt to match current templates.
+- name: Build downstream cloud-init seed ISOs
+  ansible.builtin.command: >
+    xorriso -as mkisofs
+    -V cidata -J -r
+    -o '{{ image_dir }}/{{ item.name }}-cloud-init.iso'
+    /tmp/{{ item.name }}-cloud-init/meta-data
+    /tmp/{{ item.name }}-cloud-init/user-data
+    /tmp/{{ item.name }}-cloud-init/network-config
+  loop: "{{ downstream_nodes }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Remove downstream cloud-init staging directories (they hold the password)
+  ansible.builtin.file:
+    path: "/tmp/{{ item.name }}-cloud-init"
+    state: absent
+  loop: "{{ downstream_nodes }}"
+  loop_control:
+    label: "{{ item.name }}"

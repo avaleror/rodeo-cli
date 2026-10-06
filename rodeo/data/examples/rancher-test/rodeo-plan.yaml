@@ -1,10 +1,10 @@
-# Example rodeo-plan.yaml: Rancher lab (Rancher Prime on K3s, no Harvester)
-# plus three clusters Rancher provisions: single-node K3s, single-node RKE2 and
-# a 3-node RKE2 (etcd HA). Minimal sizing, for testing (~26 GiB RAM of guests).
-# Used by `rodeo up --profile rancher` and `rodeo init --profile rancher`.
+# Example rodeo-plan.yaml: rancher-test lab (Rancher Prime on K3s, no Harvester)
+# plus two single-node clusters Rancher provisions: K3s and RKE2.
+# Minimal sizing, for testing (~14 GiB RAM of guests).
+# Used by `rodeo up --profile rancher-test` and `rodeo init --profile rancher-test`.
 
-type: rancher
-name: rancher-lab
+type: rancher-test
+name: rancher-test
 deployment_target: baremetal
 
 network:
@@ -12,7 +12,7 @@ network:
 
 # Rancher VM (K3s + Rancher Prime + cert-manager) and the downstream nodes.
 # k3s-node: the single-node K3s cluster. rke2-node: the single-node RKE2
-# cluster and each of the 3 nodes of the RKE2 HA cluster.
+# cluster.
 resources:
   rancher:
     memory_mib: 8192

@@ -39,7 +39,7 @@ ENGINES: dict[str, dict[str, Any]] = {
         "title": "Rancher Prime",
         "base": "rancher",
         "provides": ["rancher", "fleet"],
-        "note": "Rancher Prime on K3s in a single VM, the smallest lab.",
+        "note": "Rancher Prime on K3s plus K3s and RKE2 clusters it provisions.",
     },
     "suse-edge": {
         "title": "SUSE Edge",

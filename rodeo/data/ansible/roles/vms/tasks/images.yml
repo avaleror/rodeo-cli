@@ -167,6 +167,13 @@
   ansible.builtin.include_tasks: rancher_image.yml
   when: (vm_nodes | selectattr('flavor', 'equalto', 'rancher') | list | length) > 0
 
+# --- Downstream cluster nodes (rancher profiles): overlay disks + cloud-init ---
+- name: Provision downstream cluster node disks + cloud-init
+  ansible.builtin.include_tasks: downstream_image.yml
+  vars:
+    downstream_nodes: "{{ vm_nodes | selectattr('flavor', 'in', ['k3s-node', 'rke2-node']) | list }}"
+  when: (vm_nodes | selectattr('flavor', 'in', ['k3s-node', 'rke2-node']) | list | length) > 0
+
 # --- EIB VM (Edge Image Builder): base image + cloud-init seed ---
 # Only for SUSE Edge labs that include an EIB node.
 - name: Provision the EIB VM image + cloud-init

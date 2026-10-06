@@ -153,8 +153,22 @@ there (see [Fleet](../fleet.md)).
 ### `provider` (when `deployment_target: aws`)
 
 Same shape as Fleet [`workshop.yaml` provider](../fleet.md#workshopyaml-provider-schema).
-Required fields for AWS: `type`, `region`, `subnet_id`, and either
-**`instance_type`** or **`instance_tier`**.
+AWS needs `type`, `region`, `subnet_id`, and either **`instance_type`** or
+**`instance_tier`**.
+
+**The block is optional for `rodeo up --target aws`.** Any profile deploys with
+`rodeo up --profile <name> --target aws` and no `provider:` at all. Whatever is
+missing is filled in and written back to `rodeo-plan.yaml`, so re-runs and
+`rodeo destroy --cloud` use the same values:
+
+| Field | Default |
+|-------|---------|
+| `type` | `aws` |
+| `region` | `$RODEO_AWS_REGION`, else `eu-north-1` (not the AWS CLI's configured region: an account guardrail can leave that one without internet egress) |
+| `subnet_id` | the region's default VPC, first public default-for-AZ subnet in an AZ that offers the instance type |
+| `instance_type` | the profile's `recommended` tier (see below) |
+
+A region with no default VPC fails with a message naming the fields to set.
 
 **Security group is auto-managed unless you pin one.** Omit
 `security_group_ids` and rodeo creates (or reuses) an SG named `rodeo-<name>`

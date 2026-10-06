@@ -1,6 +1,7 @@
 """AWS EC2 HostProvider for Fleet F4a."""
 from __future__ import annotations
 
+import os
 import time
 from typing import Any, Callable
 
@@ -28,6 +29,18 @@ from .base import (
 )
 
 _REQUIRED = ("region", "subnet_id")
+
+# `rodeo up --target aws` without a provider block: the region comes from
+# RODEO_AWS_REGION, else this default, and the subnet is the region's default
+# VPC public subnet. Not the AWS CLI's configured region on purpose: an account
+# guardrail can leave that region without internet egress (seen on eu-west-1).
+DEFAULT_REGION = "eu-north-1"
+REGION_ENV = "RODEO_AWS_REGION"
+
+
+def default_region() -> str:
+    """Region for a plan that names none."""
+    return os.environ.get(REGION_ENV, "").strip() or DEFAULT_REGION
 
 # Mirrors the kvm_host firewalld rules a workshop host actually needs open:
 # SSH, the Harvester UI DNAT (harvester_ui_port default), the Rancher NodePort
@@ -174,6 +187,45 @@ class AwsHostProvider:
         import boto3
 
         return boto3.client("ec2", region_name=str(config["region"]))
+
+    def default_subnet(self, config: dict[str, Any], *, instance_type: str = "") -> str:
+        """The default VPC's public subnet for ``config['region']``.
+
+        Picks a default-for-AZ subnet that auto-assigns public IPs, in an AZ
+        that offers ``instance_type`` when one is given, first by AZ name so
+        re-runs pick the same one. Fails with the fields to set when the region
+        has no default VPC or no such subnet.
+        """
+        region = str(config["region"])
+        ec2 = self._client(config)
+        vpcs = ec2.describe_vpcs(Filters=[{"Name": "is-default", "Values": ["true"]}]).get("Vpcs") or []
+        if not vpcs:
+            raise ConfigError(
+                f"no default VPC in {region}: set provider.subnet_id (and provider.region) "
+                "in rodeo-plan.yaml, or export RODEO_AWS_REGION to a region that has one"
+            )
+        subnets = ec2.describe_subnets(
+            Filters=[
+                {"Name": "vpc-id", "Values": [str(vpcs[0]["VpcId"])]},
+                {"Name": "default-for-az", "Values": ["true"]},
+            ]
+        ).get("Subnets") or []
+        public = [s for s in subnets if s.get("MapPublicIpOnLaunch")]
+        if instance_type and public:
+            offered = ec2.describe_instance_type_offerings(
+                LocationType="availability-zone",
+                Filters=[{"Name": "instance-type", "Values": [instance_type]}],
+            ).get("InstanceTypeOfferings") or []
+            zones = {str(o.get("Location")) for o in offered}
+            public = [s for s in public if s.get("AvailabilityZone") in zones]
+        if not public:
+            what = f" in an AZ that offers {instance_type}" if instance_type else ""
+            raise ConfigError(
+                f"no public default subnet{what} in {region}: set provider.subnet_id "
+                "in rodeo-plan.yaml"
+            )
+        public.sort(key=lambda s: (str(s.get("AvailabilityZone", "")), str(s["SubnetId"])))
+        return str(public[0]["SubnetId"])
 
     def validate(self, config: dict[str, Any]) -> None:
         if str(config.get("type") or "").lower() != "aws":

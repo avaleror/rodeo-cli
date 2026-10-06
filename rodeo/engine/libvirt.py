@@ -305,7 +305,7 @@ class LibvirtDriver:
 # commands (start/stop/clean --all) use these to discover the VMs actually on a
 # host instead of assuming a fixed node list — so no phantom "harvester3" is
 # invented on a 2-node, rancher-only or edge lab.
-RODEO_VM_HINTS = ("harvester", "rancher", "edge", "eib", "rodeo")
+RODEO_VM_HINTS = ("harvester", "rancher", "edge", "eib", "rodeo", "k3s", "rke2")
 
 
 

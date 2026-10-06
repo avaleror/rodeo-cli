@@ -18,18 +18,24 @@ _INSTRUQT_VCPU_CAP: dict[str, int] = {
     "rancher": 4,
     "eib": 4,
     "edge-node": 2,
+    "k3s-node": 2,
+    "rke2-node": 2,
 }
 _INSTRUQT_VCPU_FLOOR: dict[str, int] = {
     "harvester": 4,
     "rancher": 2,
     "eib": 2,
     "edge-node": 1,
+    "k3s-node": 1,
+    "rke2-node": 2,
 }
 _INSTRUQT_MEMORY_MIB: dict[str, int] = {
     "harvester": 20480,
     "rancher": 8192,
     "eib": 12288,
     "edge-node": 4096,
+    "k3s-node": 2048,
+    "rke2-node": 4096,
 }
 
 

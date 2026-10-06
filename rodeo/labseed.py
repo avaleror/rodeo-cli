@@ -19,7 +19,8 @@ _EXAMPLES = Path(__file__).parent / "data" / "examples"
 # Beginner-facing profile name -> bundled example directory.
 # AWS is *where* (--target aws / deployment_target: aws), not a second topology.
 PROFILE_EXAMPLE = {
-    "rancher": "rancher-lab-config",        # 1 VM: Rancher Prime on K3s, no Harvester (smallest)
+    "rancher-test": "rancher-test",         # Rancher Prime + single-node K3s and RKE2 clusters (smallest)
+    "rancher": "rancher-lab-config",        # Rancher Prime + K3s, RKE2 and 3-node RKE2 clusters
     "test": "harvester-lab-config",         # 2-node Harvester, no Rancher (modest hosts)
     "harvester-ha": "harvester-ha-config",  # 3-node Harvester, no Rancher (3-member etcd HA, lean sizing)
     "harvester-2n": "harvester-2n",         # 2-node Harvester + Rancher Prime (slim profile, ~56 GiB RAM)

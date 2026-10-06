@@ -16,10 +16,14 @@ from typing import Iterator
 import yaml
 
 from ..config import ConfigError
+from ..inventory import harvester_vm_names
 from ..ssh import ssh_opts
 from ..state import is_phase_done, mark_phase_done, mark_phase_failed, reset_from
 
 logger = logging.getLogger(__name__)
+
+# VM flavors of Rancher-provisioned downstream cluster nodes (rancher profiles).
+DOWNSTREAM_FLAVORS = ("k3s-node", "rke2-node")
 
 
 # ---------- Networking helpers ----------
@@ -467,6 +471,14 @@ class DeployRunner:
         if phase.error:
             yield LogLine(f"  ✗  elemental: {phase.error}")
 
+    def stream_downstream(self) -> Iterator[DeployEvent]:
+        from .rancher import RancherPhase
+        phase = RancherPhase(self.cfg, stop=self.stop)
+        ok = yield from phase.stream_downstream_clusters()
+        self._last_rc = 0 if ok else 1
+        if phase.error:
+            yield LogLine(f"  ✗  downstream: {phase.error}")
+
     def stream_apply(self) -> Iterator[DeployEvent]:
         """Apply custom YAML manifests to VMs via SSH + kubectl apply.
 
@@ -810,7 +822,7 @@ class DeployRunner:
         if harvester_node_names is not None:
             needs_harvester = any(n in vms for n in harvester_node_names)
         else:
-            needs_harvester = any(n not in ("rancher", "eib") and not n.startswith("edge") for n in vms)
+            needs_harvester = bool(harvester_vm_names(self.cfg))
         needs_rancher_vm = "rancher" in vms or "eib" in vms
 
         harvester_os_password = creds.get("harvester_os_password", "")
@@ -910,6 +922,15 @@ class DeployRunner:
         }
         if harvester_token:
             vars_data["harvester_token"] = harvester_token
+        # Downstream cluster node flavors exist only in profiles that size them,
+        # so every other profile's vars file stays byte-identical.
+        for flavor in DOWNSTREAM_FLAVORS:
+            if flavor in resources:
+                vars_data["libvirt_flavors"][flavor] = {
+                    "memory_mib": resources[flavor].get("memory_mib", 4096),
+                    "vcpu":       resources[flavor].get("vcpu", 2),
+                    "disk_gb":    resources[flavor].get("disk_gb", 30),
+                }
 
         # Wire the full vm_nodes (with MACs, UUIDs, interfaces, etc.) from the centralized
         # definition (rodeo/data/profiles/suse-virt/topology.yaml via inventory.py).

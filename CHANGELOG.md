@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.1](https://github.com/avaleror/rodeo-cli/compare/v0.22.0...v0.22.1) (2026-10-07)
+
+
+### Documentation
+
+* review and polish for v0.22 ([#86](https://github.com/avaleror/rodeo-cli/issues/86)) ([b1e2f21](https://github.com/avaleror/rodeo-cli/commit/b1e2f2142c723308f9bf9c283dfeecdf918e7e7b))
+
 ## [0.22.0](https://github.com/avaleror/rodeo-cli/compare/v0.21.0...v0.22.0) (2026-10-07)
 
 

@@ -140,7 +140,11 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
     if lab_dir:
         lab = Path(lab_dir).expanduser().resolve()
     elif not resume:
-        detected = find_lab_dir()
+        # An explicit --profile names the lab to deploy: the last lab used
+        # (~/.rodeo/last_lab) must not replace it. Without this, `rodeo up
+        # --profile rancher` from any directory redeployed whatever lab ran
+        # last, of any profile.
+        detected = find_lab_dir(use_last_lab=profile is None)
         if detected is not None:
             lab = detected
 

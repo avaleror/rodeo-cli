@@ -211,7 +211,21 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
             "outside EC2).[/yellow]\n"
         )
 
-    if not aws_control_plane:
+    # A machine that cannot host labs (macOS, SLES 15, ...) is a control plane:
+    # it may seed a lab (--no-deploy) but never deploys one locally, and never
+    # installs KVM host packages.
+    cannot_host = ""
+    if not aws_control_plane and _runs_on_this_machine(lab, profile):
+        from ..hostos import control_plane_hint, kvm_host_problem
+
+        cannot_host = kvm_host_problem()
+        if cannot_host and not no_deploy:
+            console.print(f"[red]✗  {cannot_host}.[/red]\n{control_plane_hint()}")
+            raise SystemExit(2)
+        if cannot_host:
+            console.print(f"[dim]{cannot_host}: setting up the lab only.[/dim]\n")
+
+    if not aws_control_plane and not cannot_host:
         _print_host(host)
         # 1. Host dependencies.
         if not _ensure_host_ready(host, assume_yes):
@@ -410,6 +424,37 @@ def _aws_done_message(
         )
     lines.append(f"  Tear down host:  rodeo destroy --cloud --yes --config-dir {lab}\n")
     return "\n".join(lines)
+
+
+def _runs_on_this_machine(lab: Path | None, profile: str | None) -> bool:
+    """Whether a local `rodeo up` would run lab phases (kvm_host) on this machine.
+
+    lab-in-a-box is an external plugin with its own hosts and targets, so its
+    profiles are never treated as local KVM deploys here.
+    """
+    import yaml as _yaml
+
+    from ..labseed import resolve_profile_source
+
+    plan = None
+    if lab is not None and (lab / "rodeo-plan.yaml").is_file():
+        plan = lab / "rodeo-plan.yaml"
+    elif profile:
+        try:
+            plan = resolve_profile_source(profile) / "rodeo-plan.yaml"
+        except FileNotFoundError:
+            return True  # unknown profile: the normal error comes later
+    if plan is None or not plan.is_file():
+        return True
+    ptype = (_yaml.safe_load(plan.read_text()) or {}).get("type", "suse-virt")
+    if ptype == "lab-in-a-box":
+        return False
+    try:
+        from ..profiles import get_profile
+
+        return "kvm_host" in get_profile(str(ptype)).phases
+    except ValueError:
+        return True
 
 
 def _infer_lab_profile(lab: Path) -> str | None:

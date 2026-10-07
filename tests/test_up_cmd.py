@@ -3,12 +3,20 @@ from __future__ import annotations
 
 import atexit
 
+import pytest
 import yaml
 from click.testing import CliRunner
 
 from rodeo.commands import up_cmd as up_mod
 
 from tests._util import plain_output
+
+
+@pytest.fixture(autouse=True)
+def _mocked_host_is_a_kvm_host(monkeypatch):
+    """The mocked host below is a SLES 16 KVM host, whatever runs the tests
+    (macOS, Ubuntu CI). The OS check itself is covered in test_hostos.py."""
+    monkeypatch.setattr("rodeo.hostos.kvm_host_problem", lambda **kw: "")
 
 
 def _ready_host():

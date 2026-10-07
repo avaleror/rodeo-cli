@@ -86,6 +86,15 @@ def deploy_cmd(
         console.print(f"[red]✗  {exc}[/red]")
         raise SystemExit(1)
 
+    # lab-in-a-box is an external plugin with its own hosts and targets.
+    if "kvm_host" in profile.phases and cfg.get("type") != "lab-in-a-box":
+        from ..hostos import control_plane_hint, kvm_host_problem
+
+        problem = kvm_host_problem()
+        if problem:
+            console.print(f"[red]✗  {problem}.[/red]\n{control_plane_hint()}")
+            raise SystemExit(2)
+
     from ..host_context import apply_host_context, persist_host_context_notes
     from ..preflight import detect_host
 

@@ -60,3 +60,4 @@ HANDOFF.md
 .rodeo-secrets.yaml
 # static Rodeo Builder, built by scripts/build-builder-static.py in the docs workflow
 docs/builder/
+.uv/

@@ -3,7 +3,7 @@
   <img alt="rodeo-cli" src="docs/assets/logo/wordmark-light.png" height="60">
 </picture>
 
-A CLI for deploying hands-on lab infrastructure. Point it at a Linux host with KVM, pick a profile, and it builds a working lab of nested VMs — Harvester HCI clusters, Rancher Prime, or a full SUSE Edge stack — without you writing a line of Ansible or touching libvirt directly.
+A CLI for deploying hands-on lab infrastructure. Point it at a Linux host with KVM, pick a profile, and it builds a working lab of nested VMs (Harvester HCI clusters, Rancher Prime, or a full SUSE Edge stack) without you writing a line of Ansible or touching libvirt directly.
 
 [![Release](https://img.shields.io/github/v/release/avaleror/rodeo-cli?sort=semver&label=release)](https://github.com/avaleror/rodeo-cli/releases)
 [![CI](https://github.com/avaleror/rodeo-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/avaleror/rodeo-cli/actions/workflows/ci.yml)
@@ -18,10 +18,10 @@ A CLI for deploying hands-on lab infrastructure. Point it at a Linux host with K
 
 A **profile** describes a lab: how many VMs, what they run, how much RAM, what ports to expose on the host. Two YAML files define each profile:
 
-- `rodeo-plan.yaml` — resources, credentials, deployment target (bare metal or Instruqt)
-- `definition.yaml` — topology: nodes, network, exposed services, start order
+- `rodeo-plan.yaml`: resources, credentials, deployment target (bare metal or Instruqt)
+- `definition.yaml`: topology: nodes, network, exposed services, start order
 
-The CLI reads those files and drives a **phase pipeline** through Ansible roles on the target host. Not every phase runs in every profile — the engine `type` decides which ones apply:
+The CLI reads those files and drives a **phase pipeline** through Ansible roles on the target host. Not every phase runs in every profile: the engine `type` decides which ones apply:
 
 ```
 kvm_host → vms → [boot | pxe_server → cluster] → [rancher] → [elemental] → apply → finalise
@@ -47,7 +47,7 @@ Then:
 rodeo up
 ```
 
-That is it. The installer clones the repo, sets up a Python environment internally, and links `rodeo` as a system command. No venv to activate, no PATH to set, no sudo prefix — ever.
+That is it. The installer clones the repo, sets up a Python environment internally, and links `rodeo` as a system command. No venv to activate, no PATH to set, no sudo prefix, ever.
 
 On a laptop (macOS, or any other Linux, SLES 15 included) the same command installs rodeo as a control machine, without root, and you deploy to the cloud instead:
 
@@ -73,7 +73,7 @@ To pick a specific profile:
 rodeo up --profile rancher-test   # Rancher + single-node K3s and RKE2 clusters, ~18 GiB RAM
 rodeo up --profile rancher        # Rancher + K3s, RKE2 and 3-node RKE2 clusters, ~30 GiB RAM
 rodeo up --profile harvester-ha   # 3-node Harvester HA, ~52 GiB RAM
-rodeo up --profile harvester      # full lab: 3-node Harvester + Rancher, ~60 GiB RAM
+rodeo up --profile harvester      # full lab: 3-node Harvester + Rancher, ~72 GiB RAM
 rodeo up --profile suse-edge      # SUSE Edge: Rancher + Elemental + EIB + edge nodes
 ```
 
@@ -88,11 +88,12 @@ rodeo up --profile suse-edge      # SUSE Edge: Rancher + Elemental + EIB + edge 
 | `test` | `suse-virt` | 2-node Harvester cluster, no Rancher | ~36 GiB |
 | `harvester-ha` | `suse-virt` | 3-node Harvester, no Rancher (3-member etcd HA) | ~52 GiB |
 | `harvester-2n` | `suse-virt` | 2-node Harvester + Rancher Prime | ~56 GiB |
-| `harvester` | `suse-virt` | 3-node Harvester HCI + Rancher Prime | ~60 GiB |
-| `suse-edge` | `suse-edge` | Rancher + Elemental + EIB + edge nodes (SUSE Edge 3.6) | ~40 GiB |
-| `smlm-workshop` | `lab-in-a-box` | SUSE Multi-Linux Manager + 8 clients (instruqt-SMLM workshop), built by lab-in-a-box | ~30 GiB |
+| `harvester` | `suse-virt` | 3-node Harvester HCI + Rancher Prime | ~72 GiB |
+| `virt-workshop-aws` | `suse-virt` | `harvester` plus image cache, NFS backup target and sample VMs for the [SUSE Virtualization workshop](https://avaleror.github.io/suse-virt-workshop/) | AWS `m8id.8xlarge` |
+| `suse-edge` | `suse-edge` | Rancher + Elemental + EIB + edge nodes (SUSE Edge 3.7) | ~40 GiB |
+| `smlm-workshop` | `lab-in-a-box` | SUSE Multi-Linux Manager + 8 clients (instruqt-SMLM workshop), built by the lab-in-a-box plugin | ~30 GiB |
 
-`rodeo doctor` recommends the largest profile that fits available RAM. `rodeo profiles` lists all profiles including any you create yourself. Each profile picks one of four **engine types** (`rancher`, `suse-virt`, `suse-edge`, `lab-in-a-box`) that decides which pipeline phases run.
+`rodeo doctor` recommends the largest profile that fits available RAM. `rodeo profiles` lists all profiles including any you create yourself. Each profile picks an **engine type** (`suse-virt`, `rancher`, `rancher-test`, `suse-edge`) that decides which pipeline phases run; `lab-in-a-box` is an external plugin with its own engine.
 
 You can scaffold and customize your own:
 
@@ -104,37 +105,50 @@ rodeo up --profile mylab
 
 Full walkthrough: [Create your own rodeo](docs/custom-rodeos.md).
 
+### On AWS
+
+Any profile also deploys on AWS from your laptop:
+
+```bash
+rodeo up --profile harvester --target aws
+```
+
+rodeo picks the region (`eu-north-1`, or `$RODEO_AWS_REGION`), the default VPC subnet and the instance size, creates the EC2 host and builds the lab there. Every cloud host has a **6-hour dead-man switch**: it terminates itself unless you set a longer `provider.ttl_hours`. Tear it down sooner with `rodeo destroy --cloud --yes`. See [provider fields](docs/reference/plan.md#provider-when-deployment_target-aws).
+
 ---
 
 ## Commands
 
 | Command | What it does |
 |---------|-------------|
-| `up` | Front door: host check, install deps, pick lab, generate secrets, deploy, print login info. Wraps in tmux automatically — re-attach with `tmux attach -t rodeo-<profile>` |
+| `up` | Front door: host check, install deps, pick lab, generate secrets, deploy, print login info. Wraps in tmux automatically: re-attach with `tmux attach -t rodeo-<profile>` |
 | `doctor` | Host readiness check and profile recommendation by available RAM |
 | `new` | Scaffold a custom lab from a bundled base: `rodeo new mylab --from harvester` |
 | `profiles` | List deployable profiles (bundled + your custom ones in `~/.rodeo/profiles/`) |
+| `list` | Show plans and the libvirt domains stamped for each one |
 | `install-deps` | Install host packages (KVM, libvirt, ansible, kubectl). `--story` adds rmstory + multilang from their GitHub release distro packages |
 | `init` | Create `rodeo-plan.yaml` and `~/.rodeo/secrets.yaml` |
 | `plan` | Preview what deploy would change (no changes made) |
 | `instances` | Several copies of a lab-in-a-box lab on one host: `instances new <profile> --count N`, `instances list` |
-| `export` | Render the lab spec for another deployer — currently lab-in-a-box `lab.json` (`type: lab-in-a-box` labs deploy through it directly) |
-| `story` | Render the workshop hand-out (`story render`) — languages and story variants via rmstory, topology facts filled in |
+| `export` | Render the lab spec for another deployer: currently lab-in-a-box `lab.json` (`type: lab-in-a-box` labs deploy through it directly) |
+| `story` | Render the workshop hand-out (`story render`): languages and story variants via rmstory, topology facts filled in |
 | `deploy` | Run the phase pipeline. Flags: `--from PHASE`, `--force`, `--reconcile` (default on) / `--no-reconcile`, `--check`, `--no-tui`, `-P key=value` |
 | `status` | VM states, VIP reachability, phase progress |
 | `stop` | Graceful stop in reverse definition order (infra-aware) |
 | `start` | Start host services and VMs in definition order |
-| `start-if-needed` | Idempotent boot guard — start only what is stopped |
+| `start-if-needed` | Idempotent boot guard: start only what is stopped |
 | `clean` | Destroy lab VMs, disks, state. `--all --yes --secrets` for a full host reset |
-| `destroy` | Tear down cloud-acquired host (`--cloud`) or owned lab resources |
-| `fleet` | Multi-host workshop fan-out: `doctor`, `status`, `deploy`, `retry`, `access`, `diagnose`, `provision` |
+| `destroy` | Terminate the cloud host of a lab (`--cloud`) and its security group |
+| `fleet` | Multi-host workshops: `provision`, `deploy`, `status`, `doctor`, `retry`, `diagnose`, `access`, `open-access`, `portal` (student claim portal), `deprovision` |
 | `watch` | Split-panel TUI: phase progress + VM serial logs |
 | `ssh` | SSH into a lab VM: `rodeo ssh harvester1` |
 | `logs` | Tail VM serial log. `--bundle` packages a support tarball |
 | `restart` | Restart a single VM |
 | `attach` | Serial console (Ctrl+] to detach) |
-| `set-password` | Rotate the Rancher admin password for a running lab |
+| `set-password` | Rotate the Harvester / Rancher Prime admin password on a running lab |
 | `install-extensions` | Install Rancher UI extensions (e.g. Harvester) |
+| `pull-edge-image` | (SUSE Edge) Seed edge node boot disks from the EIB VM or a local image |
+| `eject-iso` | (SUSE Edge) Remove the install ISO from edge nodes and boot from disk |
 | `self-update` | `git pull` + reinstall the CLI in one shot |
 | `bootstrap` | (advanced) One-shot host setup for clean SLES, links binary, seeds a lab dir |
 | `generate` | (advanced) Interactive config-dir skeleton from templates |
@@ -162,12 +176,13 @@ Precedence: profile defaults < plan < paramfile < `-P`.
 
 | Guide | For |
 |-------|-----|
-| [Rancher profile guide](docs/guide-rancher.md) | Deploy Rancher Prime on K3s |
+| [Rancher profile guide](docs/guide-rancher.md) | Deploy Rancher Prime with K3s and RKE2 downstream clusters |
 | [Harvester profile guide](docs/guide-harvester.md) | Deploy Harvester HCI (2-node, 3-node, HA, full lab) |
-| [SUSE Edge profile guide](docs/guide-suse-edge.md) | Deploy the SUSE Edge 3.6 stack (Rancher + Elemental + EIB + edge nodes) |
+| [SUSE Edge profile guide](docs/guide-suse-edge.md) | Deploy the SUSE Edge 3.7 stack (Rancher + Elemental + EIB + edge nodes) |
 | [Bare metal example](docs/examples/bare-metal.md) | Full walkthrough on a physical or cloud host |
 | [Instruqt example](docs/examples/instruqt.md) | Build an Instruqt track image with a pre-deployed cluster |
-| [Fleet (multi-host)](docs/fleet.md) | Workshop fan-out across many KVM hosts |
+| [Install on Linux and macOS](docs/install.md) | KVM host vs control machine installs |
+| [Fleet (multi-host)](docs/fleet.md) | A lab per attendee across many hosts, plus the claim portal |
 | [Testing and CI](docs/examples/testing.md) | Unit tests, integration tests, GitHub Actions |
 
 **Reference**
@@ -202,4 +217,4 @@ pytest tests/ -v
 
 ## Authors
 
-Andres Valero and Raúl Mahiques — Principal Technology Advocates, SUSE
+Andres Valero and Raúl Mahiques, Principal Technology Advocates, SUSE

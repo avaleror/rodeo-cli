@@ -6,7 +6,7 @@ This example walks through deploying the full `harvester` profile (3-node Harves
 
 | Resource | Minimum |
 |----------|---------|
-| OS | SLES 16, Leap 16, Ubuntu 22.04, or Fedora 39+ |
+| OS | SLES 16 or Leap 16 (other Linux only with `RODEO_ALLOW_ANY_KVM_HOST=1`, unsupported) |
 | RAM | 64 GiB (3 × 16 GiB Harvester + 8 GiB Rancher + host overhead) |
 | CPU | 28 vCPU to spare |
 | Disk | 900 GiB free in `/var/lib/libvirt/images` (or a dedicated second disk) |
@@ -100,7 +100,7 @@ If your host has a separate data disk (check with `lsblk`), configure it in `rod
 
 ```yaml
 storage:
-  device: /dev/nvme1n1    # your data disk — verify with lsblk first
+  device: /dev/nvme1n1    # your data disk: verify with lsblk first
   image_dir: /var/lib/libvirt/images
 ```
 

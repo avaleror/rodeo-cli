@@ -1,6 +1,6 @@
 # Example: testing and CI
 
-This example covers running rodeo-cli in automated and testing contexts — from fast unit tests on any machine to full integration tests on a KVM host.
+This example covers running rodeo-cli in automated and testing contexts, from fast unit tests on any machine to full integration tests on a KVM host.
 
 ## Two tiers of testing
 
@@ -13,7 +13,7 @@ You need both. Unit tests catch regressions in Python code. Integration tests ca
 
 ## Unit tests
 
-Run on any OS — no KVM, no libvirt, no sudo needed:
+Run on any OS: no KVM, no libvirt, no sudo needed:
 
 ```bash
 pip install -e ".[dev]"
@@ -27,7 +27,7 @@ ansible-lint rodeo/data/ansible
 
 To keep your host clean (or when the host has a live libvirt that interferes
 with the stop/start tests), run the same checks in throwaway containers, as a
-non-root user — this mirrors the CI matrix exactly:
+non-root user: this mirrors the CI matrix exactly:
 
 ```bash
 scripts/test-in-container.sh                 # Python 3.10 + 3.12, ruff + pytest
@@ -71,7 +71,7 @@ rodeo plan
 rodeo plan -P resources.harvester.memory_mib=20480
 ```
 
-## Integration tests — manual
+## Integration tests: manual
 
 On a host that meets the [bare metal requirements](bare-metal.md#host-requirements), run one profile at a time:
 
@@ -91,19 +91,19 @@ rodeo clean --all --yes --secrets --force-network
 
 Run in this order to fail fast on smaller profiles before investing time in bigger ones:
 
-1. `rancher` (~10 min) — fastest; validates the boot + Rancher path with no PXE
-2. `test` (~60 min) — 2-node Harvester; validates the full iPXE chain
-3. `harvester-ha` (~90 min) — 3-node Harvester; validates 3-member etcd HA
-4. `harvester` (~120 min) — full lab; validates Rancher import on top of Harvester
+1. `rancher` (~10 min): fastest; validates the boot + Rancher path with no PXE
+2. `test` (~60 min): 2-node Harvester; validates the full iPXE chain
+3. `harvester-ha` (~90 min): 3-node Harvester; validates 3-member etcd HA
+4. `harvester` (~120 min): full lab; validates Rancher import on top of Harvester
 
-### AWS live smoke (`i7i.8xlarge` + NVMe)
+### AWS live smoke
 
 Manual checklist for infra-adaptive host context (provision or BYO). Needs AWS creds
 and nothing else: the default AMI (SLES 16 PAYG) needs no Marketplace
-subscription, and `i7i.8xlarge` supports nested virt.
+subscription, and the recommended `m8id.8xlarge` supports nested virt.
 
 ```bash
-pip install -e '.[aws]'   # in your rodeo-cli checkout; see ../install.md
+# rodeo installed as a control machine (install.sh; see ../install.md)
 # Provision path (recommended tier → m8id.8xlarge for harvester; region capacity checked first):
 rodeo up --yes --profile harvester --target aws --instance-tier recommended
 # Or BYO: SSH to an existing m8id.8xlarge (or similar), set deployment_target: aws, then:
@@ -111,7 +111,7 @@ rodeo up --yes --profile harvester --target aws --instance-tier recommended
 ```
 
 **Testing your own changes:** the instance installs rodeo-cli from GitHub, so a
-local working tree is invisible to it — and by default an already-bootstrapped
+local working tree is invisible to it: and by default an already-bootstrapped
 host keeps the code it was first installed with. Push, then pass the ref:
 
 ```bash
@@ -120,12 +120,12 @@ rodeo up --yes --no-tmux --target aws --ref feat/my-fix
 
 `--no-tmux` matters for scripted or agent-driven runs: without it `up` re-execs
 into tmux and the caller never sees the output. The remote log to read is
-`/root/.rodeo/logs/aws-up.log` on the host — far more informative than what
+`/root/.rodeo/logs/aws-up.log` on the host: far more informative than what
 surfaces locally.
 
 Verify on the KVM host after `kvm_host`:
 
-1. `resources.harvester.disk_gb` is **500** and `resources.rancher.disk_gb` is **60** — flat per-node floors, not scaled by node count (plan / vars)
+1. `resources.harvester.disk_gb` is **500** and `resources.rancher.disk_gb` is **60**, flat per-node floors, not scaled by node count (plan / vars)
 2. `storage.backend: nvme` and `image_dir` is mounted on instance-store NVMe (`findmnt`, `lsblk`)
 3. Guest disks live under that `image_dir` (not root EBS alone)
 4. Harvester VIP / `rodeo status` healthy; tear down with `rodeo destroy --cloud --yes` if provisioned
@@ -134,7 +134,7 @@ Unit coverage: `tests/test_host_context.py`, `tests/test_kvm_host_nvme_storage.p
 
 Longer agent/ops checklist (single-host + fleet): [aws-fleet-claude-test-plan.md](aws-fleet-claude-test-plan.md).
 
-## Integration tests — GitHub Actions (self-hosted runner)
+## Integration tests: GitHub Actions (self-hosted runner)
 
 The integration workflow is at `.github/workflows/integration.yml`. It runs on a self-hosted runner with the labels `self-hosted`, `kvm`, `sles16`.
 
@@ -154,10 +154,10 @@ gh workflow run integration.yml -f profile=test
 
 ### What each job does
 
-1. **Pre-run cleanup** — wipes whatever the previous run left (`rodeo clean --all --yes --secrets --force-network`), ignores failures so a broken previous run does not block the next one
-2. **Deploy** — `rodeo up --profile <name> --yes`
-3. **Verify** — `rodeo status` (asserts VMs are running and VIP is reachable)
-4. **Post-run cleanup** — always runs, even if deploy failed
+1. **Pre-run cleanup**: wipes whatever the previous run left (`rodeo clean --all --yes --secrets --force-network`), ignores failures so a broken previous run does not block the next one
+2. **Deploy**: `rodeo up --profile <name> --yes`
+3. **Verify**: `rodeo status` (asserts VMs are running and VIP is reachable)
+4. **Post-run cleanup**: always runs, even if deploy failed
 
 `max-parallel: 1` ensures only one profile runs at a time on the shared KVM host. `fail-fast: false` means all four profiles run even if one fails, giving you the full picture.
 
@@ -175,7 +175,7 @@ The workflow also runs nightly at 02:00 UTC via a cron trigger. Failed runs crea
 
 ## Testing a specific Ansible role change
 
-When you change an Ansible role (e.g. `roles/kvm_host/tasks/firewall.yml`), the unit tests do not catch regressions — they do not run Ansible. You must run a live integration test before merging.
+When you change an Ansible role (e.g. `roles/kvm_host/tasks/firewall.yml`), the unit tests do not catch regressions, they do not run Ansible. You must run a live integration test before merging.
 
 Minimum regression for a role change:
 
@@ -184,7 +184,7 @@ rodeo deploy --from kvm_host --force   # re-run the changed role
 rodeo status                           # verify the cluster still works
 ```
 
-For the PXE chain (`pxe_server` role), the minimum is a full `test` profile deploy from scratch — the boot chain is only validated end-to-end when Harvester installs successfully.
+For the PXE chain (`pxe_server` role), the minimum is a full `test` profile deploy from scratch, the boot chain is only validated end-to-end when Harvester installs successfully.
 
 ## Testing definition.yaml changes
 
@@ -202,7 +202,7 @@ rodeo up --profile mylab --yes
 rodeo status
 ```
 
-If the definition changes node count or IPs, the entire deploy must run from scratch — do not use `--from cluster` because the VM disk and DHCP lease changes come from the `vms` phase.
+If the definition changes node count or IPs, the entire deploy must run from scratch, do not use `--from cluster` because the VM disk and DHCP lease changes come from the `vms` phase.
 
 ## Testing secret resolution
 

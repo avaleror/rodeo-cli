@@ -1,4 +1,4 @@
-# Rancher Prime on K3s — profile guide
+# Rancher Prime on K3s: profile guide
 
 This guide covers the two Rancher profiles. Both run **Rancher Prime on K3s** on its own VM, with no Harvester, plus downstream clusters that Rancher itself provisions on small lab VMs:
 
@@ -50,7 +50,7 @@ Run `rodeo doctor` to check your host and confirm this profile fits.
 rodeo up --profile rancher        # or: rodeo up --profile rancher-test
 ```
 
-`rodeo up` checks the host, installs any missing packages (with your consent), generates credentials, and starts the deploy. It self-escalates with sudo — you do not need to prefix `sudo` yourself.
+`rodeo up` checks the host, installs any missing packages (with your consent), generates credentials, and starts the deploy. It self-escalates with sudo: you do not need to prefix `sudo` yourself.
 
 `rodeo up` wraps itself in a tmux session (`rodeo-rancher`) automatically, so a dropped SSH connection does not kill the deploy. Re-attach with `tmux attach -t rodeo-rancher`. Use `--no-tmux` to skip this in scripts.
 

@@ -1,6 +1,8 @@
-# Harvester HCI — profile guide
+# SUSE Virtualization (Harvester): profile guide
 
-This guide covers the four Harvester profiles in rodeo-cli. All deploy **SUSE Virtualization (Harvester HCI)** as nested KVM VMs on a single Linux host. Pick the one that fits your host and workshop goals.
+This guide covers the Harvester profiles in rodeo-cli. All deploy **SUSE Virtualization (Harvester HCI)** as nested KVM VMs on a single host: your own SLES 16 box, or an EC2 instance that rodeo creates for you. Pick the one that fits your host and workshop goals.
+
+**Component versions:** Harvester 1.8.2 (RKE2, Longhorn, KubeVirt, Kube-OVN) · Rancher Prime 2.14.5 on K3s v1.35.3+k3s1 · cert-manager v1.20.1 · Harvester UI extension 1.8.2.
 
 ---
 
@@ -11,7 +13,8 @@ This guide covers the four Harvester profiles in rodeo-cli. All deploy **SUSE Vi
 | `test` | 2 Harvester | No | 1 leader | ~36 GiB | Quick evaluation, tight host, no HA needed |
 | `harvester-ha` | 3 Harvester | No | 3-member HA | ~52 GiB | Harvester workshop with full etcd HA, no Rancher |
 | `harvester-2n` | 2 Harvester + 1 Rancher | Yes | 1 leader | ~56 GiB | HCI + Rancher on a mid-size host, no etcd HA |
-| `harvester` | 3 Harvester + 1 Rancher | Yes | 3-member HA | ~60 GiB | Full lab: HCI + multi-cluster management |
+| `harvester` | 3 Harvester + 1 Rancher | Yes | 3-member HA | ~72 GiB | Full lab: HCI + multi-cluster management |
+| `virt-workshop-aws` | 3 Harvester + 1 Rancher | Yes | 3-member HA | AWS `m8id.8xlarge` | The [SUSE Virtualization workshop](https://avaleror.github.io/suse-virt-workshop/): `harvester` plus image cache, NFS backup target and sample VMs |
 
 Run `rodeo doctor` to see which profiles fit your host's available RAM.
 
@@ -39,7 +42,7 @@ Run `rodeo doctor` to see which profiles fit your host's available RAM.
 
 ## Host requirements
 
-Lab footprint (guest RAM sum) is in the table above. `rodeo doctor` uses a higher **host available RAM** threshold so nested KVM has headroom — e.g. `harvester` needs ~60 GiB of guests but doctor recommends ~72 GiB free on the host.
+Lab footprint (guest RAM sum) is in the table above. `rodeo doctor` uses a higher **host available RAM** threshold so nested KVM has headroom, e.g. `harvester` needs ~60 GiB of guests but doctor recommends ~72 GiB free on the host.
 
 | Profile | Host RAM (doctor) | Disk | CPU |
 |---------|-------------------|------|-----|
@@ -48,9 +51,9 @@ Lab footprint (guest RAM sum) is in the table above. `rodeo doctor` uses a highe
 | `harvester-2n` | ~56 GiB | ~700 GiB | ~24 vCPU |
 | `harvester` | ~72 GiB | ~1050 GiB | ~34 vCPU |
 
-**OS:** Linux with KVM. SLES 16 or Leap 16 recommended; Ubuntu and Fedora work via `install-deps`. Nested virtualization must be enabled if the host is itself a VM (cloud, Instruqt).
+**OS:** SLES 16 or Leap 16 with KVM. On any other machine `rodeo up` stops and points you to `--target aws` (set `RODEO_ALLOW_ANY_KVM_HOST=1` to try another Linux at your own risk). Nested virtualization must be enabled if the host is itself a VM (cloud, Instruqt).
 
-Harvester installs via **iPXE network boot** (the `pxe_server` phase serves boot scripts and config over HTTP). This is why the disk requirement is high — each node gets a 320 GiB virtual disk (Harvester's Elemental installer carves a fixed 150 GiB persistent partition regardless of disk size, so the rest goes to Longhorn's own partition).
+Harvester installs via **iPXE network boot** (the `pxe_server` phase serves boot scripts and config over HTTP). This is why the disk requirement is high: each node gets a 320 GiB virtual disk (Harvester's Elemental installer carves a fixed 150 GiB persistent partition regardless of disk size, so the rest goes to Longhorn's own partition).
 
 ---
 
@@ -67,10 +70,24 @@ rodeo up --profile harvester      # full lab
 **Disconnect protection (tmux):** `rodeo up` automatically wraps itself in a named tmux session before starting the deploy. If your SSH or Instruqt connection drops mid-deploy, the process keeps running. Re-attach any time:
 
 ```bash
-tmux attach -t rodeo-harvester    # or rodeo-test, rodeo-harvester-ha — matches --profile name
+tmux attach -t rodeo-harvester    # or rodeo-test, rodeo-harvester-ha, matches --profile name
 ```
 
 Detach without stopping the deploy: `Ctrl+b  d`. If you run `rodeo up` again and the session exists, it re-attaches to the running deploy instead of starting a second one. Use `--no-tmux` to skip this behaviour in scripts.
+
+### On AWS
+
+From your laptop (macOS or any Linux, see [Install](install.md)):
+
+```bash
+aws login
+rodeo up --profile harvester --target aws --yes          # full lab
+rodeo up --profile virt-workshop-aws --target aws --yes  # the workshop lab
+```
+
+rodeo picks the region, subnet and instance (`m8id.8xlarge`, 32 vCPU / 128 GiB / local NVMe), creates the EC2 host, and runs the same pipeline there. The workshop lab took about 25 minutes end to end on that instance. The host has a 6-hour dead-man switch (`provider.ttl_hours` to extend it); tear it down with `rodeo destroy --cloud --yes --config-dir ~/rodeo-labs/<profile>`.
+
+For a lab per attendee, see [Fleet](fleet.md).
 
 ---
 
@@ -78,16 +95,18 @@ Detach without stopping the deploy: `Ctrl+b  d`. If you run `rodeo up` again and
 
 The `suse-virt` pipeline (used by all four Harvester profiles) runs these phases:
 
-1. **kvm_host** — prepares the hypervisor: KVM packages, libvirt daemon, firewall rules (including the DNAT rule that makes `:8443` reach the Harvester VIP), and the image storage pool
-2. **vms** — downloads the Harvester ISO, creates virtual disks (size varies by profile — see Host requirements above), and writes libvirt XML definitions (VMs are defined but not started yet)
-3. **pxe_server** — sets up nginx + TFTP + dnsmasq on the host's `virbr0` (192.168.122.1). Generates a `boot.ipxe` that chains to a per-node MAC script, and a Harvester config YAML for each node
-4. **cluster** — starts VMs in order (`harvester1` first, then a gap for etcd, then the rest). Waits for each node to install Harvester via iPXE, join the cluster, and become `Ready`. Watches the VIP (192.168.122.10) for the cluster to converge
-5. **rancher** — (`harvester` profile only) installs K3s + Rancher Prime on the `rancher` VM, exposes it on NodePort 30002, and configures the admin API. Harvester cluster import is intentionally left as a lab exercise — students do it via the Rancher UI as the first challenge
-6. **finalise** — enables VM autostart on host reboot (skipped on Instruqt; use `rodeo start-if-needed` on hostimage boot instead of baking finalise into the image)
+1. **kvm_host**: prepares the hypervisor: KVM packages, libvirt daemon, firewall rules (including the DNAT rule that makes `:8443` reach the Harvester VIP), and the image storage pool
+2. **vms**: downloads the Harvester ISO, creates virtual disks (size varies by profile, see Host requirements above), and writes libvirt XML definitions (VMs are defined but not started yet)
+3. **pxe_server**: sets up nginx + TFTP + dnsmasq on the host's `virbr0` (192.168.122.1). Generates a `boot.ipxe` that chains to a per-node MAC script, and a Harvester config YAML for each node
+4. **cluster**: starts VMs in order (`harvester1` first, then a gap for etcd, then the rest). Waits for each node to install Harvester via iPXE, join the cluster, and become `Ready`. Watches the VIP (192.168.122.10) for the cluster to converge
+5. **rancher**: (`harvester`, `harvester-2n` and the workshop profiles) installs K3s + Rancher Prime on the `rancher` VM, exposes it on NodePort 30002, configures the admin API and the Harvester UI extension. Importing Harvester into Rancher is left as a lab exercise by default; set `harvester_auto_import: true` in the plan to have rodeo do it
+6. **finalise**: enables VM autostart on host reboot (skipped on Instruqt; use `rodeo start-if-needed` on hostimage boot instead of baking finalise into the image)
 
 ### Time estimates
 
-| Profile | Typical time |
+On AWS `m8id.8xlarge` (local NVMe) the full workshop lab took about 25 minutes, measured in September and October 2026. On hosts with slower disks plan for longer:
+
+| Profile | Typical time on slower hosts |
 |---------|-------------|
 | `test` | 45–90 minutes |
 | `harvester-ha` | 60–120 minutes |
@@ -100,7 +119,7 @@ rodeo watch              # split-panel TUI: phases + serial logs
 rodeo logs harvester1    # just the serial log for one node
 ```
 
-The TUI shows all VM serial consoles simultaneously in a vertical split. The left panel has a global elapsed timer for the full deploy. Each console window shows a per-VM elapsed timer that starts from when the first serial output arrives for that node — useful for spotting a node that started late or stopped responding.
+The TUI shows all VM serial consoles simultaneously in a vertical split. The left panel has a global elapsed timer for the full deploy. Each console window shows a per-VM elapsed timer that starts from when the first serial output arrives for that node, useful for spotting a node that started late or stopped responding.
 
 ---
 
@@ -115,7 +134,7 @@ rodeo status
 - **Harvester UI:** `https://<host>:8443`
 - **Username:** `admin`
 - **Password:** value of `harvester_admin_password` in `~/.rodeo/secrets.yaml`
-- **Rancher UI** (harvester profile): `https://<host>:30002` — same password
+- **Rancher UI** (profiles with Rancher): `https://<host>:30002`, password `rancher_admin_password`
 
 The Harvester bootstrap process prompts for a VIP on first login if the cluster has not yet converged. If the UI asks for a VIP, use `192.168.122.10`.
 
@@ -166,7 +185,7 @@ The deploy pipeline is idempotent within a phase. If the `cluster` phase times o
 ### Rancher UI extensions
 
 Extensions (e.g. the SUSE Virtualization / Harvester extension) are declared once
-under `rancher.ui_extensions` in `definition.yaml` — see the [full field
+under `rancher.ui_extensions` in `definition.yaml`, see the [full field
 reference](reference/definition.md#rancherui_extensions) for the format. Every
 deploy reconciles the declared list automatically; to install or upgrade one on an
 already-deployed lab without redeploying, run:
@@ -194,14 +213,14 @@ that doesn't match `definition.yaml` means it's due for reconcile.
 
 This is the workflow for building an **Instruqt hostimage** with a pre-deployed Harvester cluster. Full detail: [Instruqt example](examples/instruqt.md).
 
-1. Set `deployment_target: instruqt` in `rodeo-plan.yaml` (skips `finalise` — keep it that way)
+1. Set `deployment_target: instruqt` in `rodeo-plan.yaml` (skips `finalise`, keep it that way)
 2. Deploy the lab (`rodeo up --profile harvester --yes` or `rodeo deploy`)
 3. Verify: `rodeo status`
 4. **Before Save:** do **not** run `rodeo deploy --finalise`; confirm agent ports `15778`/`15779` and that `libvirt-guests` is disabled (the success screen prints this checklist)
 5. Save the hostimage in the Instruqt UI
 6. Wire **`rodeo start-if-needed`** into the track setup script so every attendee boot starts VMs and re-applies DNAT/nft
 
-Do not bake `finalise` into the hostimage — nested VM autostart races the Instruqt agent and can leave the console on **Please Wait**.
+Do not bake `finalise` into the hostimage: nested VM autostart races the Instruqt agent and can leave the console on **Please Wait**.
 
 ---
 
@@ -212,11 +231,11 @@ Do not bake `finalise` into the hostimage — nested VM autostart races the Inst
 The cluster phase waits for the VIP (`192.168.122.10`) to respond on port 443. If it times out:
 
 ```bash
-rodeo logs harvester1    # check the install log — is it still installing?
+rodeo logs harvester1    # check the install log, is it still installing?
 rodeo ssh harvester1     # if the node is up, check: kubectl get nodes
 ```
 
-Common causes: disk too small (Harvester's Elemental installer always carves a fixed 150 GiB persistent partition — a smaller disk starves it and causes "no space" errors in containerd), nested virt not enabled, not enough RAM.
+Common causes: disk too small (Harvester's Elemental installer always carves a fixed 150 GiB persistent partition, a smaller disk starves it and causes "no space" errors in containerd), nested virt not enabled, not enough RAM.
 
 ### UI reachable but host:8443 not working
 
@@ -233,8 +252,8 @@ The hook is installed by the `kvm_host` phase. It re-runs automatically when lib
 Check the serial log for the stuck node. Common issues:
 
 - **HTTP 403 on iPXE config**: nginx couldn't read the config file (permissions). Re-run `rodeo deploy --from pxe_server`.
-- **Wrong NIC name in config**: Harvester config uses `hwAddr` (MAC) to identify the interface, not `eth0`. This is handled automatically — if you see a NIC error, check the MAC in `definition.yaml` matches the VM.
-- **etcd timeout on join**: there is a built-in gap (default 60 s) between starting harvester1 and starting the others. If etcd still times out, the first node may not have finished installing — check its log.
+- **Wrong NIC name in config**: Harvester config uses `hwAddr` (MAC) to identify the interface, not `eth0`. This is handled automatically: if you see a NIC error, check the MAC in `definition.yaml` matches the VM.
+- **etcd timeout on join**: there is a built-in gap (default 60 s) between starting harvester1 and starting the others. If etcd still times out, the first node may not have finished installing, check its log.
 
 ### etcd recovery (last resort)
 
@@ -264,11 +283,11 @@ The cluster token is `harvester_token` in `~/.rodeo/secrets.yaml`.
 
 ### Admin password unknown (not in secrets.yaml, not the persisted file, not admin/admin)
 
-`rodeo set-password` recovers the admin password by trying known candidates — the
+`rodeo set-password` recovers the admin password by trying known candidates, the
 configured `secrets.yaml` value, the last one it persisted on the host, and the
 `admin`/`admin` bootstrap. If none of those match (e.g. someone changed it by hand
 outside of rodeo-cli and forgot), there's nothing left for it to log in *with*, so
-it can't roll the password forward. Recover directly via `kubectl` instead — this
+it can't roll the password forward. Recover directly via `kubectl` instead: this
 is the same technique Rancher documents for "locked out, don't know the current
 password," and it applies here because Harvester's dashboard embeds the same
 `users.management.cattle.io` user-management CRD (confirmed live: `cattle-system`
@@ -285,15 +304,15 @@ kubectl get users.management.cattle.io \
 python3 -m pip install --quiet bcrypt
 python3 -c "import bcrypt; print(bcrypt.hashpw(b'YourNewPassword123', bcrypt.gensalt(10)).decode())"
 
-# 3. Patch the user object directly — sets the password hash and clears the
+# 3. Patch the user object directly: sets the password hash and clears the
 #    "must change password" flag in one shot
 kubectl patch users.management.cattle.io <user-object-name> --type=merge \
   -p '{"password":"<hash-from-step-2>","mustChangePassword":false}'
 
 # 4. Restart Rancher so all 3 replicas drop their stale in-memory cache of the
-#    old hash — without this, kube-vip round-robins your login attempts across
+#    old hash: without this, kube-vip round-robins your login attempts across
 #    replicas and you'll see intermittent 401s even though the patch landed in
-#    etcd cleanly. Only touches cattle-system — no VM/storage/network impact.
+#    etcd cleanly. Only touches cattle-system: no VM/storage/network impact.
 kubectl -n cattle-system rollout restart deployment/rancher
 kubectl -n cattle-system rollout status deployment/rancher --timeout=180s
 ```
@@ -330,7 +349,7 @@ rodeo deploy -P resources.harvester.vcpu=10
 
 ### Change the disk size
 
-The default is 320 GiB per Harvester node. Do not go below ~250 — Harvester's Elemental installer always carves a fixed 150 GiB persistent partition regardless of disk size, so smaller disks starve it and prevent container images from pulling, and leave little room for Longhorn itself.
+The default is 320 GiB per Harvester node. Do not go below ~250: Harvester's Elemental installer always carves a fixed 150 GiB persistent partition regardless of disk size, so smaller disks starve it and prevent container images from pulling, and leave little room for Longhorn itself.
 
 ```bash
 rodeo deploy -P resources.harvester.disk_gb=400

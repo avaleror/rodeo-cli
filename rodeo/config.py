@@ -76,7 +76,7 @@ def _record_lab_dir(lab_dir: Path) -> None:
         pass
 
 
-def find_lab_dir(start: str | Path | None = None) -> Path | None:
+def find_lab_dir(start: str | Path | None = None, *, use_last_lab: bool = True) -> Path | None:
     """Walk up from ``start`` (default cwd) for a lab dir, or None.
 
     A lab dir contains rodeo-plan.yaml or definition.yaml. Lets the user run
@@ -84,11 +84,14 @@ def find_lab_dir(start: str | Path | None = None) -> Path | None:
 
     Falls back to ~/.rodeo/last_lab when the walk-up finds nothing, so commands
     like `rodeo ssh eib` work from any directory after the first deploy.
+    ``use_last_lab=False`` skips that fallback (`rodeo up --profile NAME`).
     """
     here = Path(start or Path.cwd()).resolve()
     for d in (here, *here.parents):
         if any((d / m).exists() for m in _LAB_MARKERS):
             return d
+    if not use_last_lab:
+        return None
     # Fall back to the last successfully loaded lab dir.
     try:
         last = Path(rodeo_last_lab_file().read_text().strip())

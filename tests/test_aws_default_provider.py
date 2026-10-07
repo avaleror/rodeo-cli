@@ -124,3 +124,24 @@ def test_up_keeps_an_explicit_provider(tmp_path, monkeypatch):
     assert "subnet_call" not in seen
     for key, value in explicit.items():
         assert cfg["provider"][key] == value
+
+
+@pytest.mark.parametrize(
+    "profile, harvester, rancher",
+    [("rancher", False, True), ("rancher-test", False, True), ("suse-virt", True, True)],
+)
+def test_aws_done_message_lists_only_the_uis_the_lab_has(tmp_path, profile, harvester, rancher):
+    from rodeo.profiles import get_profile
+
+    cfg = {**get_profile(profile).default_cfg(), "type": profile}
+    msg = up_cmd._aws_done_message(cfg, tmp_path / "lab", "203.0.113.7", "i-123")
+    assert ("https://203.0.113.7:8443" in msg) is harvester
+    assert ("https://203.0.113.7:30002" in msg) is rancher
+    assert f"rodeo destroy --cloud --yes --config-dir {tmp_path / 'lab'}" in msg
+    assert "—" not in msg
+
+
+def test_aws_done_message_harvester_only_lab(tmp_path):
+    cfg = {"vms": {"harvester1": {}, "harvester2": {}}}
+    msg = up_cmd._aws_done_message(cfg, tmp_path, "203.0.113.7", None)
+    assert "8443" in msg and "30002" not in msg

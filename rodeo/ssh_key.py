@@ -5,9 +5,11 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
+from datetime import datetime
 from typing import Any
 
 from .config import ConfigError
+from .providers.deadman import cloud_config_files, cloud_config_runcmd
 from .fleet.inventory import FleetHost, FleetInventory
 from .fleet.ssh_exec import run_remote
 from .paths import fix_invoking_ownership, rodeo_ssh_dir
@@ -18,12 +20,13 @@ _PRIVATE_NAME = "id_ed25519"
 _REMOTE_ROOT_KEY = "/root/.ssh/id_ed25519"
 
 
-def build_ec2_userdata(*, ssh_user: str = "ec2-user") -> str:
+def build_ec2_userdata(*, ssh_user: str = "ec2-user", expires_at: datetime | None = None) -> str:
     """cloud-config for passwordless root + NOPASSWD sudo for the AMI login user.
 
     Injects the managed pubkey into root (and ``ssh_user``) authorized_keys, enables
     ``PermitRootLogin prohibit-password``, and installs a sudoers drop-in so remote
-    ``sudo -n`` / ``rodeo up`` never prompts for a password.
+    ``sudo -n`` / ``rodeo up`` never prompts for a password. With ``expires_at``
+    it also arms the dead-man switch timer (rodeo/providers/deadman.py).
     """
     import json
 
@@ -65,12 +68,14 @@ def build_ec2_userdata(*, ssh_user: str = "ec2-user") -> str:
         "    permissions: '0644'\n"
         "    content: |\n"
         "      PermitRootLogin prohibit-password\n"
-        "bootcmd:\n"
+        + (cloud_config_files(expires_at) if expires_at else "")
+        + "bootcmd:\n"
         "  - [mkdir, -p, /root/.ssh]\n"
         "  - [chmod, '700', /root/.ssh]\n"
         "runcmd:\n"
         "  - [chmod, '700', /root/.ssh]\n"
         "  - [bash, -lc, 'systemctl reload sshd 2>/dev/null || systemctl reload ssh 2>/dev/null || true']\n"
+        + (cloud_config_runcmd() if expires_at else "")
     )
 
 

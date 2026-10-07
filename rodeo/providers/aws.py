@@ -15,6 +15,7 @@ from ..ssh_key import (
     plant_rodeo_ssh_key,
     resolve_ssh_identity,
 )
+from . import deadman
 from .base import (
     ROLE_PORTAL,
     TAG_HOST_ID,
@@ -230,6 +231,7 @@ class AwsHostProvider:
     def validate(self, config: dict[str, Any]) -> None:
         if str(config.get("type") or "").lower() != "aws":
             raise ConfigError("AwsHostProvider requires provider.type: aws")
+        deadman.ttl_hours(config)  # fail before anything is created
         for key in _REQUIRED:
             if key not in config or config[key] in (None, "", []):
                 raise ConfigError(f"provider.{key} is required for AWS")
@@ -842,6 +844,9 @@ class AwsHostProvider:
                 **wait_spec.extra_labels,
                 **(cfg.get("labels") or {}),
             }
+            expiry_tag = _tag(inst, deadman.TAG_EXPIRES_AT)
+            if expiry_tag:
+                labels["expires_at"] = expiry_tag
             labels = {str(k): str(v) for k, v in labels.items()}
             host = ProvisionedHost(
                 id=host_id,
@@ -1004,6 +1009,9 @@ class AwsHostProvider:
     ) -> dict[str, Any]:
         tags = ownership_tags(workshop, host_id)
         tags["Name"] = f"{workshop}-{host_id}"
+        # Dead-man switch (deadman.py): every instance rodeo creates expires.
+        expiry = deadman.expires_at(config)
+        tags[deadman.TAG_EXPIRES_AT] = deadman.iso(expiry)
         for k, v in (config.get("labels") or {}).items():
             tags[str(k)] = str(v)
         for k, v in (extra_labels or {}).items():
@@ -1029,6 +1037,9 @@ class AwsHostProvider:
                 }
             ],
             "DryRun": dry_run,
+            # The guest's dead-man timer powers it off; AWS then terminates it
+            # instead of keeping a stopped instance that still bills its disks.
+            "InstanceInitiatedShutdownBehavior": "terminate",
         }
         vol = int(config.get("volume_size_gib") or 0)
         if vol > 0:
@@ -1045,7 +1056,7 @@ class AwsHostProvider:
         if nested:
             kwargs["CpuOptions"] = {"NestedVirtualization": "enabled"}
         if not dry_run:
-            kwargs["UserData"] = build_ec2_userdata(ssh_user=ssh_user)
+            kwargs["UserData"] = build_ec2_userdata(ssh_user=ssh_user, expires_at=expiry)
         return kwargs
 
     def _wait_running(self, ec2: Any, instance_id: str, *, timeout: float) -> dict[str, Any]:
@@ -1212,8 +1223,12 @@ class AwsHostProvider:
         ip = str(inst.get("PublicIpAddress") or "")
         if action == "create":
             forget_host_key(workshop, ip)
+        portal_labels = {"provider": "aws", "provision_action": action}
+        expiry_tag = _tag(inst, deadman.TAG_EXPIRES_AT)
+        if expiry_tag:
+            portal_labels["expires_at"] = expiry_tag
         host = ProvisionedHost(id=ROLE_PORTAL, ssh=ip, public_ip=ip,
-                               labels={"provider": "aws", "provision_action": action},
+                               labels=portal_labels,
                                provider_id=inst["InstanceId"])
         if wait_ssh:
             spec = ProvisionSpec(workshop=workshop, host_ids=[ROLE_PORTAL], ssh_user=ssh_user,

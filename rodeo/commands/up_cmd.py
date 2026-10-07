@@ -379,10 +379,15 @@ def _aws_control_plane_deploy(
         console.print(f"[red]✗  {exc}[/red]")
         raise SystemExit(1)
 
-    console.print(_aws_done_message(cfg, lab, provisioned.public_ip, provisioned.provider_id))
+    console.print(_aws_done_message(
+        cfg, lab, provisioned.public_ip, provisioned.provider_id,
+        expires_at=provisioned.labels.get("expires_at", ""),
+    ))
 
 
-def _aws_done_message(cfg: dict, lab: Path, ip: str, instance_id: str | None) -> str:
+def _aws_done_message(
+    cfg: dict, lab: Path, ip: str, instance_id: str | None, *, expires_at: str = ""
+) -> str:
     """Closing lines of an AWS deploy: only the UIs this topology has.
 
     The Harvester line used to print for every profile, so a rancher lab
@@ -399,6 +404,10 @@ def _aws_done_message(cfg: dict, lab: Path, ip: str, instance_id: str | None) ->
         lines.append(f"  Harvester UI:  https://{ip}:8443")
     if "rancher" in cfg.get("vms", {}):
         lines.append(f"  Rancher UI:    https://{ip}:30002")
+    if expires_at:
+        lines.append(
+            f"  Self-destructs:  {expires_at} (dead-man switch, provider.ttl_hours)"
+        )
     lines.append(f"  Tear down host:  rodeo destroy --cloud --yes --config-dir {lab}\n")
     return "\n".join(lines)
 

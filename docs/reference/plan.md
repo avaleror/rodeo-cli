@@ -167,8 +167,24 @@ missing is filled in and written back to `rodeo-plan.yaml`, so re-runs and
 | `region` | `$RODEO_AWS_REGION`, else `eu-north-1` (not the AWS CLI's configured region: an account guardrail can leave that one without internet egress) |
 | `subnet_id` | the region's default VPC, first public default-for-AZ subnet in an AZ that offers the instance type |
 | `instance_type` | the profile's `recommended` tier (see below) |
+| `ttl_hours` | `6`: the dead-man switch (see below) |
 
 A region with no default VPC fails with a message naming the fields to set.
+
+**Every cloud host has a dead-man switch.** Each instance rodeo creates
+(single host, fleet hosts, portal VM) expires `provider.ttl_hours` after launch,
+**6 hours** by default. At that time a systemd timer in the guest powers it off,
+and because the instance is created with `InstanceInitiatedShutdownBehavior:
+terminate`, AWS terminates it rather than leaving a stopped instance that still
+bills for its disks. The timer runs at an absolute UTC time with
+`Persistent=true`, so a host stopped past its expiry powers off again as soon as
+it boots. The expiry is on the instance tag `rodeo-expires-at`, in
+`/etc/rodeo-expires-at` on the host, and in the output of `rodeo up --target aws`
+and `rodeo fleet provision`.
+
+The switch cannot be turned off. For a longer workshop set `provider.ttl_hours`
+(more than 0, at most 168) **before** the hosts are created; re-running `up` or
+`fleet provision` on an existing host keeps its original expiry.
 
 **Security group is auto-managed unless you pin one.** Omit
 `security_group_ids` and rodeo creates (or reuses) an SG named `rodeo-<name>`

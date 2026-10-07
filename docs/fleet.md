@@ -556,6 +556,9 @@ provider:
   type: aws                         # aws | gcp | vultr | hetzner  (required if provider: present)
   count: 12                         # how many hosts to ensure when hosts: [] or undersized
   # host_id_prefix: student-        # default "student-"; ids student-01 … student-N
+  # ttl_hours: 10                   # dead-man switch, default 6: every host (and the
+  #                                 # portal VM) powers off and is terminated this long
+  #                                 # after launch. Set it for workshops longer than 6 h.
   # Optional overrides applied to every provisioned host:
   # labels: { room: a, event: emea }
 hosts: []                           # empty → provision creates; or pre-seed static + cloud mix
@@ -565,6 +568,7 @@ Validation rules (fail closed):
 
 - `provider.type` ∈ `{aws, gcp, vultr, hetzner}`.
 - `provider.student_access` ∈ `{operator, open}` when set (default `operator`); see [Student network access](#student-network-access-aws).
+- `provider.ttl_hours` more than 0 and at most 168 when set (default 6); it cannot be turned off. See the [dead-man switch](reference/plan.md#provider-when-deployment_target-aws).
 - `provider.count` integer 1–64 when set; if `hosts:` non-empty and count omitted, ensure exactly those ids (reuse/create by `rodeo-host-id`).
 - SSH identity is managed under `~/.rodeo/ssh/id_ed25519` (auto-created; imported to EC2 as key pair `rodeo`). `defaults.identity_file` / `provider.key_name` are optional.
 - Type-specific required keys enforced by that adapter’s `validate()` only.

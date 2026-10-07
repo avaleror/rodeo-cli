@@ -357,6 +357,28 @@ def test_aws_provision_create_and_reuse(tmp_path, managed_ssh, monkeypatch):
     assert reloaded.hosts[0].public_ip == "203.0.113.1"
 
 
+def test_aws_provision_reports_the_dead_man_expiry_and_reuse_keeps_it(tmp_path, managed_ssh, monkeypatch):
+    path = _aws_workshop(tmp_path, count=1)
+    inv = load_inventory(path)
+    fake = _FakeEC2()
+    provider = AwsHostProvider(ec2_client=fake, sleep=lambda s: None)
+    monkeypatch.setattr("rodeo.fleet.provision.get_provider", lambda name: provider)
+    monkeypatch.setattr(
+        "rodeo.providers.aws.AwsHostProvider._wait_ssh",
+        lambda self, spec, host, timeout=600.0: None,
+    )
+
+    created = fleet_provision(inv, path, wait_ssh=False)[0]
+    expiry = created.labels["expires_at"]
+    tag = {t["Key"]: t["Value"] for t in fake.instances["i-00000001"]["Tags"]}
+    assert tag["rodeo-expires-at"] == expiry
+
+    # Re-provisioning an existing host does not push its expiry back.
+    reused = fleet_provision(inv, path, wait_ssh=False)[0]
+    assert reused.labels["provision_action"] == "reuse"
+    assert reused.labels["expires_at"] == expiry
+
+
 def test_aws_provision_restarts_stopped_instance(tmp_path, managed_ssh, monkeypatch):
     path = _aws_workshop(tmp_path, count=1)
     inv = load_inventory(path)

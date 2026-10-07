@@ -379,15 +379,28 @@ def _aws_control_plane_deploy(
         console.print(f"[red]✗  {exc}[/red]")
         raise SystemExit(1)
 
-    ip = provisioned.public_ip
-    console.print(
+    console.print(_aws_done_message(cfg, lab, provisioned.public_ip, provisioned.provider_id))
+
+
+def _aws_done_message(cfg: dict, lab: Path, ip: str, instance_id: str | None) -> str:
+    """Closing lines of an AWS deploy: only the UIs this topology has.
+
+    The Harvester line used to print for every profile, so a rancher lab
+    pointed people at an :8443 nothing listens on. The teardown command names
+    the lab dir: with --profile the operator is usually not inside it.
+    """
+    from ..inventory import harvester_vm_names
+
+    lines = [
         f"\n[green]✓[/green]  Remote deploy finished on [cyan]{ip}[/cyan] "
-        f"(instance {provisioned.provider_id or '—'}).\n"
-        f"  Harvester UI:  https://{ip}:8443\n"
-        f"  Rancher UI:    https://{ip}:30002\n"
-        f"  Tear down host:  rodeo destroy --cloud --yes "
-        f"(from this lab dir)\n"
-    )
+        f"(instance {instance_id or '-'})."
+    ]
+    if harvester_vm_names(cfg):
+        lines.append(f"  Harvester UI:  https://{ip}:8443")
+    if "rancher" in cfg.get("vms", {}):
+        lines.append(f"  Rancher UI:    https://{ip}:30002")
+    lines.append(f"  Tear down host:  rodeo destroy --cloud --yes --config-dir {lab}\n")
+    return "\n".join(lines)
 
 
 def _infer_lab_profile(lab: Path) -> str | None:

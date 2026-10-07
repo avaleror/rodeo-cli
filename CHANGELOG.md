@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.0](https://github.com/avaleror/rodeo-cli/compare/v0.21.0...v0.22.0) (2026-10-07)
+
+
+### Features
+
+* **install:** control-plane install on macOS and any Linux; rodeo refuses local labs it cannot host ([#84](https://github.com/avaleror/rodeo-cli/issues/84)) ([6de7780](https://github.com/avaleror/rodeo-cli/commit/6de778004fbdd5e191e156ce81a49734fd04302a))
+
 ## [0.21.0](https://github.com/avaleror/rodeo-cli/compare/v0.20.1...v0.21.0) (2026-10-07)
 
 

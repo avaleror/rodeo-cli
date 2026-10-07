@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.21.0](https://github.com/avaleror/rodeo-cli/compare/v0.20.1...v0.21.0) (2026-10-07)
+
+
+### Features
+
+* **aws:** dead-man switch on every cloud host rodeo launches (6 h default) ([#83](https://github.com/avaleror/rodeo-cli/issues/83)) ([eb32709](https://github.com/avaleror/rodeo-cli/commit/eb3270955c0435a1f9372a355f6d9cf77470cf10))
+* **builder:** static Rodeo Builder web UI, published with the docs ([3fa9418](https://github.com/avaleror/rodeo-cli/commit/3fa9418d765afba05af13f863716c919006cf915))
+* Fix/labinabox common sizing ([a6720e2](https://github.com/avaleror/rodeo-cli/commit/a6720e2f69f0a224a3bf62886e5db5b456c8d38d))
+* rancher profiles with downstream K3s/RKE2 clusters + AWS without a provider block ([#81](https://github.com/avaleror/rodeo-cli/issues/81)) ([d3ee03d](https://github.com/avaleror/rodeo-cli/commit/d3ee03d23f2b700d794cd603968ff6724ea48463))
+
+
+### Bug Fixes
+
+* **builder:** list every workshop's chapters, mark the lab engine, ed… ([de08940](https://github.com/avaleror/rodeo-cli/commit/de089400a15974bd999ed0f1b3d5c828324516bc))
+* **builder:** list every workshop's chapters, mark the lab engine, edit plan.yaml ([d55a22f](https://github.com/avaleror/rodeo-cli/commit/d55a22f6e94f4e9383a993d9bf9bad394f956008))
+* **smlm-workshop:** size the SMLM server disk for the synced channels (300 GB) ([e0e068c](https://github.com/avaleror/rodeo-cli/commit/e0e068c29cb2eae2a51c1d8af32aa7020ca711c5))
+* **up:** --profile wins over the last lab + AWS banner lists only the lab's UIs ([#82](https://github.com/avaleror/rodeo-cli/issues/82)) ([f9a4ae5](https://github.com/avaleror/rodeo-cli/commit/f9a4ae52e6528d96fb78ae6ec3841a3b843e228a))
+
 ## [0.20.1](https://github.com/avaleror/rodeo-cli/compare/v0.20.0...v0.20.1) (2026-10-05)
 
 

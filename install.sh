@@ -316,8 +316,13 @@ else
     *":$BIN_DIR:"*) ;;
     *)
       echo ""
+      case "$(basename "${SHELL:-}")" in
+        zsh)  RC="~/.zshrc" ;;
+        bash) RC="~/.bashrc" ;;
+        *)    RC="~/.profile" ;;
+      esac
       echo "  $BIN_DIR is not on your PATH yet. Add it, then open a new shell:"
-      echo "    echo 'export PATH=\"$BIN_DIR:\$PATH\"' >> ~/.$(basename "${SHELL:-bash}")rc"
+      echo "    echo 'export PATH=\"$BIN_DIR:\$PATH\"' >> $RC"
       ;;
   esac
 fi

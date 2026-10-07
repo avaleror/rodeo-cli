@@ -4,7 +4,7 @@
 
 You need a Linux host (SLES 16 / Leap 16 recommended) with nested KVM available, root or passwordless sudo, and enough RAM for the profile you pick — see the table below.
 
-To drive remote or cloud hosts from a laptop instead (including macOS), see [Install on Linux and macOS](install.md).
+To drive remote or cloud hosts from a laptop instead (macOS or any other Linux), the same `install.sh` installs rodeo as a control machine: see [Install on Linux and macOS](install.md).
 
 ## Install
 

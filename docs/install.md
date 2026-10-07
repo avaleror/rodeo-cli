@@ -12,59 +12,53 @@ A Mac can never be a KVM host: labs need `/dev/kvm`, libvirt and Linux `/proc`.
 Everything else (cloud hosts, fleets, the claim portal) works the same from either
 platform.
 
-## KVM host (Linux)
+## One installer, two roles
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/avaleror/rodeo-cli/main/install.sh | bash
-rodeo up
 ```
 
-`install.sh` needs root or passwordless sudo. It installs `python3`, `pip` and `git`
-with zypper, apt-get or dnf, clones rodeo to `/opt/rodeo-cli`, creates a virtualenv
-there and links `/usr/local/bin/rodeo`. Pin a version with `--ref <tag|branch|sha>`.
-You normally never run this by hand on cloud hosts: `rodeo up --target aws` and
+`install.sh` looks at the machine and picks the role:
+
+| Machine | Role | What it installs |
+|---------|------|------------------|
+| SLES 16 / Leap 16 | **KVM host** | Needs root. `python3`, `pip` and `git` with zypper, rodeo in `/opt/rodeo-cli`, `/usr/local/bin/rodeo`. Then: `rodeo up` |
+| macOS, SLES/Leap 15, Ubuntu, Fedora, any other Linux | **Control machine** | No system packages and no root needed. rodeo with the `[aws]` extra in `~/.local/share/rodeo-cli`, `~/.local/bin/rodeo` (as root: `/opt/rodeo-cli`, `/usr/local/bin`). Then: `rodeo up --profile <name> --target aws` |
+
+On a control machine the installer uses a Python 3.10+ that is already there
+(Homebrew, `python311` on SLES 15, ...). If there is none, for example the
+Python 3.9 of macOS or the 3.6 of SLES 15, it fetches a private Python with a
+pinned [uv](https://github.com/astral-sh/uv) into the install directory. The
+system Python is never touched and no shell profile is edited; the installer
+prints the `PATH` line to add if `~/.local/bin` is not on it yet.
+
+It needs `git` and `curl`. On macOS they come with the Xcode command line tools
+(`xcode-select --install`); on Linux, as root, the installer adds them itself.
+
+- `--ref <tag|branch|sha>` pins a version.
+- `--mode kvm-host|control-plane` (or `RODEO_MODE`) overrides the automatic choice,
+  for example a KVM host on another distribution at your own risk.
+- Re-running the installer updates rodeo. An environment left on a Python that is
+  too old is rebuilt.
+
+You normally never run it by hand on cloud hosts: `rodeo up --target aws` and
 `rodeo fleet deploy` run it on the host for you.
 
-## Control machine on Linux
+On a control machine, `rodeo up` without `--target aws` stops and says so instead
+of starting a lab it cannot run (`--no-deploy` still sets the lab up).
+`RODEO_ALLOW_ANY_KVM_HOST=1` lets you try a local lab on an unsupported Linux
+anyway.
 
-Two ways:
-
-- **`install.sh`** (as above), then add the AWS extra, which `install.sh` does not
-  install:
-
-    ```bash
-    sudo /opt/rodeo-cli/.venv/bin/pip install -e '/opt/rodeo-cli[aws]'
-    ```
-
-- **A user checkout**, the same as on macOS below (recommended if you change rodeo
-  itself, or do not want a system-wide install). Use your distribution's `python3`
-  (3.10 or newer) instead of Homebrew.
-
-## Control machine on macOS
-
-`install.sh` does not support macOS (it only knows zypper, apt-get and dnf). Install
-from a checkout instead:
+### From a checkout (if you change rodeo itself)
 
 ```bash
-# 1. Prerequisites
-xcode-select --install                 # git + OpenSSH, if not installed yet
-brew install python@3.13 awscli        # Python 3.10+ and AWS CLI v2
-
-# 2. rodeo in its own virtualenv, editable
 git clone https://github.com/avaleror/rodeo-cli.git ~/GitHub/rodeo-cli
 cd ~/GitHub/rodeo-cli
-python3.13 -m venv .venv
-.venv/bin/pip install -e '.[aws]'
-
-# 3. Put `rodeo` on your PATH
-mkdir -p ~/.local/bin
-ln -sf ~/GitHub/rodeo-cli/.venv/bin/rodeo ~/.local/bin/rodeo
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc   # if ~/.local/bin is not on PATH yet
-rodeo --version
+bash install.sh --dev        # editable install with the dev extras, in place
 ```
 
-To update: `git -C ~/GitHub/rodeo-cli pull`. The install is editable, so whatever
-branch is checked out in that directory is what `rodeo` runs.
+The install is editable, so whatever branch is checked out in that directory is
+what `rodeo` runs.
 
 ## AWS credentials (both platforms)
 
@@ -86,9 +80,9 @@ still being valid: re-run the command.
 
 | Topic | Linux | macOS |
 |-------|-------|-------|
-| Installer | `install.sh` (root, `/opt/rodeo-cli`) | Manual checkout + virtualenv (above) |
-| Python | Distribution `python3` 3.10+ | System `python3` is 3.9: too old. Use Homebrew's |
-| `[aws]` extra | Install it separately (see above) | Part of the `pip install -e '.[aws]'` step |
+| Installer | `install.sh` (KVM host on SLES 16 / Leap 16, control machine elsewhere) | `install.sh` (control machine) |
+| Python | Distribution `python3` 3.10+, else a private one via uv | Homebrew's if present, else a private one via uv (system `python3` is 3.9) |
+| `[aws]` extra | Installed on control machines | Installed |
 | Local labs (`rodeo up` without `--target aws`) | Yes, on a KVM host | No |
 | SSH | OpenSSH | Built-in OpenSSH; nothing extra needed |
 | rodeo's own SSH key | `~/.rodeo/ssh/id_ed25519`, created on first use | Same |

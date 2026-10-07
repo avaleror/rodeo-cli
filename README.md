@@ -49,6 +49,14 @@ rodeo up
 
 That is it. The installer clones the repo, sets up a Python environment internally, and links `rodeo` as a system command. No venv to activate, no PATH to set, no sudo prefix — ever.
 
+On a laptop (macOS, or any other Linux, SLES 15 included) the same command installs rodeo as a control machine, without root, and you deploy to the cloud instead:
+
+```bash
+rodeo up --profile rancher --target aws
+```
+
+See [Install on Linux and macOS](docs/install.md).
+
 To install from a fork, set `RODEO_REPO` (and optionally `RODEO_REF`) for the installer:
 
 ```bash

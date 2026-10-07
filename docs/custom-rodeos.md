@@ -21,10 +21,11 @@ orders story chapters and downloads the profile.
 | **engine `type`** | the deploy *pipeline* (which phases run) | `type:` in the plan; code in `rodeo/profiles/` |
 | **profile** (`--profile`) | a named, runnable *lab* you pick on the CLI | a config-dir (bundled or under `~/.rodeo/profiles/`) |
 
-There are three engine types today: `suse-virt` (Harvester HCI + Rancher), `rancher`
-(Rancher Prime on K3s, no Harvester), and `suse-edge` (Rancher + Elemental + EIB + edge
-nodes). Your custom labs pick one of these as their `type` and customize the rest. You
-are authoring topology, not a new pipeline.
+The engine types today: `suse-virt` (Harvester HCI + Rancher), `rancher` and
+`rancher-test` (Rancher Prime plus the K3s/RKE2 clusters it provisions, no Harvester), and
+`suse-edge` (Rancher + Elemental + EIB + edge nodes). `lab-in-a-box` is an external plugin
+with its own engine. Your custom labs pick one of these as their `type` and customize the
+rest. You are authoring topology, not a new pipeline.
 
 List everything you can deploy:
 
@@ -40,8 +41,10 @@ rodeo profiles
 | `harvester-ha` | bundled | suse-virt | 3-node Harvester, no Rancher (etcd HA) |
 | `harvester-2n` | bundled | suse-virt | 2-node Harvester + Rancher Prime |
 | `harvester` | bundled | suse-virt | 3-node Harvester HCI + Rancher Prime |
-| `suse-edge` | bundled | suse-edge | Rancher + Elemental + EIB + edge nodes (SUSE Edge 3.6) |
-| `smlm-workshop` | bundled | lab-in-a-box | SUSE Multi-Linux Manager + 8 clients, built by lab-in-a-box |
+| `virt-workshop-aws` | bundled | suse-virt | `harvester` + image cache, NFS and sample VMs for the SUSE Virtualization workshop |
+| `virt-workshop-aws-2n` | bundled | suse-virt | 2-node version of the workshop lab |
+| `suse-edge` | bundled | suse-edge | Rancher + Elemental + EIB + edge nodes (SUSE Edge 3.7) |
+| `smlm-workshop` | bundled | lab-in-a-box | SUSE Multi-Linux Manager + 8 clients, built by the lab-in-a-box plugin |
 | *(yours)* | custom | any | whatever you scaffold and edit |
 
 ---
@@ -60,24 +63,24 @@ mylab/
 ```
 
 `manifests/` and `helm/values/` also show up in bundled examples and are recorded in
-inventory metadata, but nothing consumes them yet — they're reserved for a future
+inventory metadata, but nothing consumes them yet, they're reserved for a future
 phase. Don't put files there expecting them to be applied; use the per-hostname
 directories described next.
 
-### `custom/scripts/` — a `custom_scripts` phase, after `finalise`
+### `custom/scripts/`: a `custom_scripts` phase, after `finalise`
 
 Numbered executable scripts (`50-my-setup.sh`, `60-seed-vm.sh`, ...) run in sorted
 order as the last phase of the deploy, once the cluster and networking are fully up.
 Each gets:
 
-- `KUBECONFIG` — Harvester's kubeconfig, if it exists (`~/.rodeo/harvester-kubeconfig`)
-- `RODEO_PLAN_NAME`, `RODEO_LAB_DIR`, `RODEO_CONFIG_DIR` — identifying context
+- `KUBECONFIG`: Harvester's kubeconfig, if it exists (`~/.rodeo/harvester-kubeconfig`)
+- `RODEO_PLAN_NAME`, `RODEO_LAB_DIR`, `RODEO_CONFIG_DIR`, identifying context
 
 Write them idempotent (check-then-create): the phase is a `no_cache_phase` like
 `apply`, so it re-runs on every `rodeo up`, not just the first. A failing script is
 reported loudly but doesn't stop the rest (they're typically independent steps); the
 phase itself still ends up failed if any script did, so `rodeo status`/CI notice.
-`custom_scripts` is guarded the same way `finalise` is — skipped on
+`custom_scripts` is guarded the same way `finalise` is, skipped on
 `deployment_target: instruqt` unless `--finalise`, since scripts here create
 persistent cluster state that belongs baked into an image snapshot, not re-run on
 every session boot.
@@ -85,12 +88,12 @@ every session boot.
 `rodeo up`, `plan`, and `deploy` auto-detect this dir (walk up from the current
 directory), so inside a lab dir you can drop `--config-dir`.
 
-### rodeo-plan.yaml — the knobs
+### rodeo-plan.yaml: the knobs
 
 ```yaml
-type: suse-virt              # pipeline: suse-virt or rancher
+type: suse-virt              # pipeline: suse-virt, rancher, rancher-test or suse-edge
 name: mylab                  # used for state + libvirt object names
-deployment_target: baremetal # baremetal | instruqt
+deployment_target: baremetal # baremetal | instruqt | aws
 
 resources:
   harvester: { memory_mib: 16384, vcpu: 8, disk_gb: 320 }
@@ -107,14 +110,14 @@ storage:
   image_dir: /var/lib/libvirt/images
 ```
 
-### definition.yaml — the topology
+### definition.yaml: the topology
 
 The declarative model. You describe the *logical* lab; the renderer compiles it into
 concrete MACs, DHCP leases, libvirt network, firewall rules, and PXE data. The bundled
-files are heavily commented — read them as the reference:
+files are heavily commented: read them as the reference:
 
 - Harvester: `rodeo/data/platforms/suse-virt/definition.yaml`
-- Rancher: `rodeo/data/platforms/rancher/definition.yaml`
+- Rancher: `rodeo/data/platforms/rancher/definition.yaml` (its `downstream_clusters` block lists the K3s/RKE2 clusters and which VMs join each)
 - SUSE Edge: `rodeo/data/platforms/suse-edge/definition.yaml`
 
 Key sections:
@@ -150,7 +153,7 @@ definition:
       # mac/uuid/hostname are generated if you omit them
 ```
 
-You can omit MACs, UUIDs, and hostnames — the renderer generates them deterministically
+You can omit MACs, UUIDs, and hostnames: the renderer generates them deterministically
 from the plan name. Provide them only when you need exact values.
 
 ---
@@ -167,7 +170,7 @@ mylab/
 ```
 
 The `apply` phase SSHes into that node and runs `kubectl apply -f -` for every file
-found there, in sorted order — one directory per node, applied to that node only.
+found there, in sorted order: one directory per node, applied to that node only.
 `apply` is the one phase that always re-runs (it is never cached), so editing files
 here and re-running `rodeo up --profile mylab` picks up the change immediately,
 unlike edits to the topology or resources (see below).
@@ -207,12 +210,12 @@ rodeo plan
 Idempotency here is **phase-level, not resource-level**. Each phase (`kvm_host`, `vms`,
 `pxe_server`, `cluster`, `rancher`, `finalise`) is marked done in
 `~/.rodeo/state/<name>.yaml` once it succeeds, and a plain re-run skips any phase already
-marked done — regardless of what you changed in `definition.yaml` or `rodeo-plan.yaml`.
+marked done: regardless of what you changed in `definition.yaml` or `rodeo-plan.yaml`.
 The `apply` phase is the one exception (it never caches, so node-manifest edits always
-take effect on the next run — see [Applying manifests to a node](#applying-manifests-to-a-node)).
+take effect on the next run: see [Applying manifests to a node](#applying-manifests-to-a-node)).
 
 So after a lab has deployed once, editing `nodes`, `resources`, or `network` and
-re-running `rodeo up --profile mylab` used to skip completed phases. As of B2 step 5,
+re-running `rodeo up --profile mylab` skips completed phases, with one exception:
 **memory/vCPU drift is reconciled by default** on `rodeo deploy` / `rodeo up` (reset from
 `vms`). Topology changes (add/remove nodes) still need a manual path:
 
@@ -227,7 +230,7 @@ rodeo clean --yes && rodeo up --profile mylab   # destroy this lab's VMs and red
 ```
 
 Default reconcile clears the cached `vms` (and later) phase state when live memory/vCPU
-differs from the plan. For **running** domains, libvirt still will not live-resize —
+differs from the plan. For **running** domains, libvirt still will not live-resize,
 stop/start the domain (or `clean` + redeploy) so the inactive XML is applied.
 
 ---
@@ -242,7 +245,7 @@ rodeo up --profile edge-lab             # doctor → secrets → deploy → logi
 ```
 
 Custom profiles deploy **in place** from `~/.rodeo/profiles/<name>/`. Before the lab has
-deployed once, editing the files and re-running `rodeo up --profile <name>` just works —
+deployed once, editing the files and re-running `rodeo up --profile <name>` just works,
 there's no state yet, so every phase runs fresh. Once it *has* deployed, re-running picks
 up file edits only for the `apply` phase; other phases need `--force` or `--from` (see
 [Re-running after a deploy](#re-running-after-a-deploy)) or they're silently skipped. To
@@ -252,9 +255,8 @@ start a fresh copy instead of editing in place, scaffold under a new name or pas
 
 ## Notes
 
-- `--from` must be a bundled base (`rancher`, `test`, `harvester-ha`, `harvester-2n`,
-  `harvester`, `suse-edge`). Copy the closest working lab and trim down — it is the
-  lowest-risk path to a valid topology.
+- `--from` takes any bundled profile (`rodeo profiles` lists them). Copy the closest
+  working lab and trim down: it is the lowest-risk path to a valid topology.
 - Credentials stay in `??key` form; `rodeo up`/`init` generate `~/.rodeo/secrets.yaml`
   for you. No `source` or `sudo -E` needed.
 - Deploying a Harvester topology touches the MAC ↔ DHCP ↔ config-ISO chain. After

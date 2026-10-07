@@ -23,11 +23,11 @@ rodeo deploy --from kvm_host --force   # re-run everything from phase kvm_host
 
 ---
 
-## Harvester install appears stuck — stuck vs timed out
+## Harvester install appears stuck: stuck vs timed out
 
 **Context:** the `cluster` phase waits up to 60 minutes for the Harvester VIP to come up. On nested KVM this can take 45–90 minutes. The question is whether the install is still making progress or has genuinely hung.
 
-**Step 1 — check the heartbeat file:**
+**Step 1: check the heartbeat file:**
 
 ```bash
 cat ~/.rodeo/logs/<lab-name>-heartbeat.txt
@@ -35,7 +35,7 @@ cat ~/.rodeo/logs/<lab-name>-heartbeat.txt
 
 rodeo writes this file every 5 minutes during the VIP and node-ready waits. It records VM states and elapsed time. If the file exists and the timestamp is recent (< 6 min old), the deploy is alive. If the file is missing or stale, the host process may have died.
 
-**Step 2 — check VM states:**
+**Step 2: check VM states:**
 
 ```bash
 virsh list --all
@@ -50,9 +50,9 @@ rodeo logs harvester1
 
 - Any `paused` = memory pressure on the host. Free RAM or add swap, then `virsh resume <vm>`.
 
-**Step 3 — distinguish a stuck install from an Instruqt session timeout:**
+**Step 3: distinguish a stuck install from an Instruqt session timeout:**
 
-Instruqt terminates the GCP lab VM (not just the browser session) after the platform-configured idle timeout. If the lab VM is gone, there is no reconnecting — the install cannot have "hung" because the host no longer exists.
+Instruqt terminates the GCP lab VM (not just the browser session) after the platform-configured idle timeout. If the lab VM is gone, there is no reconnecting, the install cannot have "hung" because the host no longer exists.
 
 Signs the lab was terminated (not stuck):
 - `virsh list --all` fails with "failed to connect to the hypervisor"
@@ -67,7 +67,7 @@ Signs the install is genuinely stuck:
 
 | Symptom in serial log | Cause | Fix |
 |---|---|---|
-| `no network interface found` or hangs at network config | Interface name mismatch — installer got a config naming `eth0` but kernel uses `ens3` | Wipe VMs (`rodeo deploy --from vms --force`) and redeploy |
+| `no network interface found` or hangs at network config | Interface name mismatch: installer got a config naming `eth0` but kernel uses `ens3` | Wipe VMs (`rodeo deploy --from vms --force`) and redeploy |
 | `curl: (7) Failed to connect` to config URL | nginx not running or virbr0 not up | Check nginx: `rodeo ssh <host> -- sudo systemctl status nginx` |
 | Disk full / `containerd` errors | VM disk too small (Elemental's persistent partition floor is a fixed 150 GiB) | Redeploy with `disk_gb: 320` in plan |
 | `etcd` election loop, node never joins | Rapid join race on 3-node setup | Increase `etcd_join_gap_seconds` in `definition.yaml` (default: 90) |
@@ -84,7 +84,7 @@ Signs the install is genuinely stuck:
 rodeo logs harvester1   # is the installer still running?
 ```
 
-If the log is still progressing (you see kernel messages or the Harvester installer), wait — it can take 45–90 minutes on nested KVM.
+If the log is still progressing (you see kernel messages or the Harvester installer), wait: on hosts with slower disks it can take 45–90 minutes on nested KVM.
 
 If the log is stuck or empty:
 
@@ -182,7 +182,7 @@ virsh resume <vm-name>
 rodeo restart <vm-name>
 ```
 
-If it re-pauses immediately, check host RAM — the hypervisor pauses VMs when memory pressure is critical.
+If it re-pauses immediately, check host RAM: the hypervisor pauses VMs when memory pressure is critical.
 
 ---
 
@@ -312,7 +312,7 @@ If VMs lost their cluster state, you may need to recover etcd (see above).
 
 ## Full host reset
 
-Use this when you want to start over completely — wipes all lab VMs, disks, state, and credentials, but leaves packages and the rodeo binary:
+Use this when you want to start over completely, wipes all lab VMs, disks, state, and credentials, but leaves packages and the rodeo binary:
 
 ```bash
 rodeo stop --all --yes 2>/dev/null || true   # graceful stop first
@@ -346,7 +346,65 @@ rodeo fleet diagnose -f workshop.yaml                  # failed hosts (default)
 rodeo fleet diagnose -f workshop.yaml --all-selected   # every selected host
 ```
 
-See [Fleet — Diagnose](fleet.md#diagnose-failure-forensics) for the artifact layout.
+See [Fleet: Diagnose](fleet.md#diagnose-failure-forensics) for the artifact layout.
+
+---
+
+## "This machine cannot host labs" / "not a supported KVM host"
+
+**Confirm:** `rodeo up` or `rodeo deploy` stops with `macOS cannot host labs` or `<distribution> is not a supported KVM host`.
+
+**Why:** labs run on SLES 16 / Leap 16 only. Any other machine is a control machine: it drives hosts on AWS or over SSH but never runs a lab itself.
+
+**Fix:** deploy to the cloud from that machine, or run rodeo on a SLES 16 host:
+
+```bash
+rodeo up --profile <name> --target aws
+```
+
+`RODEO_ALLOW_ANY_KVM_HOST=1` lets you try a local lab on another Linux anyway, unsupported.
+
+---
+
+## Install fails with `setuptools>=68` or another pip error
+
+**Confirm:** `install.sh` stops while setting up the Python environment, often on SLES/Leap 15 (Python 3.6).
+
+**Fix:** re-run the current installer. Since v0.22 it installs a control machine on those systems, with a Python 3.10+ it finds or a private one it downloads, and it rebuilds the broken environment:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/avaleror/rodeo-cli/main/install.sh | bash
+```
+
+---
+
+## AWS: login, region and capacity errors
+
+| Message | Fix |
+|---------|-----|
+| `session has expired` / `CreateOAuth2Token` | Run `aws login` again. A transient `CreateOAuth2Token` error mid-command can also just need a re-run. |
+| `MissingDependencyException` | The `[aws]` extra is missing (`boto3[crt]`). Re-run `install.sh`, which installs it on control machines. |
+| `no default VPC in <region>` | That region has no default VPC. Export `RODEO_AWS_REGION` to one that has, or set `provider.region` and `provider.subnet_id` in the plan. |
+| `not offered in region` / `not enough capacity` | Try another region or `--instance-tier`, or pin `provider.instance_type`. rodeo never downsizes on its own. |
+| `has no public IP` / no internet route | The subnet does not route to an internet gateway. Pick a public subnet. |
+
+---
+
+## AWS: lab unreachable or host gone
+
+**UI or SSH times out from your laptop.** rodeo's security group only admits the public IP you had when the host was created. If your IP changed (new network, VPN), re-run `rodeo up --target aws` from the lab directory: it moves the rule to your current IP and skips phases already done.
+
+**The host disappeared during a session.** The dead-man switch terminated it: every cloud host expires `provider.ttl_hours` after launch (6 by default), shown as `Self-destructs` at the end of `rodeo up` and in the `rodeo-expires-at` instance tag. Re-deploy, and set a longer `provider.ttl_hours` before creating hosts for long sessions.
+
+**Is anything still billing?** Tear down with `rodeo destroy --cloud --yes --config-dir <lab dir>` (or `rodeo fleet deprovision` for a fleet). To check every region for leftovers:
+
+```bash
+for r in $(aws ec2 describe-regions --query 'Regions[].RegionName' --output text); do
+  aws ec2 describe-instances --region "$r" \
+    --filters Name=tag:ManagedBy,Values=rodeo Name=instance-state-name,Values=pending,running,stopping,stopped \
+    --query 'Reservations[].Instances[].[InstanceId,InstanceType,State.Name]' --output text
+done
+```
 
 ---
 
@@ -359,7 +417,7 @@ lines; the second (narrower, missing `/usr/local/*`) wins, so `sudo` can't find
 `/etc/sudoers.d/rodeo-secure-path`) starting with a fresh `rodeo deploy`.
 
 If you hit this on a host with VMs already running, don't re-run `--from
-kvm_host` just for this — on a live lab that phase also re-touches firewalld
+kvm_host` just for this: on a live lab that phase also re-touches firewalld
 and the libvirt network, which can conflict with domains that are already up.
 Apply the one-off fix directly instead:
 

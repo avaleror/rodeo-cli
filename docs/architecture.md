@@ -1,4 +1,4 @@
-# rodeo-cli — Architecture & design
+# rodeo-cli: Architecture & design
 
 Technical reference for contributors and maintainers. For deploying a workshop, see [User guide](get-started.md).
 
@@ -9,15 +9,15 @@ Technical reference for contributors and maintainers. For deploying a workshop, 
 
 ## What rodeo-cli is
 
-`rodeo-cli` deploys the **infrastructure for a rodeo**: a live, hands-on workshop where attendees work against real systems. It builds a lab of **nested KVM VMs** on a single Linux host, driven by a declarative plan — you pick a profile, it converges the host.
+`rodeo-cli` deploys the **infrastructure for a rodeo**: a live, hands-on workshop where attendees work against real systems. It builds a lab of **nested KVM VMs** on a single Linux host, driven by a declarative plan, you pick a profile, it converges the host.
 
 The stack it builds depends on the chosen **engine type** (see [Engine types & profiles](#engine-types-profiles)):
 
-- **`suse-virt`** — a 3-node Harvester HCI cluster (+ optional Rancher Prime)
+- **`suse-virt`**: a 3-node Harvester HCI cluster (+ optional Rancher Prime)
 - **`rancher`**: Rancher Prime on K3s plus K3s/RKE2 clusters Rancher provisions on lab VMs (`rancher-test` is the 2-cluster variant)
-- **`suse-edge`** — Rancher Prime + Elemental + Edge Image Builder + edge nodes
+- **`suse-edge`**: Rancher Prime + Elemental + Edge Image Builder + edge nodes
 
-Every profile shares the same foundation: host networking, firewalld DNAT, DNS, storage, and phase orchestration on nested KVM/libvirt. The tool runs on **cloud instances**, **Instruqt builder VMs**, **local VMs**, or **bare metal** — anywhere you have KVM and enough RAM/disk.
+Every profile shares the same foundation: host networking, firewalld DNAT, DNS, storage, and phase orchestration on nested KVM/libvirt. The tool runs on **cloud instances**, **Instruqt builder VMs**, **local VMs**, or **bare metal**, anywhere you have KVM and enough RAM/disk.
 
 ---
 
@@ -28,7 +28,7 @@ Every profile shares the same foundation: host networking, firewalld DNAT, DNS, 
 | Declarative lab definition | `rodeo-plan.yaml` + secrets + `-P` / `--paramfile` |
 | Plan before apply | `rodeo plan` (read-only diff vs host) |
 | Safe resume | Per-plan state, `--from PHASE`, `--force` |
-| One orchestrator | `DeployRunner` — no duplicated TUI/plain/bash paths |
+| One orchestrator | `DeployRunner`: no duplicated TUI/plain/bash paths |
 | Host setup is idempotent | Ansible roles `kvm_host` + `vms` + `pxe_server` |
 | Long waits are cancellable | `threading.Event` + process groups in poll loops |
 | Instruqt-safe builds | `deployment_target: instruqt` skips `finalise`; hostimage boot uses `start-if-needed` |
@@ -38,7 +38,7 @@ Every profile shares the same foundation: host networking, firewalld DNAT, DNS, 
 | Interactive definition generation | `rodeo generate` (templates base via parameter collection for hybrid customization, produces full config-dir yaml skeleton with project conventions like infra_type; post-validation via load_config; next steps for bootstrap/deploy/stop/start/clean lifecycle). Enables consistent entry to declarative model (definition as source for inventory/renderer/phases). |
 
 
-**Vision (roadmap):** Declarative lab deployment — declare desired state, preview diff, converge, destroy what you own. See [ROADMAP.md](https://github.com/avaleror/rodeo-cli/blob/main/ROADMAP.md).
+**Vision (roadmap):** Declarative lab deployment, declare desired state, preview diff, converge, destroy what you own. See [ROADMAP.md](https://github.com/avaleror/rodeo-cli/blob/main/ROADMAP.md).
 
 ---
 
@@ -49,15 +49,15 @@ rodeo-cli has two independent axes that combine to produce a lab deployment:
 ```
 Tech platform  ×  Host context  =  lab deployment
 
-suse-edge          baremetal        SUSE Edge 3.6 on bare metal KVM
-suse-edge          instruqt         SUSE Edge 3.6 on Instruqt KVM
+suse-edge          baremetal        SUSE Edge 3.7 on bare metal KVM
+suse-edge          instruqt         SUSE Edge 3.7 on Instruqt KVM
 suse-virt          instruqt         SUSE Virtualization on Instruqt KVM
 rancher            aws              Rancher on an AWS EC2 KVM host
 ```
 
-**Tech platform** — what lab topology and software stack to deploy. Encoded in `rodeo/profiles/<name>.py` + `data/platforms/<name>/definition.yaml`. Platform code is host-agnostic; the same profile works on any host context.
+**Tech platform**: what lab topology and software stack to deploy. Encoded in `rodeo/profiles/<name>.py` + `data/platforms/<name>/definition.yaml`. Platform code is host-agnostic; the same profile works on any host context.
 
-**Host context** — where the KVM host runs and what that implies for host-level setup. Encoded in `deployment_target` in `rodeo-plan.yaml`. Affects: guarded phases, firewall/DNAT configuration, external IP detection, success screen output, and **infra adaptation** (`rodeo/host_context.py`): resource floors, disk backend, guest cache/io. Acquire can be provisioned or BYO; both converge through the same overlays. The underlying infrastructure is always KVM/libvirt regardless of host context.
+**Host context**: where the KVM host runs and what that implies for host-level setup. Encoded in `deployment_target` in `rodeo-plan.yaml`. Affects: guarded phases, firewall/DNAT configuration, external IP detection, success screen output, and **infra adaptation** (`rodeo/host_context.py`): resource floors, disk backend, guest cache/io. Acquire can be provisioned or BYO; both converge through the same overlays. The underlying infrastructure is always KVM/libvirt regardless of host context.
 
 | `deployment_target` | Host type | Key differences |
 |---|---|---|
@@ -66,17 +66,23 @@ rancher            aws              Rancher on an AWS EC2 KVM host
 | `aws` | Provisioned EC2 *or* BYO on EC2 | `provider:` + destroy; `disk_gb` floor 500/Harvester-node, 60/Rancher-node (flat); NVMe → `image_dir` |
 | `gcp` *(planned)* | GCP instance with KVM | external IP via GCE metadata; VPC firewall rules |
 
+**Two install roles.** `install.sh` installs a **KVM host** on SLES 16 / Leap 16 (`/opt/rodeo-cli`, system packages, a venv with system site packages for the libvirt binding) and a **control machine** everywhere else (macOS, other Linux: no root, an isolated venv with the `[aws]` extra, a private Python via a pinned uv when the system one is older than 3.10). `rodeo/hostos.py` makes the same call at run time: on a machine that cannot host labs, `rodeo up` without `--target aws` and `rodeo deploy` stop with the reason instead of failing halfway (`RODEO_ALLOW_ANY_KVM_HOST=1` overrides). lab-in-a-box profiles are left to the plugin.
+
+**Cloud dead-man switch.** Every EC2 instance rodeo creates (single host, fleet hosts, portal VM) goes through `AwsHostProvider._run_instances_kwargs`, which sets `InstanceInitiatedShutdownBehavior: terminate`, tags the expiry as `rodeo-expires-at`, and adds a cloud-init systemd timer (`rodeo-deadman.timer`, absolute UTC time, `Persistent=true`) that powers the guest off. `provider.ttl_hours` (default 6, at most 168) lengthens it; nothing turns it off. Logic in `rodeo/providers/deadman.py`.
+
+**AWS provider defaults.** With no `provider:` block, `rodeo up --target aws` fills `region` (`$RODEO_AWS_REGION`, else `eu-north-1`), `subnet_id` (the default VPC's public subnet in an AZ that offers the instance type) and the catalog instance, and persists them to the plan for re-runs and `destroy --cloud`.
+
 ### Vocabulary (keep these straight)
 
 | Term | Meaning | Where it lives |
 |------|---------|----------------|
 | **Control plane acquire** | Laptop provisions (or reuses) a cloud KVM host, waits for SSH, then remote-runs deploy | `rodeo up --target aws` / `rodeo fleet provision` |
-| **Execution target on the KVM host** | What phase guards and firewall/DNAT the *host* actually runs | Phases run as `baremetal` (or `instruqt`) on the instance — never as a second cloud pipeline |
+| **Execution target on the KVM host** | What phase guards and firewall/DNAT the *host* actually runs | Phases run as `baremetal` (or `instruqt`) on the instance, never as a second cloud pipeline |
 | **`deployment_target: aws` in the plan** | Host-context marker: disk/NVMe/cache overlays + cloud destroy ownership. Stays in the plan on the instance so `apply_host_context` and `rodeo destroy --cloud` still work | `rodeo-plan.yaml` |
 | **Lab topology** | Nested VM shape: nodes, MACs, boot order, exposed services | `definition.yaml` → `rodeo/inventory.py` |
 | **Workshop inventory** | Which student/instructor *hosts* exist and how to SSH to them | `workshop.yaml` → `rodeo/fleet/inventory.py` |
 
-**Option A rule — AWS is *where*, not a second *what*.** There is **no** separate `*-aws` topology profile. Use the base profile (`harvester`, `suse-edge`, …) plus `--target aws` / `deployment_target: aws`. Instance size comes from `instance_catalog` keyed by that **same** profile name (`budget` / `recommended` / `performance`). Disk floors, NVMe, and guest cache/io come from `host_context` when the target is `aws`.
+**Option A rule: AWS is *where*, not a second *what*.** There is **no** separate `*-aws` topology profile. Use the base profile (`harvester`, `suse-edge`, …) plus `--target aws` / `deployment_target: aws`. Instance size comes from `instance_catalog` keyed by that **same** profile name (`budget` / `recommended` / `performance`). Disk floors, NVMe, and guest cache/io come from `host_context` when the target is `aws`.
 
 Canonical smoke:
 
@@ -88,7 +94,7 @@ rodeo up --yes --profile harvester --target aws --instance-tier recommended
 
 **Acquire vs adapt.** Host acquire can be provisioned (`rodeo up --target aws` / Fleet `provider:`) or BYO (SSH inventory / operator-created EC2). Both must hit `apply_host_context()` before deploy so workshops do not fork playbooks per cloud. Tech platform declares *what* lab; host context declares *where* and *how the host must be shaped*.
 
-Adding a new host context is one call: `host_context.register_host_context(name, overlay)`. Registration makes the target valid in plans, `--target`, and the `rodeo up` prompt; the overlay is also where engine behaviour is customized — values it sets on the plan (`libvirt.disk_cache`/`disk_io`, `storage.backend`, resources) are honored by DeployRunner over its per-target defaults. Only a target needing bespoke *detection* (like Instruqt's env probe) still touches `up_cmd.py`. See the Extension points table below.
+Adding a new host context is one call: `host_context.register_host_context(name, overlay)`. Registration makes the target valid in plans, `--target`, and the `rodeo up` prompt; the overlay is also where engine behaviour is customized, values it sets on the plan (`libvirt.disk_cache`/`disk_io`, `storage.backend`, resources) are honored by DeployRunner over its per-target defaults. Only a target needing bespoke *detection* (like Instruqt's env probe) still touches `up_cmd.py`. See the Extension points table below.
 
 ---
 
@@ -96,17 +102,17 @@ Adding a new host context is one call: `host_context.register_host_context(name,
 
 Two terms that sound alike but are different:
 
-- **Engine `type`** — the deploy *pipeline*: which phases run and how. Code lives in `rodeo/profiles/<name>.py` (a `RodeoProfile` subclass) + `data/platforms/<name>/definition.yaml`. There are **three** today.
-- **Profile** (`--profile`) — a named, runnable *lab* (a config-dir, bundled or under `~/.rodeo/profiles/`). Each profile picks one engine type. Topology profiles are the *what*; AWS is only a *where*.
+- **Engine `type`**: the deploy *pipeline*: which phases run and how. Code lives in `rodeo/profiles/<name>.py` (a `RodeoProfile` subclass) + `data/platforms/<name>/definition.yaml`. There are four today (`suse-virt`, `rancher`, `rancher-test`, `suse-edge`); `lab-in-a-box` arrives as an external plugin with its own engine.
+- **Profile** (`--profile`): a named, runnable *lab* (a config-dir, bundled or under `~/.rodeo/profiles/`). Each profile picks one engine type. Topology profiles are the *what*; AWS is only a *where*.
 
-Since PR #4 the three profile classes are thin: `RodeoProfile` (`profiles/base.py`) owns config assembly (`default_cfg()` — loads the definition with a static fallback) and phase dispatch (a table-driven `run_phase()` with a no-Rancher skip guard). Each subclass carries only its data and deltas — `static_vms`, `resources`, `versions`, and small hooks like `extra_cfg()` / `_default_user()`.
+Since PR #4 the profile classes are thin: `RodeoProfile` (`profiles/base.py`) owns config assembly (`default_cfg()` (loads the definition with a static fallback) and phase dispatch (a table-driven `run_phase()` with a no-Rancher skip guard). Each subclass carries only its data and deltas)`static_vms`, `resources`, `versions`, and small hooks like `extra_cfg()` / `_default_user()`.
 
-### The three engine types
+### Engine types
 
 | Engine type | Phase pipeline | Boot method | Stack |
 |-------------|----------------|-------------|-------|
 | `suse-virt` | `kvm_host → vms → pxe_server → cluster → rancher → apply → finalise` | iPXE network install (UEFI) | Harvester HCI cluster (+ optional Rancher Prime) |
-| `rancher` | `kvm_host → vms → boot → rancher → downstream → apply → finalise` | cloud-init image | Rancher Prime on K3s + Rancher-provisioned K3s/RKE2 clusters |
+| `rancher`, `rancher-test` | `kvm_host → vms → boot → rancher → downstream → apply → finalise` | cloud-init image | Rancher Prime on K3s + Rancher-provisioned K3s/RKE2 clusters |
 | `suse-edge` | `kvm_host → vms → boot → rancher → elemental → apply → finalise` | cloud-init image | Rancher Prime + Elemental Operator + EIB + edge nodes |
 
 The Harvester path is the outlier: it needs `pxe_server` (iPXE/TFTP/HTTP) and a `cluster` phase that network-installs each node and waits for the VIP. The cloud-image profiles skip both: a single `boot` phase starts the network and VMs directly. `suse-edge` adds one phase, `elemental`, which installs the Elemental Operator after Rancher so edge nodes can register over TPM. `rancher`/`elemental`/`downstream` phases are skipped automatically when a topology has no Rancher node. The `rancher` profiles add `downstream`, which creates K3s/RKE2 custom clusters in Rancher and registers their nodes.
@@ -121,7 +127,7 @@ The Harvester path is the outlier: it needs `pxe_server` (iPXE/TFTP/HTTP) and a 
 | `harvester-ha` | `suse-virt` | 3-node Harvester, no Rancher (etcd HA) |
 | `harvester-2n` | `suse-virt` | 2-node Harvester + Rancher Prime |
 | `harvester` | `suse-virt` | 3-node Harvester HCI + Rancher Prime (AWS: same profile + `--target aws`; recommended `m8id.8xlarge`) |
-| `suse-edge` | `suse-edge` | Rancher + Elemental + EIB + 4 edge nodes (SUSE Edge 3.6; AWS: same profile + `--target aws`) |
+| `suse-edge` | `suse-edge` | Rancher + Elemental + EIB + 4 edge nodes (SUSE Edge 3.7; AWS: same profile + `--target aws`) |
 | `virt-workshop-aws` | `suse-virt` | Workshop overlay on harvester topology (`custom/scripts/` for image cache / NFS / sample VMs) |
 | `virt-workshop-aws-2n` | `suse-virt` | 2-node workshop overlay (budget instance tier) |
 | `smlm-workshop` | `lab-in-a-box` | SMLM server (pre-built image) + SLES / CentOS 7 / Ubuntu clients for the instruqt-SMLM track; VMs and SMLM config by lab-in-a-box |
@@ -170,8 +176,8 @@ Per-profile topology tables (VMs, IPs, RAM) live in each [deployment guide](get-
 
 **Consumers of the event stream:**
 
-- `rodeo/app.py` — Textual TUI (DeployPanel + LogsPanel)
-- `rodeo/commands/deploy.py` — Rich plain output
+- `rodeo/app.py`: Textual TUI (DeployPanel + LogsPanel)
+- `rodeo/commands/deploy.py`: Rich plain output
 
 Neither contains pipeline logic. Both subscribe to the same `DeployRunner` generator.
 
@@ -206,17 +212,22 @@ rodeo/
 ├── engine/
 │   ├── runner.py          DeployRunner, vars file, phase dispatch helpers
 │   ├── cluster.py         ClusterPhase
-│   ├── rancher.py         RancherPhase
+│   ├── rancher/           RancherPhase, split by concern (cluster_setup, harvester,
+│   │                      elemental, extensions, downstream, ...)
+│   ├── labinabox_phase.py Phases that hand a lab to the lab-in-a-box plugin
 │   └── libvirt.py         LibvirtDriver
 ├── profiles/
-│   ├── base.py            RodeoProfile — shared config assembly + phase dispatch
+│   ├── base.py            RodeoProfile: shared config assembly + phase dispatch
 │   ├── rancher.py         Rancher Prime on K3s + K3s/RKE2 downstream clusters
 │   ├── rancher_test.py    Rancher Prime on K3s + single-node K3s and RKE2
 │   ├── suse_virt.py       Harvester HCI + Rancher (default workshop profile)
-│   └── suse_edge.py       SUSE Edge 3.6 (Rancher + Elemental + EIB + edge nodes)
+│   └── suse_edge.py       SUSE Edge 3.7 (Rancher + Elemental + EIB + edge nodes)
 ├── commands/              Thin CLI wrappers
 ├── service/               JSON report helpers (doctor, status) for CLI + fleet
 ├── fleet/                 Laptop→host workshop fan-out (OpenSSH; see docs/fleet.md)
+├── providers/             Cloud host providers (AWS), instance catalog, dead-man switch
+├── portal/                Student claim portal (stdlib-only web app)
+├── hostos.py              Can this machine host labs, or only drive remote ones?
 ├── widgets/               TUI panels
 └── data/
     ├── platforms/         definition.yaml per tech platform (suse-virt, suse-edge, rancher)
@@ -275,7 +286,7 @@ resources:
     memory_mib: {{ memory }}
 ```
 
-`StrictUndefined` — missing parameters fail at load time, not mid-deploy.
+`StrictUndefined`: missing parameters fail at load time, not mid-deploy.
 
 ### Secrets (`??` placeholders)
 
@@ -287,14 +298,14 @@ Passwords go to Ansible via a **mode-600 vars file** (`-e @file`), never on argv
 
 Generated per deploy. Keys Ansible actually consumes:
 
-- `libvirt_flavors` (nested — matches `vm.xml.j2`, `images.yml`)
+- `libvirt_flavors` (nested: matches `vm.xml.j2`, `images.yml`)
 - `lab_dns_domain` (not `dns_domain`)
 - `harvester_version`, `harvester_iso_checksum` (version-keyed map)
 - network, passwords, `image_dir`, optional `harvester_token`
 
 ### State
 
-`~/.rodeo/state/<plan-name>.yaml` — phase completion, timestamps, `last_error`. chmod 600.
+`~/.rodeo/state/<plan-name>.yaml`: phase completion, timestamps, `last_error`. chmod 600.
 
 - `rodeo deploy` skips completed phases
 - `rodeo deploy --from PHASE` clears that phase and later
@@ -361,7 +372,7 @@ UEFI firmware (empty disk, no bootloader)
 
 The per-node routing is **MAC-based**, not per-host dnsmasq tags: libvirt already
 writes a `<host mac=…>` for each node's IP, and a second `dhcp-host` for the same
-MAC (to set a routing tag) is silently ignored by dnsmasq — so all iPXE clients
+MAC (to set a routing tag) is silently ignored by dnsmasq, so all iPXE clients
 get one `boot.ipxe`, which selects the node script by `${net0/mac:hexhyp}`.
 
 VM XML boot order is **disk first, management NIC second**. On first boot the qcow2 is empty, so UEFI falls through to NIC PXE. After install, reboots go straight to disk. ISO CDROMs remain attached as fallback; `RancherPhase` ejects them once the cluster is up.
@@ -384,14 +395,14 @@ Ref: [Harvester v1.8 PXE boot install](https://docs.harvesterhci.io/v1.8/install
 
 Documented in role comments and [CONTEXT.md](https://github.com/avaleror/rodeo-cli/blob/main/CONTEXT.md).
 
-1. **NetworkManager only** — wicked removed; virbr0/vnet* marked unmanaged
-2. **Modular libvirt** — disable monolithic `libvirtd`; enable socket-activated daemons
-3. **libvirt-guests off during build** — stalls `network-online.target` on Instruqt save/reboot
-4. **virbr0 autostart false until cluster** — same boot-order issue
-5. **firewalld rules permanent, daemon stopped during Ansible** — protects Instruqt mgmt NIC
-6. **90s gap between harvester2 and harvester3** — etcd join race prevention
-7. **OVMF 4MB non-SecureBoot** — 2MB images gone on SLES 16
-8. **xorriso** — not genisoimage
+1. **NetworkManager only**: wicked removed; virbr0/vnet* marked unmanaged
+2. **Modular libvirt**: disable monolithic `libvirtd`; enable socket-activated daemons
+3. **libvirt-guests off during build**: stalls `network-online.target` on Instruqt save/reboot
+4. **virbr0 autostart false until cluster**: same boot-order issue
+5. **firewalld rules permanent, daemon stopped during Ansible**: protects Instruqt mgmt NIC
+6. **90s gap between harvester2 and harvester3**: etcd join race prevention
+7. **OVMF 4MB non-SecureBoot**: 2MB images gone on SLES 16
+8. **xorriso**: not genisoimage
 
 **Files to treat as fragile:**
 
@@ -438,7 +449,7 @@ pytest tests/ -v
 | `test_cluster.py` / `test_rancher.py` | Poll loops, timeouts, parsing |
 | `test_plan_cmd.py` | Plan diff command |
 
-GitHub Actions: `.github/workflows/ci.yml` — Python 3.10 + 3.12 (ruff, pytest); ansible-lint job on 3.12.
+GitHub Actions: `.github/workflows/ci.yml`: Python 3.10 + 3.12 (ruff, pytest); ansible-lint job on 3.12.
 
 Live KVM regression is still manual (or geekohive) before touching MAC/DHCP/ISO chain.
 
@@ -449,15 +460,15 @@ Live KVM regression is still manual (or geekohive) before touching MAC/DHCP/ISO 
 | Add… | Where |
 |------|-------|
 | New tech platform | New `RodeoProfile` + `definition.yaml`, then `profiles.register_profile()` (in-tree: `profiles/__init__.py`; out-of-tree: a `rodeo.plugins` entry point) |
-| New deployment_target | `host_context.register_host_context(name, overlay)` — validation, `--target`, prompt, and plan shaping all follow; add `up_cmd.py` auto-detection only if the target is probeable |
-| Profile success screen | Override `RodeoProfile.success_extra_sections()` / `success_next_steps()` — `success.py` renders URLs/credentials, the profile owns the narrative |
+| New deployment_target | `host_context.register_host_context(name, overlay)`, validation, `--target`, prompt, and plan shaping all follow; add `up_cmd.py` auto-detection only if the target is probeable |
+| Profile success screen | Override `RodeoProfile.success_extra_sections()` / `success_next_steps()`, `success.py` renders URLs/credentials, the profile owns the narrative |
 | New Python phase | `profiles.base.register_stream_phase()` + a `stream_*` generator on DeployRunner + add to `profile.phases` |
 | New host provider | `providers.registry.register_provider()` with a factory returning a `HostProvider` |
-| Third-party plugin | A package with a `rodeo.plugins` entry point calling the register_* APIs — discovered lazily on the first lookup miss (see `rodeo/plugins.py`) |
+| Third-party plugin | A package with a `rodeo.plugins` entry point calling the register_* APIs, discovered lazily on the first lookup miss (see `rodeo/plugins.py`) |
 | New CLI command | `commands/*.py` + register in `cli.py` |
-| Host OS support | `install_deps.py` + possibly kvm_host role conditionals |
+| Host OS support | `hostos.py` (which OSes host labs), `install.sh` role detection, `install_deps.py`, and kvm_host role conditionals |
 | New workshop/demo | Separate repo: `rodeo-plan.yaml` (type + deployment_target) + lab guide + host setup docs |
-| Multi-host workshop fan-out | `rodeo/fleet/` + `workshop.yaml` — see [Fleet](fleet.md); do not multi-host the phase engine |
+| Multi-host workshop fan-out | `rodeo/fleet/` + `workshop.yaml`: see [Fleet](fleet.md); do not multi-host the phase engine |
 
 ---
 
@@ -465,10 +476,9 @@ Live KVM regression is still manual (or geekohive) before touching MAC/DHCP/ISO 
 
 For N identical student/instructor KVM hosts, the laptop runs `rodeo fleet` over
 OpenSSH. Each remote still executes single-host `rodeo up` / `doctor` / `status`.
-**Shipped F0–F2.1:** JSON reports → fan-out → deploy/retry/access/diagnose.  
-**Roadmap:** F4a AWS + Phase E single-host `rodeo up --target aws` MVP;
-next **GCP** → **Vultr Bare Metal** → Hetzner Cloud.
-Equinix is out of scope. See [Fleet](fleet.md#roadmap).
+Shipped: JSON reports, fan-out, deploy/retry/access/diagnose, AWS provisioning,
+open-access for students and the claim portal. Next host providers: GCP, Vultr
+Bare Metal, Hetzner Cloud (planned stubs today). See [Fleet](fleet.md#roadmap).
 
 ---
 
@@ -477,6 +487,6 @@ Equinix is out of scope. See [Fleet](fleet.md#roadmap).
 | Document | Audience |
 |----------|----------|
 | [User guide](get-started.md) | Workshop operators deploying labs |
-| [Fleet](fleet.md) | Multi-host workshops (F0–F2.1 + F4a AWS MVP; [roadmap](fleet.md#roadmap) F3, F4b–d) |
+| [Fleet](fleet.md) | Multi-host workshops, AWS provisioning and the claim portal ([roadmap](fleet.md#roadmap)) |
 | [ROADMAP.md](https://github.com/avaleror/rodeo-cli/blob/main/ROADMAP.md) | Planned declarative-deployment features |
 | [CONTEXT.md](https://github.com/avaleror/rodeo-cli/blob/main/CONTEXT.md) | Full project context for AI/developers |

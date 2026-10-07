@@ -1,4 +1,4 @@
-# Fleet — multi-host workshop orchestration
+# Fleet: multi-host workshop orchestration
 
 Laptop-side control plane that drives **many remote KVM hosts** over OpenSSH.
 Each host still runs normal single-host `rodeo`; fleet only fans out and tracks
@@ -15,9 +15,9 @@ See also: [Get started](get-started.md) (single host), [Architecture](architectu
 | **F1** | Shipped | Inventory + read-only fan-out | `rodeo fleet doctor`, `rodeo fleet status` |
 | **F2** | Shipped | Deploy / retry / access sheet | `rodeo fleet deploy`, `retry`, `access` |
 | **F2.1** | Shipped | Failure forensics | `rodeo fleet diagnose` |
-| **F4a** | Shipped (MVP) | AWS host-acquire | `rodeo fleet provision`, `deprovision` |
-| **F4b–d** | Roadmap | GCP → Vultr BM → Hetzner | — |
-| **F5** | Preview (AWS) | Student claim portal: each student opens a link and gets their own lab | `rodeo fleet open-access`, `rodeo fleet portal ...` ([design](claim-portal.md), [plan](claim-portal-plan.md)) |
+| **F4a** | Shipped | AWS host-acquire, 6 h dead-man switch per host | `rodeo fleet provision`, `deprovision` |
+| **F4b–d** | Roadmap | GCP → Vultr BM → Hetzner | (planned) |
+| **F5** | Shipped (AWS, v0.18) | Student claim portal: each student enters a workshop code and gets their own lab; student SSH on its own port | `rodeo fleet open-access`, `rodeo fleet portal ...` ([design](claim-portal.md), [plan](claim-portal-plan.md)) |
 
 Host prerequisites (after [`install.sh`](https://github.com/avaleror/rodeo-cli/blob/main/install.sh) on each lab machine):
 
@@ -52,7 +52,7 @@ lab:
 
 What is **not** shipped yet for Fleet. Full checklist: [ROADMAP Phase I](https://github.com/avaleror/rodeo-cli/blob/main/ROADMAP.md#phase-i--fleet--workshop-fan-out).
 
-### F4 — Host-acquire
+### F4: Host-acquire
 
 **Create KVM hosts from the laptop**, merge into `workshop.yaml`, then run the
 normal converge loop. Providers stop at inventory; deploy / diagnose / retry stay
@@ -60,20 +60,20 @@ OpenSSH-only.
 
 | Order | Provider | Status |
 |-------|----------|--------|
-| **F4a** | **AWS** (`boto3`, the `[aws]` extra: see [Install](install.md)) | **MVP shipped** — create/reuse by tags, wait running + SSH, write `hosts[]`, terminate tagged only |
+| **F4a** | **AWS** (`boto3`, the `[aws]` extra: see [Install](install.md)) | **MVP shipped**: create/reuse by tags, wait running + SSH, write `hosts[]`, terminate tagged only |
 | **F4b** | **GCP** (`google-cloud-compute`) | Planned |
-| **F4c** | **Vultr Bare Metal** (`[vultr]` extra) | Planned — after GCP; real metal for nested KVM |
-| **F4d** | **Hetzner Cloud** (`hcloud`) | Planned — after Vultr; nested KVM must be validated |
+| **F4c** | **Vultr Bare Metal** (`[vultr]` extra) | Planned: after GCP; real metal for nested KVM |
+| **F4d** | **Hetzner Cloud** (`hcloud`) | Planned: after Vultr; nested KVM must be validated |
 
 **Out of scope:** Equinix Metal (service sunset). Shared secrets across hosts.
 Changing the nested phase engine for multi-host.
 
 **MVP gaps (AWS):** no `plan` dry-run yet; `deprovision` does not rewrite `hosts[]`
-(terminate only — edit or re-provision to refresh YAML); auto SG later.
+(terminate only: edit or re-provision to refresh YAML); auto SG later.
 
 ```bash
 pip install -e '.[aws]'        # once, in your rodeo-cli checkout (see install.md)
-# AWS API creds (boto3 — never in YAML). Either:
+# AWS API creds (boto3: never in YAML). Either:
 #   ~/.aws/credentials  (+ optional AWS_PROFILE / ~/.aws/config)
 #   or AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY (+ optional AWS_SESSION_TOKEN)
 # SSH: rodeo auto-manages ~/.rodeo/ssh/id_ed25519 and imports EC2 key pair "rodeo"
@@ -88,18 +88,18 @@ Shared `HostProvider` Protocol and `provider:` YAML schema:
 
 ### Related (not Fleet-only)
 
-Single-host `deployment_target: aws` (Phase E MVP) shares the same
-`rodeo/providers/aws` adapter and `provider:` YAML schema as Fleet F4a.
+Single-host `deployment_target: aws` shares the same `rodeo/providers/aws`
+adapter and `provider:` YAML schema as fleet provisioning.
 On the EC2 guest the lab still runs as `baremetal`.
 
 Live smoke checklists:
 
 - [AWS single-host + fleet](examples/aws-fleet-claude-test-plan.md)
-- [Testing — AWS live smoke](examples/testing.md#aws-live-smoke-i7i8xlarge--nvme)
+- [Testing: AWS live smoke](examples/testing.md#aws-live-smoke)
 
 ---
 
-## F0 — JSON on a single host
+## F0: JSON on a single host
 
 Structured reports live in `rodeo/service/` so CLI and fleet share one shape.
 
@@ -118,7 +118,7 @@ Default `--output text` keeps the existing Rich tables.
 name: suse-virt-rodeo-emea
 lab:
   dir: /root/suse-virt-workshop     # remote path (status + deploy cwd)
-  # F2 — one of:
+  # F2: one of:
   source: git:https://github.com/avaleror/suse-virt-workshop.git
   # profile: harvester              # alternative: seed bundled/custom profile
   branch: main                      # optional (git only)
@@ -127,7 +127,7 @@ lab:
   ports:
     harvester: 8443                 # DNAT on host public IP
     rancher: 30002
-  # components: [harvester]         # optional — see "Access sheet" below.
+  # components: [harvester]         # optional: see "Access sheet" below.
   #                                  # Omit to show every URL fleet knows how to build.
   # ref: main                        # rodeo-cli git ref the hosts should run
   # install_url: https://…           # fork or air-gapped mirror of install.sh
@@ -150,7 +150,7 @@ Validation is fail-closed: unique `id`, required `ssh`, required `lab.dir`.
 
 ---
 
-## F1 — doctor and status
+## F1: doctor and status
 
 ```bash
 rodeo fleet doctor -f workshop.yaml
@@ -165,7 +165,7 @@ rodeo fleet status -f workshop.yaml --host student-01 -j 4
   it is installed. On hosts from `rodeo fleet provision` that happens in
   `rodeo fleet deploy`, so run doctor after deploy. On BYO hosts that already ran
   `install.sh`, doctor works before deploy too.
-- **doctor:** remote process exit is not enough — fleet also checks KVM, nested
+- **doctor:** remote process exit is not enough, fleet also checks KVM, nested
   virt, core tools, and that a bundled profile fits RAM
   (`rodeo/fleet/doctor.py::_readiness_problems`).
 - **status:** runs in `lab.dir` on each host. If `workshop.job.yaml` exists,
@@ -173,7 +173,7 @@ rodeo fleet status -f workshop.yaml --host student-01 -j 4
 
 ---
 
-## F2 — deploy, retry, access
+## F2: deploy, retry, access
 
 ### Instructor flow
 
@@ -188,19 +188,19 @@ rodeo fleet access -f workshop.yaml --output json
 
 ### What `fleet deploy` does on each host
 
-1. Ensure `rodeo` is on PATH (runs `install.sh` if missing — or always, with a ref;
+1. Ensure `rodeo` is on PATH (runs `install.sh` if missing, or always, with a ref;
    see [Which rodeo-cli the hosts run](#which-rodeo-cli-the-hosts-run)).
 2. Sync lab: `git clone` / `git pull --ff-only`, or `rodeo up --no-deploy` for a profile.
 3. Start **detached tmux** running `rodeo up --yes --no-tmux` in `lab.dir`
    (session name `rodeo-fleet-<workshop>-<host-id>`).
-4. Return immediately — does **not** wait for the 90–150 minute install.
+4. Return immediately: does **not** wait for the 90–150 minute install.
 5. Write **`workshop.job.yaml`** beside the inventory (chmod 600).
 
 Hosts whose **cacheable** phases are already all `completed` are **skipped**
 unless `--force`. The `apply` phase is never cached (re-run every local deploy)
 and does not block this check.
 
-Secrets: generated **per host** by remote `rodeo up` — fleet never scp’s a shared
+Secrets: generated **per host** by remote `rodeo up`, fleet never scp’s a shared
 `secrets.yaml`.
 
 ### Job file
@@ -228,7 +228,7 @@ the chosen hosts.
 
 ### Which rodeo-cli the hosts run
 
-Hosts bootstrap themselves from GitHub — your local working tree never reaches
+Hosts bootstrap themselves from GitHub: your local working tree never reaches
 them. By default the bootstrap runs **only where `rodeo` is missing**, so a host
 keeps the code it was first installed with; `--force` re-runs the *deploy*, not
 the install.
@@ -249,7 +249,7 @@ overrides it. The installer is fetched from the same ref it checks out, unless
 then used verbatim with the ref passed to it. An invalid ref fails at inventory
 load, before any host is contacted.
 
-This is the same mechanism as single-host `rodeo up --target aws --ref …` — both
+This is the same mechanism as single-host `rodeo up --target aws --ref …`, both
 paths share `rodeo/install_source.py`.
 
 ### Diagnose (failure forensics)
@@ -288,10 +288,10 @@ rodeo fleet access -f workshop.yaml
 | student-01 | `https://203.0.113.11:8443` | `https://203.0.113.11:30002` |
 
 Nested VIP stays `192.168.122.10` inside each host; students use **host public IP +
-DNAT**. Passwords are **never** printed — they live on each host in
+DNAT**. Passwords are **never** printed: they live on each host in
 `~/.rodeo/secrets.yaml`.
 
-By default `access` prints both URLs for every host — fleet has no reliable
+By default `access` prints both URLs for every host, fleet has no reliable
 local signal for which UIs a given lab actually exposes (a bundled profile
 name doesn't map 1:1 to components: e.g. the `test` profile's example dir has
 no Rancher node at all). Set `lab.components: [harvester]` or
@@ -474,7 +474,7 @@ Shared Protocol / schema for host-acquire. **AWS (F4a) MVP is implemented** in
 `rodeo/providers/` for both Fleet and single-host `deployment_target: aws`.
 GCP / Vultr / Hetzner remain stubs. Summary in [Roadmap](#roadmap).
 
-**Important — never set `lab.target: aws` in `workshop.yaml`.**
+**Important: never set `lab.target: aws` in `workshop.yaml`.**
 
 AWS-provisioned workshop hosts run the lab as `lab.target: baremetal` (full
 firewalld / DNAT / `finalise`). `deployment_target: aws` is the laptop
@@ -492,7 +492,7 @@ kept on the instance for disk floors + `destroy --cloud`). Mixing
 ### `HostProvider` Protocol
 
 Shared contract in planned `rodeo/providers/`. Fleet CLI never imports boto3/GCP/hcloud
-directly — only the registry + this surface.
+directly: only the registry + this surface.
 
 **Types (conceptual)**
 
@@ -531,7 +531,7 @@ GCP uses labels (DNS-1123); normalize keys to lowercase where the cloud requires
 
 **Non-goals for the Protocol**
 
-- No multi-cloud “common instance type” enum — size/image stay provider-specific.
+- No multi-cloud “common instance type” enum: size/image stay provider-specific.
 - No shared secrets / AMI publishing pipeline in F4.
 - No Libcloud / OpenTofu required for the default path.
 
@@ -584,12 +584,14 @@ Provision uses **boto3 only** (AWS CLI is optional). Supply credentials via eith
 
 Never put AWS access keys in `workshop.yaml` or `rodeo-plan.yaml`.
 
-#### `provider.type: aws` (F4a)
+#### `provider.type: aws`
 
-Prefer **`i7i.8xlarge`** (local NVMe) for Harvester / Edge I/O. Metal remains valid.
+Use **`m8id.8xlarge`** for Harvester labs (32 vCPU / 128 GiB / one local NVMe device; the catalog's `recommended` tier) and `m8id.4xlarge` for SUSE Edge and the `rancher` profile. Metal remains valid. Fleet needs `region` and `subnet_id` in `workshop.yaml`; the automatic region and subnet defaults only apply to single-host `rodeo up --target aws`.
+
+Every provisioned host, and the portal VM, gets the **dead-man switch**: it powers off and AWS terminates it `provider.ttl_hours` after launch (default 6, at most 168, cannot be turned off). Set it before `fleet provision` for workshops longer than that; `fleet provision` shows each host's expiry.
 `apply_host_context` raises `resources.harvester.disk_gb` to a flat **500 GB**
-and `resources.rancher.disk_gb` to **60 GB** — never scaled by node count, so
-the rest of the NVMe device is deliberately left free — and mounts NVMe on
+and `resources.rancher.disk_gb` to **60 GB**: never scaled by node count, so
+the rest of the NVMe device is deliberately left free, and mounts NVMe on
 `image_dir`. Root `volume_size_gib` only needs the OS (~100 GiB). Tiny /
 burstable types are rejected at validate. Nested virt defaults **on** for
 non-metal types.
@@ -605,13 +607,12 @@ provider:
   type: aws
   count: 12
   region: eu-central-1              # required
-  instance_type: i7i.8xlarge        # preferred: local NVMe; metal also OK
-  # ami omitted → newest openSUSE Leap 16.0 (x86_64) Marketplace AMI
-  # ami_name_filter: "openSUSE Leap 16.0 (x86_64)*"   # default when ami unset
-  # ami: ami-0123456789abcdef0      # optional pin (SLES 16 / specific Leap build)
+  instance_type: m8id.8xlarge       # or instance_tier: recommended
+  # ttl_hours: 10                   # dead-man switch, default 6
+  # ami omitted → newest SLES 16 PAYG (suse-sles-16-0-v*-hvm-ssd-x86_64)
+  # ami: ami-0123456789abcdef0      # optional pin
   subnet_id: subnet-0abc…           # required
-  security_group_ids:               # must allow 22, 8443, 30002 as needed
-    - sg-0abc…
+  # security_group_ids: [sg-0abc…]  # omit → rodeo manages one scoped to your IP
   # key_name: rodeo                 # default; ImportKeyPair managed by rodeo
   # associate_public_ip: true       # default true
   # nested_virtualization: true     # default on for non-metal
@@ -620,7 +621,7 @@ provider:
 
 **`security_group_ids` is optional, but set it explicitly for a real fleet.**
 Omit it and rodeo auto-manages one, scoped to *the machine running `fleet
-provision`'s* current public IP — right for single-host `rodeo up --target
+provision`'s* current public IP: right for single-host `rodeo up --target
 aws` (you're both operator and the only person who needs in), wrong for a
 multi-attendee fleet where each student connects from their own IP: they'd
 all be locked out except you. Set `security_group_ids` to an SG that actually
@@ -629,7 +630,7 @@ workshop, or a VPN range) whenever `count` > 1 real students.
 
 Subscribe once to [openSUSE Leap on Marketplace](https://aws.amazon.com/marketplace/pp/prodview-wn2xje27ui45o)
 (current build example: *openSUSE Leap 16.0 (x86_64) - v20260629*). SSH user: **`ec2-user`**.
-SLES 16 works too — set `ami:` to that image id and `ssh_user` if it is not `ec2-user`.
+SLES 16 works too: set `ami:` to that image id and `ssh_user` if it is not `ec2-user`.
 
 #### `provider.type: gcp` (F4b)
 
@@ -648,7 +649,7 @@ provider:
   # tags: [rodeo-fleet]             # GCP network tags for firewall
 ```
 
-Auth: Application Default Credentials / service account — not stored in `workshop.yaml`.
+Auth: Application Default Credentials / service account, not stored in `workshop.yaml`.
 
 #### `provider.type: vultr` (F4c)
 
@@ -657,7 +658,7 @@ provider:
   type: vultr
   count: 12
   region: ewr                       # required (Vultr location id)
-  plan: vbm-8c-128gb                # required — use ≥128 GiB for full Harvester labs
+  plan: vbm-8c-128gb                # required: use ≥128 GiB for full Harvester labs
   os_id: 2284                       # required (or snapshot_id / iPXE)
   # sshkey_id: ["…"]                # Vultr SSH key ids
   # firewall_group_id: "…"          # must allow 22 / UI ports for access sheet
@@ -665,7 +666,7 @@ provider:
 ```
 
 Auth: `VULTR_API_KEY` (API key may require IP allowlisting). Prefer REST `/v2/bare-metals`
-or the OpenAPI client over a thin community wrapper. **Bare metal only** for nested KVM —
+or the OpenAPI client over a thin community wrapper. **Bare metal only** for nested KVM,
 not Vultr Cloud VPS. Gate plans by RAM for the chosen profile (`rodeo doctor`).
 
 #### `provider.type: hetzner` (F4d)
@@ -675,14 +676,14 @@ provider:
   type: hetzner
   count: 12
   location: fsn1                    # required
-  server_type: cpx51                # required — must pass nested-KVM validation for labs
+  server_type: cpx51                # required: must pass nested-KVM validation for labs
   image: rocky-9                    # required (or snapshot id); SLES path TBD
   # ssh_keys: ["rodeo-workshop"]    # Hetzner SSH key names/ids
   # networks: []                    # optional private networks
   # firewalls: []                   # must expose 22 / UI ports for access sheet
 ```
 
-Auth: `HCLOUD_TOKEN` (or future `??` secret key) — not in plaintext in the inventory.
+Auth: `HCLOUD_TOKEN` (or future `??` secret key), not in plaintext in the inventory.
 **Gate:** do not mark F4d complete until `fleet doctor` shows nested KVM on a real
 Hetzner Cloud type used for workshops.
 

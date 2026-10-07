@@ -2,7 +2,7 @@
 
 ## Host requirements
 
-You need a Linux host (SLES 16 / Leap 16 recommended) with nested KVM available, root or passwordless sudo, and enough RAM for the profile you pick — see the table below.
+You need a Linux host (SLES 16 / Leap 16 recommended) with nested KVM available, root or passwordless sudo, and enough RAM for the profile you pick, see the table below.
 
 To drive remote or cloud hosts from a laptop instead (macOS or any other Linux), the same `install.sh` installs rodeo as a control machine: see [Install on Linux and macOS](install.md).
 
@@ -16,7 +16,7 @@ To drive remote or cloud hosts from a laptop instead (macOS or any other Linux),
 <div class="rc-terminal-body"><span class="rc-cmd">$</span> curl -fsSL https://raw.githubusercontent.com/avaleror/rodeo-cli/main/install.sh | bash</div>
 </div>
 
-This clones the repo, sets up a Python environment internally, and links `rodeo` as a system command. No venv to activate, no PATH to set, no sudo prefix.
+On SLES 16 / Leap 16 this installs rodeo as a KVM host: it clones the repo, sets up a Python environment internally, and links `rodeo` as a system command. No venv to activate, no PATH to set, no sudo prefix. On a laptop it installs a control machine instead, see [Install](install.md).
 
 ## Deploy
 
@@ -28,7 +28,7 @@ This clones the repo, sets up a Python environment internally, and links `rodeo`
 <div class="rc-terminal-body"><span class="rc-cmd">$</span> rodeo up</div>
 </div>
 
-That's it. `rodeo up` checks the host, picks a profile that fits the available RAM, generates `~/.rodeo/secrets.yaml`, self-escalates with sudo, deploys, and prints the URLs and credentials to log in. It also wraps itself in a tmux session automatically, so a dropped SSH or Instruqt connection doesn't kill a running deploy — reattach any time with `tmux attach -t rodeo-<profile>`.
+That's it. `rodeo up` checks the host, picks a profile that fits the available RAM, generates `~/.rodeo/secrets.yaml`, self-escalates with sudo, deploys, and prints the URLs and credentials to log in. It also wraps itself in a tmux session automatically, so a dropped SSH or Instruqt connection doesn't kill a running deploy, reattach any time with `tmux attach -t rodeo-<profile>`.
 
 To pick a specific profile instead of letting `rodeo up` choose:
 
@@ -40,7 +40,7 @@ To pick a specific profile instead of letting `rodeo up` choose:
 <div class="rc-terminal-body"><span class="rc-cmd">$</span> rodeo up --profile rancher-test   <span class="rc-val"># Rancher + single-node K3s and RKE2, ~18 GiB RAM</span>
 <span class="rc-cmd">$</span> rodeo up --profile rancher        <span class="rc-val"># Rancher + K3s, RKE2 and 3-node RKE2, ~30 GiB RAM</span>
 <span class="rc-cmd">$</span> rodeo up --profile harvester-ha   <span class="rc-val"># 3-node Harvester HA, ~52 GiB RAM</span>
-<span class="rc-cmd">$</span> rodeo up --profile harvester      <span class="rc-val"># 3-node Harvester + Rancher, ~60 GiB RAM</span>
+<span class="rc-cmd">$</span> rodeo up --profile harvester      <span class="rc-val"># 3-node Harvester + Rancher, ~72 GiB RAM</span>
 <span class="rc-cmd">$</span> rodeo up --profile suse-edge      <span class="rc-val"># Rancher + Elemental + EIB + edge nodes</span></div>
 </div>
 
@@ -53,9 +53,10 @@ To pick a specific profile instead of letting `rodeo up` choose:
 | `test` | 2-node Harvester cluster, no Rancher | ~36 GiB |
 | `harvester-ha` | 3-node Harvester HCI, no Rancher | ~52 GiB |
 | `harvester-2n` | 2-node Harvester HCI + Rancher | ~56 GiB |
-| `harvester` | 3-node Harvester HCI + Rancher | ~60 GiB |
+| `harvester` | 3-node Harvester HCI + Rancher | ~72 GiB |
+| `virt-workshop-aws` | `harvester` + image cache, NFS and sample VMs for the SUSE Virtualization workshop | AWS `m8id.8xlarge` |
 | `suse-edge` | Rancher + Elemental + EIB + edge nodes | ~40 GiB |
-| `smlm-workshop` | SUSE Multi-Linux Manager workshop (lab-in-a-box) | ~30 GiB |
+| `smlm-workshop` | SUSE Multi-Linux Manager workshop (lab-in-a-box plugin) | ~30 GiB |
 
 Full walkthroughs live in the profile guides: [Rancher Prime](guide-rancher.md), [Harvester HCI](guide-harvester.md), [SUSE Edge](guide-suse-edge.md).
 
@@ -79,35 +80,23 @@ Once a lab is up, it's something you operate, not a one-shot script:
 
 <code>rodeo new mylab --from harvester</code> scaffolds an editable profile under `~/.rodeo/profiles/mylab`. Edit the YAML, run `rodeo up --profile mylab`, and the lab converges to match. See [Create your own rodeo](custom-rodeos.md).
 
-## Many hosts (workshop fleet)
+## On AWS, from your laptop
 
-To deploy the **same** lab on a list of remote KVM hosts from your laptop (bare
-metal today), use `rodeo fleet` with a `workshop.yaml` inventory — doctor, status,
-deploy, diagnose, retry, and an access URL sheet.
-
-**Shipped:** F0–F2.1 (JSON reports, fan-out, deploy/retry/access/diagnose).  
-**Roadmap:** F4a AWS provision shipped (MVP); next GCP → Vultr Bare Metal → Hetzner (F4b–d).
-
-### Single-host AWS
-
-`rodeo up --target aws` provisions one EC2 KVM host then remote-deploys. Pick
-`--instance-tier budget|recommended|performance` (or set `provider.instance_type`);
-rodeo checks regional availability before create. Use a **base** topology
-profile (`harvester`, `suse-edge`, …) — AWS is `--target aws`, not a second
-profile. The host installs rodeo-cli from GitHub — add `--ref <branch|tag|sha>`
-to pin it, or to push a new commit onto a host that already has rodeo. See
-[provider fields](reference/plan.md#provider-when-deployment_target-aws).
+Install rodeo on your laptop (macOS or any Linux) with the same `install.sh`, log in to AWS, and deploy:
 
 ```bash
-pip install -e '.[aws]'   # in your rodeo-cli checkout; see install.md
-rodeo up --yes --profile rancher --target aws
+aws login
+rodeo up --profile harvester --target aws --yes
 ```
 
-No `provider:` block needed: rodeo uses `eu-north-1` (or `$RODEO_AWS_REGION`)
-and the region's default VPC public subnet, and writes them to the lab plan.
+No `provider:` block needed: rodeo uses `eu-north-1` (or `$RODEO_AWS_REGION`), the region's default VPC public subnet and the profile's recommended instance, and writes them to the lab plan. It checks the instance type is available before it creates anything.
 
-See [Fleet](fleet.md) and [Fleet roadmap](fleet.md#roadmap).
+Every cloud host has a **6-hour dead-man switch**: it powers off and AWS terminates it. Set `provider.ttl_hours` for longer sessions, and tear down sooner with `rodeo destroy --cloud --yes --config-dir ~/rodeo-labs/<profile>`. See [provider fields](reference/plan.md#provider-when-deployment_target-aws).
+
+## Many hosts (workshop fleet)
+
+To run the **same** lab for a whole room, use `rodeo fleet` with a `workshop.yaml` inventory. On AWS, `rodeo fleet provision` creates one host per attendee; `deploy` builds every lab in parallel, and `status`, `doctor`, `retry` and `diagnose` work per lab. The claim portal lets each attendee claim their own lab with a workshop code. See [Fleet](fleet.md).
 
 ## Something not working?
 
-Check the [Troubleshooting runbook](runbook.md) — it covers stuck deploys, timed-out Harvester installs, unreachable VIPs, and a handful of other issues hit on real hosts.
+Check the [Troubleshooting runbook](runbook.md), it covers stuck deploys, timed-out Harvester installs, unreachable VIPs, and a handful of other issues hit on real hosts.

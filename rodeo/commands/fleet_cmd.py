@@ -694,17 +694,23 @@ def fleet_provision_cmd(
     table.add_column("action")
     table.add_column("ip")
     table.add_column("instance")
+    table.add_column("expires (UTC)")
     for h in hosts:
         table.add_row(
             h.id,
             h.labels.get("provision_action", "—"),
             h.public_ip,
             h.provider_id or "—",
+            h.labels.get("expires_at", "—"),
         )
     console.print()
     console.print(table)
     if not no_write:
         console.print(f"\n  Updated: [cyan]{inventory_path}[/cyan]")
+    console.print(
+        "  Every host powers off and is terminated at its expiry (dead-man switch). "
+        "Longer workshop: set provider.ttl_hours before provisioning."
+    )
     console.print("  Next: [bold]rodeo fleet deploy -f …[/bold] then [bold]doctor[/bold]\n")
     if inventory.student_access == "open":
         console.print(

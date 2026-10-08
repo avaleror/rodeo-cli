@@ -396,7 +396,7 @@ curl -fsSL https://raw.githubusercontent.com/avaleror/rodeo-cli/main/install.sh 
 
 **The host disappeared during a session.** The dead-man switch terminated it: every cloud host expires `provider.ttl_hours` after launch (6 by default), shown as `Self-destructs` at the end of `rodeo up` and in the `rodeo-expires-at` instance tag. Re-deploy, and set a longer `provider.ttl_hours` before creating hosts for long sessions.
 
-**Is anything still billing?** Tear down with `rodeo destroy --cloud --yes --config-dir <lab dir>` (or `rodeo fleet deprovision` for a fleet). To check every region for leftovers:
+**Is anything still billing?** Tear down with `rodeo destroy --cloud --yes --config-dir <lab dir>` (or `rodeo fleet deprovision` for a fleet). Both also remove the local leftovers of the terminated hosts (host keys, student keys, `~/.rodeo/fleet/<name>/`), so a new instance that reuses an IP never trips a stale host key. To check every region for leftovers:
 
 ```bash
 for r in $(aws ec2 describe-regions --query 'Regions[].RegionName' --output text); do

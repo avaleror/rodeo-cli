@@ -68,8 +68,15 @@ OpenSSH-only.
 **Out of scope:** Equinix Metal (service sunset). Shared secrets across hosts.
 Changing the nested phase engine for multi-host.
 
-**MVP gaps (AWS):** no `plan` dry-run yet; `deprovision` does not rewrite `hosts[]`
-(terminate only: edit or re-provision to refresh YAML); auto SG later.
+**MVP gaps (AWS):** no `plan` dry-run yet; auto SG later.
+
+**Local cleanup.** `deprovision` also removes what the laptop kept for every
+host it terminated: its `hosts[]` entry in `workshop.yaml`, its host key in
+`~/.rodeo/fleet/<workshop>/known_hosts` and its student SSH key. When no host
+is left and the portal is gone, `~/.rodeo/fleet/<workshop>/` and
+`workshop.job.yaml` go too. BYO hosts, a host whose terminate failed, the rest
+of `workshop.yaml`, plans, `secrets.yaml` and the managed SSH key are never
+touched. `--json` lists what was removed under `local_cleanup`.
 
 ```bash
 pip install -e '.[aws]'        # once, in your rodeo-cli checkout (see install.md)

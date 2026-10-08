@@ -776,13 +776,18 @@ def fleet_deprovision_cmd(
             inventory,
             host_ids=list(host_ids) or None,
         )
-        if not host_ids and not keep_portal:
+        portal_removed = not host_ids and not keep_portal
+        if portal_removed:
             results = [*results, *deprovision_portal(inventory, inventory_path)]
     except ConfigError as exc:
         console.print(f"[red]✗  {exc}[/red]")
         raise SystemExit(1)
 
+    from ..fleet.local_cleanup import forget_cloud_hosts
+
+    cleaned = forget_cloud_hosts(inventory.name, inventory_path, results, portal_removed=portal_removed)
     payload = deprovision_payload(inventory.name, results)
+    payload["local_cleanup"] = cleaned
     if output_fmt == "json":
         click.echo(json.dumps(payload, indent=2, sort_keys=True))
     else:
@@ -800,6 +805,8 @@ def fleet_deprovision_cmd(
             )
         console.print()
         console.print(table)
+        for line in cleaned:
+            console.print(f"  [dim]local:[/dim] {line}")
         console.print()
 
     if any(not r.ok for r in results):

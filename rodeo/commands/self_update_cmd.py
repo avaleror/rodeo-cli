@@ -90,7 +90,7 @@ def _pyproject_version() -> str:
     return "unknown"
 
 
-def run_self_update(branch: str | None = None) -> None:
+def run_self_update(branch: str | None = None, *, force: bool = False) -> None:
     """Update rodeo-cli to the latest upstream code and reinstall the CLI.
 
     Fetches the remote and hard-aligns the working tree to the tip of the
@@ -166,13 +166,27 @@ def run_self_update(branch: str | None = None) -> None:
         raise SystemExit(1)
     target_sha = tip.stdout.strip()
 
-    # 3. Hard-align the working tree to the remote tip. This is intentional: a
-    #    self-updating host must end on exactly origin/<branch>, discarding any
-    #    local drift that would otherwise block a fast-forward.
+    # 3. Hard-align the working tree to the remote tip: a self-updating host must
+    #    end on exactly origin/<branch>. Local work (uncommitted changes, or
+    #    commits on the local <branch> that the remote lacks) is never thrown away
+    #    silently: rodeo often runs from a developer's own clone. --force discards it.
+    #    Untracked files are ignored: checkout and reset --hard leave them alone.
     if head_before and head_before != target_sha:
-        dirty = _git("status", "--porcelain", check=False).stdout.strip()
-        if dirty:
-            console.print("[yellow]⚠  discarding local working-tree changes to align with the remote.[/yellow]")
+        dirty = _git("status", "--porcelain", "--untracked-files=no", check=False).stdout.strip()
+        unpushed = _git("rev-list", f"{target_sha}..refs/heads/{target_branch}",
+                        check=False).stdout.strip()
+        if (dirty or unpushed) and not force:
+            what = " and ".join(w for w, on in (
+                ("uncommitted changes", dirty),
+                (f"local commits on '{target_branch}' that {remote} does not have", unpushed),
+            ) if on)
+            console.print(
+                f"[red]✗  {_REPO_ROOT} has {what}; self-update would discard them.[/red]\n"
+                "    Commit, push or stash them first, or re-run with --force to discard them."
+            )
+            raise SystemExit(1)
+        if dirty or unpushed:
+            console.print("[yellow]⚠  --force: discarding local changes to align with the remote.[/yellow]")
     reset = _git("checkout", "-B", target_branch, target_sha, check=False)
     if reset.returncode != 0:
         console.print(f"[red]✗  could not check out {target_ref}:[/red]\n{reset.stderr.strip()}")
@@ -190,9 +204,9 @@ def run_self_update(branch: str | None = None) -> None:
         raise SystemExit(1)
 
     # 5. Reinstall the package from the aligned tree.
-    pip = str(_VENV_PIP) if _VENV_PIP.exists() else sys.executable.replace("rodeo", "pip")
+    pip = [str(_VENV_PIP)] if _VENV_PIP.exists() else [sys.executable, "-m", "pip"]
     console.print("Reinstalling package...")
-    r = subprocess.run([pip, "install", "--quiet", "-e", str(_REPO_ROOT)], capture_output=False)
+    r = subprocess.run([*pip, "install", "--quiet", "-e", str(_REPO_ROOT)], capture_output=False)
     if r.returncode != 0:
         console.print("[red]✗  pip install failed — the CLI may be in a broken state.[/red]")
         raise SystemExit(r.returncode)
@@ -219,11 +233,13 @@ def run_self_update(branch: str | None = None) -> None:
 @click.command("self-update")
 @click.option("--branch", default=None, metavar="NAME",
               help="Align to this branch instead of the remote default (main). For testing pre-release code.")
-def self_update_cmd(branch: str | None) -> None:
+@click.option("--force", is_flag=True, default=False,
+              help="Discard uncommitted changes and unpushed local commits instead of refusing.")
+def self_update_cmd(branch: str | None, force: bool) -> None:
     """Update rodeo-cli to the latest upstream code and reinstall the CLI.
 
     Fetches the remote and hard-aligns the working tree to the tip of the
     default branch (origin/main), then reinstalls. Fails loudly rather than
     leaving the host on stale code.
     """
-    run_self_update(branch)
+    run_self_update(branch, force=force)

@@ -149,7 +149,7 @@ rodeo picks the region (`eu-north-1`, or `$RODEO_AWS_REGION`), the default VPC s
 | `install-extensions` | Install Rancher UI extensions (e.g. Harvester) |
 | `pull-edge-image` | (SUSE Edge) Seed edge node boot disks from the EIB VM or a local image |
 | `eject-iso` | (SUSE Edge) Remove the install ISO from edge nodes and boot from disk |
-| `self-update` | `git pull` + reinstall the CLI in one shot |
+| `self-update` | Align to the latest `main` and reinstall the CLI in one shot; refuses to discard local changes without `--force` |
 | `bootstrap` | (advanced) One-shot host setup for clean SLES, links binary, seeds a lab dir |
 | `generate` | (advanced) Interactive config-dir skeleton from templates |
 

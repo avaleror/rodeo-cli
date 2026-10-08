@@ -83,6 +83,7 @@ button.chip { cursor: pointer; }
 .chip.need { border-style: dashed; border-color: var(--coral); color: var(--coral); }
 .chip.hint { color: var(--muted); }
 .chip .x { border: 0; background: none; padding: 0; cursor: pointer; color: inherit; font: inherit; }
+.alert { margin: 10px 0; padding: 10px 12px; border: 1px solid var(--coral); background: var(--warn); color: var(--coral); border-radius: 2px; font-size: 13px; }
 
 /* ── layout ───────────────────────────────────────────────────────────── */
 .cols { flex: 1; display: grid; grid-template-columns: 290px 1fr 320px; min-height: 0; }

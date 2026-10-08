@@ -4,8 +4,20 @@
 
 The Rodeo Builder composes a new rodeo in the browser: pick the lab engine, put
 story chapters in order, tag their text for translation and story variants, and
-download the result as a profile you install with `rodeo`. It is a static page:
-nothing you do there leaves your browser.
+download the result as a profile you install with `rodeo`.
+
+It comes in two versions of the same page:
+
+- **Published** (the button above): a static page built by GitHub Actions with
+  the docs. Nothing you do there leaves your browser; you download a zip.
+- **Live**, installed with rodeo-cli: `rodeo builder` serves the page on your
+  machine, reads its data live and adds **Save to profiles**, which writes the
+  rodeo straight into `~/.rodeo/profiles/<name>/`.
+
+```bash
+rodeo builder                 # opens http://127.0.0.1:8678/
+rodeo up --profile <name>     # after Save to profiles
+```
 
 ## What you compose
 
@@ -30,7 +42,11 @@ nothing you do there leaves your browser.
   Drag chapters into the rodeo or click them; reorder by dragging or with
   Alt+↑/↓. A chapter that needs something the lab doesn't provide is marked, and
   for lab-in-a-box one click adds the missing add-on. Chapters that come with a
-  check script bring it along.
+  check script bring it along. A new chapter can only ask for what an engine
+  really provides: the native engines' capabilities and lab-in-a-box's catalogue
+  (add-ons, infrastructure services, Kubernetes cluster types). If the
+  lab-in-a-box catalogue could not be read, the page says why instead of showing
+  an empty list.
 - **Story.** **N spans ✎** opens the story editor: select text and mark it
   Translatable, Invariant or No-lang; double-click a span to change its type,
   language, id or story variant. Ids follow rmstory's rules (`<chapter>.N`,
@@ -49,39 +65,63 @@ edits. Changing the lab engine regenerates the plan, after asking.
 The zip holds one profile directory, `<name>/`, with `rodeo-plan.yaml`, the
 chapters (`story/NN-<id>.md`), `story/chapters.yaml` (minutes, needs and check
 script per chapter), one `story/stories/<variant>.yaml` per story variant,
-`checks/check-<id>.sh` stubs and a README with the exact commands.
-
-For `suse-virt`, `rancher`, `suse-edge` or an imported lab-in-a-box rodeo, the
-files go on top of the bundled profile they start from:
+`checks/check-<id>.sh` stubs, a README with the exact commands and, when the
+rodeo starts from a profile (`suse-virt`, `rancher`, `suse-edge` or an imported
+lab-in-a-box rodeo), `builder.yaml` naming that base profile.
 
 ```bash
-rodeo new <name> --from <base>
-unzip -o <name>.zip -d ~/.rodeo/profiles/
+rodeo new <name> --from-zip <name>.zip
 rodeo up --profile <name>
 ```
 
-A new lab-in-a-box rodeo is complete on its own (it carries its
-`definition.yaml`):
+`--from-zip` copies the base profile, lays the zip's files over it and writes
+`~/.rodeo/profiles/<name>/`. A new lab-in-a-box rodeo carries its own
+`definition.yaml` and needs no base. `--from <profile>` overrides the base and
+`--force` replaces an existing profile. The zip may only hold the files the
+builder writes; anything else (other paths, links, oversize files) is refused
+before anything is written. **Save to profiles** in `rodeo builder` does the same
+without the zip.
+
+## The live builder
+
+`rodeo builder` serves `rodeo/builder/htdocs/` and answers the page's requests
+with `rodeo/builder/api.py` (`rodeo/builder/server.py`, standard library only).
+At start it fetches the chapter sources (a source that can't be fetched is left
+out, with a warning) and the lab-in-a-box catalogue: `--labinabox <checkout>`,
+else `RODEO_LABINABOX_PATH`, else lab-in-a-box's latest release, fetched into
+`~/.rodeo/vendor/lab-in-a-box/` the way a deploy does.
+
+| Option | Default | |
+|---|---|---|
+| `--host`, `--port` | `127.0.0.1`, `8678` | Where to listen (`--port 0` picks a free port). |
+| `--expose` | off | Required for a non-loopback `--host`: anyone who reaches it can save profiles as you. |
+| `--allow-host NAME` | | Extra `Host` name to accept (the name or IP clients use with `--expose`). |
+| `--labinabox`, `--lab-builder-url` | latest release, published lab-builder | Catalogue source and the lab-builder the page links to. |
+| `--source ID=CHECKOUT`, `--no-fetch-sources` | fetch all | Local chapter sources, or none. |
+| `--open/--no-open` | open | Open the page in a browser. |
+
+Writes are guarded: the server only answers requests whose `Host` is an allowed
+name (loopback names by default), so other sites can't reach it through DNS
+rebinding, and **Save** sends a per-run token that only the served page has. The
+page runs under a Content-Security-Policy that allows its own files, Google Fonts
+and the lab-builder frame.
+
+## How the published page is built
+
+The published page is the live page's static subset. `scripts/build-builder-static.py`
+embeds what `rodeo/builder/api.py` answers (engines and bundled chapters from
+`rodeo/data/`, the chapter sources' chapters, and the catalogue of lab-in-a-box's
+latest release) into the page and marks it static, which hides **Save to
+profiles**; the docs workflow publishes it at `builder/`. The build fetches each
+chapter source with a shallow, sparse git clone (only the chapter files and check
+scripts) and fails if one can't be fetched, or if the lab-in-a-box catalogue
+can't be read. Build it locally:
 
 ```bash
-unzip <name>.zip -d ~/.rodeo/profiles/
-rodeo up --profile <name>
-```
-
-## How it is built
-
-The page lives in `rodeo/builder/htdocs/` (plain HTML, CSS and JavaScript, no
-build step). `scripts/build-builder-static.py` embeds what
-`rodeo/builder/api.py` answers (engines and bundled chapters from `rodeo/data/`,
-the chapter sources' chapters, and the add-ons of lab-in-a-box's latest release)
-into the page, and the docs workflow publishes it at `builder/`. The build fetches
-each chapter source with a shallow, sparse git clone (only the chapter files and
-check scripts) and fails if one can't be fetched. Build it locally:
-
-```bash
-python3 scripts/build-builder-static.py --output /tmp/builder [--labinabox /path/to/lab-in-a-box]
+python3 scripts/build-builder-static.py --output /tmp/builder --labinabox /path/to/lab-in-a-box
 python3 -m http.server -d /tmp/builder 8000
 ```
 
-`--source <id>=<checkout>` uses a local checkout for one chapter source, and
-`--no-fetch-sources` builds without them (offline).
+`--source <id>=<checkout>` uses a local checkout for one chapter source,
+`--no-fetch-sources` builds without them (offline), and `--no-labinabox` builds
+without the lab-in-a-box catalogue (the page then shows it as unavailable).

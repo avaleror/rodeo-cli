@@ -46,7 +46,9 @@ rodeo up --profile <name>     # after Save to profiles
   really provides: the native engines' capabilities and lab-in-a-box's catalogue
   (add-ons, infrastructure services, Kubernetes cluster types). If the
   lab-in-a-box catalogue could not be read, the page says why instead of showing
-  an empty list.
+  an empty list. `missing_addon` is always offered: a placeholder for something no
+  engine provides yet. It only marks the chapter as "work needed" (also listed in
+  the download's README); it never blocks the rodeo and never reaches the lab.
 - **Story.** **N spans ✎** opens the story editor: select text and mark it
   Translatable, Invariant or No-lang; double-click a span to change its type,
   language, id or story variant. Ids follow rmstory's rules (`<chapter>.N`,

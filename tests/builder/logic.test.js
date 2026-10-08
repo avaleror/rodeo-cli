@@ -140,6 +140,17 @@ test("files lay out the profile directory", () => {
   assert.deepEqual(bare.sort(), ["README.md", "rodeo-plan.yaml"]);
 });
 
+test("missing_addon chapters are listed as work needed in the README", () => {
+  const rodeo = { name: "demo", title: "Demo", base: "", plan: "type: rancher\n", definition: "", variants: [],
+    story: { language: "en" }, labJson: null,
+    chapters: [{ id: "later", title: "Not yet possible", mins: 5, needs: [RB.MISSING_ADDON], check: false, body: "# x\n" },
+      { id: "now", title: "Possible", mins: 5, needs: ["rancher"], check: false, body: "# y\n" }] };
+  const readme = RB.files(rodeo).find((f) => f.path === "README.md").content;
+  assert.match(readme, /## Work needed[\s\S]*- Not yet possible \(`later`\)/);
+  assert.doesNotMatch(readme, /- Possible/);
+  assert.doesNotMatch(RB.files({ ...rodeo, chapters: [rodeo.chapters[1]] }).find((f) => f.path === "README.md").content, /Work needed/);
+});
+
 test("a chapter's own check script replaces the stub", () => {
   const stub = RB.checkScript({ id: "a", title: "A" });
   assert.match(stub, /no check written yet/);

@@ -310,3 +310,18 @@ def test_live_server_saves_into_profiles(page):
     page.once("dialog", lambda d: d.accept())
     save.click()
     sync_api.expect(page.locator("#toast")).to_have_text(re.compile("^Saved"))
+
+
+def test_missing_addon_marks_work_needed_without_blocking(page):
+    page.click("#newChapterBtn")
+    page.fill("#ncTitle", "Future feature")
+    page.click("#ncNeeds .chip >> text=missing_addon")
+    page.click("#newForm button[type=submit]")
+    assert page.locator(".row .chip.todo").inner_text().lower() == "work needed"
+    assert page.locator("#coverage").inner_text() == "lab covers every chapter · work needed in 1 chapter"
+    page.click(".engine >> text=lab-in-a-box")
+    assert "missing_addon" not in page.locator("#enginePanel").inner_text()
+    files = _zip(page)
+    assert "missing_addon" not in files["my-rodeo/rodeo-plan.yaml"]
+    assert "## Work needed" in files["my-rodeo/README.md"] and "Future feature" in files["my-rodeo/README.md"]
+    assert "needs: [missing_addon]" in files["my-rodeo/story/chapters.yaml"]

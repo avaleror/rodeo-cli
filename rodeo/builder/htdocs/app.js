@@ -66,14 +66,21 @@ function provided() {
   return new Set(liabImported() ? importBase().addons : state.labAddons);
 }
 
-function missing(chapter) { const p = provided(); return (chapter.needs || []).filter((n) => !p.has(n)); }
+function missing(chapter) { const p = provided(); return (chapter.needs || []).filter((n) => n !== RB.MISSING_ADDON && !p.has(n)); }
+
+function workNeeded() { return state.chapters.filter((c) => (c.needs || []).includes(RB.MISSING_ADDON)); }
+
+function needChip(n, miss) {
+  if (n === RB.MISSING_ADDON) return el("span", { class: "chip todo", title: "Placeholder: this chapter needs something no engine provides yet", text: "work needed" });
+  return el("span", { class: "chip " + (miss.includes(n) ? "missing" : "ok"), text: miss.includes(n) ? "missing " + n : n });
+}
 
 function liabNames(kinds) {
   return (kinds || ["addons", "infrastructure", "kclusters"]).flatMap((k) => (state.liab[k] || []).map((a) => a.name));
 }
 
 // What a chapter can ask for: the native engines' capabilities plus lab-in-a-box's catalogue.
-function offeredNeeds() { return [...new Set([...state.capabilities, ...liabNames()])].sort(); }
+function offeredNeeds() { return [...[...new Set([...state.capabilities, ...liabNames()])].sort(), RB.MISSING_ADDON]; }
 
 function catalogueHint() {
   return window.RB_STATIC ? "This page was built without it: rebuild with build-builder-static.py --labinabox <checkout>."
@@ -246,8 +253,8 @@ function renderEngines() {
 function chipList(names, cls) { return el("div", { class: "chips" }, names.map((n) => el("span", { class: "chip " + (cls || ""), text: n }))); }
 
 function neededAddons() {
-  const p = provided(), need = new Set();
-  for (const c of state.chapters) for (const n of c.needs || []) if (!p.has(n)) need.add(n);
+  const need = new Set();
+  for (const c of state.chapters) for (const n of missing(c)) need.add(n);
   return [...need].sort();
 }
 
@@ -430,7 +437,7 @@ function renderChapters() {
     el("span", { class: "row-num", text: String(i + 1).padStart(2, "0") }),
     el("div", {}, el("div", { class: "row-title", text: c.title }),
       el("div", { class: "row-meta", text: [c.workshop, c.mins + " min", c.check ? "checks/check-" + c.id + ".sh" : ""].filter(Boolean).join(" · ") }),
-      el("div", { class: "chips" }, (c.needs || []).map((n) => el("span", { class: "chip " + (miss.includes(n) ? "missing" : "ok"), text: miss.includes(n) ? "missing " + n : n })))),
+      el("div", { class: "chips" }, (c.needs || []).map((n) => needChip(n, miss)))),
     el("div", { class: "row-actions" },
       el("button", { class: "btn sm", type: "button", text: spans + " spans ✎", onclick: () => openEditor(i) }),
       el("button", { class: "btn sm", type: "button", "aria-label": "Move up", text: "↑", disabled: i === 0, onclick: () => move(i, -1) }),
@@ -444,8 +451,9 @@ function renderChapters() {
     ondragleave: () => zone.classList.remove("over"),
     ondrop: (ev) => { ev.preventDefault(); dropAt(state.chapters.length); } });
   box.append(zone);
-  const need = neededAddons(), cov = $("#coverage");
-  cov.textContent = !state.chapters.length ? "" : need.length ? "lab missing: " + need.join(", ") : "lab covers every chapter";
+  const need = neededAddons(), cov = $("#coverage"), todo = workNeeded().length;
+  cov.textContent = !state.chapters.length ? "" : (need.length ? "lab missing: " + need.join(", ") : "lab covers every chapter") +
+    (todo ? " · work needed in " + todo + (todo === 1 ? " chapter" : " chapters") : "");
   cov.classList.toggle("bad", need.length > 0);
 }
 

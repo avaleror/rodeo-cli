@@ -1314,6 +1314,7 @@ def test_cloud_skips_kvm_preflight(tmp_path, monkeypatch):
     from rodeo import preflight
 
     cfg = _cloud_cfg(tmp_path)
+    monkeypatch.setattr("rodeo.awscli.check_credentials", lambda cfg: (True, "arn:test"))
     monkeypatch.setattr(preflight, "_nested_enabled", lambda: pytest.fail("no KVM check for cloud VMs"))
     preflight.run_preflight(cfg, tmp_path)
 

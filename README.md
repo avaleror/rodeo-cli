@@ -127,7 +127,7 @@ rodeo picks the region (`eu-north-1`, or `$RODEO_AWS_REGION`), the default VPC s
 | `builder` | Rodeo Builder web UI, live: compose a rodeo and save it into your profiles (`rodeo builder`) |
 | `profiles` | List deployable profiles (bundled + your custom ones in `~/.rodeo/profiles/`) |
 | `list` | Show plans and the libvirt domains stamped for each one |
-| `install-deps` | Install host packages (KVM, libvirt, ansible, kubectl). `--story` adds rmstory + multilang from their GitHub release distro packages |
+| `install-deps` | Install host packages (KVM, libvirt, ansible, kubectl). `--story` adds rmstory + multilang from their GitHub release distro packages; `--aws` adds the AWS CLI v2 (signature-checked) for labs whose VMs run in AWS |
 | `init` | Create `rodeo-plan.yaml` and `~/.rodeo/secrets.yaml` |
 | `plan` | Preview what deploy would change (no changes made) |
 | `instances` | Several copies of a lab-in-a-box lab on one host: `instances new <profile> --count N`, `instances list` |

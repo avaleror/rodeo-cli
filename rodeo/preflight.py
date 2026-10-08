@@ -369,6 +369,14 @@ def run_preflight(cfg: dict, root: Path, phases_to_run: list[str] | None = None)
         if over:
             checks.append(("guest vCPU budget", False, over, True))
 
+    from .awscli import check_credentials, ensure_on_path, labinabox_aws
+
+    if labinabox_aws(cfg) is not None:
+        checks.append(("aws CLI", ensure_on_path() is not None,
+                       "aws CLI not installed — run: sudo rodeo install-deps --aws", False))
+        aws_ok, aws_detail = check_credentials(cfg)
+        checks.append(("AWS credentials", aws_ok, aws_detail, False))
+
     for tool in CORE_TOOLS:
         checks.append((tool, shutil.which(tool) is not None, f"{tool} not found in PATH", False))
     for mod in CORE_PY_MODULES:

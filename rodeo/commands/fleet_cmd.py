@@ -33,7 +33,16 @@ from ..fleet.provision import (
     fleet_provision,
     provision_payload,
 )
-from ..fleet.portal import deprovision_portal, provision_portal
+from ..fleet.portal import (
+    claimed_labs,
+    deprovision_portal,
+    pick_unclaimed,
+    portal_live,
+    portal_status,
+    provision_portal,
+    remove_labs,
+    set_claiming,
+)
 from ..fleet.status import fleet_status
 from ..fleet.student_access import fleet_open_access, open_access_payload
 from ..install_source import resolve_install_source
@@ -747,6 +756,19 @@ def fleet_provision_cmd(
     help="Limit to host id (repeatable).",
 )
 @click.option(
+    "--unclaimed",
+    metavar="N|all",
+    default=None,
+    help="Scale down: terminate N labs nobody claimed on the portal (or all of them). "
+    "Unready labs go first, then free ones from the highest number down.",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    default=False,
+    help="With --host: also terminate labs a student has claimed on the portal.",
+)
+@click.option(
     "-f",
     "--file",
     "inventory_path",
@@ -760,18 +782,61 @@ def fleet_deprovision_cmd(
     output_fmt: str,
     yes: bool,
     keep_portal: bool,
+    unclaimed: str | None,
+    force: bool,
 ) -> None:
     """Terminate ownership-tagged cloud instances for this workshop (F4).
 
-    Also terminates the claim portal VM unless ``--keep-portal`` or ``--host``."""
+    Also terminates the claim portal VM unless ``--keep-portal`` or ``--host``.
+    With ``--host`` and a live portal, claimed labs are refused (``--force``
+    overrides) and terminated labs are removed from the portal, so nobody can
+    claim a dead lab. ``--unclaimed N|all`` picks the labs itself. Claiming is
+    paused while labs are removed and reopened afterwards if it was open."""
+    count: int | None = None
+    if unclaimed is not None:
+        if host_ids:
+            console.print("[red]✗  Use --unclaimed or --host, not both.[/red]")
+            raise SystemExit(1)
+        if unclaimed != "all":
+            if not unclaimed.isdigit() or int(unclaimed) < 1:
+                console.print(f"[red]✗  --unclaimed takes a number of labs or 'all', got {unclaimed!r}.[/red]")
+                raise SystemExit(1)
+            count = int(unclaimed)
     if not yes:
         console.print(
             "[red]✗  Refusing to deprovision without --yes "
             "(destroys tagged cloud instances).[/red]"
         )
         raise SystemExit(1)
+    portal_labs: list[str] = []
+    portal_warning = ""
+    reopen = False
     try:
         inventory = load_inventory(inventory_path)
+        scale_down = bool(host_ids or unclaimed) and portal_live(inventory)
+        if unclaimed and not scale_down:
+            raise ConfigError("--unclaimed needs a running claim portal (portal: in workshop.yaml)")
+        if scale_down:
+            # Pause claiming first, then read the claims: nobody can claim a lab
+            # between this check and its termination.
+            status = portal_status(inventory)
+            if status.get("open"):
+                set_claiming(inventory, False)
+                reopen = True
+                status = portal_status(inventory)
+            if unclaimed:
+                host_ids = tuple(pick_unclaimed(status["labs"], count))
+                if not host_ids:
+                    console.print("[yellow]No unclaimed labs to remove.[/yellow]")
+                    return
+            elif not force:
+                taken = claimed_labs(status["labs"], list(host_ids))
+                if taken:
+                    console.print(
+                        f"[red]✗  Refusing: claimed by a student on the portal: {', '.join(taken)}.[/red]\n"
+                        "    Check `rodeo fleet portal status`, or add --force to terminate them anyway."
+                    )
+                    raise SystemExit(1)
         results = fleet_deprovision(
             inventory,
             host_ids=list(host_ids) or None,
@@ -779,15 +844,38 @@ def fleet_deprovision_cmd(
         portal_removed = not host_ids and not keep_portal
         if portal_removed:
             results = [*results, *deprovision_portal(inventory, inventory_path)]
+        # Terminated (or already gone) hosts leave the portal too: their records
+        # would otherwise stay "free" and the next claim would get a dead lab.
+        gone = [r.id for r in results if r.ok and r.id in host_ids]
+        if scale_down and gone:
+            try:
+                portal_labs = remove_labs(inventory, gone)
+            except ConfigError as exc:
+                reopen = False  # dead labs still listed: claiming must stay closed
+                portal_warning = (
+                    f"terminated labs are still listed on the portal ({exc}). Claiming is "
+                    "left closed: run `rodeo fleet portal up` to update the portal and re-run this."
+                )
     except ConfigError as exc:
         console.print(f"[red]✗  {exc}[/red]")
         raise SystemExit(1)
+    finally:
+        if reopen:
+            try:
+                set_claiming(inventory, True)
+            except ConfigError as exc:
+                console.print(f"[yellow]⚠  could not reopen claiming ({exc}): "
+                              "run `rodeo fleet portal open`.[/yellow]")
 
     from ..fleet.local_cleanup import forget_cloud_hosts
 
     cleaned = forget_cloud_hosts(inventory.name, inventory_path, results, portal_removed=portal_removed)
     payload = deprovision_payload(inventory.name, results)
     payload["local_cleanup"] = cleaned
+    if scale_down:
+        payload["portal_removed_labs"] = portal_labs
+        if portal_warning:
+            payload["portal_warning"] = portal_warning
     if output_fmt == "json":
         click.echo(json.dumps(payload, indent=2, sort_keys=True))
     else:
@@ -807,6 +895,10 @@ def fleet_deprovision_cmd(
         console.print(table)
         for line in cleaned:
             console.print(f"  [dim]local:[/dim] {line}")
+        if portal_labs:
+            console.print(f"  [dim]portal:[/dim] removed {len(portal_labs)} lab(s): {', '.join(portal_labs)}")
+        if portal_warning:
+            console.print(f"  [yellow]⚠  portal: {portal_warning}[/yellow]")
         console.print()
 
     if any(not r.ok for r in results):

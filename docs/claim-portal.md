@@ -278,6 +278,7 @@ roster file, or `portal.enabled: true` on a provider fleet whose
 | `rodeo fleet portal release <lab>` / `reassign <email> <lab>` / `revoke <email>` | laptop to portal | Fix mistakes during a workshop. |
 | `rodeo fleet portal export` | laptop to portal | Attendance CSV (name, email, lab). |
 | `rodeo fleet deprovision` | laptop | Also terminates the portal (`--keep-portal` to keep it). |
+| `rodeo fleet deprovision --unclaimed N\|all` / `--host <lab> ...` | laptop to portal | Scale down: pauses claiming, terminates N unclaimed labs (or the named ones; claimed labs refused unless `--force`), removes them from the portal, reopens claiming. Portal VM stays. |
 
 All of them support `--output json` so scripts can call them without parsing Rich
 tables.

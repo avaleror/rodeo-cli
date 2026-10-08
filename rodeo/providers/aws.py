@@ -1007,15 +1007,17 @@ class AwsHostProvider:
         min_count: int = 1,
         max_count: int = 1,
     ) -> dict[str, Any]:
-        tags = ownership_tags(workshop, host_id)
-        tags["Name"] = f"{workshop}-{host_id}"
-        # Dead-man switch (deadman.py): every instance rodeo creates expires.
-        expiry = deadman.expires_at(config)
-        tags[deadman.TAG_EXPIRES_AT] = deadman.iso(expiry)
+        tags = {"Name": f"{workshop}-{host_id}"}
         for k, v in (config.get("labels") or {}).items():
             tags[str(k)] = str(v)
         for k, v in (extra_labels or {}).items():
             tags[str(k)] = str(v)
+        # Ownership and expiry go last so no label can replace them: deprovision
+        # finds instances by these tags, and a lost one would leak the instance.
+        tags.update(ownership_tags(workshop, host_id))
+        # Dead-man switch (deadman.py): every instance rodeo creates expires.
+        expiry = deadman.expires_at(config)
+        tags[deadman.TAG_EXPIRES_AT] = deadman.iso(expiry)
 
         ni: dict[str, Any] = {
             "DeviceIndex": 0,

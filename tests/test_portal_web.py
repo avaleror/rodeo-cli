@@ -194,6 +194,19 @@ def test_failed_guesses_are_rate_limited_per_ip(portal):
     assert b.enter(portal["code"])[0] == 429  # even the right code, until the window passes
 
 
+def test_valid_lab_link_still_opens_when_the_shared_ip_is_over_the_limit(portal, browser):
+    """Conference wifi: one NAT address for the room. Other people's wrong codes
+    must not lock a student out of their own lab link."""
+    _, h, _ = browser.claim()
+    link = h["Location"]
+    guesser = Browser(portal["port"])
+    for i in range(RATE_LIMIT + 1):
+        guesser.enter(f"RODEO-ZZZZ-{i:08d}")
+    assert guesser.get("/l/" + "A" * 32)[0] == 429  # bad links still throttled
+    assert browser.get(link)[0] == 200
+    assert browser.get(link + "/key")[0] == 200
+
+
 def test_typos_in_name_or_email_do_not_count(portal, browser):
     for _ in range(RATE_LIMIT + 5):
         assert browser.claim(email="not-an-email")[0] == 403

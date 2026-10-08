@@ -397,6 +397,28 @@ rodeo fleet portal admin-link -f workshop.yaml  # instructor page (all lab crede
 rodeo fleet deprovision --yes -f workshop.yaml  # labs + portal (--keep-portal to keep it)
 ```
 
+**Scale down for no-shows.** Provision for the expected headcount, then, once the
+room has settled, remove labs nobody claimed:
+
+```bash
+rodeo fleet portal status -f workshop.yaml                  # how many are free?
+rodeo fleet deprovision --yes -f workshop.yaml --unclaimed 35   # keep a few spares
+rodeo fleet deprovision --yes -f workshop.yaml --unclaimed all  # or every unclaimed lab
+```
+
+`--unclaimed N` picks the labs itself: unready ones first (still building or
+failed), then free labs from the highest number down, so the spares left are the
+low numbers that new claims get first. It refuses a number larger than the
+unclaimed labs on the portal. To choose labs by hand, use `--host <lab>` instead
+(repeatable); a lab a student has claimed is refused unless you add `--force`.
+
+Either way, claiming is paused while the labs go and reopened afterwards (if it
+was open), and the terminated labs are removed from the portal, so nobody can
+claim a dead lab. The portal VM itself is never touched. In roster mode every
+invited student counts as claimed, opened or not. A portal set up before this
+release needs `rodeo fleet portal up` once to learn the removal command; until
+then `deprovision` warns and leaves claiming closed.
+
 | Instructor command | What |
 |--------------------|------|
 | `portal publish [--watch] [--interval 60]` | Push labs to the portal. With `--watch`: deploy progress per lab (phases done, current phase, elapsed, failures) on the instructor page, and each lab becomes claimable as soon as it is ready. Keep the laptop awake ([install.md](install.md#differences-and-things-to-know)) |

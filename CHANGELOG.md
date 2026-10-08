@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.0](https://github.com/avaleror/rodeo-cli/compare/v0.22.1...v0.23.0) (2026-10-08)
+
+
+### Features
+
+* **fleet:** remove local leftovers of terminated cloud hosts ([#88](https://github.com/avaleror/rodeo-cli/issues/88)) ([832fe25](https://github.com/avaleror/rodeo-cli/commit/832fe25e824a46a297937df9b065c285e54d8fc7))
+
 ## [0.22.1](https://github.com/avaleror/rodeo-cli/compare/v0.22.0...v0.22.1) (2026-10-07)
 
 

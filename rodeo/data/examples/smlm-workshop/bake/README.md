@@ -77,10 +77,10 @@ them in `~/.rodeo/secrets.yaml`. They are never written to a plan or to git.
 
 ## Not verified live yet
 
-The KVM bake has run on a SLES 16 host (nested KVM): registration, the SMLM install
-and adding the channels work. Still unchecked:
+The KVM bake has run on a SLES 16 host (nested KVM): registration, the SMLM install,
+adding the channels and syncing them all (about 207 GiB of VM disk) work. Still
+unchecked:
 
-- The `mgr-sync list credentials` output format that `generalise.sh` inspects.
 - That `cloud-init clean` in `generalise.sh` makes the baked qcow2 apply each
   deploy's own network settings on its first boot (needed for lab instances).
 - The `aws` variant.

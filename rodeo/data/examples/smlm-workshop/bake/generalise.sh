@@ -8,7 +8,7 @@
 # smlm_image_admin_pass). Powers the VM off at the end; then run
 # export-image.sh on the host.
 #
-# Refuses to finish while SCC credentials are still registered with mgr-sync:
+# Refuses to finish while SCC credentials are still registered in SMLM:
 # remove them with `mgrctl exec -ti -- mgr-sync delete credentials` and re-run.
 set -euo pipefail
 
@@ -35,8 +35,15 @@ if [[ -n "${failed}" ]]; then
     exit 1
 fi
 
-if mgrctl exec -- mgr-sync list credentials 2>/dev/null | grep -qiE '^[[:space:]]*[0-9]+[).]'; then
-    echo "ERROR: SCC credentials are still registered in SMLM." >&2
+# Counted in SMLM's database: mgr-sync would need the admin login to list them.
+scc=$(echo "select count(*) from suseCredentials where type = 'scc';" \
+      | mgrctl exec -i -- spacewalk-sql --select-mode - 2>/dev/null | sed -n 3p | tr -d '[:space:]') || scc=""
+if [[ ! "${scc}" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: could not count the SCC credentials in SMLM's database." >&2
+    exit 1
+fi
+if (( scc > 0 )); then
+    echo "ERROR: ${scc} SCC credential(s) still registered in SMLM." >&2
     echo "       Remove them: mgrctl exec -ti -- mgr-sync delete credentials" >&2
     exit 1
 fi

@@ -73,6 +73,20 @@ def test_every_instance_terminates_on_shutdown_and_carries_its_expiry(ssh_home):
     assert timedelta(hours=6) - timedelta(seconds=5) <= expiry - before <= timedelta(hours=6, seconds=5)
 
 
+def test_labels_cannot_replace_ownership_or_expiry_tags(ssh_home):
+    """deprovision finds instances by these tags: a label that replaced one would
+    leave the instance running until the dead-man switch."""
+    from rodeo.providers.base import TAG_HOST_ID, TAG_MANAGED_BY, TAG_WORKSHOP, ownership_tags
+    hostile = {TAG_MANAGED_BY: "x", TAG_WORKSHOP: "other", TAG_HOST_ID: "y",
+               deadman.TAG_EXPIRES_AT: "2099-01-01T00:00:00Z", "Name": "custom", "team": "edge"}
+    kw = AwsHostProvider(ec2_client=object())._run_instances_kwargs(
+        {**_BASE, "labels": hostile}, host_id="primary", workshop="lab", extra_labels=hostile)
+    tags = _tags(kw)
+    assert {k: tags[k] for k in ownership_tags("lab", "primary")} == ownership_tags("lab", "primary")
+    assert tags[deadman.TAG_EXPIRES_AT] != "2099-01-01T00:00:00Z"
+    assert tags["Name"] == "custom" and tags["team"] == "edge"  # ordinary labels still apply
+
+
 def test_userdata_arms_a_persistent_timer_at_the_tagged_expiry(ssh_home):
     kw = _kwargs({**_BASE, "ttl_hours": 2}, ssh_home)
     expiry = _tags(kw)[deadman.TAG_EXPIRES_AT]

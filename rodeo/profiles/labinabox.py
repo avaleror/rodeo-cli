@@ -36,6 +36,24 @@ class LabInABoxProfile(RodeoProfile):
     resources = {"vm": {"memory_mib": 2048, "vcpu": 2, "disk_gb": 30}}
     versions: dict[str, str] = {}
 
+    def phase_key(self, phase: str, cfg: dict) -> str | None:
+        """labinabox_host is redone when the lab-in-a-box source changes: the local
+        checkout (RODEO_LABINABOX_PATH) or the repo and ref as configured ("latest"
+        stays unresolved, so a new release alone does not reinstall)."""
+        if phase != "labinabox_host":
+            return None
+        from .. import labinabox_host as host
+        from ..config import ConfigError
+
+        local = host.local_override()
+        if local is not None:
+            return f"local:{local}"
+        try:
+            repo, ref = host.source(cfg)
+        except ConfigError:
+            return None
+        return f"{repo}@{ref}"
+
     def extra_cfg(self) -> dict:
         # No Harvester nodes: keeps the vars file from demanding Harvester secrets.
         return {"harvester_node_names": []}

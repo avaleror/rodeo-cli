@@ -283,6 +283,20 @@ def test_profile_registered_and_example_listed():
     assert PROFILE_EXAMPLE["smlm-workshop"] == "smlm-workshop"
 
 
+def test_host_phase_key_follows_the_labinabox_source(monkeypatch):
+    profile = get_profile("lab-in-a-box")
+    for var in (host.LIAB_REPO_ENV, host.LIAB_REF_ENV, host.LIAB_PATH_ENV):
+        monkeypatch.delenv(var, raising=False)
+    cfg = {"lab_in_a_box": {"source": {"repo": "https://example/liab.git", "ref": "1.15.0"}}}
+    assert profile.phase_key("labinabox_host", cfg) == "https://example/liab.git@1.15.0"
+    assert profile.phase_key("labinabox", cfg) is None
+    assert profile.phase_key("labinabox_host", {}) == "{}@{}".format(host.LIAB_REPO, host.LIAB_LATEST)
+    monkeypatch.setenv(host.LIAB_REF_ENV, "dev")
+    assert profile.phase_key("labinabox_host", cfg) == "https://example/liab.git@dev"
+    monkeypatch.setenv(host.LIAB_PATH_ENV, "/src/liab")
+    assert profile.phase_key("labinabox_host", cfg) == "local:/src/liab"
+
+
 def test_smlm_cfg_vms_flavors_and_sizing(tmp_path):
     cfg = _smlm_cfg(tmp_path, FULL_SECRETS)
     assert cfg["vms"]["smlm"] == {

@@ -297,6 +297,27 @@ def test_host_phase_key_follows_the_labinabox_source(monkeypatch):
     assert profile.phase_key("labinabox_host", cfg) == "local:/src/liab"
 
 
+@pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+def test_local_checkout_key_changes_with_commits_and_edits(monkeypatch, tmp_path):
+    profile = get_profile("lab-in-a-box")
+    repo = tmp_path / "liab"
+    repo.mkdir()
+    git = ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t", "-c", "core.hooksPath=/dev/null"]
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    (repo / "setup_vm.py").write_text("v1\n")
+    subprocess.run(git + ["add", "."], check=True)
+    subprocess.run(git + ["commit", "-qm", "v1"], check=True)
+    monkeypatch.setenv(host.LIAB_PATH_ENV, str(repo))
+    first = profile.phase_key("labinabox_host", {})
+    sha = subprocess.run(git + ["rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+    assert first == "local:{}@{}".format(repo.resolve(), sha)
+    (repo / "setup_vm.py").write_text("v2\n")
+    edited = profile.phase_key("labinabox_host", {})
+    assert edited.startswith(first + "+") and edited == profile.phase_key("labinabox_host", {})
+    subprocess.run(git + ["commit", "-qam", "v2"], check=True)
+    assert profile.phase_key("labinabox_host", {}) not in (first, edited)
+
+
 def test_smlm_cfg_vms_flavors_and_sizing(tmp_path):
     cfg = _smlm_cfg(tmp_path, FULL_SECRETS)
     assert cfg["vms"]["smlm"] == {

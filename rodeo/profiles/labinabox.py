@@ -38,8 +38,9 @@ class LabInABoxProfile(RodeoProfile):
 
     def phase_key(self, phase: str, cfg: dict) -> str | None:
         """labinabox_host is redone when the lab-in-a-box source changes: the local
-        checkout (RODEO_LABINABOX_PATH) or the repo and ref as configured ("latest"
-        stays unresolved, so a new release alone does not reinstall)."""
+        checkout (RODEO_LABINABOX_PATH, with its commit and uncommitted changes) or
+        the repo and ref as configured ("latest" stays unresolved, so a new release
+        alone does not reinstall)."""
         if phase != "labinabox_host":
             return None
         from .. import labinabox_host as host
@@ -47,7 +48,8 @@ class LabInABoxProfile(RodeoProfile):
 
         local = host.local_override()
         if local is not None:
-            return f"local:{local}"
+            rev = host.local_revision(local)
+            return f"local:{local}@{rev}" if rev else f"local:{local}"
         try:
             repo, ref = host.source(cfg)
         except ConfigError:

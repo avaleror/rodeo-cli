@@ -1340,6 +1340,22 @@ def test_cloud_skips_kvm_preflight(tmp_path, monkeypatch):
     preflight.run_preflight(cfg, tmp_path)
 
 
+def test_cloud_aws_preflight_needs_a_security_group(tmp_path, monkeypatch, capsys):
+    from rodeo import awscli, preflight
+
+    cfg = _cloud_cfg(tmp_path)
+    monkeypatch.setattr("rodeo.awscli.check_credentials", lambda cfg: (True, "arn:test"))
+    monkeypatch.setattr(awscli, "ensure_on_path", lambda: "/usr/local/bin/aws")
+    settings = cfg["lab_in_a_box"]["cloud"]["settings"]
+    settings.pop("AWS_SECURITY_GROUP_ID", None)
+    preflight.run_preflight(cfg, tmp_path)
+    assert "AWS_SECURITY_GROUP_ID" in capsys.readouterr().out
+    settings["AWS_SECURITY_GROUP_ID"] = "sg-0123"
+    preflight.run_preflight(cfg, tmp_path)
+    out = capsys.readouterr().out
+    assert "✓  AWS security group" in out and "AWS_SECURITY_GROUP_ID" not in out
+
+
 def test_lab_secrets_found_next_to_a_plan_only_lab(tmp_path):
     cfg = _cloud_cfg(tmp_path)
     (Path(cfg["plan_dir"]) / ".rodeo-secrets.yaml").write_text(yaml.safe_dump({"aws_access_key_id": "LABKEY"}))

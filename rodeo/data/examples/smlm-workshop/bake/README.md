@@ -16,15 +16,18 @@ a workshop deploy. `rodeo up` never runs any of this.
     SUSE account. Give its download URL and sha256: an authenticated or mirror `https://`
     URL, or `file:///path` for a local copy. lab-in-a-box downloads it and checks it
     before first use. SUSE publishes the sha256 next to the image (`<image>.sha256`).
-  - **AWS (`variant: aws`):** a SLES 15 SP7 BYOS AMI ID in your region, plus AWS
-    credentials for the account the bake runs in.
+  - **AWS (`variant: aws`):** a SLES 15 SP7 BYOS AMI ID in your region, AWS
+    credentials for the account the bake runs in, a security group in the region's
+    default VPC (an empty one will do: lab-in-a-box adds SSH from this host), and an
+    Ubuntu 24.04 AMI for the small DNS VM lab-in-a-box creates next to the lab.
 - **Your organization's SCC mirroring credentials**, used to sync the channels.
 - **For KVM:** a host with internet access (~30 GiB RAM, ~450 GB free disk). The synced
   server uses about 215 GB, and `export-image.sh` writes a compressed copy of similar size.
 
 `rodeo up` asks once for everything it needs: `scc_regcode`, `scc_mirror_user`,
 `scc_mirror_password`, and `sles15sp7_image_url` + `sles15sp7_image_sha256`, or for
-AWS `aws_access_key_id`, `aws_secret_access_key` and `sles15sp7_ami`. It stores
+AWS `aws_access_key_id`, `aws_secret_access_key`, `sles15sp7_ami`,
+`aws_security_group_id` and `ubuntu2404_ami`. It stores
 them in `~/.rodeo/secrets.yaml`. They are never written to a plan or to git.
 
 ## Steps

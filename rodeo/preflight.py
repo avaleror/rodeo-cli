@@ -371,11 +371,18 @@ def run_preflight(cfg: dict, root: Path, phases_to_run: list[str] | None = None)
 
     from .awscli import check_credentials, ensure_on_path, labinabox_aws
 
-    if labinabox_aws(cfg) is not None:
+    aws_spec = labinabox_aws(cfg)
+    if aws_spec is not None:
         checks.append(("aws CLI", ensure_on_path() is not None,
                        "aws CLI not installed — run: sudo rodeo install-deps --aws", False))
         aws_ok, aws_detail = check_credentials(cfg)
         checks.append(("AWS credentials", aws_ok, aws_detail, False))
+        # lab-in-a-box adds its SSH rule only to a group it is given; the VPC's
+        # default group admits nothing from outside AWS.
+        checks.append(("AWS security group", bool((aws_spec.get("settings") or {}).get("AWS_SECURITY_GROUP_ID")),
+                       "set lab_in_a_box.cloud.settings.AWS_SECURITY_GROUP_ID to a security group in the "
+                       "lab's VPC (an empty one will do): without it the VMs land in the VPC's default "
+                       "group and rodeo cannot reach them", False))
 
     for tool in CORE_TOOLS:
         checks.append((tool, shutil.which(tool) is not None, f"{tool} not found in PATH", False))

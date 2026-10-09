@@ -103,7 +103,8 @@ lab_in_a_box:
             - centos7-x86_64
     # aws: every VM in an AWS account instead of nested KVM. The SMLM server boots
     # the private AMI from bake/ (variant aws, export-ami.sh); the clients boot AMIs
-    # you pick in your region. Needs AWS_SECURITY_GROUP_ID for the web UI port.
+    # you pick in your region. Needs AWS_SECURITY_GROUP_ID (SSH from this host, the
+    # web UI port) and an Ubuntu AMI for lab-in-a-box's DNS VM (CLOUD_DNS_IMAGE).
     aws:
       operator_secrets:
         - aws_access_key_id
@@ -122,6 +123,7 @@ lab_in_a_box:
           AWS_ACCESS_KEY_ID: "??aws_access_key_id"
           AWS_SECRET_ACCESS_KEY: "??aws_secret_access_key"
           AWS_SECURITY_GROUP_ID: "??aws_security_group_id"
+          CLOUD_DNS_IMAGE: "??ubuntu2404_ami"
       nodes:
         smlm: {ISO_IMAGE: "??smlm_image_ami", config_method: cloud-init, cloud_instance_type: m7i.2xlarge}
         centos7: &el7aws

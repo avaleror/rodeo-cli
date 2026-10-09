@@ -398,6 +398,41 @@ def test_stream_labinabox_writes_private_lab_json_and_runs_setup(tmp_path, monke
     assert "ssh-ed25519 AAAAroot root@host" in ssh_calls[0][-1]
 
 
+_SETUP_FAILED_OUTPUT = [
+    "ERROR: addon smlm failed on smlm.rodeo.lab",
+    "\x1b[1;97m" + "═" * 64,
+    "  LAB SUMMARY",
+    "═" * 64 + "\x1b[0m",
+    "Nodes (1):",
+    "  \x1b[1;92mcreated\x1b[0m  smlm.rodeo.lab",
+    "Addons (1):",
+    "  \x1b[1;91mFAILED (rc=1)   \x1b[0m smlm (smlm.rodeo.lab)",
+]
+
+
+def test_failure_summary_repeats_the_lab_summary_block():
+    assert phase.failure_summary(_SETUP_FAILED_OUTPUT) == [
+        "Nodes (1):", "  created  smlm.rodeo.lab", "Addons (1):", "  FAILED (rc=1)    smlm (smlm.rodeo.lab)"]
+    assert phase.failure_summary(["noise", "ERROR: no such image", "more"]) == ["ERROR: no such image"]
+    assert phase.failure_summary(["all fine"]) == []
+
+
+def test_failed_setup_ends_with_its_summary():
+    runner = _Runner({}, Path("."), rc=1)
+
+    def stream(cmd, env=None):
+        runner._last_rc = 1
+        yield from (LogLine(line) for line in _SETUP_FAILED_OUTPUT)
+
+    runner._stream_subprocess = stream
+    lines = [e.line for e in phase._run_setup(runner, ["setup_lab.py"])]
+    assert lines[len(_SETUP_FAILED_OUTPUT)] == "  ✗  setup_lab.py failed (exit 1):"
+    assert lines[-1] == "       FAILED (rc=1)    smlm (smlm.rodeo.lab)"
+    runner.rc = 0
+    runner._stream_subprocess = _Runner._stream_subprocess.__get__(runner)
+    assert [e.line for e in phase._run_setup(runner, ["setup_lab.py"])] == ["ok"]
+
+
 def test_stream_labinabox_refuses_unresolved_secrets(tmp_path, monkeypatch):
     cfg = _smlm_cfg(tmp_path, {"universal_pwd": "u", "smlm_admin_password": "a"})
     runner = _Runner(cfg, tmp_path)

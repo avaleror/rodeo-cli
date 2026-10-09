@@ -105,6 +105,7 @@
 * **virt-workshop-aws:** pre-create daily-batch-processor for full chapter-4 parity ([8d5e9f2](https://github.com/rmahique/rodeo-cli/commit/8d5e9f27770c5b984aa9cc9439d9b3c7c340efa2))
 * **vms:** Instruqt-friendly guest disk cache defaults ([#42](https://github.com/rmahique/rodeo-cli/issues/42)) ([1b18387](https://github.com/rmahique/rodeo-cli/commit/1b1838702442e90e51be6c8f3c8fa7b25e0baff2))
 * wire deployment_target through rodeo up, firewall, and success screen ([a8271be](https://github.com/rmahique/rodeo-cli/commit/a8271bee14ba9ccd35003fbf4793607f13139a3c))
+## [0.24.1](https://github.com/avaleror/rodeo-cli/compare/v0.24.0...v0.24.1) (2026-10-09)
 
 
 ### Bug Fixes
@@ -366,6 +367,8 @@
 ### Build & Release
 
 * automate releases with release-please; drop manual version bumping ([#6](https://github.com/rmahique/rodeo-cli/issues/6)) ([1eea8f9](https://github.com/rmahique/rodeo-cli/commit/1eea8f9f9c624a23e185f1073ad0470e8a52ffb4))
+* **story:** refuse story packages without a .sha512; repeat lab-in-a-… ([53ba124](https://github.com/avaleror/rodeo-cli/commit/53ba124266bbe56ce35f7ffc980731fb7bd66df3))
+* **story:** refuse story packages without a .sha512; repeat lab-in-a-box's summary when setup_lab.py fails ([df3c4ce](https://github.com/avaleror/rodeo-cli/commit/df3c4cecd952afeb3dc762217d705029e052b57a))
 
 ## [0.24.0](https://github.com/avaleror/rodeo-cli/compare/v0.23.0...v0.24.0) (2026-10-09)
 

@@ -14,6 +14,7 @@ from .commands.install_deps import install_deps_cmd
 from .commands.install_extensions_cmd import install_extensions_cmd
 from .commands.instances_cmd import instances_cmd
 from .commands.bootstrap_cmd import bootstrap_cmd
+from .commands.builder_cmd import builder_cmd
 from .commands.export_cmd import export_cmd
 from .commands.generate_cmd import generate_cmd
 from .commands.list_cmd import list_cmd
@@ -80,6 +81,7 @@ def cli(config_dir: str | None) -> None:
 cli.add_command(up_cmd,           name="up")
 cli.add_command(doctor_cmd,       name="doctor")
 cli.add_command(new_cmd,          name="new")
+cli.add_command(builder_cmd,      name="builder")
 cli.add_command(profiles_cmd,     name="profiles")
 cli.add_command(install_deps_cmd, name="install-deps")
 cli.add_command(bootstrap_cmd,    name="bootstrap")

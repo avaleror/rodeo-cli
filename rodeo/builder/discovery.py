@@ -3,7 +3,8 @@
 - engines: the four lab engines, their base profile, resources and capabilities
 - workshops: bundled examples with a ``story/`` directory, and the chapter
   sources outside rodeo-cli listed in ``chapter_sources.yaml``
-- labinabox: where the lab-in-a-box lab-builder lives, and its add-ons
+- labinabox: where the lab-in-a-box lab-builder lives, and its catalogue (add-ons,
+  infrastructure services, Kubernetes cluster types)
 
 Chapter metadata (minutes, needed capabilities, check script) comes from an
 optional ``story/chapters.yaml`` beside the chapters; rmstory ignores it.
@@ -57,8 +58,6 @@ ENGINES: dict[str, dict[str, Any]] = {
 }
 
 # Capabilities a new chapter can ask for (the union the UI offers).
-CAPABILITIES = ["rancher", "fleet", "harvester", "kubevirt", "longhorn", "neuvector",
-                "harbor", "keycloak", "argocd", "smlm", "elemental", "eib"]
 
 _HEADING_RE = re.compile(r"^#\s+(.+?)\s*$", re.M)
 _TAG_RE = re.compile(r"<[^>]+>")
@@ -117,7 +116,8 @@ def engines() -> dict[str, Any]:
             entry["resources"] = {"nodes": 1, "memory_mib": 4096, "vcpu": 2}
             entry["definition"] = (PLATFORMS / name / "definition.yaml").read_text()
         out.append(entry)
-    return {"engines": out, "capabilities": CAPABILITIES}
+    capabilities = sorted({c for spec in ENGINES.values() for c in spec["provides"]})
+    return {"engines": out, "capabilities": capabilities}
 
 
 def _chapter_title(body: str, fallback: str) -> str:
@@ -241,6 +241,29 @@ def source_fetch_commands(src: dict[str, Any], dest: Path) -> list[list[str]]:
     ]
 
 
+def fetch_sources(dest: Path, given: dict[str, Path] | None = None,
+                  run: Any = subprocess.run) -> tuple[dict[str, Path], dict[str, str]]:
+    """Checkout per chapter source: the *given* ones, the rest cloned into *dest*.
+
+    Returns (checkouts, errors): a source whose clone fails is left out of the
+    checkouts and its git error tail is in errors, keyed by source id.
+    """
+    out = dict(given or {})
+    errors: dict[str, str] = {}
+    for src in chapter_sources():
+        if src["id"] in out:
+            continue
+        target = dest / src["id"]
+        for cmd in source_fetch_commands(src, target):
+            r = run(cmd, capture_output=True, text=True, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+            if r.returncode != 0:
+                errors[src["id"]] = (r.stderr or "").strip()[-300:]
+                break
+        else:
+            out[src["id"]] = target
+    return out, errors
+
+
 def _check_script(directory: Path) -> str:
     scripts = sorted(directory.glob("check-*"))
     return scripts[0].read_text(errors="replace") if scripts else ""
@@ -309,14 +332,17 @@ import api
 status, body = api.dispatch("components", "GET", {}, b"")
 if status != 200:
     sys.exit("components: " + str(body))
-print(json.dumps([{"name": c["name"].removeprefix("install_"), "targets": c.get("targets", [])}
-                  for c in body["components"]]))
+print(json.dumps([{"name": c["name"].removeprefix("install_"), "kind": c.get("kind") or "addon",
+                   "targets": c.get("targets", [])} for c in body["components"]]))
 """
+
+LIAB_KINDS = {"addon": "addons", "infrastructure": "infrastructure", "kcluster": "kclusters"}
 
 
 def labinabox_addons(checkout: Path) -> list[dict[str, Any]]:
-    """Add-ons of a lab-in-a-box checkout, from its own lab-builder API: short name
-    (as plans use it) and targets ("vm", "baremetal", "container", ...).
+    """Catalogue of a lab-in-a-box checkout, from its own lab-builder API: short name
+    (as plans use it), kind ("addon", "infrastructure" or "kcluster"; "addon" when
+    the release does not report one) and targets ("vm", "baremetal", "container", ...).
 
     Runs in a separate interpreter so lab-in-a-box's modules and environment
     never mix with rodeo's. Raises RuntimeError when the checkout can't answer.
@@ -329,11 +355,24 @@ def labinabox_addons(checkout: Path) -> list[dict[str, Any]]:
 
 
 def labinabox(checkout: Path | None = None, builder_url: str = LAB_BUILDER_URL,
-              version: str = "") -> dict[str, Any]:
-    """The lab-builder URL, the lab-in-a-box add-ons (empty without a checkout) and imports."""
-    return {
-        "builder_url": builder_url,
-        "version": version,
-        "addons": labinabox_addons(checkout) if checkout else [],
-        "imports": labinabox_imports(),
-    }
+              version: str = "", missing: str = "") -> dict[str, Any]:
+    """The lab-builder URL, the lab-in-a-box catalogue split by kind (``addons``,
+    ``infrastructure``, ``kclusters``) and the bundled imports.
+
+    ``error`` says why the catalogue is missing (*missing*, the caller's reason
+    for having no checkout; or the checkout's API failed); it is empty when the
+    catalogue was read.
+    """
+    out: dict[str, Any] = {"builder_url": builder_url, "version": version, "error": "",
+                           "imports": labinabox_imports(), **{key: [] for key in LIAB_KINDS.values()}}
+    if checkout is None:
+        out["error"] = missing or "no lab-in-a-box checkout was given, so its catalogue is unknown"
+        return out
+    try:
+        items = labinabox_addons(checkout)
+    except (OSError, RuntimeError, ValueError) as exc:
+        out["error"] = str(exc)
+        return out
+    for item in items:
+        out[LIAB_KINDS.get(item["kind"], "addons")].append(item)
+    return out

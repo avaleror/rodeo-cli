@@ -278,7 +278,9 @@ A configured `install_url` still wins over both. Fleet has the same mechanism,
 
 **AWS API credentials** (boto3: never in the plan): `~/.aws/credentials` /
 `AWS_PROFILE`, **or** `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY`
-(+ optional `AWS_SESSION_TOKEN`). AWS CLI is optional.
+(+ optional `AWS_SESSION_TOKEN`). AWS CLI is optional. `rodeo up` checks them
+(`sts get-caller-identity`) before it provisions anything and stops when they are
+missing or expired.
 
 **AMI choice matters more than it looks.** The default is SLES 16
 **pay-as-you-go** (published by SUSE via Amazon), and it is not
@@ -549,6 +551,16 @@ lab_in_a_box:
   nodes:
     vm1: {cloud_instance_type: t3.large}
 ```
+
+With an AWS SSO login, use the profile instead of keys: `AWS_PROFILE: <profile>`
+(the profile of the user that runs rodeo; a profile wins over keys). Temporary keys
+need `AWS_SESSION_TOKEN` too.
+
+For `cloudtype: aws`, lab-in-a-box drives the `aws` CLI: `sudo rodeo install-deps --aws`
+installs the AWS CLI v2 from AWS (the installer's PGP signature is checked against
+AWS's key first), and `rodeo up` offers to do it when the CLI is missing. Preflight
+then asks AWS who the plan's credentials belong to and stops the deploy when there are
+none, or they are expired or rejected (e.g. "run `aws sso login --profile <profile>`").
 
 rodeo writes the account to `/etc/lab_creation/credentials/<account>.yaml` (0600).
 Any `??key` in `settings` is always asked for, never generated. Nodes get no static

@@ -114,3 +114,23 @@ def instruqt_source(tmp_path_factory) -> Path:
 def markdown_source(tmp_path_factory) -> Path:
     """A minimal markdown exercises checkout (docs/exercises + checks) for the virt-workshop source."""
     return make_markdown(tmp_path_factory.mktemp("markdown"))
+
+
+def make_labinabox(root: Path) -> Path:
+    """A lab-in-a-box checkout whose lab-builder API answers a small catalogue."""
+    lib = root / "webui" / "lib"
+    lib.mkdir(parents=True)
+    (lib / "api.py").write_text(
+        "def dispatch(action, method, params, body):\n"
+        "    return 200, {'components': [\n"
+        "        {'name': 'install_smlm', 'targets': ['container']},\n"
+        "        {'name': 'install_client_registration', 'kind': 'addon', 'targets': ['vm']},\n"
+        "        {'name': 'pxe', 'kind': 'infrastructure', 'targets': []},\n"
+        "        {'name': 'rke2', 'kind': 'kcluster', 'targets': []}]}\n")
+    return root
+
+
+@pytest.fixture(scope="session")
+def labinabox_checkout(tmp_path_factory) -> Path:
+    """A fake lab-in-a-box checkout for the builder's catalogue (smlm, client_registration, pxe, rke2)."""
+    return make_labinabox(tmp_path_factory.mktemp("liab"))

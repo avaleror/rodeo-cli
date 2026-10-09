@@ -379,6 +379,13 @@ def _aws_control_plane_deploy(
     _persist_plan_overlays(lab, cfg)
 
     provider = cfg.get("provider") or {}
+    from ..awscli import boto3_identity
+
+    aws_ok, aws_detail = boto3_identity(str(provider.get("region") or ""))
+    if not aws_ok:
+        console.print(f"[red]✗  AWS credentials: {aws_detail}[/red]")
+        raise SystemExit(1)
+    console.print(f"[green]✓[/green]  AWS credentials: {aws_detail}")
     console.print(
         f"\n[bold]Provisioning AWS KVM host[/bold]  "
         f"[cyan]{provider.get('instance_type')}[/cyan] "
@@ -667,6 +674,22 @@ def _ensure_host_ready(host: dict, assume_yes: bool) -> bool:
     return True
 
 
+def _ensure_aws_cli(cfg: dict, assume_yes: bool) -> None:
+    """A lab whose VMs lab-in-a-box creates in AWS needs the aws CLI: offer to install it."""
+    from ..awscli import ensure_on_path, labinabox_aws
+
+    if labinabox_aws(cfg) is None or ensure_on_path() is not None:
+        return
+    console.print("\n[yellow]This lab creates its VMs in AWS and needs the aws CLI.[/yellow]")
+    if not assume_yes and not Confirm.ask("Install the AWS CLI v2 now (from AWS, signature-checked)?",
+                                          default=True):
+        console.print("Skipped. Install with: [bold]sudo rodeo install-deps --aws[/bold], then re-run.")
+        raise SystemExit(1)
+    from .install_deps import _detect_distro, install_aws_cli
+
+    install_aws_cli(_detect_distro())
+
+
 def _detect_target() -> str:
     """Best-effort: are we running on Instruqt?"""
     import os
@@ -731,6 +754,7 @@ def _deploy(lab: Path, assume_yes: bool, reconcile: bool = True) -> None:
         console.print("[red]✗  Cannot find the bundled Ansible content. Reinstall rodeo-cli.[/red]")
         raise SystemExit(1)
 
+    _ensure_aws_cli(cfg, assume_yes)
     if not run_preflight(cfg, root):
         if assume_yes:
             console.print("[red]✗  Preflight failed. Fix the host and re-run.[/red]")

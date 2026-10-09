@@ -9,6 +9,7 @@ from __future__ import annotations
 import functools
 import io
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -29,11 +30,13 @@ REPO = Path(__file__).resolve().parent.parent
 
 
 @pytest.fixture(scope="module")
-def site(tmp_path_factory, markdown_source):
+def site(tmp_path_factory, markdown_source, labinabox_checkout):
     out = tmp_path_factory.mktemp("site") / "builder"
-    subprocess.run([sys.executable, str(REPO / "scripts" / "build-builder-static.py"), "--output", str(out),
+    r = subprocess.run([sys.executable, str(REPO / "scripts" / "build-builder-static.py"), "--output", str(out),
                     "--lab-builder-url", "http://127.0.0.1:9/lab-builder/", "--no-fetch-sources",
-                    "--source", "virt-workshop=" + str(markdown_source)], check=True, capture_output=True)
+                    "--labinabox", str(labinabox_checkout),
+                    "--source", "virt-workshop=" + str(markdown_source)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
     handler = functools.partial(SimpleHTTPRequestHandler, directory=str(out))
     handler.log_message = lambda *a, **k: None
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
@@ -43,7 +46,22 @@ def site(tmp_path_factory, markdown_source):
 
 
 @pytest.fixture()
-def page(site, monkeypatch):
+def live(labinabox_checkout, markdown_source):
+    """The live `rodeo builder` server (save enabled) on a free port."""
+    from rodeo.builder.api import Api
+    from rodeo.builder.server import make_server
+
+    api = Api(labinabox_checkout, "http://127.0.0.1:9/lab-builder/", "1.0.0",
+              {"virt-workshop": markdown_source}, can_save=True)
+    server = make_server(api, "127.0.0.1", 0, "0.0.0-test")
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield "http://127.0.0.1:{}/".format(server.server_address[1])
+    server.shutdown()
+    server.server_close()
+
+
+@pytest.fixture()
+def page(request, monkeypatch):
     # conftest points HOME at a temp dir; Playwright finds its browsers under the
     # real user's ~/.cache/ms-playwright unless PLAYWRIGHT_BROWSERS_PATH says otherwise.
     if not os.environ.get("PLAYWRIGHT_BROWSERS_PATH"):
@@ -51,6 +69,7 @@ def page(site, monkeypatch):
 
         real_home = Path(pwd.getpwuid(os.getuid()).pw_dir)
         monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(real_home / ".cache" / "ms-playwright"))
+    url = request.getfixturevalue(getattr(request, "param", "site"))
     with sync_api.sync_playwright() as p:
         try:
             browser = p.chromium.launch()
@@ -65,7 +84,7 @@ def page(site, monkeypatch):
         pg.on("console", lambda msg: errors.append(msg.text)
               if msg.type == "error" and "fonts.g" not in (msg.location or {}).get("url", "") else None)
         pg.route("https://fonts.googleapis.com/**", lambda route: route.abort())
-        pg.goto(site)
+        pg.goto(url)
         pg.wait_for_selector(".engine")
         yield pg
         browser.close()
@@ -100,12 +119,14 @@ def test_compose_native_rodeo_and_download(page):
     page.click("#variants .chip >> text=first-ride")
     files = _zip(page)
     assert set(files) == {"ride-on/rodeo-plan.yaml", "ride-on/story/01-welcome.md", "ride-on/story/chapters.yaml",
-                          "ride-on/story/stories/first-ride.yaml", "ride-on/README.md"}
+                          "ride-on/story/stories/first-ride.yaml", "ride-on/README.md", "ride-on/builder.yaml"}
+    assert yaml.safe_load(files["ride-on/builder.yaml"]) == {"base": "rancher"}
     plan = yaml.safe_load(files["ride-on/rodeo-plan.yaml"])
     assert plan["name"] == "ride-on" and plan["type"] == "rancher"
     assert plan["story"] == {"language": "en", "id": "first-ride"}
     assert yaml.safe_load(files["ride-on/story/stories/first-ride.yaml"]) == ["welcome.first-task"]
-    assert "rodeo new ride-on --from rancher" in files["ride-on/README.md"]
+    assert "rodeo new ride-on --from-zip ride-on.zip" in files["ride-on/README.md"]
+    assert page.locator("#saveBtn").is_hidden()
 
 
 def test_drag_and_drop_reorders(page):
@@ -142,7 +163,7 @@ def test_labinabox_engine_adds_needed_addons_and_definition(page):
     files = _zip(page)
     assert yaml.safe_load(files["my-rodeo/rodeo-plan.yaml"])["lab_in_a_box"]["variant"] == "image"
     assert "my-rodeo/definition.yaml" not in files
-    assert "rodeo new my-rodeo --from smlm-workshop" in files["my-rodeo/README.md"]
+    assert yaml.safe_load(files["my-rodeo/builder.yaml"]) == {"base": "smlm-workshop"}
 
 
 def test_story_editor_tags_a_selection(page):
@@ -175,14 +196,14 @@ def test_upload_lab_json_brings_its_addons(page, tmp_path):
     lab.write_text('{"common": {}, "nodes": {"a.lab": {"addons": ["smlm", {"client_registration": {}}]}}}')
     page.click(".engine >> text=lab-in-a-box")
     page.set_input_files("#enginePanel input[type=file]", str(lab))
-    assert "client_registration" in page.locator("#enginePanel").inner_text()
+    sync_api.expect(page.locator("#enginePanel")).to_contain_text("client_registration")
     files = _zip(page)
     assert yaml.safe_load(files["my-rodeo/rodeo-plan.yaml"])["lab_in_a_box"]["nodes"]["vm1"]["addons"] == \
         ["client_registration", "smlm"]
     assert "client_registration" in files["my-rodeo/lab.json"]
     page.set_input_files("#enginePanel input[type=file]", files=[{"name": "bad.json", "mimeType": "application/json",
                                                                   "buffer": b"{}"}])
-    assert "Not a lab-in-a-box lab.json" in page.locator("#toast").inner_text()
+    sync_api.expect(page.locator("#toast")).to_contain_text("Not a lab-in-a-box lab.json")
 
 
 def test_selected_engine_is_marked(page):
@@ -208,7 +229,7 @@ def test_source_group_switches_engine_and_base(page):
     group.locator(".card", has_text="The Arrival").click()
     assert page.locator("#coverage").inner_text() == "lab covers every chapter"
     files = _zip(page)
-    assert "rodeo new my-rodeo --from virt-workshop-aws" in files["my-rodeo/README.md"]
+    assert yaml.safe_load(files["my-rodeo/builder.yaml"]) == {"base": "virt-workshop-aws"}
     assert files["my-rodeo/checks/check-the-arrival.sh"] == "#!/bin/bash\necho ok\n"
     assert "**Time:** 30 min" in files["my-rodeo/story/01-the-arrival.md"]
 
@@ -234,3 +255,73 @@ def test_plan_yaml_can_be_edited(page):
     page.click("#planReset")
     assert "extra_key" not in page.locator("#planEditor").input_value()
     assert page.locator("#planReset").is_hidden()
+
+
+def test_only_available_needs_are_offered_and_unknown_addons_refused(page):
+    page.click("#newChapterBtn")
+    offered = page.locator("#ncNeeds .chip").all_inner_texts()
+    assert {"smlm", "client_registration", "pxe", "rke2", "rancher", "harvester"} <= set(offered)
+    assert "argocd" not in offered and "neuvector" not in offered
+    page.click("#ncCancel")
+    page.click(".engine >> text=lab-in-a-box")
+    page.fill("#enginePanel .addon-add input", "argocd")
+    page.click("#enginePanel .addon-add button")
+    assert "argocd is not a lab-in-a-box add-on" in page.locator("#toast").inner_text()
+    assert page.locator("#enginePanel").get_by_text("Kubernetes clusters (in the lab-builder)").count() == 1
+
+
+@pytest.fixture()
+def bare_site(tmp_path_factory):
+    out = tmp_path_factory.mktemp("bare") / "builder"
+    r = subprocess.run([sys.executable, str(REPO / "scripts" / "build-builder-static.py"), "--output", str(out),
+                        "--no-fetch-sources", "--no-labinabox"], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    handler = functools.partial(SimpleHTTPRequestHandler, directory=str(out))
+    handler.log_message = lambda *a, **k: None
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield "http://127.0.0.1:{}/index.html".format(server.server_address[1])
+    server.shutdown()
+
+
+@pytest.mark.parametrize("page", ["bare_site"], indirect=True)
+def test_missing_catalogue_is_shown_not_hidden(page):
+    page.click(".engine >> text=lab-in-a-box")
+    alert = page.locator("#enginePanel .alert").inner_text()
+    assert "catalogue unavailable" in alert and "--labinabox" in alert
+
+
+@pytest.mark.parametrize("page", ["live"], indirect=True)
+def test_live_server_saves_into_profiles(page):
+    from rodeo.labseed import custom_profile_dir
+
+    save = page.locator("#saveBtn")
+    assert save.is_visible()
+    page.fill("#name", "Saved Ride")
+    page.press("#name", "Tab")
+    page.click(".card >> text=Welcome to the rodeo")
+    save.click()
+    sync_api.expect(page.locator("#toast")).to_have_text(re.compile("^Saved"))
+    dest = custom_profile_dir("saved-ride")
+    assert (dest / "definition.yaml").is_file() and (dest / "story" / "01-welcome.md").is_file()
+    assert yaml.safe_load((dest / "rodeo-plan.yaml").read_text())["name"] == "saved-ride"
+    assert "rodeo up --profile saved-ride" in page.locator("#toast").inner_text()
+    page.evaluate("document.getElementById('toast').textContent = ''")
+    page.once("dialog", lambda d: d.accept())
+    save.click()
+    sync_api.expect(page.locator("#toast")).to_have_text(re.compile("^Saved"))
+
+
+def test_missing_addon_marks_work_needed_without_blocking(page):
+    page.click("#newChapterBtn")
+    page.fill("#ncTitle", "Future feature")
+    page.click("#ncNeeds .chip >> text=missing_addon")
+    page.click("#newForm button[type=submit]")
+    assert page.locator(".row .chip.todo").inner_text().lower() == "work needed"
+    assert page.locator("#coverage").inner_text() == "lab covers every chapter · work needed in 1 chapter"
+    page.click(".engine >> text=lab-in-a-box")
+    assert "missing_addon" not in page.locator("#enginePanel").inner_text()
+    files = _zip(page)
+    assert "missing_addon" not in files["my-rodeo/rodeo-plan.yaml"]
+    assert "## Work needed" in files["my-rodeo/README.md"] and "Future feature" in files["my-rodeo/README.md"]
+    assert "needs: [missing_addon]" in files["my-rodeo/story/chapters.yaml"]

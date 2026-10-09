@@ -103,6 +103,11 @@ class RodeoProfile(ABC):
     # and `versions` above is only used if the definition can't be loaded.
     versions_from_definition: bool = False
 
+    def phase_key(self, phase: str, cfg: dict) -> str | None:
+        """What a cached phase's completion depends on: when it differs from the key
+        recorded at completion, the phase runs again. None: completion alone counts."""
+        return None
+
     # --- Config assembly ---
     def default_cfg(self, config_dir: str | None = None) -> dict:
         """Type-specific config defaults, derived from the definition file when present."""

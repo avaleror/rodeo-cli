@@ -283,6 +283,20 @@ def test_profile_registered_and_example_listed():
     assert PROFILE_EXAMPLE["smlm-workshop"] == "smlm-workshop"
 
 
+def test_host_phase_key_follows_the_labinabox_source(monkeypatch):
+    profile = get_profile("lab-in-a-box")
+    for var in (host.LIAB_REPO_ENV, host.LIAB_REF_ENV, host.LIAB_PATH_ENV):
+        monkeypatch.delenv(var, raising=False)
+    cfg = {"lab_in_a_box": {"source": {"repo": "https://example/liab.git", "ref": "1.15.0"}}}
+    assert profile.phase_key("labinabox_host", cfg) == "https://example/liab.git@1.15.0"
+    assert profile.phase_key("labinabox", cfg) is None
+    assert profile.phase_key("labinabox_host", {}) == "{}@{}".format(host.LIAB_REPO, host.LIAB_LATEST)
+    monkeypatch.setenv(host.LIAB_REF_ENV, "dev")
+    assert profile.phase_key("labinabox_host", cfg) == "https://example/liab.git@dev"
+    monkeypatch.setenv(host.LIAB_PATH_ENV, "/src/liab")
+    assert profile.phase_key("labinabox_host", cfg) == "local:/src/liab"
+
+
 def test_smlm_cfg_vms_flavors_and_sizing(tmp_path):
     cfg = _smlm_cfg(tmp_path, FULL_SECRETS)
     assert cfg["vms"]["smlm"] == {
@@ -382,6 +396,41 @@ def test_stream_labinabox_writes_private_lab_json_and_runs_setup(tmp_path, monke
     assert len(ssh_calls) == 8 and ssh_calls[0][-2] == "root@192.168.122.20"
     assert "ssh-ed25519 AAAArodeo rodeo-managed" in ssh_calls[0][-1]
     assert "ssh-ed25519 AAAAroot root@host" in ssh_calls[0][-1]
+
+
+_SETUP_FAILED_OUTPUT = [
+    "ERROR: addon smlm failed on smlm.rodeo.lab",
+    "\x1b[1;97m" + "═" * 64,
+    "  LAB SUMMARY",
+    "═" * 64 + "\x1b[0m",
+    "Nodes (1):",
+    "  \x1b[1;92mcreated\x1b[0m  smlm.rodeo.lab",
+    "Addons (1):",
+    "  \x1b[1;91mFAILED (rc=1)   \x1b[0m smlm (smlm.rodeo.lab)",
+]
+
+
+def test_failure_summary_repeats_the_lab_summary_block():
+    assert phase.failure_summary(_SETUP_FAILED_OUTPUT) == [
+        "Nodes (1):", "  created  smlm.rodeo.lab", "Addons (1):", "  FAILED (rc=1)    smlm (smlm.rodeo.lab)"]
+    assert phase.failure_summary(["noise", "ERROR: no such image", "more"]) == ["ERROR: no such image"]
+    assert phase.failure_summary(["all fine"]) == []
+
+
+def test_failed_setup_ends_with_its_summary():
+    runner = _Runner({}, Path("."), rc=1)
+
+    def stream(cmd, env=None):
+        runner._last_rc = 1
+        yield from (LogLine(line) for line in _SETUP_FAILED_OUTPUT)
+
+    runner._stream_subprocess = stream
+    lines = [e.line for e in phase._run_setup(runner, ["setup_lab.py"])]
+    assert lines[len(_SETUP_FAILED_OUTPUT)] == "  ✗  setup_lab.py failed (exit 1):"
+    assert lines[-1] == "       FAILED (rc=1)    smlm (smlm.rodeo.lab)"
+    runner.rc = 0
+    runner._stream_subprocess = _Runner._stream_subprocess.__get__(runner)
+    assert [e.line for e in phase._run_setup(runner, ["setup_lab.py"])] == ["ok"]
 
 
 def test_stream_labinabox_refuses_unresolved_secrets(tmp_path, monkeypatch):
@@ -1300,6 +1349,7 @@ def test_cloud_skips_kvm_preflight(tmp_path, monkeypatch):
     from rodeo import preflight
 
     cfg = _cloud_cfg(tmp_path)
+    monkeypatch.setattr("rodeo.awscli.check_credentials", lambda cfg: (True, "arn:test"))
     monkeypatch.setattr(preflight, "_nested_enabled", lambda: pytest.fail("no KVM check for cloud VMs"))
     preflight.run_preflight(cfg, tmp_path)
 

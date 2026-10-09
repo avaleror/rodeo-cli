@@ -30,7 +30,8 @@ def test_engines_have_bases_resources_and_capabilities():
     liab = engines["lab-in-a-box"]
     assert liab["external"] and liab["provides"] == [] and "plan" not in liab
     assert yaml.safe_load(liab["definition"])["definition"]["nodes"][0]["name"] == "vm1"
-    assert "rancher" in data["capabilities"] and "smlm" in data["capabilities"]
+    provides = {c for e in engines.values() for c in e["provides"]}
+    assert data["capabilities"] == sorted(provides) and "rancher" in data["capabilities"]
 
 
 def test_workshops_read_chapters_and_their_metadata():
@@ -78,28 +79,48 @@ def test_labinabox_addons_come_from_its_api(tmp_path):
         "    return 200, {'components': [{'name': 'install_smlm', 'targets': ['container']},\n"
         "                                {'name': 'install_client_registration', 'targets': ['vm']}]}\n"))
     assert discovery.labinabox_addons(checkout) == [
-        {"name": "smlm", "targets": ["container"]}, {"name": "client_registration", "targets": ["vm"]}]
+        {"name": "smlm", "kind": "addon", "targets": ["container"]},
+        {"name": "client_registration", "kind": "addon", "targets": ["vm"]}]
     data = discovery.labinabox(checkout, "https://example/lb/", "1.10.0")
     assert data["builder_url"] == "https://example/lb/" and data["version"] == "1.10.0"
     assert [a["name"] for a in data["addons"]] == ["smlm", "client_registration"]
+    assert data["error"] == ""
+
+
+def test_labinabox_catalogue_is_split_by_kind(labinabox_checkout):
+    data = discovery.labinabox(labinabox_checkout)
+    assert [a["name"] for a in data["addons"]] == ["smlm", "client_registration"]
+    assert [a["name"] for a in data["infrastructure"]] == ["pxe"]
+    assert [a["name"] for a in data["kclusters"]] == ["rke2"]
 
 
 def test_labinabox_addons_fail_loudly(tmp_path):
     checkout = _fake_labinabox(tmp_path, "def dispatch(*a):\n    return 500, {'error': 'boom'}\n")
     with pytest.raises(RuntimeError, match="boom"):
         discovery.labinabox_addons(checkout)
-    assert discovery.labinabox()["addons"] == []
+    broken = discovery.labinabox(checkout)
+    assert broken["addons"] == [] and "boom" in broken["error"]
+    missing = discovery.labinabox()
+    assert missing["addons"] == [] and "no lab-in-a-box checkout" in missing["error"]
+    assert discovery.labinabox(missing="offline today")["error"] == "offline today"
 
 
 # ── api ─────────────────────────────────────────────────────────────────────
 
-def test_api_dispatch():
-    api = Api()
+def test_api_dispatch(labinabox_checkout):
+    api = Api(labinabox_checkout)
     assert api.dispatch("engines")[0] == 200
     assert api.dispatch("nope") == (404, {"error": "unknown action: nope"})
     assert api.dispatch("engines", "POST")[0] == 405
+    assert api.dispatch("save", "POST", body=b"{}") == (403, {"error": "saving needs the rodeo builder server"})
     data = api.static_data()
     assert set(data) == {"engines", "workshops", "labinabox"}
+
+
+def test_static_data_requires_the_catalogue_unless_told_otherwise():
+    with pytest.raises(RuntimeError, match="lab-in-a-box catalogue: no lab-in-a-box checkout"):
+        Api().static_data()
+    assert Api().static_data(require_labinabox=False)["labinabox"]["error"]
 
 
 def test_static_data_raises_when_an_answer_fails(monkeypatch):
@@ -171,10 +192,10 @@ def test_generated_native_plans_keep_their_base(engine, tmp_path):
 BUILD = REPO / "scripts" / "build-builder-static.py"
 
 
-def test_static_build_embeds_every_answer(tmp_path):
+def test_static_build_embeds_every_answer(tmp_path, labinabox_checkout):
     out = tmp_path / "builder"
     r = subprocess.run([sys.executable, str(BUILD), "--output", str(out), "--lab-builder-url", "https://x/lb/",
-                        "--no-fetch-sources"],
+                        "--no-fetch-sources", "--labinabox", str(labinabox_checkout)],
                        capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
     assert sorted(p.name for p in out.iterdir()) == ["app.js", "assets", "index.html", "logic.js", "style.css", "theme.js"]
@@ -184,6 +205,8 @@ def test_static_build_embeds_every_answer(tmp_path):
     data = json.loads(payload.replace("<\\/", "</"))
     assert set(data) == {"engines", "workshops", "labinabox"}
     assert data["labinabox"]["builder_url"] == "https://x/lb/"
+    assert [a["name"] for a in data["labinabox"]["kclusters"]] == ["rke2"]
+    assert "window.RB_STATIC = true" in html and "rodeo-builder-token" not in html
     assert html.index("static-api-data") > html.index('src="app.js"')
     assert "style=" not in html
 
@@ -194,6 +217,16 @@ def test_static_build_fails_without_data(tmp_path):
                        capture_output=True, text=True)
     assert r.returncode != 0 and "lab-in-a-box add-ons" in r.stderr
     assert not (tmp_path / "b").exists()
+
+
+def test_static_build_needs_the_catalogue_or_an_explicit_opt_out(tmp_path):
+    r = subprocess.run([sys.executable, str(BUILD), "--output", str(tmp_path / "b"), "--no-fetch-sources"],
+                       capture_output=True, text=True)
+    assert r.returncode != 0 and "no lab-in-a-box checkout" in r.stderr
+    assert not (tmp_path / "b").exists()
+    r = subprocess.run([sys.executable, str(BUILD), "--output", str(tmp_path / "b"), "--no-fetch-sources", "--no-labinabox"],
+                       capture_output=True, text=True)
+    assert r.returncode == 0 and "built without the lab-in-a-box catalogue" in r.stderr
 
 
 # ── chapter sources outside rodeo-cli ───────────────────────────────────────
@@ -225,6 +258,23 @@ def test_source_fetch_commands_are_sparse_and_shallow(tmp_path):
         "/tracks/smlms/*/assignment.md", "/tracks/smlms/*/check-*"]
 
 
+def test_fetch_sources_keeps_given_checkouts_and_reports_failed_clones(tmp_path):
+    calls = []
+
+    class Done:
+        def __init__(self, rc, err=""):
+            self.returncode, self.stderr = rc, err
+
+    def run(cmd, **kwargs):
+        calls.append(cmd)
+        return Done(1, "fatal: repository not found") if "virt-workshop" in " ".join(cmd) else Done(0)
+
+    checkouts, errors = discovery.fetch_sources(tmp_path, {"smlm-workshop": Path("/given")}, run=run)
+    assert checkouts == {"smlm-workshop": Path("/given")}
+    assert errors == {"virt-workshop": "fatal: repository not found"}
+    assert all("smlm-workshop" not in " ".join(c) for c in calls)
+
+
 def test_instruqt_and_markdown_chapters(instruqt_source, markdown_source):
     sources = {s["id"]: s for s in discovery.chapter_sources()}
     smlm = discovery.source_chapters(sources["smlm-workshop"], instruqt_source)
@@ -249,7 +299,7 @@ def test_workshops_list_fetched_sources_after_the_bundled_ones(markdown_source):
 
 def test_static_build_with_local_sources(tmp_path, instruqt_source, markdown_source):
     out = tmp_path / "builder"
-    r = subprocess.run([sys.executable, str(BUILD), "--output", str(out), "--no-fetch-sources",
+    r = subprocess.run([sys.executable, str(BUILD), "--output", str(out), "--no-fetch-sources", "--no-labinabox",
                         "--source", "smlm-workshop=" + str(instruqt_source),
                         "--source", "virt-workshop=" + str(markdown_source)],
                        capture_output=True, text=True)

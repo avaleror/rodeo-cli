@@ -187,6 +187,10 @@ def _stream_managed_host(runner: "DeployRunner", lab: dict) -> Iterator["DeployE
                                  if cloud_spec and cloud_spec["cloudtype"] in host.CLOUD_CLIS else ())
     if not cloud_spec:
         tools += _HYPERVISOR_TOOLS
+    elif cloud_spec["cloudtype"] == "aws":
+        from ..awscli import ensure_on_path
+
+        ensure_on_path()
     missing = [tool for tool in tools if not shutil.which(tool)]
     if missing:
         yield LogLine(

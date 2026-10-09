@@ -140,6 +140,52 @@ def test_resource_checks_reapply_after_clean_resets_state(tmp_path, capsys):
     assert "RAM" in capsys.readouterr().out
 
 
+class _FakeLibvirt:
+    def __init__(self, vms, owned):
+        self.vms, self.owned = vms, owned
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return None
+
+    def domains_owned_by(self, plan):
+        return self.owned
+
+    def list_vms(self, names):
+        from rodeo.engine.libvirt import VMInfo
+
+        return [self.vms.get(n) or VMInfo(name=n, state="not found") for n in names]
+
+
+def test_rerun_credits_the_ram_of_this_labs_running_vms(tmp_path, monkeypatch, capsys):
+    """A rerun after a failed VM phase: this lab's running VMs already hold their RAM."""
+    from rodeo.engine.libvirt import VMInfo
+
+    cfg = {"name": "lab", "vms": {"rancher": {}, "other": {}},
+           "resources": {"rancher": {"memory_mib": 16384, "disk_gb": 1}}, "storage": {"image_dir": str(tmp_path)}}
+    vms = {"rancher": VMInfo(name="rancher", state="running", memory_mib=16384),
+           "other": VMInfo(name="other", state="running", memory_mib=8192)}
+    monkeypatch.setattr("rodeo.preflight._read_avail_mib", lambda: 4096)
+    monkeypatch.setattr("rodeo.engine.libvirt.LibvirtDriver", lambda uri: _FakeLibvirt(vms, ["rancher"]))
+    preflight.run_preflight(cfg, tmp_path)
+    out = capsys.readouterr().out
+    assert "✓  RAM" in out                       # 4 GiB free + 16 GiB already held ≥ 16 GiB needed
+    assert preflight._lab_running_mib(cfg) == 16384                 # "other" is not stamped for this plan
+    assert preflight._lab_running_mib({**cfg, "type": "lab-in-a-box"}) == 16384 + 8192
+    vms["rancher"] = VMInfo(name="rancher", state="shut off", memory_mib=16384)
+    assert preflight._lab_running_mib(cfg) == 0
+
+
+def test_lab_running_mib_without_libvirt(monkeypatch):
+    def broken(uri):
+        raise RuntimeError("libvirt-python not installed")
+    monkeypatch.setattr("rodeo.engine.libvirt.LibvirtDriver", broken)
+    assert preflight._lab_running_mib({"name": "lab", "vms": {"a": {}}}) == 0
+    assert preflight._lab_running_mib({"name": "lab"}) == 0
+
+
 def _fake_block(tmp_path, devices, mounts):
     """Build a fake /sys/block + /proc/mounts pair."""
     sys_block = tmp_path / "sys-block"

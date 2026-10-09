@@ -172,6 +172,33 @@ def _install_ansible_collections() -> None:
         )
 
 
+_AWS_PREREQS = {
+    "suse":   ["zypper", "--non-interactive", "install", "curl", "gpg2", "unzip"],
+    "debian": ["apt-get", "install", "-y", "curl", "gnupg", "unzip"],
+    "fedora": ["dnf", "install", "-y", "curl", "gnupg2", "unzip"],
+}
+
+
+def install_aws_cli(distro: str) -> None:
+    """The AWS CLI v2 from AWS (signature-checked, rodeo/awscli.py), plus curl, gpg
+    and unzip for its installer. Skipped when an aws CLI is already installed."""
+    from ..awscli import ensure_on_path, install_cli
+
+    existing = ensure_on_path()
+    if existing:
+        console.print(f"[bold]  aws CLI already present ({existing}) — skipping install.[/bold]")
+        return
+    if any(shutil.which(t) is None for t in ("curl", "gpg", "unzip")) and distro in _AWS_PREREQS:
+        _run(_AWS_PREREQS[distro])
+    console.print("[bold]  Installing the AWS CLI v2 (installer signature checked)...[/bold]")
+    try:
+        version = install_cli()
+    except RuntimeError as exc:
+        console.print(f"[red]  ✗  AWS CLI install failed: {exc}[/red]")
+        raise SystemExit(1)
+    console.print(f"[green]  ✓  {version}[/green]")
+
+
 def _install_story_deps(distro: str) -> None:
     """rmstory + multilang from their GitHub release distro packages (never PyPI)."""
     from ..storydeps import install_story_deps, rmstory_available
@@ -237,9 +264,12 @@ def _ensure_invoking_user_in_libvirt_group() -> None:
 @click.option("--story", is_flag=True, default=False,
               help="Also install the story/i18n dependencies (rmstory + multilang) "
                    "as distro packages from their GitHub releases — never from PyPI.")
+@click.option("--aws", "aws", is_flag=True, default=False,
+              help="Also install the AWS CLI v2 (from AWS, signature-checked), needed to deploy "
+                   "lab-in-a-box VMs into AWS.")
 @click.option("--link", is_flag=True, help="Create/update /usr/local/bin/rodeo symlink to this invocation (so plain 'rodeo' and 'sudo rodeo' work without exports or full paths).")
 @click.option("--force-link", is_flag=True, help="Force overwrite an existing /usr/local/bin/rodeo symlink.")
-def install_deps_cmd(skip_ansible: bool, story: bool, link: bool, force_link: bool) -> None:
+def install_deps_cmd(skip_ansible: bool, story: bool, aws: bool, link: bool, force_link: bool) -> None:
     """Install system packages and tools required to run rodeo deploy."""
     if os.geteuid() != 0:
         console.print("[red]Must run as root: sudo rodeo install-deps[/red]")
@@ -264,6 +294,9 @@ def install_deps_cmd(skip_ansible: bool, story: bool, link: bool, force_link: bo
 
         if story:
             _install_story_deps(distro)
+
+        if aws:
+            install_aws_cli(distro)
     except subprocess.CalledProcessError as exc:
         cmd = " ".join(str(c) for c in exc.cmd[:4])
         console.print(

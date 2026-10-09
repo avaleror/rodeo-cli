@@ -217,7 +217,8 @@ class DeployRunner:
             if idx < start_idx:
                 yield PhaseSkipped(phase, "before_start")
                 continue
-            if not self.force and is_phase_done(phase, self._plan_name):
+            key = profile.phase_key(phase, self.cfg)
+            if not self.force and is_phase_done(phase, self._plan_name, key):
                 yield PhaseSkipped(phase, "done")
                 continue
             if guard_active and phase in profile.guarded_phases:
@@ -247,7 +248,7 @@ class DeployRunner:
 
             if ok:
                 if phase not in getattr(profile, "no_cache_phases", frozenset()):
-                    mark_phase_done(phase, self._plan_name)
+                    mark_phase_done(phase, self._plan_name, key)
                 yield PhaseDone(phase, elapsed)
             else:
                 mark_phase_failed(phase, f"{phase} exited {self._last_rc}", self._plan_name)

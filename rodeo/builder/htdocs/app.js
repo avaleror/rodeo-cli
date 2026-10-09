@@ -1,6 +1,8 @@
-// Rodeo Builder — the page. Data comes through apiGet(action) only: a live
-// server answers it, and the static build (scripts/build-builder-static.py)
-// replaces it with the embedded answers. Pure logic lives in logic.js (RB).
+// Rodeo Builder — the page. Data comes through apiGet(action) only: the live
+// server (`rodeo builder`) answers it, and the static build
+// (scripts/build-builder-static.py) replaces it with the embedded answers and
+// sets window.RB_STATIC, which keeps the server-only controls hidden.
+// Pure logic lives in logic.js (RB).
 "use strict";
 
 async function apiGet(action, params = {}) {
@@ -9,6 +11,16 @@ async function apiGet(action, params = {}) {
   const body = await res.json();
   if (!res.ok) throw new Error(body.error || res.statusText);
   return body;
+}
+
+// POST to the live server; the write token comes from the meta tag it serves.
+async function apiPost(action, payload) {
+  const meta = document.querySelector('meta[name="rodeo-builder-token"]');
+  const res = await fetch("api?" + new URLSearchParams({ action }).toString(), {
+    method: "POST", body: JSON.stringify(payload),
+    headers: { "Content-Type": "application/json", Accept: "application/json", "X-Rodeo-Builder-Token": meta ? meta.content : "" },
+  });
+  return { status: res.status, body: await res.json() };
 }
 
 const $ = (sel) => document.querySelector(sel);
@@ -28,7 +40,8 @@ function el(tag, props = {}, ...children) {
 }
 
 const state = {
-  engines: [], capabilities: [], workshops: [], liab: { builder_url: "", addons: [], imports: [] },
+  engines: [], capabilities: [], workshops: [], server: null,
+  liab: { builder_url: "", error: "", addons: [], infrastructure: [], kclusters: [], imports: [] },
   engine: "rancher", base: null, planEdited: null, mode: "link", importProfile: "", labAddons: [], labJson: null,
   chapters: [], custom: [], name: "my-rodeo", title: "My rodeo", lang: "en", target: "baremetal",
   variant: "", extraVariants: [], query: "", open: {}, newWorkshop: "custom", fileView: "rodeo-plan.yaml",
@@ -53,7 +66,26 @@ function provided() {
   return new Set(liabImported() ? importBase().addons : state.labAddons);
 }
 
-function missing(chapter) { const p = provided(); return (chapter.needs || []).filter((n) => !p.has(n)); }
+function missing(chapter) { const p = provided(); return (chapter.needs || []).filter((n) => n !== RB.MISSING_ADDON && !p.has(n)); }
+
+function workNeeded() { return state.chapters.filter((c) => (c.needs || []).includes(RB.MISSING_ADDON)); }
+
+function needChip(n, miss) {
+  if (n === RB.MISSING_ADDON) return el("span", { class: "chip todo", title: "Placeholder: this chapter needs something no engine provides yet", text: "work needed" });
+  return el("span", { class: "chip " + (miss.includes(n) ? "missing" : "ok"), text: miss.includes(n) ? "missing " + n : n });
+}
+
+function liabNames(kinds) {
+  return (kinds || ["addons", "infrastructure", "kclusters"]).flatMap((k) => (state.liab[k] || []).map((a) => a.name));
+}
+
+// What a chapter can ask for: the native engines' capabilities plus lab-in-a-box's catalogue.
+function offeredNeeds() { return [...[...new Set([...state.capabilities, ...liabNames()])].sort(), RB.MISSING_ADDON]; }
+
+function catalogueHint() {
+  return window.RB_STATIC ? "This page was built without it: rebuild with build-builder-static.py --labinabox <checkout>."
+    : "Restart rodeo builder with --labinabox <checkout>, or check that this machine reaches GitHub.";
+}
 
 function libraryGroups() {
   const groups = state.workshops.map((w) => ({ id: w.id, title: w.title, sub: w.source, chapters: w.chapters,
@@ -221,8 +253,8 @@ function renderEngines() {
 function chipList(names, cls) { return el("div", { class: "chips" }, names.map((n) => el("span", { class: "chip " + (cls || ""), text: n }))); }
 
 function neededAddons() {
-  const p = provided(), need = new Set();
-  for (const c of state.chapters) for (const n of c.needs || []) if (!p.has(n)) need.add(n);
+  const need = new Set();
+  for (const c of state.chapters) for (const n of missing(c)) need.add(n);
   return [...need].sort();
 }
 
@@ -234,6 +266,8 @@ function addonTargets(name) {
 function addAddon(name) {
   name = name.trim().toLowerCase().replace(/^install_/, "");
   if (!name || state.labAddons.includes(name)) return;
+  if (state.liab.error) { toast("The lab-in-a-box catalogue is unavailable, so add-ons cannot be checked. " + catalogueHint(), true); return; }
+  if (!liabNames(["addons"]).includes(name)) { toast(name + " is not a lab-in-a-box add-on" + (state.liab.version ? " in " + state.liab.version : ""), true); return; }
   state.labAddons.push(name);
   render();
 }
@@ -307,6 +341,10 @@ function renderEnginePanel() {
       }, el("span", { class: "engine-name", text: i.profile }), el("span", { class: "engine-sub", text: i.addons.join(", ") })))), upload);
   }
   if (state.labJson) box.append(el("p", { class: "mono muted", text: "lab.json loaded: kept in the download for reference." }));
+  if (state.liab.error) {
+    box.append(el("div", { class: "alert", role: "alert" }, el("strong", { text: "lab-in-a-box catalogue unavailable. " }),
+      state.liab.error + ". " + catalogueHint()));
+  }
   box.append(el("span", { class: "label", text: "Lab add-ons" }));
   if (liabImported()) {
     box.append(chipList(importBase().addons, "ok"),
@@ -325,9 +363,15 @@ function renderEnginePanel() {
   }
   const need = neededAddons();
   if (need.length && !liabImported()) {
+    const addons = liabNames(["addons"]), inBuilder = liabNames(["infrastructure", "kclusters"]);
     box.append(el("span", { class: "label", text: "Needed by chapters" }),
-      el("div", { class: "chips" }, need.map((n) => el("button", { class: "chip need", type: "button", text: "+ " + n, onclick: () => addAddon(n) }))));
+      el("div", { class: "chips" }, need.map((n) => addons.includes(n)
+        ? el("button", { class: "chip need", type: "button", text: "+ " + n, onclick: () => addAddon(n) })
+        : el("span", { class: "chip missing", title: inBuilder.includes(n) ? "Set it up in the lab-builder, then upload the lab.json"
+          : "No engine provides it yet", text: n + (inBuilder.includes(n) ? " · lab-builder" : " · not available") }))));
   }
+  const more = [["Infrastructure", state.liab.infrastructure], ["Kubernetes clusters", state.liab.kclusters]].filter(([, l]) => l && l.length);
+  for (const [label, list] of more) box.append(el("span", { class: "label", text: label + " (in the lab-builder)" }), chipList(list.map((a) => a.name)));
 }
 
 // ── embedded lab-builder ────────────────────────────────────────────────
@@ -393,7 +437,7 @@ function renderChapters() {
     el("span", { class: "row-num", text: String(i + 1).padStart(2, "0") }),
     el("div", {}, el("div", { class: "row-title", text: c.title }),
       el("div", { class: "row-meta", text: [c.workshop, c.mins + " min", c.check ? "checks/check-" + c.id + ".sh" : ""].filter(Boolean).join(" · ") }),
-      el("div", { class: "chips" }, (c.needs || []).map((n) => el("span", { class: "chip " + (miss.includes(n) ? "missing" : "ok"), text: miss.includes(n) ? "missing " + n : n })))),
+      el("div", { class: "chips" }, (c.needs || []).map((n) => needChip(n, miss)))),
     el("div", { class: "row-actions" },
       el("button", { class: "btn sm", type: "button", text: spans + " spans ✎", onclick: () => openEditor(i) }),
       el("button", { class: "btn sm", type: "button", "aria-label": "Move up", text: "↑", disabled: i === 0, onclick: () => move(i, -1) }),
@@ -407,8 +451,9 @@ function renderChapters() {
     ondragleave: () => zone.classList.remove("over"),
     ondrop: (ev) => { ev.preventDefault(); dropAt(state.chapters.length); } });
   box.append(zone);
-  const need = neededAddons(), cov = $("#coverage");
-  cov.textContent = !state.chapters.length ? "" : need.length ? "lab missing: " + need.join(", ") : "lab covers every chapter";
+  const need = neededAddons(), cov = $("#coverage"), todo = workNeeded().length;
+  cov.textContent = !state.chapters.length ? "" : (need.length ? "lab missing: " + need.join(", ") : "lab covers every chapter") +
+    (todo ? " · work needed in " + todo + (todo === 1 ? " chapter" : " chapters") : "");
   cov.classList.toggle("bad", need.length > 0);
 }
 
@@ -501,7 +546,7 @@ function renderNewChapterChips() {
   $("#ncWorkshops").replaceChildren(...libraryGroups().map((g) => el("button", {
     type: "button", class: "chip" + (state.newWorkshop === g.id ? " on" : ""), text: g.title,
     onclick: () => { state.newWorkshop = g.id; renderNewChapterChips(); } })));
-  $("#ncNeeds").replaceChildren(...state.capabilities.map((c) => el("button", {
+  $("#ncNeeds").replaceChildren(...offeredNeeds().map((c) => el("button", {
     type: "button", class: "chip" + (ncNeeds.has(c) ? " on" : ""), text: c, "aria-pressed": String(ncNeeds.has(c)),
     onclick: () => { if (ncNeeds.has(c)) ncNeeds.delete(c); else ncNeeds.add(c); renderNewChapterChips(); } })));
 }
@@ -637,7 +682,7 @@ function renderTranslations() {
   }
   const langs = RB.LANGUAGES.filter((l) => l !== RB.SOURCE_LANGUAGE);
   $("#translationsView").replaceChildren(
-    el("p", { class: "muted", text: "Translations live in rmstory's translation store; this static builder cannot read or fill it. After install, `rodeo story render --language <lang> --engine <engine>` translates the missing strings." }),
+    el("p", { class: "muted", text: "Translations live in rmstory's translation store; the builder does not read or fill it yet. After install, `rodeo story render --language <lang> --engine <engine>` translates the missing strings." }),
     el("table", { class: "matrix" }, el("thead", {}, el("tr", {}, el("th", { text: "id" }), langs.map((l) => el("th", { text: l })))),
       el("tbody", {}, ids.map((id) => el("tr", {}, el("td", { text: id }), langs.map(() => el("td", { class: "missing", text: "missing" })))))));
 }
@@ -804,6 +849,31 @@ function download() {
   toast(name + ".zip: " + entries.length + " files" + (warnings.length ? " · " + warnings.length + " span warnings (open ✎ to fix)" : ""), warnings.length > 0);
 }
 
+// ── save (live server only) ─────────────────────────────────────────────
+
+async function save(force) {
+  const name = RB.slugify(state.name);
+  if (!name) { toast("Give the rodeo a name first", true); $("#name").focus(); return; }
+  state.name = name;
+  if (!force && state.server.profiles.includes(name)) {
+    if (window.confirm("A profile named " + name + " already exists in " + state.server.profiles_dir + ". Replace it?")) save(true);
+    return;
+  }
+  const r = rodeo();
+  const files = RB.files(r).map((f) => ({ path: f.path, content: f.content, executable: f.mode === 0o755 }));
+  let res;
+  try {
+    res = await apiPost("save", { name, base: r.base || null, files, force: !!force });
+  } catch (err) { toast("Save failed: " + err.message, true); return; }
+  if (res.status === 409 && !force) {
+    if (window.confirm("A profile named " + name + " already exists in " + state.server.profiles_dir + ". Replace it?")) save(true);
+    return;
+  }
+  if (res.status !== 200) { toast("Save failed: " + (res.body.error || res.status), true); return; }
+  if (!state.server.profiles.includes(name)) state.server.profiles.push(name);
+  toast("Saved " + res.body.path + " · deploy with: rodeo up --profile " + name);
+}
+
 // ── init ────────────────────────────────────────────────────────────────
 
 function bind() {
@@ -826,6 +896,7 @@ function bind() {
   themeBtn.addEventListener("click", () => { window.RBTheme.toggle(); showTheme(); });
   showTheme();
   $("#downloadBtn").addEventListener("click", download);
+  $("#saveBtn").addEventListener("click", () => save(false));
   $("#planEditor").addEventListener("input", onPlanInput);
   $("#planEditor").addEventListener("blur", () => renderFiles());
   $("#planReset").addEventListener("click", () => { state.planEdited = null; render(); toast("plan.yaml regenerated"); });
@@ -848,7 +919,12 @@ async function init() {
     state.engines = engines.engines;
     state.capabilities = engines.capabilities;
     state.workshops = workshops.workshops;
-    state.liab = liab;
+    state.liab = { ...state.liab, ...liab };
+    if (!window.RB_STATIC) {
+      state.server = await apiGet("server");
+      $("#saveBtn").hidden = !state.server.save;
+      $("#saveBtn").title = "Write this rodeo to " + state.server.profiles_dir + "/<name>/";
+    }
     render();
   } catch (err) {
     toast("Could not load the builder data: " + err.message, true);

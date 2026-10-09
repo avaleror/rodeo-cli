@@ -28,7 +28,8 @@ while (( quiet < quiet_needed )); do
     if (( quiet < quiet_needed )); then sleep "${poll}"; fi
 done
 
-failed=$(mgrctl exec -- sh -c 'grep -L "Sync completed" /var/log/rhn/reposync/*.log 2>/dev/null' || true)
+# Shell code inside the container goes over stdin: mgrctl exec loses the quoting of `sh -c '...'`.
+failed=$(echo 'grep -L "Sync completed" /var/log/rhn/reposync/*.log' | mgrctl exec -i -- bash -s 2>/dev/null || true)
 if [[ -n "${failed}" ]]; then
     echo "ERROR: channels without a completed sync:" >&2
     echo "${failed}" >&2
@@ -52,7 +53,7 @@ echo "# Scrubbing credentials and host identity"
 rm -f /etc/systemd/system/*channel-sync-monitor* /etc/systemd/system/*bootstrap-repo-monitor*
 systemctl daemon-reload
 podman logout --all >/dev/null 2>&1 || true
-mgrctl exec -- sh -c 'rm -rf /root/.spacecmd /root/.bash_history' || true
+echo 'rm -rf /root/.spacecmd /root/.mgr-sync /root/.bash_history' | mgrctl exec -i -- bash -s || true
 rm -rf /root/.spacecmd /root/.bash_history
 SUSEConnect --cleanup >/dev/null 2>&1 || true
 # cloud-init runs again on the next boot, so every deploy's own network,
@@ -62,5 +63,5 @@ rm -f /etc/ssh/ssh_host_*
 truncate -s 0 /etc/machine-id
 sync
 
-echo "# Done — powering off. Next: export-image.sh on the host."
+echo "# Done — powering off. Next: export-image.sh on the host (export-ami.sh for AWS)."
 systemctl poweroff

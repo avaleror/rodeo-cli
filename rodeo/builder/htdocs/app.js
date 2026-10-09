@@ -39,19 +39,84 @@ function el(tag, props = {}, ...children) {
   return node;
 }
 
+// replaceChildren() for el()-style children: arrays are flattened, null/false skipped.
+function fill(node, ...children) {
+  node.replaceChildren(...children.flat().filter((c) => c !== null && c !== undefined && c !== false));
+}
+
 const state = {
   engines: [], capabilities: [], workshops: [], server: null,
   liab: { builder_url: "", error: "", addons: [], infrastructure: [], kclusters: [], imports: [] },
   engine: "rancher", base: null, planEdited: null, mode: "link", importProfile: "", labAddons: [], labJson: null,
   chapters: [], custom: [], name: "my-rodeo", title: "My rodeo", lang: "en", target: "baremetal",
   variant: "", extraVariants: [], query: "", open: {}, newWorkshop: "custom", fileView: "rodeo-plan.yaml",
-  editing: -1, edTab: "spans", drag: null,
+  editing: -1, edTab: "spans", drag: null, cursor: -1, undo: null, copied: false,
 };
 
-function toast(msg, bad) {
+let toastTimer = 0;
+
+// One message at a time, above every overlay; `undo` adds an Undo button.
+function toast(msg, bad, undo) {
   const t = $("#toast");
-  t.textContent = msg;
+  $("#toastText").textContent = msg;
   t.classList.toggle("bad", !!bad);
+  state.undo = undo || null;
+  $("#toastUndo").hidden = !undo;
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; state.undo = null; }, 7000);
+}
+
+// ── draft autosave (this browser only) ──────────────────────────────────
+
+const DRAFT_KEY = "rodeo-builder-draft-v1";
+const DRAFT_FIELDS = ["engine", "base", "planEdited", "mode", "importProfile", "labAddons", "labJson", "chapters",
+  "custom", "name", "title", "lang", "target", "variant", "extraVariants"];
+let draftOn = true, draftTimer = 0;
+
+function scheduleDraft() {
+  if (!draftOn) return;
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(saveDraft, 500);
+}
+
+function saveDraft() {
+  const saved = {};
+  for (const k of DRAFT_FIELDS) saved[k] = state[k];
+  try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ at: Date.now(), state: saved })); } catch (err) { /* no storage: no draft */ }
+}
+
+// A saved draft worth offering: it has chapters and its engine still exists.
+function readDraft() {
+  try {
+    const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || "null");
+    if (d && d.state && Array.isArray(d.state.chapters) && d.state.chapters.length &&
+      state.engines.some((e) => e.name === d.state.engine)) return d;
+  } catch (err) { /* unreadable draft: ignored */ }
+  return null;
+}
+
+function offerDraft() {
+  const d = readDraft();
+  if (!d) return;
+  draftOn = false;
+  const at = new Date(d.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  $("#draftText").replaceChildren(el("strong", { text: "Restore your draft? " }),
+    d.state.chapters.length + " chapters in \"" + d.state.name + "\", saved " + at + ".");
+  $("#draftBanner").hidden = false;
+  $("#draftRestore").onclick = () => {
+    for (const k of DRAFT_FIELDS) if (k in d.state) state[k] = d.state[k];
+    state.cursor = -1;
+    draftDecided();
+    toast("Draft restored");
+  };
+  $("#draftFresh").onclick = draftDecided;
+}
+
+function draftDecided() {
+  $("#draftBanner").hidden = true;
+  draftOn = true;
+  render();
 }
 
 // ── derived ─────────────────────────────────────────────────────────────
@@ -161,12 +226,22 @@ function rodeo() {
 
 // ── library ─────────────────────────────────────────────────────────────
 
+// Inserts at `at`, else after the row cursor (which then moves to the new row), else at the end.
 function addChapter(group, ch, at) {
   if (inRodeo(group.id, ch.id)) return;
   const used = new Set(state.chapters.map((c) => c.id));
   const copy = { ...ch, id: RB.uniqueId(ch.id, used), workshop: group.title, from: libKey(group.id, ch.id) };
+  if (at === undefined && state.cursor >= 0) { at = state.cursor + 1; state.cursor = at; }
   if (at === undefined || at < 0) state.chapters.push(copy); else state.chapters.splice(at, 0, copy);
   render();
+}
+
+function removeChapter(i) {
+  const snapshot = state.chapters.slice(), title = state.chapters[i].title;
+  state.chapters.splice(i, 1);
+  state.cursor = -1;
+  render();
+  toast("Removed \"" + title + "\"", false, () => { state.chapters = snapshot; render(); });
 }
 
 function renderLibrary() {
@@ -199,13 +274,13 @@ function renderLibrary() {
         const added = inRodeo(g.id, c.id), lacks = missing(c).length > 0;
         cards.append(el("button", {
           class: "card" + (added ? " added" : "") + (lacks ? " lacks" : ""), type: "button", draggable: "true",
-          title: added ? "Already in this rodeo" : "Add to this rodeo",
-          onclick: () => addChapter(g, c),
+          title: added ? "In the rodeo. Click to remove." : "Add to this rodeo",
+          onclick: () => (added ? removeChapter(state.chapters.findIndex((x) => x.from === libKey(g.id, c.id))) : addChapter(g, c)),
           ondragstart: (ev) => { state.drag = { kind: "lib", group: g, chapter: c }; ev.dataTransfer.setData("text/plain", c.id); },
           ondragend: () => { state.drag = null; clearDrop(); },
         }, el("span", { class: "dot" }), el("span", { class: "card-title", text: c.title }),
         el("span", { class: "card-meta", text: c.mins + " min" + (c.needs.length ? " · " + c.needs.join(", ") : "") +
-          (added ? " · in rodeo" : "") + (c.isNew ? " · new" : "") })));
+          (c.isNew ? " · new" : "") + (added ? " · added ✓" : "") })));
       }
     }
     box.append(el("div", { class: "group" }, head, cards));
@@ -237,8 +312,8 @@ function renderEngines() {
   box.replaceChildren(...state.engines.map((e) => {
     const on = e.name === state.engine;
     return el("button", {
-      class: "engine" + (on ? " on" : ""), type: "button", role: "radio", "aria-checked": String(on),
-      onclick: () => selectEngine(e.name),
+      class: "engine" + (on ? " on" : ""), type: "button", role: "radio", "aria-checked": String(on), tabindex: on ? "0" : "-1",
+      onclick: () => selectEngine(e.name), onkeydown: engineKey,
     }, el("span", { class: "engine-top" }, el("span", { class: "radio", "aria-hidden": "true" }),
       el("span", { class: "engine-name", text: e.name }), on ? el("span", { class: "selected", text: "selected" }) : null),
     el("span", { class: "engine-title", text: e.title }),
@@ -248,6 +323,17 @@ function renderEngines() {
   const e = engine();
   $("#engineNow").textContent = e ? "· " + e.name + (baseProfile() && baseProfile() !== e.name ? " · " + baseProfile() : "") : "";
   renderEnginePanel();
+}
+
+// Arrow keys move between the engine cards; Enter/Space selects (native button click).
+function engineKey(ev) {
+  const step = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[ev.key];
+  if (!step) return;
+  ev.preventDefault();
+  const cards = [...document.querySelectorAll("#engines .engine")];
+  const j = (cards.indexOf(ev.currentTarget) + step + cards.length) % cards.length;
+  cards.forEach((c, k) => c.setAttribute("tabindex", k === j ? "0" : "-1"));
+  cards[j].focus();
 }
 
 function chipList(names, cls) { return el("div", { class: "chips" }, names.map((n) => el("span", { class: "chip " + (cls || ""), text: n }))); }
@@ -376,6 +462,11 @@ function renderEnginePanel() {
 
 // ── embedded lab-builder ────────────────────────────────────────────────
 
+function closeEmbed() {
+  $("#embedOverlay").hidden = true;
+  $("#embedFrame").src = "about:blank";
+}
+
 function openEmbed() {
   const frame = $("#embedFrame");
   frame.src = labBuilderUrl({ embed: "1", origin: location.origin });
@@ -388,20 +479,20 @@ window.addEventListener("message", (ev) => {
   const origin = new URL(state.liab.builder_url, location.href).origin;
   if (ev.origin !== origin || !ev.data || ev.data.type !== "labinabox:lab") return;
   useLab(ev.data.lab, "the lab-builder");
-  $("#embedOverlay").hidden = true;
-  $("#embedFrame").src = "about:blank";
+  closeEmbed();
 });
 
 // ── chapter list ────────────────────────────────────────────────────────
 
 function clearDrop() {
   document.querySelectorAll(".drop-before").forEach((n) => n.classList.remove("drop-before"));
-  document.querySelectorAll(".dropzone.over").forEach((n) => n.classList.remove("over"));
+  document.querySelectorAll(".dropzone.over, .lab.over").forEach((n) => n.classList.remove("over"));
 }
 
 function dropAt(index) {
   const d = state.drag;
   state.drag = null;
+  state.cursor = -1;
   clearDrop();
   if (!d) return;
   if (d.kind === "lib") { addChapter(d.group, d.chapter, index); return; }
@@ -422,14 +513,18 @@ function move(i, delta) {
 function renderChapters() {
   const box = $("#chapterList");
   box.replaceChildren();
+  if (state.cursor >= state.chapters.length) state.cursor = -1;
+  const warned = RB.warningsByChapter(RB.validate(state.chapters));
   state.chapters.forEach((c, i) => {
-    const miss = missing(c), spans = RB.parseSpans(c.body).spans.length;
+    const miss = missing(c), spans = RB.parseSpans(c.body).spans.length, w = warned[c.id] || 0;
     const row = el("div", {
-      class: "row", tabindex: "0", draggable: "true", "aria-label": "Chapter " + (i + 1) + ": " + c.title + ". Alt+Up/Down to move.",
+      class: "row" + (state.cursor === i ? " cursor" : ""), tabindex: "0", draggable: "true",
+      "aria-label": "Chapter " + (i + 1) + ": " + c.title + ". Alt+Up/Down to move.",
+      onclick: (ev) => { if (ev.target.closest("button")) return; state.cursor = state.cursor === i ? -1 : i; renderChapters(); },
       ondragstart: (ev) => { state.drag = { kind: "row", index: i }; ev.dataTransfer.setData("text/plain", c.id); },
       ondragend: () => { state.drag = null; clearDrop(); },
       ondragover: (ev) => { ev.preventDefault(); clearDrop(); row.classList.add("drop-before"); },
-      ondrop: (ev) => { ev.preventDefault(); dropAt(i); },
+      ondrop: (ev) => { ev.preventDefault(); ev.stopPropagation(); dropAt(i); },
       onkeydown: (ev) => { if (ev.altKey && ev.key === "ArrowUp") { ev.preventDefault(); move(i, -1); }
         if (ev.altKey && ev.key === "ArrowDown") { ev.preventDefault(); move(i, 1); } },
     },
@@ -439,22 +534,94 @@ function renderChapters() {
       el("div", { class: "row-meta", text: [c.workshop, c.mins + " min", c.check ? "checks/check-" + c.id + ".sh" : ""].filter(Boolean).join(" · ") }),
       el("div", { class: "chips" }, (c.needs || []).map((n) => needChip(n, miss)))),
     el("div", { class: "row-actions" },
-      el("button", { class: "btn sm", type: "button", text: spans + " spans ✎", onclick: () => openEditor(i) }),
+      el("button", { class: "btn sm" + (w ? " warn" : ""), type: "button", text: spans + " spans" + (w ? " · " + w + " ⚠" : "") + " ✎",
+        onclick: () => openEditor(i) }),
       el("button", { class: "btn sm", type: "button", "aria-label": "Move up", text: "↑", disabled: i === 0, onclick: () => move(i, -1) }),
       el("button", { class: "btn sm", type: "button", "aria-label": "Move down", text: "↓", disabled: i === state.chapters.length - 1, onclick: () => move(i, 1) }),
       el("button", { class: "btn sm", type: "button", "aria-label": "Remove " + c.title, text: "×",
-        onclick: () => { state.chapters.splice(i, 1); render(); } })));
+        onclick: () => removeChapter(i) })));
     box.append(row);
   });
   const zone = el("div", { class: "dropzone", text: state.chapters.length ? "Drop here to append" : "Drag chapters here, or click them in the library",
     ondragover: (ev) => { ev.preventDefault(); clearDrop(); zone.classList.add("over"); },
     ondragleave: () => zone.classList.remove("over"),
-    ondrop: (ev) => { ev.preventDefault(); dropAt(state.chapters.length); } });
+    ondrop: (ev) => { ev.preventDefault(); ev.stopPropagation(); dropAt(state.chapters.length); } });
   box.append(zone);
+  $("#insertHint").textContent = state.cursor >= 0
+    ? "Inserting after " + String(state.cursor + 1).padStart(2, "0") + ". Click that row again to append at the end."
+    : "Drag from the library or click a chapter. Click a row to choose where new ones go.";
   const need = neededAddons(), cov = $("#coverage"), todo = workNeeded().length;
   cov.textContent = !state.chapters.length ? "" : (need.length ? "lab missing: " + need.join(", ") : "lab covers every chapter") +
     (todo ? " · work needed in " + todo + (todo === 1 ? " chapter" : " chapters") : "");
   cov.classList.toggle("bad", need.length > 0);
+}
+
+// Shown when the chapters come from workshops that all run on one other engine.
+// Several engines: no banner (multi-engine rodeos are planned).
+function renderEngineBanner() {
+  const box = $("#engineBanner"), needs = RB.engineNeeds(state.chapters, libraryGroups());
+  const show = needs.length === 1 && needs[0].engine !== state.engine;
+  box.hidden = !show;
+  if (!show) { box.replaceChildren(); return; }
+  const { engine: name, workshops } = needs[0];
+  const group = libraryGroups().find((g) => g.engine === name && workshops.includes(g.title));
+  box.replaceChildren(el("span", { class: "banner-text", text: "These chapters come from " + workshops.join(", ") +
+    " and run on " + name + ", not " + state.engine + "." }),
+  el("button", { class: "btn primary sm", type: "button", text: "Switch to " + name, onclick: () => useGroup(group) }));
+}
+
+function scrollToReview() {
+  const review = $("#review"), center = $(".center");
+  const box = center.scrollHeight > center.clientHeight ? center : $(".cols");
+  box.scrollTop += review.getBoundingClientRect().top - box.getBoundingClientRect().top - 12;
+}
+
+function plural(n, word) { return n + " " + word + (n === 1 ? "" : "s"); }
+
+function renderWarnings(count) {
+  for (const id of ["#warnBtn", "#stickyWarn"]) {
+    const b = $(id);
+    b.hidden = count === 0;
+    b.textContent = count + " ⚠ " + (count === 1 ? "warning" : "warnings");
+  }
+}
+
+function renderReview() {
+  const box = $("#reviewPanel"), name = RB.slugify(state.name) || "my-rodeo", n = state.chapters.length;
+  const warnings = RB.validate(state.chapters), need = neededAddons();
+  const mins = state.chapters.reduce((t, c) => t + (c.mins || 0), 0);
+  renderWarnings(warnings.length);
+  const check = (ok, text) => el("div", { class: "check " + (ok ? "ok" : "bad") },
+    el("span", { class: "check-icon", "aria-hidden": "true", text: ok ? "✓" : "⚠" }), el("span", { text }));
+  const files = RB.files(rodeo()).map((f) => f.path);
+  const cmd = "rodeo new " + name + " --from-zip " + name + ".zip\nrodeo up --profile " + name;
+  const copy = el("button", { class: "btn sm", type: "button", text: state.copied ? "Copied ✓" : "Copy",
+    onclick: () => {
+      Promise.resolve().then(() => navigator.clipboard.writeText(cmd)).catch(() => toast("Copy failed: select the commands instead", true));
+      state.copied = true;
+      renderReview();
+      setTimeout(() => { state.copied = false; renderReview(); }, 1800);
+    } });
+  fill(box,
+    el("div", { class: "checks-list" },
+      check(n > 0, plural(n, "chapter") + " · " + mins + " min · engine " + state.engine),
+      check(!need.length, need.length ? "The lab is missing " + need.join(", ") + " (does not block the download)"
+        : "The lab provides everything the chapters need"),
+      check(!warnings.length, warnings.length ? plural(warnings.length, "span warning") + " (same checks as rmstory validate)"
+        : "All span ids valid")),
+    warnings.map((w) => {
+      const i = state.chapters.findIndex((c) => c.id === w.chapter);
+      return el("div", { class: "alert warn-row" }, el("strong", { text: i >= 0 ? state.chapters[i].title : w.chapter }),
+        el("span", { class: "warn-msg", text: (w.id ? w.id + ": " : "") + w.msg }),
+        i >= 0 ? el("button", { class: "btn sm warn", type: "button", text: "Fix ✎", onclick: () => openEditor(i) }) : null);
+    }),
+    el("span", { class: "label", text: plural(files.length, "file") + " in " + name + ".zip" }),
+    el("ul", { class: "zip-files" }, files.map((f) => el("li", { class: f.startsWith("story/") ? "story" : "", text: name + "/" + f }))),
+    el("div", { class: "term install" }, el("div", { class: "term-bar" }, el("i"), el("i"), el("i"), el("span", { text: "install" }), copy),
+      el("pre", { text: cmd })),
+    el("div", { class: "review-foot" },
+      el("button", { class: "btn primary" + (n ? "" : " dim"), type: "button", text: "Download " + name + ".zip", onclick: download }),
+      state.server && state.server.save ? el("span", { class: "muted", text: "Save to profiles (top right) writes it straight into your profiles." }) : null));
 }
 
 // ── right panel ─────────────────────────────────────────────────────────
@@ -473,6 +640,7 @@ function renderSettings() {
   const mins = state.chapters.reduce((n, c) => n + (c.mins || 0), 0);
   $("#estimate").textContent = "Estimated run time: " + mins + " min (" + state.chapters.length + " chapters)";
   $("#counts").textContent = state.chapters.length + " chapters · " + mins + " min · " + state.engine;
+  $("#stickyCounts").textContent = state.chapters.length + " chapters · " + mins + " min";
 }
 
 function renderPlanEditor(text) {
@@ -516,8 +684,11 @@ function render() {
   renderLibrary();
   renderEngines();
   renderChapters();
+  renderEngineBanner();
   renderSettings();
   renderFiles();
+  renderReview();
+  scheduleDraft();
 }
 
 // ── new chapter ─────────────────────────────────────────────────────────
@@ -544,11 +715,16 @@ function openNewChapter() {
 
 function renderNewChapterChips() {
   $("#ncWorkshops").replaceChildren(...libraryGroups().map((g) => el("button", {
-    type: "button", class: "chip" + (state.newWorkshop === g.id ? " on" : ""), text: g.title,
+    type: "button", class: "chip" + (state.newWorkshop === g.id ? " on" : ""), text: g.title, "aria-pressed": String(state.newWorkshop === g.id),
     onclick: () => { state.newWorkshop = g.id; renderNewChapterChips(); } })));
   $("#ncNeeds").replaceChildren(...offeredNeeds().map((c) => el("button", {
     type: "button", class: "chip" + (ncNeeds.has(c) ? " on" : ""), text: c, "aria-pressed": String(ncNeeds.has(c)),
     onclick: () => { if (ncNeeds.has(c)) ncNeeds.delete(c); else ncNeeds.add(c); renderNewChapterChips(); } })));
+}
+
+function closeNewChapter() {
+  $("#newModal").hidden = true;
+  $("#newChapterBtn").focus();
 }
 
 function createChapter(ev) {
@@ -564,7 +740,7 @@ function createChapter(ev) {
     check: $("#ncCheck").checked, spans: 0, body, isNew: true };
   if (group.id === "custom") state.custom.push(ch);
   else state.workshops.find((w) => w.id === group.id).chapters.push(ch);
-  $("#newModal").hidden = true;
+  closeNewChapter();
   if ($("#ncAppend").checked) addChapter(group, ch); else render();
   toast("Chapter \"" + title + "\" created as " + id);
 }
@@ -596,6 +772,14 @@ function setBody(body, keepSel) {
   ta.value = body;
   if (keepSel) ta.setSelectionRange(s, e);
   renderEditor();
+  scheduleDraft();
+}
+
+function removeSpan(sp) {
+  const ch = editing(), before = ch.body;
+  closePop();
+  setBody(RB.unwrap(before, sp));
+  toast("Span removed", false, () => { ch.body = before; if (editing() === ch) setBody(before); else render(); });
 }
 
 function renderEditor() {
@@ -608,14 +792,29 @@ function renderEditor() {
   sum.textContent = tagged + " tagged spans · " + warnings.length + " warnings";
   sum.classList.toggle("warn", warnings.length > 0);
   $("#edHist").replaceChildren(...allVariants().map((v) => el("button", {
-    type: "button", class: "chip", text: v, title: "Toggle hist=\"" + v + "\" on the span at the cursor",
-    onclick: () => toggleHist(v) })));
+    type: "button", class: "chip", text: v, title: "Toggle hist=\"" + v + "\" on the span at the cursor", "aria-pressed": "false",
+    dataset: { hist: v }, onclick: () => toggleHist(v) })));
+  updateCaret();
   renderPreview(body, spans);
   renderSpanList(body, spans, warnings);
   renderStories();
   renderTranslations();
-  document.querySelectorAll("[data-edtab]").forEach((b) => b.classList.toggle("on", b.dataset.edtab === state.edTab));
+  document.querySelectorAll("[data-edtab]").forEach((b) => {
+    b.classList.toggle("on", b.dataset.edtab === state.edTab);
+    b.setAttribute("aria-selected", String(b.dataset.edtab === state.edTab));
+  });
   for (const t of ["spans", "stories", "translations"]) $("#edtab-" + t).hidden = state.edTab !== t;
+}
+
+// Selection info and the variant chips' pressed state follow the caret.
+function updateCaret() {
+  const ta = $("#edSource"), s = ta.selectionStart, e = ta.selectionEnd, sp = state.editing >= 0 ? spanAtCursor() : null;
+  $("#edSel").textContent = (e > s ? (e - s) + " chars selected" : "caret at " + s) + " · Alt+T / I / N tags";
+  document.querySelectorAll("#edHist .chip").forEach((c) => {
+    const on = !!sp && sp.attrs.hist === c.dataset.hist;
+    c.classList.toggle("on", on);
+    c.setAttribute("aria-pressed", String(on));
+  });
 }
 
 // The preview shows the source with tags hidden. Every text piece carries its
@@ -660,7 +859,7 @@ function renderSpanList(body, spans, warnings) {
       el("div", { class: "span-top" }, el("span", { class: "kind k-" + k, text: k }),
         sp.attrs.hist ? el("span", { class: "chip", text: "hist=" + sp.attrs.hist }) : null,
         el("button", { class: "btn sm", type: "button", text: "edit", onclick: (ev) => editPop(sp.index, ev.clientX, ev.clientY) }),
-        el("button", { class: "btn sm", type: "button", "aria-label": "Remove span", text: "×", onclick: () => setBody(RB.unwrap(body, sp)) })),
+        el("button", { class: "btn sm", type: "button", "aria-label": "Remove span", text: "×", onclick: () => removeSpan(sp) })),
       el("div", { class: "span-snip", text: RB.inner(body, sp).replace(/<[^>]+>/g, "") }), idInput,
       mine.map((w) => el("div", { class: "warn", text: w.msg }))));
   }
@@ -682,12 +881,32 @@ function renderTranslations() {
   }
   const langs = RB.LANGUAGES.filter((l) => l !== RB.SOURCE_LANGUAGE);
   $("#translationsView").replaceChildren(
-    el("p", { class: "muted", text: "Translations live in rmstory's translation store; the builder does not read or fill it yet. After install, `rodeo story render --language <lang> --engine <engine>` translates the missing strings." }),
+    el("p", { class: "muted" }, "Translations live in rmstory's translation store; the builder does not read or fill it yet. After install, ",
+      el("code", { text: "rodeo story render --language de" }), " fills the rest."),
     el("table", { class: "matrix" }, el("thead", {}, el("tr", {}, el("th", { text: "id" }), langs.map((l) => el("th", { text: l })))),
-      el("tbody", {}, ids.map((id) => el("tr", {}, el("td", { text: id }), langs.map(() => el("td", { class: "missing", text: "missing" })))))));
+      el("tbody", {}, ids.map((id) => el("tr", {}, el("td", { text: id }), langs.map((l) => el("td", { class: "unstored", title: "no " + l + " translation stored", text: "not stored" })))))));
 }
 
 function closePop() { $("#popover").hidden = true; pop = null; }
+
+function popHead(title) {
+  return el("div", { class: "pop-head" }, el("h4", { text: title }),
+    el("button", { class: "x-btn", type: "button", "aria-label": "Close", text: "×", onclick: closePop }));
+}
+
+// A selection first shows a small chip; the apply menu opens when it is clicked.
+// Selecting exactly an existing span opens its edit menu directly.
+function tagChip(s, e, x, y) {
+  const body = editing().body;
+  const target = RB.wrapTarget(body, RB.parseSpans(body).spans, s, e);
+  if (!target.ok) { toast(target.reason, true); return; }
+  if (target.same) { editPop(target.same.index, x, y); return; }
+  pop = { mode: "chip" };
+  const p = $("#popover");
+  p.className = "popover chip-pop";
+  p.replaceChildren(el("button", { class: "btn primary sm", type: "button", text: "Tag selection ▸", onclick: () => applyPop(s, e, x, y) }));
+  placePop(x, y);
+}
 
 function placePop(x, y) {
   const p = $("#popover");
@@ -712,12 +931,16 @@ function applyPop(s, e, x, y) {
   pop = { mode: "apply", s: target.s, e: target.e, hist: "" };
   const id = autoId(target);
   const p = $("#popover");
-  p.replaceChildren(el("h4", { text: "Apply span" }),
+  p.className = "popover";
+  fill(p, popHead("Apply span"),
     el("div", { class: "chips" }, [["translatable", "Translatable"], ["invariant", "Invariant"], ["nolang", "No-lang"]].map(([k, label]) =>
       el("button", { class: "btn sm", type: "button", text: label, onclick: () => applySpan(k, id) }))),
     allVariants().length ? el("div", { class: "row2" }, el("span", { class: "muted mono", text: "hist" }), el("span", { class: "chips" },
-      allVariants().map((v) => { const b = el("button", { class: "chip", type: "button", text: v,
-        onclick: () => { pop.hist = pop.hist === v ? "" : v; p.querySelectorAll(".chip").forEach((c) => c.classList.toggle("on", c.textContent === pop.hist)); } }); return b; }))) : null,
+      allVariants().map((v) => el("button", { class: "chip", type: "button", text: v, "aria-pressed": "false",
+        onclick: () => {
+          pop.hist = pop.hist === v ? "" : v;
+          p.querySelectorAll(".chip").forEach((c) => { c.classList.toggle("on", c.textContent === pop.hist); c.setAttribute("aria-pressed", String(c.textContent === pop.hist)); });
+        } })))) : null,
     el("div", { class: "row2 mono muted", text: "id: " + id }));
   placePop(x, y);
 }
@@ -754,8 +977,9 @@ function editPop(index, x, y) {
   const text = RB.inner(body, sp);
   const p = $("#popover");
   const idInput = el("input", { class: "input mono", value: sp.attrs.id || "", "aria-label": "Span id" });
-  const lang = el("select", { class: "select", "aria-label": "Language", disabled: RB.kind(pop.attrs) !== "translatable" },
-    RB.LANGUAGES.map((l) => el("option", { value: l, text: l, selected: pop.attrs.lang === l })));
+  const lang = RB.kind(pop.attrs) === "translatable" ? el("select", { class: "select", "aria-label": "Language" },
+    RB.LANGUAGES.map((l) => el("option", { value: l, text: l, selected: pop.attrs.lang === l })))
+    : el("span", { class: "muted mono hint", text: "Language only applies to translatable spans." });
   const hist = el("select", { class: "select", "aria-label": "Story variant" }, el("option", { value: "", text: "no variant" }),
     allVariants().map((v) => el("option", { value: v, text: v, selected: pop.attrs.hist === v })));
   const known = [];
@@ -764,7 +988,8 @@ function editPop(index, x, y) {
   }
   known.sort((a, b) => (b.same - a.same) || a.id.localeCompare(b.id));
   const kinds = [["translatable", "Translatable"], ["invariant", "Invariant"], ["nolang", "No-lang"]];
-  p.replaceChildren(el("h4", { text: "Edit span" }),
+  p.className = "popover";
+  fill(p, popHead("Edit span"),
     el("div", { class: "chips" }, kinds.map(([k, label]) => el("button", {
       class: "btn sm" + (RB.kind(pop.attrs) === k ? " outline" : ""), type: "button", text: label,
       onclick: () => { pop.attrs = RB.withKind(pop.attrs, k); editPopSave(idInput, lang, hist, true); } }))),
@@ -775,13 +1000,13 @@ function editPop(index, x, y) {
       text: k.id + (k.same ? " · same text" : " · shares"), title: k.same ? "Same text: reuses the translation" : "Different text: shares the stored translation",
       onclick: () => { idInput.value = k.id; } }))) : null,
     el("div", { class: "row2" }, el("button", { class: "btn sm primary", type: "button", text: "Apply", onclick: () => editPopSave(idInput, lang, hist) }),
-      el("button", { class: "btn sm", type: "button", text: "Remove span", onclick: () => { closePop(); setBody(RB.unwrap(editing().body, sp)); } })));
+      el("button", { class: "btn sm", type: "button", text: "Remove span", onclick: () => removeSpan(sp) })));
   placePop(x, y);
 }
 
 function editPopSave(idInput, lang, hist, keepOpen) {
   const attrs = { ...pop.attrs };
-  if (RB.kind(attrs) === "translatable" && !lang.disabled) attrs.lang = lang.value;
+  if (RB.kind(attrs) === "translatable" && lang.tagName === "SELECT") attrs.lang = lang.value;
   if (hist.value) attrs.hist = hist.value; else delete attrs.hist;
   if (idInput.value.trim()) attrs.id = idInput.value.trim(); else delete attrs.id;
   const { index } = pop, sp = RB.parseSpans(editing().body).spans[index];
@@ -789,10 +1014,27 @@ function editPopSave(idInput, lang, hist, keepOpen) {
   if (keepOpen) { const r = $("#popover").getBoundingClientRect(); editPop(index, r.left, r.top - 12); } else closePop();
 }
 
+// Wraps the source selection in a span of `type` (toolbar buttons and Alt+T / I / N).
+function markSelection(type) {
+  const ta = $("#edSource"), { spans } = RB.parseSpans(editing().body);
+  const target = RB.wrapTarget(editing().body, spans, ta.selectionStart, ta.selectionEnd);
+  if (!target.ok) { toast(target.reason, true); return; }
+  pop = { mode: "apply", s: target.s, e: target.e, hist: "" };
+  applySpan(type, autoId(target));
+}
+
 function bindEditor() {
   const ta = $("#edSource");
   ta.addEventListener("input", () => { closePop(); editing().body = ta.value; renderEditor(); });
-  ta.addEventListener("mouseup", (ev) => { if (ta.selectionEnd > ta.selectionStart) applyPop(ta.selectionStart, ta.selectionEnd, ev.clientX, ev.clientY); });
+  ta.addEventListener("mouseup", (ev) => { if (ta.selectionEnd > ta.selectionStart) tagChip(ta.selectionStart, ta.selectionEnd, ev.clientX, ev.clientY); });
+  for (const type of ["select", "keyup", "click"]) ta.addEventListener(type, updateCaret);
+  ta.addEventListener("keydown", (ev) => {
+    const type = { KeyT: "translatable", KeyI: "invariant", KeyN: "nolang" }[ev.code];
+    if (!ev.altKey || !type) return;
+    ev.preventDefault();
+    if (ta.selectionEnd <= ta.selectionStart) { toast("Select some text first (Shift+arrows), then press the shortcut.", true); return; }
+    markSelection(type);
+  });
   ta.addEventListener("dblclick", (ev) => { const sp = spanAtCursor(); if (sp) { ev.preventDefault(); editPop(sp.index, ev.clientX, ev.clientY); } });
   const pv = $("#edPreview");
   pv.addEventListener("mouseup", (ev) => {
@@ -800,7 +1042,7 @@ function bindEditor() {
     if (!sel || sel.isCollapsed) return;
     const a = previewOffset(sel.anchorNode, sel.anchorOffset), b = previewOffset(sel.focusNode, sel.focusOffset);
     if (a < 0 || b < 0) return;
-    applyPop(Math.min(a, b), Math.max(a, b), ev.clientX, ev.clientY);
+    tagChip(Math.min(a, b), Math.max(a, b), ev.clientX, ev.clientY);
   });
   pv.addEventListener("dblclick", (ev) => {
     const node = ev.target.closest(".sp");
@@ -808,17 +1050,13 @@ function bindEditor() {
     getSelection().removeAllRanges();
     editPop(parseInt(node.dataset.i, 10), ev.clientX, ev.clientY);
   });
-  document.querySelectorAll("[data-mark]").forEach((b) => b.addEventListener("click", (ev) => {
+  document.querySelectorAll("[data-mark]").forEach((b) => b.addEventListener("click", () => {
     if (ta.selectionEnd <= ta.selectionStart) { toast("Select text in the source first", true); return; }
-    const { spans } = RB.parseSpans(editing().body);
-    const target = RB.wrapTarget(editing().body, spans, ta.selectionStart, ta.selectionEnd);
-    if (!target.ok) { toast(target.reason, true); return; }
-    pop = { mode: "apply", s: target.s, e: target.e, hist: "" };
-    applySpan(b.dataset.mark, autoId(target));
+    markSelection(b.dataset.mark);
   }));
   $("#edRemove").addEventListener("click", () => {
     const sp = spanAtCursor();
-    if (sp) setBody(RB.unwrap(editing().body, sp)); else toast("Place the cursor inside a span first", true);
+    if (sp) removeSpan(sp); else toast("Place the cursor inside a span first", true);
   });
   document.querySelectorAll("[data-edtab]").forEach((b) => b.addEventListener("click", () => { state.edTab = b.dataset.edtab; renderEditor(); }));
   $("#addVariant").addEventListener("click", () => {
@@ -834,6 +1072,7 @@ function bindEditor() {
 // ── download ────────────────────────────────────────────────────────────
 
 function download() {
+  if (!state.chapters.length) { toast("Add at least one chapter first.", true); return; }
   const name = RB.slugify(state.name);
   if (!name) { toast("Give the rodeo a name first", true); $("#name").focus(); return; }
   state.name = name;
@@ -846,7 +1085,7 @@ function download() {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-  toast(name + ".zip: " + entries.length + " files" + (warnings.length ? " · " + warnings.length + " span warnings (open ✎ to fix)" : ""), warnings.length > 0);
+  toast(name + ".zip: " + entries.length + " files" + (warnings.length ? " · " + warnings.length + " span warnings (Fix ✎ in the review list)" : ""), warnings.length > 0);
 }
 
 // ── save (live server only) ─────────────────────────────────────────────
@@ -874,6 +1113,29 @@ async function save(force) {
   toast("Saved " + res.body.path + " · deploy with: rodeo up --profile " + name);
 }
 
+// ── dialogs ─────────────────────────────────────────────────────────────
+
+const FOCUSABLE = "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), iframe, [tabindex]:not([tabindex='-1'])";
+
+function openDialog() {
+  if (!$("#newModal").hidden) return $("#newModal .modal");
+  if (!$("#embedOverlay").hidden) return $("#embedOverlay .embed");
+  if (!$("#editor").hidden) return $("#editor");
+  return null;
+}
+
+// Tab and Shift+Tab wrap inside the open dialog (the span popover is left free).
+function trapTab(ev) {
+  const dialog = openDialog();
+  if (!dialog || (pop && document.activeElement.closest("#popover"))) return;
+  const items = [...dialog.querySelectorAll(FOCUSABLE)].filter((n) => n.getClientRects().length);
+  if (!items.length) return;
+  const first = items[0], last = items.at(-1), active = document.activeElement;
+  if (!dialog.contains(active)) { ev.preventDefault(); first.focus(); }
+  else if (ev.shiftKey && active === first) { ev.preventDefault(); last.focus(); }
+  else if (!ev.shiftKey && active === last) { ev.preventDefault(); first.focus(); }
+}
+
 // ── init ────────────────────────────────────────────────────────────────
 
 function bind() {
@@ -884,7 +1146,7 @@ function bind() {
   $("#lang").addEventListener("change", (ev) => { state.lang = ev.target.value; render(); });
   $("#target").addEventListener("change", (ev) => { state.target = ev.target.value; render(); });
   document.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => {
-    document.querySelectorAll("[data-tab]").forEach((x) => x.classList.toggle("on", x === b));
+    document.querySelectorAll("[data-tab]").forEach((x) => { x.classList.toggle("on", x === b); x.setAttribute("aria-selected", String(x === b)); });
     for (const t of ["rodeo", "plan", "story"]) $("#tab-" + t).hidden = t !== b.dataset.tab;
   }));
   const themeBtn = $("#themeBtn"), logo = $("#logo");
@@ -896,18 +1158,41 @@ function bind() {
   themeBtn.addEventListener("click", () => { window.RBTheme.toggle(); showTheme(); });
   showTheme();
   $("#downloadBtn").addEventListener("click", download);
+  $("#stickyDownload").addEventListener("click", download);
+  $("#warnBtn").addEventListener("click", scrollToReview);
+  $("#stickyWarn").addEventListener("click", scrollToReview);
+  $("#toastUndo").addEventListener("click", () => {
+    const undo = state.undo;
+    if (!undo) return;
+    state.undo = null;
+    undo();
+    toast("Restored");
+  });
+  const lab = $("#chapterList");
+  lab.addEventListener("dragover", (ev) => { if (!state.drag) return; ev.preventDefault(); if (state.drag.kind === "lib") lab.classList.add("over"); });
+  lab.addEventListener("dragleave", (ev) => { if (!lab.contains(ev.relatedTarget)) lab.classList.remove("over"); });
+  lab.addEventListener("drop", (ev) => { ev.preventDefault(); dropAt(state.chapters.length); });
   $("#saveBtn").addEventListener("click", () => save(false));
   $("#planEditor").addEventListener("input", onPlanInput);
   $("#planEditor").addEventListener("blur", () => renderFiles());
-  $("#planReset").addEventListener("click", () => { state.planEdited = null; render(); toast("plan.yaml regenerated"); });
+  $("#planReset").addEventListener("click", () => {
+    const edited = state.planEdited;
+    state.planEdited = null;
+    render();
+    toast("plan.yaml regenerated", false, () => { state.planEdited = edited; render(); });
+  });
   $("#newChapterBtn").addEventListener("click", openNewChapter);
   $("#newForm").addEventListener("submit", createChapter);
-  $("#ncCancel").addEventListener("click", () => { $("#newModal").hidden = true; });
-  $("#newModal").addEventListener("mousedown", (ev) => { if (ev.target === ev.currentTarget) $("#newModal").hidden = true; });
-  $("#embedClose").addEventListener("click", () => { $("#embedOverlay").hidden = true; $("#embedFrame").src = "about:blank"; });
+  $("#ncCancel").addEventListener("click", closeNewChapter);
+  $("#newModal").addEventListener("mousedown", (ev) => { if (ev.target === ev.currentTarget) closeNewChapter(); });
+  $("#embedClose").addEventListener("click", closeEmbed);
   document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Tab") { trapTab(ev); return; }
     if (ev.key !== "Escape") return;
-    if (pop) closePop(); else if (!$("#newModal").hidden) $("#newModal").hidden = true;
+    if (pop) closePop();
+    else if (!$("#newModal").hidden) closeNewChapter();
+    else if (!$("#embedOverlay").hidden) closeEmbed();
+    else if (!$("#editor").hidden) closeEditor();
   });
   bindEditor();
 }
@@ -925,6 +1210,7 @@ async function init() {
       $("#saveBtn").hidden = !state.server.save;
       $("#saveBtn").title = "Write this rodeo to " + state.server.profiles_dir + "/<name>/";
     }
+    offerDraft();
     render();
   } catch (err) {
     toast("Could not load the builder data: " + err.message, true);

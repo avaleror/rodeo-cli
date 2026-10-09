@@ -39,8 +39,11 @@ rodeo up --profile <name>     # after Save to profiles
   you create with **+ New**. Each workshop shows the lab engine and profile its
   chapters run on; **use** switches the rodeo to them (for example `suse-virt`
   with the `virt-workshop-aws` profile, whose extra setup the exercises need).
-  Drag chapters into the rodeo or click them; reorder by dragging or with
-  Alt+↑/↓. A chapter that needs something the lab doesn't provide is marked, and
+  Drag chapters into the rodeo (anywhere on the list) or click them; click a
+  chapter again to take it out. Click a row in the rodeo to insert new chapters
+  after it instead of at the end. Reorder by dragging or with Alt+↑/↓. Removing a
+  chapter or a span offers **Undo** for a few seconds. When every chapter comes
+  from workshops that run on one other engine, a banner offers to switch to it. A chapter that needs something the lab doesn't provide is marked, and
   for lab-in-a-box one click adds the missing add-on. Chapters that come with a
   check script bring it along. A new chapter can only ask for what an engine
   really provides: the native engines' capabilities and lab-in-a-box's catalogue
@@ -49,12 +52,22 @@ rodeo up --profile <name>     # after Save to profiles
   an empty list. `missing_addon` is always offered: a placeholder for something no
   engine provides yet. It only marks the chapter as "work needed" (also listed in
   the download's README); it never blocks the rodeo and never reaches the lab.
-- **Story.** **N spans ✎** opens the story editor: select text and mark it
-  Translatable, Invariant or No-lang; double-click a span to change its type,
+- **Story.** **N spans ✎** opens the story editor (rows with span warnings show
+  how many). Select text and click **Tag selection**, use the toolbar, or press
+  Alt+T / Alt+I / Alt+N to mark it Translatable, Invariant or No-lang;
+  double-click a span to change its type,
   language, id or story variant. Ids follow rmstory's rules (`<chapter>.N`,
   `<parent>.N` when nested) and the editor shows the same warnings as
   `rmstory validate`. Translations are filled after install, by
   `rodeo story render --language <lang>`.
+
+**Review and download** (step 03) checks the rodeo before you download it: the
+lab covers every chapter, the span ids are valid (each warning has a **Fix**
+button), the exact files in the zip, and the commands to install it, ready to
+copy. Missing lab features and span warnings never block the download.
+
+The page keeps a draft of your rodeo in this browser. After a reload it offers
+to restore it.
 
 The right-hand panel sets the name, story title, language, deployment target and
 story variant, and previews every file of the download. **plan.yaml** is an

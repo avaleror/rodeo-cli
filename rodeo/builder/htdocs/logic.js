@@ -172,6 +172,27 @@ const RB = (() => {
     return warnings;
   }
 
+  // validate() output counted per chapter id.
+  function warningsByChapter(warnings) {
+    const counts = {};
+    for (const w of warnings) counts[w.chapter] = (counts[w.chapter] || 0) + 1;
+    return counts;
+  }
+
+  // The engines the rodeo's chapters run on, from the library groups they were
+  // added from: [{engine, workshops: [titles]}] sorted by engine. Chapters from a
+  // group without an engine (e.g. "My chapters") need none.
+  function engineNeeds(chapters, groups) {
+    const byId = new Map(groups.map((g) => [g.id, g])), need = new Map();
+    for (const ch of chapters) {
+      const g = byId.get(String(ch.from || "").split("/")[0]);
+      if (!g || !g.engine) continue;
+      if (!need.has(g.engine)) need.set(g.engine, []);
+      if (!need.get(g.engine).includes(g.title)) need.get(g.engine).push(g.title);
+    }
+    return [...need].sort((a, b) => a[0].localeCompare(b[0])).map(([engine, workshops]) => ({ engine, workshops }));
+  }
+
   function variantsIn(chapters) {
     const out = new Set();
     for (const ch of chapters) for (const sp of parseSpans(ch.body).spans) if (sp.attrs.hist) out.add(sp.attrs.hist);
@@ -393,7 +414,7 @@ const RB = (() => {
 
   return {
     MISSING_ADDON, SOURCE_LANGUAGE, LANGUAGES, slugify, uniqueId, parseSpans, parseAttrs, kind, needsId, openTag, inner,
-    withKind, wrapTarget, nextId, wrap, retag, unwrap, idsIn, validate, variantsIn, storyIndex,
+    withKind, wrapTarget, nextId, wrap, retag, unwrap, idsIn, validate, warningsByChapter, engineNeeds, variantsIn, storyIndex,
     setTopKey, dropTopBlock, storyBlock, planFromBase, planLabinabox, chapterFile, chaptersYaml,
     storyYaml, checkScript, readme, files, labJsonAddons, crc32, zip,
   };

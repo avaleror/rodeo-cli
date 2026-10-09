@@ -177,3 +177,25 @@ test("slugify and uniqueId", () => {
   assert.equal(RB.slugify("  Café: Fleet & GitOps!"), "cafe-fleet-gitops");
   assert.equal(RB.uniqueId("intro", new Set(["intro", "intro-2"])), "intro-3");
 });
+
+test("warningsByChapter counts validate() output per chapter", () => {
+  const chapters = [
+    { id: "a", body: '<span lang="en">no id</span> <span lang="en">again</span>' },
+    { id: "b", body: '<span lang="en" id="x">ok</span>' },
+  ];
+  assert.deepEqual(RB.warningsByChapter(RB.validate(chapters)), { a: 2 });
+  assert.deepEqual(RB.warningsByChapter([]), {});
+});
+
+test("engineNeeds lists the engines the chapters' workshops run on", () => {
+  const groups = [
+    { id: "virt", title: "Virtualization workshop", engine: "suse-virt" },
+    { id: "smlm", title: "SMLM workshop", engine: "lab-in-a-box" },
+    { id: "custom", title: "My chapters" },
+  ];
+  const ch = (from) => ({ from });
+  assert.deepEqual(RB.engineNeeds([ch("virt/a"), ch("virt/b"), ch("custom/c")], groups),
+    [{ engine: "suse-virt", workshops: ["Virtualization workshop"] }]);
+  assert.deepEqual(RB.engineNeeds([ch("virt/a"), ch("smlm/b")], groups).map((n) => n.engine), ["lab-in-a-box", "suse-virt"]);
+  assert.deepEqual(RB.engineNeeds([ch("custom/c"), {}], groups), []);
+});

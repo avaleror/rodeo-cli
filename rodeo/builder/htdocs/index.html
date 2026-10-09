@@ -21,6 +21,7 @@
     <div class="hdr-right">
       <span id="counts" class="counts"></span>
       <button id="themeBtn" class="btn" type="button">Light</button>
+      <button id="warnBtn" class="btn warn" type="button" hidden></button>
       <button id="saveBtn" class="btn outline" type="button" hidden>Save to profiles</button>
       <button id="downloadBtn" class="btn primary" type="button">Download rodeo</button>
     </div>
@@ -38,20 +39,29 @@
     </aside>
 
     <section class="col center" aria-label="Rodeo">
+      <div id="draftBanner" class="banner ok" hidden>
+        <span id="draftText" class="banner-text"></span>
+        <button id="draftRestore" class="btn primary sm" type="button">Restore</button>
+        <button id="draftFresh" class="btn sm" type="button">Start fresh</button>
+      </div>
       <h2 class="sec"><span class="num">01</span> Lab engine <span id="engineNow" class="now"></span></h2>
       <div id="engines" class="engines" role="radiogroup" aria-label="Lab engine"></div>
       <div id="enginePanel" class="panel"></div>
       <h2 class="sec"><span class="num">02</span> Chapters <span id="coverage" class="status"></span></h2>
+      <p id="insertHint" class="hint"></p>
+      <div id="engineBanner" class="banner bad" role="alert" hidden></div>
       <div id="chapterList" class="lab"></div>
+      <h2 class="sec" id="review"><span class="num">03</span> Review and download</h2>
+      <div id="reviewPanel" class="panel"></div>
     </section>
 
     <aside class="col right" aria-label="Rodeo settings and files">
       <div class="tabs" role="tablist">
-        <button type="button" role="tab" data-tab="rodeo" class="on">rodeo</button>
-        <button type="button" role="tab" data-tab="plan">plan.yaml</button>
-        <button type="button" role="tab" data-tab="story">story</button>
+        <button type="button" role="tab" id="t-rodeo" aria-controls="tab-rodeo" aria-selected="true" data-tab="rodeo" class="on">rodeo</button>
+        <button type="button" role="tab" id="t-plan" aria-controls="tab-plan" aria-selected="false" data-tab="plan">plan.yaml</button>
+        <button type="button" role="tab" id="t-story" aria-controls="tab-story" aria-selected="false" data-tab="story">story</button>
       </div>
-      <div id="tab-rodeo" class="tabpane">
+      <div id="tab-rodeo" class="tabpane" role="tabpanel" aria-labelledby="t-rodeo">
         <label class="label" for="name">Name</label>
         <input id="name" class="input mono" autocomplete="off" spellcheck="false">
         <label class="label" for="title">Story title</label>
@@ -67,7 +77,7 @@
         <div id="variants" class="chips"></div>
         <div id="estimate" class="est"></div>
       </div>
-      <div id="tab-plan" class="tabpane" hidden>
+      <div id="tab-plan" class="tabpane" role="tabpanel" aria-labelledby="t-plan" hidden>
         <div class="plan-bar">
           <span id="planState" class="mono muted"></span>
           <button id="planReset" class="btn sm" type="button" hidden>Reset to generated</button>
@@ -80,16 +90,21 @@
         <p class="note muted">Edit freely: your changes are kept and downloaded. <code>name</code>,
           <code>deployment_target</code> and <code>story</code> stay in sync with the rodeo tab.</p>
       </div>
-      <div id="tab-story" class="tabpane" hidden>
+      <div id="tab-story" class="tabpane" role="tabpanel" aria-labelledby="t-story" hidden>
         <ul id="fileList" class="files"></ul>
         <div class="term">
           <div class="term-bar"><i></i><i></i><i></i><span id="fileName"></span></div>
           <pre id="filePreview"></pre>
         </div>
       </div>
-      <div id="toast" class="toast" role="status" aria-live="polite"></div>
     </aside>
   </main>
+
+  <div id="stickyBar" class="sticky">
+    <span id="stickyCounts" class="counts-sm"></span>
+    <button id="stickyWarn" class="btn warn sm" type="button" hidden></button>
+    <button id="stickyDownload" class="btn primary sm" type="button">Download</button>
+  </div>
 
   <div id="newModal" class="backdrop" hidden>
     <form id="newForm" class="modal" role="dialog" aria-modal="true" aria-labelledby="newTitle">
@@ -140,12 +155,13 @@
       <div class="ed-left">
         <div class="toolbar">
           <span class="lbl">Mark selection as</span>
-          <button type="button" class="btn sm" data-mark="translatable">Translatable</button>
-          <button type="button" class="btn sm" data-mark="invariant">Invariant</button>
-          <button type="button" class="btn sm" data-mark="nolang">No-lang</button>
+          <button type="button" class="btn sm" data-mark="translatable" title="Alt+T">Translatable</button>
+          <button type="button" class="btn sm" data-mark="invariant" title="Alt+I">Invariant</button>
+          <button type="button" class="btn sm" data-mark="nolang" title="Alt+N">No-lang</button>
           <span class="lbl">Story variant</span>
           <span id="edHist" class="chips"></span>
           <button id="edRemove" type="button" class="btn sm">Remove span</button>
+          <span id="edSel" class="sel-info"></span>
         </div>
         <label class="sr-only" for="edSource">Chapter source</label>
         <textarea id="edSource" class="textarea source" spellcheck="false"></textarea>
@@ -154,12 +170,12 @@
       </div>
       <div class="ed-right">
         <div class="tabs" role="tablist">
-          <button type="button" data-edtab="spans" class="on">spans</button>
-          <button type="button" data-edtab="stories">stories</button>
-          <button type="button" data-edtab="translations">translations</button>
+          <button type="button" role="tab" id="et-spans" aria-controls="edtab-spans" aria-selected="true" data-edtab="spans" class="on">spans</button>
+          <button type="button" role="tab" id="et-stories" aria-controls="edtab-stories" aria-selected="false" data-edtab="stories">stories</button>
+          <button type="button" role="tab" id="et-translations" aria-controls="edtab-translations" aria-selected="false" data-edtab="translations">translations</button>
         </div>
-        <div id="edtab-spans"><ul id="spanList" class="span-list"></ul></div>
-        <div id="edtab-stories" hidden>
+        <div id="edtab-spans" role="tabpanel" aria-labelledby="et-spans"><ul id="spanList" class="span-list"></ul></div>
+        <div id="edtab-stories" role="tabpanel" aria-labelledby="et-stories" hidden>
           <div class="addon-add">
             <label class="sr-only" for="newVariant">New story variant</label>
             <input id="newVariant" class="input mono" placeholder="new variant id" autocomplete="off">
@@ -167,12 +183,17 @@
           </div>
           <div id="storiesView"></div>
         </div>
-        <div id="edtab-translations" hidden><div id="translationsView"></div></div>
+        <div id="edtab-translations" role="tabpanel" aria-labelledby="et-translations" hidden><div id="translationsView"></div></div>
       </div>
     </div>
   </div>
 
   <div id="popover" class="popover" hidden></div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden>
+    <span id="toastText"></span>
+    <button id="toastUndo" class="btn sm" type="button" hidden>Undo</button>
+  </div>
 
   <script src="logic.js"></script>
   <script src="app.js"></script>

@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.24.0](https://github.com/avaleror/rodeo-cli/compare/v0.23.0...v0.24.0) (2026-10-09)
+
+
+### Features
+
+* **aws:** install the AWS CLI for AWS deploys and require working AWS credentials ([d11f5eb](https://github.com/avaleror/rodeo-cli/commit/d11f5eb4a5edad85c11ee4b00dabc261744bce38))
+* builder server ([dbeae54](https://github.com/avaleror/rodeo-cli/commit/dbeae543db75bc74ed9320ee2b4f73e9e69f15fe))
+* **builder:** live rodeo builder with save to profiles, rodeo new --from-zip, lab-in-a-box catalogue kinds and errors ([bc2f483](https://github.com/avaleror/rodeo-cli/commit/bc2f483003733f4d873cbc8c9e22cc49f71d011b))
+* **builder:** missing_addon marks a chapter as work needed ([4da73f6](https://github.com/avaleror/rodeo-cli/commit/4da73f6a95704927b3c49439eb2600ea11c06b37))
+* **fleet:** scale down unclaimed labs safely; audit fixes ([#90](https://github.com/avaleror/rodeo-cli/issues/90)) ([fbc5c30](https://github.com/avaleror/rodeo-cli/commit/fbc5c30b242d506a3d7386db50ec0d5099a2ae6e))
+
+
+### Bug Fixes
+
+* **labinabox:** rerun preflight credits the lab's running VMs; reinstall lab-in-a-box when its source changes ([7a3aa84](https://github.com/avaleror/rodeo-cli/commit/7a3aa84ed4714d17e4392e7355a246fd7ffd3644))
+* **smlm-workshop:** generalise.sh counts SCC credentials in the database, failing closed ([4f55001](https://github.com/avaleror/rodeo-cli/commit/4f550012ba1e325e921725198418df8ddb51c4b9))
+
 ## [0.23.0](https://github.com/avaleror/rodeo-cli/compare/v0.22.1...v0.23.0) (2026-10-08)
 
 

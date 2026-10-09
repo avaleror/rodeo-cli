@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.24.1](https://github.com/avaleror/rodeo-cli/compare/v0.24.0...v0.24.1) (2026-10-09)
+
+
+### Bug Fixes
+
+* **story:** refuse story packages without a .sha512; repeat lab-in-a-… ([53ba124](https://github.com/avaleror/rodeo-cli/commit/53ba124266bbe56ce35f7ffc980731fb7bd66df3))
+* **story:** refuse story packages without a .sha512; repeat lab-in-a-box's summary when setup_lab.py fails ([df3c4ce](https://github.com/avaleror/rodeo-cli/commit/df3c4cecd952afeb3dc762217d705029e052b57a))
+
 ## [0.24.0](https://github.com/avaleror/rodeo-cli/compare/v0.23.0...v0.24.0) (2026-10-09)
 
 

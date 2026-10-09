@@ -502,7 +502,9 @@ To test another lab-in-a-box without editing the plan, set
 `RODEO_LABINABOX_REPO` and/or `RODEO_LABINABOX_REF`; each takes precedence over
 the matching `source:` key. For a local lab-in-a-box checkout, set
 `RODEO_LABINABOX_PATH=/path/to/lab-in-a-box`; it takes precedence over all of them.
-These variables are read on the host that runs `rodeo up`.
+These variables are read on the host that runs `rodeo up`. A rerun reinstalls
+lab-in-a-box when its source changes: another repo or ref, or for a local
+checkout a new commit or uncommitted edits.
 
 **Existing lab-in-a-box host:** by default (`target.mode: auto`) rodeo installs
 lab-in-a-box on the host it runs on. It uses an existing one instead when that

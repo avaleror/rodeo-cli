@@ -62,7 +62,7 @@ channels are ready.
 - the clients boot AMIs you pick in your region.
 
 Set `variant: aws`, then `rodeo up` asks for the AWS credentials, a security group
-and the AMI IDs.
+and the AMI IDs. The Ubuntu 24.04 AMI also boots lab-in-a-box's DNS VM.
 
 ## Deploy
 

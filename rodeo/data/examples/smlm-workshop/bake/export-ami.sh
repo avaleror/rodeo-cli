@@ -6,7 +6,7 @@
 # Creates a private AMI from the stopped instance: AMIs are private to the
 # account by default — anyone in that account may use it, nobody outside.
 # Hand its ID to the workshop as smlm_image_ami (operator secret), together
-# with smlm_image_admin_pass from this host's ~/.rodeo/secrets.yaml.
+# with smlm_image_admin_pass from the bake lab's .rodeo-secrets.yaml.
 set -euo pipefail
 
 region="${AWS_REGION:?set AWS_REGION to the region of the bake account}"
@@ -22,7 +22,18 @@ ami=$(aws ec2 create-image --region "${region}" --instance-id "${id}" \
       --name "smlm-workshop-server-$(date +%Y%m%d%H%M)" \
       --description "smlm-workshop SMLM server, channels pre-synced (private)" \
       --query ImageId --output text)
-echo "# waiting for ${ami} to become available"
-aws ec2 wait image-available --region "${region}" --image-ids "${ami}"
+# A ~200 GB snapshot outlasts `aws ec2 wait image-available` (10 min): poll for up to 3 h.
+echo "# waiting for ${ami} to become available (large snapshots take a while)"
+state=pending
+for _ in $(seq 360); do
+    state=$(aws ec2 describe-images --region "${region}" --image-ids "${ami}" \
+            --query 'Images[0].State' --output text)
+    [[ "${state}" == available || "${state}" == failed ]] && break
+    sleep 30
+done
+if [[ "${state}" != available ]]; then
+    echo "ERROR: ${ami} is ${state}; check it in the EC2 console (AMIs)." >&2
+    exit 1
+fi
 echo "# smlm_image_ami:"
 echo "${ami}"

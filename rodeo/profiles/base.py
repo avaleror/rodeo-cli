@@ -102,6 +102,9 @@ class RodeoProfile(ABC):
     # When True, versions come from the definition file (single source of truth)
     # and `versions` above is only used if the definition can't be loaded.
     versions_from_definition: bool = False
+    # When False, the success panel shows no Harvester/Rancher URLs or logins: the
+    # lab's VMs are not rodeo's own Harvester and Rancher nodes.
+    native_logins: bool = True
 
     def phase_key(self, phase: str, cfg: dict) -> str | None:
         """What a cached phase's completion depends on: when it differs from the key

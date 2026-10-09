@@ -74,7 +74,7 @@ them in `~/.rodeo/secrets.yaml`. They are never written to a plan or to git.
    |---|---|
    | `smlm_image_url` + `smlm_image_sha256` | KVM: the signed URL (or file://) and the printed sha256 |
    | `smlm_image_ami` | AWS: the AMI ID `export-ami.sh` printed (workshop `variant: aws`) |
-   | `smlm_image_admin_pass` | `smlm_image_admin_pass` from this host's `~/.rodeo/secrets.yaml` |
+   | `smlm_image_admin_pass` | `smlm_image_admin_pass` from the bake lab's `.rodeo-secrets.yaml` (next to its `rodeo-plan.yaml`) |
 
    Each workshop deploy replaces that admin password with its own.
 

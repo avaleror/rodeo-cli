@@ -194,6 +194,7 @@ def test_theme_toggle(page):
 def test_upload_lab_json_brings_its_addons(page, tmp_path):
     lab = tmp_path / "lab.json"
     lab.write_text('{"common": {}, "nodes": {"a.lab": {"addons": ["smlm", {"client_registration": {}}]}}}')
+    page.click(".card")
     page.click(".engine >> text=lab-in-a-box")
     page.set_input_files("#enginePanel input[type=file]", str(lab))
     sync_api.expect(page.locator("#enginePanel")).to_contain_text("client_registration")
@@ -235,6 +236,7 @@ def test_source_group_switches_engine_and_base(page):
 
 
 def test_plan_yaml_can_be_edited(page):
+    page.click(".card")
     page.click("[data-tab=plan]")
     editor = page.locator("#planEditor")
     assert "generated" in page.locator("#planState").inner_text()
@@ -301,15 +303,15 @@ def test_live_server_saves_into_profiles(page):
     page.press("#name", "Tab")
     page.click(".card >> text=Welcome to the rodeo")
     save.click()
-    sync_api.expect(page.locator("#toast")).to_have_text(re.compile("^Saved"))
+    sync_api.expect(page.locator("#toastText")).to_have_text(re.compile("^Saved"))
     dest = custom_profile_dir("saved-ride")
     assert (dest / "definition.yaml").is_file() and (dest / "story" / "01-welcome.md").is_file()
     assert yaml.safe_load((dest / "rodeo-plan.yaml").read_text())["name"] == "saved-ride"
     assert "rodeo up --profile saved-ride" in page.locator("#toast").inner_text()
-    page.evaluate("document.getElementById('toast').textContent = ''")
+    page.evaluate("document.getElementById('toastText').textContent = ''")
     page.once("dialog", lambda d: d.accept())
     save.click()
-    sync_api.expect(page.locator("#toast")).to_have_text(re.compile("^Saved"))
+    sync_api.expect(page.locator("#toastText")).to_have_text(re.compile("^Saved"))
 
 
 def test_missing_addon_marks_work_needed_without_blocking(page):
@@ -325,3 +327,150 @@ def test_missing_addon_marks_work_needed_without_blocking(page):
     assert "missing_addon" not in files["my-rodeo/rodeo-plan.yaml"]
     assert "## Work needed" in files["my-rodeo/README.md"] and "Future feature" in files["my-rodeo/README.md"]
     assert "needs: [missing_addon]" in files["my-rodeo/story/chapters.yaml"]
+
+
+def _new_chapter(page, title, append=True):
+    page.click("#newChapterBtn")
+    page.fill("#ncTitle", title)
+    if not append:
+        page.click("#ncAppend")
+    page.click("#newForm button[type=submit]")
+
+
+def _rows(page) -> list[str]:
+    return page.locator(".row .row-title").all_inner_texts()
+
+
+def test_editor_errors_show_above_the_editor(page):
+    page.click(".card")
+    page.click(".row-actions .btn >> text=spans")
+    page.click("[data-mark=invariant]")
+    toast = page.locator("#toast")
+    sync_api.expect(toast).to_be_visible()
+    assert toast.inner_text().startswith("Select text in the source first")
+    box = toast.bounding_box()
+    on_top = page.evaluate("([x, y]) => !!document.elementFromPoint(x, y).closest('#toast')",
+                           [box["x"] + box["width"] / 2, box["y"] + box["height"] / 2])
+    assert on_top
+    page.keyboard.press("Escape")
+    assert page.locator("#editor").is_hidden()
+
+
+def test_draft_is_offered_after_a_reload(page):
+    page.fill("#name", "Draft Ride")
+    page.press("#name", "Tab")
+    page.click(".card")
+    page.wait_for_timeout(900)
+    page.reload()
+    page.wait_for_selector(".engine")
+    banner = page.locator("#draftBanner")
+    sync_api.expect(banner).to_be_visible()
+    assert '1 chapters in "draft-ride"' in banner.inner_text()
+    assert page.locator(".row").count() == 0
+    page.click("#draftRestore")
+    assert banner.is_hidden() and page.locator(".row").count() == 1
+    assert page.locator("#name").input_value() == "draft-ride"
+    page.reload()
+    page.wait_for_selector(".engine")
+    page.click("#draftFresh")
+    assert page.locator("#draftBanner").is_hidden() and page.locator(".row").count() == 0
+
+
+def test_keyboard_tagging_and_tag_chip(page):
+    page.click(".card")
+    page.click(".row-actions .btn >> text=spans")
+    source = page.locator("#edSource")
+    start = source.input_value().index("Rancher Prime on K3s")
+    source.evaluate("(ta, [s, e]) => { ta.focus(); ta.setSelectionRange(s, e); }", [start, start + len("Rancher Prime")])
+    page.keyboard.press("Alt+KeyN")
+    assert re.search(r'<span [^>]*>Rancher Prime</span>', source.input_value())
+    assert "Alt+T / I / N tags" in page.locator("#edSel").inner_text()
+    source.evaluate("(ta) => { ta.focus(); ta.setSelectionRange(0, 0); }")
+    page.keyboard.press("Alt+KeyT")
+    assert "Select some text first" in page.locator("#toastText").inner_text()
+    at = source.input_value().index("K3s")
+    source.evaluate("(ta, [s, e]) => { ta.setSelectionRange(s, e); ta.dispatchEvent(new MouseEvent('mouseup', "
+                    "{ bubbles: true, clientX: 200, clientY: 200 })); }", [at, at + 3])
+    chip = page.locator("#popover >> text=Tag selection")
+    sync_api.expect(chip).to_be_visible()
+    chip.click()
+    assert page.locator("#popover h4").inner_text() == "Apply span"
+    page.click("#popover .x-btn")
+    assert page.locator("#popover").is_hidden()
+
+
+def test_row_cursor_sets_the_insert_position(page):
+    _new_chapter(page, "Alpha")
+    _new_chapter(page, "Beta")
+    _new_chapter(page, "Gamma", append=False)
+    assert _rows(page) == ["Alpha", "Beta"]
+    page.locator(".row .row-title >> text=Alpha").click()
+    assert "Inserting after 01" in page.locator("#insertHint").inner_text()
+    page.click(".card >> text=Gamma")
+    assert _rows(page) == ["Alpha", "Gamma", "Beta"]
+    assert page.locator(".row.cursor .row-title").inner_text() == "Gamma"
+
+
+def test_remove_offers_undo_and_library_cards_toggle(page):
+    card = page.locator(".card", has_text="Welcome to the rodeo")
+    card.click()
+    assert "added ✓" in card.inner_text()
+    card.click()
+    assert page.locator(".row").count() == 0
+    page.click("#toastUndo")
+    assert page.locator(".row").count() == 1
+    page.click(".row-actions [aria-label^=Remove]")
+    assert page.locator(".row").count() == 0
+    page.click("#toastUndo")
+    assert _rows(page) == ["Welcome to the rodeo"]
+
+
+def test_review_lists_the_zip_and_warnings(page):
+    page.click("#downloadBtn")
+    assert page.locator("#toastText").inner_text() == "Add at least one chapter first."
+    page.click(".card >> text=Welcome to the rodeo")
+    _new_chapter(page, "Broken")
+    page.click(".row-actions .btn >> nth=4")
+    page.locator("#edSource").fill('# Broken\n\n<span lang="en">needs an id</span>\n')
+    page.click("#edDone")
+    assert "1 ⚠" in page.locator(".row", has_text="Broken").locator(".btn.warn").inner_text()
+    assert page.locator("#warnBtn").inner_text().lower() == "1 ⚠ warning"
+    review = page.locator("#reviewPanel")
+    assert "1 span warning (same checks as rmstory validate)" in review.inner_text()
+    listed = set(review.locator(".zip-files li").all_inner_texts())
+    assert "rodeo new my-rodeo --from-zip my-rodeo.zip" in review.locator("pre").inner_text()
+    files = _zip(page)
+    assert listed == set(files)
+    review.locator(".warn-row .btn", has_text="Fix").click()
+    assert page.locator("#edChapter").inner_text() == "Broken"
+
+
+def test_engine_banner_offers_the_workshops_engine(page):
+    page.locator(".group", has_text="Virtualization workshop").locator(".card").first.click()
+    banner = page.locator("#engineBanner")
+    sync_api.expect(banner).to_be_visible()
+    assert "run on suse-virt, not rancher" in banner.inner_text()
+    banner.locator("button").click()
+    assert page.locator(".engine.on .engine-name").inner_text() == "suse-virt"
+    assert banner.is_hidden()
+
+
+def test_engine_cards_move_with_arrow_keys(page):
+    page.locator(".engine.on").focus()
+    page.keyboard.press("ArrowRight")
+    focused = page.evaluate("document.activeElement.querySelector('.engine-name').textContent")
+    assert focused != "rancher"
+    page.keyboard.press("Enter")
+    assert page.locator(".engine.on .engine-name").inner_text() == focused
+    assert page.locator("[data-tab=rodeo]").get_attribute("aria-selected") == "true"
+
+
+@pytest.mark.parametrize("width", [1000, 600])
+def test_narrow_layout_has_a_sticky_bar(page, width):
+    page.set_viewport_size({"width": width, "height": 800})
+    page.click(".card")
+    bar = page.locator("#stickyBar")
+    sync_api.expect(bar).to_be_visible()
+    assert "1 chapters" in bar.inner_text()
+    assert page.locator("#chapterList").bounding_box()["height"] > 40
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")

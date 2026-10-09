@@ -1,0 +1,1982 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A declarative CLI that deploys hands-on lab infrastructure (Harvester HCI, Rancher Prime, SUSE Edge) on KVM.">
+      
+      
+      
+        <link rel="canonical" href="https://avaleror.github.io/rodeo-cli/claim-portal-plan/">
+      
+      
+        <link rel="prev" href="../claim-portal/">
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/logo/favicon.ico">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Fleet claim portal, implementation plan - rodeo-cli</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/custom.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#fleet-claim-portal-implementation-plan" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="rodeo-cli" class="md-header__button md-logo" aria-label="rodeo-cli" data-md-component="logo">
+      
+  <img src="../assets/logo/horseshoe-mark.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            rodeo-cli
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Fleet claim portal, implementation plan
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/avaleror/rodeo-cli" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    avaleror/rodeo-cli
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../get-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Get started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../install/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Install on Linux and macOS
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../guide-harvester/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Profiles
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../custom-rodeos/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Create your own rodeo
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../rodeo-builder/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Rodeo Builder
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../fleet/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Fleet (multi-host workshops)
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../reference/plan/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../examples/bare-metal/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Examples
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../runbook/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Troubleshooting
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../architecture/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  For contributors
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="rodeo-cli" class="md-nav__button md-logo" aria-label="rodeo-cli" data-md-component="logo">
+      
+  <img src="../assets/logo/horseshoe-mark.svg" alt="logo">
+
+    </a>
+    rodeo-cli
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/avaleror/rodeo-cli" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    avaleror/rodeo-cli
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../get-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Get started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install on Linux and macOS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Profiles
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Profiles
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-harvester/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SUSE Virtualization (Harvester)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-rancher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rancher Prime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-suse-edge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SUSE Edge
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../custom-rodeos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Create your own rodeo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rodeo-builder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rodeo Builder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fleet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fleet (multi-host workshops)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    rodeo-plan.yaml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/definition/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    definition.yaml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Examples
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/bare-metal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bare metal
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/instruqt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Instruqt track
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/workshop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workshop fleet inventory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing & CI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../runbook/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    For contributors
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    For contributors
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../claim-portal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claim portal (design)
+  
+
+    
+  </span>
+  
+  
+    
+  
+  
+    <span class="md-status md-status--approved design (2026-09-25); F5.0-F5.4 implemented 2026-09-30 (AWS), live end-to-end check pending"></span>
+  
+
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claim portal (implementation plan)
+  
+
+    
+  </span>
+  
+  
+    
+  
+  
+    <span class="md-status md-status--approved design; F5.0 live-checked 2026-09-30; F5.1-F5.4 implemented 2026-09-30, live end-to-end check pending"></span>
+  
+
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claim portal (implementation plan)
+  
+
+    
+  </span>
+  
+  
+    
+  
+  
+    <span class="md-status md-status--approved design; F5.0 live-checked 2026-09-30; F5.1-F5.4 implemented 2026-09-30, live end-to-end check pending"></span>
+  
+
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-no-regression-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. No-regression contract
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-risks-found-in-the-current-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Risks found in the current code
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-phases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Phases
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Phases">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#f50-baseline-student-network-access" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F5.0 Baseline + student network access
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#f51-portal-service-local-only-new-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F5.1 Portal service (local only, new code)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#f52-portal-vm-lifecycle-touches-the-aws-provider" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F5.2 Portal VM lifecycle (touches the AWS provider)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#f53-publish-and-instructor-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F5.3 Publish and instructor commands
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#f54-student-ssh-optional-off-by-default" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F5.4 Student SSH (optional, off by default)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#f55-docs-and-release" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F5.5 Docs and release
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-security-review-gates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Security review gates
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-live-test-budget" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Live test budget
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-out-of-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Out of scope
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-no-regression-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. No-regression contract
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-risks-found-in-the-current-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Risks found in the current code
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-phases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Phases
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Phases">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#f50-baseline-student-network-access" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F5.0 Baseline + student network access
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#f51-portal-service-local-only-new-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F5.1 Portal service (local only, new code)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#f52-portal-vm-lifecycle-touches-the-aws-provider" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F5.2 Portal VM lifecycle (touches the AWS provider)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#f53-publish-and-instructor-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F5.3 Publish and instructor commands
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#f54-student-ssh-optional-off-by-default" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F5.4 Student SSH (optional, off by default)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#f55-docs-and-release" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F5.5 Docs and release
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-security-review-gates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Security review gates
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-live-test-budget" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Live test budget
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-out-of-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Out of scope
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="fleet-claim-portal-implementation-plan">Fleet claim portal: implementation plan<a class="headerlink" href="#fleet-claim-portal-implementation-plan" title="Permanent link">&para;</a></h1>
+<p>How to build <a href="../claim-portal/">the claim portal</a> securely <strong>without changing anything
+that works today</strong>. Read the design first; this file only covers order, guardrails,
+tests and verification.</p>
+<h2 id="1-no-regression-contract">1. No-regression contract<a class="headerlink" href="#1-no-regression-contract" title="Permanent link">&para;</a></h2>
+<p>Every phase must satisfy all of these before it merges:</p>
+<ol>
+<li><strong>Opt-in only.</strong> All new behaviour sits behind <code>portal.enabled: true</code> or
+   <code>provider.student_access: open</code>. A <code>workshop.yaml</code> or <code>rodeo-plan.yaml</code> without
+   those fields produces exactly the same AWS calls, security group rules, inventory
+   writes and CLI output as <code>main</code> does today.</li>
+<li><strong>Single-host AWS is untouched.</strong> <code>rodeo up --target aws</code> / <code>rodeo destroy --cloud</code>
+   share <code>rodeo/providers/aws.py</code> with fleet. They never read <code>student_access</code> or
+   <code>portal</code>, and <code>tests/test_aws_up.py</code> passes unmodified.</li>
+<li><strong>Engine untouched.</strong> No change to phases, Ansible roles, the PXE boot chain,
+   <code>ssh_targets.py</code> or the nested-hop key (see R7). Standing constraints in
+   <code>ROADMAP.md</code> apply.</li>
+<li><strong>Existing tests are not edited to pass.</strong> New behaviour gets new tests. If an
+   existing test has to change, the PR explains why the old assertion was wrong.</li>
+<li><strong>New code in new modules.</strong> Edits to existing files are limited to the ones listed
+   per phase, and each edit is a guarded branch (<code>if portal enabled / if open</code>), not a
+   rewrite.</li>
+<li><strong>One phase, one PR</strong>, squash-merged with a Conventional Commit title
+   (<code>feat(fleet): ...</code>), <code>pytest</code> + <code>ruff</code> green, and <code>/security-review</code> run on the
+   diff before merge.</li>
+</ol>
+<h2 id="2-risks-found-in-the-current-code">2. Risks found in the current code<a class="headerlink" href="#2-risks-found-in-the-current-code" title="Permanent link">&para;</a></h2>
+<p>These came from reading the code on 2026-09-25. Each has an owner phase and a test
+that pins it.</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Risk</th>
+<th>Where</th>
+<th>Mitigation</th>
+<th>Phase</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>R1</td>
+<td><code>fleet deprovision</code> passes the lab host ids, so a portal instance would <strong>not</strong> be terminated, and the "anything still alive?" check before deleting the managed SG would see the portal and <strong>leak the lab SG forever</strong>.</td>
+<td><code>AwsProvider.deprovision</code>, <code>fleet_deprovision</code></td>
+<td>Portal gets its own SG and role tag; the still-alive check only counts instances in the same SG role; portal termination is an explicit step.</td>
+<td>F5.2</td>
+</tr>
+<tr>
+<td>R2</td>
+<td><code>provision()</code> calls <code>plant_rodeo_ssh_key</code> on <strong>every</strong> host it creates. Reusing it for the portal would copy the fleet-wide root key onto the one internet-facing web server.</td>
+<td><code>rodeo/providers/aws.py</code> provision loop</td>
+<td><code>ProvisionSpec.role</code>; key planting is skipped when <code>role == "portal"</code>. Test asserts <code>plant_rodeo_ssh_key</code> is never called for the portal.</td>
+<td>F5.2</td>
+</tr>
+<tr>
+<td>R3</td>
+<td><code>_reconcile_managed_sg_ingress</code> is shared by single-host <code>rodeo up --target aws</code>. A careless change opens single-host labs to the internet.</td>
+<td><code>rodeo/providers/aws.py</code></td>
+<td>New keyword argument with default equal to today's behaviour; only <code>fleet_provision</code> passes it. Characterisation test pins default rules.</td>
+<td>F5.0</td>
+</tr>
+<tr>
+<td>R4</td>
+<td>There is exactly one managed SG per workshop, found by <code>workshop</code> tag. A second SG for the portal would be picked up by <code>_find_managed_sg</code> at random.</td>
+<td><code>_find_managed_sg</code>, <code>_create_managed_sg</code></td>
+<td>Portal SG tagged <code>rodeo-resource: portal-security-group</code>; lab lookup keeps filtering on <code>security-group</code>, so it can never match the portal one.</td>
+<td>F5.2</td>
+</tr>
+<tr>
+<td>R5</td>
+<td>A student lab named <code>portal</code> in <code>hosts[]</code> would collide with the portal's <code>rodeo-host-id</code> tag.</td>
+<td><code>load_inventory</code></td>
+<td>Reserved id rejected, but <strong>only</strong> when <code>portal.enabled</code>, so no existing inventory starts failing.</td>
+<td>F5.2</td>
+</tr>
+<tr>
+<td>R6</td>
+<td>Any fleet command that iterates <code>hosts[]</code> (deploy, retry, diagnose, status, access, doctor) would try to deploy a lab onto the portal.</td>
+<td><code>select_hosts</code> users</td>
+<td>Portal lives in a separate top-level <code>portal:</code> block, never in <code>hosts[]</code>. Test: every fleet command's host list excludes it.</td>
+<td>F5.2</td>
+</tr>
+<tr>
+<td>R7</td>
+<td>The fleet-wide rodeo private key is planted at <code>/root/.ssh/id_ed25519</code> on every lab host, and nested VMs trust it (<code>ssh_targets.py</code>, <code>ensure_ssh_key.yml</code>, workshop scripts). Root on one host means root on all hosts. The nested hop was fixed only days ago (<code>1d0ab91</code>, <code>91530b9</code>).</td>
+<td><code>ssh_key.py</code>, <code>ssh_targets.py</code></td>
+<td><strong>Not changed in this project.</strong> Students never get root: <code>student_ssh</code> defaults to <code>false</code>, and when enabled the student user is not in <code>wheel</code>, <code>libvirt</code> or sudoers. A per-host key is a separate ROADMAP item that needs a live <code>rodeo ssh host/vm</code> regression.</td>
+<td>F5.4</td>
+</tr>
+<tr>
+<td>R8</td>
+<td><code>portal publish</code> reads <code>secrets.yaml</code> over SSH. If that output flows into a job file, <code>fleet diagnose</code> bundle or Rich error message, passwords leak to disk or terminal.</td>
+<td><code>fleet/ssh_exec.py</code>, <code>job.py</code>, <code>diagnose.py</code></td>
+<td>Publish uses its own call path that never logs stdout; errors print host id + exit code only. Test: a fake secret string never appears in captured logs, job files or exceptions.</td>
+<td>F5.3</td>
+</tr>
+<tr>
+<td>R9</td>
+<td><code>student_access: open</code> exposes Harvester/Rancher logins. A hand-set weak password (<code>rodeo set-password</code>) would be exposed.</td>
+<td><code>secretgen.py</code></td>
+<td>Strength gate (16+ chars, upper, lower, digit) before <code>fleet open-access</code> opens ports and before publish.</td>
+<td>F5.0, F5.3</td>
+</tr>
+</tbody>
+</table>
+<h2 id="3-phases">3. Phases<a class="headerlink" href="#3-phases" title="Permanent link">&para;</a></h2>
+<p>Ordered by risk: the phases that only add new code come before the phases that touch
+the AWS provider's create/delete paths.</p>
+<h3 id="f50-baseline-student-network-access">F5.0 Baseline + student network access<a class="headerlink" href="#f50-baseline-student-network-access" title="Permanent link">&para;</a></h3>
+<p>Smallest useful change: students can reach their labs from any network. Useful even
+before the portal exists (instructor can still use <code>fleet access</code>).</p>
+<ul>
+<li><strong>Baseline first (separate commit):</strong> characterisation tests for today's behaviour
+  that this project must not change:</li>
+<li>SG rules for default config: exactly the operator <code>/32</code> on <code>22</code>, <code>8443</code>, <code>30002</code>
+    (extends <code>tests/test_aws_managed_sg.py</code>).</li>
+<li>Deprovision target selection and SG cleanup condition (R1).</li>
+<li><code>plant_rodeo_ssh_key</code> called once per created lab host (R2).</li>
+<li><code>load_inventory</code> accepts every bundled example and <code>docs/examples/workshop.md</code>
+    snippet unchanged.</li>
+<li><strong>Change:</strong> <code>_reconcile_managed_sg_ingress(..., open_ports=())</code>. Desired state per
+  port: operator <code>/32</code>, plus <code>0.0.0.0/0</code> for ports in <code>open_ports</code>. Default unchanged,
+  so provision (fleet and single-host) stays operator-only and closes any open port on
+  re-run. <code>22</code> is never opened in this phase.</li>
+<li><strong>Change:</strong> <code>load_inventory</code> validates <code>provider.student_access: operator | open</code>
+  (default <code>operator</code>); unknown values fail closed.</li>
+<li><strong>Change:</strong> password strength check helper in <code>secretgen.py</code>
+  (<code>is_strong_password</code>).</li>
+<li><strong>Change (decision 2026-09-29, replaces "open at provision"):</strong> new
+  <code>rodeo fleet open-access [--close]</code> (<code>rodeo/fleet/student_access.py</code>,
+  <code>AwsHostProvider.set_student_access</code>). Opens only when <code>student_access: open</code> and
+  every host reports all phases complete and strong UI passwords (checked on the host,
+  only a verdict comes back). Ports from <code>lab.components</code>. Refuses BYO
+  <code>security_group_ids</code>. Opening at provision would expose the first-login screens
+  during the deploy (tester lab 2026-09-25).</li>
+<li><strong>Note:</strong> <code>fleet provision</code> prints a pointer to <code>open-access</code> when <code>open</code>.</li>
+<li><strong>Tests:</strong> operator to open, open to operator (rules revoked), re-provision closes,
+  idempotent re-run makes no AWS calls, BYO <code>security_group_ids</code> untouched, single-host
+  path never opens, gate refuses while any host is incomplete or weak.</li>
+<li><strong>Live:</strong> 1-host fleet in eu-north-1, <code>student_access: open</code>; <code>open-access</code> refused
+  mid-deploy; after deploy <code>:8443</code> reachable from a phone on mobile data;
+  <code>open-access --close</code>, unreachable again.</li>
+</ul>
+<h3 id="f51-portal-service-local-only-new-code">F5.1 Portal service (local only, new code)<a class="headerlink" href="#f51-portal-service-local-only-new-code" title="Permanent link">&para;</a></h3>
+<p>Zero risk to existing behaviour: only new files.</p>
+<ul>
+<li><code>rodeo/portal/db.py</code>: sqlite schema (<code>labs</code>, <code>claims</code>, <code>invites</code>, <code>settings</code>),
+  migrations by <code>user_version</code>, WAL mode, every query parameterised.</li>
+<li><code>rodeo/portal/claims.py</code>: pure functions for claim logic. Assignment in a single
+  <code>BEGIN IMMEDIATE</code> transaction. Tokens and PINs stored as SHA-256 / scrypt hashes;
+  comparisons with <code>hmac.compare_digest</code>.</li>
+<li><code>rodeo/portal/server.py</code>: <code>ThreadingHTTPServer</code>, routes <code>/</code>, <code>/claim</code>, <code>/l/&lt;token&gt;</code>,
+  <code>/healthz</code>. Jinja2 with autoescape on.</li>
+<li><code>rodeo/portal/admin.py</code> + <code>rodeo portal admin ...</code> commands (JSON in/out on stdin
+  and stdout, so secrets never touch argv or shell history).</li>
+<li><code>rodeo portal serve --dev</code> for local testing on <code>127.0.0.1</code> over HTTP.</li>
+<li><strong>Web security baseline:</strong> CSRF token on every POST, <code>SameSite=Strict; HttpOnly;
+  Secure</code> cookie, CSP <code>default-src 'self'</code>, <code>X-Frame-Options: DENY</code>,
+  <code>Referrer-Policy: no-referrer</code>, <code>Cache-Control: no-store</code>, HSTS (behind Caddy),
+  per-IP rate limit on <code>/claim</code>, body size limit, access log without tokens, emails,
+  PINs or passwords.</li>
+<li><strong>Tests:</strong> claim flows (roster, open, both, re-claim, wrong PIN, labs exhausted,
+  closed), 50-thread concurrent claim race (each lab assigned exactly once), CSRF
+  rejected, rate limit, token revocation, log scrubbing, templates escape input.</li>
+</ul>
+<h3 id="f52-portal-vm-lifecycle-touches-the-aws-provider">F5.2 Portal VM lifecycle (touches the AWS provider)<a class="headerlink" href="#f52-portal-vm-lifecycle-touches-the-aws-provider" title="Permanent link">&para;</a></h3>
+<p>Highest-risk phase; all four provider risks (R1, R2, R4, R5, R6) are closed here.</p>
+<ul>
+<li><code>ProvisionSpec.role: str = "lab"</code>; <code>role="portal"</code> skips <code>plant_rodeo_ssh_key</code>,
+  tags <code>rodeo-role: portal</code>, uses its own SG (<code>443</code>, <code>80</code> open; <code>22</code> operator only).</li>
+<li><code>rodeo/fleet/portal.py</code>: provision/deprovision orchestration, merges into
+  <code>workshop.yaml</code> <code>portal:</code> block (new <code>merge_portal</code> helper; <code>merge_provisioned_hosts</code>
+  untouched).</li>
+<li><code>fleet provision</code>: after the lab hosts succeed, provision the portal if enabled.
+  A portal failure never rolls back or fails the lab hosts; it reports and exits
+  non-zero so a re-run converges.</li>
+<li><code>fleet deprovision</code>: terminate labs, then portal (unless <code>--keep-portal</code>), then
+  each SG only when nothing in <em>its own role</em> is still alive.</li>
+<li><code>rodeo fleet portal up</code>: over SSH, install rodeo at <code>lab.ref</code>, create the
+  <code>rodeo-portal</code> system user, systemd unit with hardening, Caddy (repo package if
+  Leap 16 has it, else pinned binary with SHA-256), enable, wait for <code>/healthz</code> over
+  HTTPS. Idempotent.</li>
+<li><strong>Tests:</strong> everything in R1, R2, R4, R5, R6 as named assertions; provision with
+  portal disabled makes identical calls to baseline (snapshot of mocked EC2 calls).</li>
+<li><strong>Live:</strong> provision a 1-host fleet with portal, valid Let's Encrypt cert on
+  <code>portal-&lt;ip&gt;.sslip.io</code>, <code>ssh root@portal</code> shows no <code>/root/.ssh/id_ed25519</code>;
+  deprovision leaves zero instances and zero SGs (verify with the kill-switch sweep in
+  <code>~/rodeo-aws-tests/</code>).</li>
+</ul>
+<h3 id="f53-publish-and-instructor-commands">F5.3 Publish and instructor commands<a class="headerlink" href="#f53-publish-and-instructor-commands" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>rodeo fleet portal publish</code>: per ready host, read <code>secrets.yaml</code> via a dedicated
+  non-logging SSH call (R8), run the strength gate (R9), build the lab record from
+  <code>fleet/access.py</code> URL logic, push to the portal via <code>rodeo portal admin publish</code> on
+  stdin. Not-ready hosts published as <code>building</code>. Upserts never touch assignments.</li>
+<li><code>invite</code>, <code>info</code>, <code>status</code>, <code>open</code>, <code>close</code>, <code>rotate-code</code>, <code>release</code>, <code>reassign</code>,
+  <code>revoke</code>, <code>export</code>, all with <code>--output json</code>.</li>
+<li><code>fleet status</code> gains a <code>student</code> column <strong>only</strong> when <code>portal.enabled</code>.</li>
+<li><strong>Tests:</strong> R8 leak test, publish idempotency (twice gives same DB), release rotates
+  token, invite CSV is 0600, JSON schemas stable.</li>
+<li><strong>Live (end to end):</strong> 2-host fleet, one roster student, one event-code student,
+  each sees only their own lab and logs into Harvester; release and re-claim works;
+  <code>fleet retry</code> on a host followed by <code>publish</code> updates the card.</li>
+</ul>
+<h3 id="f54-student-ssh-optional-off-by-default">F5.4 Student SSH (optional, off by default)<a class="headerlink" href="#f54-student-ssh-optional-off-by-default" title="Permanent link">&para;</a></h3>
+<p>Only if the workshop exercises need a shell on the KVM host (design, open question 2).</p>
+<ul>
+<li><code>portal.student_ssh: true</code> creates, idempotently over SSH, a <code>student</code> user with no
+  sudo and no <code>wheel</code>/<code>libvirt</code> membership, a per-host ed25519 key generated on the
+  laptop and pushed only to that host and its portal record. Opens <code>22</code> to the internet
+  (key-only; <code>ssh_pwauth: false</code> is already in the EC2 userdata).</li>
+<li><strong>Tests:</strong> generated user has no sudo, is in no privileged group, cannot read
+  <code>/root</code> (asserted by the remote script's own checks), key is unique per host.</li>
+<li><strong>Live:</strong> student can SSH to own host, cannot to another, <code>sudo -n true</code> fails,
+  <code>cat /root/.ssh/id_ed25519</code> fails.</li>
+</ul>
+<h3 id="f55-docs-and-release">F5.5 Docs and release<a class="headerlink" href="#f55-docs-and-release" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>docs/fleet.md</code> F5 section with the instructor flow, <code>docs/examples/workshop.md</code>
+  snippet, CHANGELOG via release-please, ROADMAP checkboxes.</li>
+<li>Add the per-host nested key (R7) as its own ROADMAP item.</li>
+</ul>
+<h2 id="4-security-review-gates">4. Security review gates<a class="headerlink" href="#4-security-review-gates" title="Permanent link">&para;</a></h2>
+<p>For every phase PR:</p>
+<ul>
+<li><code>/security-review</code> on the diff; findings fixed or explicitly accepted in the PR.</li>
+<li><code>pip-audit</code> (already in CI), gitleaks (pre-commit, global).</li>
+<li>No new runtime dependency in <code>pyproject.toml</code> core <code>dependencies</code>.</li>
+<li>Grep gate: no <code>print</code>/<code>console.print</code>/logger call receives a variable holding a
+  password, token, PIN or email (reviewed by hand, plus the R8 test).</li>
+</ul>
+<p>Before the first real workshop: one end-to-end run where a second person (not the
+instructor) tries to reach another student's lab from their own claim, and fails.</p>
+<h2 id="5-live-test-budget">5. Live test budget<a class="headerlink" href="#5-live-test-budget" title="Permanent link">&para;</a></h2>
+<p>All live tests in <strong>eu-north-1</strong> (eu-west-1 has no internet gateway in the SUSE
+account). Smallest instance type that runs the lab profile under test, fleets of 1-2
+hosts, torn down the same day, kill-switch scripts in <code>~/rodeo-aws-tests/</code> armed before
+each run.</p>
+<h2 id="6-out-of-scope">6. Out of scope<a class="headerlink" href="#6-out-of-scope" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Replacing the fleet-wide nested-hop key (R7), tracked separately.</li>
+<li>GCP/Vultr/Hetzner portal support (comes free with F4b-d via <code>HostProvider</code>, verified
+  when those land).</li>
+<li>Email sending, SSO, web admin UI, proxying lab traffic.</li>
+</ul>
+
+
+
+
+
+
+
+  
+  
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.top", "navigation.indexes", "content.code.copy", "content.code.annotate", "toc.follow", "search.suggest", "search.highlight"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

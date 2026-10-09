@@ -1,0 +1,1220 @@
+// Rodeo Builder — the page. Data comes through apiGet(action) only: the live
+// server (`rodeo builder`) answers it, and the static build
+// (scripts/build-builder-static.py) replaces it with the embedded answers and
+// sets window.RB_STATIC, which keeps the server-only controls hidden.
+// Pure logic lives in logic.js (RB).
+"use strict";
+
+async function apiGet(action, params = {}) {
+  const q = new URLSearchParams({ action, ...params });
+  const res = await fetch("api?" + q.toString(), { headers: { Accept: "application/json" } });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error || res.statusText);
+  return body;
+}
+
+// POST to the live server; the write token comes from the meta tag it serves.
+async function apiPost(action, payload) {
+  const meta = document.querySelector('meta[name="rodeo-builder-token"]');
+  const res = await fetch("api?" + new URLSearchParams({ action }).toString(), {
+    method: "POST", body: JSON.stringify(payload),
+    headers: { "Content-Type": "application/json", Accept: "application/json", "X-Rodeo-Builder-Token": meta ? meta.content : "" },
+  });
+  return { status: res.status, body: await res.json() };
+}
+
+const $ = (sel) => document.querySelector(sel);
+
+function el(tag, props = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (v === undefined || v === null || v === false) continue;
+    if (k === "class") node.className = v;
+    else if (k === "text") node.textContent = v;
+    else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
+    else if (k === "dataset") Object.assign(node.dataset, v);
+    else node.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of children.flat()) if (c !== null && c !== undefined && c !== false) node.append(c);
+  return node;
+}
+
+// replaceChildren() for el()-style children: arrays are flattened, null/false skipped.
+function fill(node, ...children) {
+  node.replaceChildren(...children.flat().filter((c) => c !== null && c !== undefined && c !== false));
+}
+
+const state = {
+  engines: [], capabilities: [], workshops: [], server: null,
+  liab: { builder_url: "", error: "", addons: [], infrastructure: [], kclusters: [], imports: [] },
+  engine: "rancher", base: null, planEdited: null, mode: "link", importProfile: "", labAddons: [], labJson: null,
+  chapters: [], custom: [], name: "my-rodeo", title: "My rodeo", lang: "en", target: "baremetal",
+  variant: "", extraVariants: [], query: "", open: {}, newWorkshop: "custom", fileView: "rodeo-plan.yaml",
+  editing: -1, edTab: "spans", drag: null, cursor: -1, undo: null, copied: false,
+};
+
+let toastTimer = 0;
+
+// One message at a time, above every overlay; `undo` adds an Undo button.
+function toast(msg, bad, undo) {
+  const t = $("#toast");
+  $("#toastText").textContent = msg;
+  t.classList.toggle("bad", !!bad);
+  state.undo = undo || null;
+  $("#toastUndo").hidden = !undo;
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; state.undo = null; }, 7000);
+}
+
+// ── draft autosave (this browser only) ──────────────────────────────────
+
+const DRAFT_KEY = "rodeo-builder-draft-v1";
+const DRAFT_FIELDS = ["engine", "base", "planEdited", "mode", "importProfile", "labAddons", "labJson", "chapters",
+  "custom", "name", "title", "lang", "target", "variant", "extraVariants"];
+let draftOn = true, draftTimer = 0;
+
+function scheduleDraft() {
+  if (!draftOn) return;
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(saveDraft, 500);
+}
+
+function saveDraft() {
+  const saved = {};
+  for (const k of DRAFT_FIELDS) saved[k] = state[k];
+  try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ at: Date.now(), state: saved })); } catch (err) { /* no storage: no draft */ }
+}
+
+// A saved draft worth offering: it has chapters and its engine still exists.
+function readDraft() {
+  try {
+    const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || "null");
+    if (d && d.state && Array.isArray(d.state.chapters) && d.state.chapters.length &&
+      state.engines.some((e) => e.name === d.state.engine)) return d;
+  } catch (err) { /* unreadable draft: ignored */ }
+  return null;
+}
+
+function offerDraft() {
+  const d = readDraft();
+  if (!d) return;
+  draftOn = false;
+  const at = new Date(d.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  $("#draftText").replaceChildren(el("strong", { text: "Restore your draft? " }),
+    d.state.chapters.length + " chapters in \"" + d.state.name + "\", saved " + at + ".");
+  $("#draftBanner").hidden = false;
+  $("#draftRestore").onclick = () => {
+    for (const k of DRAFT_FIELDS) if (k in d.state) state[k] = d.state[k];
+    state.cursor = -1;
+    draftDecided();
+    toast("Draft restored");
+  };
+  $("#draftFresh").onclick = draftDecided;
+}
+
+function draftDecided() {
+  $("#draftBanner").hidden = true;
+  draftOn = true;
+  render();
+}
+
+// ── derived ─────────────────────────────────────────────────────────────
+
+function engine() { return state.engines.find((e) => e.name === state.engine); }
+function importBase() { return state.liab.imports.find((i) => i.profile === state.importProfile); }
+function isLiab() { return state.engine === "lab-in-a-box"; }
+function liabImported() { return isLiab() && state.mode === "import" && !!importBase(); }
+
+function provided() {
+  if (!isLiab()) return new Set(engine() ? engine().provides : []);
+  return new Set(liabImported() ? importBase().addons : state.labAddons);
+}
+
+function missing(chapter) { const p = provided(); return (chapter.needs || []).filter((n) => n !== RB.MISSING_ADDON && !p.has(n)); }
+
+function workNeeded() { return state.chapters.filter((c) => (c.needs || []).includes(RB.MISSING_ADDON)); }
+
+function needChip(n, miss) {
+  if (n === RB.MISSING_ADDON) return el("span", { class: "chip todo", title: "Placeholder: this chapter needs something no engine provides yet", text: "work needed" });
+  return el("span", { class: "chip " + (miss.includes(n) ? "missing" : "ok"), text: miss.includes(n) ? "missing " + n : n });
+}
+
+function liabNames(kinds) {
+  return (kinds || ["addons", "infrastructure", "kclusters"]).flatMap((k) => (state.liab[k] || []).map((a) => a.name));
+}
+
+// What a chapter can ask for: the native engines' capabilities plus lab-in-a-box's catalogue.
+function offeredNeeds() { return [...[...new Set([...state.capabilities, ...liabNames()])].sort(), RB.MISSING_ADDON]; }
+
+function catalogueHint() {
+  return window.RB_STATIC ? "This page was built without it: rebuild with build-builder-static.py --labinabox <checkout>."
+    : "Restart rodeo builder with --labinabox <checkout>, or check that this machine reaches GitHub.";
+}
+
+function libraryGroups() {
+  const groups = state.workshops.map((w) => ({ id: w.id, title: w.title, sub: w.source, chapters: w.chapters,
+    engine: w.engine, profile: w.profile, plan: w.plan }));
+  groups.push({ id: "custom", title: "My chapters", sub: "created in this builder", chapters: state.custom });
+  return groups;
+}
+
+// The engine and base profile a library group's chapters run on.
+function groupMatches(g) {
+  if (!g.engine || g.engine !== state.engine) return false;
+  if (g.engine === "lab-in-a-box") return liabImported() && importBase().profile === g.profile;
+  return baseProfile() === g.profile;
+}
+
+function useGroup(g) {
+  if (!confirmPlanDrop()) return;
+  state.engine = g.engine;
+  state.planEdited = null;
+  if (g.engine === "lab-in-a-box") {
+    state.base = null;
+    state.mode = "import";
+    state.importProfile = g.profile;
+    state.labJson = null;
+  } else {
+    state.base = g.profile === engine().base ? null : { profile: g.profile, plan: g.plan };
+  }
+  render();
+  toast("Lab engine " + g.engine + " with the " + g.profile + " profile, as " + g.title + " needs");
+}
+
+function confirmPlanDrop() {
+  return state.planEdited === null ||
+    window.confirm("plan.yaml was edited by hand. Changing the lab engine regenerates it and drops those edits. Continue?");
+}
+
+function libKey(groupId, chapterId) { return groupId + "/" + chapterId; }
+function inRodeo(groupId, chapterId) { return state.chapters.some((c) => c.from === libKey(groupId, chapterId)); }
+
+function allVariants() {
+  const set = new Set([...RB.variantsIn(state.chapters), ...state.extraVariants]);
+  return [...set].sort();
+}
+
+function baseProfile() {
+  if (isLiab()) return liabImported() ? importBase().profile : "";
+  if (state.base) return state.base.profile;
+  return engine() ? engine().base : "";
+}
+
+function story() { return { language: state.lang, id: state.variant }; }
+
+function planOptions() { return { name: state.name, target: state.target, story: story() }; }
+
+function generatedPlan() {
+  if (liabImported()) return RB.planFromBase(importBase().plan, planOptions());
+  if (isLiab()) return RB.planLabinabox({ ...planOptions(), addons: state.labAddons });
+  return RB.planFromBase(state.base ? state.base.plan : engine().plan, planOptions());
+}
+
+// A hand-edited plan keeps every edit; name, deployment_target and story follow the rodeo tab.
+function plan() {
+  return state.planEdited === null ? generatedPlan() : RB.planFromBase(state.planEdited, planOptions());
+}
+
+function rodeo() {
+  return {
+    name: state.name, title: state.title, base: baseProfile(), plan: plan(),
+    definition: isLiab() && !liabImported() ? engine().definition : "",
+    chapters: state.chapters, variants: allVariants(), story: story(), labJson: state.labJson,
+  };
+}
+
+// ── library ─────────────────────────────────────────────────────────────
+
+// Inserts at `at`, else after the row cursor (which then moves to the new row), else at the end.
+function addChapter(group, ch, at) {
+  if (inRodeo(group.id, ch.id)) return;
+  const used = new Set(state.chapters.map((c) => c.id));
+  const copy = { ...ch, id: RB.uniqueId(ch.id, used), workshop: group.title, from: libKey(group.id, ch.id) };
+  if (at === undefined && state.cursor >= 0) { at = state.cursor + 1; state.cursor = at; }
+  if (at === undefined || at < 0) state.chapters.push(copy); else state.chapters.splice(at, 0, copy);
+  render();
+}
+
+function removeChapter(i) {
+  const snapshot = state.chapters.slice(), title = state.chapters[i].title;
+  state.chapters.splice(i, 1);
+  state.cursor = -1;
+  render();
+  toast("Removed \"" + title + "\"", false, () => { state.chapters = snapshot; render(); });
+}
+
+function renderLibrary() {
+  const box = $("#library");
+  box.replaceChildren();
+  const q = state.query.trim().toLowerCase();
+  let total = 0;
+  for (const g of libraryGroups()) {
+    const list = g.chapters.filter((c) => !q || (c.title + " " + c.id).toLowerCase().includes(q));
+    total += g.chapters.length;
+    if (q && !list.length) continue;
+    const open = state.open[g.id] !== false;
+    const head = el("div", { class: "group-bar" },
+      el("button", { class: "group-head", type: "button", "aria-expanded": String(open),
+        onclick: () => { state.open[g.id] = !open; renderLibrary(); } },
+        el("span", { class: "chev", text: open ? "▾" : "▸" }),
+        el("span", { class: "group-text" }, el("span", { class: "group-title", text: g.title }),
+          el("span", { class: "group-sub", text: g.sub }))),
+      el("div", { class: "group-actions" },
+        g.engine ? el("span", { class: "chip" + (groupMatches(g) ? " ok" : ""), title: "Runs on the " + g.engine +
+          " engine with the " + g.profile + " profile", text: g.engine + (g.profile && g.profile !== g.engine ? " · " + g.profile : "") }) : null,
+        g.engine && !groupMatches(g) ? el("button", { class: "btn sm outline", type: "button", text: "use",
+          title: "Switch the lab engine to " + g.engine + " (" + g.profile + ")", onclick: () => useGroup(g) }) : null,
+        g.chapters.length ? el("button", { class: "btn sm", type: "button", text: "+ all " + g.chapters.length,
+          onclick: () => { for (const c of g.chapters) addChapter(g, c); } }) : null));
+    const cards = el("div", { class: "cards" });
+    if (open) {
+      if (!list.length) cards.append(el("div", { class: "empty", text: g.id === "custom" ? "No chapters yet: + New." : "No chapters." }));
+      for (const c of list) {
+        const added = inRodeo(g.id, c.id), lacks = missing(c).length > 0;
+        cards.append(el("button", {
+          class: "card" + (added ? " added" : "") + (lacks ? " lacks" : ""), type: "button", draggable: "true",
+          title: added ? "In the rodeo. Click to remove." : "Add to this rodeo",
+          onclick: () => (added ? removeChapter(state.chapters.findIndex((x) => x.from === libKey(g.id, c.id))) : addChapter(g, c)),
+          ondragstart: (ev) => { state.drag = { kind: "lib", group: g, chapter: c }; ev.dataTransfer.setData("text/plain", c.id); },
+          ondragend: () => { state.drag = null; clearDrop(); },
+        }, el("span", { class: "dot" }), el("span", { class: "card-title", text: c.title }),
+        el("span", { class: "card-meta", text: c.mins + " min" + (c.needs.length ? " · " + c.needs.join(", ") : "") +
+          (c.isNew ? " · new" : "") + (added ? " · added ✓" : "") })));
+      }
+    }
+    box.append(el("div", { class: "group" }, head, cards));
+  }
+  $("#libCount").textContent = String(total);
+}
+
+// ── engines ─────────────────────────────────────────────────────────────
+
+function gib(mib) { return Math.round(mib / 1024) + " GiB"; }
+
+function selectEngine(name) {
+  if (name === state.engine && !state.base) return;
+  if (!confirmPlanDrop()) return;
+  state.engine = name;
+  state.base = null;
+  state.planEdited = null;
+  render();
+}
+
+function engineSummary(e) {
+  if (e.external) return "VMs, clusters and add-ons you choose";
+  const r = e.resources;
+  return r.nodes + (r.nodes === 1 ? " VM" : " VMs") + " · " + gib(r.memory_mib) + " RAM";
+}
+
+function renderEngines() {
+  const box = $("#engines");
+  box.replaceChildren(...state.engines.map((e) => {
+    const on = e.name === state.engine;
+    return el("button", {
+      class: "engine" + (on ? " on" : ""), type: "button", role: "radio", "aria-checked": String(on), tabindex: on ? "0" : "-1",
+      onclick: () => selectEngine(e.name), onkeydown: engineKey,
+    }, el("span", { class: "engine-top" }, el("span", { class: "radio", "aria-hidden": "true" }),
+      el("span", { class: "engine-name", text: e.name }), on ? el("span", { class: "selected", text: "selected" }) : null),
+    el("span", { class: "engine-title", text: e.title }),
+    el("span", { class: "engine-sub", text: engineSummary(e) }),
+    e.provides.length ? el("span", { class: "engine-provides", text: e.provides.join(" · ") }) : null);
+  }));
+  const e = engine();
+  $("#engineNow").textContent = e ? "· " + e.name + (baseProfile() && baseProfile() !== e.name ? " · " + baseProfile() : "") : "";
+  renderEnginePanel();
+}
+
+// Arrow keys move between the engine cards; Enter/Space selects (native button click).
+function engineKey(ev) {
+  const step = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[ev.key];
+  if (!step) return;
+  ev.preventDefault();
+  const cards = [...document.querySelectorAll("#engines .engine")];
+  const j = (cards.indexOf(ev.currentTarget) + step + cards.length) % cards.length;
+  cards.forEach((c, k) => c.setAttribute("tabindex", k === j ? "0" : "-1"));
+  cards[j].focus();
+}
+
+function chipList(names, cls) { return el("div", { class: "chips" }, names.map((n) => el("span", { class: "chip " + (cls || ""), text: n }))); }
+
+function neededAddons() {
+  const need = new Set();
+  for (const c of state.chapters) for (const n of missing(c)) need.add(n);
+  return [...need].sort();
+}
+
+function addonTargets(name) {
+  const a = state.liab.addons.find((x) => x.name === name);
+  return a ? a.targets : [];
+}
+
+function addAddon(name) {
+  name = name.trim().toLowerCase().replace(/^install_/, "");
+  if (!name || state.labAddons.includes(name)) return;
+  if (state.liab.error) { toast("The lab-in-a-box catalogue is unavailable, so add-ons cannot be checked. " + catalogueHint(), true); return; }
+  if (!liabNames(["addons"]).includes(name)) { toast(name + " is not a lab-in-a-box add-on" + (state.liab.version ? " in " + state.liab.version : ""), true); return; }
+  state.labAddons.push(name);
+  render();
+}
+
+function labBuilderUrl(extra) {
+  const url = new URL(state.liab.builder_url, location.href);
+  if (state.labAddons.length) url.searchParams.set("addons", state.labAddons.join(","));
+  for (const [k, v] of Object.entries(extra || {})) url.searchParams.set(k, v);
+  return url.toString();
+}
+
+function readLabJson(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const lab = JSON.parse(reader.result);
+      if (!lab || typeof lab.nodes !== "object") throw new Error("no nodes in this file");
+      useLab(lab, file.name);
+    } catch (err) { toast("Not a lab-in-a-box lab.json: " + err.message, true); }
+  };
+  reader.readAsText(file);
+}
+
+function useLab(lab, source) {
+  state.labJson = lab;
+  state.labAddons = RB.labJsonAddons(lab);
+  state.importProfile = "";
+  toast("Lab from " + source + ": " + (state.labAddons.join(", ") || "no add-ons"));
+  render();
+}
+
+function renderEnginePanel() {
+  const box = $("#enginePanel"), e = engine();
+  box.replaceChildren();
+  if (!e) return;
+  if (!e.external) {
+    const r = e.resources;
+    box.append(el("h3", { text: e.title }),
+      el("p", { class: "mono muted", text: r.nodes + " VMs · " + gib(r.memory_mib) + " RAM · " + r.vcpu + " vCPU (" + e.base + " profile)" }),
+      el("p", { text: e.note }));
+    if (state.base) {
+      box.append(el("p", {}, "Base profile ", el("strong", { class: "mono", text: state.base.profile }),
+        ": the chapters of that workshop need its extra setup. ",
+        el("button", { class: "btn link", type: "button", text: "Use " + e.base + " instead",
+          onclick: () => { if (confirmPlanDrop()) { state.base = null; state.planEdited = null; render(); } } })));
+    } else {
+      box.append(el("p", {}, "Base profile ", el("strong", { class: "mono", text: e.base })));
+    }
+    box.append(el("span", { class: "label", text: "Provides" }), chipList(e.provides, "ok"));
+    return;
+  }
+  const modes = [["link", "Open in Lab Builder"], ["embed", "Embed here"], ["import", "Import existing lab"]];
+  box.append(el("h3", { text: "Lab built by lab-in-a-box" }), el("p", { text: e.note }),
+    el("div", { class: "seg", role: "tablist" }, modes.map(([m, label]) => el("button", {
+      type: "button", class: state.mode === m ? "on" : "", "aria-selected": String(state.mode === m),
+      onclick: () => { state.mode = m; render(); }, text: label }))));
+  const upload = el("label", { class: "btn sm" }, "Upload lab.json",
+    el("input", { type: "file", accept: ".json,application/json", class: "sr-only",
+      onchange: (ev) => ev.target.files[0] && readLabJson(ev.target.files[0]) }));
+  if (state.mode === "link") {
+    box.append(el("p", { text: "Design the lab in lab-in-a-box's lab-builder (this rodeo's add-ons are prefilled), download its lab.json, then upload it here to bring the add-ons back." }),
+      el("div", { class: "row2 chips" }, el("a", { class: "btn outline sm", href: labBuilderUrl(), target: "_blank", rel: "noopener", text: "Open lab-builder ↗" }), upload));
+  } else if (state.mode === "embed") {
+    box.append(el("p", { text: "Opens the lab-builder inside this page; \"Use this lab\" there hands the lab back. Needs a lab-in-a-box release with the embed hand-off; until then, use Download in the lab-builder and Upload here." }),
+      el("div", { class: "chips" }, el("button", { class: "btn outline sm", type: "button", text: "Open embedded lab-builder", onclick: openEmbed }), upload));
+  } else {
+    box.append(el("p", { text: "Start from a bundled lab-in-a-box rodeo, or from a lab.json." }),
+      el("div", { class: "imports" }, state.liab.imports.map((i) => el("button", {
+        class: "engine" + (state.importProfile === i.profile ? " on" : ""), type: "button",
+        onclick: () => { state.importProfile = state.importProfile === i.profile ? "" : i.profile; state.labJson = null; render(); },
+      }, el("span", { class: "engine-name", text: i.profile }), el("span", { class: "engine-sub", text: i.addons.join(", ") })))), upload);
+  }
+  if (state.labJson) box.append(el("p", { class: "mono muted", text: "lab.json loaded: kept in the download for reference." }));
+  if (state.liab.error) {
+    box.append(el("div", { class: "alert", role: "alert" }, el("strong", { text: "lab-in-a-box catalogue unavailable. " }),
+      state.liab.error + ". " + catalogueHint()));
+  }
+  box.append(el("span", { class: "label", text: "Lab add-ons" }));
+  if (liabImported()) {
+    box.append(chipList(importBase().addons, "ok"),
+      el("p", { class: "muted", text: "Add-ons of an imported rodeo are edited in its rodeo-plan.yaml after install." }));
+  } else {
+    box.append(el("div", { class: "chips" }, state.labAddons.length ? state.labAddons.map((a) => el("span", { class: "chip ok" },
+      a, addonTargets(a).length && !addonTargets(a).some((t) => t === "vm" || t === "baremetal")
+        ? el("span", { class: "muted", text: "(cluster)" }) : null,
+      el("button", { class: "x", type: "button", "aria-label": "Remove " + a, text: "×",
+        onclick: () => { state.labAddons = state.labAddons.filter((x) => x !== a); render(); } })))
+      : el("span", { class: "muted mono", text: "none yet" })));
+    const input = el("input", { class: "input mono", list: "addonOptions", placeholder: "add-on name", "aria-label": "Add-on name",
+      onkeydown: (ev) => { if (ev.key === "Enter") { ev.preventDefault(); addAddon(input.value); } } });
+    box.append(el("datalist", { id: "addonOptions" }, state.liab.addons.map((a) => el("option", { value: a.name }))),
+      el("div", { class: "addon-add" }, input, el("button", { class: "btn sm", type: "button", text: "Add", onclick: () => addAddon(input.value) })));
+  }
+  const need = neededAddons();
+  if (need.length && !liabImported()) {
+    const addons = liabNames(["addons"]), inBuilder = liabNames(["infrastructure", "kclusters"]);
+    box.append(el("span", { class: "label", text: "Needed by chapters" }),
+      el("div", { class: "chips" }, need.map((n) => addons.includes(n)
+        ? el("button", { class: "chip need", type: "button", text: "+ " + n, onclick: () => addAddon(n) })
+        : el("span", { class: "chip missing", title: inBuilder.includes(n) ? "Set it up in the lab-builder, then upload the lab.json"
+          : "No engine provides it yet", text: n + (inBuilder.includes(n) ? " · lab-builder" : " · not available") }))));
+  }
+  const more = [["Infrastructure", state.liab.infrastructure], ["Kubernetes clusters", state.liab.kclusters]].filter(([, l]) => l && l.length);
+  for (const [label, list] of more) box.append(el("span", { class: "label", text: label + " (in the lab-builder)" }), chipList(list.map((a) => a.name)));
+}
+
+// ── embedded lab-builder ────────────────────────────────────────────────
+
+function closeEmbed() {
+  $("#embedOverlay").hidden = true;
+  $("#embedFrame").src = "about:blank";
+}
+
+function openEmbed() {
+  const frame = $("#embedFrame");
+  frame.src = labBuilderUrl({ embed: "1", origin: location.origin });
+  $("#embedNote").textContent = "Use this lab in the lab-builder hands the lab back here.";
+  $("#embedOverlay").hidden = false;
+}
+
+window.addEventListener("message", (ev) => {
+  if (!state.liab.builder_url) return;
+  const origin = new URL(state.liab.builder_url, location.href).origin;
+  if (ev.origin !== origin || !ev.data || ev.data.type !== "labinabox:lab") return;
+  useLab(ev.data.lab, "the lab-builder");
+  closeEmbed();
+});
+
+// ── chapter list ────────────────────────────────────────────────────────
+
+function clearDrop() {
+  document.querySelectorAll(".drop-before").forEach((n) => n.classList.remove("drop-before"));
+  document.querySelectorAll(".dropzone.over, .lab.over").forEach((n) => n.classList.remove("over"));
+}
+
+function dropAt(index) {
+  const d = state.drag;
+  state.drag = null;
+  state.cursor = -1;
+  clearDrop();
+  if (!d) return;
+  if (d.kind === "lib") { addChapter(d.group, d.chapter, index); return; }
+  const [moved] = state.chapters.splice(d.index, 1);
+  state.chapters.splice(index > d.index ? index - 1 : index, 0, moved);
+  render();
+}
+
+function move(i, delta) {
+  const j = i + delta;
+  if (j < 0 || j >= state.chapters.length) return;
+  [state.chapters[i], state.chapters[j]] = [state.chapters[j], state.chapters[i]];
+  render();
+  const row = document.querySelectorAll(".row")[j];
+  if (row) row.focus();
+}
+
+function renderChapters() {
+  const box = $("#chapterList");
+  box.replaceChildren();
+  if (state.cursor >= state.chapters.length) state.cursor = -1;
+  const warned = RB.warningsByChapter(RB.validate(state.chapters));
+  state.chapters.forEach((c, i) => {
+    const miss = missing(c), spans = RB.parseSpans(c.body).spans.length, w = warned[c.id] || 0;
+    const row = el("div", {
+      class: "row" + (state.cursor === i ? " cursor" : ""), tabindex: "0", draggable: "true",
+      "aria-label": "Chapter " + (i + 1) + ": " + c.title + ". Alt+Up/Down to move.",
+      onclick: (ev) => { if (ev.target.closest("button")) return; state.cursor = state.cursor === i ? -1 : i; renderChapters(); },
+      ondragstart: (ev) => { state.drag = { kind: "row", index: i }; ev.dataTransfer.setData("text/plain", c.id); },
+      ondragend: () => { state.drag = null; clearDrop(); },
+      ondragover: (ev) => { ev.preventDefault(); clearDrop(); row.classList.add("drop-before"); },
+      ondrop: (ev) => { ev.preventDefault(); ev.stopPropagation(); dropAt(i); },
+      onkeydown: (ev) => { if (ev.altKey && ev.key === "ArrowUp") { ev.preventDefault(); move(i, -1); }
+        if (ev.altKey && ev.key === "ArrowDown") { ev.preventDefault(); move(i, 1); } },
+    },
+    el("span", { class: "grip", "aria-hidden": "true", text: "⠿" }),
+    el("span", { class: "row-num", text: String(i + 1).padStart(2, "0") }),
+    el("div", {}, el("div", { class: "row-title", text: c.title }),
+      el("div", { class: "row-meta", text: [c.workshop, c.mins + " min", c.check ? "checks/check-" + c.id + ".sh" : ""].filter(Boolean).join(" · ") }),
+      el("div", { class: "chips" }, (c.needs || []).map((n) => needChip(n, miss)))),
+    el("div", { class: "row-actions" },
+      el("button", { class: "btn sm" + (w ? " warn" : ""), type: "button", text: spans + " spans" + (w ? " · " + w + " ⚠" : "") + " ✎",
+        onclick: () => openEditor(i) }),
+      el("button", { class: "btn sm", type: "button", "aria-label": "Move up", text: "↑", disabled: i === 0, onclick: () => move(i, -1) }),
+      el("button", { class: "btn sm", type: "button", "aria-label": "Move down", text: "↓", disabled: i === state.chapters.length - 1, onclick: () => move(i, 1) }),
+      el("button", { class: "btn sm", type: "button", "aria-label": "Remove " + c.title, text: "×",
+        onclick: () => removeChapter(i) })));
+    box.append(row);
+  });
+  const zone = el("div", { class: "dropzone", text: state.chapters.length ? "Drop here to append" : "Drag chapters here, or click them in the library",
+    ondragover: (ev) => { ev.preventDefault(); clearDrop(); zone.classList.add("over"); },
+    ondragleave: () => zone.classList.remove("over"),
+    ondrop: (ev) => { ev.preventDefault(); ev.stopPropagation(); dropAt(state.chapters.length); } });
+  box.append(zone);
+  $("#insertHint").textContent = state.cursor >= 0
+    ? "Inserting after " + String(state.cursor + 1).padStart(2, "0") + ". Click that row again to append at the end."
+    : "Drag from the library or click a chapter. Click a row to choose where new ones go.";
+  const need = neededAddons(), cov = $("#coverage"), todo = workNeeded().length;
+  cov.textContent = !state.chapters.length ? "" : (need.length ? "lab missing: " + need.join(", ") : "lab covers every chapter") +
+    (todo ? " · work needed in " + todo + (todo === 1 ? " chapter" : " chapters") : "");
+  cov.classList.toggle("bad", need.length > 0);
+}
+
+// Shown when the chapters come from workshops that all run on one other engine.
+// Several engines: no banner (multi-engine rodeos are planned).
+function renderEngineBanner() {
+  const box = $("#engineBanner"), needs = RB.engineNeeds(state.chapters, libraryGroups());
+  const show = needs.length === 1 && needs[0].engine !== state.engine;
+  box.hidden = !show;
+  if (!show) { box.replaceChildren(); return; }
+  const { engine: name, workshops } = needs[0];
+  const group = libraryGroups().find((g) => g.engine === name && workshops.includes(g.title));
+  box.replaceChildren(el("span", { class: "banner-text", text: "These chapters come from " + workshops.join(", ") +
+    " and run on " + name + ", not " + state.engine + "." }),
+  el("button", { class: "btn primary sm", type: "button", text: "Switch to " + name, onclick: () => useGroup(group) }));
+}
+
+function scrollToReview() {
+  const review = $("#review"), center = $(".center");
+  const box = center.scrollHeight > center.clientHeight ? center : $(".cols");
+  box.scrollTop += review.getBoundingClientRect().top - box.getBoundingClientRect().top - 12;
+}
+
+function plural(n, word) { return n + " " + word + (n === 1 ? "" : "s"); }
+
+function renderWarnings(count) {
+  for (const id of ["#warnBtn", "#stickyWarn"]) {
+    const b = $(id);
+    b.hidden = count === 0;
+    b.textContent = count + " ⚠ " + (count === 1 ? "warning" : "warnings");
+  }
+}
+
+function renderReview() {
+  const box = $("#reviewPanel"), name = RB.slugify(state.name) || "my-rodeo", n = state.chapters.length;
+  const warnings = RB.validate(state.chapters), need = neededAddons();
+  const mins = state.chapters.reduce((t, c) => t + (c.mins || 0), 0);
+  renderWarnings(warnings.length);
+  const check = (ok, text) => el("div", { class: "check " + (ok ? "ok" : "bad") },
+    el("span", { class: "check-icon", "aria-hidden": "true", text: ok ? "✓" : "⚠" }), el("span", { text }));
+  const files = RB.files(rodeo()).map((f) => f.path);
+  const cmd = "rodeo new " + name + " --from-zip " + name + ".zip\nrodeo up --profile " + name;
+  const copy = el("button", { class: "btn sm", type: "button", text: state.copied ? "Copied ✓" : "Copy",
+    onclick: () => {
+      Promise.resolve().then(() => navigator.clipboard.writeText(cmd)).catch(() => toast("Copy failed: select the commands instead", true));
+      state.copied = true;
+      renderReview();
+      setTimeout(() => { state.copied = false; renderReview(); }, 1800);
+    } });
+  fill(box,
+    el("div", { class: "checks-list" },
+      check(n > 0, plural(n, "chapter") + " · " + mins + " min · engine " + state.engine),
+      check(!need.length, need.length ? "The lab is missing " + need.join(", ") + " (does not block the download)"
+        : "The lab provides everything the chapters need"),
+      check(!warnings.length, warnings.length ? plural(warnings.length, "span warning") + " (same checks as rmstory validate)"
+        : "All span ids valid")),
+    warnings.map((w) => {
+      const i = state.chapters.findIndex((c) => c.id === w.chapter);
+      return el("div", { class: "alert warn-row" }, el("strong", { text: i >= 0 ? state.chapters[i].title : w.chapter }),
+        el("span", { class: "warn-msg", text: (w.id ? w.id + ": " : "") + w.msg }),
+        i >= 0 ? el("button", { class: "btn sm warn", type: "button", text: "Fix ✎", onclick: () => openEditor(i) }) : null);
+    }),
+    el("span", { class: "label", text: plural(files.length, "file") + " in " + name + ".zip" }),
+    el("ul", { class: "zip-files" }, files.map((f) => el("li", { class: f.startsWith("story/") ? "story" : "", text: name + "/" + f }))),
+    el("div", { class: "term install" }, el("div", { class: "term-bar" }, el("i"), el("i"), el("i"), el("span", { text: "install" }), copy),
+      el("pre", { text: cmd })),
+    el("div", { class: "review-foot" },
+      el("button", { class: "btn primary" + (n ? "" : " dim"), type: "button", text: "Download " + name + ".zip", onclick: download }),
+      state.server && state.server.save ? el("span", { class: "muted", text: "Save to profiles (top right) writes it straight into your profiles." }) : null));
+}
+
+// ── right panel ─────────────────────────────────────────────────────────
+
+function renderSettings() {
+  $("#name").value = state.name;
+  $("#title").value = state.title;
+  $("#lang").value = state.lang;
+  $("#target").value = state.target;
+  const box = $("#variants");
+  const options = [["", "all spans"], ...allVariants().map((v) => [v, v])];
+  if (state.variant && !allVariants().includes(state.variant)) state.variant = "";
+  box.replaceChildren(...options.map(([v, label]) => el("button", {
+    type: "button", class: "chip" + (state.variant === v ? " on" : ""), "aria-pressed": String(state.variant === v),
+    text: label, onclick: () => { state.variant = v; render(); } })));
+  const mins = state.chapters.reduce((n, c) => n + (c.mins || 0), 0);
+  $("#estimate").textContent = "Estimated run time: " + mins + " min (" + state.chapters.length + " chapters)";
+  $("#counts").textContent = state.chapters.length + " chapters · " + mins + " min · " + state.engine;
+  $("#stickyCounts").textContent = state.chapters.length + " chapters · " + mins + " min";
+}
+
+function renderPlanEditor(text) {
+  const ed = $("#planEditor"), edited = state.planEdited !== null;
+  if (document.activeElement !== ed && ed.value !== text) ed.value = text;
+  const tabs = /^\t/m.test(ed.value);
+  const st = $("#planState");
+  st.textContent = tabs ? "YAML does not allow tab indentation" : edited ? "edited by hand" +
+    (isLiab() && !liabImported() ? " · add-on changes no longer apply" : "") : "generated from the rodeo tab";
+  st.classList.toggle("warn", tabs);
+  $("#planReset").hidden = !edited;
+}
+
+function onPlanInput(ev) {
+  const text = ev.target.value;
+  state.planEdited = text;
+  const name = /^name:[ \t]*(.+?)[ \t]*(?:#.*)?$/m.exec(text);
+  if (name && RB.slugify(name[1].replace(/^["']|["']$/g, ""))) state.name = RB.slugify(name[1].replace(/^["']|["']$/g, ""));
+  const target = /^deployment_target:[ \t]*["']?([\w-]+)/m.exec(text);
+  if (target) {
+    const sel = $("#target");
+    if (![...sel.options].some((o) => o.value === target[1])) sel.append(el("option", { value: target[1], text: target[1] }));
+    state.target = target[1];
+  }
+  render();
+}
+
+function renderFiles() {
+  const files = RB.files(rodeo());
+  renderPlanEditor(files[0].content);
+  if (!files.some((f) => f.path === state.fileView)) state.fileView = "rodeo-plan.yaml";
+  $("#fileList").replaceChildren(...files.map((f) => el("li", {}, el("button", {
+    type: "button", class: state.fileView === f.path ? "on" : "", text: state.name + "/" + f.path,
+    onclick: () => { state.fileView = f.path; renderFiles(); } }))));
+  const current = files.find((f) => f.path === state.fileView);
+  $("#fileName").textContent = current.path;
+  $("#filePreview").textContent = current.content;
+}
+
+function render() {
+  renderLibrary();
+  renderEngines();
+  renderChapters();
+  renderEngineBanner();
+  renderSettings();
+  renderFiles();
+  renderReview();
+  scheduleDraft();
+}
+
+// ── new chapter ─────────────────────────────────────────────────────────
+
+const ncNeeds = new Set();
+
+function chapterTemplate(id) {
+  return "# Chapter title\n\n" +
+    '<span lang="en" id="' + id + '.1">Describe what the student does here. Keep facts that must never be ' +
+    'translated in invariant spans, such as <span no id="' + id + '.2">{{ rancher_url }}</span>.</span>\n';
+}
+
+function openNewChapter() {
+  ncNeeds.clear();
+  $("#ncTitle").value = "";
+  $("#ncMins").value = "10";
+  $("#ncCheck").checked = false;
+  $("#ncAppend").checked = true;
+  $("#ncBody").value = chapterTemplate("new-chapter");
+  renderNewChapterChips();
+  $("#newModal").hidden = false;
+  $("#ncTitle").focus();
+}
+
+function renderNewChapterChips() {
+  $("#ncWorkshops").replaceChildren(...libraryGroups().map((g) => el("button", {
+    type: "button", class: "chip" + (state.newWorkshop === g.id ? " on" : ""), text: g.title, "aria-pressed": String(state.newWorkshop === g.id),
+    onclick: () => { state.newWorkshop = g.id; renderNewChapterChips(); } })));
+  $("#ncNeeds").replaceChildren(...offeredNeeds().map((c) => el("button", {
+    type: "button", class: "chip" + (ncNeeds.has(c) ? " on" : ""), text: c, "aria-pressed": String(ncNeeds.has(c)),
+    onclick: () => { if (ncNeeds.has(c)) ncNeeds.delete(c); else ncNeeds.add(c); renderNewChapterChips(); } })));
+}
+
+function closeNewChapter() {
+  $("#newModal").hidden = true;
+  $("#newChapterBtn").focus();
+}
+
+function createChapter(ev) {
+  ev.preventDefault();
+  const title = $("#ncTitle").value.trim();
+  if (!title) return;
+  const group = libraryGroups().find((g) => g.id === state.newWorkshop) || libraryGroups().at(-1);
+  const used = new Set(libraryGroups().flatMap((g) => g.chapters.map((c) => c.id)));
+  const id = RB.uniqueId(RB.slugify(title) || "chapter", used);
+  let body = $("#ncBody").value.replace(/^# .*$/m, "# " + title).replaceAll('id="new-chapter.', 'id="' + id + ".");
+  if (!/^# /m.test(body)) body = "# " + title + "\n\n" + body;
+  const ch = { id, file: "", title, mins: Math.max(1, parseInt($("#ncMins").value, 10) || 10), needs: [...ncNeeds],
+    check: $("#ncCheck").checked, spans: 0, body, isNew: true };
+  if (group.id === "custom") state.custom.push(ch);
+  else state.workshops.find((w) => w.id === group.id).chapters.push(ch);
+  closeNewChapter();
+  if ($("#ncAppend").checked) addChapter(group, ch); else render();
+  toast("Chapter \"" + title + "\" created as " + id);
+}
+
+// ── story editor ────────────────────────────────────────────────────────
+
+let pop = null;
+
+function editing() { return state.chapters[state.editing]; }
+
+function openEditor(i) {
+  state.editing = i;
+  $("#editor").hidden = false;
+  $("#edSource").value = editing().body;
+  renderEditor();
+  $("#edSource").focus();
+}
+
+function closeEditor() {
+  closePop();
+  $("#editor").hidden = true;
+  state.editing = -1;
+  render();
+}
+
+function setBody(body, keepSel) {
+  const ta = $("#edSource"), s = ta.selectionStart, e = ta.selectionEnd;
+  editing().body = body;
+  ta.value = body;
+  if (keepSel) ta.setSelectionRange(s, e);
+  renderEditor();
+  scheduleDraft();
+}
+
+function removeSpan(sp) {
+  const ch = editing(), before = ch.body;
+  closePop();
+  setBody(RB.unwrap(before, sp));
+  toast("Span removed", false, () => { ch.body = before; if (editing() === ch) setBody(before); else render(); });
+}
+
+function renderEditor() {
+  const ch = editing(), body = ch.body, { spans } = RB.parseSpans(body);
+  const warnings = RB.validate(state.chapters).filter((w) => w.chapter === ch.id);
+  $("#edChapter").textContent = ch.title;
+  $("#edPath").textContent = "story/" + RB.chapterFile(state.editing + 1, ch.id);
+  const tagged = spans.filter((s) => RB.kind(s.attrs) !== "plain").length;
+  const sum = $("#edSummary");
+  sum.textContent = tagged + " tagged spans · " + warnings.length + " warnings";
+  sum.classList.toggle("warn", warnings.length > 0);
+  $("#edHist").replaceChildren(...allVariants().map((v) => el("button", {
+    type: "button", class: "chip", text: v, title: "Toggle hist=\"" + v + "\" on the span at the cursor", "aria-pressed": "false",
+    dataset: { hist: v }, onclick: () => toggleHist(v) })));
+  updateCaret();
+  renderPreview(body, spans);
+  renderSpanList(body, spans, warnings);
+  renderStories();
+  renderTranslations();
+  document.querySelectorAll("[data-edtab]").forEach((b) => {
+    b.classList.toggle("on", b.dataset.edtab === state.edTab);
+    b.setAttribute("aria-selected", String(b.dataset.edtab === state.edTab));
+  });
+  for (const t of ["spans", "stories", "translations"]) $("#edtab-" + t).hidden = state.edTab !== t;
+}
+
+// Selection info and the variant chips' pressed state follow the caret.
+function updateCaret() {
+  const ta = $("#edSource"), s = ta.selectionStart, e = ta.selectionEnd, sp = state.editing >= 0 ? spanAtCursor() : null;
+  $("#edSel").textContent = (e > s ? (e - s) + " chars selected" : "caret at " + s) + " · Alt+T / I / N tags";
+  document.querySelectorAll("#edHist .chip").forEach((c) => {
+    const on = !!sp && sp.attrs.hist === c.dataset.hist;
+    c.classList.toggle("on", on);
+    c.setAttribute("aria-pressed", String(on));
+  });
+}
+
+// The preview shows the source with tags hidden. Every text piece carries its
+// source offset (data-s) so a selection there maps back to the markdown.
+function renderPreview(body, spans) {
+  const root = el("div"), stack = [root];
+  const events = [];
+  for (const sp of spans) { events.push([sp.start, sp.openEnd, "open", sp]); events.push([sp.closeStart, sp.end, "close", sp]); }
+  events.sort((a, b) => a[0] - b[0]);
+  let pos = 0;
+  const text = (to) => { if (to > pos) stack.at(-1).append(el("span", { class: "seg", dataset: { s: String(pos) }, text: body.slice(pos, to) })); };
+  for (const [at, after, type, sp] of events) {
+    text(at);
+    if (type === "open") {
+      const k = RB.kind(sp.attrs);
+      const node = el("span", { class: "sp k-" + k + (sp.attrs.hist && !sp.attrs.no ? " hist" : ""), dataset: { i: String(sp.index) },
+        title: (sp.attrs.id || "no id") + " · " + k + (sp.attrs.hist ? " · hist=" + sp.attrs.hist : "") },
+      sp.attrs.id ? el("span", { class: "badge", "aria-hidden": "true", text: sp.attrs.id }) : null);
+      stack.at(-1).append(node);
+      stack.push(node);
+    } else stack.pop();
+    pos = after;
+  }
+  text(body.length);
+  $("#edPreview").replaceChildren(...root.childNodes);
+}
+
+function previewOffset(node, offset) {
+  const seg = (node.nodeType === 3 ? node.parentElement : node).closest(".seg");
+  return seg ? parseInt(seg.dataset.s, 10) + offset : -1;
+}
+
+function renderSpanList(body, spans, warnings) {
+  const list = $("#spanList");
+  list.replaceChildren();
+  for (const sp of spans) {
+    const k = RB.kind(sp.attrs), id = sp.attrs.id || "";
+    const idInput = el("input", { class: "input mono", value: id, "aria-label": "Span id", placeholder: RB.needsId(sp.attrs) ? "id required" : "no id needed",
+      onchange: () => { const fresh = RB.parseSpans(editing().body).spans[sp.index]; setBody(RB.retag(editing().body, fresh, { ...fresh.attrs, id: idInput.value.trim() || undefined })); } });
+    const mine = warnings.filter((w) => (w.id && w.id === id) || (!w.id && w.at === sp.start));
+    list.append(el("li", { class: "span-item d" + Math.min(sp.depth, 3) },
+      el("div", { class: "span-top" }, el("span", { class: "kind k-" + k, text: k }),
+        sp.attrs.hist ? el("span", { class: "chip", text: "hist=" + sp.attrs.hist }) : null,
+        el("button", { class: "btn sm", type: "button", text: "edit", onclick: (ev) => editPop(sp.index, ev.clientX, ev.clientY) }),
+        el("button", { class: "btn sm", type: "button", "aria-label": "Remove span", text: "×", onclick: () => removeSpan(sp) })),
+      el("div", { class: "span-snip", text: RB.inner(body, sp).replace(/<[^>]+>/g, "") }), idInput,
+      mine.map((w) => el("div", { class: "warn", text: w.msg }))));
+  }
+  if (!spans.length) list.append(el("li", { class: "empty", text: "No spans yet: select text and mark it." }));
+}
+
+function renderStories() {
+  const box = $("#storiesView");
+  box.replaceChildren(...allVariants().map((v) => el("div", {},
+    el("span", { class: "label", text: "story/stories/" + v + ".yaml" }),
+    el("div", { class: "term" }, el("pre", { text: RB.storyYaml(v, RB.storyIndex(state.chapters, v)) })))));
+  if (!allVariants().length) box.append(el("p", { class: "empty", text: "No variants: add one, then tag spans with it." }));
+}
+
+function renderTranslations() {
+  const ids = [];
+  for (const ch of state.chapters) for (const sp of RB.parseSpans(ch.body).spans) {
+    if (sp.attrs.id && RB.kind(sp.attrs) === "translatable" && !ids.includes(sp.attrs.id)) ids.push(sp.attrs.id);
+  }
+  const langs = RB.LANGUAGES.filter((l) => l !== RB.SOURCE_LANGUAGE);
+  $("#translationsView").replaceChildren(
+    el("p", { class: "muted" }, "Translations live in rmstory's translation store; the builder does not read or fill it yet. After install, ",
+      el("code", { text: "rodeo story render --language de" }), " fills the rest."),
+    el("table", { class: "matrix" }, el("thead", {}, el("tr", {}, el("th", { text: "id" }), langs.map((l) => el("th", { text: l })))),
+      el("tbody", {}, ids.map((id) => el("tr", {}, el("td", { text: id }), langs.map((l) => el("td", { class: "unstored", title: "no " + l + " translation stored", text: "not stored" })))))));
+}
+
+function closePop() { $("#popover").hidden = true; pop = null; }
+
+function popHead(title) {
+  return el("div", { class: "pop-head" }, el("h4", { text: title }),
+    el("button", { class: "x-btn", type: "button", "aria-label": "Close", text: "×", onclick: closePop }));
+}
+
+// A selection first shows a small chip; the apply menu opens when it is clicked.
+// Selecting exactly an existing span opens its edit menu directly.
+function tagChip(s, e, x, y) {
+  const body = editing().body;
+  const target = RB.wrapTarget(body, RB.parseSpans(body).spans, s, e);
+  if (!target.ok) { toast(target.reason, true); return; }
+  if (target.same) { editPop(target.same.index, x, y); return; }
+  pop = { mode: "chip" };
+  const p = $("#popover");
+  p.className = "popover chip-pop";
+  p.replaceChildren(el("button", { class: "btn primary sm", type: "button", text: "Tag selection ▸", onclick: () => applyPop(s, e, x, y) }));
+  placePop(x, y);
+}
+
+function placePop(x, y) {
+  const p = $("#popover");
+  p.hidden = false;
+  const w = p.offsetWidth, h = p.offsetHeight;
+  p.style.left = Math.max(8, Math.min(x, innerWidth - w - 8)) + "px";
+  p.style.top = Math.max(8, Math.min(y + 12, innerHeight - h - 8)) + "px";
+}
+
+function usedIds() { return RB.idsIn(state.chapters); }
+
+function autoId(target) {
+  const base = target.parent && target.parent.attrs.id ? target.parent.attrs.id : editing().id;
+  return RB.nextId(base, usedIds());
+}
+
+function applyPop(s, e, x, y) {
+  const body = editing().body, { spans } = RB.parseSpans(body);
+  const target = RB.wrapTarget(body, spans, s, e);
+  if (!target.ok) { toast(target.reason, true); return; }
+  if (target.same) { editPop(target.same.index, x, y); return; }
+  pop = { mode: "apply", s: target.s, e: target.e, hist: "" };
+  const id = autoId(target);
+  const p = $("#popover");
+  p.className = "popover";
+  fill(p, popHead("Apply span"),
+    el("div", { class: "chips" }, [["translatable", "Translatable"], ["invariant", "Invariant"], ["nolang", "No-lang"]].map(([k, label]) =>
+      el("button", { class: "btn sm", type: "button", text: label, onclick: () => applySpan(k, id) }))),
+    allVariants().length ? el("div", { class: "row2" }, el("span", { class: "muted mono", text: "hist" }), el("span", { class: "chips" },
+      allVariants().map((v) => el("button", { class: "chip", type: "button", text: v, "aria-pressed": "false",
+        onclick: () => {
+          pop.hist = pop.hist === v ? "" : v;
+          p.querySelectorAll(".chip").forEach((c) => { c.classList.toggle("on", c.textContent === pop.hist); c.setAttribute("aria-pressed", String(c.textContent === pop.hist)); });
+        } })))) : null,
+    el("div", { class: "row2 mono muted", text: "id: " + id }));
+  placePop(x, y);
+}
+
+function applySpan(type, id) {
+  const attrs = RB.withKind({}, type);
+  if (type !== "nolang" || pop.hist) attrs.id = id;
+  if (type === "invariant" && !pop.hist) delete attrs.id;
+  if (pop.hist) attrs.hist = pop.hist;
+  const body = RB.wrap(editing().body, pop.s, pop.e, attrs);
+  closePop();
+  setBody(body);
+}
+
+function spanAtCursor() {
+  const body = editing().body, pos = $("#edSource").selectionStart;
+  const inside = RB.parseSpans(body).spans.filter((sp) => pos >= sp.openEnd && pos <= sp.closeStart);
+  return inside.length ? inside.reduce((a, b) => (b.depth > a.depth ? b : a)) : null;
+}
+
+function toggleHist(v) {
+  const sp = spanAtCursor();
+  if (!sp) { toast("Place the cursor inside a span first", true); return; }
+  const attrs = { ...sp.attrs };
+  if (attrs.hist === v) delete attrs.hist; else attrs.hist = v;
+  if (attrs.hist && !attrs.id) attrs.id = autoId({ parent: RB.parseSpans(editing().body).spans[sp.parent] });
+  setBody(RB.retag(editing().body, sp, attrs), true);
+}
+
+function editPop(index, x, y) {
+  const body = editing().body, sp = RB.parseSpans(body).spans[index];
+  if (!sp) return;
+  pop = { mode: "edit", index, attrs: { ...sp.attrs } };
+  const text = RB.inner(body, sp);
+  const p = $("#popover");
+  const idInput = el("input", { class: "input mono", value: sp.attrs.id || "", "aria-label": "Span id" });
+  const lang = RB.kind(pop.attrs) === "translatable" ? el("select", { class: "select", "aria-label": "Language" },
+    RB.LANGUAGES.map((l) => el("option", { value: l, text: l, selected: pop.attrs.lang === l })))
+    : el("span", { class: "muted mono hint", text: "Language only applies to translatable spans." });
+  const hist = el("select", { class: "select", "aria-label": "Story variant" }, el("option", { value: "", text: "no variant" }),
+    allVariants().map((v) => el("option", { value: v, text: v, selected: pop.attrs.hist === v })));
+  const known = [];
+  for (const ch of state.chapters) for (const s of RB.parseSpans(ch.body).spans) {
+    if (s.attrs.id && s.attrs.id !== sp.attrs.id && !known.some((k) => k.id === s.attrs.id)) known.push({ id: s.attrs.id, same: RB.inner(ch.body, s) === text });
+  }
+  known.sort((a, b) => (b.same - a.same) || a.id.localeCompare(b.id));
+  const kinds = [["translatable", "Translatable"], ["invariant", "Invariant"], ["nolang", "No-lang"]];
+  p.className = "popover";
+  fill(p, popHead("Edit span"),
+    el("div", { class: "chips" }, kinds.map(([k, label]) => el("button", {
+      class: "btn sm" + (RB.kind(pop.attrs) === k ? " outline" : ""), type: "button", text: label,
+      onclick: () => { pop.attrs = RB.withKind(pop.attrs, k); editPopSave(idInput, lang, hist, true); } }))),
+    el("div", { class: "row2" }, lang, hist),
+    el("div", { class: "row2" }, idInput, el("button", { class: "btn sm", type: "button", text: "Auto",
+      onclick: () => { idInput.value = autoId({ parent: RB.parseSpans(body).spans[sp.parent] }); } })),
+    known.length ? el("div", { class: "ids" }, known.map((k) => el("button", { type: "button", class: k.same ? "same" : "shares",
+      text: k.id + (k.same ? " · same text" : " · shares"), title: k.same ? "Same text: reuses the translation" : "Different text: shares the stored translation",
+      onclick: () => { idInput.value = k.id; } }))) : null,
+    el("div", { class: "row2" }, el("button", { class: "btn sm primary", type: "button", text: "Apply", onclick: () => editPopSave(idInput, lang, hist) }),
+      el("button", { class: "btn sm", type: "button", text: "Remove span", onclick: () => removeSpan(sp) })));
+  placePop(x, y);
+}
+
+function editPopSave(idInput, lang, hist, keepOpen) {
+  const attrs = { ...pop.attrs };
+  if (RB.kind(attrs) === "translatable" && lang.tagName === "SELECT") attrs.lang = lang.value;
+  if (hist.value) attrs.hist = hist.value; else delete attrs.hist;
+  if (idInput.value.trim()) attrs.id = idInput.value.trim(); else delete attrs.id;
+  const { index } = pop, sp = RB.parseSpans(editing().body).spans[index];
+  setBody(RB.retag(editing().body, sp, attrs));
+  if (keepOpen) { const r = $("#popover").getBoundingClientRect(); editPop(index, r.left, r.top - 12); } else closePop();
+}
+
+// Wraps the source selection in a span of `type` (toolbar buttons and Alt+T / I / N).
+function markSelection(type) {
+  const ta = $("#edSource"), { spans } = RB.parseSpans(editing().body);
+  const target = RB.wrapTarget(editing().body, spans, ta.selectionStart, ta.selectionEnd);
+  if (!target.ok) { toast(target.reason, true); return; }
+  pop = { mode: "apply", s: target.s, e: target.e, hist: "" };
+  applySpan(type, autoId(target));
+}
+
+function bindEditor() {
+  const ta = $("#edSource");
+  ta.addEventListener("input", () => { closePop(); editing().body = ta.value; renderEditor(); });
+  ta.addEventListener("mouseup", (ev) => { if (ta.selectionEnd > ta.selectionStart) tagChip(ta.selectionStart, ta.selectionEnd, ev.clientX, ev.clientY); });
+  for (const type of ["select", "keyup", "click"]) ta.addEventListener(type, updateCaret);
+  ta.addEventListener("keydown", (ev) => {
+    const type = { KeyT: "translatable", KeyI: "invariant", KeyN: "nolang" }[ev.code];
+    if (!ev.altKey || !type) return;
+    ev.preventDefault();
+    if (ta.selectionEnd <= ta.selectionStart) { toast("Select some text first (Shift+arrows), then press the shortcut.", true); return; }
+    markSelection(type);
+  });
+  ta.addEventListener("dblclick", (ev) => { const sp = spanAtCursor(); if (sp) { ev.preventDefault(); editPop(sp.index, ev.clientX, ev.clientY); } });
+  const pv = $("#edPreview");
+  pv.addEventListener("mouseup", (ev) => {
+    const sel = getSelection();
+    if (!sel || sel.isCollapsed) return;
+    const a = previewOffset(sel.anchorNode, sel.anchorOffset), b = previewOffset(sel.focusNode, sel.focusOffset);
+    if (a < 0 || b < 0) return;
+    tagChip(Math.min(a, b), Math.max(a, b), ev.clientX, ev.clientY);
+  });
+  pv.addEventListener("dblclick", (ev) => {
+    const node = ev.target.closest(".sp");
+    if (!node) return;
+    getSelection().removeAllRanges();
+    editPop(parseInt(node.dataset.i, 10), ev.clientX, ev.clientY);
+  });
+  document.querySelectorAll("[data-mark]").forEach((b) => b.addEventListener("click", () => {
+    if (ta.selectionEnd <= ta.selectionStart) { toast("Select text in the source first", true); return; }
+    markSelection(b.dataset.mark);
+  }));
+  $("#edRemove").addEventListener("click", () => {
+    const sp = spanAtCursor();
+    if (sp) removeSpan(sp); else toast("Place the cursor inside a span first", true);
+  });
+  document.querySelectorAll("[data-edtab]").forEach((b) => b.addEventListener("click", () => { state.edTab = b.dataset.edtab; renderEditor(); }));
+  $("#addVariant").addEventListener("click", () => {
+    const v = RB.slugify($("#newVariant").value);
+    if (v && !allVariants().includes(v)) state.extraVariants.push(v);
+    $("#newVariant").value = "";
+    renderEditor();
+  });
+  $("#edDone").addEventListener("click", closeEditor);
+  document.addEventListener("mousedown", (ev) => { if (pop && !ev.target.closest("#popover")) closePop(); });
+}
+
+// ── download ────────────────────────────────────────────────────────────
+
+function download() {
+  if (!state.chapters.length) { toast("Add at least one chapter first.", true); return; }
+  const name = RB.slugify(state.name);
+  if (!name) { toast("Give the rodeo a name first", true); $("#name").focus(); return; }
+  state.name = name;
+  const r = rodeo();
+  const warnings = RB.validate(r.chapters);
+  const entries = RB.files(r).map((f) => ({ ...f, path: name + "/" + f.path }));
+  const blob = new Blob([RB.zip(entries)], { type: "application/zip" });
+  const a = el("a", { href: URL.createObjectURL(blob), download: name + ".zip" });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  toast(name + ".zip: " + entries.length + " files" + (warnings.length ? " · " + warnings.length + " span warnings (Fix ✎ in the review list)" : ""), warnings.length > 0);
+}
+
+// ── save (live server only) ─────────────────────────────────────────────
+
+async function save(force) {
+  const name = RB.slugify(state.name);
+  if (!name) { toast("Give the rodeo a name first", true); $("#name").focus(); return; }
+  state.name = name;
+  if (!force && state.server.profiles.includes(name)) {
+    if (window.confirm("A profile named " + name + " already exists in " + state.server.profiles_dir + ". Replace it?")) save(true);
+    return;
+  }
+  const r = rodeo();
+  const files = RB.files(r).map((f) => ({ path: f.path, content: f.content, executable: f.mode === 0o755 }));
+  let res;
+  try {
+    res = await apiPost("save", { name, base: r.base || null, files, force: !!force });
+  } catch (err) { toast("Save failed: " + err.message, true); return; }
+  if (res.status === 409 && !force) {
+    if (window.confirm("A profile named " + name + " already exists in " + state.server.profiles_dir + ". Replace it?")) save(true);
+    return;
+  }
+  if (res.status !== 200) { toast("Save failed: " + (res.body.error || res.status), true); return; }
+  if (!state.server.profiles.includes(name)) state.server.profiles.push(name);
+  toast("Saved " + res.body.path + " · deploy with: rodeo up --profile " + name);
+}
+
+// ── dialogs ─────────────────────────────────────────────────────────────
+
+const FOCUSABLE = "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), iframe, [tabindex]:not([tabindex='-1'])";
+
+function openDialog() {
+  if (!$("#newModal").hidden) return $("#newModal .modal");
+  if (!$("#embedOverlay").hidden) return $("#embedOverlay .embed");
+  if (!$("#editor").hidden) return $("#editor");
+  return null;
+}
+
+// Tab and Shift+Tab wrap inside the open dialog (the span popover is left free).
+function trapTab(ev) {
+  const dialog = openDialog();
+  if (!dialog || (pop && document.activeElement.closest("#popover"))) return;
+  const items = [...dialog.querySelectorAll(FOCUSABLE)].filter((n) => n.getClientRects().length);
+  if (!items.length) return;
+  const first = items[0], last = items.at(-1), active = document.activeElement;
+  if (!dialog.contains(active)) { ev.preventDefault(); first.focus(); }
+  else if (ev.shiftKey && active === first) { ev.preventDefault(); last.focus(); }
+  else if (!ev.shiftKey && active === last) { ev.preventDefault(); first.focus(); }
+}
+
+// ── init ────────────────────────────────────────────────────────────────
+
+function bind() {
+  $("#search").addEventListener("input", (ev) => { state.query = ev.target.value; renderLibrary(); });
+  $("#name").addEventListener("change", (ev) => { state.name = RB.slugify(ev.target.value) || state.name; render(); });
+  $("#title").addEventListener("input", (ev) => { state.title = ev.target.value; renderFiles(); });
+  $("#lang").replaceChildren(...RB.LANGUAGES.map((l) => el("option", { value: l, text: l + (l === RB.SOURCE_LANGUAGE ? " (source)" : "") })));
+  $("#lang").addEventListener("change", (ev) => { state.lang = ev.target.value; render(); });
+  $("#target").addEventListener("change", (ev) => { state.target = ev.target.value; render(); });
+  document.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => {
+    document.querySelectorAll("[data-tab]").forEach((x) => { x.classList.toggle("on", x === b); x.setAttribute("aria-selected", String(x === b)); });
+    for (const t of ["rodeo", "plan", "story"]) $("#tab-" + t).hidden = t !== b.dataset.tab;
+  }));
+  const themeBtn = $("#themeBtn"), logo = $("#logo");
+  const showTheme = () => {
+    const dark = window.RBTheme.current() === "dark";
+    themeBtn.textContent = dark ? "Light" : "Dark";
+    logo.src = dark ? "assets/horseshoe-mark.svg" : "assets/horseshoe-mark-light.svg";
+  };
+  themeBtn.addEventListener("click", () => { window.RBTheme.toggle(); showTheme(); });
+  showTheme();
+  $("#downloadBtn").addEventListener("click", download);
+  $("#stickyDownload").addEventListener("click", download);
+  $("#warnBtn").addEventListener("click", scrollToReview);
+  $("#stickyWarn").addEventListener("click", scrollToReview);
+  $("#toastUndo").addEventListener("click", () => {
+    const undo = state.undo;
+    if (!undo) return;
+    state.undo = null;
+    undo();
+    toast("Restored");
+  });
+  const lab = $("#chapterList");
+  lab.addEventListener("dragover", (ev) => { if (!state.drag) return; ev.preventDefault(); if (state.drag.kind === "lib") lab.classList.add("over"); });
+  lab.addEventListener("dragleave", (ev) => { if (!lab.contains(ev.relatedTarget)) lab.classList.remove("over"); });
+  lab.addEventListener("drop", (ev) => { ev.preventDefault(); dropAt(state.chapters.length); });
+  $("#saveBtn").addEventListener("click", () => save(false));
+  $("#planEditor").addEventListener("input", onPlanInput);
+  $("#planEditor").addEventListener("blur", () => renderFiles());
+  $("#planReset").addEventListener("click", () => {
+    const edited = state.planEdited;
+    state.planEdited = null;
+    render();
+    toast("plan.yaml regenerated", false, () => { state.planEdited = edited; render(); });
+  });
+  $("#newChapterBtn").addEventListener("click", openNewChapter);
+  $("#newForm").addEventListener("submit", createChapter);
+  $("#ncCancel").addEventListener("click", closeNewChapter);
+  $("#newModal").addEventListener("mousedown", (ev) => { if (ev.target === ev.currentTarget) closeNewChapter(); });
+  $("#embedClose").addEventListener("click", closeEmbed);
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Tab") { trapTab(ev); return; }
+    if (ev.key !== "Escape") return;
+    if (pop) closePop();
+    else if (!$("#newModal").hidden) closeNewChapter();
+    else if (!$("#embedOverlay").hidden) closeEmbed();
+    else if (!$("#editor").hidden) closeEditor();
+  });
+  bindEditor();
+}
+
+async function init() {
+  bind();
+  try {
+    const [engines, workshops, liab] = await Promise.all([apiGet("engines"), apiGet("workshops"), apiGet("labinabox")]);
+    state.engines = engines.engines;
+    state.capabilities = engines.capabilities;
+    state.workshops = workshops.workshops;
+    state.liab = { ...state.liab, ...liab };
+    if (!window.RB_STATIC) {
+      state.server = await apiGet("server");
+      $("#saveBtn").hidden = !state.server.save;
+      $("#saveBtn").title = "Write this rodeo to " + state.server.profiles_dir + "/<name>/";
+    }
+    offerDraft();
+    render();
+  } catch (err) {
+    toast("Could not load the builder data: " + err.message, true);
+  }
+}
+
+document.addEventListener("DOMContentLoaded", init);

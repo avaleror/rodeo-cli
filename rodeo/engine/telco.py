@@ -296,13 +296,24 @@ class TelcoPhase(RancherPhase):
         defn.touch(mode=0o600)
         defn.write_text(definition)
         (d / self.image_name).unlink(missing_ok=True)
+        # EIB unpacks the base image inside its own container (/var/tmp), and the
+        # host's default podman storage sits on the root disk: 10 GB on the AWS
+        # AMI, which ran out (caught live 2026-10-07). Keep EIB's storage, run
+        # dir and temp files under image_dir instead (the NVMe pool on AWS).
+        podman_root = self.image_dir / "podman-eib"
+        tmp = self.image_dir / "podman-eib-tmp"
+        for path in (podman_root, tmp):
+            path.mkdir(parents=True, exist_ok=True)
         cmd = [
-            "podman", "run", "--rm", "--privileged",
+            "podman",
+            "--root", str(podman_root),
+            "--runroot", "/run/rodeo-podman-eib",
+            "run", "--rm", "--privileged",
             "-v", f"{d}:/eib", self.eib_image,
             "build", "--definition-file", defn.name,
         ]
         try:
-            rc = yield from self._stream_local(cmd, timeout=3600)
+            rc = yield from self._stream_local(cmd, timeout=3600, env={"TMPDIR": str(tmp)})
         finally:
             defn.unlink(missing_ok=True)
         if rc != 0 or not (d / self.image_name).is_file():
@@ -343,11 +354,18 @@ class TelcoPhase(RancherPhase):
         yield LogLine(f"  http://{self.image_cache_hostname}:{self.image_cache_port}/{self.image_name} (sha256 {digest[:12]}…)")
         return True
 
-    def _stream_local(self, cmd: list[str], timeout: int) -> Generator[DeployEvent, None, int]:
+    def _stream_local(
+        self, cmd: list[str], timeout: int, env: dict[str, str] | None = None,
+    ) -> Generator[DeployEvent, None, int]:
         """Run a long local command, streaming its output as log lines."""
+        import os
+
         t0 = time.monotonic()
         try:
-            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            proc = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                env={**os.environ, **(env or {})},
+            )
         except OSError as exc:
             yield LogLine(f"  {exc}")
             return 127
@@ -555,13 +573,20 @@ class TelcoPhase(RancherPhase):
         return (yield from self._wait_rollout(["metal3-system"], "Metal3"))
 
     def _install_capi_providers(self) -> Generator[DeployEvent, None, bool]:
-        # Turtles itself ships inside Rancher (enabled by default since 2.13). The
+        # Turtles itself ships inside Rancher (enabled by default since 2.13) as
+        # the system chart release "rancher-turtles" in cattle-turtles-system. The
         # providers chart adds CAPI core, CAPM3 and the RKE2 bootstrap and
-        # control-plane providers through the CAPIProvider API.
+        # control-plane providers through Turtles' CAPIProvider API, so wait for
+        # Turtles first and never reuse its release name: the 3.7 Metal3
+        # quickstart's `helm install rancher-turtles ...-providers` overwrites
+        # Rancher's Turtles (caught live 2026-10-07). The management-cluster
+        # chapter names the release rancher-turtles-providers, as here.
+        if not (yield from self._wait_rollout(["cattle-turtles-system"], "Rancher Turtles")):
+            return False
         script = (
             "set -euo pipefail\n"
             f"export KUBECONFIG={self.KUBECONFIG}\n"
-            f"helm upgrade --install rancher-turtles {_CHARTS}/rancher-turtles-providers"
+            f"helm upgrade --install rancher-turtles-providers {_CHARTS}/rancher-turtles-providers"
             f" --version {shlex.quote(self.turtles_providers_version)}"
             " --namespace cattle-turtles-system --create-namespace\n"
         )

@@ -499,7 +499,7 @@ def test_mgmt_phase_runs_every_step_on_rke2(monkeypatch, tmp_path):
         "rancher-prime/rancher",
         "patch svc rancher",
         "edge/charts/metal3 --version 307.0.31+up0.16.0",
-        "rancher-turtles-providers --version 307.0.8+up0.27.0",
+        "helm upgrade --install rancher-turtles-providers oci://registry.suse.com/edge/charts/rancher-turtles-providers --version 307.0.8+up0.27.0",
         "deployment/imagecache",
     ]
     positions = [next(i for i, s in enumerate(scripts) if marker in s) for marker in order]
@@ -650,8 +650,9 @@ class _Recorder:
 
 
 def _fake_eib(phase, builds):
-    def stream_local(cmd, timeout):
+    def stream_local(cmd, timeout, env=None):
         builds.append(cmd)
+        assert env and env["TMPDIR"].startswith(str(phase.image_dir))
         defn = phase.eib_dir / "downstream-cluster-config.yaml"
         assert defn.is_file() and oct(defn.stat().st_mode & 0o777) == "0o600"
         assert "SCC-TEST-CODE" in defn.read_text()
@@ -670,7 +671,9 @@ def test_images_builds_once_then_reuses(monkeypatch, tmp_path):
     _fake_eib(p, builds)
     list(p.stream_images())
     assert p.success, p.error
-    assert builds and builds[0][:4] == ["podman", "run", "--rm", "--privileged"]
+    # EIB's podman storage on image_dir, not the (10 GB on AWS) root disk.
+    assert builds[0][:3] == ["podman", "--root", str(p.image_dir / "podman-eib")]
+    assert builds[0][5:9] == ["run", "--rm", "--privileged", "-v"]
     assert "registry.suse.com/edge/3.7/edge-image-builder:1.3.4" in builds[0]
     assert not (p.eib_dir / "downstream-cluster-config.yaml").exists()  # SCC code removed
     assert (p.eib_dir / "base-images" / "SL-Micro.x86_64-6.2-Base-GM.raw").is_file()
@@ -716,7 +719,7 @@ def test_images_build_without_scc(monkeypatch, tmp_path):
     p._run = _Recorder(tmp_path).run
     builds: list = []
 
-    def stream_local(cmd, timeout):
+    def stream_local(cmd, timeout, env=None):
         builds.append(cmd)
         defn = (p.eib_dir / "downstream-cluster-config.yaml").read_text()
         assert "sccRegistrationCode" not in defn
@@ -885,3 +888,25 @@ def test_product_keeps_rancher_prime(monkeypatch, tmp_path):
     p = _phase_with_base(monkeypatch, tmp_path)
     scripts, _ = _run_mgmt(p)
     assert any("rancher-prime/rancher" in s for s in scripts)
+
+
+def test_preflight_sizes_telco_from_its_flavors():
+    # Live-caught 2026-10-07: mgmt/site-* match no name pattern and cfg["vms"]
+    # has no flavor, so preflight fell back to the 3x Harvester formula
+    # (1050 GB) and refused the m8id.4xlarge NVMe (884 GB).
+    from rodeo.preflight import _resource_needs
+
+    cfg = get_profile("suse-telco").default_cfg()
+    cfg.update({"type": "suse-telco", "name": "suse-telco-test"})
+    assert _resource_needs(cfg) == (16384 + 8192 * 2, 80 + 40 * 2 + 20)
+
+
+def test_providers_chart_never_takes_rancher_turtles_release(monkeypatch, tmp_path):
+    # Rancher 2.13+ owns release "rancher-turtles"; reusing it deletes Turtles.
+    p = _telco_phase(monkeypatch, tmp_path)
+    scripts, _ = _run_mgmt(p)
+    installs = [s for s in scripts if "helm upgrade --install" in s and "turtles" in s]
+    assert installs and all("--install rancher-turtles-providers " in s for s in installs)
+    waits = [i for i, s in enumerate(scripts) if "cattle-turtles-system" in s and "wait" in s]
+    install_at = next(i for i, s in enumerate(scripts) if "rancher-turtles-providers" in s and "helm" in s)
+    assert waits and waits[0] < install_at  # Turtles Available before the providers

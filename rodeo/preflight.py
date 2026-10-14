@@ -238,6 +238,7 @@ def _resource_needs(cfg: dict) -> tuple[int, int]:
 
     if vms:
         need_mib = need_gb = 0
+        flavor_map: dict[str, str] | None = None
         for name in vms:
             if name.startswith("harvester"):
                 r = res.get("harvester", {})
@@ -248,7 +249,17 @@ def _resource_needs(cfg: dict) -> tuple[int, int]:
             elif name.startswith("edge"):
                 r = res.get("edge-node", {})
             else:
-                r = res.get(vms[name].get("flavor", ""), {})
+                flavor = vms[name].get("flavor", "")
+                if not flavor:
+                    # cfg["vms"] carries no flavor (e.g. suse-telco's mgmt and
+                    # site-* VMs): take it from the definition, as
+                    # host_context._planned_disk_gb does.
+                    if flavor_map is None:
+                        from .inventory import vm_flavor_map
+
+                        flavor_map = vm_flavor_map(cfg)
+                    flavor = flavor_map.get(name, "")
+                r = res.get(flavor, {})
             need_mib += r.get("memory_mib", 0)
             need_gb  += r.get("disk_gb", 0)
         if need_mib > 0 or need_gb > 0:

@@ -114,7 +114,7 @@ Parallel tracks once W1 and W2 are in: **W3 ∥ W4 ∥ W6 ∥ W8**; W5 and W7 cl
 |---|---|---|---|---|---|---|
 | W6.1 | `instructions.source` with formats `rmstory | instruqt | markdown`; one fetch step for every engine (today only `labinabox_phase` fetches `workshop:`) | `rodeo/workshop.py` → `rodeo/content.py` (new, old module kept as alias) | M | W1.1 | native labs can carry a track too; `workshop:` alias still works | |
 | W6.2 | `instructions.publish`: `lab` (serve `<lab>/workshop-guide/` from the lab host — nginx on native, HTTP service on lab-in-a-box), `pages`, `url`, `pdf` | `rodeo/content.py`, kvm_host/nginx hook, `success.py` | L | W6.1, W2.6 | guide reachable at the URL shown on the success screen in each mode | |
-| W6.3 | Content-shipped `setup/` and `checks/` run after deploy through `Engine.access()` (Builder F7) | `rodeo/content.py`, `rodeo/engine/base.py` | M | W2.6 | checks run against both engines without engine-specific code | |
+| W6.3 | Content-shipped `setup/` and `checks/` run after deploy through `Engine.access()` (Builder F7) | `rodeo/content.py`, `rodeo/engine/base.py` | M | W2.6 | checks run against every registered engine (today native and lab-in-a-box) without engine-specific code | |
 | W6.4 | Facts contract documented: the full list of facts an engine must provide, with the templating syntax | `docs/reference/facts.md` (new) | S | W2.6 | — | |
 
 ## W7 — Control plane: instance registry and portal providers (L; shape depends on W0.2)

@@ -13,7 +13,8 @@ last_updated: 2026-10-14
 ## The idea in one sentence
 
 A **rodeo** is versioned instructions pinned to a versioned **systems definition**; an
-**engine** (`native` or `lab-in-a-box`) materializes the definition on a platform; and
+**engine** (`native`, `lab-in-a-box`, or other engines integrated in the future)
+materializes the definition on a platform; and
 everything that is not the lab itself — portal, registry of copies, catalog, authoring
 tools — lives in its own plane with its own lifecycle.
 
@@ -24,7 +25,7 @@ tools — lives in its own plane with its own lifecycle.
 | add a product platform | write a new Python pipeline (`profiles/<x>.py` + engine code) | write a systems definition (and, rarely, register one component) |
 | write a workshop | `rodeo-plan.yaml` + `definition.yaml` + `story/` in one folder, no version | a rodeo repo that pins `definition@version` and `engine_version`; tag it |
 | deploy | `rodeo up --profile x` | same command; a banner says **production** or **development** and whether the engine is older (refused) or newer (warning) than tested |
-| operate a running lab | `status/stop/start/ssh/logs` with engine-specific branches inside | same commands, through one engine contract — identical for both engines |
+| operate a running lab | `status/stop/start/ssh/logs` with engine-specific branches inside | same commands, through one engine contract — identical for every engine, present or future |
 | run many copies | `rodeo fleet` (per host) or `rodeo instances` (per host) | one instance registry; the claim portal, Instruqt or an access sheet show them |
 
 ## The three artifacts and how they depend on each other
@@ -70,7 +71,7 @@ flowchart TB
     CAT["catalog · providers · secrets · artifact refs"]
   end
   subgraph LP["③ Lab plane — ephemeral (per instance)"]
-    ENG["engine: native | lab-in-a-box"]
+    ENG["engine: native · lab-in-a-box · future engines"]
     SYS["the systems"]
   end
   subgraph CD["④ Content delivery — static"]
@@ -97,7 +98,7 @@ plane — instructions template them, checks use them, the portal shows them.
 sequenceDiagram
   participant Op as operator / portal
   participant CLI as rodeo (control plane)
-  participant Eng as engine (native | lab-in-a-box)
+  participant Eng as engine (native, lab-in-a-box, …)
   participant Sys as systems
   participant Guide as instructions
   Op->>CLI: rodeo up --profile smlm-workshop
@@ -141,7 +142,7 @@ instructions: {source, publish}             # workshop:
 |---|---|
 | **rodeo** | a workshop: versioned instructions + pins to a systems definition and an engine |
 | **systems definition** | the versioned description of the systems a rodeo needs; shared, has `tested_with` |
-| **engine** | what materializes a definition on a platform: `native` (rodeo-cli's merged pipeline) or `lab-in-a-box` |
+| **engine** | what materializes a definition on a platform: `native` (rodeo-cli's merged pipeline), `lab-in-a-box`, or any engine registered later through the engine contract |
 | **target / placement** | where the engine puts the systems (baremetal, Instruqt, AWS, existing host, cloud account, instance N) |
 | **facts** | the values a deployed lab exposes (hosts, URLs, ports, credentials); the only contract out of the lab plane |
 | **instance** | one copy of a rodeo with a placement; fleet (per host) and instances (per host slot) are the two placements |

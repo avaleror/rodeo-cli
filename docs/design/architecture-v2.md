@@ -137,7 +137,7 @@ flowchart TB
     CAT["catalog · providers · secrets custody · artifact refs"]
   end
   subgraph LP["Lab plane — ephemeral, per instance"]
-    ENG["engine: native | lab-in-a-box"]
+    ENG["engine: native · lab-in-a-box · future engines"]
     SYS["the systems"]
   end
   subgraph CD["Content delivery — static"]
@@ -179,7 +179,7 @@ flowchart TB
 | Claim portal (`rodeo/portal/`, `rodeo/fleet/portal.py`, `docs/claim-portal.md`) | students claim their lab | control plane: portal | passive VM; already the portal of this architecture |
 | Host providers (`rodeo/providers/`, lab-in-a-box backends) | acquire machines | engine capability | the set of platforms is a property of the engine |
 | Bake (`smlm-workshop/bake/`) | pre-built SMLM image via lab-in-a-box | creator tooling | engine-agnostic by contract: input = definition subset + build steps, output = image + manifest + sha256 |
-| Day-2 (`status`, `start/stop/restart`, `clean`, `ssh`, `logs`, `doctor`) | works for both engines through branches | lab plane, via the engine contract | §6 |
+| Day-2 (`status`, `start/stop/restart`, `clean`, `ssh`, `logs`, `doctor`) | works for the two current engines through branches | lab plane, via the engine contract | §6 |
 | Checks (`checks/check-<id>.sh`, chapter `needs`) | in profiles | rodeo definition, run via the engine contract | Builder F7 |
 | Catalog (Builder F4, `rodeo/data/catalog.d/`) | planned | control plane / rodeo definition | distribution of rodeos and definitions |
 | Instruqt | portal + lab host | control plane (portal provider) and lab plane (target) | encapsulated as a provider on both planes |
@@ -301,7 +301,7 @@ rodeo:
   version: 1.2.0                 # the rodeo's own version (tag); omitted = development
 systems:
   definition: smlm-base@1.0.0    # bundled name, name@version, {repo, ref}, or ./definition.yaml
-  engine: native                 # native | lab-in-a-box | <plugin>
+  engine: native                 # native | lab-in-a-box | any engine registered later
   engine_version: 0.19.0         # tag or latest (latest = development status)
   target: baremetal              # engine-specific: baremetal | instruqt | aws | …
   placement: {}                  # engine-specific: existing host, cloud account, instance N

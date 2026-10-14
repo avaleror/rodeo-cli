@@ -63,6 +63,10 @@ Three further gaps compound it:
 11. Old plan keys stay as **aliases** for at least one release.
 12. The attendee portal's scope (own portal vs Instruqt vs access sheet, beyond the
     existing claim portal) is **left for discussion with Andrés**.
+13. **Reusability**: small, typed, tested functions live in one shared library layer
+    (`rodeo/lib/`) that every engine, command and tool imports; engines and tools never
+    import each other. Existing duplicated helpers are consolidated there as the epics
+    touch them (§6.1).
 
 ## 3. Goals and non-goals
 
@@ -73,6 +77,9 @@ Three further gaps compound it:
 - One engine contract that day-2 commands, checks, the Builder and the control plane
   program against, with no engine-specific branches outside the engine.
 - Instructions, systems and auxiliary tools placeable on different platforms.
+- One implementation per concern: SSH argv, download-and-verify, subprocess
+  streaming, version compare, lock/state files, secrets I/O live in `rodeo/lib/` and
+  are reused by every engine and tool (§6.1).
 - Every stage of the migration keeps the bundled examples working and the test suite
   green; the live-validated code paths (PXE chain, etcd join gap, Rancher API order,
   `CONTEXT.md` "do not modify" table) move behind the new dispatch byte-for-byte.
@@ -263,6 +270,35 @@ them. Nothing outside an engine reads engine internals.
 
 The event stream stays what it is today (`PhaseStarted`, `LogLine`, …) so the TUI
 and plain mode are untouched.
+
+### 6.1 Shared library layer (reuse across engines and tools)
+
+Engines, commands, fleet, the portal and the Builder share one library layer,
+`rodeo/lib/`, of small, typed, side-effect-light functions with their own unit tests.
+
+Rules:
+
+- **Dependency direction** `lib ← engine ← commands / fleet / portal / builder`. Nothing
+  in `rodeo/lib/` imports from engines or tools; a test enforces it (W9.1).
+- **One implementation per concern.** A function enters `rodeo/lib/` when a second caller
+  needs it; it is *moved*, not copied, and the old location becomes a one-line re-export
+  for the alias period.
+- **No console output, no `SystemExit`** in the library: it raises typed errors
+  (`ConfigError`, …) and the caller decides how to report.
+- **Pure where possible**: inputs in, result out; subprocess/network/file I/O behind
+  injectable `run=` / `fetch=` parameters so tests need no host (the pattern
+  `storydeps.install_story_deps(run=…)` already uses).
+
+Concerns written more than once today (the W9 audit starts from this table):
+
+| Concern | Today lives in | Target |
+|---|---|---|
+| SSH options and argv (host-key policy, identity, ProxyJump) | `ssh.py`, `ssh_targets.py`, `labinabox_host.py`, `engine/labinabox_phase.py`, `fleet/ssh_exec.py`, `commands/pull_edge_image_cmd.py` | `lib/sshargv.py` |
+| Download + verify (resume, `curl -4` on Instruqt, sha256/sha512, verified-marker cache) | `labinabox_host.py`, `storydeps.py`, `commands/install_deps.py`, `awscli.py`, `engine/labinabox_phase.py` | `lib/fetch.py` |
+| Subprocess streaming (tee to the plan log, cancel via process group) | `engine/runner.py` | `lib/stream.py` |
+| Version parse and compare | `commands/self_update_cmd.py` | `lib/versions.py` (W1.3 builds on it) |
+| Secrets read/write (0600, `??key` resolution, per-lab override) | `config.py`, `secretgen.py` | `lib/secrets.py` |
+| Lock and state files (0600, atomic write) | `state.py`, `workshop.py`, `instances.py` | `lib/statefile.py` |
 
 ## 7. The native engine (merging the three pipelines)
 

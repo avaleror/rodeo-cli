@@ -27,6 +27,7 @@ tools — lives in its own plane with its own lifecycle.
 | deploy | `rodeo up --profile x` | same command; a banner says **production** or **development** and whether the engine is older (refused) or newer (warning) than tested |
 | operate a running lab | `status/stop/start/ssh/logs` with engine-specific branches inside | same commands, through one engine contract — identical for every engine, present or future |
 | run many copies | `rodeo fleet` (per host) or `rodeo instances` (per host) | one instance registry; the claim portal, Instruqt or an access sheet show them |
+| need a helper (ssh argv, download + verify, streaming, versions) | copy the nearest one | import it from `rodeo/lib/`; one implementation, tested, used by every engine and tool |
 
 ## The three artifacts and how they depend on each other
 
@@ -148,3 +149,4 @@ instructions: {source, publish}             # workshop:
 | **instance** | one copy of a rodeo with a placement; fleet (per host) and instances (per host slot) are the two placements |
 | **status** | production (all pins resolved) or development (any `latest`/branch) — computed, never declared |
 | **lock** | `rodeo.lock`: the resolved pins of one deploy |
+| **library layer** | `rodeo/lib/`: small, typed, tested functions shared by engines, commands, fleet, portal and the Builder; it imports nothing from them |

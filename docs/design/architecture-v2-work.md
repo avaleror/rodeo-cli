@@ -37,10 +37,14 @@ flowchart LR
   W1 --> W6[W6 instructions / content plane]
   W2 --> W7["W7 control plane: instance registry · portal providers"]
   W1 --> W8["W8 creator tooling: Builder versions · bake spec"]
+  W0 --> W9["W9 shared library layer"]
+  W9 --> W2
   W6 --> W8
 ```
 
 Parallel tracks once W1 and W2 are in: **W3 ∥ W4 ∥ W6 ∥ W8**; W5 and W7 close them.
+W9 is cross-cutting: W9.1 (layout + import rule) before W2, the extractions alongside
+whichever epic touches the duplicated code.
 
 ---
 
@@ -135,6 +139,16 @@ Parallel tracks once W1 and W2 are in: **W3 ∥ W4 ∥ W6 ∥ W8**; W5 and W7 cl
 | W8.3 | Bake as an engine-agnostic spec: `bake.yaml` (input definition subset + build steps + export), the current `smlm-workshop/bake/` scripts as its first implementation; output manifest with sha256 consumed via the definition's images | `docs/design/bake.md` (new), `rodeo/data/examples/smlm-workshop/bake/` | M | W1.6 | a baked image referenced by digest makes the rodeo production | |
 | W8.4 | Overview and reference docs updated; `docs/design/architecture-v2*.md` marked implemented per epic | docs | S | all | — | |
 
+## W9 — Shared library layer (cross-cutting; design §6.1)
+
+| # | Task | Files | Size | Depends | Acceptance | Owner |
+|---|---|---|---|---|---|---|
+| W9.1 | Create `rodeo/lib/` and the import-direction rule: nothing under `rodeo/lib/` imports `rodeo.engine`, `rodeo.commands`, `rodeo.fleet`, `rodeo.portal`, `rodeo.builder`; audit the design §6.1 table against the tree | `rodeo/lib/__init__.py`, `tests/test_lib_imports.py` | S | W0.1 | the import test passes and fails on a deliberate violation | |
+| W9.2 | `lib/sshargv.py`: one builder (options, identity, host-key policy pinned/accept-new, ProxyJump); the six call sites call it (old names re-exported) | `rodeo/lib/sshargv.py`, call sites | M | W9.1 | argv per call site byte-identical (snapshot test) | |
+| W9.3 | `lib/fetch.py`: download-and-verify (resume, `curl -4`, sha256/sha512, verified-marker cache) replacing the five copies | `rodeo/lib/fetch.py`, call sites | M | W9.1 | image/story/deps tests unchanged; one injectable `run=` | |
+| W9.4 | `lib/stream.py`, `lib/versions.py`, `lib/statefile.py`, `lib/secrets.py` extracted as W1/W2 touch the code | `rodeo/lib/*.py` | M | W1, W2 | callers unchanged in behaviour; library functions unit-tested without a host | |
+| W9.5 | CLAUDE.md "Reusability" table and `docs/architecture.md` point at `rodeo/lib/` | docs | S | W9.2–W9.4 | — | |
+
 ---
 
 ## Suggested split
@@ -147,3 +161,4 @@ Two independent lanes after W0 and W1 (W1 is small enough for one person to do f
   W7 once W0.2 is decided.
 
 W5.4–W5.5 (catalog, content repos) can be picked by whichever lane finishes first.
+W9 belongs to both lanes: each extraction goes with the epic that first needs it.

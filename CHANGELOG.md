@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.25.0](https://github.com/avaleror/rodeo-cli/compare/v0.24.0...v0.25.0) (2026-10-09)
+
+
+### Features
+
+* **builder:** v2 usability fixes — review and download step, undo, d… ([c8ec115](https://github.com/avaleror/rodeo-cli/commit/c8ec1158d05a36dcb5c6ddba431669599ee93f3d))
+* **builder:** v2 usability fixes — review and download step, undo, draft autosave, insert cursor, engine banner, tag chip and Alt+T/I/N, toasts above overlays, keyboard and narrow widths ([5e238ca](https://github.com/avaleror/rodeo-cli/commit/5e238ca256e0ad5ce2285228bdc4ea6911afb9cd))
+
+
+### Bug Fixes
+
+* labinabox local revision ([199eea2](https://github.com/avaleror/rodeo-cli/commit/199eea2adaf9689222d6e937ef90cb2728751857))
+* **labinabox:** AWS labs need AWS_SECURITY_GROUP_ID; smlm-workshop AWS variants set a security group and the DNS VM's Ubuntu image ([654dbf9](https://github.com/avaleror/rodeo-cli/commit/654dbf9486d6bf06880d0b7a8267181583f20164))
+* **labinabox:** reinstall a local lab-in-a-box checkout when its commit or uncommitted changes differ ([058a6c2](https://github.com/avaleror/rodeo-cli/commit/058a6c28b9ab5e4461170d5a22ee8394042a375c))
+* **labinabox:** success panel shows cloud node addresses and no Harve… ([425574e](https://github.com/avaleror/rodeo-cli/commit/425574ee74f59b8d1825fbf49753c35159da4baf))
+* **labinabox:** success panel shows cloud node addresses and no Harvester/Rancher logins; export-ami.sh waits for large AMIs ([1f3cc8e](https://github.com/avaleror/rodeo-cli/commit/1f3cc8ed7a99a32ae597f4bba1728710b368a689))
+* **smlm-workshop:** generalise.sh runs container shell code over stdin, so the sync check and the scrub actually run ([34e3516](https://github.com/avaleror/rodeo-cli/commit/34e3516be3547bf72a0d60f34d6bf892d00b56f0))
+* **story:** refuse story packages without a .sha512; repeat lab-in-a-… ([53ba124](https://github.com/avaleror/rodeo-cli/commit/53ba124266bbe56ce35f7ffc980731fb7bd66df3))
+* **story:** refuse story packages without a .sha512; repeat lab-in-a-box's summary when setup_lab.py fails ([df3c4ce](https://github.com/avaleror/rodeo-cli/commit/df3c4cecd952afeb3dc762217d705029e052b57a))
+
 ## [0.24.0](https://github.com/avaleror/rodeo-cli/compare/v0.23.0...v0.24.0) (2026-10-09)
 
 

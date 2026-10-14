@@ -1,4 +1,4 @@
-# Claude Code test plan — AWS single-host + Fleet multi-host
+# Claude Code test plan: AWS single-host + Fleet multi-host
 
 Executable checklist for [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
 (or a human) against a laptop with AWS API access. Run steps **in order**.
@@ -43,7 +43,7 @@ Optional:
 |----------|---------|
 | Profile | `harvester` |
 | Instance tier (single-host) | `recommended` → `i7i.8xlarge` |
-| Marketplace | Not needed — the default SLES 16 PAYG AMI requires no subscription |
+| Marketplace | Not needed: the default SLES 16 PAYG AMI requires no subscription |
 
 ---
 
@@ -65,15 +65,15 @@ rodeo --version
 
 ---
 
-## Part A — AWS single-host (`rodeo up --target aws`)
+## Part A: AWS single-host (`rodeo up --target aws`)
 
 Goal: one EC2 KVM host, remote lab deploy, NVMe host context, SSH helpers, cloud destroy.
 
-### A1 — Full single-host up
+### A1: Full single-host up
 
 `--no-deploy` only seeds the lab on the laptop; it does **not** call EC2.
 Capacity (offerings + `RunInstances` DryRun) runs at provision time inside this
-command. If the region has no capacity, expect a **clear error** — no silent
+command. If the region has no capacity, expect a **clear error**, no silent
 downsize.
 
 You need `provider.region`, `subnet_id`, and `security_group_ids` in the seeded
@@ -102,9 +102,9 @@ Long-running (often 90–150+ min for `harvester`). Stay attached or poll logs
 
 **Pass when:** command exits 0 and success output shows Harvester / Rancher URLs.
 Fail-closed capacity errors at provision count as a **valid gate** (fix the
-region/type, re-run) — not a product PASS until a successful deploy completes.
+region/type, re-run): not a product PASS until a successful deploy completes.
 
-### A2 — Verify host context + lab health
+### A2: Verify host context + lab health
 
 ```bash
 rodeo ssh primary -- 'findmnt -n -o TARGET,SOURCE | head -50'
@@ -114,7 +114,7 @@ rodeo ssh primary -- 'cd /root/lab 2>/dev/null || cd ~/lab; rodeo status --outpu
 ```
 
 Adjust remote lab path if the seed used a different dir. Inspect plan/vars for
-Harvester disk sizing when NVMe is present (`disk_gb` **500** per Harvester node, **60** per Rancher node — flat, not scaled by node count — and `storage.backend: nvme`).
+Harvester disk sizing when NVMe is present (`disk_gb` **500** per Harvester node, **60** per Rancher node, flat, not scaled by node count, and `storage.backend: nvme`).
 
 **Pass when:**
 
@@ -122,7 +122,7 @@ Harvester disk sizing when NVMe is present (`disk_gb` **500** per Harvester node
 2. `rodeo status --output json` shows healthy / expected phase completion.
 3. Nested guest disks live under the NVMe `image_dir` when backend is `nvme`.
 
-### A3 — Nested SSH targets
+### A3: Nested SSH targets
 
 ```bash
 rodeo ssh primary/rancher -- 'hostname'
@@ -132,7 +132,7 @@ rodeo ssh primary/rancher -- 'hostname'
 
 **Pass when:** SSH returns 0 without password prompts.
 
-### A4 — Tear down single-host cloud
+### A4: Tear down single-host cloud
 
 ```bash
 # From the lab dir that holds the AWS plan / state on the laptop side:
@@ -144,14 +144,14 @@ or `aws ec2 describe-instances`).
 
 ---
 
-## Part B — Fleet multi-host (AWS provision + fan-out)
+## Part B: Fleet multi-host (AWS provision + fan-out)
 
 Goal: `count >= 2` EC2 hosts, `fleet deploy` → `doctor` → poll `status` →
 `access` → `deprovision`.
 
 Use a **new** subdirectory so Part A state does not collide.
 
-### B0 — Write inventory
+### B0: Write inventory
 
 ```bash
 mkdir -p "$WORK_DIR/fleet-multi" && cd "$WORK_DIR/fleet-multi"
@@ -186,7 +186,7 @@ If `instance_tier` is rejected by fleet provision in your build, replace with
 
 **Pass when:** file exists; `count: 2`; `hosts: []`; no credentials in the file.
 
-### B1 — Provision hosts
+### B1: Provision hosts
 
 ```bash
 cd "$WORK_DIR/fleet-multi"
@@ -201,7 +201,7 @@ rodeo ssh student-01 -- 'uname -a'
 rodeo ssh student-02 -- 'uname -a'
 ```
 
-### B2 — Deploy (async fan-out)
+### B2: Deploy (async fan-out)
 
 ```bash
 rodeo fleet deploy -f workshop.yaml -j 2
@@ -210,7 +210,7 @@ rodeo fleet deploy -f workshop.yaml -j 2
 **Pass when:** exit 0 quickly; `workshop.job.yaml` exists (chmod 600); host states
 are `running` or already `ok`.
 
-### B3 — Doctor (readiness)
+### B3: Doctor (readiness)
 
 Doctor runs `rodeo` on each host, and freshly provisioned hosts only get it from
 `fleet deploy`. Run it before deploy and it fails with `rodeo: command not found`.
@@ -221,7 +221,7 @@ rodeo fleet doctor -f workshop.yaml -j 2
 
 **Pass when:** exit 0 (KVM / nested virt / tools / profile fit OK on every host).
 
-### B4 — Poll status until done
+### B4: Poll status until done
 
 Repeat until every host is `ok` or `failed` (expect 90–150+ min):
 
@@ -240,7 +240,7 @@ rodeo fleet retry -f workshop.yaml --failed-only
 **Pass when:** all selected hosts reach lab-complete / job `ok`, or operator accepts
 documented failure after diagnose.
 
-### B5 — Access sheet
+### B5: Access sheet
 
 ```bash
 rodeo fleet access -f workshop.yaml --output json
@@ -255,14 +255,14 @@ Spot-check nested SSH:
 rodeo ssh student-01/rancher -- 'hostname'
 ```
 
-### B6 — Deprovision
+### B6: Deprovision
 
 ```bash
 rodeo fleet deprovision -f workshop.yaml --yes
 ```
 
 **Pass when:** tagged instances terminated. Note MVP gap: `hosts[]` may still list
-old IPs — edit or re-provision to refresh YAML ([fleet.md](../fleet.md)).
+old IPs: edit or re-provision to refresh YAML ([fleet.md](../fleet.md)).
 
 ---
 

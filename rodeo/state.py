@@ -33,9 +33,13 @@ def save_state(state: dict, plan_name: str = "default") -> None:
     path.chmod(0o600)
 
 
-def mark_phase_done(phase: str, plan_name: str = "default") -> None:
+def mark_phase_done(phase: str, plan_name: str = "default", key: str | None = None) -> None:
+    """Record *phase* as completed; *key* names what it completed for (see is_phase_done)."""
     state = load_state(plan_name)
-    state.setdefault("phases", {})[phase] = {"completed": True, "timestamp": _now()}
+    entry = {"completed": True, "timestamp": _now()}
+    if key is not None:
+        entry["key"] = key
+    state.setdefault("phases", {})[phase] = entry
     save_state(state, plan_name)
 
 
@@ -80,5 +84,7 @@ def reset_from(
     save_state(state, plan_name)
 
 
-def is_phase_done(phase: str, plan_name: str = "default") -> bool:
-    return load_state(plan_name).get("phases", {}).get(phase, {}).get("completed", False)
+def is_phase_done(phase: str, plan_name: str = "default", key: str | None = None) -> bool:
+    """True when *phase* completed; with *key*, only when it completed for that same key."""
+    info = load_state(plan_name).get("phases", {}).get(phase, {})
+    return bool(info.get("completed", False)) and (key is None or info.get("key") == key)

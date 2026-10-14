@@ -1,5 +1,81 @@
 # Changelog
 
+## [0.25.0](https://github.com/avaleror/rodeo-cli/compare/v0.24.0...v0.25.0) (2026-10-09)
+
+
+### Features
+
+* **builder:** v2 usability fixes — review and download step, undo, d… ([c8ec115](https://github.com/avaleror/rodeo-cli/commit/c8ec1158d05a36dcb5c6ddba431669599ee93f3d))
+* **builder:** v2 usability fixes — review and download step, undo, draft autosave, insert cursor, engine banner, tag chip and Alt+T/I/N, toasts above overlays, keyboard and narrow widths ([5e238ca](https://github.com/avaleror/rodeo-cli/commit/5e238ca256e0ad5ce2285228bdc4ea6911afb9cd))
+
+
+### Bug Fixes
+
+* labinabox local revision ([199eea2](https://github.com/avaleror/rodeo-cli/commit/199eea2adaf9689222d6e937ef90cb2728751857))
+* **labinabox:** AWS labs need AWS_SECURITY_GROUP_ID; smlm-workshop AWS variants set a security group and the DNS VM's Ubuntu image ([654dbf9](https://github.com/avaleror/rodeo-cli/commit/654dbf9486d6bf06880d0b7a8267181583f20164))
+* **labinabox:** reinstall a local lab-in-a-box checkout when its commit or uncommitted changes differ ([058a6c2](https://github.com/avaleror/rodeo-cli/commit/058a6c28b9ab5e4461170d5a22ee8394042a375c))
+* **labinabox:** success panel shows cloud node addresses and no Harve… ([425574e](https://github.com/avaleror/rodeo-cli/commit/425574ee74f59b8d1825fbf49753c35159da4baf))
+* **labinabox:** success panel shows cloud node addresses and no Harvester/Rancher logins; export-ami.sh waits for large AMIs ([1f3cc8e](https://github.com/avaleror/rodeo-cli/commit/1f3cc8ed7a99a32ae597f4bba1728710b368a689))
+* **smlm-workshop:** generalise.sh runs container shell code over stdin, so the sync check and the scrub actually run ([34e3516](https://github.com/avaleror/rodeo-cli/commit/34e3516be3547bf72a0d60f34d6bf892d00b56f0))
+* **story:** refuse story packages without a .sha512; repeat lab-in-a-… ([53ba124](https://github.com/avaleror/rodeo-cli/commit/53ba124266bbe56ce35f7ffc980731fb7bd66df3))
+* **story:** refuse story packages without a .sha512; repeat lab-in-a-box's summary when setup_lab.py fails ([df3c4ce](https://github.com/avaleror/rodeo-cli/commit/df3c4cecd952afeb3dc762217d705029e052b57a))
+
+## [0.24.0](https://github.com/avaleror/rodeo-cli/compare/v0.23.0...v0.24.0) (2026-10-09)
+
+
+### Features
+
+* **aws:** install the AWS CLI for AWS deploys and require working AWS credentials ([d11f5eb](https://github.com/avaleror/rodeo-cli/commit/d11f5eb4a5edad85c11ee4b00dabc261744bce38))
+* builder server ([dbeae54](https://github.com/avaleror/rodeo-cli/commit/dbeae543db75bc74ed9320ee2b4f73e9e69f15fe))
+* **builder:** live rodeo builder with save to profiles, rodeo new --from-zip, lab-in-a-box catalogue kinds and errors ([bc2f483](https://github.com/avaleror/rodeo-cli/commit/bc2f483003733f4d873cbc8c9e22cc49f71d011b))
+* **builder:** missing_addon marks a chapter as work needed ([4da73f6](https://github.com/avaleror/rodeo-cli/commit/4da73f6a95704927b3c49439eb2600ea11c06b37))
+* **fleet:** scale down unclaimed labs safely; audit fixes ([#90](https://github.com/avaleror/rodeo-cli/issues/90)) ([fbc5c30](https://github.com/avaleror/rodeo-cli/commit/fbc5c30b242d506a3d7386db50ec0d5099a2ae6e))
+
+
+### Bug Fixes
+
+* **labinabox:** rerun preflight credits the lab's running VMs; reinstall lab-in-a-box when its source changes ([7a3aa84](https://github.com/avaleror/rodeo-cli/commit/7a3aa84ed4714d17e4392e7355a246fd7ffd3644))
+* **smlm-workshop:** generalise.sh counts SCC credentials in the database, failing closed ([4f55001](https://github.com/avaleror/rodeo-cli/commit/4f550012ba1e325e921725198418df8ddb51c4b9))
+
+## [0.23.0](https://github.com/avaleror/rodeo-cli/compare/v0.22.1...v0.23.0) (2026-10-08)
+
+
+### Features
+
+* **fleet:** remove local leftovers of terminated cloud hosts ([#88](https://github.com/avaleror/rodeo-cli/issues/88)) ([832fe25](https://github.com/avaleror/rodeo-cli/commit/832fe25e824a46a297937df9b065c285e54d8fc7))
+
+## [0.22.1](https://github.com/avaleror/rodeo-cli/compare/v0.22.0...v0.22.1) (2026-10-07)
+
+
+### Documentation
+
+* review and polish for v0.22 ([#86](https://github.com/avaleror/rodeo-cli/issues/86)) ([b1e2f21](https://github.com/avaleror/rodeo-cli/commit/b1e2f2142c723308f9bf9c283dfeecdf918e7e7b))
+
+## [0.22.0](https://github.com/avaleror/rodeo-cli/compare/v0.21.0...v0.22.0) (2026-10-07)
+
+
+### Features
+
+* **install:** control-plane install on macOS and any Linux; rodeo refuses local labs it cannot host ([#84](https://github.com/avaleror/rodeo-cli/issues/84)) ([6de7780](https://github.com/avaleror/rodeo-cli/commit/6de778004fbdd5e191e156ce81a49734fd04302a))
+
+## [0.21.0](https://github.com/avaleror/rodeo-cli/compare/v0.20.1...v0.21.0) (2026-10-07)
+
+
+### Features
+
+* **aws:** dead-man switch on every cloud host rodeo launches (6 h default) ([#83](https://github.com/avaleror/rodeo-cli/issues/83)) ([eb32709](https://github.com/avaleror/rodeo-cli/commit/eb3270955c0435a1f9372a355f6d9cf77470cf10))
+* **builder:** static Rodeo Builder web UI, published with the docs ([3fa9418](https://github.com/avaleror/rodeo-cli/commit/3fa9418d765afba05af13f863716c919006cf915))
+* Fix/labinabox common sizing ([a6720e2](https://github.com/avaleror/rodeo-cli/commit/a6720e2f69f0a224a3bf62886e5db5b456c8d38d))
+* rancher profiles with downstream K3s/RKE2 clusters + AWS without a provider block ([#81](https://github.com/avaleror/rodeo-cli/issues/81)) ([d3ee03d](https://github.com/avaleror/rodeo-cli/commit/d3ee03d23f2b700d794cd603968ff6724ea48463))
+
+
+### Bug Fixes
+
+* **builder:** list every workshop's chapters, mark the lab engine, ed… ([de08940](https://github.com/avaleror/rodeo-cli/commit/de089400a15974bd999ed0f1b3d5c828324516bc))
+* **builder:** list every workshop's chapters, mark the lab engine, edit plan.yaml ([d55a22f](https://github.com/avaleror/rodeo-cli/commit/d55a22f6e94f4e9383a993d9bf9bad394f956008))
+* **smlm-workshop:** size the SMLM server disk for the synced channels (300 GB) ([e0e068c](https://github.com/avaleror/rodeo-cli/commit/e0e068c29cb2eae2a51c1d8af32aa7020ca711c5))
+* **up:** --profile wins over the last lab + AWS banner lists only the lab's UIs ([#82](https://github.com/avaleror/rodeo-cli/issues/82)) ([f9a4ae5](https://github.com/avaleror/rodeo-cli/commit/f9a4ae52e6528d96fb78ae6ec3841a3b843e228a))
+
 ## [0.20.1](https://github.com/avaleror/rodeo-cli/compare/v0.20.0...v0.20.1) (2026-10-05)
 
 

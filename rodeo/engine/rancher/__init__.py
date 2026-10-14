@@ -11,6 +11,7 @@ RancherPhase` works exactly as before. Concerns:
   extensions.py     Rancher UI extension repos + declarative reconcile
   hauler.py         Hauler store population (airgap artifacts)
   content.py        Lab content seeding (Gitea + demo-app Fleet repo)
+  downstream.py     Rancher-provisioned K3s/RKE2 clusters on lab VMs
   summary.py        env file + completion banner
 """
 from __future__ import annotations
@@ -32,9 +33,11 @@ import urllib.request  # noqa: F401
 
 import yaml  # noqa: F401
 
+from ...inventory import downstream_node_names
 from ..runner import DeployEvent, LogLine
 from .cluster_setup import ClusterSetupMixin
 from .content import LabContentMixin
+from .downstream import DownstreamMixin
 from .elemental import ElementalMixin
 from .extensions import UiExtensionsMixin
 from .harvester import HarvesterMixin
@@ -53,6 +56,7 @@ class RancherPhase(
     UiExtensionsMixin,
     HaulerMixin,
     LabContentMixin,
+    DownstreamMixin,
     SummaryMixin,
 ):
     """Install K3s + Rancher Prime on the rancher VM and import the Harvester cluster."""
@@ -93,11 +97,16 @@ class RancherPhase(
         # Use harvester_node_names from the definition when present — it's the
         # authoritative list. Fall back to "everything that isn't rancher" for
         # profiles that predate the definition file (e.g. old suse-virt plans).
+        # Downstream cluster nodes (rancher profiles) are never Harvester nodes.
+        self.downstream_clusters = cfg.get("downstream_clusters") or []
+        _downstream = downstream_node_names(cfg)
         _harvester_names = cfg.get("harvester_node_names")
         if _harvester_names is not None:
             real_harvester = [n for n in cfg.get("vms", {}) if n in set(_harvester_names)]
         else:
-            real_harvester = [n for n in cfg.get("vms", {}) if n != "rancher"]
+            real_harvester = [
+                n for n in cfg.get("vms", {}) if n != "rancher" and n not in _downstream
+            ]
         self.standalone       = bool(cfg.get("vms")) and not real_harvester
         self.harvester_nodes  = real_harvester or ["harvester1", "harvester2", "harvester3"]
         self.libvirt_uri      = cfg.get("libvirt", {}).get("uri", "qemu:///system")
@@ -105,6 +114,12 @@ class RancherPhase(
         self.rancher_version         = ver.get("rancher", "2.14.1")
         self.k3s_version             = ver.get("k3s", "v1.35.3+k3s1")
         self.cert_mgr_version        = ver.get("cert_manager", "v1.20.1")
+        self.k3s_downstream_version  = ver.get("downstream_k3s", "v1.36.4+k3s1")
+        self.rke2_downstream_version = ver.get("downstream_rke2", "v1.36.4+rke2r1")
+        self.vm_ips = {
+            name: spec.get("ip", "") for name, spec in cfg.get("vms", {}).items()
+            if isinstance(spec, dict)
+        }
         self.elemental_crds_version  = ver.get("elemental_operator_crds", "1.9.0")
         self.elemental_op_version    = ver.get("elemental_operator", "1.9.0")
 

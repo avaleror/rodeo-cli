@@ -7,7 +7,7 @@ title: rodeo-cli
 
 # Deploy real lab infrastructure without writing Ansible or touching libvirt
 
-<p class="rc-tagline">rodeo-cli is a declarative CLI that turns a YAML file into a working lab on KVM: Harvester HCI clusters, Rancher Prime, or a full SUSE Edge stack. Point it at a Linux host, pick a profile, run one command.</p>
+<p class="rc-tagline">rodeo-cli is a declarative CLI that turns a YAML file into a working lab on KVM: SUSE Virtualization (Harvester HCI) clusters, Rancher Prime with K3s and RKE2 clusters, or a full SUSE Edge stack. Run it on a SLES 16 host, or from your laptop on AWS. Pick a profile, run one command.</p>
 
 <div class="rc-hero-actions">
   <a href="get-started/" class="rc-btn rc-btn-primary">Get started →</a>
@@ -16,8 +16,8 @@ title: rodeo-cli
 </div>
 
 <div class="rc-stats" markdown>
-<div class="rc-stat"><div class="rc-stat-num">6</div><div class="rc-stat-label">Bundled profiles</div></div>
-<div class="rc-stat"><div class="rc-stat-num">424</div><div class="rc-stat-label">Tests passing</div></div>
+<div class="rc-stat"><div class="rc-stat-num">10</div><div class="rc-stat-label">Bundled profiles</div></div>
+<div class="rc-stat"><div class="rc-stat-num">1,000+</div><div class="rc-stat-label">Tests passing</div></div>
 <div class="rc-stat"><div class="rc-stat-num">1</div><div class="rc-stat-label">Command to deploy</div></div>
 <div class="rc-stat"><div class="rc-stat-num rc-stat-num--text">GPL-3.0</div><div class="rc-stat-label">License</div></div>
 </div>
@@ -40,14 +40,14 @@ A **profile** is a config-dir with two YAML files. `rodeo-plan.yaml` sets resour
 
 <div class="rc-card" markdown>
 <div class="rc-card-label">Batteries included</div>
-### 6 bundled profiles
-Rancher Prime on K3s, single or multi-node Harvester HCI, Harvester + Rancher, and a full SUSE Edge stack — Elemental, EIB, edge nodes and all.
+### 10 bundled profiles
+Two to three-node Harvester HCI with or without Rancher, the SUSE Virtualization workshop lab, Rancher Prime with K3s and RKE2 clusters, and a full SUSE Edge stack with Elemental, EIB and edge nodes.
 </div>
 
 <div class="rc-card" markdown>
 <div class="rc-card-label">Yours to shape</div>
 ### Custom rodeos
-`rodeo new mylab --from harvester` scaffolds an editable profile. Change the topology, re-run, and the lab converges to match — no forking the tool.
+`rodeo new mylab --from harvester` scaffolds an editable profile. Change the topology, re-run, and the lab converges to match, no forking the tool.
 </div>
 
 <div class="rc-card" markdown>
@@ -65,16 +65,23 @@ Credentials live in `~/.rodeo/secrets.yaml`, chmod 600, referenced from plans wi
 <div class="rc-card" markdown>
 <div class="rc-card-label">Day-2 ready</div>
 ### Manage, not just deploy
-`rodeo status`, `rodeo stop`/`start`, `rodeo set-password`, `rodeo install-extensions`, `rodeo clean` — the lab is a thing you operate, not a one-shot script.
+`rodeo status`, `rodeo stop`/`start`, `rodeo set-password`, `rodeo install-extensions`, `rodeo clean`: the lab is a thing you operate, not a one-shot script.
+</div>
+
+<div class="rc-card" markdown>
+<div class="rc-card-label">Cloud</div>
+### AWS from your laptop
+`rodeo up --profile harvester --target aws` creates the EC2 host, picks the region,
+subnet and size, and builds the lab. Every cloud host terminates itself after 6 hours
+unless you say otherwise. Works from macOS or any Linux. See [Install](install.md).
 </div>
 
 <div class="rc-card" markdown>
 <div class="rc-card-label">Workshops</div>
-### Fleet fan-out
-`rodeo fleet` runs the same lab across many remote KVM hosts over SSH — doctor,
-deploy, diagnose, retry, student URL sheets, and **AWS provision** (F4a MVP).
-Next: GCP → Vultr Bare Metal → Hetzner (F4b–d). See
-[Fleet](fleet.md) and [Fleet roadmap](fleet.md#roadmap).
+### A lab per attendee
+`rodeo fleet` builds the same lab on many hosts in parallel, with status, retry and
+diagnose per lab. A claim portal lets each attendee grab their own lab with a
+workshop code. See [Fleet](fleet.md).
 </div>
 
 </div>

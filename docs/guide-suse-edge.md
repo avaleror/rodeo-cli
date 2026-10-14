@@ -1,6 +1,6 @@
-# SUSE Edge 3.6 — profile guide
+# SUSE Edge 3.7: profile guide
 
-This guide covers the `suse-edge` profile: a full **SUSE Edge 3.6** stack on nested KVM. It stands up a Rancher Prime management cluster with the **Elemental Operator**, an **Edge Image Builder (EIB)** VM, and a set of Elemental-managed **edge nodes** — the pieces you need to demo zero-touch edge onboarding end to end.
+This guide covers the `suse-edge` profile: a full **SUSE Edge 3.7** stack on nested KVM. It stands up a Rancher Prime management cluster with the **Elemental Operator**, an **Edge Image Builder (EIB)** VM, and a set of Elemental-managed **edge nodes**, the pieces you need to demo zero-touch edge onboarding end to end.
 
 Use it when the workshop or demo focuses on **edge lifecycle**: building an OS image with EIB, then registering edge nodes into Rancher over TPM with Elemental.
 
@@ -17,9 +17,9 @@ Use it when the workshop or demo focuses on **edge lifecycle**: building an OS i
 | edge3 | 192.168.122.33 | `rodeo ssh edge3` |
 | edge4 | 192.168.122.34 | `rodeo ssh edge4` |
 
-Rancher is reached through **Traefik ingress**, not a NodePort: cert-manager gets a real Let's Encrypt certificate over the HTTP01 challenge (port 80), and the UI + API + Elemental registration endpoint are served on port 443 at a `sslip.io` hostname derived from the host's external IP. Edge nodes are created by the `vms` phase but **started as a lab exercise**, not automatically — that is the hands-on part of the workshop.
+Rancher is reached through **Traefik ingress**, not a NodePort: cert-manager gets a real Let's Encrypt certificate over the HTTP01 challenge (port 80), and the UI + API + Elemental registration endpoint are served on port 443 at a `sslip.io` hostname derived from the host's external IP. Edge nodes are created by the `vms` phase but **started as a lab exercise**, not automatically, that is the hands-on part of the workshop.
 
-**Component versions (SUSE Edge 3.6):** Rancher Prime 2.14.1 · K3s v1.35.5+k3s1 (lab; production uses RKE2 v1.35.3+rke2r3) · cert-manager v1.20.1 · Elemental Operator 1.9.0 · Edge Image Builder 1.3.3.1.
+**Component versions (SUSE Edge 3.7):** Rancher Prime 2.15.1 on K3s v1.36.3+k3s1 (lab) · cert-manager v1.20.1 · Elemental Operator 1.9.2 · Elemental UI extension 3.0.3 · Edge Image Builder 1.3.4.
 
 ---
 
@@ -38,6 +38,14 @@ The host also needs inbound **ports 80 and 443** reachable from where you browse
 
 Run `rodeo doctor` to check your host and confirm this profile fits.
 
+### On AWS
+
+```bash
+rodeo up --profile suse-edge --target aws --yes
+```
+
+rodeo's AWS security group only opens 22, 8443 and 30002 to your IP, so Let's Encrypt cannot run there. On AWS rodeo switches Rancher to its own certificate on `https://<host>:30002` (accept the browser warning) and gives the Rancher and EIB VMs more RAM and disk. The recommended instance is `m8id.4xlarge`, and the host has the usual 6-hour dead-man switch.
+
 ---
 
 ## Deploy
@@ -46,7 +54,7 @@ Run `rodeo doctor` to check your host and confirm this profile fits.
 rodeo up --profile suse-edge
 ```
 
-`rodeo up` checks the host, installs any missing packages (with your consent), generates credentials, and starts the deploy. It self-escalates with sudo — you do not need to prefix `sudo` yourself.
+`rodeo up` checks the host, installs any missing packages (with your consent), generates credentials, and starts the deploy. It self-escalates with sudo: you do not need to prefix `sudo` yourself.
 
 `rodeo up` wraps itself in a tmux session (`rodeo-suse-edge`) automatically, so a dropped SSH connection does not kill the deploy. Re-attach with `tmux attach -t rodeo-suse-edge`. Use `--no-tmux` to skip this in scripts.
 
@@ -54,13 +62,13 @@ rodeo up --profile suse-edge
 
 The pipeline runs these phases in order:
 
-1. **kvm_host** — sets up libvirt, firewall rules (including the 80/443 DNAT), swtpm, and the storage pool on the host
-2. **vms** — downloads the base images, injects cloud-init, creates the Rancher, EIB, and edge node disks and libvirt definitions
-3. **boot** — starts the libvirt network and the Rancher + EIB VMs (edge nodes stay off for the lab exercise)
-4. **rancher** — installs K3s, deploys Rancher Prime via Helm, and configures cert-manager + Traefik for the Let's Encrypt certificate
-5. **elemental** — installs the Elemental Operator (CRDs + Operator) and creates the MachineRegistration so edge nodes can register over TPM
-6. **apply** — applies any extra manifests (Fleet GitOps, demo workloads)
-7. **finalise** — enables VM autostart on host reboot (skipped on Instruqt; use `rodeo start-if-needed` on hostimage boot instead of baking finalise into the image)
+1. **kvm_host**: sets up libvirt, firewall rules (including the 80/443 DNAT), swtpm, and the storage pool on the host
+2. **vms**: downloads the base images, injects cloud-init, creates the Rancher, EIB, and edge node disks and libvirt definitions
+3. **boot**: starts the libvirt network and the Rancher + EIB VMs (edge nodes stay off for the lab exercise)
+4. **rancher**: installs K3s, deploys Rancher Prime via Helm, and configures cert-manager + Traefik for the Let's Encrypt certificate
+5. **elemental**: installs the Elemental Operator (CRDs + Operator) and creates the MachineRegistration so edge nodes can register over TPM
+6. **apply**: applies any extra manifests (Fleet GitOps, demo workloads)
+7. **finalise**: enables VM autostart on host reboot (skipped on Instruqt; use `rodeo start-if-needed` on hostimage boot instead of baking finalise into the image)
 
 Total time: **20–40 minutes** on a typical host, depending on image download speed.
 
@@ -78,7 +86,7 @@ rodeo status
 - **Username:** `admin`
 - **Password:** the value of `rancher_admin_password` in `~/.rodeo/secrets.yaml`
 
-Because Rancher is served with a real Let's Encrypt certificate, there is no browser warning to click through — but the host must be reachable on ports 80 and 443 from the public internet for the certificate to issue.
+Because Rancher is served with a real Let's Encrypt certificate, there is no browser warning to click through, but the host must be reachable on ports 80 and 443 from the public internet for the certificate to issue.
 
 ---
 

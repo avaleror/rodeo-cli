@@ -311,6 +311,47 @@ def admin_link(inventory: FleetInventory) -> str:
     return f"{portal_url(inventory)}/admin/{token}"
 
 
+# ---------------------------------------------------------------- partial teardown
+def portal_live(inventory: FleetInventory) -> bool:
+    """An enabled portal that has a machine to talk to."""
+    portal = inventory.portal
+    return bool(portal and portal.enabled and portal.target)
+
+
+def claimed_labs(rows: list[dict[str, Any]], lab_ids: list[str]) -> list[str]:
+    """Which of ``lab_ids`` a student has claimed (lab id == host id)."""
+    return [r["lab"] for r in rows if r["lab"] in set(lab_ids) and r["state"] == "claimed"]
+
+
+def pick_unclaimed(rows: list[dict[str, Any]], count: int | None) -> list[str]:
+    """``count`` unclaimed labs to remove (None: all of them). Labs nobody can use
+    yet (still building or failed) go first, then free labs from the highest
+    number down, so the spares left are the low numbers new claims get first.
+    ``rows`` is ``portal status`` (in portal order)."""
+    building = [r["lab"] for r in reversed(rows) if r["state"] == "building"]
+    free = [r["lab"] for r in reversed(rows) if r["state"] == "free"]
+    pool = building + free
+    if count is None:
+        return pool
+    if count > len(pool):
+        raise ConfigError(f"only {len(pool)} unclaimed lab(s) on the portal, asked to remove {count}")
+    return pool[:count]
+
+
+def portal_status(inventory: FleetInventory) -> dict[str, Any]:
+    """Settings (``open``, ``code``...) plus ``labs``: every lab's claim state."""
+    return portal_admin(inventory, ["status"])
+
+
+def set_claiming(inventory: FleetInventory, is_open: bool) -> None:
+    portal_admin(inventory, ["open" if is_open else "close"])
+
+
+def remove_labs(inventory: FleetInventory, lab_ids: list[str]) -> list[str]:
+    """Drop terminated hosts from the portal so nobody claims a dead lab."""
+    return portal_admin(inventory, ["remove", "--force", "--", *lab_ids])["removed"]
+
+
 # ---------------------------------------------------------------- student SSH (F5.4)
 def student_keys_dir(workshop: str) -> Path:
     d = known_hosts_path(workshop).parent / "student-keys"  # same sanitised workshop dir

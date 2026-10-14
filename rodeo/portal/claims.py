@@ -388,6 +388,26 @@ def release(con: sqlite3.Connection, lab_id: str) -> bool:
         return con.execute("DELETE FROM claims WHERE lab_id=?", (lab_id,)).rowcount > 0
 
 
+def remove_labs(con: sqlite3.Connection, lab_ids: list[str], *, force: bool = False) -> list[str]:
+    """Drop labs whose hosts were terminated, so nobody can claim a dead lab.
+    A claimed lab refuses the whole call (nothing removed) unless ``force``.
+    Returns the ids that were listed."""
+    if not lab_ids:
+        return []
+    marks = ",".join("?" * len(lab_ids))
+    with write_tx(con):
+        if not force:
+            taken = [r["lab_id"] for r in con.execute(
+                f"SELECT lab_id FROM claims WHERE lab_id IN ({marks}) ORDER BY lab_id", lab_ids)]
+            if taken:
+                raise ClaimError(f"claimed by a student: {', '.join(taken)}")
+        found = [r["id"] for r in con.execute(
+            f"SELECT id FROM labs WHERE id IN ({marks}) ORDER BY ord", lab_ids)]
+        for table, col in (("claims", "lab_id"), ("progress", "lab_id"), ("labs", "id")):
+            con.execute(f"DELETE FROM {table} WHERE {col} IN ({marks})", lab_ids)
+    return found
+
+
 def revoke(con: sqlite3.Connection, email: str) -> bool:
     email = normalize_email(email)
     with write_tx(con):

@@ -13,6 +13,7 @@ from rich.console import Console
 
 from ..config import load_config
 from ..engine.runner import LogLine, ProgressUpdate
+from ..inventory import harvester_vm_names
 from ..paths import rodeo_secrets_path
 from ..privilege import ensure_root, is_root
 from ..secretgen import random_password, update_admin_passwords
@@ -32,9 +33,7 @@ def _has_rancher(cfg: dict) -> bool:
 
 
 def _has_harvester(cfg: dict) -> bool:
-    vms = cfg.get("vms", {})
-    harvester_nodes = [n for n in vms if n not in ("rancher", "eib") and not n.startswith("edge")]
-    return bool(harvester_nodes)
+    return bool(harvester_vm_names(cfg))
 
 
 def _drive(events) -> None:

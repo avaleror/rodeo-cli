@@ -1,5 +1,6 @@
-# Example rodeo-plan.yaml — Rancher-only lab (Rancher Prime on K3s, no Harvester).
-# The smallest lab: one VM, fits a modest host (~10-16 GiB RAM).
+# Example rodeo-plan.yaml: Rancher lab (Rancher Prime on K3s, no Harvester)
+# plus three clusters Rancher provisions: single-node K3s, single-node RKE2 and
+# a 3-node RKE2 (etcd HA). Minimal sizing, for testing (~26 GiB RAM of guests).
 # Used by `rodeo up --profile rancher` and `rodeo init --profile rancher`.
 
 type: rancher
@@ -9,15 +10,25 @@ deployment_target: baremetal
 network:
   rancher_ip: 192.168.122.9
 
-# One VM running K3s + Rancher Prime + cert-manager.
+# Rancher VM (K3s + Rancher Prime + cert-manager) and the downstream nodes.
+# k3s-node: the single-node K3s cluster. rke2-node: the single-node RKE2
+# cluster and each of the 3 nodes of the RKE2 HA cluster.
 resources:
   rancher:
     memory_mib: 8192
     vcpu: 4
     disk_gb: 60
+  k3s-node:
+    memory_mib: 2048
+    vcpu: 2
+    disk_gb: 20
+  rke2-node:
+    memory_mib: 4096
+    vcpu: 2
+    disk_gb: 30
 
 # Credentials resolve from ~/.rodeo/secrets.yaml (rodeo init / up generate them).
-#   harvester_os_password  -> the rancher VM root password (OS console)
+#   harvester_os_password  -> root password of every VM (OS console)
 #   rancher_admin_password -> the Rancher dashboard admin password
 credentials:
   harvester_os_password: "??harvester_os_password"
@@ -26,5 +37,5 @@ credentials:
 storage:
   image_dir: /var/lib/libvirt/images
 
-# The full topology lives in definition.yaml in this directory (used because
-# --config-dir points here). Edit it for custom networks or resources.
+# The full topology (VMs and which cluster each one joins) lives in
+# definition.yaml in this directory (used because --config-dir points here).

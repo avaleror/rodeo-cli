@@ -246,20 +246,22 @@ def clean_cmd(
 
     # Delete disk images, OVMF var stores, seed ISOs and base images across every
     # profile (suse-virt / rancher / suse-edge). Patterns are scoped to rodeo node
-    # name prefixes (harvester/rancher/eib/edge) so we never touch a non-rodeo VM's
+    # name prefixes (harvester/rancher/eib/edge/k3s/rke2) so we never touch a non-rodeo VM's
     # disk that happens to share the pool. Includes the interrupted-transfer temp
     # files (.building from qemu-img convert, .downloading from curl) a failed run
     # leaves behind — otherwise a stale partial can poison the next deploy.
     patterns = [
         # VM disks + interrupted qemu-img convert temp files
         "harvester*-vda.qcow2", "rancher-vda.qcow2", "eib-vda.qcow2", "edge*-vda.qcow2",
-        "*-vda.qcow2.building",
+        "k3s*-vda.qcow2", "rke2*-vda.qcow2", "downstream-base.qcow2",
+        "*-vda.qcow2.building", "downstream-base.qcow2.building",
         # OVMF UEFI variable stores (real name is <node>-ovmf-vars.fd; keep the
         # legacy *_vars.bin so older labs still get cleaned)
         "harvester*-ovmf-vars.fd", "rancher-ovmf-vars.fd", "eib-ovmf-vars.fd",
         "edge*-ovmf-vars.fd", "harvester*_vars.bin",
         # config / cloud-init seed ISOs (harvester nodes + rancher/eib cloud-init)
         "harvester-config-*.iso", "rancher-cloud-init.iso", "eib-cloud-init.iso",
+        "k3s*-cloud-init.iso", "rke2*-cloud-init.iso",
         # base images + interrupted curl downloads
         "harvester-v*-amd64.iso", "Leap-*.qcow2", "Leap-*.qcow2.downloading",
         "SL-Micro*.iso", "SL-Micro*.raw",

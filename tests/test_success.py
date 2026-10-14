@@ -131,3 +131,19 @@ def test_baremetal_shows_dnat_url(capsys, monkeypatch):
     assert "Instruqt" not in out
     assert "hostimage checklist" not in out
     assert "start-if-needed" not in out
+
+
+def test_labinabox_cloud_lab_shows_its_nodes_not_native_logins(capsys, tmp_path):
+    import json
+
+    from rodeo.engine.labinabox_phase import NODES_RELPATH
+
+    nodes = tmp_path / NODES_RELPATH
+    nodes.parent.mkdir(parents=True)
+    nodes.write_text(json.dumps({"smlm": "13.50.0.9"}))
+    cfg = {"type": "lab-in-a-box", "plan_dir": str(tmp_path),
+           "vms": {"smlm": {"ip": "192.168.122.20"}, "rancher": {"ip": "192.168.122.9"}}}
+    out = _render(cfg, capsys)
+    assert "13.50.0.9" in out and "192.168.122.20" not in out
+    assert "Harvester" not in out and "Rancher Prime" not in out and "Log in" not in out
+    assert "rodeo ssh smlm" in out

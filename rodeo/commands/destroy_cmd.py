@@ -70,4 +70,8 @@ def destroy_cmd(cloud: bool, assume_yes: bool, config_dir: str | None) -> None:
         else:
             console.print(f"[red]✗[/red]  {r.id}  {r.error or 'failed'}")
             raise SystemExit(1)
+    from ..fleet.local_cleanup import forget_single_host
+
+    for line in forget_single_host(str(cfg.get("name") or "rodeo")):
+        console.print(f"  [dim]local:[/dim] {line}")
     console.print("[bold]Cloud host terminate requested.[/bold]")

@@ -1,4 +1,4 @@
-// Rodeo Builder logic.js — run with `node --test tests/builder/` (tests/test_builder.py does).
+// Rodeo Builder logic.js — run with `node --test tests/builder/logic.test.js` (tests/test_builder.py does).
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
@@ -129,12 +129,32 @@ test("files lay out the profile directory", () => {
     variants: ["first-ride"], story: { language: "en", id: "first-ride" }, labJson: null,
   };
   const out = Object.fromEntries(RB.files(rodeo).map((f) => [f.path, f]));
-  assert.deepEqual(Object.keys(out).sort(), ["README.md", "checks/check-welcome.sh", "rodeo-plan.yaml",
+  assert.deepEqual(Object.keys(out).sort(), ["README.md", "builder.yaml", "checks/check-welcome.sh", "rodeo-plan.yaml",
     "story/01-welcome.md", "story/chapters.yaml", "story/stories/first-ride.yaml"]);
+  assert.match(out["builder.yaml"].content, /^base: rancher$/m);
   assert.match(out["story/stories/first-ride.yaml"].content, /^- w\.task$/m);
   assert.match(out["story/chapters.yaml"].content, /file: 01-welcome\.md\n {4}mins: 10\n {4}needs: \[rancher\]\n {4}check: check-welcome\.sh/);
   assert.equal(out["checks/check-welcome.sh"].mode, 0o755);
-  assert.match(out["README.md"].content, /rodeo new demo --from rancher/);
+  assert.match(out["README.md"].content, /rodeo new demo --from-zip demo\.zip/);
+  const bare = RB.files({ ...rodeo, base: "", chapters: [], variants: [] }).map((f) => f.path);
+  assert.deepEqual(bare.sort(), ["README.md", "rodeo-plan.yaml"]);
+});
+
+test("missing_addon chapters are listed as work needed in the README", () => {
+  const rodeo = { name: "demo", title: "Demo", base: "", plan: "type: rancher\n", definition: "", variants: [],
+    story: { language: "en" }, labJson: null,
+    chapters: [{ id: "later", title: "Not yet possible", mins: 5, needs: [RB.MISSING_ADDON], check: false, body: "# x\n" },
+      { id: "now", title: "Possible", mins: 5, needs: ["rancher"], check: false, body: "# y\n" }] };
+  const readme = RB.files(rodeo).find((f) => f.path === "README.md").content;
+  assert.match(readme, /## Work needed[\s\S]*- Not yet possible \(`later`\)/);
+  assert.doesNotMatch(readme, /- Possible/);
+  assert.doesNotMatch(RB.files({ ...rodeo, chapters: [rodeo.chapters[1]] }).find((f) => f.path === "README.md").content, /Work needed/);
+});
+
+test("a chapter's own check script replaces the stub", () => {
+  const stub = RB.checkScript({ id: "a", title: "A" });
+  assert.match(stub, /no check written yet/);
+  assert.equal(RB.checkScript({ id: "a", title: "A", check_script: "#!/bin/sh\nexit 0\n" }), "#!/bin/sh\nexit 0\n");
 });
 
 test("labJsonAddons reads add-on names from a lab.json", () => {
@@ -156,4 +176,26 @@ test("zip writes a stored archive unzip can read", () => {
 test("slugify and uniqueId", () => {
   assert.equal(RB.slugify("  Café: Fleet & GitOps!"), "cafe-fleet-gitops");
   assert.equal(RB.uniqueId("intro", new Set(["intro", "intro-2"])), "intro-3");
+});
+
+test("warningsByChapter counts validate() output per chapter", () => {
+  const chapters = [
+    { id: "a", body: '<span lang="en">no id</span> <span lang="en">again</span>' },
+    { id: "b", body: '<span lang="en" id="x">ok</span>' },
+  ];
+  assert.deepEqual(RB.warningsByChapter(RB.validate(chapters)), { a: 2 });
+  assert.deepEqual(RB.warningsByChapter([]), {});
+});
+
+test("engineNeeds lists the engines the chapters' workshops run on", () => {
+  const groups = [
+    { id: "virt", title: "Virtualization workshop", engine: "suse-virt" },
+    { id: "smlm", title: "SMLM workshop", engine: "lab-in-a-box" },
+    { id: "custom", title: "My chapters" },
+  ];
+  const ch = (from) => ({ from });
+  assert.deepEqual(RB.engineNeeds([ch("virt/a"), ch("virt/b"), ch("custom/c")], groups),
+    [{ engine: "suse-virt", workshops: ["Virtualization workshop"] }]);
+  assert.deepEqual(RB.engineNeeds([ch("virt/a"), ch("smlm/b")], groups).map((n) => n.engine), ["lab-in-a-box", "suse-virt"]);
+  assert.deepEqual(RB.engineNeeds([ch("custom/c"), {}], groups), []);
 });

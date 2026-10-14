@@ -59,6 +59,8 @@ def _admin(args: argparse.Namespace) -> int:
             out = claims.settings(con)
         elif cmd == "release":
             out = {"lab": args.lab, "released": claims.release(con, args.lab)}
+        elif cmd == "remove":
+            out = {"removed": claims.remove_labs(con, args.labs, force=args.force)}
         elif cmd == "revoke":
             out = {"revoked": claims.revoke(con, args.email)}
         elif cmd == "reassign":
@@ -103,6 +105,9 @@ def main(argv: list[str] | None = None) -> int:
     inv = asub.add_parser("invite")
     inv.add_argument("--rotate", action="store_true")
     asub.add_parser("release").add_argument("lab")
+    rm = asub.add_parser("remove")
+    rm.add_argument("--force", action="store_true", help="also remove claimed labs")
+    rm.add_argument("labs", nargs="+")
     for name in ("revoke", "unlock"):
         asub.add_parser(name).add_argument("email")
     ra = asub.add_parser("reassign")

@@ -1,0 +1,41 @@
+# Example rodeo-plan.yaml: rancher-test lab (Rancher Prime on K3s, no Harvester)
+# plus two single-node clusters Rancher provisions: K3s and RKE2.
+# Minimal sizing, for testing (~14 GiB RAM of guests).
+# Used by `rodeo up --profile rancher-test` and `rodeo init --profile rancher-test`.
+
+type: rancher-test
+name: rancher-test
+deployment_target: baremetal
+
+network:
+  rancher_ip: 192.168.122.9
+
+# Rancher VM (K3s + Rancher Prime + cert-manager) and the downstream nodes.
+# k3s-node: the single-node K3s cluster. rke2-node: the single-node RKE2
+# cluster.
+resources:
+  rancher:
+    memory_mib: 8192
+    vcpu: 4
+    disk_gb: 60
+  k3s-node:
+    memory_mib: 2048
+    vcpu: 2
+    disk_gb: 20
+  rke2-node:
+    memory_mib: 4096
+    vcpu: 2
+    disk_gb: 30
+
+# Credentials resolve from ~/.rodeo/secrets.yaml (rodeo init / up generate them).
+#   harvester_os_password  -> root password of every VM (OS console)
+#   rancher_admin_password -> the Rancher dashboard admin password
+credentials:
+  harvester_os_password: "??harvester_os_password"
+  rancher_admin_password: "??rancher_admin_password"
+
+storage:
+  image_dir: /var/lib/libvirt/images
+
+# The full topology (VMs and which cluster each one joins) lives in
+# definition.yaml in this directory (used because --config-dir points here).

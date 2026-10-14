@@ -4,13 +4,21 @@
 Copies rodeo/builder/htdocs/ to the output directory and embeds, in its index.html,
 what the builder API (rodeo/builder/api.py) answers for every GET the page makes,
 computed from this checkout. An inline script replaces app.js's apiGet() with
-lookups over that data.
+lookups over that data and sets window.RB_STATIC, which hides the server-only
+controls (the live version is `rodeo builder`, rodeo/builder/server.py).
 
-Usage: build-builder-static.py [--output DIR] [--labinabox CHECKOUT]
+Usage: build-builder-static.py [--output DIR] (--labinabox CHECKOUT | --no-labinabox)
                                [--labinabox-version REF] [--lab-builder-url URL]
+                               [--source ID=CHECKOUT ...] [--no-fetch-sources]
 
---labinabox points at a lab-in-a-box checkout; its add-ons fill the add-on picker.
-Without it the picker accepts free text.
+--labinabox points at a lab-in-a-box checkout; its catalogue (add-ons,
+infrastructure, Kubernetes cluster types) fills the pickers. The build fails
+without it, or when the checkout cannot answer, unless --no-labinabox says the
+catalogue is intentionally absent.
+
+The chapter sources in rodeo/builder/chapter_sources.yaml are fetched (sparse,
+shallow git clones) unless --no-fetch-sources; --source uses a local checkout
+for one source instead.
 
 Exits non-zero when any API answer fails or no engine is found, so a page with
 missing data is never written.
@@ -23,6 +31,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -30,13 +39,14 @@ HTDOCS = REPO / "rodeo" / "builder" / "htdocs"
 sys.path.insert(0, str(REPO))
 
 from rodeo.builder.api import Api  # noqa: E402
-from rodeo.builder.discovery import LAB_BUILDER_URL  # noqa: E402
+from rodeo.builder.discovery import LAB_BUILDER_URL, fetch_sources  # noqa: E402
 
 STATIC_API = """
   <script id="static-api-data" type="application/json">%s</script>
   <script>
   (function () {
     const data = JSON.parse(document.getElementById("static-api-data").textContent);
+    window.RB_STATIC = true;
     window.apiGet = async function (action) {
       if (!Object.prototype.hasOwnProperty.call(data, action)) throw new Error(action + " needs the builder server");
       return JSON.parse(JSON.stringify(data[action]));
@@ -74,13 +84,31 @@ def main() -> None:
     parser.add_argument("--labinabox", type=Path, help="lab-in-a-box checkout for the add-on list")
     parser.add_argument("--labinabox-version", default="", help="lab-in-a-box ref the checkout is at")
     parser.add_argument("--lab-builder-url", default=LAB_BUILDER_URL, help="published lab-in-a-box lab-builder")
+    parser.add_argument("--source", action="append", default=[], metavar="ID=CHECKOUT",
+                        help="local checkout for one chapter source (repeatable)")
+    parser.add_argument("--no-fetch-sources", action="store_true",
+                        help="list only the chapter sources given with --source")
+    parser.add_argument("--no-labinabox", action="store_true",
+                        help="build without the lab-in-a-box catalogue (the page then shows it as missing)")
     args = parser.parse_args()
 
-    api = Api(args.labinabox, args.lab_builder_url, args.labinabox_version)
-    try:
-        data = api.static_data()
-    except RuntimeError as exc:
-        sys.exit("build-builder-static: {}".format(exc))
+    given = {}
+    for item in args.source:
+        sid, sep, path = item.partition("=")
+        if not sep or not path:
+            sys.exit("build-builder-static: --source wants ID=CHECKOUT, got {!r}".format(item))
+        given[sid] = Path(path)
+    with tempfile.TemporaryDirectory(prefix="rodeo-builder-sources-") as tmp:
+        sources = given
+        if not args.no_fetch_sources:
+            sources, errors = fetch_sources(Path(tmp), given)
+            for sid, err in errors.items():
+                sys.exit("build-builder-static: fetching chapter source {}: {}".format(sid, err))
+        api = Api(args.labinabox, args.lab_builder_url, args.labinabox_version, sources)
+        try:
+            data = api.static_data(require_labinabox=not args.no_labinabox)
+        except RuntimeError as exc:
+            sys.exit("build-builder-static: {}".format(exc))
     if not data["engines"]["engines"]:
         sys.exit("build-builder-static: no engines found")
     rodeo_version = version()
@@ -89,6 +117,8 @@ def main() -> None:
     print("built {}: {} engines, {} workshops, {} chapters, {} lab-in-a-box add-ons, version {}".format(
         args.output, len(data["engines"]["engines"]), len(data["workshops"]["workshops"]), chapters,
         len(data["labinabox"]["addons"]), rodeo_version), file=sys.stderr)
+    if data["labinabox"]["error"]:
+        print("warning: built without the lab-in-a-box catalogue: {}".format(data["labinabox"]["error"]), file=sys.stderr)
 
 
 if __name__ == "__main__":

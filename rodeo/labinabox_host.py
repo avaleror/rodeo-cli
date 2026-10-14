@@ -14,6 +14,7 @@ exception: it asks the image's server for its Last-Modified date.
 from __future__ import annotations
 
 import email.utils
+import hashlib
 import ipaddress
 import json
 import os
@@ -109,6 +110,22 @@ def local_override() -> Path | None:
     """A developer's local lab-in-a-box checkout, if RODEO_LABINABOX_PATH is set."""
     value = os.environ.get(LIAB_PATH_ENV)
     return Path(value).expanduser().resolve() if value else None
+
+
+def local_revision(checkout: Path) -> str:
+    """The state of a local lab-in-a-box checkout: its commit, plus a hash of its
+    uncommitted changes when there are any ("<sha>+<hash>"). "" when it is not a
+    git checkout."""
+    git = ["git", "-C", str(checkout)]
+    try:
+        head = subprocess.run(git + ["rev-parse", "HEAD"], capture_output=True, text=True, timeout=30)
+        if head.returncode != 0:
+            return ""
+        diff = subprocess.run(git + ["diff", "HEAD"], capture_output=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    rev = head.stdout.strip()
+    return rev + "+" + hashlib.sha256(diff.stdout).hexdigest()[:12] if diff.stdout else rev
 
 
 def fetch_commands(repo: str, ref: str, dest: Path) -> list[list[str]]:

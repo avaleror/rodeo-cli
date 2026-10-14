@@ -16,10 +16,14 @@ from typing import Iterator
 import yaml
 
 from ..config import ConfigError
+from ..inventory import harvester_vm_names
 from ..ssh import ssh_opts
 from ..state import is_phase_done, mark_phase_done, mark_phase_failed, reset_from
 
 logger = logging.getLogger(__name__)
+
+# VM flavors of Rancher-provisioned downstream cluster nodes (rancher profiles).
+DOWNSTREAM_FLAVORS = ("k3s-node", "rke2-node")
 
 
 # ---------- Networking helpers ----------
@@ -213,7 +217,8 @@ class DeployRunner:
             if idx < start_idx:
                 yield PhaseSkipped(phase, "before_start")
                 continue
-            if not self.force and is_phase_done(phase, self._plan_name):
+            key = profile.phase_key(phase, self.cfg)
+            if not self.force and is_phase_done(phase, self._plan_name, key):
                 yield PhaseSkipped(phase, "done")
                 continue
             if guard_active and phase in profile.guarded_phases:
@@ -243,7 +248,7 @@ class DeployRunner:
 
             if ok:
                 if phase not in getattr(profile, "no_cache_phases", frozenset()):
-                    mark_phase_done(phase, self._plan_name)
+                    mark_phase_done(phase, self._plan_name, key)
                 yield PhaseDone(phase, elapsed)
             else:
                 mark_phase_failed(phase, f"{phase} exited {self._last_rc}", self._plan_name)
@@ -466,6 +471,14 @@ class DeployRunner:
         self._last_rc = 0 if ok else 1
         if phase.error:
             yield LogLine(f"  ✗  elemental: {phase.error}")
+
+    def stream_downstream(self) -> Iterator[DeployEvent]:
+        from .rancher import RancherPhase
+        phase = RancherPhase(self.cfg, stop=self.stop)
+        ok = yield from phase.stream_downstream_clusters()
+        self._last_rc = 0 if ok else 1
+        if phase.error:
+            yield LogLine(f"  ✗  downstream: {phase.error}")
 
     def stream_apply(self) -> Iterator[DeployEvent]:
         """Apply custom YAML manifests to VMs via SSH + kubectl apply.
@@ -810,7 +823,7 @@ class DeployRunner:
         if harvester_node_names is not None:
             needs_harvester = any(n in vms for n in harvester_node_names)
         else:
-            needs_harvester = any(n not in ("rancher", "eib") and not n.startswith("edge") for n in vms)
+            needs_harvester = bool(harvester_vm_names(self.cfg))
         needs_rancher_vm = "rancher" in vms or "eib" in vms
 
         harvester_os_password = creds.get("harvester_os_password", "")
@@ -910,6 +923,15 @@ class DeployRunner:
         }
         if harvester_token:
             vars_data["harvester_token"] = harvester_token
+        # Downstream cluster node flavors exist only in profiles that size them,
+        # so every other profile's vars file stays byte-identical.
+        for flavor in DOWNSTREAM_FLAVORS:
+            if flavor in resources:
+                vars_data["libvirt_flavors"][flavor] = {
+                    "memory_mib": resources[flavor].get("memory_mib", 4096),
+                    "vcpu":       resources[flavor].get("vcpu", 2),
+                    "disk_gb":    resources[flavor].get("disk_gb", 30),
+                }
 
         # Profile-specific role vars (e.g. suse-telco's bmc role). A type with
         # no registered profile simply adds none.

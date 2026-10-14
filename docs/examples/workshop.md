@@ -37,28 +37,28 @@ rodeo fleet access -f workshop.yaml
 ### AWS host-acquire (F4a MVP)
 
 ```yaml
-# workshop.yaml — hosts: [] until provision fills them
+# workshop.yaml: hosts: [] until provision fills them
 name: demo
 lab:
   dir: /root/lab
   profile: harvester
 defaults:
-  ssh_user: ec2-user              # openSUSE Leap Marketplace
+  ssh_user: ec2-user              # SLES 16 PAYG default AMI
 provider:
   type: aws
   count: 2
   region: eu-central-1
-  instance_type: i7i.8xlarge      # preferred: local NVMe; metal also OK
-  # ami omitted → Leap 16.0 (x86_64)* from aws-marketplace (e.g. v20260629)
+  instance_type: m8id.8xlarge     # catalog 'recommended' for harvester
+  # ttl_hours: 10                 # dead-man switch, default 6
+  # ami omitted → newest SLES 16 PAYG
   subnet_id: subnet-…
-  security_group_ids: [sg-…]
+  # security_group_ids: [sg-…]    # omit → rodeo manages one scoped to your IP
 hosts: []
 ```
 
 ```bash
-pip install -e '.[aws]'   # in your rodeo-cli checkout; see ../install.md
-# Creds: ~/.aws/credentials  OR  AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY
-# Subscribe once: AWS Marketplace → openSUSE Leap
+# rodeo installed on your laptop with install.sh (see ../install.md)
+# Creds: aws login, ~/.aws/credentials, or AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY
 # SSH key: auto ~/.rodeo/ssh/id_ed25519 → EC2 key pair "rodeo"
 rodeo fleet provision -f workshop.yaml
 rodeo fleet deploy -f workshop.yaml     # installs rodeo on each host, starts the lab
@@ -72,7 +72,7 @@ See [Fleet F4](../fleet.md#f4-host-acquire).
 
 ### Single-host AWS (`rodeo up --target aws`)
 
-Same `provider:` shape in `rodeo-plan.yaml`:
+The `provider:` block is optional here: with none, rodeo picks `eu-north-1` (or `$RODEO_AWS_REGION`), the default VPC subnet and the recommended instance. To set it yourself, it has the same shape:
 
 ```yaml
 deployment_target: aws
@@ -81,7 +81,8 @@ provider:
   region: eu-central-1
   instance_tier: recommended   # harvester → m8id.8xlarge (see instance_catalog)
   # instance_type: m8id.8xlarge  # or pin explicitly
-  # Leap 16 by default; pin with ami: ami-… for SLES 16 if needed
+  # SLES 16 PAYG by default; pin with ami: ami-… if needed
+  # ttl_hours: 6                 # dead-man switch, default 6
   subnet_id: subnet-…
   # security_group_ids: [sg-…]   # omit → rodeo manages one scoped to your IP
   ssh_user: ec2-user
@@ -89,7 +90,6 @@ provider:
 ```
 
 ```bash
-pip install -e '.[aws]'   # in your rodeo-cli checkout; see ../install.md
 rodeo up --yes --profile harvester --target aws --instance-tier recommended
 rodeo ssh primary
 rodeo ssh primary/rancher
@@ -98,5 +98,5 @@ rodeo destroy --cloud --yes
 ```
 
 AWS is `--target aws` on the base topology (no separate `*-aws` profile). In Fleet
-`workshop.yaml`, never set `lab.target: aws` — use `lab.target: baremetal` on
+`workshop.yaml`, never set `lab.target: aws`: use `lab.target: baremetal` on
 provisioned hosts.

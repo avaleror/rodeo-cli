@@ -33,7 +33,8 @@ CORE_PY_MODULES = ("libvirt", "lxml")
 # Beginner-facing profiles, smallest first, with the RAM each realistically needs.
 # `up`/`doctor` recommend the largest profile whose need fits available RAM.
 PROFILE_SIZING = [
-    {"name": "rancher", "ram_gib": 10, "label": "Rancher Prime on K3s (1 VM, no Harvester)"},
+    {"name": "rancher-test", "ram_gib": 18, "label": "Rancher Prime + single-node K3s and RKE2 clusters"},
+    {"name": "rancher", "ram_gib": 30, "label": "Rancher Prime + K3s, RKE2 and 3-node RKE2 clusters"},
     {"name": "test", "ram_gib": 36, "label": "2-node Harvester (no Rancher)"},
     {"name": "harvester-ha", "ram_gib": 52, "label": "3-node Harvester, no Rancher (etcd HA)"},
     {"name": "harvester", "ram_gib": 72, "label": "3-node Harvester + Rancher Prime"},
@@ -57,6 +58,29 @@ def _read_meminfo() -> tuple[int, int]:
 def _read_avail_mib() -> int:
     """Available RAM in MiB (kept for the plan-sized RAM check)."""
     return _read_meminfo()[1]
+
+
+def _lab_running_mib(cfg: dict) -> int:
+    """RAM (MiB) held by this lab's own VMs that already run on this host.
+
+    MemAvailable already excludes it, so a rerun that recreates nothing for
+    them must not count it as used. A VM counts when its domain is stamped
+    with this plan (rodeo's own VMs) or, for lab-in-a-box, carries the lab's
+    FQDN domain name. 0 when libvirt can't be asked.
+    """
+    names = list(cfg.get("vms") or {})
+    if not names:
+        return 0
+    from .engine.libvirt import LibvirtDriver, domain_name
+
+    domains = [domain_name(cfg, n) for n in names]
+    try:
+        with LibvirtDriver(cfg.get("libvirt", {}).get("uri", "qemu:///system")) as lv:
+            ours = set(domains) if cfg.get("type") == "lab-in-a-box" else set(lv.domains_owned_by(cfg.get("name", "")))
+            return sum(vm.memory_mib or 0 for vm in lv.list_vms(domains)
+                       if vm.state == "running" and vm.name in ours)
+    except Exception:  # noqa: BLE001 - no libvirt or no connection: nothing to credit
+        return 0
 
 
 def _nested_enabled() -> bool:
@@ -238,7 +262,9 @@ def _resource_needs(cfg: dict) -> tuple[int, int]:
 
     if vms:
         need_mib = need_gb = 0
-        flavor_map: dict[str, str] | None = None
+        from .inventory import vm_flavor_map
+
+        flavors = vm_flavor_map(cfg)
         for name in vms:
             if name.startswith("harvester"):
                 r = res.get("harvester", {})
@@ -249,17 +275,7 @@ def _resource_needs(cfg: dict) -> tuple[int, int]:
             elif name.startswith("edge"):
                 r = res.get("edge-node", {})
             else:
-                flavor = vms[name].get("flavor", "")
-                if not flavor:
-                    # cfg["vms"] carries no flavor (e.g. suse-telco's mgmt and
-                    # site-* VMs): take it from the definition, as
-                    # host_context._planned_disk_gb does.
-                    if flavor_map is None:
-                        from .inventory import vm_flavor_map
-
-                        flavor_map = vm_flavor_map(cfg)
-                    flavor = flavor_map.get(name, "")
-                r = res.get(flavor, {})
+                r = res.get(flavors.get(name) or vms[name].get("flavor", ""), {})
             need_mib += r.get("memory_mib", 0)
             need_gb  += r.get("disk_gb", 0)
         if need_mib > 0 or need_gb > 0:
@@ -326,8 +342,10 @@ def run_preflight(cfg: dict, root: Path, phases_to_run: list[str] | None = None)
         need_mib, need_gb = _resource_needs(cfg)
         avail_mib = _read_avail_mib()
         if avail_mib > 0:
-            checks.append(("RAM", avail_mib >= need_mib,
-                           f"need {need_mib // 1024} GiB, have {avail_mib // 1024} GiB available", False))
+            held_mib = _lab_running_mib(cfg)
+            held = f" (+{held_mib // 1024} GiB held by this lab's running VMs)" if held_mib else ""
+            checks.append(("RAM", avail_mib + held_mib >= need_mib,
+                           f"need {need_mib // 1024} GiB, have {avail_mib // 1024} GiB available{held}", False))
         else:
             checks.append(("RAM", True, "could not read /proc/meminfo", False))
 
@@ -350,6 +368,21 @@ def run_preflight(cfg: dict, root: Path, phases_to_run: list[str] | None = None)
         over = vcpu_overcommit_detail(cfg, os.cpu_count() or 0)
         if over:
             checks.append(("guest vCPU budget", False, over, True))
+
+    from .awscli import check_credentials, ensure_on_path, labinabox_aws
+
+    aws_spec = labinabox_aws(cfg)
+    if aws_spec is not None:
+        checks.append(("aws CLI", ensure_on_path() is not None,
+                       "aws CLI not installed — run: sudo rodeo install-deps --aws", False))
+        aws_ok, aws_detail = check_credentials(cfg)
+        checks.append(("AWS credentials", aws_ok, aws_detail, False))
+        # lab-in-a-box adds its SSH rule only to a group it is given; the VPC's
+        # default group admits nothing from outside AWS.
+        checks.append(("AWS security group", bool((aws_spec.get("settings") or {}).get("AWS_SECURITY_GROUP_ID")),
+                       "set lab_in_a_box.cloud.settings.AWS_SECURITY_GROUP_ID to a security group in the "
+                       "lab's VPC (an empty one will do): without it the VMs land in the VPC's default "
+                       "group and rodeo cannot reach them", False))
 
     for tool in CORE_TOOLS:
         checks.append((tool, shutil.which(tool) is not None, f"{tool} not found in PATH", False))

@@ -91,6 +91,23 @@ def test_done_phases_skipped_unless_forced(fake_profile, fake_cfg, tmp_path):
     assert fake_profile.ran == ["alpha", "beta", "gamma"]
 
 
+def test_done_phase_reruns_when_its_key_changes(fake_profile, fake_cfg, tmp_path, monkeypatch):
+    keys = {"alpha": "v1"}
+    monkeypatch.setattr(fake_profile, "phase_key", lambda phase, cfg: keys.get(phase), raising=False)
+    _events(DeployRunner(fake_cfg, tmp_path))
+    assert state.load_state("test-plan")["phases"]["alpha"]["key"] == "v1"
+    assert "key" not in state.load_state("test-plan")["phases"]["beta"]
+
+    fake_profile.ran.clear()
+    _events(DeployRunner(fake_cfg, tmp_path))
+    assert fake_profile.ran == []
+
+    keys["alpha"] = "v2"
+    _events(DeployRunner(fake_cfg, tmp_path))
+    assert fake_profile.ran == ["alpha"]
+    assert state.load_state("test-plan")["phases"]["alpha"]["key"] == "v2"
+
+
 def test_from_phase_resets_and_skips_earlier(fake_profile, fake_cfg, tmp_path):
     for p in fake_profile.phases:
         state.mark_phase_done(p, "test-plan")

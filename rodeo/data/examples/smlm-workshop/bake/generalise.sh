@@ -8,7 +8,7 @@
 # smlm_image_admin_pass). Powers the VM off at the end; then run
 # export-image.sh on the host.
 #
-# Refuses to finish while SCC credentials are still registered with mgr-sync:
+# Refuses to finish while SCC credentials are still registered in SMLM:
 # remove them with `mgrctl exec -ti -- mgr-sync delete credentials` and re-run.
 set -euo pipefail
 
@@ -28,15 +28,23 @@ while (( quiet < quiet_needed )); do
     if (( quiet < quiet_needed )); then sleep "${poll}"; fi
 done
 
-failed=$(mgrctl exec -- sh -c 'grep -L "Sync completed" /var/log/rhn/reposync/*.log 2>/dev/null' || true)
+# Shell code inside the container goes over stdin: mgrctl exec loses the quoting of `sh -c '...'`.
+failed=$(echo 'grep -L "Sync completed" /var/log/rhn/reposync/*.log' | mgrctl exec -i -- bash -s 2>/dev/null || true)
 if [[ -n "${failed}" ]]; then
     echo "ERROR: channels without a completed sync:" >&2
     echo "${failed}" >&2
     exit 1
 fi
 
-if mgrctl exec -- mgr-sync list credentials 2>/dev/null | grep -qiE '^[[:space:]]*[0-9]+[).]'; then
-    echo "ERROR: SCC credentials are still registered in SMLM." >&2
+# Counted in SMLM's database: mgr-sync would need the admin login to list them.
+scc=$(echo "select count(*) from suseCredentials where type = 'scc';" \
+      | mgrctl exec -i -- spacewalk-sql --select-mode - 2>/dev/null | sed -n 3p | tr -d '[:space:]') || scc=""
+if [[ ! "${scc}" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: could not count the SCC credentials in SMLM's database." >&2
+    exit 1
+fi
+if (( scc > 0 )); then
+    echo "ERROR: ${scc} SCC credential(s) still registered in SMLM." >&2
     echo "       Remove them: mgrctl exec -ti -- mgr-sync delete credentials" >&2
     exit 1
 fi
@@ -45,7 +53,7 @@ echo "# Scrubbing credentials and host identity"
 rm -f /etc/systemd/system/*channel-sync-monitor* /etc/systemd/system/*bootstrap-repo-monitor*
 systemctl daemon-reload
 podman logout --all >/dev/null 2>&1 || true
-mgrctl exec -- sh -c 'rm -rf /root/.spacecmd /root/.bash_history' || true
+echo 'rm -rf /root/.spacecmd /root/.mgr-sync /root/.bash_history /root/spacewalk-answers' | mgrctl exec -i -- bash -s || true
 rm -rf /root/.spacecmd /root/.bash_history
 SUSEConnect --cleanup >/dev/null 2>&1 || true
 # cloud-init runs again on the next boot, so every deploy's own network,
@@ -55,5 +63,5 @@ rm -f /etc/ssh/ssh_host_*
 truncate -s 0 /etc/machine-id
 sync
 
-echo "# Done — powering off. Next: export-image.sh on the host."
+echo "# Done — powering off. Next: export-image.sh on the host (export-ami.sh for AWS)."
 systemctl poweroff

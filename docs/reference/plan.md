@@ -4,7 +4,7 @@
 
 It does **not** describe topology (nodes, network, services). That lives in [`definition.yaml`](definition.md).
 
-Both files together form a **profile** — the complete description of a lab that `rodeo up`, `plan`, and `deploy` consume.
+Both files together form a **profile**: the complete description of a lab that `rodeo up`, `plan`, and `deploy` consume.
 
 ---
 
@@ -24,7 +24,7 @@ name: my-lab
 # and (for aws) whether the laptop provisions an EC2 host then remote-deploys.
 # baremetal: full deploy including VM autostart on host reboot
 # instruqt:  skips finalise until you run `rodeo deploy --from finalise --finalise`
-# aws:       laptop control plane — provision EC2, then remote `rodeo up --target baremetal`
+# aws:       laptop control plane: provision EC2, then remote `rodeo up --target baremetal`
 deployment_target: baremetal
 
 # Virtual machine resource allocation.
@@ -33,14 +33,14 @@ resources:
   harvester:
     memory_mib: 16384   # RAM per Harvester node in MiB (16 GiB)
     vcpu: 8             # vCPUs per Harvester node
-    disk_gb: 320        # disk per Harvester node — do not go below ~250 (see note)
+    disk_gb: 320        # disk per Harvester node: do not go below ~250 (see note)
 
   rancher:
     memory_mib: 8192    # RAM for the Rancher VM in MiB (8 GiB)
     vcpu: 4             # vCPUs for Rancher
     disk_gb: 60         # disk for the Rancher VM
 
-# Credentials. Values starting with ?? are resolved at deploy time — never hardcoded here.
+# Credentials. Values starting with ?? are resolved at deploy time: never hardcoded here.
 #
 # ?? resolution sources (in order of preference):
 #   ??key            → ~/.rodeo/secrets.yaml key named "key"
@@ -69,10 +69,10 @@ storage:
 
 # Software versions. Pin these to reproduce a specific lab.
 versions:
-  harvester: "1.8.1"          # Harvester ISO version to download and install
-  rancher: "2.14.1"           # Rancher Prime Helm chart version
-  k3s: "v1.35.3+k3s1"        # K3s version for the Rancher VM
-  cert_manager: "v1.16.2"     # cert-manager Helm chart version (Rancher dependency)
+  harvester: "1.8.2"          # Harvester ISO version to download and install
+  rancher: "2.14.5"           # Rancher Prime Helm chart version
+  k3s: "v1.35.3+k3s1"         # K3s version for the Rancher VM
+  cert_manager: "v1.20.1"     # cert-manager Helm chart version (Rancher dependency)
 
 # Jinja2 templating: define variables used in this file.
 # Values can be overridden with -P or --paramfile at deploy time.
@@ -93,9 +93,10 @@ parameters:
 
 | Value | Pipeline | Phases |
 |-------|----------|--------|
-| `suse-virt` | Harvester HCI (with or without Rancher) | `kvm_host` → `vms` → `pxe_server` → `cluster` → `rancher` → `finalise` |
-| `rancher` | Rancher Prime on K3s | `kvm_host` → `vms` → `boot` → `rancher` → `finalise` |
-| `suse-edge` | SUSE Edge 3.6 (Rancher + Elemental + EIB + edge nodes) | in development on `feature/suse-edge` |
+| `suse-virt` | Harvester HCI (with or without Rancher) | `kvm_host` → `vms` → `pxe_server` → `cluster` → `rancher` → `apply` → `finalise` → `custom_scripts` |
+| `rancher`, `rancher-test` | Rancher Prime on K3s + the K3s/RKE2 clusters it provisions | `kvm_host` → `vms` → `boot` → `rancher` → `downstream` → `apply` → `finalise` → `custom_scripts` |
+| `suse-edge` | SUSE Edge 3.7 (Rancher + Elemental + EIB + edge nodes) | `kvm_host` → `vms` → `boot` → `rancher` → `elemental` → `apply` → `finalise` → `custom_scripts` |
+| `lab-in-a-box` | External plugin: the lab-in-a-box engine builds the lab | its own phases (see the plugin's docs) |
 
 **Required.** No default.
 
@@ -103,7 +104,7 @@ parameters:
 
 String. Used as the prefix for all libvirt objects (`<name>-harvester1`, etc.), the state file name (`~/.rodeo/state/<name>.yaml`), and log labels.
 
-Must be unique per host. Changing `name` after deploy creates orphaned resources — run `rodeo clean` first.
+Must be unique per host. Changing `name` after deploy creates orphaned resources, run `rodeo clean` first.
 
 ### `deployment_target`
 
@@ -115,7 +116,7 @@ Must be unique per host. Changing `name` after deploy creates orphaned resources
 
 **Required.** Defaults to `baremetal` when omitted. Plugins can add targets via
 `host_context.register_host_context()` (see the architecture doc's extension
-points) — a registered target is accepted here, by `--target`, and by the
+points): a registered target is accepted here, by `--target`, and by the
 `rodeo up` prompt.
 
 On **instruqt**, `rodeo up` / lab seeding also applies host-aware `resources` presets so
@@ -125,12 +126,12 @@ Existing plans are not rewritten on re-deploy; only seeded plans get the presets
 
 On **aws**, `apply_host_context()` (seed + deploy) raises `resources.harvester.disk_gb`
 to a flat **500 GB per Harvester node** and `resources.rancher.disk_gb` to **60 GB**
-(never scaled by node count — the rest of the NVMe device is deliberately left free,
+(never scaled by node count: the rest of the NVMe device is deliberately left free,
 matching real-world/Instruqt sizing). Also sets `storage.backend: nvme` and mounts the
 largest non-root NVMe on `image_dir`. Nested virt is enabled by default on non-metal
 types.
 
-**Option A — one topology profile, AWS is where.** Use the base profile and
+**Option A: one topology profile, AWS is where.** Use the base profile and
 `--target aws` (there is no separate `*-aws` plan template):
 
 ```bash
@@ -139,34 +140,64 @@ rodeo up --yes --profile harvester --target aws --instance-tier recommended
 
 Instance size comes from `rodeo/providers/instance_catalog.py` keyed by that
 **same** profile name. **recommended** for `harvester` and `harvester-2n` is
-**`m8id.8xlarge`** (32 vCPU / 128 GiB / a single ~1.9 TiB NVMe device — unlike
+**`m8id.8xlarge`** (32 vCPU / 128 GiB / a single ~1.9 TiB NVMe device, unlike
 `i7i.8xlarge`, which splits its NVMe across two devices and rodeo only mounts
 one). `suse-edge` recommended is **`m8id.4xlarge`**. Explicit
 `provider.instance_type` still wins.
 
 Keep `deployment_target: aws` in the plan on the instance (host-context +
 `destroy --cloud` marker). On the EC2 box itself, phases run as **baremetal**.
-Never set `lab.target: aws` in Fleet `workshop.yaml` — use `lab.target: baremetal`
+Never set `lab.target: aws` in Fleet `workshop.yaml`, use `lab.target: baremetal`
 there (see [Fleet](../fleet.md)).
 
 
 ### `provider` (when `deployment_target: aws`)
 
 Same shape as Fleet [`workshop.yaml` provider](../fleet.md#workshopyaml-provider-schema).
-Required fields for AWS: `type`, `region`, `subnet_id`, and either
-**`instance_type`** or **`instance_tier`**.
+AWS needs `type`, `region`, `subnet_id`, and either **`instance_type`** or
+**`instance_tier`**.
+
+**The block is optional for `rodeo up --target aws`.** Any profile deploys with
+`rodeo up --profile <name> --target aws` and no `provider:` at all. Whatever is
+missing is filled in and written back to `rodeo-plan.yaml`, so re-runs and
+`rodeo destroy --cloud` use the same values:
+
+| Field | Default |
+|-------|---------|
+| `type` | `aws` |
+| `region` | `$RODEO_AWS_REGION`, else `eu-north-1` (not the AWS CLI's configured region: an account guardrail can leave that one without internet egress) |
+| `subnet_id` | the region's default VPC, first public default-for-AZ subnet in an AZ that offers the instance type |
+| `instance_type` | the profile's `recommended` tier (see below) |
+| `ttl_hours` | `6`: the dead-man switch (see below) |
+
+A region with no default VPC fails with a message naming the fields to set.
+
+**Every cloud host has a dead-man switch.** Each instance rodeo creates
+(single host, fleet hosts, portal VM) expires `provider.ttl_hours` after launch,
+**6 hours** by default. At that time a systemd timer in the guest powers it off,
+and because the instance is created with `InstanceInitiatedShutdownBehavior:
+terminate`, AWS terminates it rather than leaving a stopped instance that still
+bills for its disks. The timer runs at an absolute UTC time with
+`Persistent=true`, so a host stopped past its expiry powers off again as soon as
+it boots. The expiry is on the instance tag `rodeo-expires-at`, in
+`/etc/rodeo-expires-at` on the host, and in the output of `rodeo up --target aws`
+and `rodeo fleet provision`.
+
+The switch cannot be turned off. For a longer workshop set `provider.ttl_hours`
+(more than 0, at most 168) **before** the hosts are created; re-running `up` or
+`fleet provision` on an existing host keeps its original expiry.
 
 **Security group is auto-managed unless you pin one.** Omit
 `security_group_ids` and rodeo creates (or reuses) an SG named `rodeo-<name>`
-in the subnet's VPC, opens exactly the ports the host needs — SSH (22),
-Harvester UI (8443), Rancher NodePort (30002) — and scopes all three to
+in the subnet's VPC, opens exactly the ports the host needs, SSH (22),
+Harvester UI (8443), Rancher NodePort (30002): and scopes all three to
 *this machine's current public IP*, detected automatically. Re-running from
 a different IP (new wifi, VPN toggled) updates the rule in place rather than
 piling up stale ones. `rodeo destroy --cloud --yes` deletes it once nothing
 else tagged for the workshop is still running (best-effort: if the instance
-hasn't finished detaching yet, re-run destroy — it's never left as a hard
+hasn't finished detaching yet, re-run destroy: it's never left as a hard
 failure). Set `security_group_ids` explicitly to opt back into a hand-managed
-SG — useful for a shared multi-attendee IP range, a bastion topology, or an
+SG: useful for a shared multi-attendee IP range, a bastion topology, or an
 SG your org's security policy already owns.
 
 **Instance size (single-host v1):** pick one of three tiers for the lab profile, or set
@@ -181,7 +212,7 @@ with `--yes` it uses **recommended**.
 
 Before create, rodeo checks the type is **offered in the region** and probes capacity
 via `RunInstances` DryRun. If the region has no capacity, it fails with a message to
-try another region or tier — it does not silently downsize.
+try another region or tier: it does not silently downsize.
 
 ```yaml
 deployment_target: aws
@@ -191,7 +222,8 @@ provider:
   # Either:
   instance_tier: recommended          # budget | recommended | performance
   # Or pin explicitly:
-  # instance_type: i7i.8xlarge
+  # instance_type: m8id.8xlarge
+  # ttl_hours: 6                      # dead-man switch, default 6, at most 168
   # ami omitted → newest suse-sles-16-0-v<date>-hvm-ssd-x86_64 (SLES 16 PAYG)
   # ami: ami-…                        # optional pin
   # ami_name_filter: "suse-sles-16-0-v????????-hvm-ssd-x86_64"
@@ -210,7 +242,7 @@ rodeo up --yes --profile harvester --target aws --instance-tier recommended
 ```
 
 **Which rodeo-cli the host runs (`--ref` / `provider.ref`).** The instance
-bootstraps itself with `install.sh` from GitHub — your local working tree
+bootstraps itself with `install.sh` from GitHub, your local working tree
 never reaches it. By default the bootstrap runs **only when `rodeo` is
 absent**, so a host stays on the code it was first installed with, the same
 way `clean --refresh` refuses to move a pinned host's version unasked.
@@ -227,7 +259,7 @@ A ref makes the bootstrap run **every time** and hard-resets the host's
 checkout to it (`install.sh --ref`), which is the only way a just-pushed
 commit reaches an existing host. The installer itself is fetched from the same
 ref, so `install.sh` and the code it installs cannot disagree. An explicit
-`provider.install_url` is used verbatim — for a fork or an air-gapped mirror —
+`provider.install_url` is used verbatim: for a fork or an air-gapped mirror,
 and the ref is still passed to it. `--ref` beats `provider.ref`; an invalid
 ref is rejected **before** any instance is launched, so a typo costs nothing.
 `--ref` applies only when the laptop is the AWS control plane; anywhere else
@@ -241,12 +273,14 @@ runs:
 | `RODEO_REPO` | git URL `install.sh` clones and updates from; passed on to remote bootstraps. A GitHub URL also points the default install URL at that repository's `install.sh` |
 | `RODEO_INSTALL_URL_TEMPLATE` | install.sh URL with a `{ref}` placeholder, for non-GitHub mirrors |
 
-A configured `install_url` still wins over both. Fleet has the same mechanism —
+A configured `install_url` still wins over both. Fleet has the same mechanism,
 [`fleet deploy --ref` / `lab.ref`](../fleet.md#which-rodeo-cli-the-hosts-run).
 
-**AWS API credentials** (boto3 — never in the plan): `~/.aws/credentials` /
+**AWS API credentials** (boto3: never in the plan): `~/.aws/credentials` /
 `AWS_PROFILE`, **or** `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY`
-(+ optional `AWS_SESSION_TOKEN`). AWS CLI is optional.
+(+ optional `AWS_SESSION_TOKEN`). AWS CLI is optional. `rodeo up` checks them
+(`sts get-caller-identity`) before it provisions anything and stops when they are
+missing or expired.
 
 **AMI choice matters more than it looks.** The default is SLES 16
 **pay-as-you-go** (published by SUSE via Amazon), and it is not
@@ -287,7 +321,7 @@ All credential values must use `??` placeholders. Plain text passwords in plan f
 | `harvester_os_password` | OS login on Harvester nodes (`rancher` user SSH + console) |
 | `harvester_admin_password` | `admin` user in the Harvester web UI |
 | `rancher_admin_password` | `admin` user in the Rancher web UI |
-| `harvester_token` | RKE2 cluster join token — internal; do not share with attendees |
+| `harvester_token` | RKE2 cluster join token: internal; do not share with attendees |
 
 `rodeo up` and `rodeo init` generate random values and write them to `~/.rodeo/secrets.yaml` (chmod 600). Never commit that file.
 
@@ -322,12 +356,21 @@ rodeo deploy -P libvirt.disk_cache=writeback -P libvirt.disk_io=threads
 
 ### `versions`
 
-| Field | Default | Notes |
-|-------|---------|-------|
-| `harvester` | `"1.8.1"` | ISO version string. rodeo downloads the matching ISO from the Harvester release page. |
-| `rancher` | `"2.14.1"` | Rancher Prime Helm chart version. |
-| `k3s` | `"v1.35.3+k3s1"` | K3s version installed on the Rancher VM (`suse-virt` / `rancher`). SUSE Edge defaults to `v1.35.5+k3s1`. |
-| `cert_manager` | `"v1.16.2"` | cert-manager Helm chart (Rancher dependency). |
+Defaults depend on the engine type:
+
+| Field | `suse-virt` | `rancher` / `rancher-test` | `suse-edge` | Notes |
+|-------|-------------|----------------------------|-------------|-------|
+| `harvester` | `"1.8.2"` | | | Harvester ISO; rodeo refuses a version without a pinned sha512 (set `versions.harvester_iso_checksum: sha512:<digest>`). |
+| `rancher` | `"2.14.5"` | `"2.15.2"` | `"2.15.1"` | Rancher Prime Helm chart. |
+| `k3s` | `"v1.35.3+k3s1"` | `"v1.36.4+k3s1"` | `"v1.36.3+k3s1"` | K3s on the Rancher VM. |
+| `cert_manager` | `"v1.20.1"` | `"v1.21.2"` | `"v1.20.1"` | cert-manager Helm chart. |
+| `downstream_k3s` | | `"v1.36.4+k3s1"` | | Kubernetes version of the K3s clusters Rancher provisions. |
+| `downstream_rke2` | | `"v1.36.4+rke2r1"` | | Kubernetes version of the RKE2 clusters Rancher provisions. |
+| `elemental_operator`, `elemental_operator_crds` | | | `"1.9.2"` | Elemental Operator charts. |
+| `elemental_ui_extension` | | | `"3.0.3"` | Elemental UI extension in Rancher. |
+| `eib` | | | `"1.3.4"` | Edge Image Builder container. |
+
+`downstream_k3s` / `downstream_rke2` must be a version the Rancher release supports (Rancher 2.15.2: up to v1.36).
 
 ### `parameters`
 
@@ -354,7 +397,7 @@ rodeo deploy --paramfile big-lab.yaml
 
 ---
 
-## story — workshop narrative, languages, and variants
+## story: workshop narrative, languages, and variants
 
 `rodeo story render` produces the participant hand-out for this lab from
 rmstory-tagged markdown in the lab's `story/` directory:
@@ -372,11 +415,11 @@ story:
   language: es          # target language (default en = source, no translation)
   id: villain-arc       # story variant to assemble (default: all spans)
   engine: gemini        # rmstory engine to machine-fill missing translations
-  engine_env:           # engine credentials — ?? secrets are resolved
+  engine_env:           # engine credentials: ?? secrets are resolved
     GEMINI_API_KEY: "??gemini_api_key"
 ```
 
-Deployment facts are substituted into the rendered text as Jinja expressions —
+Deployment facts are substituted into the rendered text as Jinja expressions,
 write them inside invariant spans so translation never touches them:
 `<span no>{{ rancher_url }}</span>`. Available facts: `name`, `type`,
 `language`, `vip`, `harvester_url`, `rancher_ip`, `rancher_url`,
@@ -384,16 +427,16 @@ write them inside invariant spans so translation never touches them:
 
 Rendering in the source language with no variant needs nothing installed;
 translation and variant assembly use the `rmstory` system package
-(`sudo rodeo install-deps --story` — distro packages, never PyPI).
+(`sudo rodeo install-deps --story`: distro packages, never PyPI).
 
 The post-deploy success screen uses the same machinery: each profile ships a
 tagged `success.md`, a lab can override it with `story/success.md`, and
 `story.language` localizes it. Translation problems always degrade to the
-English source — the payoff screen never fails.
+English source: the payoff screen never fails.
 
 ---
 
-## lab_in_a_box — deploying with, or exporting to, lab-in-a-box
+## lab_in_a_box: deploying with, or exporting to, lab-in-a-box
 
 [lab-in-a-box](https://github.com/SUSE-Technical-Marketing/lab-in-a-box) builds
 VMs and runs addons (SUSE Multi-Linux Manager, Uyuni, NeuVector, ...) from a
@@ -413,7 +456,7 @@ The `lab_in_a_box:` block holds the knobs that exist only on the lab-in-a-box si
 
 ```yaml
 lab_in_a_box:
-  source:                               # type: lab-in-a-box only — which lab-in-a-box to run
+  source:                               # type: lab-in-a-box only, which lab-in-a-box to run
     repo: https://github.com/SUSE-Technical-Marketing/lab-in-a-box
     ref: latest                         # latest (highest version tag, default), tag, branch or SHA
   parallel: 4                           # setup_lab.py --parallel=N
@@ -430,7 +473,7 @@ lab_in_a_box:
   config_method: cloud-init             # cloud-init (default) | virt_customize | "" (ignition/combustion)
   cluster_name: mgmt                    # kcluster name (also its DNS record: <name>.<domain>)
   cluster_type: k3s                     # k3s (default) | rke2
-  clu_rel: stable                       # install channel — exact version pins don't carry over
+  clu_rel: stable                       # install channel, exact version pins don't carry over
   addons: [rancher]                     # override the derived kcluster install_<addon> list
   sections:                             # verbatim lab.json sections (addon config)
     smlm: {smlm_deployment: podman, smlm_admin_pass: "??smlm_admin_password"}
@@ -459,7 +502,9 @@ To test another lab-in-a-box without editing the plan, set
 `RODEO_LABINABOX_REPO` and/or `RODEO_LABINABOX_REF`; each takes precedence over
 the matching `source:` key. For a local lab-in-a-box checkout, set
 `RODEO_LABINABOX_PATH=/path/to/lab-in-a-box`; it takes precedence over all of them.
-These variables are read on the host that runs `rodeo up`.
+These variables are read on the host that runs `rodeo up`. A rerun reinstalls
+lab-in-a-box when its source changes: another repo or ref, or for a local
+checkout a new commit or uncommitted edits.
 
 **Existing lab-in-a-box host:** by default (`target.mode: auto`) rodeo installs
 lab-in-a-box on the host it runs on. It uses an existing one instead when that
@@ -500,7 +545,7 @@ lab_in_a_box:
   iso_image: ami-0123456789abcdef0      # a provider image (AMI, image name/ID), per region
   cloud:
     cloudtype: aws
-    account: aws-lab                    # credential file name — one per lab (clean removes it)
+    account: aws-lab                    # credential file name, one per lab (clean removes it)
     settings:                           # the backend's keys, as in lab-in-a-box's README
       AWS_REGION: eu-north-1
       AWS_ACCESS_KEY_ID: "??aws_access_key_id"
@@ -508,6 +553,16 @@ lab_in_a_box:
   nodes:
     vm1: {cloud_instance_type: t3.large}
 ```
+
+With an AWS SSO login, use the profile instead of keys: `AWS_PROFILE: <profile>`
+(the profile of the user that runs rodeo; a profile wins over keys). Temporary keys
+need `AWS_SESSION_TOKEN` too.
+
+For `cloudtype: aws`, lab-in-a-box drives the `aws` CLI: `sudo rodeo install-deps --aws`
+installs the AWS CLI v2 from AWS (the installer's PGP signature is checked against
+AWS's key first), and `rodeo up` offers to do it when the CLI is missing. Preflight
+then asks AWS who the plan's credentials belong to and stops the deploy when there are
+none, or they are expired or rejected (e.g. "run `aws sso login --profile <profile>`").
 
 rodeo writes the account to `/etc/lab_creation/credentials/<account>.yaml` (0600).
 Any `??key` in `settings` is always asked for, never generated. Nodes get no static
@@ -568,7 +623,7 @@ workshop:
 ```
 
 Not carried over by `rodeo export` (warned at export time): PXE-booted
-Harvester nodes (lab-in-a-box has no PXE — use `--skip-unsupported` to export
+Harvester nodes (lab-in-a-box has no PXE: use `--skip-unsupported` to export
 the rest), exposed-service host port-forwards, storage/image-dir selection, and
 exact k3s/rke2 version pins.
 

@@ -32,15 +32,29 @@ class InstanceOffer:
 # Custom / unknown profiles fall back to ``harvester``. A profile may omit a
 # tier that has no sensible pick; asking for it is a ConfigError.
 AWS_PROFILE_TIERS: dict[str, dict[InstanceTier, InstanceOffer]] = {
+    # Rancher + K3s + RKE2 + 3-node RKE2: guests ~26 GiB / 14 vCPU / ~200 GB.
     "rancher": {
         "budget": InstanceOffer(
-            "m7i.2xlarge", "budget", "8 vCPU / 32 GiB — Rancher-only labs"
+            "m7i.4xlarge", "budget", "16 vCPU / 64 GiB, EBS only"
         ),
         "recommended": InstanceOffer(
-            "m7i.4xlarge", "recommended", "16 vCPU / 64 GiB — comfortable headroom"
+            "m8id.4xlarge", "recommended",
+            "16 vCPU / 64 GiB / a single 950 GB NVMe device, six VMs with headroom",
         ),
         "performance": InstanceOffer(
-            "i7i.2xlarge", "performance", "local NVMe — faster guest disks"
+            "m7i.metal-24xl", "performance", "bare metal, max nested performance"
+        ),
+    },
+    # Rancher + single-node K3s and RKE2: guests ~14 GiB / 8 vCPU / ~110 GB.
+    "rancher-test": {
+        "budget": InstanceOffer(
+            "m7i.2xlarge", "budget", "8 vCPU / 32 GiB, Rancher plus two small clusters"
+        ),
+        "recommended": InstanceOffer(
+            "m7i.4xlarge", "recommended", "16 vCPU / 64 GiB, comfortable headroom"
+        ),
+        "performance": InstanceOffer(
+            "i7i.2xlarge", "performance", "local NVMe, faster guest disks"
         ),
     },
     "test": {

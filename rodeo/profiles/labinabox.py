@@ -28,6 +28,7 @@ class LabInABoxProfile(RodeoProfile):
     # labinabox_host / labinabox: see rodeo/engine/labinabox_phase.py.
     # custom_scripts: <lab>/custom/scripts/* post-steps, re-run every time.
     phases = ["kvm_host", "labinabox_host", "labinabox", "custom_scripts"]
+    native_logins = False
     vm_names: list[str] = []
     ansible_phases = frozenset(["kvm_host"])
     no_cache_phases = frozenset(["custom_scripts"])
@@ -35,6 +36,26 @@ class LabInABoxProfile(RodeoProfile):
     static_vms: dict[str, dict] = {}
     resources = {"vm": {"memory_mib": 2048, "vcpu": 2, "disk_gb": 30}}
     versions: dict[str, str] = {}
+
+    def phase_key(self, phase: str, cfg: dict) -> str | None:
+        """labinabox_host is redone when the lab-in-a-box source changes: the local
+        checkout (RODEO_LABINABOX_PATH, with its commit and uncommitted changes) or
+        the repo and ref as configured ("latest" stays unresolved, so a new release
+        alone does not reinstall)."""
+        if phase != "labinabox_host":
+            return None
+        from .. import labinabox_host as host
+        from ..config import ConfigError
+
+        local = host.local_override()
+        if local is not None:
+            rev = host.local_revision(local)
+            return f"local:{local}@{rev}" if rev else f"local:{local}"
+        try:
+            repo, ref = host.source(cfg)
+        except ConfigError:
+            return None
+        return f"{repo}@{ref}"
 
     def extra_cfg(self) -> dict:
         # No Harvester nodes: keeps the vars file from demanding Harvester secrets.
@@ -100,6 +121,7 @@ class LabInABoxProfile(RodeoProfile):
         yield from super().run_phase(phase, runner, vars_file)
 
     def success_extra_sections(self, cfg: dict) -> list[str]:
+        self._apply_cloud_addresses(cfg)
         lines = ["[bold]Lab nodes[/bold]  (built by lab-in-a-box)"]
         for name, vm in cfg.get("vms", {}).items():
             lines.append(f"  {name:<16} {vm.get('ip', '')}")

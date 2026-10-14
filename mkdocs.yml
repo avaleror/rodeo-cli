@@ -67,15 +67,12 @@ nav:
   - Get started: get-started.md
   - Install on Linux and macOS: install.md
   - Profiles:
+    - SUSE Virtualization (Harvester): guide-harvester.md
     - Rancher Prime: guide-rancher.md
-    - Harvester HCI: guide-harvester.md
     - SUSE Edge: guide-suse-edge.md
   - Create your own rodeo: custom-rodeos.md
   - Rodeo Builder: rodeo-builder.md
-  - Fleet (multi-host workshops):
-    - Overview: fleet.md
-    - Claim portal (design): claim-portal.md
-    - Claim portal (implementation plan): claim-portal-plan.md
+  - Fleet (multi-host workshops): fleet.md
   - Reference:
     - rodeo-plan.yaml: reference/plan.md
     - definition.yaml: reference/definition.md
@@ -85,4 +82,7 @@ nav:
     - Workshop fleet inventory: examples/workshop.md
     - Testing & CI: examples/testing.md
   - Troubleshooting: runbook.md
-  - Architecture: architecture.md
+  - For contributors:
+    - Architecture: architecture.md
+    - Claim portal (design): claim-portal.md
+    - Claim portal (implementation plan): claim-portal-plan.md

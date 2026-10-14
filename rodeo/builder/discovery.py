@@ -1,8 +1,10 @@
 """Data the Rodeo Builder shows, read from the rodeo-cli tree.
 
 - engines: the four lab engines, their base profile, resources and capabilities
-- workshops: bundled examples with a ``story/`` directory, and their chapters
-- labinabox: where the lab-in-a-box lab-builder lives, and its add-ons
+- workshops: bundled examples with a ``story/`` directory, and the chapter
+  sources outside rodeo-cli listed in ``chapter_sources.yaml``
+- labinabox: where the lab-in-a-box lab-builder lives, and its catalogue (add-ons,
+  infrastructure services, Kubernetes cluster types)
 
 Chapter metadata (minutes, needed capabilities, check script) comes from an
 optional ``story/chapters.yaml`` beside the chapters; rmstory ignores it.
@@ -38,7 +40,7 @@ ENGINES: dict[str, dict[str, Any]] = {
         "title": "Rancher Prime",
         "base": "rancher",
         "provides": ["rancher", "fleet"],
-        "note": "Rancher Prime on K3s in a single VM, the smallest lab.",
+        "note": "Rancher Prime on K3s plus K3s and RKE2 clusters it provisions.",
     },
     "suse-edge": {
         "title": "SUSE Edge",
@@ -56,14 +58,19 @@ ENGINES: dict[str, dict[str, Any]] = {
 }
 
 # Capabilities a new chapter can ask for (the union the UI offers).
-CAPABILITIES = ["rancher", "fleet", "harvester", "kubevirt", "longhorn", "neuvector",
-                "harbor", "keycloak", "argocd", "smlm", "elemental", "eib"]
 
 _HEADING_RE = re.compile(r"^#\s+(.+?)\s*$", re.M)
 _TAG_RE = re.compile(r"<[^>]+>")
 _SPAN_OPEN_RE = re.compile(r"<span\b[^>]*?(?<!/)>")
 _COMMENT_RE = re.compile(r"<!--.*?(?:-->|$)", re.S)
 _NUMBER_PREFIX_RE = re.compile(r"^\d+-")
+_LEADING_NUMBER_RE = re.compile(r"^(\d+)")
+_FRONT_MATTER_RE = re.compile(r"\A---\n(.*?)\n---\n?", re.S)
+_TIME_RE = re.compile(r"^\*\*Time:\*\*\s*(\d+)\s*min", re.M | re.I)
+
+SOURCES_FILE = Path(__file__).resolve().parent / "chapter_sources.yaml"
+# Instruqt's timelimit is an upper bound, not a duration: challenges get this.
+INSTRUQT_MINUTES = 20
 
 
 def _profile_example(profile: str) -> Path:
@@ -109,7 +116,8 @@ def engines() -> dict[str, Any]:
             entry["resources"] = {"nodes": 1, "memory_mib": 4096, "vcpu": 2}
             entry["definition"] = (PLATFORMS / name / "definition.yaml").read_text()
         out.append(entry)
-    return {"engines": out, "capabilities": CAPABILITIES}
+    capabilities = sorted({c for spec in ENGINES.values() for c in spec["provides"]})
+    return {"engines": out, "capabilities": capabilities}
 
 
 def _chapter_title(body: str, fallback: str) -> str:
@@ -132,10 +140,26 @@ def _chapters(story: Path) -> list[dict[str, Any]]:
             "mins": int(info.get("mins") or DEFAULT_MINUTES),
             "needs": list(info.get("needs") or []),
             "check": info.get("check") or "",
-            "spans": len(_SPAN_OPEN_RE.findall(_COMMENT_RE.sub("", body))),
+            "check_script": "",
+            "spans": _span_count(body),
             "body": body,
         })
     return out
+
+
+def _span_count(body: str) -> int:
+    return len(_SPAN_OPEN_RE.findall(_COMMENT_RE.sub("", body)))
+
+
+def _plan_text(example: Path) -> str:
+    plan = example / "rodeo-plan.yaml"
+    return plan.read_text() if plan.is_file() else ""
+
+
+def _profile_of(example: Path) -> str:
+    from ..labseed import PROFILE_EXAMPLE
+
+    return next((p for p, e in PROFILE_EXAMPLE.items() if e == example.name), example.name)
 
 
 def _variants(story: Path) -> dict[str, list[str]]:
@@ -146,8 +170,9 @@ def _variants(story: Path) -> dict[str, list[str]]:
     return out
 
 
-def workshops() -> dict[str, Any]:
-    """Bundled examples that carry a story/ directory, with their chapters."""
+def workshops(sources: dict[str, Path] | None = None) -> dict[str, Any]:
+    """Bundled examples that carry a story/ directory, then every chapter source
+    with a checkout in *sources* (source id → checkout directory)."""
     out = []
     for example in sorted(p for p in EXAMPLES.iterdir() if (p / "story").is_dir()):
         story = example / "story"
@@ -160,10 +185,121 @@ def workshops() -> dict[str, Any]:
             "title": meta.get("title") or example.name,
             "source": "rodeo/data/examples/{}/story".format(example.name),
             "engine": _read_yaml(example / "rodeo-plan.yaml").get("type") or "suse-virt",
+            "profile": _profile_of(example),
+            "plan": _plan_text(example),
             "chapters": chapters,
             "variants": _variants(story),
         })
+    for src in chapter_sources() if sources else []:
+        checkout = sources.get(src["id"])
+        if checkout is None:
+            continue
+        out.append({
+            "id": src["id"],
+            "title": src["title"],
+            "source": "{}/tree/{}/{}".format(src["repo"].removesuffix(".git"), src["ref"], src["path"]),
+            "engine": src["engine"],
+            "profile": src["profile"],
+            "plan": _plan_text(_profile_example(src["profile"])),
+            "chapters": source_chapters(src, checkout),
+            "variants": {},
+        })
     return {"workshops": out}
+
+
+def chapter_sources() -> list[dict[str, Any]]:
+    """chapter_sources.yaml, with repo/ref/path taken from a profile's workshop:
+    block where a source names one."""
+    out = []
+    for raw in _read_yaml(SOURCES_FILE).get("sources") or []:
+        src = dict(raw)
+        if src.get("workshop"):
+            ws = _read_yaml(_profile_example(src["workshop"]) / "rodeo-plan.yaml").get("workshop") or {}
+            src.setdefault("repo", ws.get("repo"))
+            src.setdefault("ref", ws.get("ref") or ws.get("branch") or "main")
+            src.setdefault("path", "tracks/{}".format(ws.get("track")))
+        missing = [k for k in ("id", "title", "engine", "profile", "format", "repo", "ref", "path") if not src.get(k)]
+        if missing or src["format"] not in ("instruqt", "markdown"):
+            raise ValueError("chapter source {}: missing {} or unknown format".format(src.get("id"), missing))
+        out.append(src)
+    return out
+
+
+def source_fetch_commands(src: dict[str, Any], dest: Path) -> list[list[str]]:
+    """Shallow, sparse clone of only the files a source's chapters are read from."""
+    path = src["path"].strip("/")
+    if src["format"] == "instruqt":
+        patterns = ["/{}/*/assignment.md".format(path), "/{}/*/check-*".format(path)]
+    else:
+        patterns = ["/{}/*.md".format(path)]
+        if src.get("checks"):
+            patterns.append("/{}/*".format(str(Path(src["checks"]).parent).strip("/")))
+    return [
+        ["git", "clone", "-q", "--depth", "1", "--filter=blob:none", "--sparse",
+         "--branch", src["ref"], src["repo"], str(dest)],
+        ["git", "-C", str(dest), "sparse-checkout", "set", "--no-cone", *patterns],
+    ]
+
+
+def fetch_sources(dest: Path, given: dict[str, Path] | None = None,
+                  run: Any = subprocess.run) -> tuple[dict[str, Path], dict[str, str]]:
+    """Checkout per chapter source: the *given* ones, the rest cloned into *dest*.
+
+    Returns (checkouts, errors): a source whose clone fails is left out of the
+    checkouts and its git error tail is in errors, keyed by source id.
+    """
+    out = dict(given or {})
+    errors: dict[str, str] = {}
+    for src in chapter_sources():
+        if src["id"] in out:
+            continue
+        target = dest / src["id"]
+        for cmd in source_fetch_commands(src, target):
+            r = run(cmd, capture_output=True, text=True, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+            if r.returncode != 0:
+                errors[src["id"]] = (r.stderr or "").strip()[-300:]
+                break
+        else:
+            out[src["id"]] = target
+    return out, errors
+
+
+def _check_script(directory: Path) -> str:
+    scripts = sorted(directory.glob("check-*"))
+    return scripts[0].read_text(errors="replace") if scripts else ""
+
+
+def source_chapters(src: dict[str, Any], checkout: Path) -> list[dict[str, Any]]:
+    """Chapters of one fetched source: Instruqt challenges or markdown files."""
+    root = checkout / src["path"].strip("/")
+    needs = list(src.get("needs") or [])
+    out = []
+    if src["format"] == "instruqt":
+        for challenge in sorted(p for p in root.iterdir() if (p / "assignment.md").is_file()):
+            text = (challenge / "assignment.md").read_text(errors="replace")
+            match = _FRONT_MATTER_RE.match(text)
+            meta = yaml.safe_load(match.group(1)) if match else {}
+            body = text[match.end():] if match else text
+            cid = _NUMBER_PREFIX_RE.sub("", challenge.name)
+            script = _check_script(challenge)
+            out.append({"id": cid, "file": challenge.name + "/assignment.md",
+                        "title": (meta or {}).get("title") or _chapter_title(body, cid),
+                        "mins": INSTRUQT_MINUTES, "needs": needs, "check": bool(script), "check_script": script,
+                        "spans": _span_count(body), "body": body.lstrip("\n")})
+        return out
+    for path in sorted(root.glob("*.md")):
+        body = path.read_text(errors="replace")
+        cid = _NUMBER_PREFIX_RE.sub("", path.stem)
+        time = _TIME_RE.search(body)
+        number = _LEADING_NUMBER_RE.match(path.stem)
+        script = ""
+        if src.get("checks") and number:
+            check = checkout / src["checks"].format(n=int(number.group(1)))
+            script = check.read_text(errors="replace") if check.is_file() else ""
+        out.append({"id": cid, "file": path.name, "title": _chapter_title(body, cid),
+                    "mins": int(time.group(1)) if time else DEFAULT_MINUTES, "needs": needs,
+                    "check": bool(script), "check_script": script, "spans": _span_count(body), "body": body})
+    return out
 
 
 def labinabox_imports() -> list[dict[str, Any]]:
@@ -196,14 +332,17 @@ import api
 status, body = api.dispatch("components", "GET", {}, b"")
 if status != 200:
     sys.exit("components: " + str(body))
-print(json.dumps([{"name": c["name"].removeprefix("install_"), "targets": c.get("targets", [])}
-                  for c in body["components"]]))
+print(json.dumps([{"name": c["name"].removeprefix("install_"), "kind": c.get("kind") or "addon",
+                   "targets": c.get("targets", [])} for c in body["components"]]))
 """
+
+LIAB_KINDS = {"addon": "addons", "infrastructure": "infrastructure", "kcluster": "kclusters"}
 
 
 def labinabox_addons(checkout: Path) -> list[dict[str, Any]]:
-    """Add-ons of a lab-in-a-box checkout, from its own lab-builder API: short name
-    (as plans use it) and targets ("vm", "baremetal", "container", ...).
+    """Catalogue of a lab-in-a-box checkout, from its own lab-builder API: short name
+    (as plans use it), kind ("addon", "infrastructure" or "kcluster"; "addon" when
+    the release does not report one) and targets ("vm", "baremetal", "container", ...).
 
     Runs in a separate interpreter so lab-in-a-box's modules and environment
     never mix with rodeo's. Raises RuntimeError when the checkout can't answer.
@@ -216,11 +355,24 @@ def labinabox_addons(checkout: Path) -> list[dict[str, Any]]:
 
 
 def labinabox(checkout: Path | None = None, builder_url: str = LAB_BUILDER_URL,
-              version: str = "") -> dict[str, Any]:
-    """The lab-builder URL, the lab-in-a-box add-ons (empty without a checkout) and imports."""
-    return {
-        "builder_url": builder_url,
-        "version": version,
-        "addons": labinabox_addons(checkout) if checkout else [],
-        "imports": labinabox_imports(),
-    }
+              version: str = "", missing: str = "") -> dict[str, Any]:
+    """The lab-builder URL, the lab-in-a-box catalogue split by kind (``addons``,
+    ``infrastructure``, ``kclusters``) and the bundled imports.
+
+    ``error`` says why the catalogue is missing (*missing*, the caller's reason
+    for having no checkout; or the checkout's API failed); it is empty when the
+    catalogue was read.
+    """
+    out: dict[str, Any] = {"builder_url": builder_url, "version": version, "error": "",
+                           "imports": labinabox_imports(), **{key: [] for key in LIAB_KINDS.values()}}
+    if checkout is None:
+        out["error"] = missing or "no lab-in-a-box checkout was given, so its catalogue is unknown"
+        return out
+    try:
+        items = labinabox_addons(checkout)
+    except (OSError, RuntimeError, ValueError) as exc:
+        out["error"] = str(exc)
+        return out
+    for item in items:
+        out[LIAB_KINDS.get(item["kind"], "addons")].append(item)
+    return out

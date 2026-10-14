@@ -628,14 +628,17 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(404, b"", "text/plain")
         m = re.fullmatch(r"/l/([^/]+)(/key)?", path)
         if m:
-            if self.limiter.over(self._ip()):
-                return self._slow_down()
+            # Look the link up before the limit: a classroom shares one NAT address,
+            # and other people's typos must not lock a student out of a valid link.
+            # Tokens are 192-bit random, so letting hits through helps no guesser.
             con = connect(self.db_path)
             try:
                 row = claims.lab_for_token(con, m.group(1))
             finally:
                 con.close()
             if row is None:
+                if self.limiter.over(self._ip()):
+                    return self._slow_down()
                 self.limiter.fail(self._ip())
                 return self._send(404, _page("Link not valid", "<p><a class=btn href=/>Claim a lab</a></p>",
                                              heading="Link not valid",

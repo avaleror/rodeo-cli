@@ -63,7 +63,8 @@ def _default_labs_root() -> Path:
 
 @click.command("up")
 @click.option("--profile", "profile", default=None,
-              help="Lab to deploy: 'rancher' (1 VM), 'test' (2-node Harvester), 'harvester-ha' "
+              help="Lab to deploy: 'rancher-test' (Rancher + 2 single-node clusters), 'rancher' "
+                   "(Rancher + 3 clusters), 'test' (2-node Harvester), 'harvester-ha' "
                    "(3-node Harvester, no Rancher), or 'harvester' (3-node + Rancher). Or a custom "
                    "profile name. Default: recommended for your RAM.")
 @click.option("--name", default=None, help="Lab name (used for the lab directory).")
@@ -139,7 +140,11 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
     if lab_dir:
         lab = Path(lab_dir).expanduser().resolve()
     elif not resume:
-        detected = find_lab_dir()
+        # An explicit --profile names the lab to deploy: the last lab used
+        # (~/.rodeo/last_lab) must not replace it. Without this, `rodeo up
+        # --profile rancher` from any directory redeployed whatever lab ran
+        # last, of any profile.
+        detected = find_lab_dir(use_last_lab=profile is None)
         if detected is not None:
             lab = detected
 
@@ -206,7 +211,21 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
             "outside EC2).[/yellow]\n"
         )
 
-    if not aws_control_plane:
+    # A machine that cannot host labs (macOS, SLES 15, ...) is a control plane:
+    # it may seed a lab (--no-deploy) but never deploys one locally, and never
+    # installs KVM host packages.
+    cannot_host = ""
+    if not aws_control_plane and _runs_on_this_machine(lab, profile):
+        from ..hostos import control_plane_hint, kvm_host_problem
+
+        cannot_host = kvm_host_problem()
+        if cannot_host and not no_deploy:
+            console.print(f"[red]✗  {cannot_host}.[/red]\n{control_plane_hint()}")
+            raise SystemExit(2)
+        if cannot_host:
+            console.print(f"[dim]{cannot_host}: setting up the lab only.[/dim]\n")
+
+    if not aws_control_plane and not cannot_host:
         _print_host(host)
         # 1. Host dependencies.
         if not _ensure_host_ready(host, assume_yes):
@@ -360,6 +379,13 @@ def _aws_control_plane_deploy(
     _persist_plan_overlays(lab, cfg)
 
     provider = cfg.get("provider") or {}
+    from ..awscli import boto3_identity
+
+    aws_ok, aws_detail = boto3_identity(str(provider.get("region") or ""))
+    if not aws_ok:
+        console.print(f"[red]✗  AWS credentials: {aws_detail}[/red]")
+        raise SystemExit(1)
+    console.print(f"[green]✓[/green]  AWS credentials: {aws_detail}")
     console.print(
         f"\n[bold]Provisioning AWS KVM host[/bold]  "
         f"[cyan]{provider.get('instance_type')}[/cyan] "
@@ -374,15 +400,68 @@ def _aws_control_plane_deploy(
         console.print(f"[red]✗  {exc}[/red]")
         raise SystemExit(1)
 
-    ip = provisioned.public_ip
-    console.print(
+    console.print(_aws_done_message(
+        cfg, lab, provisioned.public_ip, provisioned.provider_id,
+        expires_at=provisioned.labels.get("expires_at", ""),
+    ))
+
+
+def _aws_done_message(
+    cfg: dict, lab: Path, ip: str, instance_id: str | None, *, expires_at: str = ""
+) -> str:
+    """Closing lines of an AWS deploy: only the UIs this topology has.
+
+    The Harvester line used to print for every profile, so a rancher lab
+    pointed people at an :8443 nothing listens on. The teardown command names
+    the lab dir: with --profile the operator is usually not inside it.
+    """
+    from ..inventory import harvester_vm_names
+
+    lines = [
         f"\n[green]✓[/green]  Remote deploy finished on [cyan]{ip}[/cyan] "
-        f"(instance {provisioned.provider_id or '—'}).\n"
-        f"  Harvester UI:  https://{ip}:8443\n"
-        f"  Rancher UI:    https://{ip}:30002\n"
-        f"  Tear down host:  rodeo destroy --cloud --yes "
-        f"(from this lab dir)\n"
-    )
+        f"(instance {instance_id or '-'})."
+    ]
+    if harvester_vm_names(cfg):
+        lines.append(f"  Harvester UI:  https://{ip}:8443")
+    if "rancher" in cfg.get("vms", {}):
+        lines.append(f"  Rancher UI:    https://{ip}:30002")
+    if expires_at:
+        lines.append(
+            f"  Self-destructs:  {expires_at} (dead-man switch, provider.ttl_hours)"
+        )
+    lines.append(f"  Tear down host:  rodeo destroy --cloud --yes --config-dir {lab}\n")
+    return "\n".join(lines)
+
+
+def _runs_on_this_machine(lab: Path | None, profile: str | None) -> bool:
+    """Whether a local `rodeo up` would run lab phases (kvm_host) on this machine.
+
+    lab-in-a-box is an external plugin with its own hosts and targets, so its
+    profiles are never treated as local KVM deploys here.
+    """
+    import yaml as _yaml
+
+    from ..labseed import resolve_profile_source
+
+    plan = None
+    if lab is not None and (lab / "rodeo-plan.yaml").is_file():
+        plan = lab / "rodeo-plan.yaml"
+    elif profile:
+        try:
+            plan = resolve_profile_source(profile) / "rodeo-plan.yaml"
+        except FileNotFoundError:
+            return True  # unknown profile: the normal error comes later
+    if plan is None or not plan.is_file():
+        return True
+    ptype = (_yaml.safe_load(plan.read_text()) or {}).get("type", "suse-virt")
+    if ptype == "lab-in-a-box":
+        return False
+    try:
+        from ..profiles import get_profile
+
+        return "kvm_host" in get_profile(str(ptype)).phases
+    except ValueError:
+        return True
 
 
 def _infer_lab_profile(lab: Path) -> str | None:
@@ -429,7 +508,16 @@ def _resolve_aws_instance_choice(
         resolve_instance_type,
     )
 
+    from ..providers.aws import default_region
+
     provider = dict(cfg.get("provider") or {})
+    # No provider block (or a partial one): any profile still deploys with
+    # `rodeo up --profile <name> --target aws`. The defaults are written back
+    # to the plan so re-runs and `rodeo destroy --cloud` use the same values.
+    provider.setdefault("type", "aws")
+    if not str(provider.get("region") or "").strip():
+        provider["region"] = default_region()
+        console.print(f"[dim]provider.region not set, using {provider['region']}[/dim]")
     explicit = str(provider.get("instance_type") or "").strip()
     tier_cli = instance_tier or str(provider.get("instance_tier") or "").strip() or None
 
@@ -464,6 +552,12 @@ def _resolve_aws_instance_choice(
     provider["instance_type"] = itype
     if tier_used:
         provider["instance_tier"] = tier_used
+    if not str(provider.get("subnet_id") or "").strip():
+        provider["subnet_id"] = AwsHostProvider().default_subnet(provider, instance_type=itype)
+        console.print(
+            f"[dim]provider.subnet_id not set, using {provider['subnet_id']} "
+            f"(default VPC, {provider['region']})[/dim]"
+        )
     provider["lab_profile"] = lab_profile
     cfg = {**cfg, "provider": provider}
 
@@ -482,7 +576,7 @@ def _resolve_aws_instance_choice(
 
 
 def _persist_plan_overlays(lab: Path, cfg: dict) -> None:
-    """Write host-context resource/storage overlays back into rodeo-plan.yaml."""
+    """Write host-context overlays and the resolved provider back into rodeo-plan.yaml."""
     import yaml as _yaml
 
     plan_path = lab / "rodeo-plan.yaml"
@@ -497,6 +591,11 @@ def _persist_plan_overlays(lab: Path, cfg: dict) -> None:
         storage = data.setdefault("storage", {})
         if isinstance(storage, dict):
             storage.update({k: v for k, v in cfg["storage"].items() if k in ("backend",)})
+    if isinstance(cfg.get("provider"), dict):
+        # lab_profile is a runtime hint for the instance catalog, not plan data.
+        provider = data.setdefault("provider", {})
+        if isinstance(provider, dict):
+            provider.update({k: v for k, v in cfg["provider"].items() if k != "lab_profile"})
     if isinstance(cfg.get("libvirt"), dict):
         libvirt = data.setdefault("libvirt", {})
         if isinstance(libvirt, dict):
@@ -575,6 +674,22 @@ def _ensure_host_ready(host: dict, assume_yes: bool) -> bool:
     return True
 
 
+def _ensure_aws_cli(cfg: dict, assume_yes: bool) -> None:
+    """A lab whose VMs lab-in-a-box creates in AWS needs the aws CLI: offer to install it."""
+    from ..awscli import ensure_on_path, labinabox_aws
+
+    if labinabox_aws(cfg) is None or ensure_on_path() is not None:
+        return
+    console.print("\n[yellow]This lab creates its VMs in AWS and needs the aws CLI.[/yellow]")
+    if not assume_yes and not Confirm.ask("Install the AWS CLI v2 now (from AWS, signature-checked)?",
+                                          default=True):
+        console.print("Skipped. Install with: [bold]sudo rodeo install-deps --aws[/bold], then re-run.")
+        raise SystemExit(1)
+    from .install_deps import _detect_distro, install_aws_cli
+
+    install_aws_cli(_detect_distro())
+
+
 def _detect_target() -> str:
     """Best-effort: are we running on Instruqt?"""
     import os
@@ -639,6 +754,7 @@ def _deploy(lab: Path, assume_yes: bool, reconcile: bool = True) -> None:
         console.print("[red]✗  Cannot find the bundled Ansible content. Reinstall rodeo-cli.[/red]")
         raise SystemExit(1)
 
+    _ensure_aws_cli(cfg, assume_yes)
     if not run_preflight(cfg, root):
         if assume_yes:
             console.print("[red]✗  Preflight failed. Fix the host and re-run.[/red]")

@@ -48,7 +48,8 @@ def _pick_password(ask: bool) -> tuple[str, str]:
 @click.option("--ask", "ask_password", is_flag=True,
               help="Prompt for the lab password instead of generating one.")
 @click.option("--profile", "profile", default=None, metavar="NAME",
-              help="Seed using a bundled profile: 'rancher' (1 VM, no Harvester), 'test' (2-node Harvester, "
+              help="Seed using a bundled profile: 'rancher-test' (Rancher + 2 single-node clusters), "
+                   "'rancher' (Rancher + 3 clusters), 'test' (2-node Harvester, "
                    "no Rancher), 'harvester-ha' (3-node Harvester, no Rancher), or 'harvester' (3-node + Rancher). "
                    "Copies definition + plan + artifacts.")
 @click.option("--example", "example", default=None, metavar="NAME", hidden=True,

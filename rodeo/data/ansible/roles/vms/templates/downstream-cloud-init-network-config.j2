@@ -1,0 +1,11 @@
+version: 2
+ethernets:
+  mgmt:
+    match:
+      macaddress: "{{ item.mgmt_mac | lower }}"
+    set-name: eth0
+    addresses:
+      - {{ item.ip }}/{{ node_prefix }}
+    gateway4: {{ libvirt_network_gateway }}
+    nameservers:
+      addresses: [8.8.8.8, 1.1.1.1]

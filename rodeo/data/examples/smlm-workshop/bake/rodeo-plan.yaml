@@ -57,6 +57,8 @@ lab_in_a_box:
         - aws_access_key_id
         - aws_secret_access_key
         - sles15sp7_ami           # SLES 15 SP7 BYOS AMI ID in your region
+        - aws_security_group_id   # a security group in the region's default VPC (empty is fine)
+        - ubuntu2404_ami          # Ubuntu 24.04 AMI for lab-in-a-box's DNS VM
       cloud:
         cloudtype: aws
         account: smlm-bake
@@ -64,6 +66,8 @@ lab_in_a_box:
           AWS_REGION: eu-north-1
           AWS_ACCESS_KEY_ID: "??aws_access_key_id"
           AWS_SECRET_ACCESS_KEY: "??aws_secret_access_key"
+          AWS_SECURITY_GROUP_ID: "??aws_security_group_id"
+          CLOUD_DNS_IMAGE: "??ubuntu2404_ami"
       nodes:
         smlm:
           ISO_IMAGE: "??sles15sp7_ami"

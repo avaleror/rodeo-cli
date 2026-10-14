@@ -129,3 +129,44 @@ def test_missing_remote_branch_fails(repo, monkeypatch):
     result = CliRunner().invoke(su.self_update_cmd, [])
     assert result.exit_code == 1
     assert "does not exist" in result.output.lower()
+
+
+class DirtyGit(FakeGit):
+    """A clone with uncommitted changes and/or unpushed commits on main."""
+
+    def __init__(self, *, dirty: str = "", unpushed: str = "", **kw):
+        super().__init__(**kw)
+        self.dirty, self.unpushed, self.reset_called = dirty, unpushed, False
+
+    def __call__(self, *args, check=True):
+        a = list(args)
+        if a[:1] == ["status"]:
+            return _cp(self.dirty)
+        if a[:1] == ["rev-list"]:
+            return _cp(self.unpushed)
+        if a[:1] in (["checkout"], ["reset"]):
+            self.reset_called = True
+        return super().__call__(*args, check=check)
+
+
+@pytest.mark.parametrize("state", [{"dirty": " M rodeo/cli.py\n"}, {"unpushed": "abc123\n"}])
+def test_local_work_is_never_discarded_without_force(repo, monkeypatch, state):
+    """rodeo often runs from a developer's own clone: self-update must refuse
+    rather than reset away uncommitted changes or unpushed commits."""
+    git = DirtyGit(head="oldsha", target_sha="newsha", align=True, **state)
+    monkeypatch.setattr(su, "_git", git)
+    monkeypatch.setattr(su, "_installed_version", lambda: "0.10.3")
+    result = CliRunner().invoke(su.self_update_cmd, [])
+    assert result.exit_code == 1
+    assert "--force" in plain_output(result.output)
+    assert not git.reset_called
+
+
+def test_force_discards_local_work(repo, monkeypatch):
+    git = DirtyGit(head="oldsha", target_sha="newsha", align=True, dirty=" M x\n", unpushed="abc\n")
+    monkeypatch.setattr(su, "_git", git)
+    versions = iter(["0.10.3", "0.11.2"])
+    monkeypatch.setattr(su, "_installed_version", lambda: next(versions))
+    result = CliRunner().invoke(su.self_update_cmd, ["--force"])
+    assert result.exit_code == 0
+    assert git.reset_called and git.head == "newsha"

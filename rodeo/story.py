@@ -25,7 +25,7 @@ import tempfile
 from pathlib import Path
 
 from .config import ConfigError
-from .inventory import build_inventory
+from .inventory import build_inventory, harvester_vm_names
 from .storydeps import INSTALL_HINT
 
 # Sources are authored in this language; translation runs only when the
@@ -72,9 +72,7 @@ def story_facts(cfg: dict) -> dict:
         }
     story_cfg = cfg.get("story", {}) if isinstance(cfg.get("story"), dict) else {}
     plan_vms = cfg.get("vms", {})
-    harvester_nodes = [
-        n for n in plan_vms if n not in ("rancher", "eib") and not n.startswith("edge")
-    ]
+    harvester_nodes = harvester_vm_names(cfg)
     has_rancher = "rancher" in plan_vms or any(
         isinstance(c, dict) and c.get("name") == "rancher"
         for c in cfg.get("components", [])

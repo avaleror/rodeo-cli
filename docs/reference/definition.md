@@ -31,7 +31,7 @@ definition:
 
 ---
 
-## Full annotated example — 2-node Harvester (no Rancher)
+## Full annotated example: 2-node Harvester (no Rancher)
 
 ```yaml
 apiVersion: 1.0   # increment for breaking schema changes
@@ -58,7 +58,7 @@ definition:
 
   # Seconds to wait before starting each Harvester join node (not the first).
   # Prevents etcd join races when multiple nodes try to join simultaneously.
-  # Do not reduce below 60s without live testing — 90s is proven safe.
+  # Do not reduce below 60s without live testing: 90s is proven safe.
   etcd_join_gap_seconds: 90
 
   network:
@@ -173,7 +173,7 @@ definition:
       - 1.pool.ntp.org
 
   # Host OS requirements. The kvm_host Ansible role applies these.
-  # Change only if you know what you are doing — these values are tested on SLES 16.
+  # Change only if you know what you are doing: these values are tested on SLES 16.
   host_prep:
     sysctls:
       - net.bridge.bridge-nf-call-iptables=0
@@ -212,7 +212,7 @@ definition:
           mac: "02:00:00:0D:65:E1"
         - role: service
           mac: "02:00:00:0D:66:E1"
-      # Legacy flat fields — kept for Ansible role compatibility during the Phase C transition
+      # Legacy flat fields: kept for Ansible role compatibility during the Phase C transition
       mgmt_mac: "02:00:00:0D:62:E1"
       storage_mac: "02:00:00:0D:63:E1"
       migration_mac: "02:00:00:0D:64:E1"
@@ -268,8 +268,8 @@ Schema version. Increment this when you make breaking changes to the definition 
 
 | Field | Notes |
 |-------|-------|
-| `name` | libvirt network name — `default` for the standard NAT network |
-| `bridge` | Host bridge interface — `virbr0` for the default NAT network |
+| `name` | libvirt network name: `default` for the standard NAT network |
+| `bridge` | Host bridge interface: `virbr0` for the default NAT network |
 | `mode` | `nat` for nested KVM labs; `bridge` for direct host networking |
 | `cidr` | The lab subnet. All VM IPs must be within this CIDR. |
 | `gateway` | The host-side IP on `virbr0`. Usually `.1` of the CIDR. |
@@ -304,6 +304,9 @@ Templates define the NIC (interface) blueprint for a VM flavor. Individual nodes
 |-------|-----------|
 | `harvester` | Graceful ACPI shutdown in reverse start order; waits for RKE2 to drain |
 | `rancher` | Graceful ACPI shutdown after Harvester nodes |
+| `k3s`, `rke2` | Downstream cluster nodes (`rancher` profiles), stopped like any other VM |
+
+**Flavors** (`flavor` on a template) pick the VM build: `harvester` (iPXE install), `rancher` and `eib` (cloud image + cloud-init), `edge-node` (SUSE Edge, booted from an Elemental image), and `k3s-node` / `rke2-node` (Leap 16 cloud image for the clusters Rancher provisions; sized by `resources.k3s-node` / `resources.rke2-node` in the plan).
 
 ### `exposed_services`
 
@@ -336,20 +339,42 @@ Each node is a concrete VM. Fields:
 
 **Legacy flat MAC fields** (`mgmt_mac`, `storage_mac`, etc.) are kept alongside the `interfaces` list for Ansible role compatibility during the transition to full inventory-driven provisioning. They must stay in sync with the `interfaces` entries.
 
+### `downstream_clusters`
+
+`rancher` and `rancher-test` profiles only. Each entry is a custom cluster that Rancher provisions on lab VMs during the `downstream` phase. Every node runs etcd, control plane and worker, so a 3-node cluster is a 3-member etcd HA.
+
+```yaml
+downstream_clusters:
+  - name: k3s-single
+    distro: k3s            # k3s | rke2
+    nodes: [k3s]
+  - name: rke2-ha
+    distro: rke2
+    nodes: [rke2-ha1, rke2-ha2, rke2-ha3]
+```
+
+| Field | Notes |
+|-------|-------|
+| `name` | Cluster name in Rancher (`fleet-default` namespace) |
+| `distro` | `k3s` or `rke2`; the Kubernetes version comes from `versions.downstream_k3s` / `versions.downstream_rke2` in the plan |
+| `nodes` | VM names from `nodes`; a VM can belong to one cluster only |
+
+The phase waits until every cluster is Ready with all its nodes, and a re-run skips nodes that are already registered.
+
 ### `rancher.ui_extensions`
 
 Declares which Rancher Prime UI extensions (e.g. the SUSE Virtualization / Harvester
 extension) this rodeo needs, each pinned to a version. Only meaningful for profiles
-that have a Rancher VM — omit the key (or leave the list empty) for a Harvester-only
+that have a Rancher VM: omit the key (or leave the list empty) for a Harvester-only
 profile with no Rancher, or a profile that doesn't need any extension.
 
-On every deploy — and any time you run `rodeo install-extensions` — rodeo-cli
+On every deploy (and any time you run `rodeo install-extensions`)rodeo-cli
 reconciles each declared entry against the live cluster: it makes sure the chart
 repo (`ClusterRepo`) exists, force-reindexes it so the pinned version is resolvable
 even from a stale cached index, then installs the chart (or upgrades an older
 release in place) via the Rancher catalog API. Already-current extensions are left
 alone. Reconcile is non-fatal: a failed entry logs a warning and the deploy
-continues — it never blocks the rest of the pipeline over one bad chart pull.
+continues: it never blocks the rest of the pipeline over one bad chart pull.
 
 ```yaml
 definition:
@@ -367,11 +392,11 @@ definition:
 |-------|----------|-------|
 | `name` | yes | Chart name in the repo. Also becomes the installed `UIPlugin` resource's name. |
 | `version` | yes | Pinned chart version. Reconcile upgrades/downgrades to match exactly. |
-| `repo.name` | yes | `ClusterRepo` name. Reused across entries that share a repo — declare it once. |
+| `repo.name` | yes | `ClusterRepo` name. Reused across entries that share a repo: declare it once. |
 | `repo.git_repo` | only if the repo doesn't already exist | Git URL for the chart repo. Skipped if `repo.name` already exists as a `ClusterRepo` (e.g. declared by an earlier entry, or pre-existing on the cluster). |
 | `repo.git_branch` | no | Defaults to `main`. |
 
-`ui_extensions` is a list — declare more than one entry to reconcile several
+`ui_extensions` is a list: declare more than one entry to reconcile several
 extensions from the same or different repos.
 
 **Where this actually has to live:** `rodeo up --profile <name>` and `rodeo new
@@ -379,7 +404,7 @@ extensions from the same or different repos.
 bundled example gets copied into your lab dir), **not** from
 `rodeo/data/platforms/suse-virt/definition.yaml`. If you're adding this to a
 bundled profile rather than a custom one, edit the example's own
-`definition.yaml`, or it will silently never take effect — see [`rodeo
+`definition.yaml`, or it will silently never take effect, see [`rodeo
 install-extensions`](../guide-harvester.md#day-2-operations) for how to check
 and install after the fact.
 
@@ -406,8 +431,8 @@ The renderer (`rodeo/inventory.py`) can generate missing values deterministicall
 
 | Field | How generated when omitted |
 |-------|---------------------------|
-| `mac` | Hash of `plan.name + node.name + role + index` — stable across runs |
+| `mac` | Hash of `plan.name + node.name + role + index`, stable across runs |
 | `uuid` | UUID v5 from the same hash |
 | `hostname` | Nice labels: `alpha`, `bravo`, `charlie`, … or `<name>-N` |
 
-Explicit values always win. Provide them when you need exact, stable identities — for example, when reprovisioning a node that other systems (DNS, monitoring) already know by its MAC.
+Explicit values always win. Provide them when you need exact, stable identities, for example, when reprovisioning a node that other systems (DNS, monitoring) already know by its MAC.

@@ -20,7 +20,7 @@ It replaces `rodeo.sh`, a monolithic bash script in the parent repository. Desig
 
 **GitHub:** https://github.com/avaleror/rodeo-cli
 **Author:** Andres Valero, Principal Technology Advocate at SUSE
-**Version:** 0.20.1 <!-- x-release-please-version --> (bundled profiles live-validated on bare metal SLES 16; Instruqt builder validated 2026-07-15 — see ROADMAP)
+**Version:** 0.25.0 <!-- x-release-please-version --> (bundled profiles live-validated on bare metal SLES 16; Instruqt builder validated 2026-07-15 — see ROADMAP)
 **Python:** 3.10+
 
 ---
@@ -203,7 +203,7 @@ These are the non-obvious things that burned time during development:
 | `profiles` | List bundled + custom profiles. |
 | `install-deps` | Root required. Distro packages (zypper/apt/dnf) for KVM stack + ansible-core + kubectl repo + collections + python3-lxml + guestfs-tools. |
 | `bootstrap` / `generate` | (advanced) Clean-SLES one-command setup / interactive config-dir generator. New users prefer `up` / `new`. |
-| `init [DIR] [--ask] [--force] [--profile rancher\|test\|harvester]` | Plan from template or seed from a profile; secrets with random password + token. `$RODEO_PASSWORD` honoured. |
+| `init [DIR] [--ask] [--force] [--profile rancher-test\|rancher\|test\|harvester]` | Plan from template or seed from a profile; secrets with random password + token. `$RODEO_PASSWORD` honoured. |
 | `plan [-P k=v] [--paramfile F]` | Read-only diff of desired vs actual: VMs (create/change/unchanged via libvirt dom.info), network, storage artifacts, phases. Degrades to desired-only without libvirt. Validation issues are warnings here, hard errors in deploy. |
 | `deploy [--from P] [--force] [--check] [--finalise] [--tui/--no-tui] [-P k=v]` | Full pipeline. `--check` = preflight only (root, /dev/kvm, nested virt, RAM, disk, tools). |
 | `clean [--yes] [--all --secrets --force-network --hard]` | Per-plan or full host reset: destroy rodeo VMs + default network + artifacts + all/specific plan states + optional secrets. Leaves packages + rodeo binary (for fresh test or node repurposing). Runs stop first unless --hard. |

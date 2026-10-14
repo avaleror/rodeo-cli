@@ -16,9 +16,11 @@ import contextlib
 import fcntl
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
+from collections import deque
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator
 
@@ -60,6 +62,40 @@ def lab_json_path(runner: "DeployRunner") -> Path:
 def _run(runner: "DeployRunner", cmd: list[str], env: dict | None = None) -> Iterator["DeployEvent"]:
     """Stream one command; the caller checks runner._last_rc."""
     yield from runner._stream_subprocess(cmd, env=env)
+
+
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+# Lines of setup_lab.py output kept to summarise a failed run.
+_SETUP_TAIL = 400
+_SUMMARY_MAX = 40
+
+
+def failure_summary(lines: list[str]) -> list[str]:
+    """What to repeat after a failed setup_lab.py run: its LAB SUMMARY block
+    (without colours and rules), else its last ERROR/FAILED lines."""
+    plain = [_ANSI.sub("", line).rstrip() for line in lines]
+    starts = [i for i, line in enumerate(plain) if line.strip() == "LAB SUMMARY"]
+    if starts:
+        picked = [line for line in plain[starts[-1] + 1:] if line.strip() and set(line.strip()) != {"═"}]
+    else:
+        picked = [line.strip() for line in plain if "ERROR" in line or "FAILED" in line]
+    return picked[-_SUMMARY_MAX:]
+
+
+def _run_setup(runner: "DeployRunner", cmd: list[str]) -> Iterator["DeployEvent"]:
+    """Stream setup_lab.py; when it fails, repeat its summary after the output."""
+    from .runner import LogLine
+
+    tail: deque[str] = deque(maxlen=_SETUP_TAIL)
+    for event in _run(runner, cmd):
+        if isinstance(event, LogLine):
+            tail.append(event.line)
+        yield event
+    if runner._last_rc != 0:
+        summary = failure_summary(list(tail))
+        yield LogLine(f"  ✗  setup_lab.py failed (exit {runner._last_rc})" + (":" if summary else ""))
+        for line in summary:
+            yield LogLine(f"     {line}")
 
 
 def stream_labinabox_host(runner: "DeployRunner") -> Iterator["DeployEvent"]:
@@ -187,6 +223,10 @@ def _stream_managed_host(runner: "DeployRunner", lab: dict) -> Iterator["DeployE
                                  if cloud_spec and cloud_spec["cloudtype"] in host.CLOUD_CLIS else ())
     if not cloud_spec:
         tools += _HYPERVISOR_TOOLS
+    elif cloud_spec["cloudtype"] == "aws":
+        from ..awscli import ensure_on_path
+
+        ensure_on_path()
     missing = [tool for tool in tools if not shutil.which(tool)]
     if missing:
         yield LogLine(
@@ -483,7 +523,7 @@ def stream_labinabox(runner: "DeployRunner") -> Iterator["DeployEvent"]:
         yield from _stream_remote_setup(runner, tgt, path, parallel)
         return
     yield LogLine(f"Running lab-in-a-box setup_lab.py for {len(lab.get('nodes', {}))} node(s)...")
-    yield from _run(runner, shlex.split(host.setup_command(str(path), parallel)))
+    yield from _run_setup(runner, shlex.split(host.setup_command(str(path), parallel)))
     if runner._last_rc != 0:
         return
 
@@ -546,4 +586,4 @@ def _stream_remote_setup(runner: "DeployRunner", tgt: dict, path: Path, parallel
         return
     remote_json = f"{host.remote_lab_dir(plan)}/lab.json"
     yield LogLine(f"Running lab-in-a-box setup_lab.py on {tgt['host']} ({remote_json})...")
-    yield from _run(runner, ssh + [host.setup_command(remote_json, parallel)])
+    yield from _run_setup(runner, ssh + [host.setup_command(remote_json, parallel)])

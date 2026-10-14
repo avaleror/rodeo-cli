@@ -910,3 +910,18 @@ def test_providers_chart_never_takes_rancher_turtles_release(monkeypatch, tmp_pa
     waits = [i for i, s in enumerate(scripts) if "cattle-turtles-system" in s and "wait" in s]
     install_at = next(i for i, s in enumerate(scripts) if "rancher-turtles-providers" in s and "helm" in s)
     assert waits and waits[0] < install_at  # Turtles Available before the providers
+
+
+def test_telco_vms_are_not_harvester_nodes():
+    # Live-caught 2026-10-14: the done panel showed a "Harvester password"
+    # because the name heuristic counted mgmt/site-co/site-ran as Harvester.
+    from rodeo.inventory import harvester_vm_names
+
+    cfg = get_profile("suse-telco").default_cfg()
+    cfg.update({"type": "suse-telco", "name": "suse-telco-test"})
+    assert harvester_vm_names(cfg) == []
+    suse_virt = get_profile("suse-virt").default_cfg()
+    suse_virt.update({"type": "suse-virt", "name": "v"})
+    assert harvester_vm_names(suse_virt) == ["harvester1", "harvester2", "harvester3"]
+    suse_virt["harvester_node_names"] = ["harvester1", "harvester2", "harvester3"]
+    assert harvester_vm_names(suse_virt) == ["harvester1", "harvester2", "harvester3"]

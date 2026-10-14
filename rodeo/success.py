@@ -87,9 +87,9 @@ def render_success(cfg: dict) -> None:
     except Exception:
         profile = None
 
-    harvester_nodes = harvester_vm_names(cfg)
-    has_harvester = bool(harvester_nodes)
-    has_rancher = _has_rancher(cfg)
+    native = profile is None or profile.native_logins
+    has_harvester = native and bool(harvester_vm_names(cfg))
+    has_rancher = native and _has_rancher(cfg)
 
     tls = cfg.get("rancher_tls", {})
     tls_source = tls.get("source", "secret")
@@ -102,51 +102,52 @@ def render_success(cfg: dict) -> None:
     lines: list[str] = []
     lines.append("[bold green]Your lab is up.[/bold green]\n")
 
-    lines.append("[bold]Open in a browser[/bold] (accept the self-signed cert):")
+    if has_harvester or has_rancher:
+        lines.append("[bold]Open in a browser[/bold] (accept the self-signed cert):")
 
-    if target == "instruqt":
-        if has_harvester:
-            lines.append(f"  Harvester UI   https://{vip}  (from the host)")
-            lines.append("                 External: use the Harvester tab in the Instruqt lab UI")
-        if has_rancher:
-            if tls_source == "letsEncrypt":
-                lines.append(f"  Rancher Prime  https://{rancher_hostname}  (Let's Encrypt cert)")
-            else:
-                lines.append(f"  Rancher Prime  https://{rancher_ip}:{rancher_nodeport}  (from the host)")
-            lines.append("                 External: use the Rancher tab in the Instruqt lab UI")
+        if target == "instruqt":
+            if has_harvester:
+                lines.append(f"  Harvester UI   https://{vip}  (from the host)")
+                lines.append("                 External: use the Harvester tab in the Instruqt lab UI")
+            if has_rancher:
+                if tls_source == "letsEncrypt":
+                    lines.append(f"  Rancher Prime  https://{rancher_hostname}  (Let's Encrypt cert)")
+                else:
+                    lines.append(f"  Rancher Prime  https://{rancher_ip}:{rancher_nodeport}  (from the host)")
+                lines.append("                 External: use the Rancher tab in the Instruqt lab UI")
+            lines.append("")
+            if has_harvester:
+                lines.append(
+                    f"[dim]Instruqt tabs need host ports {harvester_ui_port} (Harvester) "
+                    f"and {rancher_nodeport} (Rancher) declared as services in the track config.[/dim]"
+                )
+            elif has_rancher:
+                lines.append(
+                    f"[dim]Instruqt tab needs host port {rancher_nodeport} (Rancher) "
+                    "declared as a service in the track config.[/dim]"
+                )
+        else:
+            host = _host_ip()
+            if has_harvester:
+                lines.append(f"  Harvester UI   https://{vip}")
+                lines.append(f"  [dim](external: host port {harvester_ui_port} → DNAT → VIP, i.e. https://{host}:{harvester_ui_port})[/dim]")
+            if has_rancher:
+                if tls_source == "letsEncrypt":
+                    lines.append(f"  Rancher Prime  https://{rancher_hostname}")
+                    lines.append("  [dim](Let's Encrypt cert via sslip.io — ports 80 + 443 must be reachable from internet)[/dim]")
+                else:
+                    lines.append(f"  Rancher Prime  https://{rancher_ip}:{rancher_nodeport}")
+                    lines.append(f"  [dim](external: https://{host}:{rancher_nodeport})[/dim]")
+
+        harvester_pw, rancher_pw = _read_passwords()
         lines.append("")
+        lines.append("[bold]Log in[/bold]")
+        lines.append("  user                admin")
         if has_harvester:
-            lines.append(
-                f"[dim]Instruqt tabs need host ports {harvester_ui_port} (Harvester) "
-                f"and {rancher_nodeport} (Rancher) declared as services in the track config.[/dim]"
-            )
-        elif has_rancher:
-            lines.append(
-                f"[dim]Instruqt tab needs host port {rancher_nodeport} (Rancher) "
-                "declared as a service in the track config.[/dim]"
-            )
-    else:
-        host = _host_ip()
-        if has_harvester:
-            lines.append(f"  Harvester UI   https://{vip}")
-            lines.append(f"  [dim](external: host port {harvester_ui_port} → DNAT → VIP, i.e. https://{host}:{harvester_ui_port})[/dim]")
+            lines.append(f"  Harvester password  {harvester_pw}")
         if has_rancher:
-            if tls_source == "letsEncrypt":
-                lines.append(f"  Rancher Prime  https://{rancher_hostname}")
-                lines.append("  [dim](Let's Encrypt cert via sslip.io — ports 80 + 443 must be reachable from internet)[/dim]")
-            else:
-                lines.append(f"  Rancher Prime  https://{rancher_ip}:{rancher_nodeport}")
-                lines.append(f"  [dim](external: https://{host}:{rancher_nodeport})[/dim]")
-
-    harvester_pw, rancher_pw = _read_passwords()
-    lines.append("")
-    lines.append("[bold]Log in[/bold]")
-    lines.append("  user                admin")
-    if has_harvester:
-        lines.append(f"  Harvester password  {harvester_pw}")
-    if has_rancher:
-        lines.append(f"  Rancher password    {rancher_pw}")
-    lines.append("  [dim](also in ~/.rodeo/secrets.yaml and $HARVESTER_ADMIN_PASSWORD / $RANCHER_ADMIN_PASSWORD)[/dim]")
+            lines.append(f"  Rancher password    {rancher_pw}")
+        lines.append("  [dim](also in ~/.rodeo/secrets.yaml and $HARVESTER_ADMIN_PASSWORD / $RANCHER_ADMIN_PASSWORD)[/dim]")
 
     if target == "instruqt":
         lines.append("")

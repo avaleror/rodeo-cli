@@ -28,6 +28,7 @@ class LabInABoxProfile(RodeoProfile):
     # labinabox_host / labinabox: see rodeo/engine/labinabox_phase.py.
     # custom_scripts: <lab>/custom/scripts/* post-steps, re-run every time.
     phases = ["kvm_host", "labinabox_host", "labinabox", "custom_scripts"]
+    native_logins = False
     vm_names: list[str] = []
     ansible_phases = frozenset(["kvm_host"])
     no_cache_phases = frozenset(["custom_scripts"])
@@ -120,6 +121,7 @@ class LabInABoxProfile(RodeoProfile):
         yield from super().run_phase(phase, runner, vars_file)
 
     def success_extra_sections(self, cfg: dict) -> list[str]:
+        self._apply_cloud_addresses(cfg)
         lines = ["[bold]Lab nodes[/bold]  (built by lab-in-a-box)"]
         for name, vm in cfg.get("vms", {}).items():
             lines.append(f"  {name:<16} {vm.get('ip', '')}")

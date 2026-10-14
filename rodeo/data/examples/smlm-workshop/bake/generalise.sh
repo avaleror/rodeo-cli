@@ -53,7 +53,7 @@ echo "# Scrubbing credentials and host identity"
 rm -f /etc/systemd/system/*channel-sync-monitor* /etc/systemd/system/*bootstrap-repo-monitor*
 systemctl daemon-reload
 podman logout --all >/dev/null 2>&1 || true
-echo 'rm -rf /root/.spacecmd /root/.mgr-sync /root/.bash_history' | mgrctl exec -i -- bash -s || true
+echo 'rm -rf /root/.spacecmd /root/.mgr-sync /root/.bash_history /root/spacewalk-answers' | mgrctl exec -i -- bash -s || true
 rm -rf /root/.spacecmd /root/.bash_history
 SUSEConnect --cleanup >/dev/null 2>&1 || true
 # cloud-init runs again on the next boot, so every deploy's own network,

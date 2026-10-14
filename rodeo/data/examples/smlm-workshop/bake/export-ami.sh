@@ -22,10 +22,10 @@ ami=$(aws ec2 create-image --region "${region}" --instance-id "${id}" \
       --name "smlm-workshop-server-$(date +%Y%m%d%H%M)" \
       --description "smlm-workshop SMLM server, channels pre-synced (private)" \
       --query ImageId --output text)
-# A ~200 GB snapshot outlasts `aws ec2 wait image-available` (10 min): poll for up to 3 h.
+# A 300 GB snapshot outlasts `aws ec2 wait image-available` (10 min) and can take over 3 h: poll for up to 6 h.
 echo "# waiting for ${ami} to become available (large snapshots take a while)"
 state=pending
-for _ in $(seq 360); do
+for _ in $(seq 720); do
     state=$(aws ec2 describe-images --region "${region}" --image-ids "${ami}" \
             --query 'Images[0].State' --output text)
     [[ "${state}" == available || "${state}" == failed ]] && break

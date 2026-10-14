@@ -442,3 +442,92 @@ def test_aws_target_needs_no_provider_block_when_on_ec2(monkeypatch):
     monkeypatch.setattr("rodeo.providers.remote_up.on_ec2", lambda **_k: False)
     with pytest.raises(cfgmod.ConfigError, match="requires a provider"):
         cfgmod._validate_aws_provider({"deployment_target": "aws"})
+
+
+# --- the local plan reaches the host -----------------------------------------
+
+
+def _fake_host() -> ProvisionedHost:
+    return ProvisionedHost(
+        id=SINGLE_HOST_ID,
+        ssh={"host": "1.2.3.4", "user": "ec2-user"},
+        public_ip="1.2.3.4",
+        provider_id="i-0abc",
+        labels={},
+    )
+
+
+def test_remote_up_script_unpacks_the_plan_before_the_bootstrap():
+    # install.sh runs from a pipe and may read stdin: the plan must be off
+    # stdin before it starts.
+    script = remote_up_script(lab_dir="/root/lab", profile="test", ship_plan=True)
+    unpack = script.index("base64 -d | tar -C /root/lab")
+    assert unpack < script.index("install.sh") < script.index("rodeo up ")
+
+
+def test_remote_up_script_without_a_plan_reads_no_stdin():
+    script = remote_up_script(lab_dir="/root/lab", profile="test")
+    assert "base64" not in script and "tar " not in script
+
+
+def test_run_remote_up_ships_the_local_plan(monkeypatch, tmp_path):
+    """Live-caught 2026-10-14: edition: opensource in the local plan, but the
+    host seeded the bundled example (edition: product) and failed in vms."""
+    import base64
+    import io
+    import tarfile
+
+    from rodeo.providers import remote_up as mod
+
+    lab = tmp_path / "lab"
+    lab.mkdir()
+    (lab / "rodeo-plan.yaml").write_text("name: x\nedition: opensource\n")
+    (lab / "definition.yaml").write_text("vms: []\n")
+    (lab / ".rodeo-secrets.yaml").write_text("bmc_password: s3cret\n")
+    seen: dict[str, object] = {}
+
+    def _fake_run_remote(inv, fh, argv, timeout=None, stdin=None):
+        seen["argv"], seen["stdin"] = argv, stdin
+        return type("R", (), {"ok": True, "rc": 0, "stdout": "AWS_UP_EXIT:0\n", "stderr": ""})()
+
+    monkeypatch.setattr(mod, "run_remote", _fake_run_remote)
+    monkeypatch.setattr(mod, "rodeo_state_dir", lambda: tmp_path / "state")
+    monkeypatch.setattr(mod, "resolve_ssh_identity", lambda p: str(tmp_path / "id_ed25519"))
+    mod.run_remote_up({"name": "lab", "provider": {"type": "aws"}}, _fake_host(), plan_dir=lab)
+
+    assert "base64 -d | tar" in seen["argv"][4]
+    with tarfile.open(fileobj=io.BytesIO(base64.b64decode(seen["stdin"]))) as tar:
+        members = {m.name: m for m in tar.getmembers()}
+        assert set(members) == {"rodeo-plan.yaml", "definition.yaml"}  # no lab secrets
+        assert all(m.mode == 0o600 and m.uid == 0 for m in members.values())
+        assert tar.extractfile("rodeo-plan.yaml").read() == b"name: x\nedition: opensource\n"
+
+
+def test_packed_plan_unpacks_with_the_scripts_own_commands(tmp_path):
+    import shutil
+    import subprocess
+
+    if not (shutil.which("base64") and shutil.which("tar")):
+        pytest.skip("base64/tar not available")
+    from rodeo.providers.remote_up import pack_plan_files
+
+    lab = tmp_path / "lab"
+    lab.mkdir()
+    (lab / "rodeo-plan.yaml").write_text("edition: opensource\n")
+    dest = tmp_path / "host-lab"
+    dest.mkdir()
+    # GNU coreutils spells decode -d; macOS base64 accepts -d too.
+    subprocess.run(
+        ["bash", "-c", f"base64 -d | tar -C {dest} --no-same-owner -xf -"],
+        input=pack_plan_files(lab), text=True, check=True,
+    )
+    assert (dest / "rodeo-plan.yaml").read_text() == "edition: opensource\n"
+    assert not (dest / "definition.yaml").exists()
+
+
+def test_up_cmd_hands_its_lab_to_the_remote():
+    import inspect
+
+    from rodeo.commands import up_cmd
+
+    assert "plan_dir=lab" in inspect.getsource(up_cmd)

@@ -395,7 +395,9 @@ def _aws_control_plane_deploy(
         # Hint catalog profile for AwsHostProvider.apply_instance_selection
         if isinstance(cfg.get("provider"), dict):
             cfg["provider"] = {**cfg["provider"], "lab_profile": lab_profile}
-        provisioned = execute_aws_up(cfg, profile=profile or lab_profile, ref=ref)
+        provisioned = execute_aws_up(
+            cfg, profile=profile or lab_profile, ref=ref, plan_dir=lab,
+        )
     except ConfigError as exc:
         console.print(f"[red]✗  {exc}[/red]")
         raise SystemExit(1)

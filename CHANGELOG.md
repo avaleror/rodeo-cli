@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.25.2](https://github.com/avaleror/rodeo-cli/compare/v0.25.1...v0.25.2) (2026-10-15)
+
+
+### Bug Fixes
+
+* **install:** judge a git checkout by its tag, not its stale package metadata ([ea00733](https://github.com/avaleror/rodeo-cli/commit/ea007331910a49faa2083b26aa1eb35f4592d592))
+* **install:** judge a git checkout by its tag, not its stale package metadata ([5bde588](https://github.com/avaleror/rodeo-cli/commit/5bde588706e9a884669000aabb095d27a053132b))
+
 ## [0.25.1](https://github.com/avaleror/rodeo-cli/compare/v0.25.0...v0.25.1) (2026-10-15)
 
 

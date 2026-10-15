@@ -1,6 +1,6 @@
 ---
 title: Architecture v2 — engines, versioned artifacts, planes
-status: design proposal (2026-10-14), for review by Andrés and Raúl before any code moves
+status: design proposal (2026-10-14, revised 2026-10-15), for review by Andrés and Raúl before any code moves
 work: docs/design/architecture-v2-work.md
 overview: docs/design/architecture-v2-overview.md
 audience: maintainers, implementing engineer
@@ -12,19 +12,25 @@ related:
   - docs/reference/plan.md
   - docs/reference/definition.md
 language: en
-last_updated: 2026-10-14
+last_updated: 2026-10-15
 ---
 
 # Architecture v2 — engines, versioned artifacts, planes
 
 ## 1. Problem
 
-rodeo-cli deploys the systems of a workshop ("rodeo") with a Python pipeline per
-product platform: `suse-virt`, `rancher` and `suse-edge` are three separate pipelines
-(`rodeo/profiles/*.py` + `rodeo/engine/*`), each hardcoding its phase list and its
-product steps. A fourth platform (telco-cloud in ROADMAP Phase G) means a fourth
-pipeline. The exception is `type: lab-in-a-box`, which deploys *any* set of systems
-from a definition. That growth — one pipeline per product mix — is not sustainable.
+rodeo-cli deploys the systems of a workshop ("rodeo") with its **native engine**: a
+Python pipeline per product platform. `suse-virt`, `rancher` and `suse-edge` are three
+separate pipelines (`rodeo/profiles/*.py` + `rodeo/engine/*`), each hardcoding its phase
+list and its product steps. A fourth platform (telco-cloud in ROADMAP Phase G) means a
+fourth pipeline. That growth — one pipeline per product mix — is not sustainable for
+the native engine.
+
+A second engine already exists: `type: lab-in-a-box` hands the deploy to lab-in-a-box,
+which brings capabilities the native engine does not have today (its add-on catalogue,
+cloud targets, a remote automation host). It was bolted on as a special `type`, with
+its own branches in the day-2 commands. There is no general way to add a third engine —
+an AWX engine running job templates, for instance — without repeating that pattern.
 
 Three further gaps compound it:
 
@@ -34,7 +40,7 @@ Three further gaps compound it:
 | Engines and tools are referenced by "latest" | `lab_in_a_box.source.ref: latest`; Builder uses whatever is installed | a rodeo that worked yesterday deploys differently today |
 | Multiplicity and access are three separate mechanisms | `rodeo fleet` (one lab per host), `rodeo instances` (many labs per host), the claim portal | the same concept — copies of a rodeo — has three vocabularies and no shared registry |
 
-## 2. Decisions already made (Raúl, 2026-10-14)
+## 2. Decisions already made (Raúl, 2026-10-14; 14–15 added 2026-10-15)
 
 1. The three native pipelines merge into **one engine, `native`**. New products become
    definitions, never new engines.
@@ -67,12 +73,29 @@ Three further gaps compound it:
     (`rodeo/lib/`) that every engine, command and tool imports; engines and tools never
     import each other. Existing duplicated helpers are consolidated there as the epics
     touch them (§6.1).
+14. **Engines are peers and the set is open.** `native` and `lab-in-a-box` are two
+    engines behind one contract; others (AWX, for example) are added the same way. The
+    purpose is to make the engine **modular** — not to make lab-in-a-box, or any other
+    engine, the only one. The native engine stays and keeps being developed on its own
+    roadmap; lab-in-a-box is the engine to pick when a rodeo needs capabilities the
+    native engine does not offer at the time. An engine offers the capabilities it has;
+    a rodeo picks the engine whose capabilities it needs.
+15. **A systems definition is written for one engine, in that engine's format.** What
+    happens inside an engine is the engine's business; what matters is that a lab can
+    be defined for the chosen engine and deployed by it. rodeo-cli handles only the
+    common envelope (`name`, `version`, `engine`, `tested_with`) and passes the body to
+    the engine, which validates it. A definition for engine A and one for engine B may
+    look nothing alike.
 
 ## 3. Goals and non-goals
 
 **Goals**
 
-- Add a product platform by writing a systems definition, not a pipeline.
+- Add a product platform by writing a systems definition for the engine of your
+  choice, not a pipeline.
+- Engines are interchangeable at the contract, never in their internals: adding,
+  choosing or upgrading an engine touches no command, check or tool outside the engine
+  (decision 14).
 - A rodeo pins everything it needs; a production rodeo deploys the same way every time.
 - One engine contract that day-2 commands, checks, the Builder and the control plane
   program against, with no engine-specific branches outside the engine.
@@ -89,9 +112,11 @@ Three further gaps compound it:
 - A shell/bash automation backend (ROADMAP: no bash deploy scripts). Scripts that
   ship with content already run through the `custom_scripts` phase and lab-in-a-box
   add-ons.
-- A generic cloud "compute backend" in the native engine. Cloud-direct labs go
-  through the lab-in-a-box engine (`lab_in_a_box.cloud`, 8 providers); the native
-  engine stays KVM-first (ROADMAP, Option A).
+- Making any engine *the* engine. lab-in-a-box is not the successor of `native`, and
+  `native` is not frozen: each keeps its own roadmap. Cloud-direct labs are a
+  lab-in-a-box capability today (`lab_in_a_box.cloud`, 8 providers) while ROADMAP
+  Option A keeps `native` KVM-first; which capabilities an engine grows next is that
+  engine's decision, not this design's.
 - Rewriting the portal. The Fleet claim portal (`docs/claim-portal.md`) is the
   existing control-plane portal; this design places it, it does not replace it.
 - Deciding the portal roadmap (decision 12).
@@ -111,21 +136,26 @@ Three further gaps compound it:
 ```mermaid
 flowchart LR
   R["rodeo @ version<br/>instructions · checks · setup · facts map<br/>pins one definition"]
-  D["systems definition @ version<br/>nodes · network · images · services<br/>shared by many rodeos<br/>tested_with: engines"]
-  E["engine @ version<br/>native = rodeo-cli release<br/>lab-in-a-box = its release tag"]
+  D["systems definition @ version<br/>for one engine, in that engine's format<br/>shared by many rodeos<br/>tested_with: engine versions"]
+  E["engine @ version<br/>native = rodeo-cli release<br/>lab-in-a-box = its release tag<br/>AWX, … = added later, own versions"]
   R -- "pins" --> D
   D -- "tested with" --> E
   R -. "pins (engine_version)" .-> E
 ```
 
-- **Systems definition** — what systems exist (today's `definition.yaml`, plus for
-  lab-in-a-box the `lab_in_a_box.nodes/images/sections` content). Own version, own
-  repo or catalog entry; bundled definitions carry rodeo-cli's version. Declares
-  `tested_with` (decision 6).
+- **Systems definition** — what systems exist, **written for one engine in that
+  engine's format** (decision 15): today's `definition.yaml` for `native`; the
+  lab-in-a-box lab (`lab_in_a_box.nodes/images/sections`, or a `lab.json`, Builder F2)
+  for `lab-in-a-box`; whatever a future engine takes (an inventory plus a job template
+  for an AWX engine). The envelope is the same for every engine — `name`, `version`,
+  `engine`, `tested_with` (decision 6) — and is all rodeo-cli reads; the body goes to
+  the engine untouched. Own version, own repo or catalog entry; bundled definitions
+  carry rodeo-cli's version.
 - **Rodeo** — instructions, checks, setup scripts, facts mapping, and the pins: one
   definition version, the engine and its version, target defaults. A rodeo repo is
   today's profile directory (`rodeo-plan.yaml`, `story/`, `checks/`, `custom/`).
-- **Engine** — versioned by its own project. rodeo-cli *is* the version of `native`.
+- **Engine** — versioned by its own project. rodeo-cli *is* the version of `native`;
+  lab-in-a-box has its release tags; a future engine brings its own.
 - **Lock** (`rodeo.lock`, in the lab dir like today's `workshop.lock`) — the resolved
   pins at deploy/publish time: definition version + commit, engine version, image
   digests, content commit, computed status.
@@ -144,7 +174,7 @@ flowchart TB
     CAT["catalog · providers · secrets custody · artifact refs"]
   end
   subgraph LP["Lab plane — ephemeral, per instance"]
-    ENG["engine: native · lab-in-a-box · future engines"]
+    ENG["engine: native · lab-in-a-box · AWX · … (peers)"]
     SYS["the systems"]
   end
   subgraph CD["Content delivery — static"]
@@ -231,7 +261,8 @@ Two checks, different roles:
 - **Schema check — hard gate.** The engine validates the definition against its own
   schema at the pinned engine version (`lab_schema` today for lab-in-a-box;
   `validate_config` + inventory rules for native). Unknown fields or missing required
-  fields refuse the deploy.
+  fields refuse the deploy. rodeo-cli itself reads only the envelope (`name`,
+  `version`, `engine`, `tested_with`); the body is the engine's (decision 15).
 - **Tested-with — warning source.** The definition's `tested_with` records the engine
   versions it was validated against. The Builder and lab-builder write the versions in
   use when they save; a hand-edited file may omit it.
@@ -250,10 +281,20 @@ A new `rodeo/engine/base.py` declares the protocol every engine implements; the
 registry maps `systems.engine` to an implementation (built-ins `native` and
 `lab-in-a-box`; plugins via `rodeo.plugins`).
 
+Engines are peers (decision 14). The contract is the whole boundary: an engine receives
+a definition in its own format, a placement and secrets, and gives back an event stream
+and facts. How it gets there — Ansible over libvirt (`native`), lab-in-a-box's
+`setup_lab.py` on an automation host, AWX job templates, something else — is invisible
+to everything outside the engine, and no engine is routed through another. `native`
+stays rodeo-cli's own engine and keeps growing (§7); `lab-in-a-box` is the engine to
+pick when its capabilities are needed (add-on catalogue, cloud targets, remote host); an
+AWX engine would be the one to pick for labs already expressed as job templates. Adding
+an engine is one module plus a registry entry; it changes nothing else.
+
 ```
 Engine (name, version)
   capabilities()                       → targets it supports, system kinds it builds
-  validate(definition, plan)           → hard schema gate at this engine version
+  validate(definition, plan)           → hard schema gate; the body is in the engine's own format
   deploy(definition, placement, secrets) → DeployEvent stream; returns Facts
   destroy(instance)
   systems(instance)                    → [(name, state)]        ┐
@@ -323,9 +364,15 @@ data at its top level. The profile classes `rancher`, `suse_virt`, `suse_edge`,
 `rancher_test` become bundled definitions with defaults; `RodeoProfile` remains as the
 compatibility shim for `type:` (§8).
 
+The merge is how `native` keeps growing — by definitions and components, not by
+pipelines. It remains under active development: new components (telco workloads), boot
+methods or targets land in `native` without any other engine being involved.
+
 The lab-in-a-box engine wraps today's `labinabox_host` / `labinabox` / `custom_scripts`
 phases and the existing day-2 hooks (FQDN domains, `target.libvirt_uri`,
-`destroy_lab.py`, `vm_power.py` for cloud) behind the same contract.
+`destroy_lab.py`, `vm_power.py` for cloud) behind the same contract. It is the second
+peer engine, not an alternative to the merge; its definition format is lab-in-a-box's
+own (W4.3).
 
 ## 8. Plan and definition schema v2, with aliases
 
@@ -337,7 +384,8 @@ rodeo:
   version: 1.2.0                 # the rodeo's own version (tag); omitted = development
 systems:
   definition: smlm-base@1.0.0    # bundled name, name@version, {repo, ref}, or ./definition.yaml
-  engine: native                 # native | lab-in-a-box | any engine registered later
+  engine: native                 # native | lab-in-a-box | any engine registered later;
+                                 # must match the definition's engine; may be omitted
   engine_version: 0.19.0         # tag or latest (latest = development status)
   target: baremetal              # engine-specific: baremetal | instruqt | aws | …
   placement: {}                  # engine-specific: existing host, cloud account, instance N
@@ -346,25 +394,27 @@ instructions:
   publish: lab                   # lab (default, colocated) | pages | url | pdf
 ```
 
-New optional keys in a systems definition:
+New keys in the envelope of a systems definition (the body below them is the engine's):
 
 ```yaml
+engine: native                   # the engine this definition is written for
 version: 1.0.0
-tested_with:
-  native: 0.19.0
-  lab-in-a-box: 1.15.0
+tested_with: [0.19.0]            # versions of that engine it was validated against
 ```
+
+`engine` defaults to the plan's `systems.engine` (or the `type:` alias) when absent;
+`version` and `tested_with` are optional.
 
 Aliases (kept for at least one release; a plan may mix old and new keys, new wins):
 
 | Old key | Meaning in v2 |
 |---|---|
 | `type: suse-virt \| rancher \| suse-edge \| rancher-test` | `systems.engine: native` + the bundled definition of that name |
-| `type: lab-in-a-box` | `systems.engine: lab-in-a-box` |
+| `type: lab-in-a-box` | `systems.engine: lab-in-a-box` + a lab-in-a-box definition built from the `lab_in_a_box.*` keys |
 | `deployment_target:` | `systems.target` |
 | `lab_in_a_box.source.{repo,ref}` | `systems.engine_version` (+ source override) |
 | `lab_in_a_box.target`, `.cloud`, `.instance`/`instance:` | `systems.placement` |
-| `lab_in_a_box.nodes`, `.images`, `.sections`, `.variant(s)`, `.root_password`, `.dns_aliases`, `.parallel` | the definition's engine-specific section |
+| `lab_in_a_box.nodes`, `.images`, `.sections`, `.variant(s)`, `.root_password`, `.dns_aliases`, `.parallel` | the body of a lab-in-a-box systems definition |
 | `workshop: {repo, branch/ref, track, facts, replace, pdf}` | `instructions.source` (format `instruqt`) + facts mapping |
 | `name:` | `rodeo.name` |
 
@@ -377,9 +427,9 @@ The bundled profiles (`rancher-test`, `rancher`, `test`, `harvester-ha`, `harves
 `harvester`, `virt-workshop-aws`, `virt-workshop-aws-2n`, `suse-edge`, `smlm-workshop`)
 are in production. The transformation rule is therefore:
 
-1. Each example splits into a **bundled systems definition** (the engine base:
-   `rancher`, `harvester`, `harvester-2n`, `harvester-ha`, `test`, `suse-edge`,
-   `smlm-base`) and a **thin bundled rodeo** that pins it. Workshop rodeos
+1. Each example splits into a **bundled systems definition for its engine** (`native`:
+   `rancher`, `harvester`, `harvester-2n`, `harvester-ha`, `test`, `suse-edge`;
+   `lab-in-a-box`: `smlm-base`) and a **thin bundled rodeo** that pins it. Workshop rodeos
    (`virt-workshop-aws*`, `smlm-workshop`) later move to content repos as catalog entries
    (Builder F4), keeping a bundled copy for one release.
 2. The aliases of §8 make the untouched old files load identically; the transformed
@@ -400,8 +450,9 @@ plans. Ordering between W-epics is in the work breakdown.
 1. **Name the seams.** Schema v2 keys + aliases, status computation, `rodeo.lock`,
    version policy — no engine code touched yet.
 2. **Engine contract.** `rodeo/engine/base.py` + registry; day-2 commands call the
-   engine instead of branching on `type`. Both engines implemented as thin adapters over
-   today's code.
+   engine instead of branching on `type`. Both existing engines (`native`,
+   `lab-in-a-box`) implemented as thin adapters over today's code; a third engine is one
+   module plus a registry entry.
 3. **Native merge, one profile at a time.** `rancher` first (image boot + one
    component), then `suse-edge`, then `suse-virt` last (PXE/cluster is the
    regression-sensitive path). Each step gated by the byte-identical render test.
@@ -423,3 +474,7 @@ plans. Ordering between W-epics is in the work breakdown.
    F4) or per organization. Affects W5.
 4. **Bundled example cut-over date** — when the workshop rodeos stop shipping bundled
    copies (after one release with both).
+5. **One rodeo, several engines** — a rodeo whose instructions should run on more than
+   one engine would pin one definition per engine (`systems.definitions: {native: …,
+   lab-in-a-box: …}`) and choose at deploy. Facts already make the instructions
+   portable; whether the extra key is worth it waits for a real case.

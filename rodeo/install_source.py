@@ -83,6 +83,26 @@ def validate_ref(ref: str) -> str:
     return clean
 
 
+def _local_version() -> str:
+    from . import __version__
+
+    return __version__
+
+
+def release_ref() -> str | None:
+    """``v<version>`` when this rodeo-cli is a plain release, else None.
+
+    A remote host must run the rodeo-cli the operator tested with. Without a
+    pin it used to install main, so a laptop on a tagged release deployed
+    whatever main held that day. Dev and pre-release versions have no tag to
+    point at; they keep the old behaviour.
+    """
+    version = _local_version()
+    if re.fullmatch(r"\d+\.\d+\.\d+", version):
+        return f"v{version}"
+    return None
+
+
 def resolve_install_source(
     cfg: Mapping[str, Any],
     *,
@@ -94,9 +114,10 @@ def resolve_install_source(
     ``provider:`` block or a fleet ``lab:`` block. An explicit ``install_url``
     is honoured verbatim: someone pointing at a fork or an air-gapped mirror
     means it. An explicit *ref* beats ``cfg["ref"]``; with neither, the host
-    keeps whatever it already has.
+    installs this rodeo-cli's own release tag (``release_ref``). Only a dev
+    build with no ref leaves the host with whatever it already has.
     """
-    chosen = str(ref or cfg.get("ref") or "").strip() or None
+    chosen = str(ref or cfg.get("ref") or "").strip() or release_ref()
     if chosen is not None:
         chosen = validate_ref(chosen)
     configured = str(cfg.get("install_url") or "").strip()

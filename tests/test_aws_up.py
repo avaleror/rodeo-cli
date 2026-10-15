@@ -145,7 +145,8 @@ def test_ref_is_shell_quoted():
 
 
 @pytest.mark.parametrize("bad", ["", "  ", "-x", "a..b", "feat/../../etc"])
-def test_resolve_install_source_rejects_hostile_refs(bad):
+def test_resolve_install_source_rejects_hostile_refs(bad, monkeypatch):
+    monkeypatch.setattr("rodeo.install_source._local_version", lambda: "0.0.0-dev")
     if not bad.strip():
         # Blank is "no ref", not an error.
         assert resolve_install_source({"type": "aws"}, ref=bad)[1] is None
@@ -178,6 +179,7 @@ def test_explicit_install_url_wins_over_the_ref():
 def test_rodeo_repo_on_github_moves_the_installer_url(monkeypatch):
     from rodeo.install_source import default_install_url, repo_url
 
+    monkeypatch.setattr("rodeo.install_source._local_version", lambda: "0.0.0-dev")
     monkeypatch.setenv("RODEO_REPO", "https://github.com/fork/rodeo-cli.git")
     assert repo_url() == "https://github.com/fork/rodeo-cli.git"
     assert install_url_for_ref("dev") == (
@@ -211,6 +213,40 @@ def test_bootstrap_forwards_rodeo_repo(monkeypatch):
     assert "RODEO_REPO=https://github.com/fork/rodeo-cli.git bash;" in bootstrap_fragment(
         install_url="https://x/install.sh"
     )
+
+
+@pytest.mark.parametrize(
+    ("version", "expected"),
+    [
+        ("0.25.1", "v0.25.1"),
+        ("1.0.0", "v1.0.0"),
+        ("0.0.0-dev", None),
+        ("0.26.0rc1", None),
+        ("0.25.1.dev3+g1234abc", None),
+    ],
+)
+def test_release_ref_only_for_plain_releases(version, expected, monkeypatch):
+    from rodeo.install_source import release_ref
+
+    monkeypatch.setattr("rodeo.install_source._local_version", lambda: version)
+    assert release_ref() == expected
+
+
+def test_a_release_pins_the_host_to_its_own_tag(monkeypatch):
+    """Without --ref the host used to install main, so a laptop on a tagged
+    release deployed whatever main held that day."""
+    monkeypatch.setattr("rodeo.install_source._local_version", lambda: "0.25.1")
+    url, ref = resolve_install_source({"type": "aws"})
+    assert ref == "v0.25.1"
+    assert url == install_url_for_ref("v0.25.1")
+    script = remote_up_script(lab_dir="/root/lab", profile="test", install_url=url, ref=ref)
+    assert "--ref v0.25.1" in script
+
+
+def test_an_explicit_ref_beats_the_release_tag(monkeypatch):
+    monkeypatch.setattr("rodeo.install_source._local_version", lambda: "0.25.1")
+    assert resolve_install_source({"type": "aws"}, ref="feat/x")[1] == "feat/x"
+    assert resolve_install_source({"type": "aws", "ref": "main"})[1] == "main"
 
 
 def test_provider_ref_is_honoured_and_the_flag_beats_it():

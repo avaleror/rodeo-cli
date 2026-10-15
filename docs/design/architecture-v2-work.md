@@ -1,6 +1,6 @@
 ---
 title: Architecture v2 — work breakdown
-status: proposal (2026-10-14); to be split between Andrés and Raúl
+status: proposal (2026-10-14, revised 2026-10-15); to be split between Andrés and Raúl
 design: docs/design/architecture-v2.md
 overview: docs/design/architecture-v2-overview.md
 audience: maintainers, implementing engineer
@@ -55,7 +55,7 @@ whichever epic touches the duplicated code.
 
 | # | Task | Files | Size | Depends | Acceptance | Owner |
 |---|---|---|---|---|---|---|
-| W0.1 | Review the design doc; record decisions in §2 of the design (append, don't rewrite) | `docs/design/architecture-v2.md` | S | — | both maintainers agree in the doc's decision list | |
+| W0.1 | Review the design doc; confirm, amend or reject each proposed decision in §2 (append, don't rewrite) | `docs/design/architecture-v2.md` | S | — | both maintainers agree in the doc's decision list | |
 | W0.2 | Decide portal scope (design §11.1) and instance-registry location (§11.2) | `docs/design/architecture-v2.md` | S | W0.1 | decisions recorded; W7 tasks adjusted | |
 | W0.3 | Replace the "Three-axis refactor" section of the local `TODO.md` with a pointer to this breakdown | `TODO.md` (local, not committed) | S | W0.1 | — | |
 
@@ -102,8 +102,8 @@ whichever epic touches the duplicated code.
 Scope: the existing lab-in-a-box integration becomes one engine among several behind
 the contract, keeping its own definition format and the capabilities only it has today
 (add-on catalogue, cloud targets, remote automation host). Nothing in W4 makes
-lab-in-a-box the default or routes native features through it; the native engine's own
-work is W3.
+lab-in-a-box the default or routes native features through it; creating the `native`
+engine from today's pipelines is W3.
 
 | # | Task | Files | Size | Depends | Acceptance | Owner |
 |---|---|---|---|---|---|---|

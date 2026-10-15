@@ -19,18 +19,23 @@ last_updated: 2026-10-15
 
 ## 1. Problem
 
-rodeo-cli deploys the systems of a workshop ("rodeo") with its **native engine**: a
-Python pipeline per product platform. `suse-virt`, `rancher` and `suse-edge` are three
-separate pipelines (`rodeo/profiles/*.py` + `rodeo/engine/*`), each hardcoding its phase
-list and its product steps. A fourth platform (telco-cloud in ROADMAP Phase G) means a
-fourth pipeline. That growth — one pipeline per product mix — is not sustainable for
-the native engine.
+rodeo-cli deploys the systems of a workshop ("rodeo") with one Python pipeline per
+product platform: `suse-virt`, `rancher` and `suse-edge` are three separate deploy
+mechanisms (`rodeo/profiles/*.py` + `rodeo/engine/*`), each hardcoding its phase list
+and its product steps. There is no "engine" today, only these pipelines. A fourth
+platform (telco-cloud in ROADMAP Phase G) means a fourth pipeline. That growth — one
+pipeline per product mix — is not sustainable.
 
-A second engine already exists: `type: lab-in-a-box` hands the deploy to lab-in-a-box,
-which brings capabilities the native engine does not have today (its add-on catalogue,
-cloud targets, a remote automation host). It was bolted on as a special `type`, with
-its own branches in the day-2 commands. There is no general way to add a third engine —
-an AWX engine running job templates, for instance — without repeating that pattern.
+A second deploy mechanism also exists: `type: lab-in-a-box` hands the deploy to
+lab-in-a-box, which brings capabilities the three pipelines do not have (its add-on
+catalogue, cloud targets, a remote automation host). It was bolted on as a special
+`type`, with its own branches in the day-2 commands. There is no general way to add a
+third mechanism — AWX running job templates, for instance — without repeating that
+pattern.
+
+This proposal names the mechanism an **engine**, merges the three pipelines into one
+engine called `native`, puts lab-in-a-box behind the same contract as a second engine,
+and leaves the set open.
 
 Three further gaps compound it:
 
@@ -40,7 +45,7 @@ Three further gaps compound it:
 | Engines and tools are referenced by "latest" | `lab_in_a_box.source.ref: latest`; Builder uses whatever is installed | a rodeo that worked yesterday deploys differently today |
 | Multiplicity and access are three separate mechanisms | `rodeo fleet` (one lab per host), `rodeo instances` (many labs per host), the claim portal | the same concept — copies of a rodeo — has three vocabularies and no shared registry |
 
-## 2. Decisions already made (Raúl, 2026-10-14; 14–15 added 2026-10-15)
+## 2. Decisions proposed (Raúl, 2026-10-14; 14–15 added 2026-10-15; to be confirmed with Andrés in W0.1)
 
 1. The three native pipelines merge into **one engine, `native`**. New products become
    definitions, never new engines.
@@ -76,9 +81,10 @@ Three further gaps compound it:
 14. **Engines are peers and the set is open.** `native` and `lab-in-a-box` are two
     engines behind one contract; others (AWX, for example) are added the same way. The
     purpose is to make the engine **modular** — not to make lab-in-a-box, or any other
-    engine, the only one. The native engine stays and keeps being developed on its own
-    roadmap; lab-in-a-box is the engine to pick when a rodeo needs capabilities the
-    native engine does not offer at the time. An engine offers the capabilities it has;
+    engine, the only one. `native` (the merge of today's pipelines, decision 1) is
+    rodeo-cli's own engine and keeps being developed on its own roadmap; lab-in-a-box
+    is the engine to pick when a rodeo needs capabilities `native` does not offer at
+    the time. An engine offers the capabilities it has;
     a rodeo picks the engine whose capabilities it needs.
 15. **A systems definition is written for one engine, in that engine's format.** What
     happens inside an engine is the engine's business; what matters is that a lab can
@@ -112,8 +118,9 @@ Three further gaps compound it:
 - A shell/bash automation backend (ROADMAP: no bash deploy scripts). Scripts that
   ship with content already run through the `custom_scripts` phase and lab-in-a-box
   add-ons.
-- Making any engine *the* engine. lab-in-a-box is not the successor of `native`, and
-  `native` is not frozen: each keeps its own roadmap. Cloud-direct labs are a
+- Making any engine *the* engine. lab-in-a-box is not the successor of today's
+  pipelines or of the `native` engine they merge into, and `native` is not frozen: each
+  keeps its own roadmap. Cloud-direct labs are a
   lab-in-a-box capability today (`lab_in_a_box.cloud`, 8 providers) while ROADMAP
   Option A keeps `native` KVM-first; which capabilities an engine grows next is that
   engine's decision, not this design's.

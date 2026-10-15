@@ -20,16 +20,17 @@ lives in its own plane with its own lifecycle.
 
 ## Engines are peers, not a replacement
 
-This is a **modularity** change. The native engine is not being replaced by
-lab-in-a-box, and lab-in-a-box is not being folded into native: each is one engine
-behind the same contract, each keeps its own roadmap, and more can be added the same
-way. A rodeo picks the engine whose capabilities it needs; what happens inside the
+This is a **modularity** change. Today there is no engine: three product pipelines
+plus a special-cased lab-in-a-box type. The proposal merges the pipelines into one
+engine called `native` and puts lab-in-a-box behind the same contract as a second one.
+Neither replaces the other: each is one engine behind the same contract, each keeps
+its own roadmap, and more can be added the same way. A rodeo picks the engine whose capabilities it needs; what happens inside the
 engine is the engine's business.
 
 | Engine | Its definition format | What it brings today |
 |---|---|---|
-| `native` | `definition.yaml` (nodes, network, boot method, components) | KVM labs on bare metal / Instruqt: Harvester, Rancher Prime, SUSE Edge; keeps growing (telco, more components) |
-| `lab-in-a-box` | the lab-in-a-box lab (`lab_in_a_box:` keys today, a `lab.json` later) | its add-on catalogue, 8 cloud targets, a remote automation host — capabilities native does not have at the moment |
+| `native` (proposed: the merge of today's three pipelines) | `definition.yaml` (nodes, network, boot method, components) | KVM labs on bare metal / Instruqt: Harvester, Rancher Prime, SUSE Edge; keeps growing (telco, more components) |
+| `lab-in-a-box` (exists: `type: lab-in-a-box`) | the lab-in-a-box lab (`lab_in_a_box:` keys today, a `lab.json` later) | its add-on catalogue, 8 cloud targets, a remote automation host — capabilities the native pipelines do not have at the moment |
 | AWX, … (future) | whatever that engine takes — an inventory plus a job template, say | whatever it automates; added as one module plus a registry entry |
 
 Because the definition is written *for* an engine, a definition for one engine can look
@@ -133,7 +134,7 @@ sequenceDiagram
   CLI-->>Op: success screen · access sheet · portal record (status + version notes)
 ```
 
-## The native engine after the merge
+## The proposed `native` engine (the merge)
 
 ```
 kvm_host → vms → [ boot  |  pxe_server → cluster ] → <components: rancher, elemental, …> → apply → finalise

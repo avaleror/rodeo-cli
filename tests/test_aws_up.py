@@ -147,6 +147,7 @@ def test_ref_is_shell_quoted():
 @pytest.mark.parametrize("bad", ["", "  ", "-x", "a..b", "feat/../../etc"])
 def test_resolve_install_source_rejects_hostile_refs(bad, monkeypatch):
     monkeypatch.setattr("rodeo.install_source._local_version", lambda: "0.0.0-dev")
+    monkeypatch.setattr("rodeo.install_source._source_checkout", lambda: None)
     if not bad.strip():
         # Blank is "no ref", not an error.
         assert resolve_install_source({"type": "aws"}, ref=bad)[1] is None
@@ -180,6 +181,8 @@ def test_rodeo_repo_on_github_moves_the_installer_url(monkeypatch):
     from rodeo.install_source import default_install_url, repo_url
 
     monkeypatch.setattr("rodeo.install_source._local_version", lambda: "0.0.0-dev")
+
+    monkeypatch.setattr("rodeo.install_source._source_checkout", lambda: None)
     monkeypatch.setenv("RODEO_REPO", "https://github.com/fork/rodeo-cli.git")
     assert repo_url() == "https://github.com/fork/rodeo-cli.git"
     assert install_url_for_ref("dev") == (
@@ -229,13 +232,42 @@ def test_release_ref_only_for_plain_releases(version, expected, monkeypatch):
     from rodeo.install_source import release_ref
 
     monkeypatch.setattr("rodeo.install_source._local_version", lambda: version)
+
+    monkeypatch.setattr("rodeo.install_source._source_checkout", lambda: None)
     assert release_ref() == expected
+
+
+def _git(root, *args):
+    import subprocess
+
+    subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True,
+                   env={"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
+                        "GIT_COMMITTER_EMAIL": "t@t", "PATH": __import__("os").environ["PATH"],
+                        "HOME": str(root)})
+
+
+def test_a_checkout_pins_only_when_head_is_on_a_release_tag(tmp_path, monkeypatch):
+    """An editable install's metadata goes stale after git pull (a checkout at
+    0.24.0 reported 0.22.0), so a checkout is judged by git, not by metadata."""
+    from rodeo.install_source import release_ref
+
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "commit", "-q", "--allow-empty", "-m", "one")
+    _git(tmp_path, "tag", "v0.25.1")
+    monkeypatch.setattr("rodeo.install_source._source_checkout", lambda: tmp_path)
+    monkeypatch.setattr("rodeo.install_source._local_version", lambda: "0.22.0")
+    assert release_ref() == "v0.25.1"
+    _git(tmp_path, "commit", "-q", "--allow-empty", "-m", "two")
+    assert release_ref() is None
+    _git(tmp_path, "tag", "v0.26.0-rc1")
+    assert release_ref() is None
 
 
 def test_a_release_pins_the_host_to_its_own_tag(monkeypatch):
     """Without --ref the host used to install main, so a laptop on a tagged
     release deployed whatever main held that day."""
     monkeypatch.setattr("rodeo.install_source._local_version", lambda: "0.25.1")
+    monkeypatch.setattr("rodeo.install_source._source_checkout", lambda: None)
     url, ref = resolve_install_source({"type": "aws"})
     assert ref == "v0.25.1"
     assert url == install_url_for_ref("v0.25.1")
@@ -245,6 +277,7 @@ def test_a_release_pins_the_host_to_its_own_tag(monkeypatch):
 
 def test_an_explicit_ref_beats_the_release_tag(monkeypatch):
     monkeypatch.setattr("rodeo.install_source._local_version", lambda: "0.25.1")
+    monkeypatch.setattr("rodeo.install_source._source_checkout", lambda: None)
     assert resolve_install_source({"type": "aws"}, ref="feat/x")[1] == "feat/x"
     assert resolve_install_source({"type": "aws", "ref": "main"})[1] == "main"
 

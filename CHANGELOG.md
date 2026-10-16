@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.25.3](https://github.com/avaleror/rodeo-cli/compare/v0.25.2...v0.25.3) (2026-10-16)
+
+
+### Bug Fixes
+
+* **virt-workshop:** student kit so portal students can do the terminal steps ([e876ef3](https://github.com/avaleror/rodeo-cli/commit/e876ef3de9147f530cbb01dab6e32b15b8a928d8))
+* **virt-workshop:** student kit so portal students can do the terminal steps ([d48b18c](https://github.com/avaleror/rodeo-cli/commit/d48b18c359c0dafceffe66fe09ad114da32fc110))
+
 ## [0.25.2](https://github.com/avaleror/rodeo-cli/compare/v0.25.1...v0.25.2) (2026-10-15)
 
 

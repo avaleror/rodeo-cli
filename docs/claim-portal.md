@@ -335,7 +335,11 @@ Answers to section 12 and deliberate deviations, all from Andrés unless noted.
   official static binary pinned by version and SHA-512 (`rodeo/fleet/portal.py`).
 - **Open question 2 (student SSH):** yes, students need SSH to their lab host.
   `portal.student_ssh: true` implements F5.4 as designed (no sudo, no privileged
-  groups, cannot read `/root`, checked on every publish).
+  groups, cannot read `/root`, checked on every publish). The suse-virt workshop's
+  terminal steps work from that account (2026-10-16): the `virt-workshop-aws` profiles
+  install a student kit at `/opt/suse-virt-workshop/` (self-checks and a shared lab VM
+  key the pre-created VMs trust), and the guide takes kubectl's kubeconfig from the
+  Harvester UI instead of `sudo`.
 - **Open question 3 (instructor web view):** yes, in addition to the CLI. A read-only
   page at `/admin/<token>` with every claim and every lab's credentials and SSH key;
   `rodeo fleet portal admin-link` issues a new token and revokes the previous one. No

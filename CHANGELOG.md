@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.25.3](https://github.com/avaleror/rodeo-cli/compare/v0.25.2...v0.25.3) (2026-10-16)
+
+
+### Bug Fixes
+
+* **virt-workshop:** student kit so portal students can do the terminal steps ([e876ef3](https://github.com/avaleror/rodeo-cli/commit/e876ef3de9147f530cbb01dab6e32b15b8a928d8))
+* **virt-workshop:** student kit so portal students can do the terminal steps ([d48b18c](https://github.com/avaleror/rodeo-cli/commit/d48b18c359c0dafceffe66fe09ad114da32fc110))
+
+## [0.25.2](https://github.com/avaleror/rodeo-cli/compare/v0.25.1...v0.25.2) (2026-10-15)
+
+
+### Bug Fixes
+
+* **install:** judge a git checkout by its tag, not its stale package metadata ([ea00733](https://github.com/avaleror/rodeo-cli/commit/ea007331910a49faa2083b26aa1eb35f4592d592))
+* **install:** judge a git checkout by its tag, not its stale package metadata ([5bde588](https://github.com/avaleror/rodeo-cli/commit/5bde588706e9a884669000aabb095d27a053132b))
+
+## [0.25.1](https://github.com/avaleror/rodeo-cli/compare/v0.25.0...v0.25.1) (2026-10-15)
+
+
+### Bug Fixes
+
+* **aws:** the AWS host deploys the local plan, not the bundled example ([79b43ae](https://github.com/avaleror/rodeo-cli/commit/79b43aedb71072c9e2579f6d8f04073c0459ffd4))
+* **aws:** the AWS host deploys the local plan, not the bundled example ([6ee866b](https://github.com/avaleror/rodeo-cli/commit/6ee866bd1b6151bacf8a61d94270c591298d8514))
+* **fleet:** status counts only cacheable phases, so a finished lab no longer reads 6/8 ([8351a10](https://github.com/avaleror/rodeo-cli/commit/8351a1072e7e4dae1101f830eb4d2ec031c8db68))
+* **install:** remote hosts install the operator's own release tag, not main ([6c51066](https://github.com/avaleror/rodeo-cli/commit/6c510667d1e170c0fc9078de428c49052fa28b84))
+* remote hosts install the operator's release tag; fleet status counts cacheable phases ([6c26799](https://github.com/avaleror/rodeo-cli/commit/6c267995ee5d043143265628fd7445577de59854))
+
 ## [0.25.0](https://github.com/avaleror/rodeo-cli/compare/v0.24.0...v0.25.0) (2026-10-09)
 
 

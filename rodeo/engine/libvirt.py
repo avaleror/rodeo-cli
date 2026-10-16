@@ -96,7 +96,15 @@ class LibvirtDriver:
         self._conn = None
 
     def connect(self) -> "LibvirtDriver":
-        self._conn = _libvirt.open(self._uri)
+        try:
+            self._conn = _libvirt.open(self._uri)
+        except _libvirt.libvirtError as exc:
+            # e.g. a user outside the libvirt group (a claim-portal student):
+            # callers expect RuntimeError, not a traceback.
+            raise RuntimeError(
+                f"Cannot connect to libvirt at {self._uri} ({exc}). "
+                "Run as root (sudo) or a user in the libvirt group."
+            ) from exc
         if self._conn is None:
             raise RuntimeError(f"Failed to connect to libvirt at {self._uri}")
         return self

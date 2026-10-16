@@ -10,6 +10,8 @@ from __future__ import annotations
 import os
 import re
 import shlex
+import subprocess
+from pathlib import Path
 from typing import Any, Mapping
 
 from .config import ConfigError
@@ -83,6 +85,55 @@ def validate_ref(ref: str) -> str:
     return clean
 
 
+def _local_version() -> str:
+    from . import __version__
+
+    return __version__
+
+
+def _source_checkout() -> Path | None:
+    """The git checkout this rodeo-cli runs from, or None for a wheel install."""
+    root = Path(__file__).resolve().parent.parent
+    return root if (root / ".git").exists() else None
+
+
+def _checkout_release_tag(root: Path) -> str | None:
+    """The ``vX.Y.Z`` tag HEAD sits on exactly, else None."""
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(root), "describe", "--tags", "--exact-match", "HEAD"],
+            capture_output=True, text=True, timeout=5, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    tag = out.stdout.strip() if out.returncode == 0 else ""
+    return tag if re.fullmatch(r"v\d+\.\d+\.\d+", tag) else None
+
+
+def release_ref() -> str | None:
+    """The release tag remote hosts should install, or None for "no pin".
+
+    A remote host must run the rodeo-cli the operator tested with. Without a
+    pin it used to install main, so a laptop on a tagged release deployed
+    whatever main held that day.
+
+    A git checkout (install.sh, a developer clone) is pinned only when HEAD
+    sits exactly on a ``vX.Y.Z`` tag. Its package metadata can't be trusted:
+    an editable install keeps the version it had at ``pip install`` time, so a
+    pulled checkout reporting 0.22.0 would have pinned hosts to that stale tag.
+    A checkout between tags has no remote ref matching it and keeps the old
+    behaviour. A wheel install uses its version; dev and pre-release versions
+    have no tag to point at.
+    """
+    root = _source_checkout()
+    if root is not None:
+        return _checkout_release_tag(root)
+    version = _local_version()
+    if re.fullmatch(r"\d+\.\d+\.\d+", version):
+        return f"v{version}"
+    return None
+
+
 def resolve_install_source(
     cfg: Mapping[str, Any],
     *,
@@ -94,9 +145,10 @@ def resolve_install_source(
     ``provider:`` block or a fleet ``lab:`` block. An explicit ``install_url``
     is honoured verbatim: someone pointing at a fork or an air-gapped mirror
     means it. An explicit *ref* beats ``cfg["ref"]``; with neither, the host
-    keeps whatever it already has.
+    installs this rodeo-cli's own release tag (``release_ref``). Only a dev
+    build with no ref leaves the host with whatever it already has.
     """
-    chosen = str(ref or cfg.get("ref") or "").strip() or None
+    chosen = str(ref or cfg.get("ref") or "").strip() or release_ref()
     if chosen is not None:
         chosen = validate_ref(chosen)
     configured = str(cfg.get("install_url") or "").strip()

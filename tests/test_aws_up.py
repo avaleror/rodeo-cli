@@ -145,7 +145,9 @@ def test_ref_is_shell_quoted():
 
 
 @pytest.mark.parametrize("bad", ["", "  ", "-x", "a..b", "feat/../../etc"])
-def test_resolve_install_source_rejects_hostile_refs(bad):
+def test_resolve_install_source_rejects_hostile_refs(bad, monkeypatch):
+    monkeypatch.setattr("rodeo.install_source._local_version", lambda: "0.0.0-dev")
+    monkeypatch.setattr("rodeo.install_source._source_checkout", lambda: None)
     if not bad.strip():
         # Blank is "no ref", not an error.
         assert resolve_install_source({"type": "aws"}, ref=bad)[1] is None
@@ -178,6 +180,9 @@ def test_explicit_install_url_wins_over_the_ref():
 def test_rodeo_repo_on_github_moves_the_installer_url(monkeypatch):
     from rodeo.install_source import default_install_url, repo_url
 
+    monkeypatch.setattr("rodeo.install_source._local_version", lambda: "0.0.0-dev")
+
+    monkeypatch.setattr("rodeo.install_source._source_checkout", lambda: None)
     monkeypatch.setenv("RODEO_REPO", "https://github.com/fork/rodeo-cli.git")
     assert repo_url() == "https://github.com/fork/rodeo-cli.git"
     assert install_url_for_ref("dev") == (
@@ -211,6 +216,70 @@ def test_bootstrap_forwards_rodeo_repo(monkeypatch):
     assert "RODEO_REPO=https://github.com/fork/rodeo-cli.git bash;" in bootstrap_fragment(
         install_url="https://x/install.sh"
     )
+
+
+@pytest.mark.parametrize(
+    ("version", "expected"),
+    [
+        ("0.25.1", "v0.25.1"),
+        ("1.0.0", "v1.0.0"),
+        ("0.0.0-dev", None),
+        ("0.26.0rc1", None),
+        ("0.25.1.dev3+g1234abc", None),
+    ],
+)
+def test_release_ref_only_for_plain_releases(version, expected, monkeypatch):
+    from rodeo.install_source import release_ref
+
+    monkeypatch.setattr("rodeo.install_source._local_version", lambda: version)
+
+    monkeypatch.setattr("rodeo.install_source._source_checkout", lambda: None)
+    assert release_ref() == expected
+
+
+def _git(root, *args):
+    import subprocess
+
+    subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True,
+                   env={"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
+                        "GIT_COMMITTER_EMAIL": "t@t", "PATH": __import__("os").environ["PATH"],
+                        "HOME": str(root)})
+
+
+def test_a_checkout_pins_only_when_head_is_on_a_release_tag(tmp_path, monkeypatch):
+    """An editable install's metadata goes stale after git pull (a checkout at
+    0.24.0 reported 0.22.0), so a checkout is judged by git, not by metadata."""
+    from rodeo.install_source import release_ref
+
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "commit", "-q", "--allow-empty", "-m", "one")
+    _git(tmp_path, "tag", "v0.25.1")
+    monkeypatch.setattr("rodeo.install_source._source_checkout", lambda: tmp_path)
+    monkeypatch.setattr("rodeo.install_source._local_version", lambda: "0.22.0")
+    assert release_ref() == "v0.25.1"
+    _git(tmp_path, "commit", "-q", "--allow-empty", "-m", "two")
+    assert release_ref() is None
+    _git(tmp_path, "tag", "v0.26.0-rc1")
+    assert release_ref() is None
+
+
+def test_a_release_pins_the_host_to_its_own_tag(monkeypatch):
+    """Without --ref the host used to install main, so a laptop on a tagged
+    release deployed whatever main held that day."""
+    monkeypatch.setattr("rodeo.install_source._local_version", lambda: "0.25.1")
+    monkeypatch.setattr("rodeo.install_source._source_checkout", lambda: None)
+    url, ref = resolve_install_source({"type": "aws"})
+    assert ref == "v0.25.1"
+    assert url == install_url_for_ref("v0.25.1")
+    script = remote_up_script(lab_dir="/root/lab", profile="test", install_url=url, ref=ref)
+    assert "--ref v0.25.1" in script
+
+
+def test_an_explicit_ref_beats_the_release_tag(monkeypatch):
+    monkeypatch.setattr("rodeo.install_source._local_version", lambda: "0.25.1")
+    monkeypatch.setattr("rodeo.install_source._source_checkout", lambda: None)
+    assert resolve_install_source({"type": "aws"}, ref="feat/x")[1] == "feat/x"
+    assert resolve_install_source({"type": "aws", "ref": "main"})[1] == "main"
 
 
 def test_provider_ref_is_honoured_and_the_flag_beats_it():
@@ -442,3 +511,92 @@ def test_aws_target_needs_no_provider_block_when_on_ec2(monkeypatch):
     monkeypatch.setattr("rodeo.providers.remote_up.on_ec2", lambda **_k: False)
     with pytest.raises(cfgmod.ConfigError, match="requires a provider"):
         cfgmod._validate_aws_provider({"deployment_target": "aws"})
+
+
+# --- the local plan reaches the host -----------------------------------------
+
+
+def _fake_host() -> ProvisionedHost:
+    return ProvisionedHost(
+        id=SINGLE_HOST_ID,
+        ssh={"host": "1.2.3.4", "user": "ec2-user"},
+        public_ip="1.2.3.4",
+        provider_id="i-0abc",
+        labels={},
+    )
+
+
+def test_remote_up_script_unpacks_the_plan_before_the_bootstrap():
+    # install.sh runs from a pipe and may read stdin: the plan must be off
+    # stdin before it starts.
+    script = remote_up_script(lab_dir="/root/lab", profile="test", ship_plan=True)
+    unpack = script.index("base64 -d | tar -C /root/lab")
+    assert unpack < script.index("install.sh") < script.index("rodeo up ")
+
+
+def test_remote_up_script_without_a_plan_reads_no_stdin():
+    script = remote_up_script(lab_dir="/root/lab", profile="test")
+    assert "base64" not in script and "tar " not in script
+
+
+def test_run_remote_up_ships_the_local_plan(monkeypatch, tmp_path):
+    """Live-caught 2026-10-14: edition: opensource in the local plan, but the
+    host seeded the bundled example (edition: product) and failed in vms."""
+    import base64
+    import io
+    import tarfile
+
+    from rodeo.providers import remote_up as mod
+
+    lab = tmp_path / "lab"
+    lab.mkdir()
+    (lab / "rodeo-plan.yaml").write_text("name: x\nedition: opensource\n")
+    (lab / "definition.yaml").write_text("vms: []\n")
+    (lab / ".rodeo-secrets.yaml").write_text("bmc_password: s3cret\n")
+    seen: dict[str, object] = {}
+
+    def _fake_run_remote(inv, fh, argv, timeout=None, stdin=None):
+        seen["argv"], seen["stdin"] = argv, stdin
+        return type("R", (), {"ok": True, "rc": 0, "stdout": "AWS_UP_EXIT:0\n", "stderr": ""})()
+
+    monkeypatch.setattr(mod, "run_remote", _fake_run_remote)
+    monkeypatch.setattr(mod, "rodeo_state_dir", lambda: tmp_path / "state")
+    monkeypatch.setattr(mod, "resolve_ssh_identity", lambda p: str(tmp_path / "id_ed25519"))
+    mod.run_remote_up({"name": "lab", "provider": {"type": "aws"}}, _fake_host(), plan_dir=lab)
+
+    assert "base64 -d | tar" in seen["argv"][4]
+    with tarfile.open(fileobj=io.BytesIO(base64.b64decode(seen["stdin"]))) as tar:
+        members = {m.name: m for m in tar.getmembers()}
+        assert set(members) == {"rodeo-plan.yaml", "definition.yaml"}  # no lab secrets
+        assert all(m.mode == 0o600 and m.uid == 0 for m in members.values())
+        assert tar.extractfile("rodeo-plan.yaml").read() == b"name: x\nedition: opensource\n"
+
+
+def test_packed_plan_unpacks_with_the_scripts_own_commands(tmp_path):
+    import shutil
+    import subprocess
+
+    if not (shutil.which("base64") and shutil.which("tar")):
+        pytest.skip("base64/tar not available")
+    from rodeo.providers.remote_up import pack_plan_files
+
+    lab = tmp_path / "lab"
+    lab.mkdir()
+    (lab / "rodeo-plan.yaml").write_text("edition: opensource\n")
+    dest = tmp_path / "host-lab"
+    dest.mkdir()
+    # GNU coreutils spells decode -d; macOS base64 accepts -d too.
+    subprocess.run(
+        ["bash", "-c", f"base64 -d | tar -C {dest} --no-same-owner -xf -"],
+        input=pack_plan_files(lab), text=True, check=True,
+    )
+    assert (dest / "rodeo-plan.yaml").read_text() == "edition: opensource\n"
+    assert not (dest / "definition.yaml").exists()
+
+
+def test_up_cmd_hands_its_lab_to_the_remote():
+    import inspect
+
+    from rodeo.commands import up_cmd
+
+    assert "plan_dir=lab" in inspect.getsource(up_cmd)

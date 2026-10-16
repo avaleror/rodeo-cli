@@ -1,7 +1,10 @@
 """Single-host AWS acquire + remote ``rodeo up`` (deployment_target: aws)."""
 from __future__ import annotations
 
+import base64
+import io
 import shlex
+import tarfile
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -26,6 +29,9 @@ from .registry import get_provider
 # install_url / ref resolution is shared with fleet deploy — see install_source.
 _DEFAULT_INSTALL = DEFAULT_INSTALL_URL
 _DEFAULT_LAB_DIR = "/root/rodeo-lab"
+# What the host needs to treat the lab as existing (up_cmd's lab_ready) rather
+# than seed a fresh one from the bundled example.
+_PLAN_FILES = ("rodeo-plan.yaml", "definition.yaml")
 
 
 def on_ec2(*, timeout: float = 0.4) -> bool:
@@ -198,6 +204,7 @@ def remote_up_script(
     profile: str | None,
     install_url: str = _DEFAULT_INSTALL,
     ref: str | None = None,
+    ship_plan: bool = False,
 ) -> str:
     """Bootstrap + remote ``rodeo up --target aws`` (phases still run as baremetal).
 
@@ -215,13 +222,23 @@ def remote_up_script(
     *ref* pins the rodeo-cli the host runs. It also forces the bootstrap to
     run even when ``rodeo`` is already installed, which is the only way local
     commits reach a host that was provisioned before them.
+
+    *ship_plan*: stdin carries the local lab's plan files (base64 tar, see
+    pack_plan_files), unpacked into the lab dir first, before the bootstrap
+    can read stdin. The host then finds an existing lab and deploys the
+    operator's plan, not the bundled example (where edition, versions and
+    resources edited locally were silently lost).
     """
     lab = shlex.quote(lab_dir)
+    unpack = ""
+    if ship_plan:
+        unpack = f"mkdir -p {lab}; (umask 077; base64 -d | tar -C {lab} --no-same-owner -xf -); "
     profile_bits = ""
     if profile:
         profile_bits = f"--profile {shlex.quote(profile)} "
     return (
         "set -euo pipefail; "
+        f"{unpack}"
         f"{bootstrap_fragment(install_url=install_url, ref=ref)}; "
         f"mkdir -p {lab}; "
         # tee's target directory does not exist on a fresh host: rodeo creates
@@ -239,6 +256,21 @@ def remote_up_script(
     )
 
 
+def pack_plan_files(lab: Path) -> str:
+    """Base64 tar of the lab's plan files (root-owned, 0600) for the remote."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        for name in _PLAN_FILES:
+            path = lab / name
+            if not path.is_file():
+                continue
+            data = path.read_bytes()
+            info = tarfile.TarInfo(name)
+            info.size, info.mode = len(data), 0o600
+            tar.addfile(info, io.BytesIO(data))
+    return base64.b64encode(buf.getvalue()).decode("ascii")
+
+
 def run_remote_up(
     cfg: dict[str, Any],
     host: ProvisionedHost,
@@ -246,8 +278,12 @@ def run_remote_up(
     profile: str | None = None,
     ref: str | None = None,
     timeout: float = 7200.0,
+    plan_dir: Path | None = None,
 ) -> None:
-    """SSH to the provisioned host and run ``rodeo up`` as baremetal."""
+    """SSH to the provisioned host and run ``rodeo up`` as baremetal.
+
+    With *plan_dir* the host deploys that lab's plan (see remote_up_script).
+    """
     inv, fh = _fleet_inventory_for(cfg, host)
     provider_cfg = _provider_cfg(cfg)
     lab_dir = str(provider_cfg.get("lab_dir") or _DEFAULT_LAB_DIR)
@@ -257,12 +293,17 @@ def run_remote_up(
         profile=profile,
         install_url=install_url,
         ref=resolved_ref,
+        ship_plan=plan_dir is not None,
     )
+    extra: dict[str, Any] = {}
+    if plan_dir is not None:
+        extra["stdin"] = pack_plan_files(plan_dir)
     result = run_remote(
         inv,
         fh,
         ["sudo", "-n", "bash", "-lc", script],
         timeout=timeout,
+        **extra,
     )
     if not result.ok:
         # Prefer stdout: the remote tees rodeo's own output there, while stderr
@@ -322,6 +363,7 @@ def execute_aws_up(
     ref: str | None = None,
     get_provider_fn: Callable[[str], Any] | None = None,
     remote_timeout: float = 7200.0,
+    plan_dir: Path | None = None,
 ) -> ProvisionedHost:
     """Provision (or reuse) primary EC2 host, then remote-run ``rodeo up``."""
     # Resolve the bootstrap source *before* provisioning: a typo'd ref must
@@ -329,5 +371,7 @@ def execute_aws_up(
     # i7i is already running and billing.
     resolve_install_source(_provider_cfg(cfg), ref=ref)
     host = provision_primary(cfg, get_provider_fn=get_provider_fn)
-    run_remote_up(cfg, host, profile=profile, ref=ref, timeout=remote_timeout)
+    run_remote_up(
+        cfg, host, profile=profile, ref=ref, timeout=remote_timeout, plan_dir=plan_dir,
+    )
     return host

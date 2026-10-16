@@ -68,13 +68,26 @@ def test_sync_and_deploy_scripts(tmp_path):
     assert "rodeo up --yes --no-tmux" in script
 
 
-def test_fleet_bootstrap_without_a_ref_leaves_an_existing_install_alone(tmp_path):
-    """Default fleet behaviour: only a host missing rodeo gets bootstrapped."""
+def test_fleet_bootstrap_without_a_ref_leaves_an_existing_install_alone(tmp_path, monkeypatch):
+    """A dev build with no ref: only a host missing rodeo gets bootstrapped."""
+    monkeypatch.setattr("rodeo.install_source._local_version", lambda: "0.0.0-dev")
+    monkeypatch.setattr("rodeo.install_source._source_checkout", lambda: None)
     inv = load_inventory(_workshop(tmp_path))
     script = deploy_remote_script(inv, tmux_session_name(inv.name, "h1"))
     assert "if ! command -v rodeo >/dev/null 2>&1; then" in script
     assert "--ref" not in script
     assert inv.ref is None
+
+
+def test_fleet_release_pins_hosts_to_its_own_tag(tmp_path, monkeypatch):
+    """A released rodeo-cli with no lab.ref installs its own tag on every host."""
+    monkeypatch.setattr("rodeo.install_source._local_version", lambda: "0.25.1")
+    monkeypatch.setattr("rodeo.install_source._source_checkout", lambda: None)
+    inv = load_inventory(_workshop(tmp_path))
+    assert inv.ref == "v0.25.1"
+    assert "/v0.25.1/install.sh" in inv.install_url
+    script = deploy_remote_script(inv, tmux_session_name(inv.name, "h1"))
+    assert "--ref v0.25.1" in script
 
 
 def test_fleet_lab_ref_forces_the_bootstrap(tmp_path):

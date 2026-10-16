@@ -9,22 +9,28 @@
 # same names (this workshop's namespaces and StorageClass match the rodeo's
 # exactly), just pointed at this workshop's kubeconfig path.
 #
-# Run from the KVM/EC2 host:
-#   ./checks/check-exercise-2.sh
+# Run from the KVM/EC2 host as any user, no sudo needed:
+#   /opt/suse-virt-workshop/checks/check-exercise-2.sh
 
 set -uo pipefail
 
-if [[ -z "${KUBECONFIG:-}" ]]; then
+if [[ -z "${KUBECONFIG:-}" && ! -f "${HOME}/.kube/config" ]]; then
+  # No kubeconfig saved from Exercise 1.3 (~/.kube/config, kubectl's own
+  # default): fall back to the one rodeo-cli writes for whoever ran `rodeo up`.
   # rodeo-cli resolves ~/.rodeo to the *invoking* user's home even under sudo
-  # (rodeo/paths.py invoking_home()) — mirror that here. /root/rodeo-lab (and
-  # this script alongside it) is only readable via sudo, but the kubeconfig
-  # itself lands in the invoking user's home, not root's.
+  # (rodeo/paths.py invoking_home()), so mirror that here.
   if [[ -n "${SUDO_USER:-}" ]]; then
     INVOKING_HOME="$(getent passwd "${SUDO_USER}" | cut -d: -f6)"
   else
     INVOKING_HOME="${HOME}"
   fi
-  export KUBECONFIG="${INVOKING_HOME}/.rodeo/harvester-kubeconfig"
+  [[ -r "${INVOKING_HOME}/.rodeo/harvester-kubeconfig" ]] \
+    && export KUBECONFIG="${INVOKING_HOME}/.rodeo/harvester-kubeconfig"
+fi
+
+if ! kubectl get nodes &>/dev/null; then
+  echo "FAIL: kubectl can't reach the Harvester cluster. Save the kubeconfig from Exercise 1.3 as ~/.kube/config first."
+  exit 1
 fi
 
 FAIL=0

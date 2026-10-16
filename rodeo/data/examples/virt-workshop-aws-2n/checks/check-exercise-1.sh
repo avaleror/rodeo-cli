@@ -24,8 +24,15 @@ if [[ -z "${KUBECONFIG:-}" && ! -f "${HOME}/.kube/config" ]]; then
     && export KUBECONFIG="${INVOKING_HOME}/.rodeo/harvester-kubeconfig"
 fi
 
-if ! kubectl get nodes &>/dev/null; then
-  echo "FAIL: kubectl can't reach the Harvester cluster. Save the kubeconfig from Exercise 1.3 as ~/.kube/config first."
+if ! KUBECTL_ERR=$(kubectl get nodes 2>&1 >/dev/null); then
+  if grep -q 'x509' <<<"${KUBECTL_ERR}"; then
+    # A kubeconfig downloaded through the public UI URL points at
+    # <host-ip>:8443, which the Harvester certificate doesn't cover.
+    echo "FAIL: kubectl rejects the Harvester certificate. Point the kubeconfig at the cluster VIP (Exercise 1.5):"
+    echo "  sed -i 's#https://[^/]*/k8s#https://192.168.122.10/k8s#' ~/.kube/config"
+  else
+    echo "FAIL: kubectl can't reach the Harvester cluster. Save the kubeconfig from Exercise 1.3 as ~/.kube/config first."
+  fi
   exit 1
 fi
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.25.4](https://github.com/avaleror/rodeo-cli/compare/v0.25.3...v0.25.4) (2026-10-16)
+
+
+### Bug Fixes
+
+* **virt-workshop:** checks point at the VIP fix on an x509 kubeconfig ([#112](https://github.com/avaleror/rodeo-cli/issues/112)) ([00cf222](https://github.com/avaleror/rodeo-cli/commit/00cf222efe35714e7e5a470236c2560e2fb564d5))
+
 ## [0.25.3](https://github.com/avaleror/rodeo-cli/compare/v0.25.2...v0.25.3) (2026-10-16)
 
 

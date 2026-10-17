@@ -1,0 +1,104 @@
+# rodeo-plan.yaml: SUSE Telco Cloud 3.7 workshop (Northline).
+#
+# This file exists twice and the copies must stay identical: the workshop repo
+# (avaleror/suse-telco-workshop) and rodeo-cli's bundled example.
+# `rodeo up --target aws` seeds the EC2 host from this bundled copy, not from
+# the workshop checkout, so the two must not drift.
+#
+# Bare metal is the default. `rodeo up --target aws` wins over
+# deployment_target and writes `aws` back into this file.
+#
+# rodeo does not apply the workshop's manifests/. Students apply those files.
+
+name: suse-telco-rodeo
+type: suse-telco
+
+deployment_target: baremetal
+
+# What the lab is built from. Same Telco Cloud 3.7 pins and charts either way.
+#   product     SUSE Linux Micro 6.2 + Rancher Prime. Stage the SL Micro image
+#               on the KVM host first (SUSE download page, needs a login).
+#   opensource  openSUSE Leap Micro 6.2 + community Rancher. rodeo downloads
+#               everything itself.
+# Neither needs an SCC registration code.
+edition: product
+
+network:
+  mode: nat
+  gateway: "192.168.122.1"
+  dns_domain: northline.telco
+  rancher_ip: "192.168.122.10"
+
+resources:
+  mgmt:
+    memory_mib: 16384
+    vcpu: 8
+    disk_gb: 80
+  site:
+    memory_mib: 8192
+    vcpu: 4
+    disk_gb: 40
+
+# SUSE Telco Cloud 3.7.0 release notes, component table. Helm components are
+# chart versions. App versions are in the comments.
+versions:
+  suse_telco_cloud: "3.7.0"
+  rancher: "2.15.1"
+  rke2: "v1.36.3+rke2r1"
+  cert_manager: "v1.20.1"
+  turtles_providers: "307.0.8+up0.27.0"      # Turtles 0.27.0; CAPI v1.13.3, CAPM3 v1.13.2, RKE2 providers v0.25.0
+  metal3: "307.0.31+up0.16.0"                # Metal3 0.16.0; BMO 0.13.3, Ironic 38.0.0, IPA 3.0.10
+  metallb: "307.0.3+up0.16.1"                # MetalLB 0.16.1
+  endpoint_copier_operator: "307.0.1+up0.3.0"
+  longhorn: "1.12.1"                         # SUSE Storage
+  kubevirt: "307.0.3+up0.8.0"                # KubeVirt 1.8.3 (lab 07)
+  cdi: "307.0.3+up0.8.0"                     # CDI 1.65.0 (lab 07)
+  kubevirt_dashboard_extension: "307.0.5+up1.4.2"
+  eib: "1.3.4"
+  kiwi_builder: "10.2.29.1"
+  telco_examples_ref: "e4ec0b0a7349a635c1c5efd94bdefeaedbfa847c"   # release-3.7
+
+storage:
+  image_dir: /var/lib/libvirt/images
+
+libvirt:
+  uri: qemu:///system
+
+ansible:
+  path: null
+  inventory: deployer/inventory.local
+
+# The edition picks the base image for mgmt and the downstream image. product
+# expects /var/lib/libvirt/images/SL-Micro.x86_64-6.2-Base-GM.raw.xz on the KVM
+# host. To use another file or a URL the host can fetch, uncomment:
+# telco:
+#   base_image:
+#     path: /var/lib/libvirt/images/SL-Micro.x86_64-6.2-Base-GM.raw.xz
+#     url: ""
+#     sha256: ""
+
+# Rancher's self-signed cert on NodePort 30002. No public 80/443.
+rancher_tls:
+  source: rancher
+
+credentials:
+  rancher_admin_password: "??rancher_admin_password"
+  # Emulated Redfish BMC (sushy-tools) for site-co and site-ran. Generated.
+  bmc_password: "??bmc_password"
+  # Console password for the mgmt VM. Generated. SSH is key-only.
+  mgmt_root_password: "??mgmt_root_password"
+  # Optional, product edition only: install jq from SUSE's own repositories
+  # instead of the public SLE BCI repository. Put the code in
+  # ~/.rodeo/secrets.yaml, never here.
+  # scc_registration_code: "??scc_registration_code"
+
+# Block name stays alien_geeko in v1. The values are the Northline console.
+alien_geeko:
+  image: docker.io/avaleror/telco-site-console:latest
+  fleet_repo: https://github.com/avaleror/telco-site-console.git
+  fleet_branch: main
+  fleet_name: telco-site-console
+  fleet_namespace: fleet-default
+  target_labels:
+    demo: "true"
+    site-type: downstream

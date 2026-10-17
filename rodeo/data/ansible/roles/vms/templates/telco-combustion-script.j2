@@ -1,0 +1,31 @@
+#!/bin/bash
+# No network flag on purpose: nothing below needs the network, and combustion
+# reads its flags from comment lines, so do not spell the flag out here.
+# Managed by rodeo-cli. First boot of the {{ item.name }} VM (SL Micro 6.2).
+set -euxo pipefail
+exec > >(exec tee -a /dev/ttyS0) 2>&1
+
+# Hostname as a file, not hostnamectl: hostnamectl crashed combustion into
+# emergency mode on the suse-edge nodes.
+echo '{{ item.hostname }}' > /etc/hostname
+
+# Root: key-based SSH for rodeo, password for the console only.
+echo 'root:{{ root_password_hash }}' | chpasswd -e
+mkdir -pm700 /root/.ssh
+echo '{{ ssh_public_key }}' >> /root/.ssh/authorized_keys
+chmod 600 /root/.ssh/authorized_keys
+systemctl enable sshd.service
+
+# The raw image keeps its build-time root size. Grow it to the disk rodeo
+# created. Same script as the Telco Cloud 3.7 Metal3 quickstart (01-fix-growfs.sh).
+growfs() {
+  mnt="$1"
+  dev="$(findmnt --fstab --target ${mnt} --evaluate --real --output SOURCE --noheadings)"
+  parent_dev="/dev/$(lsblk --nodeps -rno PKNAME "${dev}")"
+  partnum="$(echo "${dev}" | sed 's/^.*[^0-9]\([0-9]\+\)$/\1/')"
+  ret=0
+  growpart "$parent_dev" "$partnum" || ret=$?
+  [ $ret -eq 0 ] || [ $ret -eq 1 ] || exit 1
+  /usr/lib/systemd/systemd-growfs "$mnt"
+}
+growfs /

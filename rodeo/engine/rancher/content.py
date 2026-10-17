@@ -69,7 +69,7 @@ class LabContentMixin:
         )
         script = (
             "set -euo pipefail\n"
-            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+            f"export KUBECONFIG={self.KUBECONFIG}\n"
             f"cat <<'__GITREPO__' | kubectl apply -f -\n"
             f"{manifest}"
             "__GITREPO__\n"

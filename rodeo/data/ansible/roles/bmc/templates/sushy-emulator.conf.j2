@@ -1,0 +1,12 @@
+# Managed by rodeo-cli (bmc role). sushy-tools Redfish emulator, libvirt driver.
+SUSHY_EMULATOR_LISTEN_IP = '{{ bmc_listen_ip }}'
+SUSHY_EMULATOR_LISTEN_PORT = {{ bmc_port }}
+SUSHY_EMULATOR_SSL_CERT = '/etc/sushy/sushy.crt'
+SUSHY_EMULATOR_SSL_KEY = '/etc/sushy/sushy.key'
+SUSHY_EMULATOR_AUTH_FILE = '/etc/sushy/htpasswd'
+SUSHY_EMULATOR_LIBVIRT_URI = '{{ bmc_libvirt_uri }}'
+# Honour Ironic's boot-device requests, as real hardware does.
+SUSHY_EMULATOR_IGNORE_BOOT_DEVICE = False
+# Ironic serves virtual-media ISOs with a self-signed cert.
+SUSHY_EMULATOR_VMEDIA_VERIFY_SSL = False
+SUSHY_EMULATOR_ALLOWED_INSTANCES = {{ bmc_allowed_instances | to_json }}

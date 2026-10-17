@@ -15,7 +15,7 @@ _ANSIBLE = _DATA / "ansible"
 def test_playbook_includes_pxe_server_role():
     playbook = yaml.safe_load((_ANSIBLE / "playbook.yml").read_text())
     roles = [r["role"] for r in playbook[0]["roles"]]
-    assert roles == ["kvm_host", "vms", "pxe_server"]
+    assert roles == ["kvm_host", "vms", "pxe_server", "bmc"]
 
 
 def test_pxe_server_role_is_complete():

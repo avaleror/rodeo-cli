@@ -44,7 +44,7 @@ class HarvesterMixin:
         # Heredoc avoids all shell quoting issues when JSON passes over SSH.
         r = self._ssh_script(
             "set -euo pipefail\n"
-            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+            f"export KUBECONFIG={self.KUBECONFIG}\n"
             "kubectl apply -f - <<'__MANIFEST__'\n"
             f"{cluster_manifest}\n"
             "__MANIFEST__\n",
@@ -63,7 +63,7 @@ class HarvesterMixin:
         _last_log = 0.0
         while time.monotonic() - t0 < 120:
             r = self._ssh_script(
-                "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+                f"export KUBECONFIG={self.KUBECONFIG}\n"
                 "kubectl get cluster.provisioning.cattle.io/harvester -n fleet-default "
                 "-o jsonpath='{.status.clusterName}' 2>/dev/null\n",
                 timeout=15,
@@ -97,7 +97,7 @@ class HarvesterMixin:
         })
         r = self._ssh_script(
             "set -euo pipefail\n"
-            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+            f"export KUBECONFIG={self.KUBECONFIG}\n"
             "kubectl apply -f - <<'__MANIFEST__'\n"
             f"{token_manifest}\n"
             "__MANIFEST__\n",
@@ -116,7 +116,7 @@ class HarvesterMixin:
         _last_log = 0.0
         while time.monotonic() - t0 < 120:
             r = self._ssh_script(
-                "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+                f"export KUBECONFIG={self.KUBECONFIG}\n"
                 f"kubectl get clusterregistrationtoken.management.cattle.io/default-token "
                 f"-n {cluster_id} -o jsonpath='{{.status.manifestUrl}}' 2>/dev/null\n",
                 timeout=15,

@@ -117,6 +117,16 @@
       <input id="ncMins" class="input mono" type="number" min="1" max="240" value="10">
       <span class="label">Requires from the lab</span>
       <div id="ncNeeds" class="chips"></div>
+      <div id="ncDraft" class="nc-draft" hidden>
+        <label class="label" for="ncBrief">Draft with an engine</label>
+        <textarea id="ncBrief" class="textarea brief" placeholder="What the student does in this chapter and what they should learn"></textarea>
+        <div class="addon-add">
+          <label class="sr-only" for="ncEngine">rmstory engine</label>
+          <select id="ncEngine" class="select"></select>
+          <button id="ncDraftBtn" class="btn sm" type="button">Draft</button>
+        </div>
+        <p class="note muted">rmstory writes a tagged draft into the body below, using this rodeo's lab and chapters. Review it before you create the chapter.</p>
+      </div>
       <label class="label" for="ncBody">Markdown (rmstory spans)</label>
       <textarea id="ncBody" class="textarea" spellcheck="false"></textarea>
       <div class="modal-foot">

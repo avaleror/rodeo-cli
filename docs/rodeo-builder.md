@@ -58,8 +58,13 @@ rodeo up --profile <name>     # after Save to profiles
   double-click a span to change its type,
   language, id or story variant. Ids follow rmstory's rules (`<chapter>.N`,
   `<parent>.N` when nested) and the editor shows the same warnings as
-  `rmstory validate`. Translations are filled after install, by
-  `rodeo story render --language <lang>`.
+  `rmstory validate`.
+- **Translations.** The story editor's **translations** tab lists every
+  translatable span per language. Click a cell to write or review a
+  translation; a nested span stays in it as `<span id="..."/>`. The download
+  carries them in rmstory's translation store, `story/strings/`, and
+  `rodeo story render --language <lang>` uses them (with `--engine` for the
+  spans still missing).
 
 **Review and download** (step 03) checks the rodeo before you download it: the
 lab covers every chapter, the span ids are valid (each warning has a **Fix**
@@ -68,6 +73,27 @@ copy. Missing lab features and span warnings never block the download.
 
 The page keeps a draft of your rodeo in this browser. After a reload it offers
 to restore it.
+
+### With rmstory on the live builder
+
+When `rmstory` is installed where `rodeo builder` runs (`sudo rodeo install-deps
+--story`), the live page also uses it:
+
+- **Translate missing** (translations tab): fills the chosen language's missing
+  translations with an rmstory engine (`rmstory extract --engine <e> --to <lang>`).
+  They are stored as `draft`; what you wrote or reviewed is kept. rmstory also
+  gives unnamed spans an id (`<chapter>.N`).
+- **Check with rmstory** (step 03): rmstory's own `validate` on the chapters.
+- **Draft with an engine** (New chapter): an engine that can generate text
+  (`rmstory engines` says "translate + generate", for example `claude-code`,
+  `ollama` or `gemini`) drafts the chapter from your description, told what the
+  lab provides and which chapters come before it. Its spans are renumbered
+  `new-chapter.N`; review the draft before you create the chapter.
+
+Engines read their keys from the environment `rodeo builder` runs in, never from
+the page: for example `DEEPL_AUTH_KEY`, `GEMINI_API_KEY`, `RMSTORY_OLLAMA_URL`, or a
+logged-in `claude` command for `claude-code`. The published page writes
+translations by hand only.
 
 The right-hand panel sets the name, story title, language, deployment target and
 story variant, and previews every file of the download. **plan.yaml** is an

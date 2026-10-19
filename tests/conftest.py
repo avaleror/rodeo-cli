@@ -1,6 +1,8 @@
 """Shared fixtures: isolated HOME, state dir, and a fake profile."""
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
 from typing import Iterator
 
@@ -134,3 +136,68 @@ def make_labinabox(root: Path) -> Path:
 def labinabox_checkout(tmp_path_factory) -> Path:
     """A fake lab-in-a-box checkout for the builder's catalogue (smlm, client_registration, pxe, rke2)."""
     return make_labinabox(tmp_path_factory.mktemp("liab"))
+
+
+FAKE_RMSTORY = r'''
+import json, os, re, sys
+from pathlib import Path
+
+args = sys.argv[1:]
+cmd = args[0]
+if cmd == "engines":
+    print("deepl                 translate only")
+    print("ollama                translate + generate")
+    sys.exit(0)
+if cmd == "validate":
+    files = sorted(Path(args[1]).glob("*.md"))
+    for f in files:
+        text = f.read_text()
+        if "WARN" in text:
+            print("warning: {}:2: odd span".format(f), file=sys.stderr)
+        if "NOID" in text:
+            print("error: {}:3: span carries lang/hist/no but has no id attribute".format(f), file=sys.stderr)
+            sys.exit(1)
+    print("{} tagged span(s) in {} file(s), 0 warning(s)".format(3, len(files)))
+    sys.exit(0)
+if cmd == "extract":
+    if os.environ.get("FAKE_RMSTORY_FAIL"):
+        print("error: engine refused: bad key", file=sys.stderr)
+        sys.exit(1)
+    to, engine = args[args.index("--to") + 1], args[args.index("--engine") + 1]
+    store = Path(os.environ["RMSTORY_STRINGS_PATH"])
+    rows = 0
+    for f in sorted(Path(args[1]).glob("*.md")):
+        text = f.read_text().replace('<span lang="en">', '<span id="{}.9" lang="en">'.format(f.stem), 1)
+        f.write_text(text)
+        for sid, content in re.findall(r'<span (?:lang="en" id|id)="([^"]+)"[^>]*>([^<]*)</span>', text):
+            for lang, value, who in (("en", content, "rmstory.extract"),
+                                     (to, "[{}] {}".format(to, content), "rmstory.engines:" + engine)):
+                leaf = store / lang / sid / "@default" / "content.json"
+                if lang == to and leaf.exists():
+                    continue
+                leaf.parent.mkdir(parents=True, exist_ok=True)
+                leaf.write_text(json.dumps({"content": value, "status": "draft", "updated_by": who}))
+                rows += lang == to
+    print("extracted spans, machine-translated {} row(s) via {}".format(rows, engine))
+    sys.exit(0)
+if cmd == "generate":
+    prompt, lang = args[args.index("--prompt") + 1].strip().splitlines()[-1], args[args.index("--lang") + 1]
+    print('<span lang="{}" id="draft.one">{}</span>'.format(lang, prompt))
+    sys.exit(0)
+sys.exit(2)
+'''
+
+
+@pytest.fixture
+def fake_rmstory(tmp_path, monkeypatch) -> Path:
+    """An ``rmstory`` on PATH that answers like the real CLI: ``engines`` (deepl, ollama),
+    ``validate`` (a warning for WARN, an error and exit 1 for NOID), ``extract --engine --to``
+    (fills the filesystem store with "[<lang>] <text>" and names the first unnamed span
+    ``<file>.9``) and ``generate new`` (one span holding the prompt's last line)."""
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    script = bindir / "rmstory"
+    script.write_text("#!{}\n{}".format(sys.executable, FAKE_RMSTORY))
+    script.chmod(0o755)
+    monkeypatch.setenv("PATH", "{}{}{}".format(bindir, os.pathsep, os.environ.get("PATH", "")))
+    return script

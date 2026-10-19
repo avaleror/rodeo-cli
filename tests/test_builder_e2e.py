@@ -7,6 +7,7 @@ Playwright or its Chromium is not installed, unless RB_E2E_REQUIRED is set
 from __future__ import annotations
 
 import functools
+import json
 import io
 import os
 import re
@@ -58,6 +59,12 @@ def live(labinabox_checkout, markdown_source):
     yield "http://127.0.0.1:{}/".format(server.server_address[1])
     server.shutdown()
     server.server_close()
+
+
+@pytest.fixture()
+def live_rmstory(fake_rmstory, live):
+    """The live server with a fake rmstory on its PATH (engines deepl and ollama)."""
+    return live
 
 
 @pytest.fixture()
@@ -485,3 +492,71 @@ def test_narrow_layout_has_a_sticky_bar(page, width):
     assert "1 chapters" in bar.inner_text()
     assert page.locator("#chapterList").bounding_box()["height"] > 40
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+
+
+def _open_translations(page):
+    page.click(".card >> text=Welcome to the rodeo")
+    page.click(".row-actions .btn >> text=spans")
+    page.click("[data-edtab=translations]")
+
+
+def test_static_translations_are_written_by_hand(page):
+    _open_translations(page)
+    view = page.locator("#translationsView")
+    assert page.locator("#trRun").count() == 0 and "rodeo builder" in view.inner_text()
+    assert view.locator("thead th").all_inner_texts() == ["id", "de", "es", "fr"]
+    page.locator("tr", has_text="welcome.login").locator(".tr-cell").first.click()
+    assert '<span id="welcome.rancher-url"/>' in page.locator(".tr-src").inner_text()
+    page.fill("#trText", "Öffne den Browser")
+    page.click(".tr-actions .btn >> text=Save")
+    sync_api.expect(page.locator("#toastText")).to_contain_text('Keep <span id="welcome.rancher-url"/>')
+    page.locator("tr", has_text="welcome.intro").locator(".tr-cell").first.click()
+    page.fill("#trText", "Aufsitzen.")
+    page.click(".tr-actions .btn >> text=Save")
+    sync_api.expect(page.locator("tr", has_text="welcome.intro").locator(".tr-cell.st-reviewed")).to_have_count(1)
+    page.click("#edDone")
+    with page.expect_download() as dl:
+        page.click("#downloadBtn")
+    with zipfile.ZipFile(dl.value.path()) as zf:
+        row = json.loads(zf.read("my-rodeo/story/strings/de/welcome.intro/@default/content.json"))
+        assert "Translations in `story/strings/`: `de`" in zf.read("my-rodeo/README.md").decode()
+    assert row["content"] == "Aufsitzen." and row["status"] == "reviewed" and row["source_checksum"] is None
+
+
+@pytest.mark.parametrize("page", ["live_rmstory"], indirect=True)
+def test_live_translate_fills_the_missing_rows(page):
+    _open_translations(page)
+    page.select_option("#translationsView select[aria-label='Language to fill']", "es")
+    page.click("#trRun")
+    sync_api.expect(page.locator("#toastText")).to_contain_text("es translations filled as draft with deepl")
+    drafts = page.locator("#translationsView .tr-cell.st-draft")
+    assert drafts.count() == 2
+    drafts.first.click()
+    assert page.locator("#trText").input_value().startswith("[es] ")
+
+
+@pytest.mark.parametrize("page", ["live_rmstory"], indirect=True)
+def test_live_review_checks_with_rmstory(page):
+    page.click(".card >> text=Welcome to the rodeo")
+    page.click("#rmCheckBtn")
+    sync_api.expect(page.locator(".rm-check")).to_contain_text("tagged span(s)")
+
+
+@pytest.mark.parametrize("page", ["live_rmstory"], indirect=True)
+def test_live_new_chapter_is_drafted_with_an_engine(page):
+    page.click("#newChapterBtn")
+    assert page.locator("#ncDraft").is_visible()
+    assert page.locator("#ncEngine option").all_inner_texts() == ["ollama"]
+    page.fill("#ncTitle", "Open the UI")
+    page.fill("#ncBrief", "Log in to Rancher")
+    page.click("#ncDraftBtn")
+    sync_api.expect(page.locator("#toastText")).to_have_text(re.compile("^Draft ready"))
+    body = page.locator("#ncBody").input_value()
+    assert body.startswith("# Open the UI") and '<span lang="en" id="new-chapter.1">Log in to Rancher</span>' in body
+    page.click("#newForm button[type=submit]")
+    sync_api.expect(page.locator("#chapterList")).to_contain_text("Open the UI")
+
+
+def test_static_new_chapter_has_no_draft(page):
+    page.click("#newChapterBtn")
+    assert page.locator("#ncDraft").is_hidden()

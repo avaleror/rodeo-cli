@@ -199,3 +199,51 @@ test("engineNeeds lists the engines the chapters' workshops run on", () => {
   assert.deepEqual(RB.engineNeeds([ch("virt/a"), ch("smlm/b")], groups).map((n) => n.engine), ["lab-in-a-box", "suse-virt"]);
   assert.deepEqual(RB.engineNeeds([ch("custom/c"), {}], groups), []);
 });
+
+test("renumber gives drafted spans the chapter's ids, nested under their parent", () => {
+  const draft = '<span lang="en" id="ch3.open">Go to <span no id="ch3.url">{{ rancher_url }}</span> now.</span>\n' +
+    '<span lang="en">Log in.</span> plain <span no>x</span>\n';
+  const out = RB.renumber(draft, "login");
+  const { spans } = RB.parseSpans(out);
+  assert.deepEqual(spans.map((s) => s.attrs.id), ["login.1", "login.1.1", "login.2", undefined]);
+  assert.ok(out.includes("{{ rancher_url }}") && out.includes("Log in."));
+  assert.deepEqual(RB.validate([{ id: "login", body: out }]), []);
+});
+
+test("translation rows: ids, stored source with placeholders, missing placeholders", () => {
+  const chapters = [{ id: "w", body: WELCOME }];
+  assert.deepEqual(RB.translatableIds(chapters), ["w.intro", "w.task"]);
+  const src = RB.sourceTexts(chapters);
+  assert.equal(src["w.intro"], 'Saddle up, <span id="w.user"/>.');
+  assert.deepEqual(RB.missingPlaceholders(src["w.intro"], "Aufsitzen."), ['<span id="w.user"/>']);
+  assert.deepEqual(RB.missingPlaceholders(src["w.intro"], 'Aufsitzen, <span id="w.user"/>.'), []);
+});
+
+test("the translation store ships as rmstory's filesystem layout", () => {
+  const strings = {
+    de: { "w.intro": { content: 'Aufsitzen, <span id="w.user"/>.', status: "reviewed", updated_by: "me" },
+      "gone.1": { content: "weg", status: "draft" } },
+    en: { "w.intro": { content: "Saddle up", status: "draft" } },
+  };
+  const out = RB.stringsFiles(strings, ["w.intro", "w.task"], "2026-10-19T00:00:00Z");
+  assert.deepEqual(out.map((f) => f.path), ["story/strings/de/w.intro/@default/content.json"]);
+  assert.deepEqual(JSON.parse(out[0].content), { content: 'Aufsitzen, <span id="w.user"/>.', original_language: null,
+    status: "reviewed", source_checksum: null, updated_by: "me", date_updated: "2026-10-19T00:00:00Z" });
+  const rodeo = { name: "ride", title: "Ride", base: "", plan: "type: rancher\n", definition: "", labJson: null,
+    chapters: [{ id: "w", title: "W", body: WELCOME }], variants: [], story: { language: "en", id: "" }, strings, date: "d" };
+  const files = RB.files(rodeo);
+  assert.ok(files.some((f) => f.path === "story/strings/de/w.intro/@default/content.json"));
+  assert.match(files.find((f) => f.path === "README.md").content, /Translations in `story\/strings\/`: `de`/);
+  assert.deepEqual(RB.translatedLanguages(strings, ["w.task"]), []);
+});
+
+test("draftPrompt grounds the brief in the rodeo and the lab", () => {
+  const p = RB.draftPrompt("  Import a cluster.  ", { title: "Import", rodeo: "Ride", provides: ["rancher", "fleet"],
+    chapters: ["Welcome"], mins: 15 });
+  assert.match(p, /Chapter title: Import\./);
+  assert.match(p, /The lab provides: rancher, fleet\./);
+  assert.match(p, /Chapters before this one: Welcome\./);
+  assert.match(p, /about 15 minutes/);
+  assert.match(p, /<span no>/);
+  assert.ok(p.endsWith("Import a cluster."));
+});

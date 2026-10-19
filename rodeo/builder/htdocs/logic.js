@@ -210,6 +210,105 @@ const RB = (() => {
     return ids;
   }
 
+  // Gives every span that has or needs an id the chapter's own scheme: <base>.N at the top
+  // level, <id of the nearest ancestor with one>.N when nested. Drafts from an engine name
+  // their spans freely; this makes them follow the builder's (and rmstory's) id rules.
+  function renumber(text, base) {
+    const { spans } = parseSpans(text);
+    const ids = new Array(spans.length), count = new Map();
+    for (const sp of spans) {
+      if (!sp.attrs.id && !needsId(sp.attrs)) continue;
+      let up = sp.parent;
+      while (up >= 0 && !ids[up]) up = spans[up].parent;
+      const prefix = up >= 0 ? ids[up] : base, n = (count.get(prefix) || 0) + 1;
+      count.set(prefix, n);
+      ids[sp.index] = prefix + "." + n;
+    }
+    let out = text;
+    for (const sp of [...spans].sort((a, b) => b.start - a.start)) {
+      if (ids[sp.index]) out = retag(out, sp, { ...sp.attrs, id: ids[sp.index] });
+    }
+    return out;
+  }
+
+  // ── translations (rmstory's filesystem store) ────────────────────────────
+
+  // Ids of the translatable spans, in chapter order: the rows a translation fills.
+  function translatableIds(chapters) {
+    const ids = [];
+    for (const ch of chapters) for (const sp of parseSpans(ch.body).spans) {
+      if (sp.attrs.id && kind(sp.attrs) === "translatable" && !ids.includes(sp.attrs.id)) ids.push(sp.attrs.id);
+    }
+    return ids;
+  }
+
+  // The text rmstory translates for a span: its content with each nested span replaced by
+  // the placeholder <span id="..."/>, which a translation must keep unchanged.
+  function storedSource(text, spans, span) {
+    let out = "", at = span.openEnd;
+    for (const child of spans) {
+      if (child.parent !== span.index) continue;
+      out += text.slice(at, child.start) + '<span id="' + (child.attrs.id || "") + '"/>';
+      at = child.end;
+    }
+    return out + text.slice(at, span.closeStart);
+  }
+
+  // {id: source text} for every translatable span (the first occurrence of an id).
+  function sourceTexts(chapters) {
+    const out = {};
+    for (const ch of chapters) {
+      const { spans } = parseSpans(ch.body);
+      for (const sp of spans) {
+        if (sp.attrs.id && kind(sp.attrs) === "translatable" && !(sp.attrs.id in out)) out[sp.attrs.id] = storedSource(ch.body, spans, sp);
+      }
+    }
+    return out;
+  }
+
+  // Placeholders a translation of *source* must carry, and those it lacks.
+  function missingPlaceholders(source, translation) {
+    const want = source.match(/<span id="[^"]*"\/>/g) || [];
+    return want.filter((p) => !String(translation).includes(p));
+  }
+
+  // The store as rodeo files: story/strings/<lang>/<id>/@default/content.json for each row
+  // of a language other than the source one whose span is still in the chapters (*ids*).
+  function stringsFiles(strings, ids, date) {
+    const keep = new Set(ids), out = [];
+    for (const lang of Object.keys(strings || {}).sort()) {
+      if (lang === SOURCE_LANGUAGE) continue;
+      for (const id of Object.keys(strings[lang]).sort()) {
+        const row = strings[lang][id];
+        if (!keep.has(id) || !row || typeof row.content !== "string") continue;
+        out.push({ path: "story/strings/" + lang + "/" + id + "/@default/content.json",
+          content: JSON.stringify({ content: row.content, original_language: null, status: row.status || "draft",
+            source_checksum: null, updated_by: row.updated_by || "rodeo-builder", date_updated: date }, null, 2) + "\n" });
+      }
+    }
+    return out;
+  }
+
+  // Languages with at least one stored row for the rodeo's spans.
+  function translatedLanguages(strings, ids) {
+    const keep = new Set(ids);
+    return Object.keys(strings || {}).filter((l) => l !== SOURCE_LANGUAGE && Object.keys(strings[l]).some((id) => keep.has(id))).sort();
+  }
+
+  // The prompt for drafting a chapter with an engine: the author's brief, grounded in the
+  // rodeo (its title, earlier chapters and what its lab provides) and rmstory's fact rule.
+  function draftPrompt(brief, ctx) {
+    const lines = ["Write one chapter of a hands-on technical workshop as the student reads it: " +
+      "short steps in the second person, with the commands to run.", "Chapter title: " + (ctx.title || "untitled") + "."];
+    if (ctx.rodeo) lines.push("Workshop: " + ctx.rodeo + ".");
+    if (ctx.provides && ctx.provides.length) lines.push("The lab provides: " + ctx.provides.join(", ") + ". Use only what it provides.");
+    if (ctx.chapters && ctx.chapters.length) lines.push("Chapters before this one: " + ctx.chapters.join("; ") + ".");
+    if (ctx.mins) lines.push("The student should need about " + ctx.mins + " minutes.");
+    lines.push("Deployment facts are Jinja expressions such as {{ rancher_url }}: copy each one unchanged into its own <span no> span.",
+      "", String(brief).trim());
+    return lines.join("\n");
+  }
+
   // ── generated files ──────────────────────────────────────────────────────
 
   function yamlScalar(v) {
@@ -327,6 +426,11 @@ const RB = (() => {
     lines.push("", "## Deploy", "", "```bash", "rodeo up --profile " + name, "```", "",
       "Render the story: `rodeo story render --config-dir " + dir + "`" +
       (rodeo.story.id ? " (variant `" + rodeo.story.id + "`)" : "") + ".");
+    const langs = translatedLanguages(rodeo.strings, translatableIds(rodeo.chapters));
+    if (langs.length) {
+      lines.push("", "Translations in `story/strings/`: " + langs.map((l) => "`" + l + "`").join(", ") +
+        ". Render one with `--language <lang>`; spans without a stored translation need `--engine <name>`.");
+    }
     if (rodeo.labJson) {
       lines.push("", "`lab.json` is the lab designed in lab-in-a-box's lab-builder, kept for reference:",
         "rodeo builds its own lab.json from `rodeo-plan.yaml` and `definition.yaml`.");
@@ -342,6 +446,7 @@ const RB = (() => {
     rodeo.chapters.forEach((ch, i) => out.push({ path: "story/" + chapterFile(i + 1, ch.id), content: ch.body }));
     if (rodeo.chapters.length) out.push({ path: "story/chapters.yaml", content: chaptersYaml(rodeo.title, rodeo.chapters) });
     for (const v of rodeo.variants) out.push({ path: "story/stories/" + v + ".yaml", content: storyYaml(v, storyIndex(rodeo.chapters, v)) });
+    out.push(...stringsFiles(rodeo.strings, translatableIds(rodeo.chapters), rodeo.date || new Date().toISOString()));
     for (const ch of rodeo.chapters) if (ch.check) out.push({ path: "checks/check-" + ch.id + ".sh", content: checkScript(ch), mode: 0o755 });
     if (rodeo.labJson) out.push({ path: "lab.json", content: JSON.stringify(rodeo.labJson, null, 2) + "\n" });
     if (rodeo.base) out.push({ path: "builder.yaml", content: "# The profile this rodeo is built on: rodeo new --from-zip copies it first.\nbase: " + rodeo.base + "\n" });
@@ -417,6 +522,7 @@ const RB = (() => {
     withKind, wrapTarget, nextId, wrap, retag, unwrap, idsIn, validate, warningsByChapter, engineNeeds, variantsIn, storyIndex,
     setTopKey, dropTopBlock, storyBlock, planFromBase, planLabinabox, chapterFile, chaptersYaml,
     storyYaml, checkScript, readme, files, labJsonAddons, crc32, zip,
+    renumber, translatableIds, storedSource, sourceTexts, missingPlaceholders, stringsFiles, translatedLanguages, draftPrompt,
   };
 })();
 

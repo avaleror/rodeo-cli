@@ -62,6 +62,20 @@ def live(labinabox_checkout, markdown_source):
 
 
 @pytest.fixture()
+def live_local_lab_builder(labinabox_checkout, markdown_source):
+    """The live server linking to the lab-builder it started itself (``http://{host}:<port>/``)."""
+    from rodeo.builder.api import Api
+    from rodeo.builder.server import make_server
+
+    api = Api(labinabox_checkout, "http://{host}:9/lab-builder/", "1.0.0", {"virt-workshop": markdown_source}, can_save=True)
+    server = make_server(api, "127.0.0.1", 0, "0.0.0-test")
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield "http://127.0.0.1:{}/".format(server.server_address[1])
+    server.shutdown()
+    server.server_close()
+
+
+@pytest.fixture()
 def live_github(labinabox_checkout, markdown_source):
     """The live server listening on loopback only, so Publish uses the host's GitHub login."""
     from rodeo.builder.api import Api
@@ -786,3 +800,14 @@ def test_live_publish_without_gh_says_how_to_log_in(page, monkeypatch):
     page.click("#publishBtn")
     sync_api.expect(page.locator("#pubDevice")).to_contain_text("Install the GitHub CLI (gh)")
     assert page.locator("#pubLoginBtn").is_hidden()
+
+
+@pytest.mark.parametrize("page", ["live_local_lab_builder"], indirect=True)
+def test_live_links_and_embeds_its_own_lab_builder_on_the_pages_host(page):
+    page.click(".engine >> text=lab-in-a-box")
+    href = page.locator("#enginePanel a", has_text="Open lab-builder").get_attribute("href")
+    assert href == "http://127.0.0.1:9/lab-builder/"
+    page.click(".seg button >> text=Embed here")
+    page.click("#enginePanel button >> text=Open embedded lab-builder")
+    src = page.locator("#embedFrame").get_attribute("src")
+    assert src.startswith("http://127.0.0.1:9/lab-builder/?embed=1&origin=http%3A%2F%2F127.0.0.1%3A")

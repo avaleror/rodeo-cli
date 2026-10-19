@@ -164,6 +164,10 @@ records the repository, ref and commit. `--force` re-fetches.
 
 `rodeo builder` serves `rodeo/builder/htdocs/` and answers the page's requests
 with `rodeo/builder/api.py` (`rodeo/builder/server.py`, standard library only).
+It links to and embeds lab-in-a-box's dynamic lab-builder: the checkout's own
+`webui/run-local.py`, started next to it on `--lab-builder-port` and opened on the
+host name the browser used for the builder, unless `--lab-builder-url` names one
+(the published static lab-builder when the checkout has none or it can't start).
 At start it fetches the chapter sources (a source that can't be fetched is left
 out, with a warning) and the lab-in-a-box catalogue: `--labinabox <checkout>`,
 else `RODEO_LABINABOX_PATH`, else lab-in-a-box's latest release, fetched into
@@ -174,7 +178,9 @@ else `RODEO_LABINABOX_PATH`, else lab-in-a-box's latest release, fetched into
 | `--host`, `--port` | `127.0.0.1`, `8678` | Where to listen (`--port 0` picks a free port). |
 | `--expose` | off | Required for a non-loopback `--host`: anyone who reaches it can save profiles as you. **Publish** then uses the github.com pages, never this host's GitHub login. |
 | `--allow-host NAME` | | Extra `Host` name to accept (the name or IP clients use with `--expose`). |
-| `--labinabox`, `--lab-builder-url` | latest release, published lab-builder | Catalogue source and the lab-builder the page links to. |
+| `--labinabox` | latest release | lab-in-a-box checkout for the catalogue and the lab-builder. |
+| `--lab-builder-url URL` (`RODEO_LAB_BUILDER_URL`) | start the checkout's lab-builder | A lab-builder you already run (for example on an automation node) for the page to link to and embed; nothing is started. |
+| `--lab-builder-port` | `8677` | Port of the lab-builder `rodeo builder` starts, on the same address as `--host`. |
 | `--source ID=CHECKOUT`, `--no-fetch-sources` | fetch all | Local chapter sources, or none. |
 | `--open/--no-open` | open | Open the page in a browser. |
 

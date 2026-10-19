@@ -321,4 +321,9 @@ div.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 2p
   .col.center { flex: none; }
   .tag { display: none; }
   .hdr { padding: 0 16px; }
+  /* The sticky bar carries Download and the warnings. */
+  .hdr-right #downloadBtn, .hdr-right #warnBtn { display: none; }
+}
+@media (max-width: 480px) {
+  .wordmark { display: none; }
 }

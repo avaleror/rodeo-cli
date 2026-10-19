@@ -94,6 +94,30 @@ def test_labinabox_catalogue_is_split_by_kind(labinabox_checkout):
     assert [a["name"] for a in data["kclusters"]] == ["rke2"]
 
 
+def test_labinabox_addons_run_without_their_named_interpreter(tmp_path):
+    checkout = _fake_labinabox(tmp_path, (
+        "import os, subprocess\n"
+        "def dispatch(action, method, params, body):\n"
+        "    script = os.path.join(os.environ['LABBUILDER_SCRIPTS_DIR'], 'install_smlm')\n"
+        "    r = subprocess.run([script, '--schema', 'json'], capture_output=True, text=True)\n"
+        "    names = [r.stdout.strip()] if r.returncode == 0 else []\n"
+        "    return 200, {'components': [{'name': n, 'targets': []} for n in names]}\n"))
+    script = checkout / "scripts" / "install_smlm"
+    script.parent.mkdir()
+    script.write_text("#!/usr/bin/env python3.0-rodeo-missing\nprint('install_smlm')\n")
+    script.chmod(0o755)
+    assert discovery.labinabox_addons(checkout) == [{"name": "smlm", "kind": "addon", "targets": []}]
+
+
+def test_labinabox_without_addons_fails_loudly(tmp_path):
+    checkout = _fake_labinabox(tmp_path, (
+        "def dispatch(action, method, params, body):\n"
+        "    return 200, {'components': [{'name': 'rke2', 'kind': 'kcluster', 'targets': []}]}\n"))
+    with pytest.raises(RuntimeError, match="none reported"):
+        discovery.labinabox_addons(checkout)
+    assert "none reported" in discovery.labinabox(checkout)["error"]
+
+
 def test_labinabox_addons_fail_loudly(tmp_path):
     checkout = _fake_labinabox(tmp_path, "def dispatch(*a):\n    return 500, {'error': 'boom'}\n")
     with pytest.raises(RuntimeError, match="boom"):

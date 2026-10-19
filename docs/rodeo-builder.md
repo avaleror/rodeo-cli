@@ -97,6 +97,13 @@ When `rmstory` is installed where `rodeo builder` runs (`sudo rodeo install-deps
   `ollama` or `gemini`) drafts the chapter from your description, told what the
   lab provides and which chapters come before it. Its spans are renumbered
   `new-chapter.N`; review the draft before you create the chapter.
+- **New story** (rodeo tab): the same exercises told as a different story. Say
+  what it is about and pick an engine that can generate text; `rmstory generate
+  rewrite --theme` rewrites the translatable spans. Text outside spans and in
+  invariant spans stays word for word, so tag UI names and commands as
+  invariant. The retold chapters (ids `<chapter>-<theme>`, span ids
+  `<theme>.<id>`, so translations start empty) become a library group and
+  replace the rodeo's chapters; **Undo** puts the originals back.
 
 Engines read their keys from the environment `rodeo builder` runs in, never from
 the page: for example `DEEPL_AUTH_KEY`, `GEMINI_API_KEY`, `RMSTORY_OLLAMA_URL`, or a

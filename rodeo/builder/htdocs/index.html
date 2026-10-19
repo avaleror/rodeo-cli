@@ -78,6 +78,16 @@
         </select>
         <span class="label">Story variant</span>
         <div id="variants" class="chips"></div>
+        <div id="newStory" class="nc-draft" hidden>
+          <label class="label" for="nsTheme">New story</label>
+          <input id="nsTheme" class="input" maxlength="500" autocomplete="off" placeholder="What the new story is about, e.g. a heist on a space station">
+          <div class="addon-add">
+            <label class="sr-only" for="nsEngine">rmstory engine</label>
+            <select id="nsEngine" class="select"></select>
+            <button id="nsBtn" class="btn sm" type="button">Retell</button>
+          </div>
+          <p class="note muted">rmstory retells this rodeo's chapters as a new story: translatable spans get a new narrative; text outside spans and in invariant spans stays word for word, so tag UI names and commands as invariant. The original chapters stay in the library.</p>
+        </div>
         <div id="estimate" class="est"></div>
       </div>
       <div id="tab-plan" class="tabpane" role="tabpanel" aria-labelledby="t-plan" hidden>

@@ -309,6 +309,15 @@ const RB = (() => {
     return lines.join("\n");
   }
 
+  // The rodeo's chapters as the new story `slug` from rmstory's retold bodies ({id: body}):
+  // chapter ids become "<id>-<slug>" and every span id (and reference) "<slug>.<id>", so
+  // the new story's translations and variants never mix with the original's.
+  function retoldChapters(chapters, bodies, slug) {
+    return chapters.map((c) => ({ ...c, id: (c.id + "-" + slug).slice(0, 63).replace(/-+$/, ""),
+      body: String(c.id in bodies ? bodies[c.id] : c.body).replace(/(<span\b[^>]*?\sid=")([^"]+)"/g,
+        (m, head, id) => head + slug + "." + id + '"') }));
+  }
+
   // ── workshops imported by URL (rodeo/builder/imports.py does the same on the server) ──
 
   const DEFAULT_MINUTES = 10, INSTRUQT_MINUTES = 20;
@@ -619,7 +628,7 @@ const RB = (() => {
     withKind, wrapTarget, nextId, wrap, retag, unwrap, idsIn, validate, warningsByChapter, engineNeeds, variantsIn, storyIndex,
     setTopKey, dropTopBlock, storyBlock, planFromBase, planLabinabox, chapterFile, chaptersYaml,
     storyYaml, checkScript, readme, files, labJsonAddons, crc32, zip,
-    renumber, translatableIds, storedSource, sourceTexts, missingPlaceholders, stringsFiles, translatedLanguages, draftPrompt,
+    renumber, translatableIds, storedSource, sourceTexts, missingPlaceholders, stringsFiles, translatedLanguages, draftPrompt, retoldChapters,
     parseSourceUrl, importGroupId, detectFormat, chapterFromMarkdown, chapterFromInstruqt, chaptersMeta, storyIds, chapterFromStory,
   };
 })();

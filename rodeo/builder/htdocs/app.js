@@ -680,6 +680,49 @@ function renderRmstoryCheck() {
 
 // ── right panel ─────────────────────────────────────────────────────────
 
+function renderNewStory() {
+  const engines = storyEngines(true), select = $("#nsEngine"), picked = select.value;
+  $("#newStory").hidden = !engines.length;
+  if (select.options.length !== engines.length) select.replaceChildren(...engines.map((e) => el("option", { value: e, text: e })));
+  if (engines.includes(picked)) select.value = picked;
+  const btn = $("#nsBtn");
+  btn.disabled = !!state.busy || !state.chapters.length;
+  btn.textContent = state.busy === "retell" ? "Retelling…" : "Retell";
+}
+
+// "New story": rmstory retells the rodeo's chapters about a theme; the retold chapters become
+// a library group and replace the rodeo's chapters (Undo puts the originals back).
+async function retellStory() {
+  const theme = $("#nsTheme").value.trim(), engineName = $("#nsEngine").value;
+  if (!theme) { toast("Say what the new story is about", true); $("#nsTheme").focus(); return; }
+  if (!state.chapters.length) { toast("Add at least one chapter first.", true); return; }
+  const used = new Set(libraryGroups().map((g) => g.id));
+  const slug = RB.slugify(theme).slice(0, 20).replace(/-+$/, "") || "story", id = RB.uniqueId("story-" + slug, used);
+  const tagged = state.chapters.map((c) => ({ id: c.id, body: RB.renumber(c.body, c.id) }));
+  state.busy = "retell";
+  render();
+  try {
+    const res = await storyPost("retell", { chapters: tagged, theme, engine: engineName });
+    const bodies = Object.fromEntries(res.chapters.map((c) => [c.id, c.body]));
+    const retold = RB.retoldChapters(state.chapters.map((c) => ({ ...c, body: RB.renumber(c.body, c.id) })), bodies, id.slice(6));
+    const group = { id, title: theme, source: "retold from " + (state.title || "this rodeo") + " with " + engineName, format: "rmstory",
+      engine: "", profile: "", plan: "", variants: {}, imported: true,
+      chapters: retold.map(({ workshop, from, ...ch }) => ch) };
+    const before = { chapters: state.chapters, imported: state.imported };
+    state.imported = [...state.imported, group];
+    state.chapters = group.chapters.map((ch) => ({ ...ch, workshop: group.title, from: libKey(group.id, ch.id) }));
+    state.cursor = -1;
+    state.busy = "";
+    render();
+    toast("New story: " + plural(group.chapters.length, "chapter") + " retold. Review them before you download", false,
+      () => { state.chapters = before.chapters; state.imported = before.imported; render(); });
+  } catch (err) {
+    state.busy = "";
+    render();
+    toast("Retelling failed: " + err.message, true);
+  }
+}
+
 function renderSettings() {
   $("#name").value = state.name;
   $("#title").value = state.title;
@@ -691,6 +734,7 @@ function renderSettings() {
   box.replaceChildren(...options.map(([v, label]) => el("button", {
     type: "button", class: "chip" + (state.variant === v ? " on" : ""), "aria-pressed": String(state.variant === v),
     text: label, onclick: () => { state.variant = v; render(); } })));
+  renderNewStory();
   const mins = state.chapters.reduce((n, c) => n + (c.mins || 0), 0);
   $("#estimate").textContent = "Estimated run time: " + mins + " min (" + state.chapters.length + " chapters)";
   $("#counts").textContent = state.chapters.length + " chapters · " + mins + " min · " + state.engine;
@@ -1439,6 +1483,7 @@ function bind() {
   });
   $("#newChapterBtn").addEventListener("click", openNewChapter);
   $("#importBtn").addEventListener("click", openImport);
+  $("#nsBtn").addEventListener("click", retellStory);
   $("#importForm").addEventListener("submit", importWorkshop);
   $("#imCancel").addEventListener("click", closeImport);
   $("#importModal").addEventListener("mousedown", (ev) => { if (ev.target === ev.currentTarget) closeImport(); });

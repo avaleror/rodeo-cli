@@ -630,3 +630,28 @@ def test_live_imports_through_the_server(page, monkeypatch, tmp_path):
     sync_api.expect(page.locator("#toastText")).to_have_text("Imported 1 chapter (rmstory) from ws")
     assert seen == ["https://git.example.com/team/ws"]
     sync_api.expect(page.locator(".group", has_text="git.example.com/team/ws")).to_contain_text("Hello there")
+
+
+@pytest.mark.parametrize("page", ["live_rmstory"], indirect=True)
+def test_live_new_story_retells_the_chapters(page):
+    page.click(".card >> text=Welcome to the rodeo")
+    assert page.locator("#newStory").is_visible()
+    assert page.locator("#nsEngine option").all_inner_texts() == ["ollama"]
+    page.fill("#nsTheme", "A space heist")
+    page.click("#nsBtn")
+    sync_api.expect(page.locator("#toastText")).to_have_text(re.compile(r"^New story: 1 chapter retold"))
+    group = page.locator(".group", has_text="retold from")
+    sync_api.expect(group).to_contain_text("A space heist")
+    page.click("#t-story")
+    files = page.locator("#fileList").inner_text()
+    assert "a-space-heist" in files
+    page.locator("#fileList li", has_text="a-space-heist").first.click()
+    preview = page.locator("#filePreview").inner_text()
+    assert 'id="a-space-heist.' in preview and ">A space heist</span>" in preview
+    page.click("#toastUndo")
+    page.click("#t-story")
+    assert "a-space-heist" not in page.locator("#fileList").inner_text()
+
+
+def test_static_has_no_new_story(page):
+    assert page.locator("#newStory").is_hidden()

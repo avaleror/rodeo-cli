@@ -279,3 +279,14 @@ test("chapters from markdown, Instruqt and rodeo story files", () => {
   assert.deepEqual([st.id, st.mins, st.needs, st.spans], ["hello", 7, ["rancher", "fleet"], 1]);
   assert.deepEqual(RB.storyIds("# comment\n- hello.1\n- \"hello.2\"\n"), ["hello.1", "hello.2"]);
 });
+
+test("retoldChapters renames chapters and span ids for the new story", () => {
+  const chapters = [{ id: "intro", title: "Intro", mins: 5, body: "old" },
+    { id: "ride", title: "Ride", body: '<span id="ride.1" lang="en">Go <span id="horse"/></span>\n<span id="horse" no>Ed</span>' }];
+  const out = RB.retoldChapters(chapters, { intro: '# Intro\n<span lang="en" id="intro.1">Board the ship</span>' }, "heist");
+  assert.deepEqual(out.map((c) => c.id), ["intro-heist", "ride-heist"]);
+  assert.equal(out[0].body, '# Intro\n<span lang="en" id="heist.intro.1">Board the ship</span>');
+  assert.equal(out[1].body, '<span id="heist.ride.1" lang="en">Go <span id="heist.horse"/></span>\n<span id="heist.horse" no>Ed</span>');
+  assert.equal(out[0].mins, 5);
+  assert.equal(chapters[0].id, "intro");
+});

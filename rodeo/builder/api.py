@@ -21,7 +21,7 @@ from typing import Any
 from . import discovery, imports, storywork
 
 PAGE_ACTIONS = ("engines", "workshops", "labinabox")
-STORY_ACTIONS = ("validate", "translate", "draft")
+STORY_ACTIONS = ("validate", "translate", "draft", "retell")
 LIVE_ACTIONS = ("save", "import", *STORY_ACTIONS)
 
 
@@ -95,6 +95,8 @@ class Api:
             if action == "translate":
                 return 200, storywork.translate(req.get("chapters"), str(req.get("to") or ""),
                                                 str(req.get("engine") or ""), req.get("strings"))
+            if action == "retell":
+                return 200, storywork.retell(req.get("chapters"), req.get("theme"), str(req.get("engine") or ""))
             return 200, storywork.draft(req.get("prompt"), str(req.get("lang") or "en"), str(req.get("engine") or ""))
         except ValueError as exc:
             return 400, {"error": str(exc)}

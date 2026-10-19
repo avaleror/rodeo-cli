@@ -6,11 +6,15 @@ the ``rodeo builder`` server calls it per request.
 
 GET actions: ``engines``, ``workshops``, ``labinabox`` (the page's data, also
 embedded by the static build), ``server`` (what the live server can do) and
-``story`` (rmstory and its engines on the server's host).
+``story`` (rmstory and its engines on the server's host) and ``github`` (the GitHub
+login Publish would use, see :mod:`.publish`).
 POST ``save`` writes a rodeo to ``~/.rodeo/profiles/<name>/``; POST ``validate``,
 ``translate`` and ``draft`` run rmstory (see :mod:`.storywork`); POST ``import``
-reads a workshop's chapters from a git URL (see :mod:`.imports`). POST actions
-answer only when the Api was created with ``can_save=True`` (the live server).
+reads a workshop's chapters from a git URL (see :mod:`.imports`); POST ``publish``
+and ``github-login`` publish to GitHub with the host's login. POST actions answer
+only when the Api was created with ``can_save=True`` (the live server); ``github``,
+``publish`` and ``github-login`` also need ``can_publish=True`` (a server that
+listens on loopback only, so nobody else can publish as its user).
 """
 from __future__ import annotations
 
@@ -18,24 +22,26 @@ import json
 from pathlib import Path
 from typing import Any
 
-from . import discovery, imports, storywork
+from . import discovery, imports, publish, storywork
 
 PAGE_ACTIONS = ("engines", "workshops", "labinabox")
 STORY_ACTIONS = ("validate", "translate", "draft", "retell")
-LIVE_ACTIONS = ("save", "import", *STORY_ACTIONS)
+GITHUB_ACTIONS = ("publish", "github-login")
+LIVE_ACTIONS = ("save", "import", *STORY_ACTIONS, *GITHUB_ACTIONS)
 
 
 class Api:
     def __init__(self, labinabox_checkout: Path | None = None,
                  lab_builder_url: str = discovery.LAB_BUILDER_URL, labinabox_version: str = "",
                  source_checkouts: dict[str, Path] | None = None, can_save: bool = False,
-                 labinabox_missing: str = ""):
+                 labinabox_missing: str = "", can_publish: bool = False):
         self.labinabox_checkout = labinabox_checkout
         self.labinabox_missing = labinabox_missing
         self.source_checkouts = source_checkouts or {}
         self.lab_builder_url = lab_builder_url
         self.labinabox_version = labinabox_version
         self.can_save = can_save
+        self.can_publish = can_save and can_publish
 
     def _get(self, action: str) -> dict[str, Any]:
         if action == "engines":
@@ -49,6 +55,8 @@ class Api:
             return self._server()
         if action == "story":
             return storywork.info()
+        if action == "github":
+            return {**publish.status(), "available": True} if self.can_publish else {"available": False}
         raise KeyError(action)
 
     def _server(self) -> dict[str, Any]:
@@ -85,6 +93,22 @@ class Api:
         except (RuntimeError, OSError) as exc:
             return 502, {"error": str(exc)}
 
+    def _github(self, action: str, body: bytes) -> tuple[int, dict[str, Any]]:
+        if not self.can_publish:
+            return 403, {"error": "publishing to GitHub needs a rodeo builder that listens on this machine only"}
+        try:
+            if action == "github-login":
+                return 200, publish.start_login()
+            return 200, publish.publish(json.loads(body.decode("utf-8")))
+        except PermissionError as exc:
+            return 401, {"error": str(exc), "login": True}
+        except FileExistsError as exc:
+            return 409, {"error": str(exc), "exists": True}
+        except ValueError as exc:
+            return 400, {"error": str(exc)}
+        except (publish.PublishError, OSError) as exc:
+            return 502, {"error": str(exc)}
+
     def _story(self, action: str, body: bytes) -> tuple[int, dict[str, Any]]:
         try:
             req = json.loads(body.decode("utf-8"))
@@ -109,6 +133,8 @@ class Api:
             if not self.can_save:
                 what = {"save": "saving", "import": "importing a workshop"}.get(action, "rmstory " + action)
                 return 403, {"error": "{} needs the rodeo builder server".format(what)}
+            if action in GITHUB_ACTIONS:
+                return self._github(action, body)
             if action in STORY_ACTIONS:
                 return self._story(action, body)
             if action == "import":

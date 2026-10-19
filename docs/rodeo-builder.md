@@ -157,7 +157,7 @@ else `RODEO_LABINABOX_PATH`, else lab-in-a-box's latest release, fetched into
 | Option | Default | |
 |---|---|---|
 | `--host`, `--port` | `127.0.0.1`, `8678` | Where to listen (`--port 0` picks a free port). |
-| `--expose` | off | Required for a non-loopback `--host`: anyone who reaches it can save profiles as you. |
+| `--expose` | off | Required for a non-loopback `--host`: anyone who reaches it can save profiles as you. **Publish** then uses the github.com pages, never this host's GitHub login. |
 | `--allow-host NAME` | | Extra `Host` name to accept (the name or IP clients use with `--expose`). |
 | `--labinabox`, `--lab-builder-url` | latest release, published lab-builder | Catalogue source and the lab-builder the page links to. |
 | `--source ID=CHECKOUT`, `--no-fetch-sources` | fetch all | Local chapter sources, or none. |
@@ -168,6 +168,29 @@ name (loopback names by default), so other sites can't reach it through DNS
 rebinding, and **Save** sends a per-run token that only the served page has. The
 page runs under a Content-Security-Policy that allows its own files, Google Fonts
 and the lab-builder frame.
+
+## Publish to GitHub
+
+**Publish** puts the rodeo in a public GitHub repository of yours and opens a pull
+request on rodeo-cli that adds it to the rodeo catalog
+(`rodeo/data/catalog.d/<name>.yaml`: name, title, repository, ref, engine,
+languages). The repository holds the files of the download.
+
+- **`rodeo builder` on loopback** uses the GitHub login already on its host,
+  without storing it: `GH_TOKEN` or `GITHUB_TOKEN`, else the GitHub CLI's login
+  (`gh auth token`), else git's stored github.com credential. With none, **Log
+  in to GitHub** runs `gh auth login --web` and shows its one-time code to enter
+  at github.com/login/device; without `gh`, install it, run `gh auth login` or
+  set `GH_TOKEN` before `rodeo builder`. Publishing creates
+  `github.com/<you>/<name>`, pushes one commit on `main`, forks rodeo-cli when
+  you don't own it and opens the catalog pull request. **Update my existing
+  repository** pushes a new commit that replaces the files and opens no pull
+  request. `RODEO_CATALOG_REPO` points the pull request at another repository.
+- **The published page** (and `rodeo builder --expose`) links to github.com
+  pages that use your browser's GitHub login, and GitHub asks you to log in when
+  you aren't: create the repository, upload the unzipped download (or `git
+  push`), and add the catalog file, which forks rodeo-cli and opens the pull
+  request under your account.
 
 ## How the published page is built
 

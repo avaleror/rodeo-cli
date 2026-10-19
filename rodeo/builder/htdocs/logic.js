@@ -391,6 +391,31 @@ const RB = (() => {
     });
   }
 
+  // ── publish (rodeo/builder/publish.py does the same with the host's GitHub login) ──
+
+  const CATALOG_REPO = "avaleror/rodeo-cli", CATALOG_DIR = "rodeo/data/catalog.d";
+
+  // The catalog file rodeo/data/catalog.d/<name>.yaml.
+  function catalogEntry(o) {
+    const q = (v) => JSON.stringify(String(v));
+    return ["name: " + q(o.name), "title: " + q(o.title || o.name), "repo: " + q(o.repo), "ref: main",
+      "engine: " + q(o.engine || ""), "languages: [" + (o.languages || []).map(q).join(", ") + "]", ""].join("\n");
+  }
+
+  // github.com pages that publish with the browser's own GitHub login (GitHub asks to log in
+  // when there is none): create the repository, upload the files, open the catalog pull request.
+  function publishLinks(o) {
+    const e = encodeURIComponent, repo = "https://github.com/" + o.user + "/" + o.name;
+    const entry = catalogEntry({ ...o, repo });
+    return {
+      create: "https://github.com/new?name=" + e(o.name) + "&description=" + e(o.title || o.name) + "&visibility=public",
+      upload: repo + "/upload/main",
+      catalog: "https://github.com/" + (o.catalog || CATALOG_REPO) + "/new/main?filename=" + e(CATALOG_DIR + "/" + o.name + ".yaml")
+        + "&value=" + e(entry) + "&message=" + e("catalog: add " + o.name),
+      repo, entry,
+    };
+  }
+
   // ── workshops imported by URL (rodeo/builder/imports.py does the same on the server) ──
 
   const DEFAULT_MINUTES = 10, INSTRUQT_MINUTES = 20;
@@ -701,7 +726,7 @@ const RB = (() => {
     withKind, wrapTarget, nextId, wrap, retag, unwrap, idsIn, validate, warningsByChapter, engineNeeds, variantsIn, storyIndex,
     setTopKey, dropTopBlock, storyBlock, planFromBase, planLabinabox, chapterFile, chaptersYaml,
     storyYaml, checkScript, readme, files, labJsonAddons, crc32, zip,
-    renumber, nameMissing, translatableIds, storedSource, sourceTexts, missingPlaceholders, stringsFiles, translatedLanguages, draftPrompt, storyRole, storyParts, maskExercises, retoldChapters,
+    renumber, nameMissing, translatableIds, storedSource, sourceTexts, missingPlaceholders, stringsFiles, translatedLanguages, draftPrompt, storyRole, storyParts, maskExercises, retoldChapters, CATALOG_REPO, catalogEntry, publishLinks,
     parseSourceUrl, importGroupId, detectFormat, chapterFromMarkdown, chapterFromInstruqt, chaptersMeta, storyIds, chapterFromStory,
   };
 })();

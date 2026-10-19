@@ -62,6 +62,21 @@ def live(labinabox_checkout, markdown_source):
 
 
 @pytest.fixture()
+def live_github(labinabox_checkout, markdown_source):
+    """The live server listening on loopback only, so Publish uses the host's GitHub login."""
+    from rodeo.builder.api import Api
+    from rodeo.builder.server import make_server
+
+    api = Api(labinabox_checkout, "http://127.0.0.1:9/lab-builder/", "1.0.0",
+              {"virt-workshop": markdown_source}, can_save=True, can_publish=True)
+    server = make_server(api, "127.0.0.1", 0, "0.0.0-test")
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield "http://127.0.0.1:{}/".format(server.server_address[1])
+    server.shutdown()
+    server.server_close()
+
+
+@pytest.fixture()
 def live_rmstory(fake_rmstory, live):
     """The live server with a fake rmstory on its PATH (engines deepl and ollama)."""
     return live
@@ -667,3 +682,91 @@ def test_live_new_story_needs_story_spans(page):
 
 def test_static_has_no_new_story(page):
     assert page.locator("#newStory").is_hidden()
+
+
+def test_static_publish_links_use_the_browsers_github_login(page):
+    page.click("#publishBtn")
+    assert page.locator("#pubStatic").is_visible() and page.locator("#pubSubmit").is_hidden()
+    assert "Type your GitHub account" in page.locator("#pubSteps").inner_text()
+    page.fill("#pubUser", "rider")
+    links = page.locator("#pubSteps a")
+    name = page.locator("#name").input_value()
+    assert links.nth(0).get_attribute("href").startswith("https://github.com/new?name=" + name + "&")
+    assert links.nth(1).get_attribute("href") == "https://github.com/rider/{}/upload/main".format(name)
+    assert links.nth(2).get_attribute("href").startswith("https://github.com/avaleror/rodeo-cli/new/main?filename=rodeo%2Fdata%2Fcatalog.d%2F")
+    page.keyboard.press("Escape")
+    assert page.locator("#publishModal").is_hidden()
+
+
+@pytest.mark.parametrize("page", ["live"], indirect=True)
+def test_exposed_live_server_publishes_through_github_pages(page):
+    page.click("#publishBtn")
+    sync_api.expect(page.locator("#pubStatic")).to_be_visible()
+
+
+@pytest.mark.parametrize("page", ["live_github"], indirect=True)
+def test_live_publish_with_the_hosts_github_login(page, monkeypatch):
+    from rodeo.builder import publish
+
+    sent = []
+    monkeypatch.setattr(publish, "status", lambda: {"logged_in": True, "login": "rider", "source": "gh", "gh": True,
+                                                   "error": "", "device": {}, "catalog": "avaleror/rodeo-cli"})
+
+    def fake(req):
+        sent.append(req)
+        return {"repo": "https://github.com/rider/" + req["name"], "login": "rider",
+                "pull_request": "https://github.com/avaleror/rodeo-cli/pull/7"}
+
+    monkeypatch.setattr(publish, "publish", fake)
+    page.click(".card >> text=Welcome to the rodeo")
+    page.click("#publishBtn")
+    sync_api.expect(page.locator("#pubAccount")).to_have_text("Publishing as rider (GitHub login from gh).")
+    page.fill("#pubName", "my-ride")
+    page.click("#pubSubmit")
+    sync_api.expect(page.locator("#pubResult")).to_contain_text("Published https://github.com/rider/my-ride")
+    assert page.locator("#pubResult a").nth(1).get_attribute("href") == "https://github.com/avaleror/rodeo-cli/pull/7"
+    req = sent[0]
+    assert req["name"] == "my-ride" and req["update"] is False and req["languages"][0] == "en"
+    assert {"rodeo-plan.yaml", "README.md"} <= {f["path"] for f in req["files"]}
+    assert page.locator("#name").input_value() == "my-ride"
+
+
+@pytest.mark.parametrize("page", ["live_github"], indirect=True)
+def test_live_publish_asks_for_a_github_login(page, monkeypatch):
+    from rodeo.builder import publish
+
+    logged = {"in": False, "started": False}
+    monkeypatch.setattr(publish, "status", lambda: {
+        "logged_in": logged["in"], "login": "rider" if logged["in"] else "", "source": "gh", "gh": True, "error": "",
+        "catalog": "avaleror/rodeo-cli", "device": {"pending": logged["started"] and not logged["in"], "code": "AB12-CD34",
+                                                    "url": publish.DEVICE_URL} if logged["started"] else {}})
+
+    def start():
+        logged["started"] = True
+        return {"pending": True, "code": "AB12-CD34", "url": publish.DEVICE_URL, "error": ""}
+
+    monkeypatch.setattr(publish, "start_login", start)
+    page.click("#publishBtn")
+    sync_api.expect(page.locator("#pubLogin")).to_be_visible()
+    assert page.locator("#pubSubmit").is_hidden()
+    page.context.route("https://github.com/**", lambda route: route.fulfill(body="device page"))
+    with page.context.expect_page() as popup:
+        page.click("#pubLoginBtn")
+    popup.value.wait_for_load_state()
+    assert popup.value.url == publish.DEVICE_URL
+    popup.value.close()
+    sync_api.expect(page.locator("#pubDevice")).to_contain_text("AB12-CD34")
+    logged["in"] = True
+    sync_api.expect(page.locator("#pubAccount")).to_have_text("Publishing as rider (GitHub login from gh).", timeout=10_000)
+    assert page.locator("#pubSubmit").is_visible()
+
+
+@pytest.mark.parametrize("page", ["live_github"], indirect=True)
+def test_live_publish_without_gh_says_how_to_log_in(page, monkeypatch):
+    from rodeo.builder import publish
+
+    monkeypatch.setattr(publish, "status", lambda: {"logged_in": False, "login": "", "source": "", "gh": False,
+                                                   "error": "", "device": {}, "catalog": "avaleror/rodeo-cli"})
+    page.click("#publishBtn")
+    sync_api.expect(page.locator("#pubDevice")).to_contain_text("Install the GitHub CLI (gh)")
+    assert page.locator("#pubLoginBtn").is_hidden()

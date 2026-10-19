@@ -310,3 +310,14 @@ test("nameMissing names only the spans that need an id and have none", () => {
   const body = '<span lang="en" id="a.1">x</span> <span lang="en">y</span> <span no>z</span> <span hist="s">w</span>';
   assert.equal(RB.nameMissing(body, "a"), '<span lang="en" id="a.1">x</span> <span lang="en" id="a.2">y</span> <span no>z</span> <span id="a.3" hist="s">w</span>');
 });
+
+test("publishLinks builds github.com pages that use the browser's login", () => {
+  const l = RB.publishLinks({ user: "rider", name: "ride", title: "Ride & go", engine: "rancher", languages: ["en", "es"] });
+  assert.equal(l.repo, "https://github.com/rider/ride");
+  assert.equal(l.create, "https://github.com/new?name=ride&description=Ride%20%26%20go&visibility=public");
+  assert.equal(l.upload, "https://github.com/rider/ride/upload/main");
+  const u = new URL(l.catalog);
+  assert.equal(u.origin + u.pathname, "https://github.com/avaleror/rodeo-cli/new/main");
+  assert.equal(u.searchParams.get("filename"), "rodeo/data/catalog.d/ride.yaml");
+  assert.equal(u.searchParams.get("value"), 'name: "ride"\ntitle: "Ride & go"\nrepo: "https://github.com/rider/ride"\nref: main\nengine: "rancher"\nlanguages: ["en", "es"]\n');
+});

@@ -298,6 +298,8 @@ div.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 2p
 .rm-check { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 10px 0; font-size: 12px; }
 .nc-draft { border: 1px dashed var(--line); padding: 4px 10px 8px; margin: 10px 0 4px; border-radius: 2px; }
 .textarea.brief { min-height: 64px; }
+.pub-steps { padding-left: 20px; margin: 10px 0 0; line-height: 1.6; }
+.pub-steps li { margin-bottom: 8px; }
 .popover {
   position: fixed; z-index: 30; width: 310px; background: var(--panel); border-radius: 6px; padding: 12px;
   box-shadow: 0 0 0 1px var(--accent), 0 20px 60px rgba(0, 0, 0, .5);
@@ -337,7 +339,7 @@ div.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 2p
   .tag { display: none; }
   .hdr { padding: 0 16px; }
   /* The sticky bar carries Download and the warnings. */
-  .hdr-right #downloadBtn, .hdr-right #warnBtn { display: none; }
+  .hdr-right #downloadBtn, .hdr-right #warnBtn, .hdr-right #publishBtn { display: none; }
 }
 @media (max-width: 480px) {
   .wordmark { display: none; }

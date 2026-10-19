@@ -23,6 +23,7 @@
       <button id="themeBtn" class="btn" type="button">Light</button>
       <button id="warnBtn" class="btn warn" type="button" hidden></button>
       <button id="saveBtn" class="btn outline" type="button" hidden>Save to profiles</button>
+      <button id="publishBtn" class="btn outline" type="button" title="Publish this rodeo to a GitHub repository and the rodeo catalog">Publish</button>
       <button id="downloadBtn" class="btn primary" type="button">Download rodeo</button>
     </div>
   </header>
@@ -151,6 +152,36 @@
         <div>
           <button id="ncCancel" class="btn" type="button">Cancel</button>
           <button class="btn primary" type="submit">Create</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div id="publishModal" class="backdrop" hidden>
+    <form id="publishForm" class="modal" role="dialog" aria-modal="true" aria-labelledby="publishTitle">
+      <h2 id="publishTitle">Publish to GitHub</h2>
+      <p id="pubAccount" class="note"></p>
+      <div id="pubLogin" class="nc-draft" hidden>
+        <button id="pubLoginBtn" class="btn sm" type="button">Log in to GitHub</button>
+        <p id="pubDevice" class="note"></p>
+      </div>
+      <div id="pubStatic" hidden>
+        <label class="label" for="pubUser">Your GitHub account</label>
+        <input id="pubUser" class="input mono" autocomplete="username" spellcheck="false" placeholder="octocat">
+        <ol id="pubSteps" class="pub-steps"></ol>
+      </div>
+      <div id="pubLive" hidden>
+        <label class="label" for="pubName">Repository (the rodeo name)</label>
+        <input id="pubName" class="input mono" autocomplete="off" spellcheck="false">
+        <div class="checks"><label><input id="pubUpdate" type="checkbox"> Update my existing repository (no new catalog pull request)</label></div>
+        <p class="note muted">Creates a public repository under your account with this rodeo's files and opens a pull request on <span id="pubCatalog"></span> that adds it to the rodeo catalog.</p>
+      </div>
+      <p id="pubResult" class="note"></p>
+      <div class="modal-foot">
+        <span></span>
+        <div>
+          <button id="pubCancel" class="btn" type="button">Close</button>
+          <button id="pubSubmit" class="btn primary" type="submit" hidden>Publish</button>
         </div>
       </div>
     </form>

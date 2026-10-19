@@ -1418,6 +1418,128 @@ async function save(force) {
   toast("Saved " + res.body.path + " · deploy with: rodeo up --profile " + name);
 }
 
+// ── publish to GitHub ───────────────────────────────────────────────────
+// The live builder on loopback publishes with the host's GitHub login (rodeo/builder/publish.py),
+// asking for a device-flow login when there is none; otherwise the dialog lists github.com
+// pages that use the browser's GitHub login.
+
+let pubPoll = 0;
+
+function publishLanguages() {
+  const r = rodeo();
+  return [state.lang || RB.SOURCE_LANGUAGE, ...RB.translatedLanguages(r.strings, RB.translatableIds(r.chapters))]
+    .filter((l, i, all) => all.indexOf(l) === i);
+}
+
+function pubLive() { return !window.RB_STATIC && state.github && state.github.available; }
+
+async function openPublish() {
+  const name = RB.slugify(state.name);
+  if (!name) { toast("Give the rodeo a name first", true); $("#name").focus(); return; }
+  state.name = name;
+  $("#pubName").value = name;
+  $("#pubUpdate").checked = false;
+  $("#pubResult").replaceChildren();
+  $("#publishModal").hidden = false;
+  if (!window.RB_STATIC) state.github = await apiGet("github").catch((err) => ({ available: true, logged_in: false, error: err.message }));
+  renderPublish();
+  if (pubLive() && !state.github.logged_in && state.github.device && state.github.device.pending) pollGithub();
+  (pubLive() ? $("#pubName") : $("#pubUser")).focus();
+}
+
+function closePublish() {
+  clearTimeout(pubPoll);
+  $("#publishModal").hidden = true;
+  $("#publishBtn").focus();
+}
+
+function link(href, text) { return el("a", { href, target: "_blank", rel: "noopener", text }); }
+
+function renderPublish() {
+  const live = pubLive(), gh = state.github || {};
+  $("#pubStatic").hidden = live;
+  $("#pubLive").hidden = !live || !gh.logged_in;
+  $("#pubSubmit").hidden = !live || !gh.logged_in;
+  $("#pubLogin").hidden = !live || gh.logged_in;
+  if (!live) {
+    $("#pubAccount").textContent = "These github.com pages use your browser's GitHub login; GitHub asks you to log in if you are not.";
+    renderPublishSteps();
+    return;
+  }
+  $("#pubCatalog").textContent = gh.catalog || RB.CATALOG_REPO;
+  const d = gh.device || {};
+  $("#pubAccount").textContent = gh.logged_in ? "Publishing as " + gh.login + " (GitHub login from " + gh.source + ")."
+    : gh.error || "No GitHub login on the builder's host yet.";
+  $("#pubLoginBtn").disabled = !!d.pending;
+  $("#pubLoginBtn").hidden = !gh.gh;
+  $("#pubDevice").replaceChildren(...(d.pending && d.code
+    ? ["Enter the code ", el("strong", { class: "mono", text: d.code }), " at ", link(d.url, d.url), ". This dialog notices the login."]
+    : [d.error ? d.error + ". " : "", gh.gh ? "The GitHub CLI on the builder's host signs you in with a one-time code."
+      : "Install the GitHub CLI (gh) on the builder's host and open Publish again, or run gh auth login or set GH_TOKEN there."]));
+}
+
+function renderPublishSteps() {
+  const user = $("#pubUser").value.trim(), name = RB.slugify(state.name);
+  const box = $("#pubSteps");
+  if (!/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/.test(user)) {
+    box.replaceChildren(el("li", { class: "muted", text: "Type your GitHub account to get the links." }));
+    return;
+  }
+  const l = RB.publishLinks({ user, name, title: state.title, engine: state.engine, languages: publishLanguages() });
+  box.replaceChildren(
+    el("li", {}, link(l.create, "Create the repository " + user + "/" + name), " (public)."),
+    el("li", {}, el("button", { class: "btn sm", type: "button", text: "Download rodeo", onclick: download }), " then ",
+      link(l.upload, "upload the unzipped files"), ", or push them: ", el("code", { text: "git push " + l.repo + " main" }), "."),
+    el("li", {}, link(l.catalog, "Add it to the rodeo catalog"), ": GitHub forks rodeo-cli and opens the pull request for you."));
+}
+
+async function githubLogin() {
+  $("#pubLoginBtn").disabled = true;
+  const res = await apiPost("github-login", {}).catch((err) => ({ status: 0, body: { error: err.message } }));
+  if (res.status !== 200) { state.github = { ...state.github, error: res.body.error }; renderPublish(); return; }
+  state.github = { ...state.github, device: res.body };
+  renderPublish();
+  if (res.body.code) window.open(res.body.url, "_blank", "noopener");
+  pollGithub();
+}
+
+// Re-reads the login every 3 s while the dialog is open and gh's device login is pending.
+function pollGithub() {
+  clearTimeout(pubPoll);
+  pubPoll = setTimeout(async () => {
+    if ($("#publishModal").hidden) return;
+    state.github = await apiGet("github").catch(() => state.github);
+    renderPublish();
+    if (!state.github.logged_in && state.github.device && state.github.device.pending) pollGithub();
+  }, 3000);
+}
+
+async function publishRodeo(ev) {
+  ev.preventDefault();
+  const name = RB.slugify($("#pubName").value);
+  if (!name) { $("#pubName").focus(); return; }
+  state.name = name;
+  render();
+  const r = rodeo(), btn = $("#pubSubmit"), update = $("#pubUpdate").checked;
+  const files = RB.files(r).map((f) => ({ path: f.path, content: f.content, executable: f.mode === 0o755 }));
+  btn.disabled = true;
+  btn.textContent = "Publishing…";
+  $("#pubResult").textContent = "";
+  try {
+    const res = await apiPost("publish", { name, title: state.title, engine: state.engine, languages: publishLanguages(), files, update });
+    if (res.status === 401) { state.github = { ...state.github, logged_in: false, error: res.body.error }; renderPublish(); }
+    else if (res.status === 409) $("#pubResult").textContent = res.body.error + ": tick Update to push to it, or pick another name.";
+    else if (res.status !== 200) $("#pubResult").textContent = "Publish failed: " + (res.body.error || res.status);
+    else {
+      $("#pubResult").replaceChildren("Published ", link(res.body.repo, res.body.repo),
+        ...(res.body.pull_request ? [" · catalog pull request ", link(res.body.pull_request, res.body.pull_request)] : []), ".");
+      toast("Published " + res.body.repo);
+    }
+  } catch (err) { $("#pubResult").textContent = "Publish failed: " + err.message; }
+  btn.disabled = false;
+  btn.textContent = "Publish";
+}
+
 // ── dialogs ─────────────────────────────────────────────────────────────
 
 const FOCUSABLE = "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), iframe, [tabindex]:not([tabindex='-1'])";
@@ -1425,6 +1547,7 @@ const FOCUSABLE = "a[href], button:not([disabled]), input:not([disabled]), selec
 function openDialog() {
   if (!$("#newModal").hidden) return $("#newModal .modal");
   if (!$("#importModal").hidden) return $("#importModal .modal");
+  if (!$("#publishModal").hidden) return $("#publishModal .modal");
   if (!$("#embedOverlay").hidden) return $("#embedOverlay .embed");
   if (!$("#editor").hidden) return $("#editor");
   return null;
@@ -1491,6 +1614,12 @@ function bind() {
   $("#newChapterBtn").addEventListener("click", openNewChapter);
   $("#importBtn").addEventListener("click", openImport);
   $("#nsBtn").addEventListener("click", retellStory);
+  $("#publishBtn").addEventListener("click", openPublish);
+  $("#publishForm").addEventListener("submit", publishRodeo);
+  $("#pubCancel").addEventListener("click", closePublish);
+  $("#pubLoginBtn").addEventListener("click", githubLogin);
+  $("#pubUser").addEventListener("input", renderPublishSteps);
+  $("#publishModal").addEventListener("mousedown", (ev) => { if (ev.target === ev.currentTarget) closePublish(); });
   $("#importForm").addEventListener("submit", importWorkshop);
   $("#imCancel").addEventListener("click", closeImport);
   $("#importModal").addEventListener("mousedown", (ev) => { if (ev.target === ev.currentTarget) closeImport(); });
@@ -1504,6 +1633,7 @@ function bind() {
     if (pop) closePop();
     else if (!$("#newModal").hidden) closeNewChapter();
     else if (!$("#importModal").hidden) closeImport();
+    else if (!$("#publishModal").hidden) closePublish();
     else if (!$("#embedOverlay").hidden) closeEmbed();
     else if (!$("#editor").hidden) closeEditor();
   });

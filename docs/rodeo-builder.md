@@ -145,6 +145,19 @@ builder writes; anything else (other paths, links, oversize files) is refused
 before anything is written. **Save to profiles** in `rodeo builder` does the same
 without the zip.
 
+A published rodeo (see [Publish to GitHub](#publish-to-github)) installs the same
+way from its repository, and a catalog rodeo by its name alone:
+
+```bash
+rodeo new <name> --from https://github.com/<owner>/<repo>[@<ref>]
+rodeo up --profile <catalog name>     # fetched and installed on first use
+rodeo profiles                        # lists the catalog too
+```
+
+The repository is fetched shallow, without credentials, and only the files a
+builder rodeo may hold are installed; `~/.rodeo/profiles/<name>/rodeo.lock`
+records the repository, ref and commit. `--force` re-fetches.
+
 ## The live builder
 
 `rodeo builder` serves `rodeo/builder/htdocs/` and answers the page's requests

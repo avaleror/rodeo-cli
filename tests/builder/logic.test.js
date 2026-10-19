@@ -280,13 +280,33 @@ test("chapters from markdown, Instruqt and rodeo story files", () => {
   assert.deepEqual(RB.storyIds("# comment\n- hello.1\n- \"hello.2\"\n"), ["hello.1", "hello.2"]);
 });
 
-test("retoldChapters renames chapters and span ids for the new story", () => {
-  const chapters = [{ id: "intro", title: "Intro", mins: 5, body: "old" },
-    { id: "ride", title: "Ride", body: '<span id="ride.1" lang="en">Go <span id="horse"/></span>\n<span id="horse" no>Ed</span>' }];
-  const out = RB.retoldChapters(chapters, { intro: '# Intro\n<span lang="en" id="intro.1">Board the ship</span>' }, "heist");
-  assert.deepEqual(out.map((c) => c.id), ["intro-heist", "ride-heist"]);
-  assert.equal(out[0].body, '# Intro\n<span lang="en" id="heist.intro.1">Board the ship</span>');
-  assert.equal(out[1].body, '<span id="heist.ride.1" lang="en">Go <span id="heist.horse"/></span>\n<span id="heist.horse" no>Ed</span>');
-  assert.equal(out[0].mins, 5);
-  assert.equal(chapters[0].id, "intro");
+test("storyRole follows the author's tags: hist is story, lang is exercise, no/nolang is fixed", () => {
+  assert.equal(RB.storyRole({ lang: "en", hist: "main" }), "story");
+  assert.equal(RB.storyRole({ hist: "main" }), "story");
+  assert.equal(RB.storyRole({ lang: "en" }), "exercise");
+  assert.equal(RB.storyRole({ no: true, hist: "main" }), "fixed");
+  assert.equal(RB.storyRole({ lang: "nolang" }), "fixed");
+  assert.deepEqual(RB.storyParts([{ body: '<span lang="en" hist="a" id="s">x</span><span lang="en" id="e">y</span><span no>z</span>' }]),
+    { story: 1, exercise: 1, fixed: 1 });
+});
+
+test("retelling hides exercises from the engine, restores them and renames only story ids", () => {
+  const body = '# Ride\n<span lang="en" hist="main" id="ride.1">Saddle up, <span id="ride.2"/></span>\n' +
+    '<span lang="en" id="ride.2">Open Cluster Management</span>\n<span lang="en" id="ride.3">Run <span no id="ride.4">kubectl get nodes</span></span>\n' +
+    '<span lang="en" hist="main" id="ride.5">The trail <span lang="en" id="ride.6">Click Charts</span> ends.</span>\n';
+  const masked = RB.maskExercises(body);
+  assert.ok(!masked.body.includes("Cluster Management") && !masked.body.includes("kubectl"));
+  assert.ok(masked.body.includes("Click Charts"));
+  const fromEngine = masked.body.replace("Saddle up, ", "Boots on, ").replace("The trail ", "The vault ").replace("Click Charts", "Crack the safe");
+  const [out] = RB.retoldChapters([{ id: "ride", title: "Ride", mins: 5, body }], { ride: fromEngine }, "heist", { ride: masked.kept });
+  assert.equal(out.id, "ride-heist");
+  assert.equal(out.mins, 5);
+  assert.equal(out.body, '# Ride\n<span lang="en" hist="main" id="heist.ride.1">Boots on, <span id="ride.2"/></span>\n' +
+    '<span lang="en" id="ride.2">Open Cluster Management</span>\n<span lang="en" id="ride.3">Run <span no id="ride.4">kubectl get nodes</span></span>\n' +
+    '<span lang="en" hist="main" id="heist.ride.5">The vault <span lang="en" id="ride.6">Click Charts</span> ends.</span>\n');
+});
+
+test("nameMissing names only the spans that need an id and have none", () => {
+  const body = '<span lang="en" id="a.1">x</span> <span lang="en">y</span> <span no>z</span> <span hist="s">w</span>';
+  assert.equal(RB.nameMissing(body, "a"), '<span lang="en" id="a.1">x</span> <span lang="en" id="a.2">y</span> <span no>z</span> <span id="a.3" hist="s">w</span>');
 });

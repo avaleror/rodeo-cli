@@ -7,8 +7,9 @@
   starting from the page's translation store; returns the filled store.
 - :func:`draft`: ``rmstory generate new``, a tagged-span draft from a prompt.
 - :func:`retell`: ``rmstory generate rewrite --theme``, the chapters told as a new
-  story: translatable spans are rewritten, everything else (commands, code,
-  invariant and untagged text) and every span id stays as it is.
+  story: translatable spans with an id are rewritten, everything else and every
+  span id stays as it is. The page sends only what the author tagged as story
+  (it takes the exercise spans out first).
 
 Chapters arrive as ``[{"id", "body"}]`` and are written to a temporary
 directory; nothing is kept on the server. Engines read their credentials from

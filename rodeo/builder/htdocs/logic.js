@@ -231,6 +231,19 @@ const RB = (() => {
     return out;
   }
 
+  // `text` with an id ("<base>.N", unused) on every span that needs one and has none.
+  function nameMissing(text, base) {
+    const { spans } = parseSpans(text), used = new Set(spans.map((sp) => sp.attrs.id).filter(Boolean));
+    const named = spans.filter((s) => !s.attrs.id && needsId(s.attrs)).map((sp) => {
+      const id = nextId(base, used);
+      used.add(id);
+      return [sp, id];
+    });
+    let out = text;
+    for (const [sp, id] of named.reverse()) out = retag(out, sp, { ...sp.attrs, id });
+    return out;
+  }
+
   // ── translations (rmstory's filesystem store) ────────────────────────────
 
   // Ids of the translatable spans, in chapter order: the rows a translation fills.
@@ -309,13 +322,73 @@ const RB = (() => {
     return lines.join("\n");
   }
 
-  // The rodeo's chapters as the new story `slug` from rmstory's retold bodies ({id: body}):
-  // chapter ids become "<id>-<slug>" and every span id (and reference) "<slug>.<id>", so
-  // the new story's translations and variants never mix with the original's.
-  function retoldChapters(chapters, bodies, slug) {
-    return chapters.map((c) => ({ ...c, id: (c.id + "-" + slug).slice(0, 63).replace(/-+$/, ""),
-      body: String(c.id in bodies ? bodies[c.id] : c.body).replace(/(<span\b[^>]*?\sid=")([^"]+)"/g,
-        (m, head, id) => head + slug + "." + id + '"') }));
+  // A span's part in a retold story, set by the author: "story" (it has a story variant, hist,
+  // and is retold), "exercise" (translatable without a story: kept word for word) or "fixed"
+  // (invariant or no-lang: never translated or retold).
+  function storyRole(attrs) {
+    if (attrs.hist && !attrs.no) return "story";
+    return kind(attrs) === "translatable" ? "exercise" : "fixed";
+  }
+
+  function storyParts(chapters) {
+    const out = { story: 0, exercise: 0, fixed: 0 };
+    for (const ch of chapters) for (const sp of parseSpans(ch.body).spans) out[storyRole(sp.attrs)]++;
+    return out;
+  }
+
+  function roleAbove(spans, sp, role) {
+    for (let up = sp.parent; up >= 0; up = spans[up].parent) if (storyRole(spans[up].attrs) === role) return true;
+    return false;
+  }
+
+  // The body sent to rmstory generate rewrite: each exercise span outside a story span becomes
+  // an HTML comment (rmstory skips comments, so the engine never sees it). Returns {body, kept}.
+  function maskExercises(body) {
+    const { spans } = parseSpans(body), kept = [];
+    const masked = spans.filter((sp) => storyRole(sp.attrs) === "exercise" && !roleAbove(spans, sp, "story")
+      && !roleAbove(spans, sp, "exercise"));
+    let out = body;
+    for (const sp of masked.sort((a, b) => b.start - a.start)) {
+      kept.push(body.slice(sp.start, sp.end));
+      out = out.slice(0, sp.start) + "<!--rodeo-keep:" + (kept.length - 1) + "-->" + out.slice(sp.end);
+    }
+    return { body: out, kept };
+  }
+
+  function unmaskExercises(body, kept) {
+    return String(body).replace(/<!--rodeo-keep:(\d+)-->/g, (m, n) => (kept && n in kept ? kept[n] : m));
+  }
+
+  // Exercise spans inside story spans get their original text back, by id.
+  function restoreExercises(retold, original) {
+    const before = new Map();
+    for (const sp of parseSpans(original).spans) {
+      if (sp.attrs.id && storyRole(sp.attrs) === "exercise") before.set(sp.attrs.id, inner(original, sp));
+    }
+    const { spans } = parseSpans(retold);
+    let out = retold;
+    for (const sp of spans.filter((s) => storyRole(s.attrs) === "exercise" && before.has(s.attrs.id)
+      && !roleAbove(spans, s, "exercise")).sort((a, b) => b.start - a.start)) {
+      out = out.slice(0, sp.openEnd) + before.get(sp.attrs.id) + out.slice(sp.closeStart);
+    }
+    return out;
+  }
+
+  // The rodeo's chapters as the new story `slug`: `bodies` ({id: body}) are rmstory's retold
+  // (masked) bodies, `kept` ({id: kept}) what maskExercises took out. Chapter ids become
+  // "<id>-<slug>" and story span ids (and references to them) "<slug>.<id>", so the new
+  // story's translations never mix with the original's; exercise and fixed spans keep their
+  // ids and so their translations.
+  function retoldChapters(chapters, bodies, slug, kept) {
+    const storyIds = new Set();
+    for (const c of chapters) {
+      for (const sp of parseSpans(c.body).spans) if (sp.attrs.id && storyRole(sp.attrs) === "story") storyIds.add(sp.attrs.id);
+    }
+    return chapters.map((c) => {
+      const retold = c.id in bodies ? restoreExercises(unmaskExercises(bodies[c.id], (kept || {})[c.id]), c.body) : c.body;
+      return { ...c, id: (c.id + "-" + slug).slice(0, 63).replace(/-+$/, ""),
+        body: retold.replace(/(<span\b[^>]*?\sid=")([^"]+)"/g, (m, head, id) => head + (storyIds.has(id) ? slug + "." : "") + id + '"') };
+    });
   }
 
   // ── workshops imported by URL (rodeo/builder/imports.py does the same on the server) ──
@@ -628,7 +701,7 @@ const RB = (() => {
     withKind, wrapTarget, nextId, wrap, retag, unwrap, idsIn, validate, warningsByChapter, engineNeeds, variantsIn, storyIndex,
     setTopKey, dropTopBlock, storyBlock, planFromBase, planLabinabox, chapterFile, chaptersYaml,
     storyYaml, checkScript, readme, files, labJsonAddons, crc32, zip,
-    renumber, translatableIds, storedSource, sourceTexts, missingPlaceholders, stringsFiles, translatedLanguages, draftPrompt, retoldChapters,
+    renumber, nameMissing, translatableIds, storedSource, sourceTexts, missingPlaceholders, stringsFiles, translatedLanguages, draftPrompt, storyRole, storyParts, maskExercises, retoldChapters,
     parseSourceUrl, importGroupId, detectFormat, chapterFromMarkdown, chapterFromInstruqt, chaptersMeta, storyIds, chapterFromStory,
   };
 })();

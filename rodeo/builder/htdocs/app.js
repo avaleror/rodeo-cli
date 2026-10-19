@@ -685,26 +685,33 @@ function renderNewStory() {
   $("#newStory").hidden = !engines.length;
   if (select.options.length !== engines.length) select.replaceChildren(...engines.map((e) => el("option", { value: e, text: e })));
   if (engines.includes(picked)) select.value = picked;
-  const btn = $("#nsBtn");
-  btn.disabled = !!state.busy || !state.chapters.length;
+  const parts = RB.storyParts(state.chapters), btn = $("#nsBtn");
+  $("#nsParts").textContent = parts.story
+    ? "Retells " + plural(parts.story, "story span") + "; keeps " + plural(parts.exercise, "exercise span") + " and "
+      + plural(parts.fixed, "fixed span") + " word for word."
+    : "Nothing to retell yet: in the story editor, give the story's spans a story variant.";
+  btn.disabled = !!state.busy || !parts.story;
   btn.textContent = state.busy === "retell" ? "Retelling…" : "Retell";
 }
 
-// "New story": rmstory retells the rodeo's chapters about a theme; the retold chapters become
-// a library group and replace the rodeo's chapters (Undo puts the originals back).
+// "New story": rmstory retells the rodeo's story spans about a theme (exercise spans never
+// reach the engine, see RB.maskExercises); the retold chapters become a library group and
+// replace the rodeo's chapters (Undo puts the originals back).
 async function retellStory() {
   const theme = $("#nsTheme").value.trim(), engineName = $("#nsEngine").value;
   if (!theme) { toast("Say what the new story is about", true); $("#nsTheme").focus(); return; }
   if (!state.chapters.length) { toast("Add at least one chapter first.", true); return; }
   const used = new Set(libraryGroups().map((g) => g.id));
   const slug = RB.slugify(theme).slice(0, 20).replace(/-+$/, "") || "story", id = RB.uniqueId("story-" + slug, used);
-  const tagged = state.chapters.map((c) => ({ id: c.id, body: RB.renumber(c.body, c.id) }));
+  const tagged = state.chapters.map((c) => ({ ...c, body: RB.nameMissing(c.body, c.id) }));
+  const masked = Object.fromEntries(tagged.map((c) => [c.id, RB.maskExercises(c.body)]));
   state.busy = "retell";
   render();
   try {
-    const res = await storyPost("retell", { chapters: tagged, theme, engine: engineName });
+    const res = await storyPost("retell", { chapters: tagged.map((c) => ({ id: c.id, body: masked[c.id].body })), theme, engine: engineName });
     const bodies = Object.fromEntries(res.chapters.map((c) => [c.id, c.body]));
-    const retold = RB.retoldChapters(state.chapters.map((c) => ({ ...c, body: RB.renumber(c.body, c.id) })), bodies, id.slice(6));
+    const kept = Object.fromEntries(tagged.map((c) => [c.id, masked[c.id].kept]));
+    const retold = RB.retoldChapters(tagged, bodies, id.slice(6), kept);
     const group = { id, title: theme, source: "retold from " + (state.title || "this rodeo") + " with " + engineName, format: "rmstory",
       engine: "", profile: "", plan: "", variants: {}, imported: true,
       chapters: retold.map(({ workshop, from, ...ch }) => ch) };

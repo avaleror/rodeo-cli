@@ -637,6 +637,7 @@ def test_live_new_story_retells_the_chapters(page):
     page.click(".card >> text=Welcome to the rodeo")
     assert page.locator("#newStory").is_visible()
     assert page.locator("#nsEngine option").all_inner_texts() == ["ollama"]
+    assert page.locator("#nsParts").inner_text() == "Retells 1 story span; keeps 2 exercise spans and 2 fixed spans word for word."
     page.fill("#nsTheme", "A space heist")
     page.click("#nsBtn")
     sync_api.expect(page.locator("#toastText")).to_have_text(re.compile(r"^New story: 1 chapter retold"))
@@ -647,10 +648,21 @@ def test_live_new_story_retells_the_chapters(page):
     assert "a-space-heist" in files
     page.locator("#fileList li", has_text="a-space-heist").first.click()
     preview = page.locator("#filePreview").inner_text()
-    assert 'id="a-space-heist.' in preview and ">A space heist</span>" in preview
+    assert '<span lang="en" id="a-space-heist.welcome.first-task" hist="first-ride">A space heist</span>' in preview
+    assert "Saddle up." in preview and 'id="welcome.login"' in preview and "<!--rodeo-keep" not in preview
     page.click("#toastUndo")
     page.click("#t-story")
     assert "a-space-heist" not in page.locator("#fileList").inner_text()
+
+
+@pytest.mark.parametrize("page", ["live_rmstory"], indirect=True)
+def test_live_new_story_needs_story_spans(page):
+    page.click("#newChapterBtn")
+    page.fill("#ncTitle", "Only steps")
+    page.fill("#ncBody", '# Only steps\n<span lang="en" id="only-steps.1">Run it</span>\n')
+    page.click("#newForm button[type=submit]")
+    assert page.locator("#nsBtn").is_disabled()
+    assert page.locator("#nsParts").inner_text().startswith("Nothing to retell yet")
 
 
 def test_static_has_no_new_story(page):

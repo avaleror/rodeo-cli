@@ -51,6 +51,7 @@ const state = {
   chapters: [], custom: [], name: "my-rodeo", title: "My rodeo", lang: "en", target: "baremetal",
   variant: "", extraVariants: [], query: "", open: {}, newWorkshop: "custom", fileView: "rodeo-plan.yaml",
   editing: -1, edTab: "spans", drag: null, cursor: -1, undo: null, copied: false,
+  strings: {}, story: null, trLang: "", trEngine: "", trEdit: null, busy: "", rmCheck: null,
 };
 
 let toastTimer = 0;
@@ -71,7 +72,7 @@ function toast(msg, bad, undo) {
 
 const DRAFT_KEY = "rodeo-builder-draft-v1";
 const DRAFT_FIELDS = ["engine", "base", "planEdited", "mode", "importProfile", "labAddons", "labJson", "chapters",
-  "custom", "name", "title", "lang", "target", "variant", "extraVariants"];
+  "custom", "name", "title", "lang", "target", "variant", "extraVariants", "strings"];
 let draftOn = true, draftTimer = 0;
 
 function scheduleDraft() {
@@ -220,8 +221,40 @@ function rodeo() {
   return {
     name: state.name, title: state.title, base: baseProfile(), plan: plan(),
     definition: isLiab() && !liabImported() ? engine().definition : "",
-    chapters: state.chapters, variants: allVariants(), story: story(), labJson: state.labJson,
+    chapters: state.chapters, variants: allVariants(), story: story(), labJson: state.labJson, strings: state.strings,
   };
+}
+
+// ── rmstory on the live server ──────────────────────────────────────────
+
+// The server's rmstory ({engines}) when this is the live builder and rmstory runs there.
+function storyTools() { return !window.RB_STATIC && state.story && state.story.available ? state.story : null; }
+
+function storyEngines(generate) {
+  const tools = storyTools();
+  return tools ? tools.engines.filter((e) => !generate || e.generate).map((e) => e.name) : [];
+}
+
+function chapterPayload() { return state.chapters.map((c) => ({ id: c.id, body: c.body })); }
+
+function chaptersKey() { return state.chapters.map((c) => c.id + "\u0000" + c.body).join("\u0001"); }
+
+// POSTs a rmstory action; resolves to the answer, or rejects with the server's error.
+async function storyPost(action, payload) {
+  const res = await apiPost(action, payload);
+  if (res.status !== 200) throw new Error(res.body.error || "HTTP " + res.status);
+  return res.body;
+}
+
+async function rmstoryCheck() {
+  if (!state.chapters.length) { toast("Add at least one chapter first.", true); return; }
+  state.busy = "validate";
+  renderReview();
+  try {
+    state.rmCheck = { ...(await storyPost("validate", { chapters: chapterPayload() })), key: chaptersKey() };
+  } catch (err) { toast("rmstory check failed: " + err.message, true); }
+  state.busy = "";
+  renderReview();
 }
 
 // ── library ─────────────────────────────────────────────────────────────
@@ -615,6 +648,7 @@ function renderReview() {
         el("span", { class: "warn-msg", text: (w.id ? w.id + ": " : "") + w.msg }),
         i >= 0 ? el("button", { class: "btn sm warn", type: "button", text: "Fix ✎", onclick: () => openEditor(i) }) : null);
     }),
+    renderRmstoryCheck(),
     el("span", { class: "label", text: plural(files.length, "file") + " in " + name + ".zip" }),
     el("ul", { class: "zip-files" }, files.map((f) => el("li", { class: f.startsWith("story/") ? "story" : "", text: name + "/" + f }))),
     el("div", { class: "term install" }, el("div", { class: "term-bar" }, el("i"), el("i"), el("i"), el("span", { text: "install" }), copy),
@@ -622,6 +656,24 @@ function renderReview() {
     el("div", { class: "review-foot" },
       el("button", { class: "btn primary" + (n ? "" : " dim"), type: "button", text: "Download " + name + ".zip", onclick: download }),
       state.server && state.server.save ? el("span", { class: "muted", text: "Save to profiles (top right) writes it straight into your profiles." }) : null));
+}
+
+// The live builder's "Check with rmstory": rmstory's own validate on the chapters.
+function renderRmstoryCheck() {
+  if (!storyTools()) return null;
+  const res = state.rmCheck, stale = res && res.key !== chaptersKey();
+  const head = el("div", { class: "rm-check" },
+    el("button", { class: "btn sm", type: "button", id: "rmCheckBtn", disabled: state.busy ? true : null,
+      text: state.busy === "validate" ? "Checking…" : "Check with rmstory", onclick: rmstoryCheck }),
+    el("span", { class: "muted", text: res ? res.summary + (stale ? " · the chapters changed since: check again" : "")
+      : "Runs rmstory validate on the builder's host" }));
+  if (!res || stale) return head;
+  return [head, res.warnings.map((w) => {
+    const i = state.chapters.findIndex((c) => c.id === w.chapter);
+    return el("div", { class: "alert warn-row" }, el("strong", { text: (i >= 0 ? state.chapters[i].title : w.chapter) + " · line " + w.line }),
+      el("span", { class: "warn-msg", text: "rmstory " + (w.error ? "error" : "warning") + ": " + w.message }),
+      i >= 0 ? el("button", { class: "btn sm warn", type: "button", text: "Fix ✎", onclick: () => openEditor(i) }) : null);
+  })];
 }
 
 // ── right panel ─────────────────────────────────────────────────────────
@@ -708,6 +760,9 @@ function openNewChapter() {
   $("#ncCheck").checked = false;
   $("#ncAppend").checked = true;
   $("#ncBody").value = chapterTemplate("new-chapter");
+  const engines = storyEngines(true);
+  $("#ncDraft").hidden = !engines.length;
+  $("#ncEngine").replaceChildren(...engines.map((e) => el("option", { value: e, text: e })));
   renderNewChapterChips();
   $("#newModal").hidden = false;
   $("#ncTitle").focus();
@@ -720,6 +775,24 @@ function renderNewChapterChips() {
   $("#ncNeeds").replaceChildren(...offeredNeeds().map((c) => el("button", {
     type: "button", class: "chip" + (ncNeeds.has(c) ? " on" : ""), text: c, "aria-pressed": String(ncNeeds.has(c)),
     onclick: () => { if (ncNeeds.has(c)) ncNeeds.delete(c); else ncNeeds.add(c); renderNewChapterChips(); } })));
+}
+
+// Drafts the chapter body with a generating rmstory engine, from the brief and the rodeo.
+async function draftChapter() {
+  const brief = $("#ncBrief").value.trim();
+  if (!brief) { toast("Describe the chapter first", true); $("#ncBrief").focus(); return; }
+  const title = $("#ncTitle").value.trim() || "Chapter title", btn = $("#ncDraftBtn");
+  const prompt = RB.draftPrompt(brief, { title, rodeo: state.title, provides: [...provided()].sort(),
+    chapters: state.chapters.map((c) => c.title), mins: parseInt($("#ncMins").value, 10) || 0 });
+  btn.disabled = true;
+  btn.textContent = "Drafting…";
+  try {
+    const res = await storyPost("draft", { prompt, lang: RB.SOURCE_LANGUAGE, engine: $("#ncEngine").value });
+    $("#ncBody").value = "# " + title + "\n\n" + RB.renumber(res.body, "new-chapter");
+    toast("Draft ready: review it before you create the chapter");
+  } catch (err) { toast("Draft failed: " + err.message, true); }
+  btn.disabled = false;
+  btn.textContent = "Draft";
 }
 
 function closeNewChapter() {
@@ -874,17 +947,102 @@ function renderStories() {
   if (!allVariants().length) box.append(el("p", { class: "empty", text: "No variants: add one, then tag spans with it." }));
 }
 
+function trLanguages() {
+  return [...new Set([...RB.LANGUAGES, ...Object.keys(state.strings)])].filter((l) => l !== RB.SOURCE_LANGUAGE).sort();
+}
+
+function trRow(lang, id) { return (state.strings[lang] || {})[id]; }
+
+function setTrRow(lang, id, row) {
+  const rows = { ...(state.strings[lang] || {}) };
+  if (row) rows[id] = row; else delete rows[id];
+  state.strings = { ...state.strings, [lang]: rows };
+  scheduleDraft();
+  renderFiles();
+}
+
+// The Translations tab: rmstory's store for this rodeo, one row per translatable span.
+// Every cell can be written by hand; the live builder also fills the gaps with an engine.
 function renderTranslations() {
-  const ids = [];
-  for (const ch of state.chapters) for (const sp of RB.parseSpans(ch.body).spans) {
-    if (sp.attrs.id && RB.kind(sp.attrs) === "translatable" && !ids.includes(sp.attrs.id)) ids.push(sp.attrs.id);
+  const ids = RB.translatableIds(state.chapters), src = RB.sourceTexts(state.chapters), langs = trLanguages();
+  if (!langs.includes(state.trLang)) state.trLang = langs[0];
+  const engines = storyEngines(false), tools = storyTools();
+  if (!engines.includes(state.trEngine)) state.trEngine = engines[0] || "";
+  const intro = tools
+    ? el("div", { class: "tr-bar" },
+      el("select", { class: "select", "aria-label": "Language to fill", onchange: (ev) => { state.trLang = ev.target.value; } },
+        langs.map((l) => el("option", { value: l, text: l, selected: l === state.trLang ? true : null }))),
+      el("select", { class: "select", "aria-label": "rmstory engine", onchange: (ev) => { state.trEngine = ev.target.value; } },
+        engines.map((e) => el("option", { value: e, text: e, selected: e === state.trEngine ? true : null }))),
+      el("button", { class: "btn sm primary", type: "button", id: "trRun", disabled: state.busy ? true : null,
+        text: state.busy === "translate" ? "Translating…" : "Translate missing", onclick: translateMissing }))
+    : null;
+  const note = el("p", { class: "muted note" }, tools
+    ? "Translate missing fills the spans that have no translation in that language with the engine (stored as draft); what you wrote or reviewed is kept. The engine's key is read where rodeo builder runs."
+    : window.RB_STATIC ? ["Click a cell to write a translation. Machine translation needs the live builder, ", el("code", { text: "rodeo builder" }), "."]
+      : "Click a cell to write a translation. Machine translation needs rmstory on the builder's host: " + ((state.story && state.story.error) || "not available") + ".");
+  const cell = (lang, id) => {
+    const row = trRow(lang, id), on = state.trEdit && state.trEdit.lang === lang && state.trEdit.id === id;
+    return el("td", {}, el("button", { type: "button", class: "tr-cell " + (row ? "st-" + (row.status || "draft") : "unstored") + (on ? " on" : ""),
+      title: row ? row.content : "no " + lang + " translation stored", text: row ? row.status || "draft" : "—",
+      onclick: () => { state.trEdit = on ? null : { lang, id }; renderTranslations(); } }));
+  };
+  fill($("#translationsView"), intro, note,
+    ids.length ? el("table", { class: "matrix" }, el("thead", {}, el("tr", {}, el("th", { text: "id" }), langs.map((l) => el("th", { text: l })))),
+      el("tbody", {}, ids.map((id) => el("tr", {}, el("td", { text: id }), langs.map((l) => cell(l, id))))))
+      : el("p", { class: "empty", text: "No translatable spans yet: tag text as Translatable first." }),
+    renderTrEdit(src));
+}
+
+function renderTrEdit(src) {
+  const at = state.trEdit;
+  if (!at || !(at.id in src)) return null;
+  const row = trRow(at.lang, at.id), ta = el("textarea", { class: "textarea tr-text", id: "trText", "aria-label": at.lang + " translation of " + at.id });
+  ta.value = row ? row.content : "";
+  const status = el("select", { class: "select", "aria-label": "Status" },
+    ["reviewed", "draft"].map((s) => el("option", { value: s, text: s, selected: (row ? row.status : "reviewed") === s ? true : null })));
+  const save = () => {
+    const text = ta.value.trim();
+    if (!text) { toast("Write the translation first, or remove it", true); return; }
+    const lacks = RB.missingPlaceholders(src[at.id], text);
+    if (lacks.length) { toast("Keep " + lacks.join(" ") + " in the translation: it stands for a nested span", true); return; }
+    setTrRow(at.lang, at.id, { content: text, status: status.value, updated_by: "rodeo-builder" });
+    state.trEdit = null;
+    renderTranslations();
+  };
+  return el("div", { class: "tr-edit" },
+    el("span", { class: "label", text: at.id + " · " + RB.SOURCE_LANGUAGE }), el("pre", { class: "tr-src", text: src[at.id] }),
+    el("span", { class: "label", text: at.lang }), ta,
+    el("div", { class: "tr-actions" }, status,
+      el("button", { class: "btn sm primary", type: "button", text: "Save", onclick: save }),
+      row ? el("button", { class: "btn sm", type: "button", text: "Remove", onclick: () => { setTrRow(at.lang, at.id, null); state.trEdit = null; renderTranslations(); } }) : null,
+      el("button", { class: "btn sm", type: "button", text: "Cancel", onclick: () => { state.trEdit = null; renderTranslations(); } })));
+}
+
+async function translateMissing() {
+  if (!RB.translatableIds(state.chapters).length) { toast("No translatable spans yet: tag some text first.", true); return; }
+  const lang = state.trLang, before = Object.keys(state.strings[lang] || {}).length;
+  state.busy = "translate";
+  renderTranslations();
+  let res = null;
+  try {
+    res = await storyPost("translate", { chapters: chapterPayload(), to: lang, engine: state.trEngine, strings: state.strings });
+  } catch (err) { toast("Translate failed: " + err.message, true); }
+  state.busy = "";
+  if (res) {
+    state.strings = res.strings;
+    let changed = 0;
+    for (const c of res.chapters) {
+      const ch = state.chapters.find((x) => x.id === c.id);
+      if (ch && ch.body !== c.body) { ch.body = c.body; changed++; }
+    }
+    const added = Object.keys(state.strings[lang] || {}).length - before;
+    toast(plural(added, lang + " translation") + " filled as draft with " + state.trEngine +
+      (changed ? " · rmstory gave unnamed spans an id in " + plural(changed, "chapter") : ""));
+    if (state.editing >= 0) $("#edSource").value = editing().body;
+    render();
   }
-  const langs = RB.LANGUAGES.filter((l) => l !== RB.SOURCE_LANGUAGE);
-  $("#translationsView").replaceChildren(
-    el("p", { class: "muted" }, "Translations live in rmstory's translation store; the builder does not read or fill it yet. After install, ",
-      el("code", { text: "rodeo story render --language de" }), " fills the rest."),
-    el("table", { class: "matrix" }, el("thead", {}, el("tr", {}, el("th", { text: "id" }), langs.map((l) => el("th", { text: l })))),
-      el("tbody", {}, ids.map((id) => el("tr", {}, el("td", { text: id }), langs.map((l) => el("td", { class: "unstored", title: "no " + l + " translation stored", text: "not stored" })))))));
+  if (state.editing >= 0) renderEditor(); else renderTranslations();
 }
 
 function closePop() { $("#popover").hidden = true; pop = null; }
@@ -1158,6 +1316,7 @@ function bind() {
   themeBtn.addEventListener("click", () => { window.RBTheme.toggle(); showTheme(); });
   showTheme();
   $("#downloadBtn").addEventListener("click", download);
+  $("#ncDraftBtn").addEventListener("click", draftChapter);
   $("#stickyDownload").addEventListener("click", download);
   $("#warnBtn").addEventListener("click", scrollToReview);
   $("#stickyWarn").addEventListener("click", scrollToReview);
@@ -1206,6 +1365,7 @@ async function init() {
     state.workshops = workshops.workshops;
     state.liab = { ...state.liab, ...liab };
     if (!window.RB_STATIC) {
+      state.story = await apiGet("story").catch((err) => ({ available: false, error: err.message, engines: [] }));
       state.server = await apiGet("server");
       $("#saveBtn").hidden = !state.server.save;
       $("#saveBtn").title = "Write this rodeo to " + state.server.profiles_dir + "/<name>/";

@@ -283,6 +283,20 @@ div.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 2p
 .matrix th, .matrix td { border-bottom: 1px solid var(--line); padding: 5px 4px; text-align: left; }
 .matrix th:not(:first-child), .matrix td:not(:first-child) { width: 78px; }
 .matrix td.unstored { color: var(--muted); }
+.tr-bar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+.tr-bar .select { width: auto; min-width: 0; }
+.tr-cell { font: 400 11px var(--mono); background: none; border: 1px solid transparent; color: var(--muted); padding: 2px 4px; cursor: pointer; border-radius: 2px; }
+.tr-cell:hover, .tr-cell.on { border-color: var(--accent); }
+.tr-cell.st-reviewed, .tr-cell.st-published { color: var(--accent-ink); }
+.tr-cell.st-draft { color: var(--amber); }
+.tr-edit { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.tr-src { white-space: pre-wrap; font: 400 12px/1.6 var(--mono); margin: 4px 0 8px; color: var(--muted); }
+.tr-text { min-height: 90px; }
+.tr-actions { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
+.tr-actions .select { width: auto; }
+.rm-check { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 10px 0; font-size: 12px; }
+.nc-draft { border: 1px dashed var(--line); padding: 4px 10px 8px; margin: 10px 0 4px; border-radius: 2px; }
+.textarea.brief { min-height: 64px; }
 .popover {
   position: fixed; z-index: 30; width: 310px; background: var(--panel); border-radius: 6px; padding: 12px;
   box-shadow: 0 0 0 1px var(--accent), 0 20px 60px rgba(0, 0, 0, .5);

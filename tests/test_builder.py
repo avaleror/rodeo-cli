@@ -321,6 +321,49 @@ def test_workshops_list_fetched_sources_after_the_bundled_ones(markdown_source):
     assert shops[0]["profile"] == "rancher" and yaml.safe_load(shops[0]["plan"])["type"] == "rancher"
 
 
+def _catalog(monkeypatch, **entries):
+    from rodeo import catalog
+
+    monkeypatch.setattr(catalog, "entries", lambda: entries)
+
+
+def test_catalog_rodeos_are_chapter_sources_after_the_file(monkeypatch, tmp_path):
+    _catalog(monkeypatch,
+             ride={"name": "ride", "title": "Ride", "repo": "https://github.com/rider/ride", "ref": "", "engine": "rancher"},
+             dup={"name": "dup", "repo": "https://github.com/avaleror/suse-virt-workshop.git", "ref": "main"})
+    sources = discovery.chapter_sources()
+    assert [s["id"] for s in sources] == ["smlm-workshop", "virt-workshop", "catalog-ride"]
+    ride = sources[-1]
+    assert (ride["format"], ride["path"], ride["profile"], ride["engine"], ride["title"]) == ("rmstory", "story", "", "rancher", "Ride")
+    clone, sparse = discovery.source_fetch_commands(ride, tmp_path / "r")
+    assert "--branch" not in clone and clone[-3:] == ["--", "https://github.com/rider/ride", str(tmp_path / "r")]
+    assert sparse[-3:] == ["/story/*.md", "/story/chapters.yaml", "/story/stories/*.yaml"]
+
+
+def test_rmstory_sources_read_a_story_directory(monkeypatch, tmp_path):
+    _catalog(monkeypatch, ride={"name": "ride", "title": "Ride", "repo": "https://github.com/rider/ride", "ref": "v1",
+                                "engine": "rancher"})
+    story = tmp_path / "story"
+    (story / "stories").mkdir(parents=True)
+    (story / "01-hello.md").write_text('# Hello\n<span lang="en" id="hello.1" hist="short">Hi</span>\n')
+    (story / "02-bye.md").write_text("# Bye\n")
+    (story / "chapters.yaml").write_text("chapters:\n  - file: 01-hello.md\n    mins: 7\n    needs: [rancher]\n")
+    (story / "stories" / "short.yaml").write_text("- hello.1\n")
+    shops = discovery.workshops({"catalog-ride": tmp_path})["workshops"]
+    ride = next(w for w in shops if w["id"] == "catalog-ride")
+    assert [(c["id"], c["mins"], c["needs"]) for c in ride["chapters"]] == [("hello", 7, ["rancher"]), ("bye", 10, [])]
+    assert ride["variants"] == {"short": ["hello.1"]} and ride["plan"] == "" and ride["profile"] == ""
+    assert ride["source"] == "https://github.com/rider/ride/tree/v1/story"
+
+
+def test_chapter_sources_accept_the_rmstory_format_in_the_file(monkeypatch, tmp_path):
+    _catalog(monkeypatch)
+    f = tmp_path / "sources.yaml"
+    f.write_text("sources:\n  - {id: s, title: S, engine: rancher, profile: rancher, format: rmstory, repo: https://h/a/b, ref: main, path: story}\n")
+    monkeypatch.setattr(discovery, "SOURCES_FILE", f)
+    assert [s["id"] for s in discovery.chapter_sources()] == ["s"]
+
+
 def test_static_build_with_local_sources(tmp_path, instruqt_source, markdown_source):
     out = tmp_path / "builder"
     r = subprocess.run([sys.executable, str(BUILD), "--output", str(out), "--no-fetch-sources", "--no-labinabox",

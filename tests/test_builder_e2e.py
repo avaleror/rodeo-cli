@@ -465,6 +465,17 @@ def test_engine_cards_move_with_arrow_keys(page):
     assert page.locator("[data-tab=rodeo]").get_attribute("aria-selected") == "true"
 
 
+@pytest.mark.parametrize("page", ["site", "live"], indirect=True)
+def test_header_fits_a_phone(page):
+    page.set_viewport_size({"width": 390, "height": 844})
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+    brand = page.locator(".brand").bounding_box()
+    buttons = [b.bounding_box() for b in page.locator(".hdr-right .btn").all() if b.is_visible()]
+    assert buttons and all(brand["x"] + brand["width"] <= b["x"] for b in buttons)
+    assert all(b["x"] + b["width"] <= 390 for b in buttons)
+    sync_api.expect(page.locator("#stickyDownload")).to_be_visible()
+
+
 @pytest.mark.parametrize("width", [1000, 600])
 def test_narrow_layout_has_a_sticky_bar(page, width):
     page.set_viewport_size({"width": width, "height": 800})

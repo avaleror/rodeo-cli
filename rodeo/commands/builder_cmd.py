@@ -26,6 +26,7 @@ from rich.console import Console
 from .. import __version__
 from .. import labinabox_host as host
 from ..builder.api import Api
+from ..builder import labbuilder
 from ..builder.discovery import LAB_BUILDER_URL, fetch_sources
 from ..builder.server import LOOPBACK_HOSTS, make_server
 from ..config import ConfigError
@@ -76,14 +77,19 @@ def _labinabox_checkout(given: Path | None) -> tuple[Path | None, str, str]:
               help="Extra Host header name to accept (with --expose: the name or IP clients use).")
 @click.option("--labinabox", "labinabox", type=click.Path(file_okay=False, path_type=Path),
               help="lab-in-a-box checkout for the catalogue (default: RODEO_LABINABOX_PATH, else the latest release).")
-@click.option("--lab-builder-url", default=LAB_BUILDER_URL, show_default=True,
-              help="lab-in-a-box lab-builder the page links to and embeds.")
+@click.option("--lab-builder-url", default=None, envvar="RODEO_LAB_BUILDER_URL", show_envvar=True,
+              help="lab-in-a-box lab-builder the page links to and embeds, for example one you run on an "
+                   "automation node. Default: start the lab-in-a-box checkout's own (dynamic) lab-builder "
+                   "on --lab-builder-port; the published one (" + LAB_BUILDER_URL + ") when that can't run.")
+@click.option("--lab-builder-port", default=labbuilder.DEFAULT_PORT, show_default=True, type=click.IntRange(1, 65535),
+              help="Port for the lab-builder rodeo builder starts (same address as --host).")
 @click.option("--source", "sources", multiple=True, metavar="ID=CHECKOUT",
               help="Local checkout for one chapter source in rodeo/builder/chapter_sources.yaml (repeatable).")
 @click.option("--no-fetch-sources", is_flag=True, help="List only the chapter sources given with --source.")
 @click.option("--open/--no-open", "open_browser", default=True, help="Open the page in a browser.")
 def builder_cmd(bind: str, port: int, expose: bool, allow_hosts: tuple[str, ...], labinabox: Path | None,
-                lab_builder_url: str, sources: tuple[str, ...], no_fetch_sources: bool, open_browser: bool) -> None:
+                lab_builder_url: str | None, lab_builder_port: int, sources: tuple[str, ...], no_fetch_sources: bool,
+                open_browser: bool) -> None:
     """Serve the Rodeo Builder on BIND:PORT until Ctrl-C."""
     if not _is_loopback(bind) and not expose:
         raise click.UsageError(f"--host {bind} is reachable from other machines; add --expose to allow that")
@@ -104,21 +110,37 @@ def builder_cmd(bind: str, port: int, expose: bool, allow_hosts: tuple[str, ...]
             checkouts, errors = fetch_sources(Path(tmp), given)
             for sid, err in errors.items():
                 console.print(f"[yellow]⚠  chapter source {sid} left out: {err}[/yellow]")
-        api = Api(checkout, lab_builder_url, liab_version, checkouts, can_save=True,
-                  labinabox_missing=liab_missing, can_publish=_is_loopback(bind))
-        status, liab = api.dispatch("labinabox")
-        if status == 200 and liab["error"]:
-            console.print(f"[yellow]⚠  lab-in-a-box catalogue: {liab['error']}[/yellow]")
-        server = make_server(api, bind, port, __version__, allowed, lab_builder_url)
-        shown = "[{}]".format(bind) if ":" in bind else bind
-        url = "http://{}:{}/".format("127.0.0.1" if bind in ("0.0.0.0", "::") else shown, server.server_address[1])
-        console.print(f"\n[bold green]Rodeo Builder[/bold green] → [cyan]{url}[/cyan]  (Ctrl-C to stop)")
-        console.print("[dim]Save to profiles writes ~/.rodeo/profiles/<name>/; deploy with rodeo up --profile <name>.[/dim]")
-        if open_browser:
-            webbrowser.open(url)
+        local_builder = None
+        if not lab_builder_url and checkout is not None:
+            try:
+                local_builder = labbuilder.start(checkout, bind, lab_builder_port)
+                lab_builder_url = local_builder.url
+            except RuntimeError as exc:
+                console.print(f"[yellow]⚠  {exc}; linking to the published lab-builder instead[/yellow]")
+        lab_builder_url = lab_builder_url or LAB_BUILDER_URL
         try:
-            server.serve_forever()
-        except KeyboardInterrupt:
-            pass
+            api = Api(checkout, lab_builder_url, liab_version, checkouts, can_save=True,
+                      labinabox_missing=liab_missing, can_publish=_is_loopback(bind))
+            status, liab = api.dispatch("labinabox")
+            if status == 200 and liab["error"]:
+                console.print(f"[yellow]⚠  lab-in-a-box catalogue: {liab['error']}[/yellow]")
+            server = make_server(api, bind, port, __version__, allowed, lab_builder_url)
+            shown = "[{}]".format(bind) if ":" in bind else bind
+            url = "http://{}:{}/".format("127.0.0.1" if bind in ("0.0.0.0", "::") else shown, server.server_address[1])
+            console.print(f"\n[bold green]Rodeo Builder[/bold green] → [cyan]{url}[/cyan]  (Ctrl-C to stop)")
+            if local_builder:
+                console.print(f"[dim]lab-in-a-box lab-builder {liab_version} → {url.rsplit(':', 1)[0]}:{lab_builder_port}/[/dim]")
+            else:
+                console.print(f"[dim]lab-in-a-box lab-builder → {lab_builder_url}[/dim]")
+            console.print("[dim]Save to profiles writes ~/.rodeo/profiles/<name>/; deploy with rodeo up --profile <name>.[/dim]")
+            if open_browser:
+                webbrowser.open(url)
+            try:
+                server.serve_forever()
+            except KeyboardInterrupt:
+                pass
+            finally:
+                server.server_close()
         finally:
-            server.server_close()
+            if local_builder:
+                local_builder.stop()

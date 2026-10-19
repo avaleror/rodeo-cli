@@ -393,8 +393,9 @@ function addAddon(name) {
   render();
 }
 
+// A "{host}" in the lab-builder URL (rodeo builder's own lab-builder) is the host this page came from.
 function labBuilderUrl(extra) {
-  const url = new URL(state.liab.builder_url, location.href);
+  const url = new URL(String(state.liab.builder_url).replace("{host}", location.hostname), location.href);
   if (state.labAddons.length) url.searchParams.set("addons", state.labAddons.join(","));
   for (const [k, v] of Object.entries(extra || {})) url.searchParams.set(k, v);
   return url.toString();

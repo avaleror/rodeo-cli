@@ -309,6 +309,103 @@ const RB = (() => {
     return lines.join("\n");
   }
 
+  // ── workshops imported by URL (rodeo/builder/imports.py does the same on the server) ──
+
+  const DEFAULT_MINUTES = 10, INSTRUQT_MINUTES = 20;
+
+  // {host, owner, repo, ref, path} of https://<host>/<owner>/<repo>[/tree/<ref>/<path>];
+  // ref is "" for the default branch. Throws on anything else.
+  function parseSourceUrl(url) {
+    let u;
+    try { u = new URL(String(url || "").trim()); } catch (_) { throw new Error("give an https:// URL of a public git repository"); }
+    if (u.protocol !== "https:" || u.username || u.password) throw new Error("give an https:// URL of a public git repository");
+    if (/\/\.\.?(\/|$)/.test(String(url).split(/[?#]/)[0])) throw new Error("the URL's path has . or .. segments");
+    const m = /^\/([^/]+)\/([^/]+?)(?:\.git)?(?:\/(?:tree|blob)\/([^/]+)(?:\/(.*))?)?\/?$/.exec(u.pathname);
+    if (!m || u.search || u.hash) throw new Error("expected https://<host>/<owner>/<repo>[/tree/<ref>/<path>]");
+    const path = decodeURIComponent((m[4] || "").replace(/^\/+|\/+$/g, ""));
+    if (path && !path.split("/").every((s) => /^[A-Za-z0-9_][A-Za-z0-9._ -]{0,127}$/.test(s))) {
+      throw new Error(JSON.stringify(path) + " is not a plain path in the repository");
+    }
+    return { host: u.host, owner: m[1], repo: m[2], ref: m[3] ? decodeURIComponent(m[3]) : "", path };
+  }
+
+  function importGroupId(src) {
+    const tail = [src.owner, src.repo, src.path].filter(Boolean).join("/");
+    return "url-" + (tail.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "source");
+  }
+
+  // {format, dir} for a repository's file list (paths from its root), looking under *path*:
+  // rmstory (story/*.md, or *.md next to chapters.yaml), instruqt (<challenge>/assignment.md),
+  // markdown (*.md). Throws when none fits.
+  function detectFormat(files, path) {
+    const base = path ? path + "/" : "", set = new Set(files);
+    const direct = (dir) => files.filter((f) => f.startsWith(dir) && !f.slice(dir.length).includes("/"));
+    if (direct(base + "story/").some((f) => f.endsWith(".md"))) return { format: "rmstory", dir: base + "story" };
+    const md = direct(base).filter((f) => f.endsWith(".md"));
+    if (set.has(base + "chapters.yaml") && md.length) return { format: "rmstory", dir: path };
+    if (files.some((f) => f.startsWith(base) && /^[^/]+\/assignment\.md$/.test(f.slice(base.length)))) return { format: "instruqt", dir: path };
+    if (md.length) return { format: "markdown", dir: path };
+    throw new Error("no chapters found: expected story/*.md, <challenge>/assignment.md or *.md");
+  }
+
+  function titleOf(body, fallback) {
+    const m = /^#\s+(.+?)\s*$/m.exec(body);
+    return m ? m[1].replace(/<[^>]+>/g, "").trim() : fallback;
+  }
+
+  function baseChapter(id, file, body) {
+    return { id, file, title: titleOf(body, id), mins: DEFAULT_MINUTES, needs: [], check: false, check_script: "",
+      spans: parseSpans(body).spans.length, body };
+  }
+
+  // A markdown exercise: title from the first heading, minutes from "**Time:** N min".
+  function chapterFromMarkdown(name, body) {
+    const ch = baseChapter(name.replace(/\.md$/, "").replace(/^\d+-/, ""), name, body);
+    const t = /^\*\*Time:\*\*\s*(\d+)\s*min/im.exec(body);
+    if (t) ch.mins = parseInt(t[1], 10);
+    return ch;
+  }
+
+  // An Instruqt challenge: front-matter title, the body after it, its check script if any.
+  function chapterFromInstruqt(dir, text, checkScript) {
+    const fm = /^---\n([\s\S]*?)\n---\n?/.exec(text), body = (fm ? text.slice(fm[0].length) : text).replace(/^\n+/, "");
+    const ch = baseChapter(dir.replace(/^\d+-/, ""), dir + "/assignment.md", body);
+    const title = fm && /^title:\s*(.+?)\s*$/m.exec(fm[1]);
+    if (title) ch.title = title[1].replace(/^["']|["']$/g, "");
+    ch.mins = INSTRUQT_MINUTES;
+    if (checkScript) { ch.check = true; ch.check_script = checkScript; }
+    return ch;
+  }
+
+  // The chapters.yaml fields the builder reads: {title, files: {file: {mins, needs, title}}}.
+  function chaptersMeta(text) {
+    const out = { title: "", files: {} };
+    let cur = null;
+    for (const line of String(text || "").split("\n")) {
+      let m;
+      if ((m = /^title:\s*(.+?)\s*$/.exec(line))) out.title = m[1].replace(/^["']|["']$/g, "");
+      else if ((m = /^\s*-\s*file:\s*(\S+)/.exec(line))) { cur = { needs: [] }; out.files[m[1]] = cur; }
+      else if (cur && (m = /^\s+mins:\s*(\d+)/.exec(line))) cur.mins = parseInt(m[1], 10);
+      else if (cur && (m = /^\s+needs:\s*\[(.*)\]/.exec(line))) cur.needs = m[1].split(",").map((s) => s.trim()).filter(Boolean);
+      else if (cur && (m = /^\s+title:\s*(.+?)\s*$/.exec(line))) cur.title = m[1].replace(/^["']|["']$/g, "");
+    }
+    return out;
+  }
+
+  // A story variant index (story/stories/<id>.yaml): its list of span ids.
+  function storyIds(text) {
+    return String(text || "").split("\n").map((l) => /^-\s*["']?([^"'\s#]+)/.exec(l)).filter(Boolean).map((m) => m[1]);
+  }
+
+  // A rodeo story chapter (story/NN-<id>.md) with its chapters.yaml entry.
+  function chapterFromStory(name, body, meta) {
+    const ch = baseChapter(name.replace(/\.md$/, "").replace(/^\d+-/, ""), name, body), info = (meta && meta.files[name]) || {};
+    if (info.title) ch.title = info.title;
+    if (info.mins) ch.mins = info.mins;
+    ch.needs = info.needs || [];
+    return ch;
+  }
+
   // ── generated files ──────────────────────────────────────────────────────
 
   function yamlScalar(v) {
@@ -523,6 +620,7 @@ const RB = (() => {
     setTopKey, dropTopBlock, storyBlock, planFromBase, planLabinabox, chapterFile, chaptersYaml,
     storyYaml, checkScript, readme, files, labJsonAddons, crc32, zip,
     renumber, translatableIds, storedSource, sourceTexts, missingPlaceholders, stringsFiles, translatedLanguages, draftPrompt,
+    parseSourceUrl, importGroupId, detectFormat, chapterFromMarkdown, chapterFromInstruqt, chaptersMeta, storyIds, chapterFromStory,
   };
 })();
 

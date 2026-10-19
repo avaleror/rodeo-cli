@@ -8,7 +8,8 @@ GET actions: ``engines``, ``workshops``, ``labinabox`` (the page's data, also
 embedded by the static build), ``server`` (what the live server can do) and
 ``story`` (rmstory and its engines on the server's host).
 POST ``save`` writes a rodeo to ``~/.rodeo/profiles/<name>/``; POST ``validate``,
-``translate`` and ``draft`` run rmstory (see :mod:`.storywork`). POST actions
+``translate`` and ``draft`` run rmstory (see :mod:`.storywork`); POST ``import``
+reads a workshop's chapters from a git URL (see :mod:`.imports`). POST actions
 answer only when the Api was created with ``can_save=True`` (the live server).
 """
 from __future__ import annotations
@@ -17,10 +18,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-from . import discovery, storywork
+from . import discovery, imports, storywork
 
 PAGE_ACTIONS = ("engines", "workshops", "labinabox")
 STORY_ACTIONS = ("validate", "translate", "draft")
+LIVE_ACTIONS = ("save", "import", *STORY_ACTIONS)
 
 
 class Api:
@@ -74,6 +76,15 @@ class Api:
             return 400, {"error": str(exc)}
         return 200, {"path": str(dest), "profile": name, "files": len(files)}
 
+    def _import(self, body: bytes) -> tuple[int, dict[str, Any]]:
+        try:
+            req = json.loads(body.decode("utf-8"))
+            return 200, {"workshop": imports.import_source(str(req.get("url") or "") if isinstance(req, dict) else "")}
+        except ValueError as exc:
+            return 400, {"error": str(exc)}
+        except (RuntimeError, OSError) as exc:
+            return 502, {"error": str(exc)}
+
     def _story(self, action: str, body: bytes) -> tuple[int, dict[str, Any]]:
         try:
             req = json.loads(body.decode("utf-8"))
@@ -92,12 +103,14 @@ class Api:
 
     def dispatch(self, action: str, method: str = "GET", params: dict | None = None,
                  body: bytes = b"") -> tuple[int, dict[str, Any]]:
-        if method == "POST" and action in ("save", *STORY_ACTIONS):
+        if method == "POST" and action in LIVE_ACTIONS:
             if not self.can_save:
-                what = "saving" if action == "save" else "rmstory " + action
+                what = {"save": "saving", "import": "importing a workshop"}.get(action, "rmstory " + action)
                 return 403, {"error": "{} needs the rodeo builder server".format(what)}
             if action in STORY_ACTIONS:
                 return self._story(action, body)
+            if action == "import":
+                return self._import(body)
             try:
                 return self._save(body)
             except OSError as exc:

@@ -31,7 +31,10 @@
     <aside class="col left" aria-label="Chapter library">
       <div class="col-head">
         <h2>Chapter library · <span id="libCount">0</span></h2>
-        <button id="newChapterBtn" class="btn outline sm" type="button">+ New</button>
+        <div class="col-head-actions">
+          <button id="importBtn" class="btn sm" type="button" title="Import a workshop's chapters from a git URL">Import</button>
+          <button id="newChapterBtn" class="btn outline sm" type="button">+ New</button>
+        </div>
       </div>
       <label class="sr-only" for="search">Search chapters</label>
       <input id="search" class="input" type="search" placeholder="Search chapters" autocomplete="off">
@@ -137,6 +140,23 @@
         <div>
           <button id="ncCancel" class="btn" type="button">Cancel</button>
           <button class="btn primary" type="submit">Create</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div id="importModal" class="backdrop" hidden>
+    <form id="importForm" class="modal" role="dialog" aria-modal="true" aria-labelledby="importTitle">
+      <h2 id="importTitle">Import a workshop</h2>
+      <label class="label" for="imUrl">Git URL</label>
+      <input id="imUrl" class="input mono" type="url" required autocomplete="off" spellcheck="false"
+        placeholder="https://github.com/owner/repo/tree/main/docs/exercises">
+      <p id="imNote" class="note muted"></p>
+      <div class="modal-foot">
+        <span></span>
+        <div>
+          <button id="imCancel" class="btn" type="button">Cancel</button>
+          <button id="imSubmit" class="btn primary" type="submit">Import</button>
         </div>
       </div>
     </form>

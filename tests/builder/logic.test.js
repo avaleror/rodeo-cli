@@ -247,3 +247,35 @@ test("draftPrompt grounds the brief in the rodeo and the lab", () => {
   assert.match(p, /<span no>/);
   assert.ok(p.endsWith("Import a cluster."));
 });
+
+test("parseSourceUrl and importGroupId match the server's (rodeo/builder/imports.py)", () => {
+  assert.deepEqual(RB.parseSourceUrl("https://github.com/acme/labs/tree/v2/docs/exercises/"),
+    { host: "github.com", owner: "acme", repo: "labs", ref: "v2", path: "docs/exercises" });
+  assert.deepEqual(RB.parseSourceUrl("https://github.com/acme/labs.git"),
+    { host: "github.com", owner: "acme", repo: "labs", ref: "", path: "" });
+  for (const bad of ["http://github.com/a/b", "https://u:p@github.com/a/b", "https://github.com/a",
+    "https://github.com/a/b/tree/main/../x", "https://github.com/a/b?x=1", "nope"]) {
+    assert.throws(() => RB.parseSourceUrl(bad), Error, bad);
+  }
+  assert.equal(RB.importGroupId(RB.parseSourceUrl("https://github.com/acme/labs/tree/main/ws")), "url-acme-labs-ws");
+});
+
+test("detectFormat over a repository's file list", () => {
+  assert.deepEqual(RB.detectFormat(["ws/story/01-a.md", "ws/README.md"], "ws"), { format: "rmstory", dir: "ws/story" });
+  assert.deepEqual(RB.detectFormat(["ws/chapters.yaml", "ws/01-a.md"], "ws"), { format: "rmstory", dir: "ws" });
+  assert.deepEqual(RB.detectFormat(["t/01-x/assignment.md", "t/track.yml"], "t"), { format: "instruqt", dir: "t" });
+  assert.deepEqual(RB.detectFormat(["README.md", "docs/x.md"], ""), { format: "markdown", dir: "" });
+  assert.throws(() => RB.detectFormat(["ws/notes.txt", "ws/deep/x.md"], "ws"), /no chapters found/);
+});
+
+test("chapters from markdown, Instruqt and rodeo story files", () => {
+  const md = RB.chapterFromMarkdown("02-go.md", "# Go <b>now</b>\n\n**Time:** 25 min\n");
+  assert.deepEqual([md.id, md.title, md.mins, md.check], ["go", "Go now", 25, false]);
+  const iq = RB.chapterFromInstruqt("01-intro", "---\ntitle: \"Intro\"\nslug: intro\n---\n\nText\n", "#!/bin/sh\n");
+  assert.deepEqual([iq.id, iq.title, iq.mins, iq.check, iq.body], ["intro", "Intro", 20, true, "Text\n"]);
+  const meta = RB.chaptersMeta("title: Acme ride\nchapters:\n  - file: 01-hello.md\n    mins: 7\n    needs: [rancher, fleet]\n");
+  assert.equal(meta.title, "Acme ride");
+  const st = RB.chapterFromStory("01-hello.md", '# Hello\n<span lang="en" id="hello.1">Hi</span>\n', meta);
+  assert.deepEqual([st.id, st.mins, st.needs, st.spans], ["hello", 7, ["rancher", "fleet"], 1]);
+  assert.deepEqual(RB.storyIds("# comment\n- hello.1\n- \"hello.2\"\n"), ["hello.1", "hello.2"]);
+});

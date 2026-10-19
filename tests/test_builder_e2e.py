@@ -560,3 +560,73 @@ def test_live_new_chapter_is_drafted_with_an_engine(page):
 def test_static_new_chapter_has_no_draft(page):
     page.click("#newChapterBtn")
     assert page.locator("#ncDraft").is_hidden()
+
+
+def _route_github(page, calls):
+    files = {"labs/01-intro/assignment.md": "---\ntitle: Intro to the lab\n---\n\nRead this.\n",
+             "labs/01-intro/check-workstation": "#!/bin/sh\nexit 0\n",
+             "labs/02-deploy/assignment.md": "---\ntitle: Deploy\n---\n\nDeploy it.\n", "README.md": "# Acme\n"}
+
+    def handle(route):
+        url = route.request.url
+        calls.append(url)
+        if url == "https://api.github.com/repos/acme/labs":
+            return route.fulfill(json={"default_branch": "main"})
+        if url == "https://api.github.com/repos/acme/labs/git/trees/main?recursive=1":
+            return route.fulfill(json={"tree": [{"path": p, "type": "blob"} for p in files], "truncated": False})
+        prefix = "https://raw.githubusercontent.com/acme/labs/main/"
+        if url.startswith(prefix) and url[len(prefix):] in files:
+            return route.fulfill(body=files[url[len(prefix):]])
+        return route.fulfill(status=404, body="{}")
+
+    page.route(re.compile(r"^https://(api\.github\.com|raw\.githubusercontent\.com)/.*"), handle)
+
+
+def test_static_imports_a_github_workshop(page):
+    calls = []
+    _route_github(page, calls)
+    page.click("#importBtn")
+    assert "github.com" in page.locator("#imNote").inner_text()
+    page.fill("#imUrl", "https://github.com/acme/labs/tree/main/labs")
+    page.click("#imSubmit")
+    sync_api.expect(page.locator("#toastText")).to_have_text("Imported 2 chapters (instruqt) from labs")
+    assert page.locator("#importModal").is_hidden()
+    group = page.locator(".group", has_text="github.com/acme/labs/tree/main/labs")
+    assert group.locator(".card-title").all_inner_texts() == ["Intro to the lab", "Deploy"]
+    group.locator(".card", has_text="Intro to the lab").click()
+    sync_api.expect(page.locator("#chapterList")).to_contain_text("Intro to the lab")
+    assert not any("api.github.com/repos/acme/labs/contents" in c for c in calls)
+    group.locator(".group-actions .btn", has_text="×").click()
+    sync_api.expect(page.locator(".group", has_text="acme/labs")).to_have_count(0)
+    page.click("#toastUndo")
+    sync_api.expect(page.locator(".group", has_text="acme/labs")).to_have_count(1)
+
+
+def test_static_import_says_why_it_failed(page):
+    page.click("#importBtn")
+    page.fill("#imUrl", "https://gitlab.com/acme/labs")
+    page.click("#imSubmit")
+    sync_api.expect(page.locator("#toastText")).to_contain_text("imports from github.com only")
+    assert page.locator("#importModal").is_visible()
+
+
+@pytest.mark.parametrize("page", ["live"], indirect=True)
+def test_live_imports_through_the_server(page, monkeypatch, tmp_path):
+    from rodeo.builder import imports
+
+    (tmp_path / "ws" / "story").mkdir(parents=True)
+    (tmp_path / "ws" / "story" / "01-hello.md").write_text('# Hello there\n<span lang="en" id="hello.1">Hi</span>\n')
+    seen = []
+
+    def fake(url):
+        seen.append(url)
+        return imports.read_group({"repo": "https://git.example.com/team/ws", "ref": "", "path": "ws"}, tmp_path)
+
+    monkeypatch.setattr(imports, "import_source", fake)
+    page.click("#importBtn")
+    assert "any" in page.locator("#imNote").inner_text() or "public https" in page.locator("#imNote").inner_text()
+    page.fill("#imUrl", "https://git.example.com/team/ws")
+    page.click("#imSubmit")
+    sync_api.expect(page.locator("#toastText")).to_have_text("Imported 1 chapter (rmstory) from ws")
+    assert seen == ["https://git.example.com/team/ws"]
+    sync_api.expect(page.locator(".group", has_text="git.example.com/team/ws")).to_contain_text("Hello there")

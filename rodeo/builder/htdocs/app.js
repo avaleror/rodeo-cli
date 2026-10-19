@@ -51,7 +51,7 @@ const state = {
   chapters: [], custom: [], name: "my-rodeo", title: "My rodeo", lang: "en", target: "baremetal",
   variant: "", extraVariants: [], query: "", open: {}, newWorkshop: "custom", fileView: "rodeo-plan.yaml",
   editing: -1, edTab: "spans", drag: null, cursor: -1, undo: null, copied: false,
-  strings: {}, story: null, trLang: "", trEngine: "", trEdit: null, busy: "", rmCheck: null,
+  strings: {}, story: null, trLang: "", trEngine: "", trEdit: null, busy: "", rmCheck: null, imported: [],
 };
 
 let toastTimer = 0;
@@ -72,7 +72,7 @@ function toast(msg, bad, undo) {
 
 const DRAFT_KEY = "rodeo-builder-draft-v1";
 const DRAFT_FIELDS = ["engine", "base", "planEdited", "mode", "importProfile", "labAddons", "labJson", "chapters",
-  "custom", "name", "title", "lang", "target", "variant", "extraVariants", "strings"];
+  "custom", "name", "title", "lang", "target", "variant", "extraVariants", "strings", "imported"];
 let draftOn = true, draftTimer = 0;
 
 function scheduleDraft() {
@@ -154,8 +154,8 @@ function catalogueHint() {
 }
 
 function libraryGroups() {
-  const groups = state.workshops.map((w) => ({ id: w.id, title: w.title, sub: w.source, chapters: w.chapters,
-    engine: w.engine, profile: w.profile, plan: w.plan }));
+  const groups = [...state.workshops, ...state.imported].map((w) => ({ id: w.id, title: w.title, sub: w.source, chapters: w.chapters,
+    engine: w.engine, profile: w.profile, plan: w.plan, imported: !!w.imported }));
   groups.push({ id: "custom", title: "My chapters", sub: "created in this builder", chapters: state.custom });
   return groups;
 }
@@ -299,7 +299,9 @@ function renderLibrary() {
         g.engine && !groupMatches(g) ? el("button", { class: "btn sm outline", type: "button", text: "use",
           title: "Switch the lab engine to " + g.engine + " (" + g.profile + ")", onclick: () => useGroup(g) }) : null,
         g.chapters.length ? el("button", { class: "btn sm", type: "button", text: "+ all " + g.chapters.length,
-          onclick: () => { for (const c of g.chapters) addChapter(g, c); } }) : null));
+          onclick: () => { for (const c of g.chapters) addChapter(g, c); } }) : null,
+        g.imported ? el("button", { class: "btn sm", type: "button", text: "×", "aria-label": "Remove " + g.title + " from the library",
+          title: "Remove this imported workshop from the library", onclick: () => removeImported(g.id) }) : null));
     const cards = el("div", { class: "cards" });
     if (open) {
       if (!list.length) cards.append(el("div", { class: "empty", text: g.id === "custom" ? "No chapters yet: + New." : "No chapters." }));
@@ -743,6 +745,100 @@ function render() {
   scheduleDraft();
 }
 
+// ── import a workshop by URL ────────────────────────────────────────────
+// The live builder fetches any public https git repository (rodeo/builder/imports.py);
+// the published page reads public github.com repositories through GitHub's API.
+
+function openImport() {
+  $("#imUrl").value = "";
+  $("#imNote").textContent = window.RB_STATIC
+    ? "A public github.com repository: a rodeo story/ directory, an Instruqt track (<challenge>/assignment.md) or markdown files (*.md). GitHub allows 60 requests an hour without a login; rodeo builder imports from any git host."
+    : "A public https git repository: a rodeo story/ directory, an Instruqt track (<challenge>/assignment.md) or markdown files (*.md).";
+  $("#importModal").hidden = false;
+  $("#imUrl").focus();
+}
+
+function closeImport() {
+  $("#importModal").hidden = true;
+  $("#importBtn").focus();
+}
+
+async function ghFetch(url, json) {
+  const res = await fetch(url, json ? { headers: { Accept: "application/vnd.github+json" } } : {});
+  if (res.status === 403 || res.status === 429) throw new Error("GitHub refused: without a login it allows 60 requests an hour. Try later, or import with rodeo builder");
+  if (res.status === 404) throw new Error("not found on GitHub (only public repositories can be imported)");
+  if (!res.ok) throw new Error("GitHub answered " + res.status);
+  return json ? res.json() : res.text();
+}
+
+// The published page's import: one tree listing, then the raw chapter files.
+async function importFromGitHub(url) {
+  const src = RB.parseSourceUrl(url);
+  if (src.host !== "github.com") throw new Error("the published builder imports from github.com only; other git hosts need rodeo builder");
+  const api = "https://api.github.com/repos/" + src.owner + "/" + src.repo;
+  const ref = src.ref || (await ghFetch(api, true)).default_branch;
+  const tree = await ghFetch(api + "/git/trees/" + encodeURIComponent(ref) + "?recursive=1", true);
+  const files = tree.tree.filter((t) => t.type === "blob").map((t) => t.path);
+  const { format, dir } = RB.detectFormat(files, src.path);
+  const pre = dir ? dir + "/" : "";
+  const raw = (path) => ghFetch("https://raw.githubusercontent.com/" + src.owner + "/" + src.repo + "/" +
+    encodeURIComponent(ref) + "/" + path.split("/").map(encodeURIComponent).join("/"), false);
+  const direct = files.filter((f) => f.startsWith(pre) && !f.slice(pre.length).includes("/")).sort();
+  let title = src.path ? src.path.split("/").pop() : src.repo, chapters = [];
+  const variants = {};
+  if (format === "rmstory") {
+    const meta = direct.includes(pre + "chapters.yaml") ? RB.chaptersMeta(await raw(pre + "chapters.yaml")) : null;
+    chapters = await Promise.all(direct.filter((f) => f.endsWith(".md")).map(async (f) => RB.chapterFromStory(f.slice(pre.length), await raw(f), meta)));
+    for (const f of files.filter((f) => /^stories\/[^/]+\.yaml$/.test(f.slice(pre.length)) && f.startsWith(pre)).sort()) {
+      variants[f.slice(pre.length + 8, -5)] = RB.storyIds(await raw(f));
+    }
+    if (meta && meta.title) title = meta.title;
+  } else if (format === "instruqt") {
+    const dirs = [...new Set(files.filter((f) => f.startsWith(pre) && /^[^/]+\/assignment\.md$/.test(f.slice(pre.length)))
+      .map((f) => f.slice(pre.length).split("/")[0]))].sort();
+    chapters = await Promise.all(dirs.map(async (d) => {
+      const check = files.filter((f) => f.startsWith(pre + d + "/check-")).sort()[0];
+      return RB.chapterFromInstruqt(d, await raw(pre + d + "/assignment.md"), check ? await raw(check) : "");
+    }));
+  } else {
+    chapters = await Promise.all(direct.filter((f) => f.endsWith(".md")).map(async (f) => RB.chapterFromMarkdown(f.slice(pre.length), await raw(f))));
+  }
+  if (chapters.length > 200) throw new Error("too many chapters (" + chapters.length + " > 200)");
+  return { id: RB.importGroupId(src), title, source: "https://github.com/" + src.owner + "/" + src.repo + (src.path ? "/tree/" + ref + "/" + src.path : ""),
+    format, engine: "", profile: "", plan: "", chapters, variants, imported: true };
+}
+
+async function importWorkshop(ev) {
+  ev.preventDefault();
+  const url = $("#imUrl").value.trim(), btn = $("#imSubmit");
+  if (!url) return;
+  btn.disabled = true;
+  btn.textContent = "Importing…";
+  try {
+    let group;
+    if (window.RB_STATIC) group = await importFromGitHub(url);
+    else {
+      const res = await apiPost("import", { url });
+      if (res.status !== 200) throw new Error(res.body.error || "HTTP " + res.status);
+      group = res.body.workshop;
+    }
+    state.imported = [...state.imported.filter((g) => g.id !== group.id), group];
+    state.open[group.id] = true;
+    closeImport();
+    render();
+    toast("Imported " + plural(group.chapters.length, "chapter") + " (" + group.format + ") from " + group.title);
+  } catch (err) { toast("Import failed: " + err.message, true); }
+  btn.disabled = false;
+  btn.textContent = "Import";
+}
+
+function removeImported(id) {
+  const before = state.imported;
+  state.imported = state.imported.filter((g) => g.id !== id);
+  render();
+  toast("Imported workshop removed from the library", false, () => { state.imported = before; render(); });
+}
+
 // ── new chapter ─────────────────────────────────────────────────────────
 
 const ncNeeds = new Set();
@@ -812,7 +908,7 @@ function createChapter(ev) {
   const ch = { id, file: "", title, mins: Math.max(1, parseInt($("#ncMins").value, 10) || 10), needs: [...ncNeeds],
     check: $("#ncCheck").checked, spans: 0, body, isNew: true };
   if (group.id === "custom") state.custom.push(ch);
-  else state.workshops.find((w) => w.id === group.id).chapters.push(ch);
+  else [...state.workshops, ...state.imported].find((w) => w.id === group.id).chapters.push(ch);
   closeNewChapter();
   if ($("#ncAppend").checked) addChapter(group, ch); else render();
   toast("Chapter \"" + title + "\" created as " + id);
@@ -1277,6 +1373,7 @@ const FOCUSABLE = "a[href], button:not([disabled]), input:not([disabled]), selec
 
 function openDialog() {
   if (!$("#newModal").hidden) return $("#newModal .modal");
+  if (!$("#importModal").hidden) return $("#importModal .modal");
   if (!$("#embedOverlay").hidden) return $("#embedOverlay .embed");
   if (!$("#editor").hidden) return $("#editor");
   return null;
@@ -1341,6 +1438,10 @@ function bind() {
     toast("plan.yaml regenerated", false, () => { state.planEdited = edited; render(); });
   });
   $("#newChapterBtn").addEventListener("click", openNewChapter);
+  $("#importBtn").addEventListener("click", openImport);
+  $("#importForm").addEventListener("submit", importWorkshop);
+  $("#imCancel").addEventListener("click", closeImport);
+  $("#importModal").addEventListener("mousedown", (ev) => { if (ev.target === ev.currentTarget) closeImport(); });
   $("#newForm").addEventListener("submit", createChapter);
   $("#ncCancel").addEventListener("click", closeNewChapter);
   $("#newModal").addEventListener("mousedown", (ev) => { if (ev.target === ev.currentTarget) closeNewChapter(); });
@@ -1350,6 +1451,7 @@ function bind() {
     if (ev.key !== "Escape") return;
     if (pop) closePop();
     else if (!$("#newModal").hidden) closeNewChapter();
+    else if (!$("#importModal").hidden) closeImport();
     else if (!$("#embedOverlay").hidden) closeEmbed();
     else if (!$("#editor").hidden) closeEditor();
   });

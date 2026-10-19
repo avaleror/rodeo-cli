@@ -52,6 +52,14 @@ rodeo up --profile <name>     # after Save to profiles
   an empty list. `missing_addon` is always offered: a placeholder for something no
   engine provides yet. It only marks the chapter as "work needed" (also listed in
   the download's README); it never blocks the rodeo and never reaches the lab.
+- **Import.** **Import** above the library adds a workshop from a URL: a git
+  repository or a directory in one (`https://<host>/<owner>/<repo>/tree/<ref>/<dir>`).
+  The builder detects the format (a rodeo `story/`, an Instruqt track
+  `<dir>/*/assignment.md`, or markdown `<dir>/*.md`) and lists its chapters as a
+  new group; **×** removes the group again. The published page reads public
+  github.com repositories through the GitHub API (60 unauthenticated requests an
+  hour); the rodeo builder server clones any public https repository (shallow
+  and sparse, no credentials). Imported groups are kept with the draft.
 - **Story.** **N spans ✎** opens the story editor (rows with span warnings show
   how many). Select text and click **Tag selection**, use the toolbar, or press
   Alt+T / Alt+I / Alt+N to mark it Translatable, Invariant or No-lang;

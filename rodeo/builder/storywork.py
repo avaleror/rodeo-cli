@@ -6,6 +6,10 @@
 - :func:`translate`: ``rmstory extract --engine <e> --to <lang>`` on the chapters,
   starting from the page's translation store; returns the filled store.
 - :func:`draft`: ``rmstory generate new``, a tagged-span draft from a prompt.
+- :func:`retell`: ``rmstory generate rewrite --theme``, the chapters told as a new
+  story: translatable spans with an id are rewritten, everything else and every
+  span id stays as it is. The page sends only what the author tagged as story
+  (it takes the exercise spans out first).
 
 Chapters arrive as ``[{"id", "body"}]`` and are written to a temporary
 directory; nothing is kept on the server. Engines read their credentials from
@@ -36,6 +40,7 @@ STATUSES = ("draft", "reviewed", "published")
 MAX_CHAPTERS = 200
 MAX_BODY = 1024 * 1024
 MAX_PROMPT = 8000
+MAX_THEME = 500
 TIMEOUT = 30 * 60
 _ENGINE_LINE = re.compile(r"^(\S+)\s+(translate only|translate \+ generate)\s*$")
 _FINDING_LINE = re.compile(r"^(warning|error): (.+?):(\d+): (.*)$")
@@ -216,3 +221,24 @@ def draft(prompt: str, lang: str, engine: str) -> dict[str, str]:
     if not body:
         raise StoryError("rmstory generate returned nothing")
     return {"body": body + "\n"}
+
+
+def retell(chapters: Any, theme: str, engine: str) -> dict[str, Any]:
+    """The chapters retold as a story about *theme*: ``{"chapters": [{"id", "body"}], "log"}``.
+    Only spans with an id are rewritten (one engine call per chapter)."""
+    items = _chapters(chapters)
+    if not isinstance(theme, str) or not theme.strip():
+        raise ValueError("say what the new story is about")
+    if len(theme) > MAX_THEME:
+        raise ValueError("the theme is longer than {} characters".format(MAX_THEME))
+    engine = _engine(engine, generate=True)
+    with tempfile.TemporaryDirectory(prefix="rodeo-builder-story-") as tmp:
+        src, out = Path(tmp) / "story", Path(tmp) / "out"
+        names = _write_chapters(items, src)
+        r = _run(["generate", "rewrite", str(src), "--no-recursive", "--engine", engine,
+                  "--theme", theme.strip(), "--out", str(out)])
+        bodies = []
+        for name, i in names.items():
+            retold = out / name
+            bodies.append({"id": items[i][0], "body": retold.read_text(encoding="utf-8") if retold.is_file() else items[i][1]})
+        return {"chapters": bodies, "log": r.stdout.strip()}

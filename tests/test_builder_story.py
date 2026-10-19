@@ -113,3 +113,29 @@ def test_api_says_when_rmstory_is_missing(monkeypatch, tmp_path):
     monkeypatch.setenv("PATH", str(tmp_path))
     status, body = _post(Api(can_save=True), "validate", {"chapters": CHAPTERS})
     assert status == 502 and "not installed" in body["error"]
+
+
+def test_retell_rewrites_only_spans_with_ids(fake_rmstory):
+    out = storywork.retell(CHAPTERS + [{"id": "plain", "body": "# Plain\n`kubectl get nodes`\n"}], "a space heist", "ollama")
+    bodies = {c["id"]: c["body"] for c in out["chapters"]}
+    assert bodies["intro"] == '# Intro\n<span lang="en" id="intro.1">a space heist</span>\n<span lang="en">New line</span>\n'
+    assert bodies["ride"] == '# Ride\nWARN\n<span lang="en" id="ride.1">a space heist</span>\n'
+    assert bodies["plain"] == "# Plain\n`kubectl get nodes`\n"
+    assert [c["id"] for c in out["chapters"]] == ["intro", "ride", "plain"]
+
+
+@pytest.mark.parametrize("theme,engine,match", [
+    ("", "ollama", "what the new story is about"),
+    ("x" * (storywork.MAX_THEME + 1), "ollama", "longer"),
+    ("pirates", "deepl", "translate but not generate"),
+])
+def test_retell_refuses_bad_requests(fake_rmstory, theme, engine, match):
+    with pytest.raises(ValueError, match=match):
+        storywork.retell(CHAPTERS, theme, engine)
+
+
+def test_api_retells_on_the_live_server(fake_rmstory):
+    assert _post(Api(), "retell", {}) == (403, {"error": "rmstory retell needs the rodeo builder server"})
+    status, body = _post(Api(can_save=True), "retell", {"chapters": CHAPTERS, "theme": "pirates", "engine": "ollama"})
+    assert status == 200 and "pirates" in body["chapters"][0]["body"]
+    assert _post(Api(can_save=True), "retell", {"chapters": CHAPTERS, "engine": "ollama"})[0] == 400

@@ -23,6 +23,7 @@
       <button id="themeBtn" class="btn" type="button">Light</button>
       <button id="warnBtn" class="btn warn" type="button" hidden></button>
       <button id="saveBtn" class="btn outline" type="button" hidden>Save to profiles</button>
+      <button id="publishBtn" class="btn outline" type="button" title="Publish this rodeo to a GitHub repository and the rodeo catalog">Publish</button>
       <button id="downloadBtn" class="btn primary" type="button">Download rodeo</button>
     </div>
   </header>
@@ -31,7 +32,10 @@
     <aside class="col left" aria-label="Chapter library">
       <div class="col-head">
         <h2>Chapter library · <span id="libCount">0</span></h2>
-        <button id="newChapterBtn" class="btn outline sm" type="button">+ New</button>
+        <div class="col-head-actions">
+          <button id="importBtn" class="btn sm" type="button" title="Import a workshop's chapters from a git URL">Import</button>
+          <button id="newChapterBtn" class="btn outline sm" type="button">+ New</button>
+        </div>
       </div>
       <label class="sr-only" for="search">Search chapters</label>
       <input id="search" class="input" type="search" placeholder="Search chapters" autocomplete="off">
@@ -75,6 +79,17 @@
         </select>
         <span class="label">Story variant</span>
         <div id="variants" class="chips"></div>
+        <div id="newStory" class="nc-draft" hidden>
+          <label class="label" for="nsTheme">New story</label>
+          <input id="nsTheme" class="input" maxlength="500" autocomplete="off" placeholder="What the new story is about, e.g. a heist on a space station">
+          <div class="addon-add">
+            <label class="sr-only" for="nsEngine">rmstory engine</label>
+            <select id="nsEngine" class="select"></select>
+            <button id="nsBtn" class="btn sm" type="button">Retell</button>
+          </div>
+          <p id="nsParts" class="note"></p>
+          <p class="note muted">You say what is story: spans with a story variant get a new narrative. Exercise spans (translatable, no story variant), fixed spans (invariant or no-lang) and text outside spans stay word for word. The original chapters stay in the library.</p>
+        </div>
         <div id="estimate" class="est"></div>
       </div>
       <div id="tab-plan" class="tabpane" role="tabpanel" aria-labelledby="t-plan" hidden>
@@ -137,6 +152,53 @@
         <div>
           <button id="ncCancel" class="btn" type="button">Cancel</button>
           <button class="btn primary" type="submit">Create</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div id="publishModal" class="backdrop" hidden>
+    <form id="publishForm" class="modal" role="dialog" aria-modal="true" aria-labelledby="publishTitle">
+      <h2 id="publishTitle">Publish to GitHub</h2>
+      <p id="pubAccount" class="note"></p>
+      <div id="pubLogin" class="nc-draft" hidden>
+        <button id="pubLoginBtn" class="btn sm" type="button">Log in to GitHub</button>
+        <p id="pubDevice" class="note"></p>
+      </div>
+      <div id="pubStatic" hidden>
+        <label class="label" for="pubUser">Your GitHub account</label>
+        <input id="pubUser" class="input mono" autocomplete="username" spellcheck="false" placeholder="octocat">
+        <ol id="pubSteps" class="pub-steps"></ol>
+      </div>
+      <div id="pubLive" hidden>
+        <label class="label" for="pubName">Repository (the rodeo name)</label>
+        <input id="pubName" class="input mono" autocomplete="off" spellcheck="false">
+        <div class="checks"><label><input id="pubUpdate" type="checkbox"> Update my existing repository (no new catalog pull request)</label></div>
+        <p class="note muted">Creates a public repository under your account with this rodeo's files and opens a pull request on <span id="pubCatalog"></span> that adds it to the rodeo catalog.</p>
+      </div>
+      <p id="pubResult" class="note"></p>
+      <div class="modal-foot">
+        <span></span>
+        <div>
+          <button id="pubCancel" class="btn" type="button">Close</button>
+          <button id="pubSubmit" class="btn primary" type="submit" hidden>Publish</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div id="importModal" class="backdrop" hidden>
+    <form id="importForm" class="modal" role="dialog" aria-modal="true" aria-labelledby="importTitle">
+      <h2 id="importTitle">Import a workshop</h2>
+      <label class="label" for="imUrl">Git URL</label>
+      <input id="imUrl" class="input mono" type="url" required autocomplete="off" spellcheck="false"
+        placeholder="https://github.com/owner/repo/tree/main/docs/exercises">
+      <p id="imNote" class="note muted"></p>
+      <div class="modal-foot">
+        <span></span>
+        <div>
+          <button id="imCancel" class="btn" type="button">Cancel</button>
+          <button id="imSubmit" class="btn primary" type="submit">Import</button>
         </div>
       </div>
     </form>

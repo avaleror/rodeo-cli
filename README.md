@@ -123,9 +123,9 @@ rodeo picks the region (`eu-north-1`, or `$RODEO_AWS_REGION`), the default VPC s
 |---------|-------------|
 | `up` | Front door: host check, install deps, pick lab, generate secrets, deploy, print login info. Wraps in tmux automatically: re-attach with `tmux attach -t rodeo-<profile>` |
 | `doctor` | Host readiness check and profile recommendation by available RAM |
-| `new` | Scaffold a custom lab from a bundled base: `rodeo new mylab --from harvester` · install a Rodeo Builder download: `rodeo new mylab --from-zip mylab.zip` |
+| `new` | Scaffold a custom lab from a bundled base: `rodeo new mylab --from harvester` · install a Rodeo Builder download: `rodeo new mylab --from-zip mylab.zip` · or a published rodeo: `rodeo new mylab --from https://github.com/<owner>/<repo>` |
 | `builder` | Rodeo Builder web UI, live: compose a rodeo and save it into your profiles (`rodeo builder`) |
-| `profiles` | List deployable profiles (bundled + your custom ones in `~/.rodeo/profiles/`) |
+| `profiles` | List deployable profiles (bundled, your custom ones in `~/.rodeo/profiles/`, and the published rodeos of the catalog) |
 | `list` | Show plans and the libvirt domains stamped for each one |
 | `install-deps` | Install host packages (KVM, libvirt, ansible, kubectl). `--story` adds rmstory + multilang from their GitHub release distro packages (refused without a matching `.sha512`); `--aws` adds the AWS CLI v2 (signature-checked) for labs whose VMs run in AWS |
 | `init` | Create `rodeo-plan.yaml` and `~/.rodeo/secrets.yaml` |

@@ -247,3 +247,77 @@ test("draftPrompt grounds the brief in the rodeo and the lab", () => {
   assert.match(p, /<span no>/);
   assert.ok(p.endsWith("Import a cluster."));
 });
+
+test("parseSourceUrl and importGroupId match the server's (rodeo/builder/imports.py)", () => {
+  assert.deepEqual(RB.parseSourceUrl("https://github.com/acme/labs/tree/v2/docs/exercises/"),
+    { host: "github.com", owner: "acme", repo: "labs", ref: "v2", path: "docs/exercises" });
+  assert.deepEqual(RB.parseSourceUrl("https://github.com/acme/labs.git"),
+    { host: "github.com", owner: "acme", repo: "labs", ref: "", path: "" });
+  for (const bad of ["http://github.com/a/b", "https://u:p@github.com/a/b", "https://github.com/a",
+    "https://github.com/a/b/tree/main/../x", "https://github.com/a/b?x=1", "nope"]) {
+    assert.throws(() => RB.parseSourceUrl(bad), Error, bad);
+  }
+  assert.equal(RB.importGroupId(RB.parseSourceUrl("https://github.com/acme/labs/tree/main/ws")), "url-acme-labs-ws");
+});
+
+test("detectFormat over a repository's file list", () => {
+  assert.deepEqual(RB.detectFormat(["ws/story/01-a.md", "ws/README.md"], "ws"), { format: "rmstory", dir: "ws/story" });
+  assert.deepEqual(RB.detectFormat(["ws/chapters.yaml", "ws/01-a.md"], "ws"), { format: "rmstory", dir: "ws" });
+  assert.deepEqual(RB.detectFormat(["t/01-x/assignment.md", "t/track.yml"], "t"), { format: "instruqt", dir: "t" });
+  assert.deepEqual(RB.detectFormat(["README.md", "docs/x.md"], ""), { format: "markdown", dir: "" });
+  assert.throws(() => RB.detectFormat(["ws/notes.txt", "ws/deep/x.md"], "ws"), /no chapters found/);
+});
+
+test("chapters from markdown, Instruqt and rodeo story files", () => {
+  const md = RB.chapterFromMarkdown("02-go.md", "# Go <b>now</b>\n\n**Time:** 25 min\n");
+  assert.deepEqual([md.id, md.title, md.mins, md.check], ["go", "Go now", 25, false]);
+  const iq = RB.chapterFromInstruqt("01-intro", "---\ntitle: \"Intro\"\nslug: intro\n---\n\nText\n", "#!/bin/sh\n");
+  assert.deepEqual([iq.id, iq.title, iq.mins, iq.check, iq.body], ["intro", "Intro", 20, true, "Text\n"]);
+  const meta = RB.chaptersMeta("title: Acme ride\nchapters:\n  - file: 01-hello.md\n    mins: 7\n    needs: [rancher, fleet]\n");
+  assert.equal(meta.title, "Acme ride");
+  const st = RB.chapterFromStory("01-hello.md", '# Hello\n<span lang="en" id="hello.1">Hi</span>\n', meta);
+  assert.deepEqual([st.id, st.mins, st.needs, st.spans], ["hello", 7, ["rancher", "fleet"], 1]);
+  assert.deepEqual(RB.storyIds("# comment\n- hello.1\n- \"hello.2\"\n"), ["hello.1", "hello.2"]);
+});
+
+test("storyRole follows the author's tags: hist is story, lang is exercise, no/nolang is fixed", () => {
+  assert.equal(RB.storyRole({ lang: "en", hist: "main" }), "story");
+  assert.equal(RB.storyRole({ hist: "main" }), "story");
+  assert.equal(RB.storyRole({ lang: "en" }), "exercise");
+  assert.equal(RB.storyRole({ no: true, hist: "main" }), "fixed");
+  assert.equal(RB.storyRole({ lang: "nolang" }), "fixed");
+  assert.deepEqual(RB.storyParts([{ body: '<span lang="en" hist="a" id="s">x</span><span lang="en" id="e">y</span><span no>z</span>' }]),
+    { story: 1, exercise: 1, fixed: 1 });
+});
+
+test("retelling hides exercises from the engine, restores them and renames only story ids", () => {
+  const body = '# Ride\n<span lang="en" hist="main" id="ride.1">Saddle up, <span id="ride.2"/></span>\n' +
+    '<span lang="en" id="ride.2">Open Cluster Management</span>\n<span lang="en" id="ride.3">Run <span no id="ride.4">kubectl get nodes</span></span>\n' +
+    '<span lang="en" hist="main" id="ride.5">The trail <span lang="en" id="ride.6">Click Charts</span> ends.</span>\n';
+  const masked = RB.maskExercises(body);
+  assert.ok(!masked.body.includes("Cluster Management") && !masked.body.includes("kubectl"));
+  assert.ok(masked.body.includes("Click Charts"));
+  const fromEngine = masked.body.replace("Saddle up, ", "Boots on, ").replace("The trail ", "The vault ").replace("Click Charts", "Crack the safe");
+  const [out] = RB.retoldChapters([{ id: "ride", title: "Ride", mins: 5, body }], { ride: fromEngine }, "heist", { ride: masked.kept });
+  assert.equal(out.id, "ride-heist");
+  assert.equal(out.mins, 5);
+  assert.equal(out.body, '# Ride\n<span lang="en" hist="main" id="heist.ride.1">Boots on, <span id="ride.2"/></span>\n' +
+    '<span lang="en" id="ride.2">Open Cluster Management</span>\n<span lang="en" id="ride.3">Run <span no id="ride.4">kubectl get nodes</span></span>\n' +
+    '<span lang="en" hist="main" id="heist.ride.5">The vault <span lang="en" id="ride.6">Click Charts</span> ends.</span>\n');
+});
+
+test("nameMissing names only the spans that need an id and have none", () => {
+  const body = '<span lang="en" id="a.1">x</span> <span lang="en">y</span> <span no>z</span> <span hist="s">w</span>';
+  assert.equal(RB.nameMissing(body, "a"), '<span lang="en" id="a.1">x</span> <span lang="en" id="a.2">y</span> <span no>z</span> <span id="a.3" hist="s">w</span>');
+});
+
+test("publishLinks builds github.com pages that use the browser's login", () => {
+  const l = RB.publishLinks({ user: "rider", name: "ride", title: "Ride & go", engine: "rancher", languages: ["en", "es"] });
+  assert.equal(l.repo, "https://github.com/rider/ride");
+  assert.equal(l.create, "https://github.com/new?name=ride&description=Ride%20%26%20go&visibility=public");
+  assert.equal(l.upload, "https://github.com/rider/ride/upload/main");
+  const u = new URL(l.catalog);
+  assert.equal(u.origin + u.pathname, "https://github.com/avaleror/rodeo-cli/new/main");
+  assert.equal(u.searchParams.get("filename"), "rodeo/data/catalog.d/ride.yaml");
+  assert.equal(u.searchParams.get("value"), 'name: "ride"\ntitle: "Ride & go"\nrepo: "https://github.com/rider/ride"\nref: main\nengine: "rancher"\nlanguages: ["en", "es"]\n');
+});

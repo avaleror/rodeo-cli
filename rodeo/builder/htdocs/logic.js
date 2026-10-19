@@ -231,6 +231,19 @@ const RB = (() => {
     return out;
   }
 
+  // `text` with an id ("<base>.N", unused) on every span that needs one and has none.
+  function nameMissing(text, base) {
+    const { spans } = parseSpans(text), used = new Set(spans.map((sp) => sp.attrs.id).filter(Boolean));
+    const named = spans.filter((s) => !s.attrs.id && needsId(s.attrs)).map((sp) => {
+      const id = nextId(base, used);
+      used.add(id);
+      return [sp, id];
+    });
+    let out = text;
+    for (const [sp, id] of named.reverse()) out = retag(out, sp, { ...sp.attrs, id });
+    return out;
+  }
+
   // ── translations (rmstory's filesystem store) ────────────────────────────
 
   // Ids of the translatable spans, in chapter order: the rows a translation fills.
@@ -307,6 +320,197 @@ const RB = (() => {
     lines.push("Deployment facts are Jinja expressions such as {{ rancher_url }}: copy each one unchanged into its own <span no> span.",
       "", String(brief).trim());
     return lines.join("\n");
+  }
+
+  // A span's part in a retold story, set by the author: "story" (it has a story variant, hist,
+  // and is retold), "exercise" (translatable without a story: kept word for word) or "fixed"
+  // (invariant or no-lang: never translated or retold).
+  function storyRole(attrs) {
+    if (attrs.hist && !attrs.no) return "story";
+    return kind(attrs) === "translatable" ? "exercise" : "fixed";
+  }
+
+  function storyParts(chapters) {
+    const out = { story: 0, exercise: 0, fixed: 0 };
+    for (const ch of chapters) for (const sp of parseSpans(ch.body).spans) out[storyRole(sp.attrs)]++;
+    return out;
+  }
+
+  function roleAbove(spans, sp, role) {
+    for (let up = sp.parent; up >= 0; up = spans[up].parent) if (storyRole(spans[up].attrs) === role) return true;
+    return false;
+  }
+
+  // The body sent to rmstory generate rewrite: each exercise span outside a story span becomes
+  // an HTML comment (rmstory skips comments, so the engine never sees it). Returns {body, kept}.
+  function maskExercises(body) {
+    const { spans } = parseSpans(body), kept = [];
+    const masked = spans.filter((sp) => storyRole(sp.attrs) === "exercise" && !roleAbove(spans, sp, "story")
+      && !roleAbove(spans, sp, "exercise"));
+    let out = body;
+    for (const sp of masked.sort((a, b) => b.start - a.start)) {
+      kept.push(body.slice(sp.start, sp.end));
+      out = out.slice(0, sp.start) + "<!--rodeo-keep:" + (kept.length - 1) + "-->" + out.slice(sp.end);
+    }
+    return { body: out, kept };
+  }
+
+  function unmaskExercises(body, kept) {
+    return String(body).replace(/<!--rodeo-keep:(\d+)-->/g, (m, n) => (kept && n in kept ? kept[n] : m));
+  }
+
+  // Exercise spans inside story spans get their original text back, by id.
+  function restoreExercises(retold, original) {
+    const before = new Map();
+    for (const sp of parseSpans(original).spans) {
+      if (sp.attrs.id && storyRole(sp.attrs) === "exercise") before.set(sp.attrs.id, inner(original, sp));
+    }
+    const { spans } = parseSpans(retold);
+    let out = retold;
+    for (const sp of spans.filter((s) => storyRole(s.attrs) === "exercise" && before.has(s.attrs.id)
+      && !roleAbove(spans, s, "exercise")).sort((a, b) => b.start - a.start)) {
+      out = out.slice(0, sp.openEnd) + before.get(sp.attrs.id) + out.slice(sp.closeStart);
+    }
+    return out;
+  }
+
+  // The rodeo's chapters as the new story `slug`: `bodies` ({id: body}) are rmstory's retold
+  // (masked) bodies, `kept` ({id: kept}) what maskExercises took out. Chapter ids become
+  // "<id>-<slug>" and story span ids (and references to them) "<slug>.<id>", so the new
+  // story's translations never mix with the original's; exercise and fixed spans keep their
+  // ids and so their translations.
+  function retoldChapters(chapters, bodies, slug, kept) {
+    const storyIds = new Set();
+    for (const c of chapters) {
+      for (const sp of parseSpans(c.body).spans) if (sp.attrs.id && storyRole(sp.attrs) === "story") storyIds.add(sp.attrs.id);
+    }
+    return chapters.map((c) => {
+      const retold = c.id in bodies ? restoreExercises(unmaskExercises(bodies[c.id], (kept || {})[c.id]), c.body) : c.body;
+      return { ...c, id: (c.id + "-" + slug).slice(0, 63).replace(/-+$/, ""),
+        body: retold.replace(/(<span\b[^>]*?\sid=")([^"]+)"/g, (m, head, id) => head + (storyIds.has(id) ? slug + "." : "") + id + '"') };
+    });
+  }
+
+  // ── publish (rodeo/builder/publish.py does the same with the host's GitHub login) ──
+
+  const CATALOG_REPO = "avaleror/rodeo-cli", CATALOG_DIR = "rodeo/data/catalog.d";
+
+  // The catalog file rodeo/data/catalog.d/<name>.yaml.
+  function catalogEntry(o) {
+    const q = (v) => JSON.stringify(String(v));
+    return ["name: " + q(o.name), "title: " + q(o.title || o.name), "repo: " + q(o.repo), "ref: main",
+      "engine: " + q(o.engine || ""), "languages: [" + (o.languages || []).map(q).join(", ") + "]", ""].join("\n");
+  }
+
+  // github.com pages that publish with the browser's own GitHub login (GitHub asks to log in
+  // when there is none): create the repository, upload the files, open the catalog pull request.
+  function publishLinks(o) {
+    const e = encodeURIComponent, repo = "https://github.com/" + o.user + "/" + o.name;
+    const entry = catalogEntry({ ...o, repo });
+    return {
+      create: "https://github.com/new?name=" + e(o.name) + "&description=" + e(o.title || o.name) + "&visibility=public",
+      upload: repo + "/upload/main",
+      catalog: "https://github.com/" + (o.catalog || CATALOG_REPO) + "/new/main?filename=" + e(CATALOG_DIR + "/" + o.name + ".yaml")
+        + "&value=" + e(entry) + "&message=" + e("catalog: add " + o.name),
+      repo, entry,
+    };
+  }
+
+  // ── workshops imported by URL (rodeo/builder/imports.py does the same on the server) ──
+
+  const DEFAULT_MINUTES = 10, INSTRUQT_MINUTES = 20;
+
+  // {host, owner, repo, ref, path} of https://<host>/<owner>/<repo>[/tree/<ref>/<path>];
+  // ref is "" for the default branch. Throws on anything else.
+  function parseSourceUrl(url) {
+    let u;
+    try { u = new URL(String(url || "").trim()); } catch (_) { throw new Error("give an https:// URL of a public git repository"); }
+    if (u.protocol !== "https:" || u.username || u.password) throw new Error("give an https:// URL of a public git repository");
+    if (/\/\.\.?(\/|$)/.test(String(url).split(/[?#]/)[0])) throw new Error("the URL's path has . or .. segments");
+    const m = /^\/([^/]+)\/([^/]+?)(?:\.git)?(?:\/(?:tree|blob)\/([^/]+)(?:\/(.*))?)?\/?$/.exec(u.pathname);
+    if (!m || u.search || u.hash) throw new Error("expected https://<host>/<owner>/<repo>[/tree/<ref>/<path>]");
+    const path = decodeURIComponent((m[4] || "").replace(/^\/+|\/+$/g, ""));
+    if (path && !path.split("/").every((s) => /^[A-Za-z0-9_][A-Za-z0-9._ -]{0,127}$/.test(s))) {
+      throw new Error(JSON.stringify(path) + " is not a plain path in the repository");
+    }
+    return { host: u.host, owner: m[1], repo: m[2], ref: m[3] ? decodeURIComponent(m[3]) : "", path };
+  }
+
+  function importGroupId(src) {
+    const tail = [src.owner, src.repo, src.path].filter(Boolean).join("/");
+    return "url-" + (tail.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "source");
+  }
+
+  // {format, dir} for a repository's file list (paths from its root), looking under *path*:
+  // rmstory (story/*.md, or *.md next to chapters.yaml), instruqt (<challenge>/assignment.md),
+  // markdown (*.md). Throws when none fits.
+  function detectFormat(files, path) {
+    const base = path ? path + "/" : "", set = new Set(files);
+    const direct = (dir) => files.filter((f) => f.startsWith(dir) && !f.slice(dir.length).includes("/"));
+    if (direct(base + "story/").some((f) => f.endsWith(".md"))) return { format: "rmstory", dir: base + "story" };
+    const md = direct(base).filter((f) => f.endsWith(".md"));
+    if (set.has(base + "chapters.yaml") && md.length) return { format: "rmstory", dir: path };
+    if (files.some((f) => f.startsWith(base) && /^[^/]+\/assignment\.md$/.test(f.slice(base.length)))) return { format: "instruqt", dir: path };
+    if (md.length) return { format: "markdown", dir: path };
+    throw new Error("no chapters found: expected story/*.md, <challenge>/assignment.md or *.md");
+  }
+
+  function titleOf(body, fallback) {
+    const m = /^#\s+(.+?)\s*$/m.exec(body);
+    return m ? m[1].replace(/<[^>]+>/g, "").trim() : fallback;
+  }
+
+  function baseChapter(id, file, body) {
+    return { id, file, title: titleOf(body, id), mins: DEFAULT_MINUTES, needs: [], check: false, check_script: "",
+      spans: parseSpans(body).spans.length, body };
+  }
+
+  // A markdown exercise: title from the first heading, minutes from "**Time:** N min".
+  function chapterFromMarkdown(name, body) {
+    const ch = baseChapter(name.replace(/\.md$/, "").replace(/^\d+-/, ""), name, body);
+    const t = /^\*\*Time:\*\*\s*(\d+)\s*min/im.exec(body);
+    if (t) ch.mins = parseInt(t[1], 10);
+    return ch;
+  }
+
+  // An Instruqt challenge: front-matter title, the body after it, its check script if any.
+  function chapterFromInstruqt(dir, text, checkScript) {
+    const fm = /^---\n([\s\S]*?)\n---\n?/.exec(text), body = (fm ? text.slice(fm[0].length) : text).replace(/^\n+/, "");
+    const ch = baseChapter(dir.replace(/^\d+-/, ""), dir + "/assignment.md", body);
+    const title = fm && /^title:\s*(.+?)\s*$/m.exec(fm[1]);
+    if (title) ch.title = title[1].replace(/^["']|["']$/g, "");
+    ch.mins = INSTRUQT_MINUTES;
+    if (checkScript) { ch.check = true; ch.check_script = checkScript; }
+    return ch;
+  }
+
+  // The chapters.yaml fields the builder reads: {title, files: {file: {mins, needs, title}}}.
+  function chaptersMeta(text) {
+    const out = { title: "", files: {} };
+    let cur = null;
+    for (const line of String(text || "").split("\n")) {
+      let m;
+      if ((m = /^title:\s*(.+?)\s*$/.exec(line))) out.title = m[1].replace(/^["']|["']$/g, "");
+      else if ((m = /^\s*-\s*file:\s*(\S+)/.exec(line))) { cur = { needs: [] }; out.files[m[1]] = cur; }
+      else if (cur && (m = /^\s+mins:\s*(\d+)/.exec(line))) cur.mins = parseInt(m[1], 10);
+      else if (cur && (m = /^\s+needs:\s*\[(.*)\]/.exec(line))) cur.needs = m[1].split(",").map((s) => s.trim()).filter(Boolean);
+      else if (cur && (m = /^\s+title:\s*(.+?)\s*$/.exec(line))) cur.title = m[1].replace(/^["']|["']$/g, "");
+    }
+    return out;
+  }
+
+  // A story variant index (story/stories/<id>.yaml): its list of span ids.
+  function storyIds(text) {
+    return String(text || "").split("\n").map((l) => /^-\s*["']?([^"'\s#]+)/.exec(l)).filter(Boolean).map((m) => m[1]);
+  }
+
+  // A rodeo story chapter (story/NN-<id>.md) with its chapters.yaml entry.
+  function chapterFromStory(name, body, meta) {
+    const ch = baseChapter(name.replace(/\.md$/, "").replace(/^\d+-/, ""), name, body), info = (meta && meta.files[name]) || {};
+    if (info.title) ch.title = info.title;
+    if (info.mins) ch.mins = info.mins;
+    ch.needs = info.needs || [];
+    return ch;
   }
 
   // ── generated files ──────────────────────────────────────────────────────
@@ -522,7 +726,8 @@ const RB = (() => {
     withKind, wrapTarget, nextId, wrap, retag, unwrap, idsIn, validate, warningsByChapter, engineNeeds, variantsIn, storyIndex,
     setTopKey, dropTopBlock, storyBlock, planFromBase, planLabinabox, chapterFile, chaptersYaml,
     storyYaml, checkScript, readme, files, labJsonAddons, crc32, zip,
-    renumber, translatableIds, storedSource, sourceTexts, missingPlaceholders, stringsFiles, translatedLanguages, draftPrompt,
+    renumber, nameMissing, translatableIds, storedSource, sourceTexts, missingPlaceholders, stringsFiles, translatedLanguages, draftPrompt, storyRole, storyParts, maskExercises, retoldChapters, CATALOG_REPO, catalogEntry, publishLinks,
+    parseSourceUrl, importGroupId, detectFormat, chapterFromMarkdown, chapterFromInstruqt, chaptersMeta, storyIds, chapterFromStory,
   };
 })();
 

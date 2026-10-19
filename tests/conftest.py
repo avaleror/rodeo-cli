@@ -180,6 +180,14 @@ if cmd == "extract":
                 rows += lang == to
     print("extracted spans, machine-translated {} row(s) via {}".format(rows, engine))
     sys.exit(0)
+if cmd == "generate" and args[1] == "rewrite":
+    theme, out = args[args.index("--theme") + 1], Path(args[args.index("--out") + 1])
+    for f in sorted(Path(args[2]).glob("*.md")):
+        text = re.sub(r'(<span lang="en" id="[^"]+"[^>]*>)[^<]*', lambda m: m.group(1) + theme, f.read_text())
+        if text != f.read_text():
+            out.mkdir(exist_ok=True)
+            (out / f.name).write_text(text)
+    sys.exit(0)
 if cmd == "generate":
     prompt, lang = args[args.index("--prompt") + 1].strip().splitlines()[-1], args[args.index("--lang") + 1]
     print('<span lang="{}" id="draft.one">{}</span>'.format(lang, prompt))
@@ -193,7 +201,8 @@ def fake_rmstory(tmp_path, monkeypatch) -> Path:
     """An ``rmstory`` on PATH that answers like the real CLI: ``engines`` (deepl, ollama),
     ``validate`` (a warning for WARN, an error and exit 1 for NOID), ``extract --engine --to``
     (fills the filesystem store with "[<lang>] <text>" and names the first unnamed span
-    ``<file>.9``) and ``generate new`` (one span holding the prompt's last line)."""
+    ``<file>.9``), ``generate rewrite`` (every ``lang="en"`` span with an id says the theme)
+    and ``generate new`` (one span holding the prompt's last line)."""
     bindir = tmp_path / "bin"
     bindir.mkdir()
     script = bindir / "rmstory"

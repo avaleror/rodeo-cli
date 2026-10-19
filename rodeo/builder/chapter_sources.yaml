@@ -8,10 +8,15 @@
 #   profile    bundled profile they run on (the rodeo's base)
 #   format     instruqt: <path>/<challenge>/assignment.md (front-matter title)
 #              markdown: <path>/*.md (title from the first heading, "**Time:** N min")
+#              rmstory: <path>/*.md with <path>/chapters.yaml and <path>/stories/*.yaml
+#                       (a rodeo's story/ directory)
 #   workshop   take repo/ref/path from this bundled profile's `workshop:` block
 #   repo, ref, path   otherwise: where the chapters are
 #   checks     markdown only: check script per chapter, {n} = the file's leading number
 #   needs      capabilities every chapter of the source needs
+#
+# Every rodeo in the catalog (rodeo/data/catalog.d/) is listed too, as an rmstory
+# source on its repository's story/, unless a source here names that repository.
 sources:
   - id: smlm-workshop
     title: SMLM workshop

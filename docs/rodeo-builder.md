@@ -35,8 +35,10 @@ rodeo up --profile <name>     # after Save to profiles
 - **Chapters.** The library lists every workshop's chapters: the bundled
   examples' `story/` directories, the workshops whose chapters live in their own
   repository (listed in `rodeo/builder/chapter_sources.yaml`: the SMLM workshop's
-  Instruqt track and the Virtualization workshop's exercises), and the chapters
-  you create with **+ New**. Each workshop shows the lab engine and profile its
+  Instruqt track and the Virtualization workshop's exercises), the `story/` of
+  every published rodeo in the catalog (`rodeo/data/catalog.d/`, unless
+  `chapter_sources.yaml` already names its repository), and the chapters you
+  create with **+ New**. Each workshop shows the lab engine and profile its
   chapters run on; **use** switches the rodeo to them (for example `suse-virt`
   with the `virt-workshop-aws` profile, whose extra setup the exercises need).
   Drag chapters into the rodeo (anywhere on the list) or click them; click a

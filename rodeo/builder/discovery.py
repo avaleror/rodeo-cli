@@ -23,6 +23,8 @@ from typing import Any
 
 import yaml
 
+from .. import catalog
+
 DATA = Path(__file__).resolve().parent.parent / "data"
 EXAMPLES = DATA / "examples"
 PLATFORMS = DATA / "platforms"
@@ -71,6 +73,7 @@ _FRONT_MATTER_RE = re.compile(r"\A---\n(.*?)\n---\n?", re.S)
 _TIME_RE = re.compile(r"^\*\*Time:\*\*\s*(\d+)\s*min", re.M | re.I)
 
 SOURCES_FILE = Path(__file__).resolve().parent / "chapter_sources.yaml"
+SOURCE_FORMATS = ("instruqt", "markdown", "rmstory")
 # Instruqt's timelimit is an upper bound, not a duration: challenges get this.
 INSTRUQT_MINUTES = 20
 
@@ -199,19 +202,21 @@ def workshops(sources: dict[str, Path] | None = None) -> dict[str, Any]:
         out.append({
             "id": src["id"],
             "title": src["title"],
-            "source": "{}/tree/{}/{}".format(src["repo"].removesuffix(".git"), src["ref"], src["path"]),
+            "source": "{}/tree/{}/{}".format(src["repo"].removesuffix(".git"), src["ref"] or "HEAD", src["path"]),
             "engine": src["engine"],
             "profile": src["profile"],
-            "plan": _plan_text(_profile_example(src["profile"])),
+            "plan": _plan_text(_profile_example(src["profile"])) if src["profile"] else "",
             "chapters": source_chapters(src, checkout),
-            "variants": {},
+            "variants": _variants(checkout / src["path"].strip("/")) if src["format"] == "rmstory" else {},
         })
     return {"workshops": out}
 
 
 def chapter_sources() -> list[dict[str, Any]]:
     """chapter_sources.yaml, with repo/ref/path taken from a profile's workshop:
-    block where a source names one."""
+    block where a source names one, then one ``rmstory`` source per catalog rodeo
+    (:mod:`rodeo.catalog`) whose repository the file does not list: its ``story/``,
+    id ``catalog-<name>``, no base profile, the default branch when the entry has no ref."""
     out = []
     for raw in _read_yaml(SOURCES_FILE).get("sources") or []:
         src = dict(raw)
@@ -221,9 +226,16 @@ def chapter_sources() -> list[dict[str, Any]]:
             src.setdefault("ref", ws.get("ref") or ws.get("branch") or "main")
             src.setdefault("path", "tracks/{}".format(ws.get("track")))
         missing = [k for k in ("id", "title", "engine", "profile", "format", "repo", "ref", "path") if not src.get(k)]
-        if missing or src["format"] not in ("instruqt", "markdown"):
+        if missing or src["format"] not in SOURCE_FORMATS:
             raise ValueError("chapter source {}: missing {} or unknown format".format(src.get("id"), missing))
         out.append(src)
+    listed = {s["repo"].removesuffix(".git").lower() for s in out}
+    for name, entry in catalog.entries().items():
+        if entry["repo"].removesuffix(".git").lower() in listed:
+            continue
+        out.append({"id": "catalog-" + name, "title": entry.get("title") or name, "engine": entry.get("engine") or "",
+                    "profile": "", "format": "rmstory", "repo": entry["repo"], "ref": entry["ref"], "path": "story",
+                    "needs": []})
     return out
 
 
@@ -232,13 +244,15 @@ def source_fetch_commands(src: dict[str, Any], dest: Path) -> list[list[str]]:
     path = src["path"].strip("/")
     if src["format"] == "instruqt":
         patterns = ["/{}/*/assignment.md".format(path), "/{}/*/check-*".format(path)]
+    elif src["format"] == "rmstory":
+        patterns = ["/{}/*.md".format(path), "/{}/chapters.yaml".format(path), "/{}/stories/*.yaml".format(path)]
     else:
         patterns = ["/{}/*.md".format(path)]
         if src.get("checks"):
             patterns.append("/{}/*".format(str(Path(src["checks"]).parent).strip("/")))
     return [
         ["git", "clone", "-q", "--depth", "1", "--filter=blob:none", "--sparse",
-         "--branch", src["ref"], src["repo"], str(dest)],
+         *(["--branch", src["ref"]] if src["ref"] else []), "--", src["repo"], str(dest)],
         ["git", "-C", str(dest), "sparse-checkout", "set", "--no-cone", *patterns],
     ]
 
@@ -272,9 +286,11 @@ def _check_script(directory: Path) -> str:
 
 
 def source_chapters(src: dict[str, Any], checkout: Path) -> list[dict[str, Any]]:
-    """Chapters of one fetched source: Instruqt challenges or markdown files."""
+    """Chapters of one fetched source: Instruqt challenges, markdown files or a rodeo story/."""
     root = checkout / src["path"].strip("/")
     needs = list(src.get("needs") or [])
+    if src["format"] == "rmstory":
+        return [{**ch, "needs": ch["needs"] or needs} for ch in _chapters(root)]
     out = []
     if src["format"] == "instruqt":
         for challenge in sorted(p for p in root.iterdir() if (p / "assignment.md").is_file()):

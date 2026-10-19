@@ -732,6 +732,22 @@ def test_live_publish_with_the_hosts_github_login(page, monkeypatch):
 
 
 @pytest.mark.parametrize("page", ["live_github"], indirect=True)
+def test_live_publish_offers_the_catalog_link_when_the_pr_fails(page, monkeypatch):
+    from rodeo.builder import publish
+
+    monkeypatch.setattr(publish, "status", lambda: {"logged_in": True, "login": "rider", "source": "GH_TOKEN", "gh": False,
+                                                   "error": "", "device": {}, "catalog": "rider/rodeo-cli"})
+    monkeypatch.setattr(publish, "publish", lambda req: {"repo": "https://github.com/rider/" + req["name"], "login": "rider",
+                                                         "pull_request": "", "catalog_error": "GitHub 403"})
+    page.click("#publishBtn")
+    sync_api.expect(page.locator("#pubSubmit")).to_be_visible()
+    page.click("#pubSubmit")
+    sync_api.expect(page.locator("#pubResult")).to_contain_text("The catalog pull request failed (GitHub 403)")
+    href = page.locator("#pubResult a", has_text="add it to the catalog").get_attribute("href")
+    assert href.startswith("https://github.com/rider/rodeo-cli/new/main?filename=rodeo%2Fdata%2Fcatalog.d%2F")
+
+
+@pytest.mark.parametrize("page", ["live_github"], indirect=True)
 def test_live_publish_asks_for_a_github_login(page, monkeypatch):
     from rodeo.builder import publish
 

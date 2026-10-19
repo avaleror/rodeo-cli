@@ -172,7 +172,11 @@ def start_login(popen: Callable[..., Any] = subprocess.Popen, wait: float = 20.0
 def _message(body: Any) -> str:
     if isinstance(body, dict):
         errors = "; ".join(str(e.get("message") or e) for e in body.get("errors") or [] if isinstance(e, (dict, str)))
-        return " ".join(p for p in (str(body.get("message") or ""), errors) if p) or "no message"
+        text = " ".join(p for p in (str(body.get("message") or ""), errors) if p) or "no message"
+        if "not accessible by personal access token" in text:
+            text += (" (this token may not do that: log in with gh auth login, or use a token allowed to create "
+                     "repositories and pull requests)")
+        return text
     return str(body)[:300]
 
 
@@ -257,7 +261,8 @@ def _open_catalog_pr(http: Http, token: str, login: str, name: str, entry: str, 
 def publish(req: Any, http: Http = _http, run: Run = subprocess.run,
             sleep: Callable[[float], None] = time.sleep) -> dict[str, Any]:
     """Publish ``{"name", "title", "engine", "languages", "files": [{"path", "content", "executable"}],
-    "update"}``; returns ``{"repo", "pull_request", "login"}``. ValueError for a bad request,
+    "update"}``; returns ``{"repo", "pull_request", "login", "catalog_error"}`` (*catalog_error*: why
+    the catalog pull request could not be opened; the repository is published). ValueError for a bad request,
     PermissionError without a GitHub login, PublishError when GitHub or git fails."""
     if not isinstance(req, dict):
         raise ValueError("send a JSON object")
@@ -287,5 +292,10 @@ def publish(req: Any, http: Http = _http, run: Run = subprocess.run,
             raise PublishError("creating github.com/{}/{} (GitHub {}): {}".format(login, name, code, _message(body)))
     repo = "https://{}/{}/{}".format(HOST, login, name)
     _push(run, files, repo + ".git", author, token, ("Update" if update else "Publish") + " the rodeo " + name, update)
-    pull = "" if update else _open_catalog_pr(http, token, login, name, catalog_entry(name, title, repo, engine, languages), sleep)
-    return {"repo": repo, "pull_request": pull, "login": login}
+    pull, catalog_error = "", ""
+    if not update:
+        try:
+            pull = _open_catalog_pr(http, token, login, name, catalog_entry(name, title, repo, engine, languages), sleep)
+        except PublishError as exc:
+            catalog_error = str(exc)
+    return {"repo": repo, "pull_request": pull, "login": login, "catalog_error": catalog_error}

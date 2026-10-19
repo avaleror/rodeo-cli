@@ -116,7 +116,7 @@ def test_publish_creates_the_repo_pushes_and_opens_the_catalog_pr(monkeypatch):
     monkeypatch.setattr(publish, "_push", lambda run, files, remote, author, token, message, update:
                         pushed.append((remote, author, [f.path for f in files], message, update)))
     out = publish.publish(_req(), http=gh, sleep=lambda s: None)
-    assert out == {"repo": "https://github.com/rider/ride", "login": "rider",
+    assert out == {"repo": "https://github.com/rider/ride", "login": "rider", "catalog_error": "",
                    "pull_request": "https://github.com/avaleror/rodeo-cli/pull/200"}
     assert pushed == [("https://github.com/rider/ride.git", ("Rider One", "42+rider@users.noreply.github.com"),
                        ["rodeo-plan.yaml", "story/01-hello.md", "checks/check-hello.sh"], "Publish the rodeo ride", False)]
@@ -231,3 +231,19 @@ def test_api_publishes_only_on_a_loopback_live_server(monkeypatch):
 def test_builder_command_publishes_only_on_loopback():
     src = Path(publish.__file__).parents[1] / "commands" / "builder_cmd.py"
     assert "can_publish=_is_loopback(bind)" in src.read_text()
+
+
+def test_a_refused_catalog_pr_still_publishes_and_says_why(monkeypatch):
+    monkeypatch.setenv("GH_TOKEN", TOKEN)
+    monkeypatch.setattr(publish, "_push", lambda *a: None)
+    gh = FakeGitHub()
+    real = gh.__call__
+
+    def http(method, url, token, body):
+        if url.endswith("/pulls"):
+            return 403, {"message": "Resource not accessible by personal access token"}
+        return real(method, url, token, body)
+
+    out = publish.publish(_req(), http=http, sleep=lambda s: None)
+    assert out["repo"] == "https://github.com/rider/ride" and out["pull_request"] == ""
+    assert "opening the catalog pull request (GitHub 403)" in out["catalog_error"] and "gh auth login" in out["catalog_error"]

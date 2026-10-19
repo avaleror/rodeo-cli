@@ -1531,8 +1531,12 @@ async function publishRodeo(ev) {
     else if (res.status === 409) $("#pubResult").textContent = res.body.error + ": tick Update to push to it, or pick another name.";
     else if (res.status !== 200) $("#pubResult").textContent = "Publish failed: " + (res.body.error || res.status);
     else {
+      const catalog = RB.publishLinks({ user: res.body.login, name, title: state.title, engine: state.engine,
+        languages: publishLanguages(), catalog: state.github.catalog }).catalog;
       $("#pubResult").replaceChildren("Published ", link(res.body.repo, res.body.repo),
-        ...(res.body.pull_request ? [" · catalog pull request ", link(res.body.pull_request, res.body.pull_request)] : []), ".");
+        ...(res.body.pull_request ? [" · catalog pull request ", link(res.body.pull_request, res.body.pull_request)] : []),
+        ...(res.body.catalog_error ? [". The catalog pull request failed (" + res.body.catalog_error + "): ",
+          link(catalog, "add it to the catalog on github.com")] : []), ".");
       toast("Published " + res.body.repo);
     }
   } catch (err) { $("#pubResult").textContent = "Publish failed: " + err.message; }

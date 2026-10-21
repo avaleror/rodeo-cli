@@ -239,6 +239,11 @@ def chapter_sources() -> list[dict[str, Any]]:
     return out
 
 
+# A cloned symlink is checked out as a plain file holding its target, so reading a
+# chapter never follows it out of the clone (to /etc/passwd, /proc/self/environ...).
+NO_SYMLINKS = ["-c", "core.symlinks=false"]
+
+
 def source_fetch_commands(src: dict[str, Any], dest: Path) -> list[list[str]]:
     """Shallow, sparse clone of only the files a source's chapters are read from."""
     path = src["path"].strip("/")
@@ -251,7 +256,7 @@ def source_fetch_commands(src: dict[str, Any], dest: Path) -> list[list[str]]:
         if src.get("checks"):
             patterns.append("/{}/*".format(str(Path(src["checks"]).parent).strip("/")))
     return [
-        ["git", "clone", "-q", "--depth", "1", "--filter=blob:none", "--sparse",
+        ["git", "clone", "-q", "--depth", "1", "--filter=blob:none", "--sparse", *NO_SYMLINKS,
          *(["--branch", src["ref"]] if src["ref"] else []), "--", src["repo"], str(dest)],
         ["git", "-C", str(dest), "sparse-checkout", "set", "--no-cone", *patterns],
     ]

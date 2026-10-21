@@ -512,7 +512,7 @@ function openEmbed() {
 
 window.addEventListener("message", (ev) => {
   if (!state.liab.builder_url) return;
-  const origin = new URL(state.liab.builder_url, location.href).origin;
+  const origin = new URL(String(state.liab.builder_url).replace("{host}", location.hostname), location.href).origin;
   if (ev.origin !== origin || !ev.data || ev.data.type !== "labinabox:lab") return;
   useLab(ev.data.lab, "the lab-builder");
   closeEmbed();

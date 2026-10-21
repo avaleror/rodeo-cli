@@ -36,7 +36,7 @@ def test_parse_source_url_refuses(url):
 def test_fetch_commands_are_shallow_sparse_and_end_options():
     clone, sparse = imports.fetch_commands({"repo": "https://h/a/b", "ref": "v1", "path": "docs/ex"}, Path("/t/x"))
     assert clone[:7] == ["git", "clone", "-q", "--depth", "1", "--filter=blob:none", "--sparse"]
-    assert clone[7:] == ["--branch", "v1", "--", "https://h/a/b", "/t/x"]
+    assert clone[7:] == ["-c", "core.symlinks=false", "--branch", "v1", "--", "https://h/a/b", "/t/x"]
     assert "/docs/ex/*/assignment.md" in sparse and "/docs/ex/story/*.md" in sparse
     clone, sparse = imports.fetch_commands({"repo": "https://h/a/b", "ref": "", "path": ""}, Path("/t/x"))
     assert "--branch" not in clone and "/*.md" in sparse and "/story/chapters.yaml" in sparse
@@ -90,6 +90,22 @@ def test_import_source_clones_and_reads(tmp_path):
 
     with pytest.raises(RuntimeError, match="repository not found"):
         imports.import_source("https://github.com/acme/nope", run=failing)
+
+
+@pytest.mark.skipif(not shutil.which("git"), reason="needs git")
+def test_import_never_follows_a_symlink_out_of_the_clone(tmp_path):
+    secret = _write(tmp_path / "host", {"secret.txt": "TOKEN=hunter2\n"}) / "secret.txt"
+    repo = _write(tmp_path / "repo", {"docs/01-a.md": "# A\n"})
+    (repo / "docs" / "02-leak.md").symlink_to(secret)
+    git = ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t"]
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(git + ["add", "-A"], check=True)
+    subprocess.run(git + ["commit", "-qm", "x"], check=True)
+    src = {"repo": repo.as_uri(), "ref": "", "path": "docs"}
+    for cmd in imports.fetch_commands(src, tmp_path / "clone"):
+        subprocess.run(cmd, check=True, capture_output=True)
+    bodies = [c["body"] for c in imports.read_group(src, tmp_path / "clone")["chapters"]]
+    assert not any("hunter2" in b for b in bodies)
 
 
 def test_api_import_is_live_only(monkeypatch, tmp_path):

@@ -61,7 +61,7 @@ def fetch_commands(src: dict[str, str], dest: Path) -> list[list[str]]:
     path = src["path"]
     patterns = [_sub(path, t) for t in ("*.md", "chapters.yaml", "*/assignment.md", "*/check-*",
                                         "story/*.md", "story/chapters.yaml", "story/stories/*.yaml")]
-    clone = ["git", "clone", "-q", "--depth", "1", "--filter=blob:none", "--sparse"]
+    clone = ["git", "clone", "-q", "--depth", "1", "--filter=blob:none", "--sparse", *discovery.NO_SYMLINKS]
     if src["ref"]:
         clone += ["--branch", src["ref"]]
     return [clone + ["--", src["repo"], str(dest)],

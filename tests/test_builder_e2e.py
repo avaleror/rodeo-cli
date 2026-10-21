@@ -76,6 +76,28 @@ def live_local_lab_builder(labinabox_checkout, markdown_source):
 
 
 @pytest.fixture()
+def live_deploy(labinabox_checkout, markdown_source, tmp_path, monkeypatch):
+    """The live server allowed to deploy, with a fake rodeo that runs three phases."""
+    from rodeo.builder import deploywork
+    from rodeo.builder.api import Api
+    from rodeo.builder.server import make_server
+
+    fake = tmp_path / "fake-rodeo"
+    fake.write_text("#!{}\nimport sys, time\nprint('rodeo', *sys.argv[1:], flush=True)\n"
+                    "for i in range(3):\n    print('phase', i, flush=True)\n    time.sleep(0.3)\n".format(sys.executable))
+    fake.chmod(0o755)
+    monkeypatch.setattr(deploywork, "find_rodeo_bin", lambda: str(fake))
+    monkeypatch.setattr(deploywork, "capability", lambda run=None: {"available": True, "reason": "", "as": "root"})
+    api = Api(labinabox_checkout, "http://127.0.0.1:9/lab-builder/", "1.0.0", {"virt-workshop": markdown_source},
+              can_save=True, can_deploy=True)
+    server = make_server(api, "127.0.0.1", 0, "0.0.0-test")
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield "http://127.0.0.1:{}/".format(server.server_address[1])
+    server.shutdown()
+    server.server_close()
+
+
+@pytest.fixture()
 def live_github(labinabox_checkout, markdown_source):
     """The live server listening on loopback only, so Publish uses the host's GitHub login."""
     from rodeo.builder.api import Api
@@ -859,3 +881,46 @@ def test_page_loads_its_own_fonts_and_nothing_from_other_hosts(page):
     loaded = page.evaluate("[...document.fonts].filter((f) => f.status === 'loaded').map((f) => f.family)")
     assert {"Syne", "Space Mono"} <= {f.strip('"') for f in loaded}
     assert seen and all(u.startswith(origin) or u.startswith("data:") for u in seen), [u for u in seen if not u.startswith(origin)]
+
+
+def test_static_deploy_is_greyed_out_with_why(page):
+    assert page.locator("#deployBtn").get_attribute("aria-disabled") == "true"
+    assert "Only available in rodeo builder, the dynamic version" in page.locator("#deployWrap").get_attribute("title")
+    page.click("#deployBtn", force=True)
+    sync_api.expect(page.locator("#toastText")).to_contain_text("Only available in rodeo builder")
+    assert page.locator("#deployModal").is_hidden()
+
+
+@pytest.mark.parametrize("page", ["live"], indirect=True)
+def test_exposed_live_server_does_not_deploy(page):
+    sync_api.expect(page.locator("#deployWrap")).to_have_attribute("title", re.compile("listens on this machine only"))
+    assert page.locator("#deployBtn").get_attribute("aria-disabled") == "true"
+
+
+@pytest.mark.parametrize("page", ["live_deploy"], indirect=True)
+def test_live_deploys_without_saving_and_says_so(page, monkeypatch):
+    from rodeo.builder import deploywork
+
+    real = deploywork.ensure_plan_secrets
+    monkeypatch.setattr(deploywork, "ensure_plan_secrets", lambda plan, lab_path=None: (real(plan, lab_path=lab_path)[0], ["scc_regcode"]))
+    page.click(".card >> text=Welcome to the rodeo")
+    sync_api.expect(page.locator("#deployBtn")).to_have_attribute("aria-disabled", "false")
+    page.click("#deployBtn")
+    sync_api.expect(page.locator("#deployModal .unsaved")).to_contain_text("This rodeo is not saved.")
+    assert "my-rodeo-unsaved-" in page.locator("#dpWhere").inner_text()
+    page.click("#dpSubmit")
+    sync_api.expect(page.locator("#dpSecretFields input[name=scc_regcode]")).to_be_visible()
+    page.fill("#dpSecretFields input[name=scc_regcode]", "REG-123")
+    page.click("#dpSubmit")
+    sync_api.expect(page.locator("#deployModal")).to_be_hidden()
+    banner = page.locator("#deployText")
+    sync_api.expect(banner).to_contain_text("Deploying an unsaved rodeo")
+    sync_api.expect(banner).to_contain_text("This rodeo is not saved")
+    sync_api.expect(banner).to_contain_text("Deployed from an unsaved rodeo", timeout=15_000)
+    page.click("#deployLogBtn")
+    sync_api.expect(page.locator("#deployLog")).to_contain_text("phase 2")
+    assert "rodeo up --yes --no-tmux --dir" in page.locator("#deployLog").inner_text()
+    assert "REG-123" in deploywork.secrets_path().read_text()
+    page.click("#deploySave")
+    sync_api.expect(banner).to_contain_text("saved as the profile my-rodeo")
+    assert page.locator("#deploySave").is_hidden()

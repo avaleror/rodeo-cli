@@ -53,6 +53,7 @@ const state = {
   editing: -1, edTab: "spans", drag: null, cursor: -1, undo: null, copied: false,
   strings: {}, story: null, trLang: "", trEngine: "", trEdit: null, busy: "", rmCheck: null, imported: [],
   contentUrl: "", contentFormat: "rmstory",
+  deploy: null, deployLogOpen: false, savedAs: "",
 };
 
 let toastTimer = 0;
@@ -816,6 +817,7 @@ function renderFiles() {
 }
 
 function render() {
+  renderDeploy();
   renderLibrary();
   renderEngines();
   renderChapters();
@@ -1432,22 +1434,130 @@ async function save(force) {
   if (!name) { toast("Give the rodeo a name first", true); $("#name").focus(); return; }
   state.name = name;
   if (!force && state.server.profiles.includes(name)) {
-    if (window.confirm("A profile named " + name + " already exists in " + state.server.profiles_dir + ". Replace it?")) save(true);
-    return;
+    if (window.confirm("A profile named " + name + " already exists in " + state.server.profiles_dir + ". Replace it?")) return save(true);
+    return false;
   }
   const r = rodeo();
   const files = RB.files(r).map((f) => ({ path: f.path, content: f.content, executable: f.mode === 0o755 }));
   let res;
   try {
     res = await apiPost("save", { name, base: r.base || null, files, force: !!force });
-  } catch (err) { toast("Save failed: " + err.message, true); return; }
+  } catch (err) { toast("Save failed: " + err.message, true); return false; }
   if (res.status === 409 && !force) {
-    if (window.confirm("A profile named " + name + " already exists in " + state.server.profiles_dir + ". Replace it?")) save(true);
+    if (window.confirm("A profile named " + name + " already exists in " + state.server.profiles_dir + ". Replace it?")) return save(true);
+    return false;
+  }
+  if (res.status !== 200) { toast("Save failed: " + (res.body.error || res.status), true); return false; }
+  if (!state.server.profiles.includes(name)) state.server.profiles.push(name);
+  state.savedAs = name;
+  renderDeploy();
+  toast("Saved " + res.body.path + " · deploy with: rodeo up --profile " + name);
+  return true;
+}
+
+// ── deploy without saving (live server only, rodeo/builder/deploywork.py) ──
+// The deploy runs from a copy in ~/rodeo-labs/<name>-unsaved-<time>/: the page says so before,
+// during and after, until the rodeo is saved.
+
+let deployPoll = 0;
+
+function deployReason() {
+  if (window.RB_STATIC) return "Only available in rodeo builder, the dynamic version: run rodeo builder on the host that deploys the lab.";
+  if (!state.deploy) return "Checking whether this builder can deploy…";
+  return state.deploy.available ? "" : state.deploy.reason;
+}
+
+function renderDeploy() {
+  const reason = deployReason(), btn = $("#deployBtn"), cur = state.deploy && state.deploy.current;
+  btn.setAttribute("aria-disabled", reason ? "true" : "false");
+  $("#deployWrap").title = reason || "Deploy this rodeo with rodeo up, without saving it first";
+  const banner = $("#deployBanner");
+  banner.hidden = !cur;
+  if (!cur) return;
+  const saved = state.savedAs ? " This rodeo is saved as the profile " + state.savedAs + "." : " This rodeo is not saved: the lab directory is a copy, not one of your profiles.";
+  const text = {
+    running: "Deploying an unsaved rodeo from " + cur.lab + "…",
+    stopping: "Stopping the deploy in " + cur.lab + "…",
+    succeeded: "Deployed from an unsaved rodeo: " + cur.lab + ".",
+    failed: "Deploy failed (exit " + cur.rc + "). Fix it and rerun from the lab: cd " + cur.lab + " && rodeo up",
+    stopped: "Deploy stopped. Resume from the lab: cd " + cur.lab + " && rodeo up",
+  }[cur.status] || cur.status;
+  $("#deployText").textContent = text + saved;
+  banner.classList.toggle("ok", cur.status === "succeeded");
+  banner.classList.toggle("bad", cur.status === "failed" || cur.status === "stopped");
+  $("#deploySave").hidden = !!state.savedAs || !(state.server && state.server.save);
+  $("#deployStop").hidden = cur.status !== "running";
+  $("#deployLogBtn").setAttribute("aria-expanded", String(state.deployLogOpen));
+  $("#deployLog").hidden = !state.deployLogOpen;
+  $("#deployLog").textContent = cur.log || "(no output yet)";
+}
+
+function openDeploy() {
+  const reason = deployReason();
+  if (reason) { toast(reason, true); return; }
+  const name = RB.slugify(state.name);
+  if (!name) { toast("Give the rodeo a name first", true); $("#name").focus(); return; }
+  if (!state.chapters.length) { toast("Add at least one chapter first.", true); return; }
+  const cur = state.deploy.current;
+  if (cur && (cur.status === "running" || cur.status === "stopping")) { toast("A deploy is already running: see the banner", true); return; }
+  state.name = name;
+  $("#dpWhere").textContent = "rodeo up runs on this builder's host (target " + state.target + ", as " + state.deploy.as
+    + ") from a new lab directory, ~/rodeo-labs/" + name + "-unsaved-<time>/: a copy of what is on this page now.";
+  $("#dpSecrets").hidden = true;
+  $("#dpSecretFields").replaceChildren();
+  $("#dpResult").textContent = "";
+  $("#dpSaveDeploy").hidden = !(state.server && state.server.save);
+  $("#deployModal").hidden = false;
+  $("#dpSubmit").focus();
+}
+
+function closeDeploy() {
+  $("#deployModal").hidden = true;
+  $("#deployBtn").focus();
+}
+
+async function startDeploy(saveFirst) {
+  if (saveFirst && !(await save(false))) return;
+  const r = rodeo(), name = RB.slugify(state.name);
+  const files = RB.files(r).map((f) => ({ path: f.path, content: f.content, executable: f.mode === 0o755 }));
+  const secrets = Object.fromEntries([...$("#dpSecretFields").querySelectorAll("input")].map((i) => [i.name, i.value]));
+  $("#dpSubmit").disabled = true;
+  const res = await apiPost("deploy", { name, base: r.base || null, files, secrets }).catch((err) => ({ status: 0, body: { error: err.message } }));
+  $("#dpSubmit").disabled = false;
+  if (res.status === 200 && res.body.secrets) {
+    $("#dpSecrets").hidden = false;
+    $("#dpSecretFields").replaceChildren(...res.body.secrets.map((k) => el("label", { class: "label" }, k,
+      el("input", { class: "input mono", type: "password", name: k, autocomplete: "off", required: true }))));
+    $("#dpResult").textContent = "Fill in the secrets this lab needs, then deploy.";
+    $("#dpSecretFields input").focus();
     return;
   }
-  if (res.status !== 200) { toast("Save failed: " + (res.body.error || res.status), true); return; }
-  if (!state.server.profiles.includes(name)) state.server.profiles.push(name);
-  toast("Saved " + res.body.path + " · deploy with: rodeo up --profile " + name);
+  if (res.status !== 200) { $("#dpResult").textContent = "Deploy failed to start: " + (res.body.error || res.status); return; }
+  if (!saveFirst) state.savedAs = "";
+  state.deploy = { ...state.deploy, current: res.body.current };
+  closeDeploy();
+  renderDeploy();
+  pollDeploy();
+}
+
+function pollDeploy() {
+  clearTimeout(deployPoll);
+  deployPoll = setTimeout(async () => {
+    state.deploy = await apiGet("deploy").catch(() => state.deploy);
+    renderDeploy();
+    const cur = state.deploy.current;
+    if (cur && (cur.status === "running" || cur.status === "stopping")) pollDeploy();
+    else if (cur) toast(cur.status === "succeeded" ? "Deploy finished: " + cur.lab : "Deploy " + cur.status + ": see the banner", cur.status !== "succeeded");
+  }, 2000);
+}
+
+async function stopDeploy() {
+  if (!window.confirm("Stop the running deploy? rodeo up is interrupted like Ctrl-C; the lab may be half built.")) return;
+  const res = await apiPost("deploy-stop", {}).catch((err) => ({ status: 0, body: { error: err.message } }));
+  if (res.status !== 200) { toast("Stop failed: " + (res.body.error || res.status), true); return; }
+  state.deploy = { ...state.deploy, current: res.body.current };
+  renderDeploy();
+  pollDeploy();
 }
 
 // ── publish to GitHub ───────────────────────────────────────────────────
@@ -1584,6 +1694,7 @@ function openDialog() {
   if (!$("#newModal").hidden) return $("#newModal .modal");
   if (!$("#importModal").hidden) return $("#importModal .modal");
   if (!$("#publishModal").hidden) return $("#publishModal .modal");
+  if (!$("#deployModal").hidden) return $("#deployModal .modal");
   if (!$("#embedOverlay").hidden) return $("#embedOverlay .embed");
   if (!$("#editor").hidden) return $("#editor");
   return null;
@@ -1653,6 +1764,14 @@ function bind() {
   $("#importBtn").addEventListener("click", openImport);
   $("#nsBtn").addEventListener("click", retellStory);
   $("#publishBtn").addEventListener("click", openPublish);
+  $("#deployBtn").addEventListener("click", openDeploy);
+  $("#deployForm").addEventListener("submit", (ev) => { ev.preventDefault(); startDeploy(false); });
+  $("#dpSaveDeploy").addEventListener("click", () => startDeploy(true));
+  $("#dpCancel").addEventListener("click", closeDeploy);
+  $("#deployModal").addEventListener("mousedown", (ev) => { if (ev.target === ev.currentTarget) closeDeploy(); });
+  $("#deploySave").addEventListener("click", () => save(false));
+  $("#deployStop").addEventListener("click", stopDeploy);
+  $("#deployLogBtn").addEventListener("click", () => { state.deployLogOpen = !state.deployLogOpen; renderDeploy(); });
   $("#publishForm").addEventListener("submit", publishRodeo);
   $("#pubCancel").addEventListener("click", closePublish);
   $("#pubLoginBtn").addEventListener("click", githubLogin);
@@ -1672,6 +1791,7 @@ function bind() {
     else if (!$("#newModal").hidden) closeNewChapter();
     else if (!$("#importModal").hidden) closeImport();
     else if (!$("#publishModal").hidden) closePublish();
+    else if (!$("#deployModal").hidden) closeDeploy();
     else if (!$("#embedOverlay").hidden) closeEmbed();
     else if (!$("#editor").hidden) closeEditor();
   });
@@ -1690,6 +1810,8 @@ async function init() {
       state.story = await apiGet("story").catch((err) => ({ available: false, error: err.message, engines: [] }));
       state.server = await apiGet("server");
       $("#saveBtn").hidden = !state.server.save;
+      state.deploy = await apiGet("deploy").catch((err) => ({ available: false, reason: err.message, current: null }));
+      if (state.deploy.current && state.deploy.current.status === "running") pollDeploy();
       $("#saveBtn").title = "Write this rodeo to " + state.server.profiles_dir + "/<name>/";
     }
     offerDraft();

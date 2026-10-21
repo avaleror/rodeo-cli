@@ -206,6 +206,27 @@ rebinding, and **Save** sends a per-run token that only the served page has. The
 page runs under a Content-Security-Policy that allows only its own files (the fonts
 ship in `htdocs/fonts/`) and the lab-builder frame.
 
+## Deploy without saving
+
+**Deploy** (header) runs the rodeo on the builder's host exactly as it is on the
+page, without saving it to your profiles first. It needs `rodeo builder` on
+loopback (not `--expose`) and root for `rodeo up`: the builder runs as root or
+the user has passwordless sudo (`sudo -n true`). Otherwise, and on the
+published page, the button is greyed out and says why on hover.
+
+- The dialog says plainly that the rodeo is not saved, and offers **Save to
+  profiles and deploy** next to **Deploy without saving**.
+- The deploy runs `rodeo up --yes --no-tmux --dir <lab>` from a copy in
+  `~/rodeo-labs/<name>-unsaved-<UTC time>/` (base profile plus the page's files,
+  as Save lays them out), its output in `<lab>/.builder-deploy.log`. Secrets
+  rodeo can generate go to the lab's `.rodeo-secrets.yaml`; ones only you have
+  (`operator_secrets`) are asked for in the dialog and written to
+  `~/.rodeo/secrets.yaml`, never shown again.
+- A banner stays while it runs and after it ends, with the lab directory, the
+  log, **Stop** (interrupts `rodeo up` like Ctrl-C) and **Save to profiles**,
+  and keeps saying the rodeo is not saved until you save it. One deploy runs at
+  a time; rerun or resume from the lab directory with `rodeo up`.
+
 ## Publish to GitHub
 
 **Publish** puts the rodeo in a public GitHub repository of yours and opens a pull

@@ -13,8 +13,9 @@ POST ``save`` writes a rodeo to ``~/.rodeo/profiles/<name>/``; POST ``validate``
 reads a workshop's chapters from a git URL (see :mod:`.imports`); POST ``publish``
 and ``github-login`` publish to GitHub with the host's login. POST actions answer
 only when the Api was created with ``can_save=True`` (the live server); ``github``,
-``publish`` and ``github-login`` also need ``can_publish=True`` (a server that
-listens on loopback only, so nobody else can publish as its user).
+``publish`` and ``github-login`` also need ``can_publish=True``, and GET ``deploy``
+with POST ``deploy`` and ``deploy-stop`` (see :mod:`.deploywork`) ``can_deploy=True``:
+a server that listens on loopback only, so nobody else can act as its user.
 """
 from __future__ import annotations
 
@@ -22,19 +23,21 @@ import json
 from pathlib import Path
 from typing import Any
 
-from . import discovery, imports, publish, storywork
+from . import deploywork, discovery, imports, publish, storywork
 
 PAGE_ACTIONS = ("engines", "workshops", "labinabox")
 STORY_ACTIONS = ("validate", "translate", "draft", "retell")
 GITHUB_ACTIONS = ("publish", "github-login")
-LIVE_ACTIONS = ("save", "import", *STORY_ACTIONS, *GITHUB_ACTIONS)
+DEPLOY_ACTIONS = ("deploy", "deploy-stop")
+LIVE_ACTIONS = ("save", "import", *STORY_ACTIONS, *GITHUB_ACTIONS, *DEPLOY_ACTIONS)
+LOOPBACK_ONLY = "needs a rodeo builder that listens on this machine only"
 
 
 class Api:
     def __init__(self, labinabox_checkout: Path | None = None,
                  lab_builder_url: str = discovery.LAB_BUILDER_URL, labinabox_version: str = "",
                  source_checkouts: dict[str, Path] | None = None, can_save: bool = False,
-                 labinabox_missing: str = "", can_publish: bool = False):
+                 labinabox_missing: str = "", can_publish: bool = False, can_deploy: bool = False):
         self.labinabox_checkout = labinabox_checkout
         self.labinabox_missing = labinabox_missing
         self.source_checkouts = source_checkouts or {}
@@ -42,6 +45,8 @@ class Api:
         self.labinabox_version = labinabox_version
         self.can_save = can_save
         self.can_publish = can_save and can_publish
+        self.can_deploy = can_save and can_deploy
+        self.deployer = deploywork.Deployer()
 
     def _get(self, action: str) -> dict[str, Any]:
         if action == "engines":
@@ -55,6 +60,10 @@ class Api:
             return self._server()
         if action == "story":
             return storywork.info()
+        if action == "deploy":
+            if not self.can_deploy:
+                return {"available": False, "reason": "deploying " + LOOPBACK_ONLY, "as": "", "current": None}
+            return {**deploywork.capability(), "current": self.deployer.status()}
         if action == "github":
             return {**publish.status(), "available": True} if self.can_publish else {"available": False}
         raise KeyError(action)
@@ -92,6 +101,24 @@ class Api:
             return 400, {"error": str(exc)}
         except (RuntimeError, OSError) as exc:
             return 502, {"error": str(exc)}
+
+    def _deploy(self, action: str, body: bytes) -> tuple[int, dict[str, Any]]:
+        if not self.can_deploy:
+            return 403, {"error": "deploying " + LOOPBACK_ONLY}
+        if action == "deploy-stop":
+            return 200, {"current": self.deployer.stop()}
+        try:
+            return 200, {"current": self.deployer.start(json.loads(body.decode("utf-8")))}
+        except deploywork.NeedSecrets as exc:
+            return 200, {"current": None, "secrets": exc.keys, "message": str(exc)}
+        except PermissionError as exc:
+            return 403, {"error": str(exc)}
+        except RuntimeError as exc:
+            return 409, {"error": str(exc), "running": True}
+        except (ValueError, FileNotFoundError) as exc:
+            return 400, {"error": str(exc)}
+        except OSError as exc:
+            return 500, {"error": str(exc)}
 
     def _github(self, action: str, body: bytes) -> tuple[int, dict[str, Any]]:
         if not self.can_publish:
@@ -131,10 +158,14 @@ class Api:
                  body: bytes = b"") -> tuple[int, dict[str, Any]]:
         if method == "POST" and action in LIVE_ACTIONS:
             if not self.can_save:
-                what = {"save": "saving", "import": "importing a workshop"}.get(action, "rmstory " + action)
+                what = {"save": "saving", "import": "importing a workshop", "deploy": "deploying",
+                        "deploy-stop": "deploying", "publish": "publishing to GitHub",
+                        "github-login": "publishing to GitHub"}.get(action, "rmstory " + action)
                 return 403, {"error": "{} needs the rodeo builder server".format(what)}
             if action in GITHUB_ACTIONS:
                 return self._github(action, body)
+            if action in DEPLOY_ACTIONS:
+                return self._deploy(action, body)
             if action in STORY_ACTIONS:
                 return self._story(action, body)
             if action == "import":

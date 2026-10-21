@@ -1,3 +1,8 @@
+/* Fonts shipped in fonts/ (latin subset, SIL Open Font License: fonts/OFL-*.txt). */
+@font-face { font-family: "Syne"; font-style: normal; font-weight: 400 800; font-display: swap; src: url("fonts/syne.woff2") format("woff2"); }
+@font-face { font-family: "Space Mono"; font-style: normal; font-weight: 400; font-display: swap; src: url("fonts/space-mono-400.woff2") format("woff2"); }
+@font-face { font-family: "Space Mono"; font-style: normal; font-weight: 700; font-display: swap; src: url("fonts/space-mono-700.woff2") format("woff2"); }
+
 /* Rodeo Builder — tokens from docs/stylesheets/custom.css (dark terminal look,
    green accent, Syne + Space Mono). No inline styles anywhere: every rule is here. */
 

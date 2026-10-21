@@ -203,8 +203,8 @@ else `RODEO_LABINABOX_PATH`, else lab-in-a-box's latest release, fetched into
 Writes are guarded: the server only answers requests whose `Host` is an allowed
 name (loopback names by default), so other sites can't reach it through DNS
 rebinding, and **Save** sends a per-run token that only the served page has. The
-page runs under a Content-Security-Policy that allows its own files, Google Fonts
-and the lab-builder frame.
+page runs under a Content-Security-Policy that allows only its own files (the fonts
+ship in `htdocs/fonts/`) and the lab-builder frame.
 
 ## Publish to GitHub
 

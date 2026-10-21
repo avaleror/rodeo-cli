@@ -117,9 +117,7 @@ def page(request, monkeypatch):
         pg = context.new_page()
         errors: list[str] = []
         pg.on("pageerror", lambda exc: errors.append(str(exc)))
-        pg.on("console", lambda msg: errors.append(msg.text)
-              if msg.type == "error" and "fonts.g" not in (msg.location or {}).get("url", "") else None)
-        pg.route("https://fonts.googleapis.com/**", lambda route: route.abort())
+        pg.on("console", lambda msg: errors.append(msg.text) if msg.type == "error" else None)
         pg.goto(url)
         pg.wait_for_selector(".engine")
         yield pg
@@ -847,3 +845,17 @@ def test_instructions_repository_goes_into_the_plan(page):
     plan = yaml.safe_load(infra["my-rodeo-infrastructure/rodeo-plan.yaml"])
     assert plan["content"] == {"repo": "https://github.com/acme/labs", "ref": "v2", "path": "story", "format": "rmstory"}
     assert "rodeo content apply" in infra["my-rodeo-infrastructure/README.md"]
+
+
+@pytest.mark.parametrize("page", ["site", "live"], indirect=True)
+def test_page_loads_its_own_fonts_and_nothing_from_other_hosts(page):
+    origin = page.evaluate("location.origin")
+    seen = []
+    page.on("request", lambda req: seen.append(req.url))
+    page.reload()
+    page.wait_for_selector(".engine")
+    page.evaluate("document.fonts.ready.then(() => true)")
+    assert page.evaluate("document.fonts.check('700 16px Syne') && document.fonts.check('16px \"Space Mono\"')")
+    loaded = page.evaluate("[...document.fonts].filter((f) => f.status === 'loaded').map((f) => f.family)")
+    assert {"Syne", "Space Mono"} <= {f.strip('"') for f in loaded}
+    assert seen and all(u.startswith(origin) or u.startswith("data:") for u in seen), [u for u in seen if not u.startswith(origin)]

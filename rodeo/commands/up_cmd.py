@@ -785,4 +785,20 @@ def _deploy(lab: Path, assume_yes: bool, reconcile: bool = True) -> None:
             raise SystemExit(1)
 
     code = execute_deploy(cfg, root, reconcile=reconcile)
+    if code == 0:
+        _apply_content(cfg, lab)
     raise SystemExit(code)
+
+
+def _apply_content(cfg: dict, lab: Path) -> None:
+    """Fetch and render the plan's content: (instructions) on the deployed lab; only warns."""
+    from .. import content
+
+    try:
+        if content.content_spec(cfg) is None:
+            return
+        result = content.apply(cfg, lab)
+    except (ConfigError, RuntimeError, OSError) as exc:
+        console.print(f"[yellow]⚠  Instructions (content:) not applied: {exc}. Retry with: rodeo content apply[/yellow]")
+        return
+    console.print(f"[green]✓  Instructions rendered in {lab / content.GUIDE}[/green] ({len(result['files'])} files)")

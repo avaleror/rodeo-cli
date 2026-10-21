@@ -125,6 +125,22 @@ editor: change anything and the download keeps it; `name`, `deployment_target`
 and `story` stay in sync with the rodeo tab, and **Reset to generated** drops your
 edits. Changing the lab engine regenerates the plan, after asking.
 
+## Infrastructure and instructions
+
+The page keeps the lab (**Infrastructure**: engine, base profile, plan,
+definition, lab-in-a-box lab) apart from what students read (**Instructions**:
+chapters, story variants, translations, checks). Step 03 downloads either the
+whole rodeo or one part: **Infrastructure only** (`<name>-infrastructure.zip`,
+installable with `rodeo new --from-zip`) or **Instructions only**
+(`<name>-instructions.zip`: `story/` and `checks/`, laid out to be pushed as a
+content repository).
+
+**Instructions repository** (rodeo tab) points the plan at instructions kept in
+their own repository: the URL (`https://<host>/<owner>/<repo>[/tree/<ref>/<path>]`)
+and format become the plan's `content:` block. `rodeo up` renders them after
+the lab is up, and `rodeo content apply` updates them on a running lab without
+redeploying (see [the plan reference](reference/plan.md#content-the-labs-instructions-apart-from-its-infrastructure)).
+
 ## Install what you downloaded
 
 The zip holds one profile directory, `<name>/`, with `rodeo-plan.yaml`, the

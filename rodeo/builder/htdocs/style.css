@@ -298,6 +298,9 @@ div.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 2p
 .rm-check { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 10px 0; font-size: 12px; }
 .nc-draft { border: 1px dashed var(--line); padding: 4px 10px 8px; margin: 10px 0 4px; border-radius: 2px; }
 .textarea.brief { min-height: 64px; }
+.part-head { margin: 22px 0 -6px; font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent-ink); }
+.part-head:first-of-type { margin-top: 4px; }
+.bad-text { color: var(--coral); }
 .pub-steps { padding-left: 20px; margin: 10px 0 0; line-height: 1.6; }
 .pub-steps li { margin-bottom: 8px; }
 .popover {

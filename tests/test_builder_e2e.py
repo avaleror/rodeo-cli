@@ -811,3 +811,39 @@ def test_live_links_and_embeds_its_own_lab_builder_on_the_pages_host(page):
     page.click("#enginePanel button >> text=Open embedded lab-builder")
     src = page.locator("#embedFrame").get_attribute("src")
     assert src.startswith("http://127.0.0.1:9/lab-builder/?embed=1&origin=http%3A%2F%2F127.0.0.1%3A")
+
+
+def _zip_of(page, selector) -> tuple[str, dict[str, str]]:
+    with page.expect_download() as info:
+        page.click(selector)
+    with zipfile.ZipFile(io.BytesIO(Path(info.value.path()).read_bytes())) as zf:
+        return info.value.suggested_filename, {n: zf.read(n).decode() for n in zf.namelist()}
+
+
+def test_infrastructure_and_instructions_download_apart(page):
+    assert page.locator("#partInfra").is_visible() and page.locator("#partInstructions").is_visible()
+    page.click(".card >> text=Welcome to the rodeo")
+    name, infra = _zip_of(page, "#dlInfra")
+    assert name == "my-rodeo-infrastructure.zip"
+    assert "my-rodeo-infrastructure/rodeo-plan.yaml" in infra and not any("/story/" in n for n in infra)
+    assert "not part of this download" in infra["my-rodeo-infrastructure/README.md"]
+    name, instr = _zip_of(page, "#dlInstructions")
+    assert name == "my-rodeo-instructions.zip"
+    assert sorted(n.split("/", 1)[1] for n in instr) == ["README.md", "story/01-welcome.md", "story/chapters.yaml",
+                                                         "story/stories/first-ride.yaml"]
+    full = _zip(page)
+    assert "my-rodeo/story/01-welcome.md" in full and "my-rodeo/rodeo-plan.yaml" in full
+
+
+def test_instructions_repository_goes_into_the_plan(page):
+    page.fill("#contentUrl", "github.com/acme/labs")
+    page.locator("#contentUrl").dispatch_event("change")
+    sync_api.expect(page.locator("#contentNote")).to_contain_text("https://")
+    page.fill("#contentUrl", "https://github.com/acme/labs/tree/v2/story")
+    page.locator("#contentUrl").dispatch_event("change")
+    sync_api.expect(page.locator("#contentNote")).to_contain_text("The plan gets content: https://github.com/acme/labs @ v2 /story")
+    page.click(".card >> text=Welcome to the rodeo")
+    _, infra = _zip_of(page, "#dlInfra")
+    plan = yaml.safe_load(infra["my-rodeo-infrastructure/rodeo-plan.yaml"])
+    assert plan["content"] == {"repo": "https://github.com/acme/labs", "ref": "v2", "path": "story", "format": "rmstory"}
+    assert "rodeo content apply" in infra["my-rodeo-infrastructure/README.md"]

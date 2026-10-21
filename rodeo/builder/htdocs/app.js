@@ -52,6 +52,7 @@ const state = {
   variant: "", extraVariants: [], query: "", open: {}, newWorkshop: "custom", fileView: "rodeo-plan.yaml",
   editing: -1, edTab: "spans", drag: null, cursor: -1, undo: null, copied: false,
   strings: {}, story: null, trLang: "", trEngine: "", trEdit: null, busy: "", rmCheck: null, imported: [],
+  contentUrl: "", contentFormat: "rmstory",
 };
 
 let toastTimer = 0;
@@ -72,7 +73,7 @@ function toast(msg, bad, undo) {
 
 const DRAFT_KEY = "rodeo-builder-draft-v1";
 const DRAFT_FIELDS = ["engine", "base", "planEdited", "mode", "importProfile", "labAddons", "labJson", "chapters",
-  "custom", "name", "title", "lang", "target", "variant", "extraVariants", "strings", "imported"];
+  "custom", "name", "title", "lang", "target", "variant", "extraVariants", "strings", "imported", "contentUrl", "contentFormat"];
 let draftOn = true, draftTimer = 0;
 
 function scheduleDraft() {
@@ -204,7 +205,22 @@ function baseProfile() {
 
 function story() { return { language: state.lang, id: state.variant }; }
 
-function planOptions() { return { name: state.name, target: state.target, story: story() }; }
+// The plan's content: (where the instructions live) from the Instructions repository field; null when
+// the field is empty or not a repository URL (contentError() says why).
+function contentSource() {
+  if (!state.contentUrl.trim()) return null;
+  try {
+    const s = RB.parseSourceUrl(state.contentUrl);
+    return { repo: "https://" + s.host + "/" + s.owner + "/" + s.repo, ref: s.ref, path: s.path, format: state.contentFormat };
+  } catch (_) { return null; }
+}
+
+function contentError() {
+  if (!state.contentUrl.trim()) return "";
+  try { RB.parseSourceUrl(state.contentUrl); return ""; } catch (err) { return err.message; }
+}
+
+function planOptions() { return { name: state.name, target: state.target, story: story(), content: contentSource() }; }
 
 function generatedPlan() {
   if (liabImported()) return RB.planFromBase(importBase().plan, planOptions());
@@ -222,6 +238,7 @@ function rodeo() {
     name: state.name, title: state.title, base: baseProfile(), plan: plan(),
     definition: isLiab() && !liabImported() ? engine().definition : "",
     chapters: state.chapters, variants: allVariants(), story: story(), labJson: state.labJson, strings: state.strings,
+    content: contentSource(),
   };
 }
 
@@ -653,11 +670,16 @@ function renderReview() {
     }),
     renderRmstoryCheck(),
     el("span", { class: "label", text: plural(files.length, "file") + " in " + name + ".zip" }),
-    el("ul", { class: "zip-files" }, files.map((f) => el("li", { class: f.startsWith("story/") ? "story" : "", text: name + "/" + f }))),
+    el("ul", { class: "zip-files" }, files.map((f) => el("li", { class: RB.partOf(f) === "instructions" ? "story" : "",
+      title: RB.partOf(f), text: name + "/" + f }))),
     el("div", { class: "term install" }, el("div", { class: "term-bar" }, el("i"), el("i"), el("i"), el("span", { text: "install" }), copy),
       el("pre", { text: cmd })),
     el("div", { class: "review-foot" },
-      el("button", { class: "btn primary" + (n ? "" : " dim"), type: "button", text: "Download " + name + ".zip", onclick: download }),
+      el("button", { class: "btn primary" + (n ? "" : " dim"), type: "button", text: "Download " + name + ".zip", onclick: () => download() }),
+      el("button", { class: "btn outline sm", type: "button", id: "dlInfra", text: "Infrastructure only",
+        title: "The lab: plan, definition, lab-in-a-box lab (" + name + "-infrastructure.zip)", onclick: () => download("infrastructure") }),
+      el("button", { class: "btn outline sm" + (n ? "" : " dim"), type: "button", id: "dlInstructions", text: "Instructions only",
+        title: "The chapters and checks, laid out as a content repository (" + name + "-instructions.zip)", onclick: () => download("instructions") }),
       state.server && state.server.save ? el("span", { class: "muted", text: "Save to profiles (top right) writes it straight into your profiles." }) : null));
 }
 
@@ -743,6 +765,13 @@ function renderSettings() {
     type: "button", class: "chip" + (state.variant === v ? " on" : ""), "aria-pressed": String(state.variant === v),
     text: label, onclick: () => { state.variant = v; render(); } })));
   renderNewStory();
+  $("#contentUrl").value = state.contentUrl;
+  $("#contentFormat").value = state.contentFormat;
+  const c = contentSource(), bad = contentError();
+  $("#contentNote").textContent = bad ? bad : c ? "The plan gets content: " + c.repo + (c.ref ? " @ " + c.ref : "") + (c.path ? " /" + c.path : "")
+    + ". rodeo up renders it; rodeo content apply updates it on a running lab."
+    : "Optional. Empty: the instructions are this rodeo's own story/ (the chapters above).";
+  $("#contentNote").classList.toggle("bad-text", !!bad);
   const mins = state.chapters.reduce((n, c) => n + (c.mins || 0), 0);
   $("#estimate").textContent = "Estimated run time: " + mins + " min (" + state.chapters.length + " chapters)";
   $("#counts").textContent = state.chapters.length + " chapters · " + mins + " min · " + state.engine;
@@ -1377,21 +1406,23 @@ function bindEditor() {
 
 // ── download ────────────────────────────────────────────────────────────
 
-function download() {
-  if (!state.chapters.length) { toast("Add at least one chapter first.", true); return; }
+// The whole rodeo, or one part ("infrastructure": the lab; "instructions": story/ and checks/).
+function download(part) {
+  part = RB.PARTS.includes(part) ? part : "";
+  if (!state.chapters.length && part !== "infrastructure") { toast("Add at least one chapter first.", true); return; }
   const name = RB.slugify(state.name);
   if (!name) { toast("Give the rodeo a name first", true); $("#name").focus(); return; }
   state.name = name;
-  const r = rodeo();
-  const warnings = RB.validate(r.chapters);
-  const entries = RB.files(r).map((f) => ({ ...f, path: name + "/" + f.path }));
+  const r = rodeo(), file = name + (part ? "-" + part : "");
+  const warnings = part === "infrastructure" ? [] : RB.validate(r.chapters);
+  const entries = (part ? RB.partFiles(r, part) : RB.files(r)).map((f) => ({ ...f, path: file + "/" + f.path }));
   const blob = new Blob([RB.zip(entries)], { type: "application/zip" });
-  const a = el("a", { href: URL.createObjectURL(blob), download: name + ".zip" });
+  const a = el("a", { href: URL.createObjectURL(blob), download: file + ".zip" });
   document.body.append(a);
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-  toast(name + ".zip: " + entries.length + " files" + (warnings.length ? " · " + warnings.length + " span warnings (Fix ✎ in the review list)" : ""), warnings.length > 0);
+  toast(file + ".zip: " + entries.length + " files" + (warnings.length ? " · " + warnings.length + " span warnings (Fix ✎ in the review list)" : ""), warnings.length > 0);
 }
 
 // ── save (live server only) ─────────────────────────────────────────────
@@ -1579,6 +1610,8 @@ function bind() {
   $("#lang").replaceChildren(...RB.LANGUAGES.map((l) => el("option", { value: l, text: l + (l === RB.SOURCE_LANGUAGE ? " (source)" : "") })));
   $("#lang").addEventListener("change", (ev) => { state.lang = ev.target.value; render(); });
   $("#target").addEventListener("change", (ev) => { state.target = ev.target.value; render(); });
+  $("#contentUrl").addEventListener("change", (ev) => { state.contentUrl = ev.target.value.trim(); render(); });
+  $("#contentFormat").addEventListener("change", (ev) => { state.contentFormat = ev.target.value; render(); });
   document.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => {
     document.querySelectorAll("[data-tab]").forEach((x) => { x.classList.toggle("on", x === b); x.setAttribute("aria-selected", String(x === b)); });
     for (const t of ["rodeo", "plan", "story"]) $("#tab-" + t).hidden = t !== b.dataset.tab;

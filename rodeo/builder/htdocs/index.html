@@ -48,9 +48,11 @@
         <button id="draftRestore" class="btn primary sm" type="button">Restore</button>
         <button id="draftFresh" class="btn sm" type="button">Start fresh</button>
       </div>
+      <p class="part-head" id="partInfra">Infrastructure <span class="muted">· the lab: rodeo up</span></p>
       <h2 class="sec"><span class="num">01</span> Lab engine <span id="engineNow" class="now"></span></h2>
       <div id="engines" class="engines" role="radiogroup" aria-label="Lab engine"></div>
       <div id="enginePanel" class="panel"></div>
+      <p class="part-head" id="partInstructions">Instructions <span class="muted">· the chapters: rodeo content apply</span></p>
       <h2 class="sec"><span class="num">02</span> Chapters <span id="coverage" class="status"></span></h2>
       <p id="insertHint" class="hint"></p>
       <div id="engineBanner" class="banner bad" role="alert" hidden></div>
@@ -79,6 +81,16 @@
         </select>
         <span class="label">Story variant</span>
         <div id="variants" class="chips"></div>
+        <label class="label" for="contentUrl">Instructions repository</label>
+        <input id="contentUrl" class="input mono" type="url" autocomplete="off" spellcheck="false"
+          placeholder="https://github.com/owner/repo/tree/main/story">
+        <label class="sr-only" for="contentFormat">Instructions format</label>
+        <select id="contentFormat" class="select">
+          <option value="rmstory">rmstory story/</option>
+          <option value="instruqt">Instruqt track</option>
+          <option value="markdown">markdown</option>
+        </select>
+        <p id="contentNote" class="note muted"></p>
         <div id="newStory" class="nc-draft" hidden>
           <label class="label" for="nsTheme">New story</label>
           <input id="nsTheme" class="input" maxlength="500" autocomplete="off" placeholder="What the new story is about, e.g. a heist on a space station">

@@ -20,7 +20,7 @@ class UiExtensionsMixin:
         """
         script = (
             "set -euo pipefail\n"
-            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+            f"export KUBECONFIG={self.KUBECONFIG}\n"
             "cat <<'__EXT_REPOS__' | kubectl apply -f -\n"
             "---\n"
             "apiVersion: catalog.cattle.io/v1\n"
@@ -115,7 +115,7 @@ class UiExtensionsMixin:
     def _ui_extension_version(self, name: str, ns: str) -> str:
         """Installed UIPlugin version, or '' if the extension is not present."""
         script = (
-            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+            f"export KUBECONFIG={self.KUBECONFIG}\n"
             f"kubectl -n {ns} get uiplugins.catalog.cattle.io {name} "
             "-o jsonpath='{.spec.plugin.version}' 2>/dev/null || true\n"
         )
@@ -143,7 +143,7 @@ class UiExtensionsMixin:
             )
         script = (
             "set -e\n"
-            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+            f"export KUBECONFIG={self.KUBECONFIG}\n"
             f"{create_block}"
             f"kubectl patch clusterrepo {repo_name} --type=merge "
             f"-p '{{\"spec\":{{\"forceUpdate\":\"{ts}\"}}}}'\n"
@@ -172,7 +172,7 @@ class UiExtensionsMixin:
     def _ext_repo_downloaded(self, repo_name: str, since: str) -> bool:
         """True once the ClusterRepo's index has downloaded at/after `since` (UTC 'Z' timestamps sort lexicographically)."""
         script = (
-            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+            f"export KUBECONFIG={self.KUBECONFIG}\n"
             f"kubectl get clusterrepo {repo_name} -o "
             "jsonpath='{.status.downloadTime}' 2>/dev/null || true\n"
         )

@@ -489,11 +489,17 @@ def downstream_node_names(cfg: dict) -> set[str]:
 
 
 def harvester_vm_names(cfg: dict) -> list[str]:
-    """Harvester node names by the shared name heuristic.
+    """Harvester node names: the definition's ``harvester_node_names`` when set.
 
-    Everything that is not the Rancher VM, the EIB VM, an edge node or a
-    downstream cluster node.
+    Without it, the shared name heuristic: everything that is not the Rancher
+    VM, the EIB VM, an edge node or a downstream cluster node. Profiles with
+    other VM names declare the list (suse-telco and lab-in-a-box declare []),
+    or their mgmt/site/vm1 VMs were reported as Harvester nodes (live-caught
+    2026-10-14: "Harvester password" on a suse-telco done panel).
     """
+    declared = cfg.get("harvester_node_names")
+    if declared is not None:
+        return [n for n in declared if n in cfg.get("vms", {})]
     skip = downstream_node_names(cfg)
     return [
         n for n in cfg.get("vms", {})

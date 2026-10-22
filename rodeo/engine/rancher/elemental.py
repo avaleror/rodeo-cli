@@ -23,7 +23,7 @@ class ElementalMixin:
         namespace = "cattle-elemental-system"
         script = (
             "set -euo pipefail\n"
-            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+            f"export KUBECONFIG={self.KUBECONFIG}\n"
             f"helm upgrade --install elemental-operator-crds"
             f" oci://registry.suse.com/rancher/elemental-operator-crds-chart"
             f" --version {self.elemental_crds_version}"
@@ -122,7 +122,7 @@ class ElementalMixin:
         combined = "---\n" + "\n---\n".join(manifests)
         script = (
             "set -euo pipefail\n"
-            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+            f"export KUBECONFIG={self.KUBECONFIG}\n"
             f"cat <<'__ELEMENTAL_MANIFEST__' | kubectl apply -f -\n"
             f"{combined}\n"
             "__ELEMENTAL_MANIFEST__\n"

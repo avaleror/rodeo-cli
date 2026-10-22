@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import Any
 
 import click
 from rich.console import Console
@@ -245,6 +246,18 @@ def _deploy_plain(
     # log output (the old \r trick smeared lines). Non-TTY (CI) gets the
     # periodic LogLines the poll loops already emit, so nothing is lost.
     status = console.status("") if console.is_terminal else None
+    try:
+        return _print_events(runner, status)
+    except KeyboardInterrupt:
+        runner.terminate()
+        if status is not None:
+            status.stop()
+        console.print("[yellow]Interrupted: the running step was stopped.[/yellow]")
+        return 130
+
+
+def _print_events(runner: DeployRunner, status: Any) -> int:
+    """Print the runner's events until it ends; returns the exit code."""
     status_started = False
 
     def _stop_status() -> None:

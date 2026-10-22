@@ -14,6 +14,7 @@ See also: [Get started](get-started.md) (single host), [Architecture](architectu
 | **F0** | Shipped | Machine-readable host CLI | `rodeo doctor --output json`, `rodeo status --output json` |
 | **F1** | Shipped | Inventory + read-only fan-out | `rodeo fleet doctor`, `rodeo fleet status` |
 | **F2** | Shipped | Deploy / retry / access sheet | `rodeo fleet deploy`, `retry`, `access` |
+| **F2.2** | Shipped | The whole flow in one command | `rodeo fleet up` |
 | **F2.1** | Shipped | Failure forensics | `rodeo fleet diagnose` |
 | **F4a** | Shipped | AWS host-acquire, 6 h dead-man switch per host | `rodeo fleet provision`, `deprovision` |
 | **F4b–d** | Roadmap | GCP → Vultr BM → Hetzner | (planned) |
@@ -179,6 +180,33 @@ rodeo fleet status -f workshop.yaml --host student-01 -j 4
   status refreshes per-host job states for later retry.
 
 ---
+
+## One command: `rodeo fleet up`
+
+`rodeo fleet up` runs the whole instructor flow below in order: `provision`,
+`deploy`, `portal up`, wait until every lab is complete, `open-access`,
+`portal publish` and `portal info` (or `access` without a portal).
+
+```bash
+# a new workshop: writes workshop.yaml, then deploys it
+rodeo fleet up --profile virt-workshop-aws --count 3 \
+  --guide-url https://avaleror.github.io/suse-virt-workshop/
+
+# an existing inventory, or resuming a run that stopped
+rodeo fleet up -f workshop.yaml
+```
+
+With `--profile` and `--count` it writes `-f` (default `workshop.yaml`, which
+must not exist yet): AWS in `--region` (default `RODEO_AWS_REGION`, else
+eu-north-1), the profile's `--instance-tier` (default `recommended`) unless
+`--instance-type` is given, the region's default VPC public subnet unless
+`--subnet-id` is given, `--ttl-hours` (default 6) and the claim portal unless
+`--no-portal`. Every later `rodeo fleet` command uses that same file.
+
+It waits up to `--wait-minutes` (default 90) and stops at the first failed lab
+with the `diagnose` / `retry --failed-only` commands to run. Running
+`rodeo fleet up -f workshop.yaml` again resumes: hosts are reused and finished
+labs are skipped. Tear down with `rodeo fleet deprovision -f workshop.yaml --yes`.
 
 ## F2: deploy, retry, access
 

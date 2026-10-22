@@ -128,7 +128,8 @@ def test_builder_command_starts_and_stops_the_lab_builder(monkeypatch, tmp_path,
     monkeypatch.setattr(labbuilder, "start", start)
     port = _free_port()
     r = CliRunner().invoke(builder_cmd, ["--port", "0", "--no-open", "--no-fetch-sources", "--labinabox",
-                                         str(labinabox_checkout), "--lab-builder-port", str(port)])
+                                         str(labinabox_checkout), "--start-lab-builder",
+                                         "--lab-builder-port", str(port)])
     assert r.exit_code == 0, r.output
     assert seen["liab"]["builder_url"] == "http://{host}:%d/" % port
     assert re.search(r"lab-in-a-box lab-builder .*→ http://127\.0\.0\.1:%d/" % port, r.output)
@@ -145,10 +146,27 @@ def test_builder_command_uses_a_given_lab_builder(monkeypatch, labinabox_checkou
     assert seen["liab"]["builder_url"] == "https://automation.example:8443/"
 
 
+def test_builder_command_links_the_published_lab_builder_by_default(monkeypatch, labinabox_checkout):
+    seen = {}
+    _serve_once(monkeypatch, seen)
+    monkeypatch.setattr(labbuilder, "start", lambda *a: pytest.fail("must not start a lab-builder"))
+    r = CliRunner().invoke(builder_cmd, ["--port", "0", "--no-open", "--no-fetch-sources", "--labinabox", str(labinabox_checkout)])
+    assert r.exit_code == 0, r.output
+    assert seen["liab"]["builder_url"].startswith("https://rmahique.github.io/lab-in-a-box/lab-builder/")
+
+
+def test_builder_command_refuses_to_start_the_lab_builder_off_loopback(monkeypatch):
+    monkeypatch.setattr(labbuilder, "start", lambda *a: pytest.fail("must not start a lab-builder"))
+    r = CliRunner().invoke(builder_cmd, ["--host", "0.0.0.0", "--expose", "--start-lab-builder", "--no-open"])
+    assert r.exit_code == 2
+    assert "--start-lab-builder needs a loopback --host" in r.output
+
+
 def test_builder_command_falls_back_to_the_published_lab_builder(monkeypatch, labinabox_checkout):
     seen = {}
     _serve_once(monkeypatch, seen)
-    r = CliRunner().invoke(builder_cmd, ["--port", "0", "--no-open", "--no-fetch-sources", "--labinabox", str(labinabox_checkout)])
+    r = CliRunner().invoke(builder_cmd, ["--port", "0", "--no-open", "--no-fetch-sources", "--labinabox",
+                                         str(labinabox_checkout), "--start-lab-builder"])
     assert r.exit_code == 0, r.output
     assert "linking to the published lab-builder" in r.output
     assert seen["liab"]["builder_url"].startswith("https://rmahique.github.io/lab-in-a-box/lab-builder/")

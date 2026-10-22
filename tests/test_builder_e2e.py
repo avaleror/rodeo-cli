@@ -833,6 +833,16 @@ def test_live_links_and_embeds_its_own_lab_builder_on_the_pages_host(page):
     assert src.startswith("http://127.0.0.1:9/lab-builder/?embed=1&origin=http%3A%2F%2F127.0.0.1%3A")
 
 
+@pytest.mark.parametrize("page", ["live_local_lab_builder"], indirect=True)
+def test_live_takes_the_lab_its_own_lab_builder_hands_back(page):
+    handback = ("<script>parent.postMessage({type: 'labinabox:lab', lab: {nodes: {n1: {addons: ['smlm']}}}}, '*')"
+                "</script>")
+    page.route("http://127.0.0.1:9/**", lambda route: route.fulfill(body=handback, content_type="text/html"))
+    page.click(".engine >> text=lab-in-a-box")
+    page.click(".seg button >> text=Embed here")
+    page.click("#enginePanel button >> text=Open embedded lab-builder")
+    sync_api.expect(page.locator("#toastText")).to_have_text("Lab from the lab-builder: smlm")
+    assert page.locator("#embedOverlay").is_hidden()
 def _zip_of(page, selector) -> tuple[str, dict[str, str]]:
     with page.expect_download() as info:
         page.click(selector)

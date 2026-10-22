@@ -79,20 +79,25 @@ def _labinabox_checkout(given: Path | None) -> tuple[Path | None, str, str]:
               help="lab-in-a-box checkout for the catalogue (default: RODEO_LABINABOX_PATH, else the latest release).")
 @click.option("--lab-builder-url", default=None, envvar="RODEO_LAB_BUILDER_URL", show_envvar=True,
               help="lab-in-a-box lab-builder the page links to and embeds, for example one you run on an "
-                   "automation node. Default: start the lab-in-a-box checkout's own (dynamic) lab-builder "
-                   "on --lab-builder-port; the published one (" + LAB_BUILDER_URL + ") when that can't run.")
+                   "automation node. Default: the published one (" + LAB_BUILDER_URL + "), or the "
+                   "checkout's own with --start-lab-builder.")
+@click.option("--start-lab-builder", is_flag=True,
+              help="Start the lab-in-a-box checkout's own (dynamic) lab-builder on --lab-builder-port. Loopback "
+                   "--host only: it has no login or token, so any site you browse can save labs through it.")
 @click.option("--lab-builder-port", default=labbuilder.DEFAULT_PORT, show_default=True, type=click.IntRange(1, 65535),
-              help="Port for the lab-builder rodeo builder starts (same address as --host).")
+              help="Port for the lab-builder --start-lab-builder starts (same address as --host).")
 @click.option("--source", "sources", multiple=True, metavar="ID=CHECKOUT",
               help="Local checkout for one chapter source in rodeo/builder/chapter_sources.yaml (repeatable).")
 @click.option("--no-fetch-sources", is_flag=True, help="List only the chapter sources given with --source.")
 @click.option("--open/--no-open", "open_browser", default=True, help="Open the page in a browser.")
 def builder_cmd(bind: str, port: int, expose: bool, allow_hosts: tuple[str, ...], labinabox: Path | None,
-                lab_builder_url: str | None, lab_builder_port: int, sources: tuple[str, ...], no_fetch_sources: bool,
-                open_browser: bool) -> None:
+                lab_builder_url: str | None, start_lab_builder: bool, lab_builder_port: int,
+                sources: tuple[str, ...], no_fetch_sources: bool, open_browser: bool) -> None:
     """Serve the Rodeo Builder on BIND:PORT until Ctrl-C."""
     if not _is_loopback(bind) and not expose:
         raise click.UsageError(f"--host {bind} is reachable from other machines; add --expose to allow that")
+    if start_lab_builder and not _is_loopback(bind):
+        raise click.UsageError("--start-lab-builder needs a loopback --host: the lab-builder has no login")
     given: dict[str, Path] = {}
     for item in sources:
         sid, sep, path = item.partition("=")
@@ -111,7 +116,7 @@ def builder_cmd(bind: str, port: int, expose: bool, allow_hosts: tuple[str, ...]
             for sid, err in errors.items():
                 console.print(f"[yellow]⚠  chapter source {sid} left out: {err}[/yellow]")
         local_builder = None
-        if not lab_builder_url and checkout is not None:
+        if start_lab_builder and not lab_builder_url and checkout is not None:
             try:
                 local_builder = labbuilder.start(checkout, bind, lab_builder_port)
                 lab_builder_url = local_builder.url

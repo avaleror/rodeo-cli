@@ -180,10 +180,13 @@ records the repository, ref and commit. `--force` re-fetches.
 
 `rodeo builder` serves `rodeo/builder/htdocs/` and answers the page's requests
 with `rodeo/builder/api.py` (`rodeo/builder/server.py`, standard library only).
-It links to and embeds lab-in-a-box's dynamic lab-builder: the checkout's own
-`webui/run-local.py`, started next to it on `--lab-builder-port` and opened on the
-host name the browser used for the builder, unless `--lab-builder-url` names one
-(the published static lab-builder when the checkout has none or it can't start).
+It links to and embeds lab-in-a-box's published static lab-builder, or the one
+`--lab-builder-url` names. With `--start-lab-builder` it starts the checkout's own
+dynamic lab-builder (`webui/run-local.py`) next to it on `--lab-builder-port`,
+opened on the host name the browser used for the builder (the published one when
+the checkout has none or it can't start). That lab-builder has no login or token,
+so any site you browse can save labs through it: it is off by default and only
+allowed on a loopback `--host`.
 At start it fetches the chapter sources (a source that can't be fetched is left
 out, with a warning) and the lab-in-a-box catalogue: `--labinabox <checkout>`,
 else `RODEO_LABINABOX_PATH`, else lab-in-a-box's latest release, fetched into
@@ -195,8 +198,9 @@ else `RODEO_LABINABOX_PATH`, else lab-in-a-box's latest release, fetched into
 | `--expose` | off | Required for a non-loopback `--host`: anyone who reaches it can save profiles as you. **Publish** then uses the github.com pages, never this host's GitHub login. |
 | `--allow-host NAME` | | Extra `Host` name to accept (the name or IP clients use with `--expose`). |
 | `--labinabox` | latest release | lab-in-a-box checkout for the catalogue and the lab-builder. |
-| `--lab-builder-url URL` (`RODEO_LAB_BUILDER_URL`) | start the checkout's lab-builder | A lab-builder you already run (for example on an automation node) for the page to link to and embed; nothing is started. |
-| `--lab-builder-port` | `8677` | Port of the lab-builder `rodeo builder` starts, on the same address as `--host`. |
+| `--lab-builder-url URL` (`RODEO_LAB_BUILDER_URL`) | the published lab-builder | A lab-builder you already run (for example on an automation node) for the page to link to and embed; nothing is started. |
+| `--start-lab-builder` | off | Start the checkout's own dynamic lab-builder. Loopback `--host` only. |
+| `--lab-builder-port` | `8677` | Port of the lab-builder `--start-lab-builder` starts, on the same address as `--host`. |
 | `--source ID=CHECKOUT`, `--no-fetch-sources` | fetch all | Local chapter sources, or none. |
 | `--open/--no-open` | open | Open the page in a browser. |
 

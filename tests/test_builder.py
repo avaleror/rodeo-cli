@@ -275,7 +275,8 @@ def test_chapter_sources_reject_incomplete_entries(tmp_path, monkeypatch):
 def test_source_fetch_commands_are_sparse_and_shallow(tmp_path):
     virt = next(s for s in discovery.chapter_sources() if s["id"] == "virt-workshop")
     clone, sparse = discovery.source_fetch_commands(virt, tmp_path / "v")
-    assert clone[:8] == ["git", "clone", "-q", "--depth", "1", "--filter=blob:none", "--sparse", "--branch"]
+    assert clone[:10] == ["git", "clone", "-q", "--depth", "1", "--filter=blob:none", "--sparse",
+                          "-c", "core.symlinks=false", "--branch"]
     assert sparse[-2:] == ["/docs/exercises/*.md", "/checks/*"]
     smlm = next(s for s in discovery.chapter_sources() if s["id"] == "smlm-workshop")
     assert discovery.source_fetch_commands(smlm, tmp_path / "s")[1][-2:] == [

@@ -133,6 +133,7 @@ rodeo picks the region (`eu-north-1`, or `$RODEO_AWS_REGION`), the default VPC s
 | `instances` | Several copies of a lab-in-a-box lab on one host: `instances new <profile> --count N`, `instances list` |
 | `export` | Render the lab spec for another deployer: currently lab-in-a-box `lab.json` (`type: lab-in-a-box` labs deploy through it directly) |
 | `story` | Render the workshop hand-out (`story render`): languages and story variants via rmstory, topology facts filled in |
+| `content` | The lab's instructions apart from its infrastructure: `content apply` fetches the plan's `content:` and renders `<lab>/guide/` without redeploying |
 | `deploy` | Run the phase pipeline. Flags: `--from PHASE`, `--force`, `--reconcile` (default on) / `--no-reconcile`, `--check`, `--no-tui`, `-P key=value` |
 | `status` | VM states, VIP reachability, phase progress |
 | `stop` | Graceful stop in reverse definition order (infra-aware) |

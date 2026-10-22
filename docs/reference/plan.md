@@ -436,6 +436,43 @@ English source: the payoff screen never fails.
 
 ---
 
+## content: the lab's instructions, apart from its infrastructure
+
+A plan can name where its instructions live instead of carrying them in the
+profile. The environment (`rodeo up`) and the instructions (`rodeo content
+apply`) then deploy separately: updating the instructions never redeploys the
+lab.
+
+```yaml
+content:
+  repo: https://github.com/<owner>/<repo>   # https, public, no credentials
+  ref: main             # branch, tag or commit (default: the default branch)
+  path: story           # directory in the repository (default: the root)
+  format: rmstory       # rmstory | instruqt | markdown
+  facts:                # instruqt: values for [[ Instruqt-Var key="..." ]]
+    SMLM_URL: https://smlm.rodeo.lab
+  replace:              # literal text swaps when rendering
+    "smlm.example.com": smlm.rodeo.lab
+```
+
+`rodeo content apply` (run from the lab directory) fetches the content into
+`<lab>/content/`, records the commit in `<lab>/content.lock` and renders the
+guide into `<lab>/guide/` (owner-only files: facts can hold lab passwords):
+
+| format | read from `<path>` | guide |
+|---|---|---|
+| `rmstory` | `*.md`, `chapters.yaml`, `stories/`, `strings/` | `guide.md`, rendered like `rodeo story render` |
+| `instruqt` | `<challenge>/assignment.md` | one `<challenge>.md` each, `facts` and `replace` applied |
+| `markdown` | `*.md` | one file each, `replace` applied |
+
+`rodeo up` applies it after a successful deploy; a failure there only warns.
+`rodeo content show` prints the block and the last fetched commit. An rmstory
+content is also what `rodeo story render` reads when the lab has no `story/`
+of its own. The `workshop:` block (Instruqt tracks for lab-in-a-box labs) and an
+in-profile `story/` keep working as before.
+
+---
+
 ## lab_in_a_box: deploying with, or exporting to, lab-in-a-box
 
 [lab-in-a-box](https://github.com/SUSE-Technical-Marketing/lab-in-a-box) builds

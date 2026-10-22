@@ -719,9 +719,11 @@ def test_smlm_workshop_lab_json_only_uses_known_lab_in_a_box_fields(tmp_path):
 
 def test_smlm_workshop_lab_json_has_every_required_lab_in_a_box_field(tmp_path):
     lab, _ = build_lab_json(_smlm_cfg(tmp_path, FULL_SECRETS))
-    every_node_has_image = all(n.get("ISO_IMAGE") for n in lab["nodes"].values())
+    image = {"SOURCE_IMAGE", "ISO_IMAGE"}  # lab-in-a-box reads ISO_IMAGE when SOURCE_IMAGE is unset
+    every_node_has_image = all(image & set(n) for n in lab["nodes"].values())
     missing = [f"common.{k}" for k in _SCHEMA["required"]["common"]
-               if k not in lab["common"] and not (k == "ISO_IMAGE" and every_node_has_image)]
+               if not (image & set(lab["common"]) if k in image else k in lab["common"])
+               and not (k in image and every_node_has_image)]
     missing += [f"nodes.{n}.{k}" for n, v in lab["nodes"].items()
                 for k in _SCHEMA["required"]["nodes"] if k not in v]
     assert missing == []
@@ -740,13 +742,21 @@ def test_unknown_fields_reports_what_an_older_lab_in_a_box_lacks():
 
     old = {"common": ["ISO_IMAGE"], "nodes": ["myip", "addons"], "kclusters": [],
            "addons": {"smlm": ["smlm_admin_pass"]}}
-    lab = {"common": {"ISO_IMAGE": "x", "ISO_URL": "u"},
+    lab = {"common": {"ISO_IMAGE": "x", "VM_ROOT_PASS": "p"},
            "nodes": {"a": {"myip": "1", "ssh_pwauth": "true",
                            "addons": ["smlm", {"client_registration": {"x": 1}}]}},
            "smlm": {"smlm_admin_pass": "p", "smlm_preinstalled": "true"}}
     assert unknown_fields(lab, old) == [
-        "common.ISO_URL", "nodes.a.ssh_pwauth", "nodes.a.addons.client_registration",
+        "common.VM_ROOT_PASS", "nodes.a.ssh_pwauth", "nodes.a.addons.client_registration",
         "smlm.smlm_preinstalled"]
+
+
+def test_unknown_fields_accepts_the_image_download_fields():
+    from rodeo.labinabox import unknown_fields
+
+    lab = {"common": {"ISO_IMAGE": "leap.qcow2", "ISO_URL": "https://x/leap.qcow2", "ISO_SHA256_URL": "https://x/s"},
+           "nodes": {"a": {"ISO_IMAGE": "sp7.qcow2", "ISO_URL": "https://x/sp7.qcow2", "ISO_SHA256": "0" * 64}}}
+    assert "ISO_URL" not in _SCHEMA["common"] and unknown_fields(lab, _SCHEMA) == []
 
 
 

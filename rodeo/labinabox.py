@@ -52,6 +52,11 @@ LIAB_ADDONS = frozenset({
     "nv-demo-helm", "nv_testing", "rancher", "struts_demo", "suma", "wordpress",
 })
 
+# Base image download fields (common and nodes) lab-in-a-box reads without
+# declaring them in its schema: setup_lab.py fetches ISO_URL into ISO_LOC and
+# verifies it against ISO_SHA256 or the digest at ISO_SHA256_URL.
+IMAGE_DOWNLOAD_FIELDS = frozenset({"ISO_URL", "ISO_SHA256_URL"})
+
 # Node flavors that form the management Kubernetes cluster in rodeo profiles.
 _MGMT_FLAVORS = frozenset({"rancher"})
 
@@ -155,12 +160,14 @@ def unknown_fields(lab: dict, schema: dict) -> list[str]:
     `schema` is {"common": [...], "nodes": [...], "kclusters": [...],
     "addons": {name: [...]}} — the installed lab-in-a-box's own, or the test
     snapshot. An addon section/override for an addon the schema lacks is
-    reported as the addon itself.
+    reported as the addon itself. IMAGE_DOWNLOAD_FIELDS are never reported.
     """
     addons = schema.get("addons", {})
-    unknown = [f"common.{k}" for k in lab.get("common", {}) if k not in schema["common"]]
+    common = set(schema["common"]) | IMAGE_DOWNLOAD_FIELDS
+    node_fields = set(schema["nodes"]) | IMAGE_DOWNLOAD_FIELDS
+    unknown = [f"common.{k}" for k in lab.get("common", {}) if k not in common]
     for name, node in lab.get("nodes", {}).items():
-        unknown += [f"nodes.{name}.{k}" for k in node if k not in schema["nodes"]]
+        unknown += [f"nodes.{name}.{k}" for k in node if k not in node_fields]
         for entry in node.get("addons", []):
             for addon, overrides in (entry.items() if isinstance(entry, dict) else [(entry, {})]):
                 if addon not in addons:

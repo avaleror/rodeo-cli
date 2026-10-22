@@ -375,6 +375,10 @@ def validate_config(cfg: dict) -> None:
         )
     if target == "aws":
         _validate_aws_provider(cfg)
+    if cfg.get("content"):
+        from .content import content_spec
+
+        content_spec(cfg)
 
     libvirt = cfg.get("libvirt", {})
     if not isinstance(libvirt, dict):

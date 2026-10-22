@@ -124,24 +124,30 @@ def install_profile(name: str, files: list[ProfileFile], base: str | None = None
     work = Path(tempfile.mkdtemp(prefix=f".{name}.", dir=dest.parent))
     try:
         stage = work / name
-        if src:
-            shutil.copytree(src, stage)
-        else:
-            stage.mkdir()
-        for f in files:
-            target = stage / f.path
-            target.parent.mkdir(parents=True, exist_ok=True)
-            if target.is_symlink() or target.is_dir():
-                raise ValueError(f"{f.path} would replace a {'link' if target.is_symlink() else 'directory'} of the base")
-            target.write_bytes(f.data)
-            target.chmod(0o755 if f.executable else 0o644)
-        _normalize(stage / "rodeo-plan.yaml", name)
+        write_rodeo(stage, name, files, src)
         if dest.exists():
             shutil.rmtree(dest)
         stage.rename(dest)
     finally:
         shutil.rmtree(work, ignore_errors=True)
     return dest
+
+
+def write_rodeo(stage: Path, name: str, files: list[ProfileFile], src: Path | None) -> None:
+    """Create *stage* from the base profile directory *src* (or empty) with *files* laid over it
+    and the plan normalized for *name*. *files* must have passed :func:`check_files`."""
+    if src:
+        shutil.copytree(src, stage)
+    else:
+        stage.mkdir()
+    for f in files:
+        target = stage / f.path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.is_symlink() or target.is_dir():
+            raise ValueError(f"{f.path} would replace a {'link' if target.is_symlink() else 'directory'} of the base")
+        target.write_bytes(f.data)
+        target.chmod(0o755 if f.executable else 0o644)
+    _normalize(stage / "rodeo-plan.yaml", name)
 
 
 def _normalize(plan: Path, name: str) -> None:

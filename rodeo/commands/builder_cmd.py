@@ -125,7 +125,8 @@ def builder_cmd(bind: str, port: int, expose: bool, allow_hosts: tuple[str, ...]
         lab_builder_url = lab_builder_url or LAB_BUILDER_URL
         try:
             api = Api(checkout, lab_builder_url, liab_version, checkouts, can_save=True,
-                      labinabox_missing=liab_missing, can_publish=_is_loopback(bind))
+                      labinabox_missing=liab_missing, can_publish=_is_loopback(bind),
+                      can_deploy=_is_loopback(bind))
             status, liab = api.dispatch("labinabox")
             if status == 200 and liab["error"]:
                 console.print(f"[yellow]⚠  lab-in-a-box catalogue: {liab['error']}[/yellow]")

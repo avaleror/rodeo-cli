@@ -125,6 +125,22 @@ editor: change anything and the download keeps it; `name`, `deployment_target`
 and `story` stay in sync with the rodeo tab, and **Reset to generated** drops your
 edits. Changing the lab engine regenerates the plan, after asking.
 
+## Infrastructure and instructions
+
+The page keeps the lab (**Infrastructure**: engine, base profile, plan,
+definition, lab-in-a-box lab) apart from what students read (**Instructions**:
+chapters, story variants, translations, checks). Step 03 downloads either the
+whole rodeo or one part: **Infrastructure only** (`<name>-infrastructure.zip`,
+installable with `rodeo new --from-zip`) or **Instructions only**
+(`<name>-instructions.zip`: `story/` and `checks/`, laid out to be pushed as a
+content repository).
+
+**Instructions repository** (rodeo tab) points the plan at instructions kept in
+their own repository: the URL (`https://<host>/<owner>/<repo>[/tree/<ref>/<path>]`)
+and format become the plan's `content:` block. `rodeo up` renders them after
+the lab is up, and `rodeo content apply` updates them on a running lab without
+redeploying (see [the plan reference](reference/plan.md#content-the-labs-instructions-apart-from-its-infrastructure)).
+
 ## Install what you downloaded
 
 The zip holds one profile directory, `<name>/`, with `rodeo-plan.yaml`, the
@@ -191,8 +207,29 @@ else `RODEO_LABINABOX_PATH`, else lab-in-a-box's latest release, fetched into
 Writes are guarded: the server only answers requests whose `Host` is an allowed
 name (loopback names by default), so other sites can't reach it through DNS
 rebinding, and **Save** sends a per-run token that only the served page has. The
-page runs under a Content-Security-Policy that allows its own files, Google Fonts
-and the lab-builder frame.
+page runs under a Content-Security-Policy that allows only its own files (the fonts
+ship in `htdocs/fonts/`) and the lab-builder frame.
+
+## Deploy without saving
+
+**Deploy** (header) runs the rodeo on the builder's host exactly as it is on the
+page, without saving it to your profiles first. It needs `rodeo builder` on
+loopback (not `--expose`) and root for `rodeo up`: the builder runs as root or
+the user has passwordless sudo (`sudo -n true`). Otherwise, and on the
+published page, the button is greyed out and says why on hover.
+
+- The dialog says plainly that the rodeo is not saved, and offers **Save to
+  profiles and deploy** next to **Deploy without saving**.
+- The deploy runs `rodeo up --yes --no-tmux --dir <lab>` from a copy in
+  `~/rodeo-labs/<name>-unsaved-<UTC time>/` (base profile plus the page's files,
+  as Save lays them out), its output in `<lab>/.builder-deploy.log`. Secrets
+  rodeo can generate go to the lab's `.rodeo-secrets.yaml`; ones only you have
+  (`operator_secrets`) are asked for in the dialog and written to
+  `~/.rodeo/secrets.yaml`, never shown again.
+- A banner stays while it runs and after it ends, with the lab directory, the
+  log, **Stop** (interrupts `rodeo up` like Ctrl-C) and **Save to profiles**,
+  and keeps saying the rodeo is not saved until you save it. One deploy runs at
+  a time; rerun or resume from the lab directory with `rodeo up`.
 
 ## Publish to GitHub
 

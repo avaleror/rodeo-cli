@@ -321,3 +321,28 @@ test("publishLinks builds github.com pages that use the browser's login", () => 
   assert.equal(u.searchParams.get("filename"), "rodeo/data/catalog.d/ride.yaml");
   assert.equal(u.searchParams.get("value"), 'name: "ride"\ntitle: "Ride & go"\nrepo: "https://github.com/rider/ride"\nref: main\nengine: "rancher"\nlanguages: ["en", "es"]\n');
 });
+
+test("contentBlock and planFromBase put the instructions' repository in the plan", () => {
+  assert.equal(RB.contentBlock(null), "");
+  assert.equal(RB.contentBlock({ repo: "https://github.com/a/b", ref: "v1", path: "story", format: "rmstory" }),
+    'content:\n  repo: "https://github.com/a/b"\n  ref: v1\n  path: story\n  format: rmstory\n');
+  const base = "type: rancher\nname: x\ncontent:\n  repo: https://old/a/b\n  format: markdown\n";
+  const opts = { name: "ride", target: "baremetal", story: { language: "en" } };
+  assert.ok(RB.planFromBase(base, opts).includes("repo: https://old/a/b"));
+  const out = RB.planFromBase(base, { ...opts, content: { repo: "https://github.com/a/b", format: "rmstory" } });
+  assert.ok(!out.includes("https://old/a/b") && out.endsWith('content:\n  repo: "https://github.com/a/b"\n  format: rmstory\n'));
+  assert.equal(RB.planFromBase("type: rancher\n", opts), RB.planFromBase("type: rancher\n", { ...opts, content: null }));
+});
+
+test("partFiles splits a rodeo into infrastructure and instructions, each with its own README", () => {
+  const rodeo = { name: "ride", title: "Ride", base: "rancher", plan: "type: rancher\n", definition: "", labJson: null, strings: {},
+    chapters: [{ id: "intro", title: "Intro", mins: 5, needs: [], body: "# Intro\n", check: true, check_script: "#!/bin/sh\n" }],
+    variants: [], story: { language: "en", id: "" }, content: null };
+  const infra = RB.partFiles(rodeo, "infrastructure").map((f) => f.path);
+  const instr = RB.partFiles(rodeo, "instructions").map((f) => f.path);
+  assert.deepEqual(infra, ["rodeo-plan.yaml", "builder.yaml", "README.md"]);
+  assert.deepEqual(instr, ["story/01-intro.md", "story/chapters.yaml", "checks/check-intro.sh", "README.md"]);
+  assert.match(RB.partFiles(rodeo, "instructions").at(-1).content, /rodeo content apply/);
+  assert.match(RB.partFiles(rodeo, "infrastructure").at(-1).content, /not part of this download/);
+  assert.equal(RB.partOf("story/strings/es/a/@default/content.json"), "instructions");
+});

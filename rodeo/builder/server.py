@@ -46,12 +46,12 @@ def host_name(header: str | None) -> str:
 
 
 def csp(lab_builder_url: str, host: str = "") -> str:
-    """Content-Security-Policy for the page: own files, Google Fonts, the lab-builder frame.
+    """Content-Security-Policy for the page: its own files (fonts included) and the lab-builder frame.
     A ``{host}`` in *lab_builder_url* is the request's *host*."""
     origin = urlparse(lab_builder_url.replace("{host}", host or "localhost"))
     frame = "{}://{}".format(origin.scheme, origin.netloc) if origin.scheme in ("http", "https") and origin.netloc else "'none'"
-    return ("default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; "
-            "font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; "
+    return ("default-src 'self'; script-src 'self'; style-src 'self'; "
+            "font-src 'self'; img-src 'self' data:; connect-src 'self'; "
             "frame-src {}; frame-ancestors 'none'; base-uri 'none'; form-action 'none'".format(frame))
 
 

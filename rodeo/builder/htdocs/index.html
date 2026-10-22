@@ -7,8 +7,6 @@
   <meta name="description" content="Compose a new rodeo: a lab engine and story chapters, downloaded as a ready-to-install profile.">
   <link rel="icon" href="assets/horseshoe-mark.svg" type="image/svg+xml">
   <script src="theme.js"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&amp;family=Syne:wght@400;600;700;800&amp;display=swap">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -23,6 +21,7 @@
       <button id="themeBtn" class="btn" type="button">Light</button>
       <button id="warnBtn" class="btn warn" type="button" hidden></button>
       <button id="saveBtn" class="btn outline" type="button" hidden>Save to profiles</button>
+      <span id="deployWrap" class="deploy-wrap"><button id="deployBtn" class="btn outline" type="button">Deploy</button></span>
       <button id="publishBtn" class="btn outline" type="button" title="Publish this rodeo to a GitHub repository and the rodeo catalog">Publish</button>
       <button id="downloadBtn" class="btn primary" type="button">Download rodeo</button>
     </div>
@@ -43,14 +42,23 @@
     </aside>
 
     <section class="col center" aria-label="Rodeo">
+      <div id="deployBanner" class="banner deploy" role="status" hidden>
+        <span id="deployText" class="banner-text"></span>
+        <button id="deploySave" class="btn primary sm" type="button">Save to profiles</button>
+        <button id="deployStop" class="btn sm" type="button">Stop</button>
+        <button id="deployLogBtn" class="btn sm" type="button" aria-expanded="false">Log</button>
+        <pre id="deployLog" class="deploy-log" hidden></pre>
+      </div>
       <div id="draftBanner" class="banner ok" hidden>
         <span id="draftText" class="banner-text"></span>
         <button id="draftRestore" class="btn primary sm" type="button">Restore</button>
         <button id="draftFresh" class="btn sm" type="button">Start fresh</button>
       </div>
+      <p class="part-head" id="partInfra">Infrastructure <span class="muted">· the lab: rodeo up</span></p>
       <h2 class="sec"><span class="num">01</span> Lab engine <span id="engineNow" class="now"></span></h2>
       <div id="engines" class="engines" role="radiogroup" aria-label="Lab engine"></div>
       <div id="enginePanel" class="panel"></div>
+      <p class="part-head" id="partInstructions">Instructions <span class="muted">· the chapters: rodeo content apply</span></p>
       <h2 class="sec"><span class="num">02</span> Chapters <span id="coverage" class="status"></span></h2>
       <p id="insertHint" class="hint"></p>
       <div id="engineBanner" class="banner bad" role="alert" hidden></div>
@@ -79,6 +87,16 @@
         </select>
         <span class="label">Story variant</span>
         <div id="variants" class="chips"></div>
+        <label class="label" for="contentUrl">Instructions repository</label>
+        <input id="contentUrl" class="input mono" type="url" autocomplete="off" spellcheck="false"
+          placeholder="https://github.com/owner/repo/tree/main/story">
+        <label class="sr-only" for="contentFormat">Instructions format</label>
+        <select id="contentFormat" class="select">
+          <option value="rmstory">rmstory story/</option>
+          <option value="instruqt">Instruqt track</option>
+          <option value="markdown">markdown</option>
+        </select>
+        <p id="contentNote" class="note muted"></p>
         <div id="newStory" class="nc-draft" hidden>
           <label class="label" for="nsTheme">New story</label>
           <input id="nsTheme" class="input" maxlength="500" autocomplete="off" placeholder="What the new story is about, e.g. a heist on a space station">
@@ -152,6 +170,28 @@
         <div>
           <button id="ncCancel" class="btn" type="button">Cancel</button>
           <button class="btn primary" type="submit">Create</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div id="deployModal" class="backdrop" hidden>
+    <form id="deployForm" class="modal" role="dialog" aria-modal="true" aria-labelledby="deployTitle">
+      <h2 id="deployTitle">Deploy this rodeo</h2>
+      <p class="alert warn-row unsaved"><strong>This rodeo is not saved.</strong> Deploying does not save it to your
+        profiles: your changes stay only on this page and in this browser's draft.</p>
+      <p id="dpWhere" class="note"></p>
+      <div id="dpSecrets" hidden>
+        <span class="label">Secrets only you have (saved to ~/.rodeo/secrets.yaml, never shown again)</span>
+        <div id="dpSecretFields"></div>
+      </div>
+      <p id="dpResult" class="note"></p>
+      <div class="modal-foot">
+        <span></span>
+        <div>
+          <button id="dpCancel" class="btn" type="button">Cancel</button>
+          <button id="dpSaveDeploy" class="btn outline" type="button">Save to profiles and deploy</button>
+          <button id="dpSubmit" class="btn primary" type="submit">Deploy without saving</button>
         </div>
       </div>
     </form>

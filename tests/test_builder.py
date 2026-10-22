@@ -222,7 +222,7 @@ def test_static_build_embeds_every_answer(tmp_path, labinabox_checkout):
                         "--no-fetch-sources", "--labinabox", str(labinabox_checkout)],
                        capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
-    assert sorted(p.name for p in out.iterdir()) == ["app.js", "assets", "index.html", "logic.js", "style.css", "theme.js"]
+    assert sorted(p.name for p in out.iterdir()) == ["app.js", "assets", "fonts", "index.html", "logic.js", "style.css", "theme.js"]
     html = (out / "index.html").read_text()
     assert "__RODEOVERSION__" not in html
     payload = re.search(r'<script id="static-api-data" type="application/json">(.*?)</script>', html, re.S).group(1)

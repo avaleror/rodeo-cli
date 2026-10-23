@@ -10,7 +10,10 @@ directory is a copy: nothing on the page is saved by deploying.
 ``rodeo up`` needs root: :func:`capability` allows deploying only when the
 builder runs as root or ``sudo -n true`` works. The plan's operator secrets
 (values only the operator has) must already be in ``~/.rodeo/secrets.yaml`` or
-come with the request; they are written there like ``rodeo up`` does. One
+come with the request; they are written there like ``rodeo up`` does. The
+request's optional ``secret_refs`` (``{plan secret: secrets.yaml key}``) takes
+values from ``~/.rodeo/secrets.yaml`` on this host instead, so they never pass
+through the page; :func:`file_secret_keys` lists the keys it can name. One
 deploy runs at a time.
 """
 from __future__ import annotations
@@ -31,7 +34,7 @@ from ..labseed import resolve_profile_source
 from ..paths import invoking_home
 from ..privilege import find_rodeo_bin
 from ..profile_install import ProfileFile, check_files, check_name, write_rodeo
-from ..secretgen import append_secret, ensure_plan_secrets, secrets_path
+from ..secretgen import _read_secrets, append_secret, ensure_plan_secrets, secrets_path
 
 LOG = ".builder-deploy.log"
 LOG_TAIL = 80
@@ -67,6 +70,37 @@ def capability(run: Run = subprocess.run) -> dict[str, Any]:
     return {"available": False, "reason": NEEDS_ROOT, "as": ""}
 
 
+def _file_secrets() -> dict[str, Any]:
+    """The top-level scalar values of ``~/.rodeo/secrets.yaml``; {} when it is missing, unreadable or not a mapping."""
+    try:
+        data = _read_secrets(secrets_path())
+    except ValueError:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {str(k): v for k, v in data.items() if isinstance(v, (str, int, float, bool))}
+
+
+def file_secret_keys() -> list[dict[str, str]]:
+    """``[{"key"}]``, sorted: the secrets.yaml keys a deploy's ``secret_refs`` can name, never their values."""
+    return [{"key": k} for k in sorted(_file_secrets())]
+
+
+def _resolve_refs(refs: Any, secrets: dict[str, Any]) -> dict[str, Any]:
+    """*secrets* plus each ``{plan secret: secrets.yaml key}`` of *refs* read from secrets.yaml; a value
+    already in *secrets* wins. ValueError for a bad *refs* or a key secrets.yaml does not have."""
+    if not isinstance(refs, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in refs.items()):
+        raise ValueError("secret_refs must map names to secrets.yaml keys")
+    stored = _file_secrets()
+    out = dict(secrets)
+    for key, ref in refs.items():
+        if ref not in stored:
+            raise ValueError(f"~/.rodeo/secrets.yaml has no key {ref}")
+        if not str(out.get(key) or ""):
+            out[key] = stored[ref]
+    return out
+
+
 def _tail(path: Path, lines: int = LOG_TAIL) -> str:
     try:
         return "\n".join(path.read_text(errors="replace").splitlines()[-lines:])
@@ -96,7 +130,7 @@ class Deployer:
                     "rc": cur["rc"], "log": _tail(cur["lab"] / LOG)}
 
     def start(self, req: Any, popen: Callable[..., Any] = subprocess.Popen, run: Run = subprocess.run) -> dict[str, Any]:
-        """Deploy ``{"name", "base", "files", "secrets"}``. ValueError for a bad request, PermissionError
+        """Deploy ``{"name", "base", "files", "secrets", "secret_refs"}``. ValueError for a bad request, PermissionError
         without root, NeedSecrets for missing operator secrets, RuntimeError while another deploy runs."""
         if not isinstance(req, dict):
             raise ValueError("send a JSON object")
@@ -116,6 +150,8 @@ class Deployer:
         secrets = req.get("secrets") or {}
         if not isinstance(secrets, dict):
             raise ValueError("secrets must map names to values")
+        if "secret_refs" in req:
+            secrets = _resolve_refs(req["secret_refs"], secrets)
         src = resolve_profile_source(str(req["base"])) if req.get("base") else None
         stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
         labs_root().mkdir(parents=True, exist_ok=True)

@@ -438,3 +438,68 @@ test("previewTree keeps only allowed HTML", () => {
   assert.equal(RB.safeHref("java\tscript:alert(1)"), null);
   assert.equal(RB.safeHref("docs/x.md#a"), "docs/x.md#a");
 });
+
+const VAULT = {
+  types: [
+    { id: "aws", label: "AWS", fields: [{ name: "access_key_id", label: "Access key ID", secret: false },
+      { name: "secret_access_key", label: "Secret access key", secret: true }],
+      keys: { aws_access_key_id: "access_key_id", aws_secret_access_key: "secret_access_key" } },
+    { id: "scc", label: "SCC", fields: [{ name: "regcode", label: "Registration code", secret: true },
+      { name: "email", label: "Email", optional: true }], keys: { scc_regcode: "regcode" } },
+    { id: "generic", label: "Generic", fields: [], keys: {}, freeform: true },
+  ],
+  items: [{ id: "a1", name: "work aws", type: "aws" }, { id: "s1", name: "scc", type: "scc" },
+    { id: "g1", name: "misc", type: "generic" }, { id: "x1", name: "gone", type: "removed-type" }],
+};
+
+test("vaultCandidates matches a secret to the types that map it, plus every freeform credential", () => {
+  const ids = (key) => RB.vaultCandidates(VAULT, key).map((i) => i.id);
+  assert.deepEqual(ids("aws_secret_access_key"), ["a1", "g1"]);
+  assert.deepEqual(ids("scc_regcode"), ["s1", "g1"]);
+  assert.deepEqual(ids("toString"), ["g1"]);
+  assert.deepEqual(RB.vaultCandidates({ ...VAULT, items: VAULT.items.slice(0, 2) }, "other"), []);
+  assert.deepEqual(RB.vaultCandidates(null, "scc_regcode"), []);
+});
+
+test("vaultFill maps an opened credential onto the secrets it provides", () => {
+  const aws = RB.vaultType(VAULT, "aws"), generic = RB.vaultType(VAULT, "generic");
+  assert.deepEqual(RB.vaultFill(aws, { access_key_id: "AK", secret_access_key: "SK" }, ["aws_access_key_id", "aws_secret_access_key", "scc_regcode"]),
+    { aws_access_key_id: "AK", aws_secret_access_key: "SK" });
+  assert.deepEqual(RB.vaultFill(aws, { access_key_id: "AK", secret_access_key: "" }, ["aws_secret_access_key"]), {});
+  assert.deepEqual(RB.vaultFill(generic, { scc_regcode: "R", other: "O" }, ["scc_regcode", "aws_access_key_id"]), { scc_regcode: "R" });
+  assert.deepEqual(RB.vaultFill(generic, {}, ["constructor"]), {});
+});
+
+test("vaultFields keeps the filled fields, or the freeform rows", () => {
+  const scc = RB.vaultType(VAULT, "scc"), generic = RB.vaultType(VAULT, "generic");
+  assert.deepEqual(RB.vaultFields(scc, { fields: { regcode: "R", email: "", stray: "x" } }), { regcode: "R" });
+  assert.deepEqual(RB.vaultFields(generic, { rows: [{ key: " token ", value: "T" }] }), { token: "T" });
+});
+
+test("vaultErrors checks name, required fields, freeform keys and the password", () => {
+  const scc = RB.vaultType(VAULT, "scc"), generic = RB.vaultType(VAULT, "generic");
+  const ok = { name: "scc", fields: { regcode: "R" }, password: "longenough", repeat: "longenough" };
+  assert.deepEqual(RB.vaultErrors(scc, ok), []);
+  assert.deepEqual(RB.vaultErrors(scc, { ...ok, name: " " }), ["Give the credential a name."]);
+  assert.deepEqual(RB.vaultErrors(scc, { ...ok, fields: { email: "e" } }), ["Fill in Registration code."]);
+  assert.deepEqual(RB.vaultErrors(scc, { ...ok, password: "short", repeat: "short" }), ["The password needs at least 8 characters."]);
+  assert.deepEqual(RB.vaultErrors(scc, { ...ok, repeat: "different1" }), ["The passwords don't match."]);
+  assert.deepEqual(RB.vaultErrors(null, ok), ["Pick a type."]);
+  const free = { ...ok, rows: [{ key: "token", value: "T" }] };
+  assert.deepEqual(RB.vaultErrors(generic, free), []);
+  assert.deepEqual(RB.vaultErrors(generic, { ...free, rows: [] }), ["Add at least one field."]);
+  assert.equal(RB.vaultErrors(generic, { ...free, rows: [{ key: "Bad-Key", value: "x" }] }).length, 1);
+  assert.deepEqual(RB.vaultErrors(generic, { ...free, rows: [{ key: "a", value: "1" }, { key: "a", value: "2" }] }), ["Field a is there twice."]);
+  assert.deepEqual(RB.vaultErrors(generic, { ...free, rows: [{ key: "a", value: "" }] }), ["Fill in a."]);
+  assert.ok(RB.VAULT_KEY_RE.test("a" + "b".repeat(63)) && !RB.VAULT_KEY_RE.test("a" + "b".repeat(64)));
+});
+
+test("vaultFileKeys puts the secrets.yaml keys sharing a word with the secret first", () => {
+  const all = ["alpha", "harvester_token", "my_regcode", "scc_mirror_password", "zeta"];
+  const vault = { file_secrets: ["zeta", "scc_mirror_password", "alpha", "my_regcode", "harvester_token"].map((key) => ({ key })) };
+  assert.deepEqual(RB.vaultFileKeys(vault, "scc_regcode"), ["my_regcode", "scc_mirror_password", "alpha", "harvester_token", "zeta"]);
+  assert.deepEqual(RB.vaultFileKeys(vault, "other"), all);
+  assert.deepEqual(RB.vaultFileKeys(vault, "_"), all);
+  assert.deepEqual(RB.vaultFileKeys({ items: [] }, "scc_regcode"), []);
+  assert.deepEqual(RB.vaultFileKeys(null, "scc_regcode"), []);
+});

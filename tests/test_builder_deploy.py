@@ -142,3 +142,54 @@ def test_api_deploys_only_on_a_loopback_live_server(fake_rodeo):
     assert live.dispatch("deploy", "POST", body=secrets_plan) == (200, {
         "current": None, "secrets": ["k"], "message": "this lab needs secrets only you can provide: k"})
     assert live.dispatch("deploy-stop", "POST", body=b"{}")[0] == 200
+
+
+REFS_PLAN = [{"path": "rodeo-plan.yaml", "content": "name: x\ntype: rancher\ndeployment_target: baremetal\n"
+              "operator_secrets: [scc_regcode]\ncredentials:\n  regcode: ??scc_regcode\n"}]
+
+
+def _secrets_yaml(text: str) -> None:
+    path = deploywork.secrets_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+
+
+def test_secret_refs_take_values_from_secrets_yaml(fake_rodeo):
+    _secrets_yaml('my_regcode: "REG-FROM-FILE"\n')
+    deployer = deploywork.Deployer()
+    deployer.start({"name": "ride", "files": REFS_PLAN, "secret_refs": {"scc_regcode": "my_regcode"}})
+    assert yaml.safe_load(deploywork.secrets_path().read_text()) == {
+        "my_regcode": "REG-FROM-FILE", "scc_regcode": "REG-FROM-FILE"}
+    _wait(deployer)
+
+
+def test_explicit_secrets_win_over_secret_refs(fake_rodeo):
+    _secrets_yaml('my_regcode: "REG-FROM-FILE"\n')
+    deployer = deploywork.Deployer()
+    deployer.start({"name": "ride", "files": REFS_PLAN, "secrets": {"scc_regcode": "REG-TYPED"},
+                    "secret_refs": {"scc_regcode": "my_regcode"}})
+    assert yaml.safe_load(deploywork.secrets_path().read_text())["scc_regcode"] == "REG-TYPED"
+    _wait(deployer)
+
+
+@pytest.mark.parametrize("refs,match", [
+    ({"scc_regcode": "nope"}, "has no key nope"),
+    ({"scc_regcode": "nested"}, "has no key nested"),
+    (["scc_regcode"], "secret_refs must map"),
+    ({"scc_regcode": 5}, "secret_refs must map"),
+])
+def test_bad_secret_refs_are_refused(fake_rodeo, refs, match):
+    _secrets_yaml('my_regcode: "R"\nnested:\n  a: 1\n')
+    with pytest.raises(ValueError, match=match):
+        deploywork.Deployer().start({"name": "ride", "files": REFS_PLAN, "secret_refs": refs})
+    assert not list(deploywork.labs_root().glob("ride-*"))
+    status, answer = Api(can_save=True, can_deploy=True).dispatch(
+        "deploy", "POST", body=json.dumps({"name": "ride", "files": REFS_PLAN, "secret_refs": refs}).encode())
+    assert status == 400 and match in answer["error"]
+
+
+def test_secret_refs_do_not_cover_other_secrets(fake_rodeo):
+    _secrets_yaml('my_regcode: "R"\n')
+    with pytest.raises(deploywork.NeedSecrets) as err:
+        deploywork.Deployer().start({"name": "ride", "files": REFS_PLAN, "secret_refs": {}})
+    assert err.value.keys == ["scc_regcode"]

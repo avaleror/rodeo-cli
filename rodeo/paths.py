@@ -22,6 +22,13 @@ def invoking_home() -> Path:
     return Path.home()
 
 
+def invoking_user() -> str:
+    """Real user's login name even when running under plain ``sudo``."""
+    import getpass
+
+    return os.environ.get("SUDO_USER") or getpass.getuser()
+
+
 def rodeo_dir() -> Path:
     return invoking_home() / ".rodeo"
 

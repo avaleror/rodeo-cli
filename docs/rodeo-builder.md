@@ -90,8 +90,8 @@ rodeo up --profile <name>     # after Save to profiles
 
 **Review and download** (step 03) checks the rodeo before you download it: the
 lab covers every chapter, the span ids are valid (each warning has a **Fix**
-button), the exact files in the zip, and the commands to install it, ready to
-copy. Missing lab features and span warnings never block the download.
+button), the exact files in the zip (listed when you click **N files in
+<name>.zip**), and the commands to install it, ready to copy. Missing lab features and span warnings never block the download.
 
 The page keeps a draft of your rodeo in this browser. After a reload it offers
 to restore it.
@@ -105,7 +105,7 @@ When `rmstory` is installed where `rodeo builder` runs (`sudo rodeo install-deps
   translations with an rmstory engine (`rmstory extract --engine <e> --to <lang>`).
   They are stored as `draft`; what you wrote or reviewed is kept. rmstory also
   gives unnamed spans an id (`<chapter>.N`).
-- **Check with rmstory** (step 03): rmstory's own `validate` on the chapters.
+- **Validate** (step 03): rmstory's own `validate` on the chapters.
 - **Draft with an engine** (New chapter): an engine that can generate text
   (`rmstory engines` says "translate + generate", for example `claude-code`,
   `ollama` or `gemini`) drafts the chapter from your description, told what the
@@ -242,6 +242,34 @@ published page, the button is greyed out and says why on hover.
   log, **Stop** (interrupts `rodeo up` like Ctrl-C) and **Save to profiles**,
   and keeps saying the rodeo is not saved until you save it. One deploy runs at
   a time; rerun or resume from the lab directory with `rodeo up`.
+
+## Settings and stored credentials
+
+**Settings**, in the user menu (the person icon at the right of the
+header, which also shows the `user@host` the builder runs as), keeps the
+credentials you deploy with — SCC registration codes, registry and Application Collection logins, AWS keys, SSH keys, GitHub
+tokens, or any `key: value` fields — encrypted on the builder's host, one file
+per credential in `~/.rodeo/vault/`. It works only on `rodeo builder` on
+loopback: with `--expose` and on the published page, Settings is greyed out in
+the menu with the reason.
+
+- Each credential has its own password, at least 8 characters, asked every
+  time the credential is used. Neither the password nor the values are kept by
+  the page: the credentials list shows a credential's name, type, when it was added
+  and last used, never its values.
+- In the deploy dialog, each secret the lab asks for offers **Use stored…** with
+  the credentials that can fill it. After the password, the page fills that
+  secret and every other one the same credential provides (an AWS credential
+  fills both `aws_access_key_id` and `aws_secret_access_key`). A generic
+  credential fills secrets whose names match its field names.
+- The filled values go where typed ones go: into `~/.rodeo/secrets.yaml` for
+  `rodeo up`. Deleting a stored credential does not remove them from there.
+- The dialog also lists the keys already in `~/.rodeo/secrets.yaml`, names only
+  and read-only: `rodeo up` reads that file directly. In the deploy dialog,
+  **Use stored…** offers them under *secrets.yaml* (names sharing a word with
+  the secret first). Picking one asks no password and locks the input
+  ("from secrets.yaml: <key>", **Clear** to type instead); the builder copies the
+  value on its host, so it never reaches the browser.
 
 ## Publish to GitHub
 

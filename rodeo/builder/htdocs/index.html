@@ -24,6 +24,17 @@
       <span id="deployWrap" class="deploy-wrap"><button id="deployBtn" class="btn outline" type="button">Deploy</button></span>
       <button id="publishBtn" class="btn outline" type="button" title="Publish this rodeo to a GitHub repository and the rodeo catalog">Publish</button>
       <button id="downloadBtn" class="btn primary" type="button">Download rodeo</button>
+      <div class="user-wrap">
+        <button id="userBtn" class="btn icon-btn" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="userMenu"
+          aria-label="User menu" title="User menu">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="5.5" r="2.75"/><path d="M2.5 14c.6-2.9 2.8-4.5 5.5-4.5s4.9 1.6 5.5 4.5"/></svg>
+        </button>
+        <div id="userMenu" class="user-menu" role="menu" aria-label="User menu" hidden>
+          <p id="userName" class="user-name"></p>
+          <button id="credentialsBtn" class="menu-item" type="button" role="menuitem">Settings</button>
+          <p id="userNote" class="user-note" hidden></p>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -253,6 +264,56 @@
         <div>
           <button id="pubCancel" class="btn" type="button">Close</button>
           <button id="pubSubmit" class="btn primary" type="submit" hidden>Publish</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div id="settingsModal" class="backdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <h2 id="settingsTitle">Settings</h2>
+      <h3 class="label">Credentials</h3>
+      <p class="note muted">Stored encrypted on this builder's host (~/.rodeo/vault/), each under its own password,
+        asked every time you use it. Values are never shown here: the deploy dialog fills them in.</p>
+      <ul id="vaultList" class="vault-list"></ul>
+      <button id="vaultAddBtn" class="btn outline sm" type="button">+ Add credential</button>
+      <form id="vaultForm" class="nc-draft" autocomplete="off" hidden>
+        <label class="label" for="vaName">Name</label>
+        <input id="vaName" class="input" autocomplete="off" maxlength="100">
+        <label class="label" for="vaType">Type</label>
+        <select id="vaType" class="select"></select>
+        <div id="vaFields"></div>
+        <label class="label" for="vaPass">Password for this credential</label>
+        <input id="vaPass" class="input" type="password" autocomplete="new-password">
+        <label class="label" for="vaPass2">Repeat password</label>
+        <input id="vaPass2" class="input" type="password" autocomplete="new-password">
+        <p id="vaResult" class="note bad-text" role="alert"></p>
+        <div class="vault-actions">
+          <button id="vaCancel" class="btn sm" type="button">Cancel</button>
+          <button class="btn primary sm" type="submit">Save credential</button>
+        </div>
+      </form>
+      <h3 class="label">In ~/.rodeo/secrets.yaml</h3>
+      <p class="note muted">Read-only, names only: rodeo up reads these directly, and the deploy dialog can use them by name.</p>
+      <ul id="fileSecretList" class="file-secret-list"></ul>
+      <div class="modal-foot">
+        <span></span>
+        <button id="settingsClose" class="btn" type="button">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="vaultPrompt" class="backdrop over" hidden>
+    <form id="vpForm" class="modal narrow" role="dialog" aria-modal="true" aria-labelledby="vpTitle" autocomplete="off">
+      <h2 id="vpTitle">Password</h2>
+      <label class="sr-only" for="vpPass">Password</label>
+      <input id="vpPass" class="input" type="password" autocomplete="off">
+      <p id="vpError" class="note bad-text" role="alert"></p>
+      <div class="modal-foot">
+        <span></span>
+        <div>
+          <button id="vpCancel" class="btn" type="button">Cancel</button>
+          <button id="vpSubmit" class="btn primary" type="submit">Unlock</button>
         </div>
       </div>
     </form>

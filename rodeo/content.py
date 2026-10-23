@@ -80,7 +80,11 @@ def fetch(spec: dict[str, Any], lab: Path, run: Run = subprocess.run) -> str:
     work = Path(tempfile.mkdtemp(prefix=".content.", dir=lab))
     try:
         dest = work / CHECKOUT
-        for cmd in fetch_commands(spec["repo"], spec["ref"] or "HEAD", dest):
+        cmds = fetch_commands(spec["repo"], spec["ref"] or "HEAD", dest)
+        # A symlink in the repository is checked out as a plain file holding its target,
+        # so rendering can't copy a file of this machine into the guide.
+        cmds.insert(1, ["git", "-C", str(dest), "config", "core.symlinks", "false"])
+        for cmd in cmds:
             try:
                 r = run(cmd, capture_output=True, text=True, env=env, timeout=TIMEOUT)
             except subprocess.TimeoutExpired as exc:

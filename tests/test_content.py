@@ -92,6 +92,22 @@ def test_apply_markdown_and_a_second_apply_replaces_the_old_content(tmp_path):
 
 
 @needs_git
+def test_fetch_never_follows_a_symlink_out_of_the_repository(tmp_path):
+    secret = tmp_path / "secret.txt"
+    secret.write_text("TOP-SECRET")
+    repo = _repo(tmp_path, {"docs/01-a.md": "# A\n"})
+    (repo / "docs" / "02-leak.md").symlink_to(secret)
+    git = ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t"]
+    subprocess.run([*git, "add", "-A"], check=True)
+    subprocess.run([*git, "commit", "-qm", "link"], check=True)
+    lab = tmp_path / "lab"
+    spec = _spec(repo, "markdown", "docs")
+    content.fetch(spec, lab)
+    assert not (lab / "content" / "docs" / "02-leak.md").is_symlink()
+    assert all("TOP-SECRET" not in f.read_text() for f in content.render(spec, lab, {}))
+
+
+@needs_git
 def test_rmstory_content_is_the_story_of_a_lab_without_one(tmp_path, fake_cfg):
     repo = _repo(tmp_path, {"story/01-hello.md": '# Hello\n<span lang="en" id="hello.1">Saddle up</span>\n'})
     lab = tmp_path / "lab"

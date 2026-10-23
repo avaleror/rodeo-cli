@@ -154,6 +154,11 @@ def _open_library(page) -> None:
         page.locator(".group-head[aria-expanded=false]").first.click()
 
 
+def _add_need(page, text: str) -> None:
+    page.fill("#ncNeedInput", text)
+    page.press("#ncNeedInput", "Enter")
+
+
 def _zip(page) -> dict[str, str]:
     with page.expect_download() as info:
         page.click("#downloadBtn")
@@ -195,7 +200,7 @@ def test_compose_native_rodeo_and_download(page):
 def test_drag_and_drop_reorders(page):
     page.click("#newChapterBtn")
     page.fill("#ncTitle", "Fleet GitOps")
-    page.click("#ncNeeds .chip >> text=fleet")
+    _add_need(page, "fleet")
     page.click("#newForm button[type=submit]")
     page.locator(".card", has_text="Welcome").drag_to(page.locator(".row").first)
     titles = page.locator(".row .row-title").all_inner_texts()
@@ -208,7 +213,7 @@ def test_drag_and_drop_reorders(page):
 def test_labinabox_engine_adds_needed_addons_and_definition(page):
     page.click("#newChapterBtn")
     page.fill("#ncTitle", "Manage clients")
-    page.click("#ncNeeds .chip >> text=smlm")
+    _add_need(page, "smlm")
     page.click("#ncCheck")
     page.click("#newForm button[type=submit]")
     page.click(".engine >> text=lab-in-a-box")
@@ -231,7 +236,9 @@ def test_labinabox_engine_adds_needed_addons_and_definition(page):
 
 def test_story_editor_tags_a_selection(page):
     page.click(".card")
-    page.click(".row-actions .btn >> text=spans")
+    button = page.locator(".row-actions .btn").first
+    assert button.inner_text().lower() == "edit" and "spans" in button.get_attribute("title")
+    button.click()
     assert not page.locator("#editor").is_hidden()
     source = page.locator("#edSource")
     text = source.input_value()
@@ -245,6 +252,156 @@ def test_story_editor_tags_a_selection(page):
     assert "welcome.first-task" in page.locator("#storiesView").inner_text()
     page.click("#edDone")
     assert page.locator("#editor").is_hidden()
+
+
+def test_story_editor_undo_and_cancel(page):
+    page.click(".card")
+    page.locator(".row-actions .btn").first.click()
+    title = page.locator(".lib-title").bounding_box()
+    assert page.evaluate("([x, y]) => !!document.elementFromPoint(x, y).closest('#editor')",
+                         [title["x"] + 10, title["y"] + 10])
+    source = page.locator("#edSource")
+    original = source.input_value()
+    start = original.index("Rancher Prime on K3s")
+    source.evaluate("(ta, [s, e]) => { ta.focus(); ta.setSelectionRange(s, e); }", [start, start + len("Rancher Prime")])
+    page.click("[data-mark=invariant]")
+    tagged = source.input_value()
+    assert "<span no>Rancher Prime</span>" in tagged
+    source.focus()
+    page.keyboard.press("Control+z")
+    assert source.input_value() == original
+    page.keyboard.press("Control+Shift+z")
+    assert source.input_value() == tagged
+    source.evaluate("ta => ta.setSelectionRange(ta.value.length, ta.value.length)")
+    page.keyboard.type("more")
+    assert source.input_value() == tagged + "more"
+    page.keyboard.press("Control+z")
+    assert source.input_value() == tagged
+    page.once("dialog", lambda d: d.accept())
+    page.click("#edCancel")
+    assert page.locator("#editor").is_hidden()
+    page.locator(".row-actions .btn").first.click()
+    assert source.input_value() == original
+
+
+def _edit_body(page, body: str):
+    page.click(".card")
+    page.locator(".row-actions .btn").first.click()
+    source = page.locator("#edSource")
+    source.fill(body)
+    return source
+
+
+_SELECT_IN_PREVIEW = """([sel, whole]) => {
+  const node = document.querySelector('#edPreview ' + sel), r = document.createRange();
+  if (whole) r.selectNodeContents(node);
+  else { const t = node.querySelector('.seg').firstChild; r.setStart(t, 0); r.setEnd(t, t.length); }
+  getSelection().removeAllRanges();
+  getSelection().addRange(r);
+  document.querySelector('#edPreview').dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: 200, clientY: 200 }));
+}"""
+
+
+def test_story_preview_renders_markdown(page):
+    _edit_body(page, "---\nslug: demo\n---\n# Big title\n\nSome *soft* and **strong** text with `kubectl get pods`, "
+                     '<span lang="en" id="demo.tagged">a tagged span</span>.\n\n- first item\n- second item\n\n'
+                     "1. one\n2. two\n\n> quoted\n\n```bash\necho hi\n```\n\n---\n\n"
+                     "[docs](https://example.com) ![logo](https://example.com/x.png) [bad](javascript:alert(1))\n")
+    pv = page.locator("#edPreview")
+    assert pv.get_attribute("data-format") == "markdown"
+    assert "slug: demo" in pv.locator("pre.fm").inner_text()
+    assert pv.locator("h1").inner_text() == "Big title"
+    assert pv.locator("p em").inner_text() == "soft"
+    assert pv.locator("p strong").inner_text() == "strong"
+    assert pv.locator("p > code").inner_text() == "kubectl get pods"
+    assert pv.locator("ul > li").all_inner_texts() == ["first item", "second item"]
+    assert pv.locator("ol > li").all_inner_texts() == ["one", "two"]
+    assert pv.locator("blockquote").inner_text() == "quoted"
+    assert pv.locator("pre code").inner_text() == "echo hi"
+    assert pv.locator("hr").count() == 1
+    span = pv.locator(".sp.k-translatable")
+    assert span.locator(".badge").inner_text() == "demo.tagged" and "a tagged span" in span.inner_text()
+    link = pv.locator("a", has_text="docs")
+    assert link.get_attribute("href") == "https://example.com"
+    assert link.get_attribute("target") == "_blank" and link.get_attribute("rel") == "noopener"
+    assert pv.locator("img").count() == 0
+    assert pv.locator("a.md-img").get_attribute("href") == "https://example.com/x.png"
+    assert pv.locator("a", has_text="bad").get_attribute("href") is None
+    text = pv.inner_text()
+    assert "**" not in text and "# Big" not in text and "`" not in text and "<span" not in text
+
+
+def test_story_preview_renders_only_safe_html(page):
+    _edit_body(page, '<h2>Hello</h2>\n<p onclick="window.pwned=1">Para <b>bold</b> <span no>inv</span> &amp; '
+                     '<a href="https://example.com" onclick="window.pwned=2">link</a> '
+                     '<a href="javascript:window.pwned=3">bad</a></p>\n<script>window.pwned=4</script>'
+                     '<iframe src="https://example.com"></iframe><style>body { display: none }</style>'
+                     '<img src="https://example.com/x.png" alt="pic" onerror="window.pwned=5">\n'
+                     "<ul><li>one<li>two</ul>")
+    pv = page.locator("#edPreview")
+    assert pv.get_attribute("data-format") == "html"
+    assert pv.locator("h2").inner_text() == "Hello"
+    assert pv.locator("p b").inner_text() == "bold"
+    assert pv.locator("p .sp.k-invariant").inner_text() == "inv"
+    assert "Para bold inv & link bad" in pv.locator("p").inner_text()
+    assert pv.locator("ul > li").all_inner_texts() == ["one", "two"]
+    assert pv.locator("script, style, iframe, img, [onclick], [onerror]").count() == 0
+    assert "pwned" not in pv.inner_text()
+    link = pv.locator("a", has_text="link")
+    assert link.get_attribute("href") == "https://example.com" and link.get_attribute("target") == "_blank"
+    assert link.get_attribute("rel") == "noopener"
+    assert pv.locator("a", has_text="bad").get_attribute("href") is None
+    assert pv.locator("a.md-img").inner_text() == "pic"
+    pv.locator("p b").click()
+    assert page.evaluate("window.pwned") is None
+
+
+def test_story_preview_selection_tags_the_source(page):
+    source = _edit_body(page, "## Heading here\n\nSome **bold words** and `code`.\n")
+    page.evaluate(_SELECT_IN_PREVIEW, ["strong", False])
+    page.click("#popover >> text=Tag selection")
+    page.click("#popover >> text=Invariant")
+    assert source.input_value() == "## Heading here\n\nSome **<span no>bold words</span>** and `code`.\n"
+    assert page.locator("#edPreview strong .sp.k-invariant").inner_text() == "bold words"
+    page.evaluate(_SELECT_IN_PREVIEW, ["h2", True])
+    page.click("#popover >> text=Tag selection")
+    page.click("#popover >> text=Translatable")
+    assert re.match(r'## <span lang="en" id="[^"]+">Heading here</span>\n', source.input_value())
+    page.evaluate(_SELECT_IN_PREVIEW, ["p", True])
+    page.click("#popover >> text=Tag selection")
+    page.click("#popover >> text=No-lang")
+    assert re.search(r'\n\n<span lang="nolang"[^>]*>Some \*\*<span no>bold words</span>\*\* and `code`\.</span>\n$',
+                     source.input_value())
+    source.fill("Setext title\n=====\n\n> [!NOTE]\n> Callout body.\n")
+    pv = page.locator("#edPreview")
+    assert pv.locator("h1").inner_text() == "Setext title"
+    callout = pv.locator("blockquote.callout.callout-note")
+    assert callout.locator(".callout-title").text_content() == "Note"
+    assert "[!NOTE]" not in pv.inner_text() and "===" not in pv.inner_text()
+    page.evaluate(_SELECT_IN_PREVIEW, ["h1", True])
+    page.click("#popover >> text=Tag selection")
+    page.click("#popover >> text=Translatable")
+    assert re.match(r'<span lang="en" id="[^"]+">Setext title</span>\n=====\n', source.input_value())
+    page.evaluate(_SELECT_IN_PREVIEW, ["blockquote", True])
+    page.click("#popover >> text=Tag selection")
+    page.click("#popover >> text=Invariant")
+    assert source.input_value().endswith("\n\n> [!NOTE]\n> <span no>Callout body.</span>\n")
+    assert pv.locator("blockquote.callout .sp.k-invariant").inner_text() == "Callout body."
+
+
+def test_story_editor_panes_scroll_together(page):
+    page.set_viewport_size({"width": 1440, "height": 700})
+    page.click(".card")
+    page.locator(".row-actions .btn").first.click()
+    source, preview = page.locator("#edSource"), page.locator("#edPreview")
+    source.evaluate("ta => { ta.value += '\\n\\nMore text.'.repeat(80); ta.dispatchEvent(new Event('input')); }")
+    source.evaluate("ta => { ta.scrollTop = ta.scrollHeight; }")
+    page.wait_for_function("() => { const p = document.querySelector('#edPreview'); return p.scrollTop > 0 && "
+                           "p.scrollTop >= p.scrollHeight - p.clientHeight - 2; }")
+    box = source.bounding_box()
+    assert box["y"] >= 0 and box["y"] + box["height"] <= 700
+    preview.evaluate("p => { p.scrollTop = 0; }")
+    page.wait_for_function("() => document.querySelector('#edSource').scrollTop <= 1")
 
 
 def test_theme_toggle(page):
@@ -327,7 +484,8 @@ def test_plan_yaml_can_be_edited(page):
 
 def test_only_available_needs_are_offered_and_unknown_addons_refused(page):
     page.click("#newChapterBtn")
-    offered = page.locator("#ncNeeds .chip").all_inner_texts()
+    page.focus("#ncNeedInput")
+    offered = page.locator("#ncNeedList li").all_inner_texts()
     assert {"smlm", "client_registration", "pxe", "rke2", "rancher", "harvester"} <= set(offered)
     assert "argocd" not in offered and "neuvector" not in offered
     page.click("#ncCancel")
@@ -380,10 +538,37 @@ def test_live_server_saves_into_profiles(page):
     sync_api.expect(page.locator("#toastText")).to_have_text(re.compile("^Saved"))
 
 
+def test_new_chapter_needs_autocomplete_and_new_tags(page):
+    page.click("#newChapterBtn")
+    page.fill("#ncTitle", "Quantum lab")
+    page.fill("#ncNeedInput", "flee")
+    assert page.locator("#ncNeedList li").all_inner_texts()[0] == "fleet"
+    page.press("#ncNeedInput", "Enter")
+    page.fill("#ncNeedInput", "Quantum Lab")
+    options = page.locator("#ncNeedList li").all_inner_texts()
+    assert options == ["Add \u201cquantum_lab\u201d as a new need"]
+    page.press("#ncNeedInput", "Enter")
+    assert [c.split()[0] for c in page.locator("#ncNeeds .chip").all_inner_texts()] == ["fleet", "quantum_lab"]
+    assert "todo" in page.locator("#ncNeeds .chip", has_text="quantum_lab").get_attribute("class")
+    page.focus("#ncNeedInput")
+    page.keyboard.press("Backspace")
+    page.keyboard.press("Backspace")
+    assert page.locator("#ncNeeds .chip").count() == 0
+    _add_need(page, "fleet")
+    _add_need(page, "quantum lab")
+    page.keyboard.press("Escape")
+    assert page.locator("#ncNeedList").is_hidden() and page.locator("#newModal").is_visible()
+    page.click("#newForm button[type=submit]")
+    assert page.locator(".row .chip.todo").inner_text() == "quantum_lab"
+    assert page.locator("#coverage").inner_text() == "lab covers every chapter · work needed in 1 chapter"
+    readme = _zip(page)["my-rodeo/README.md"]
+    assert "## Work needed" in readme and "- Quantum lab (`quantum-lab`): `quantum_lab`" in readme
+
+
 def test_missing_addon_marks_work_needed_without_blocking(page):
     page.click("#newChapterBtn")
     page.fill("#ncTitle", "Future feature")
-    page.click("#ncNeeds .chip >> text=missing_addon")
+    _add_need(page, "missing_addon")
     page.click("#newForm button[type=submit]")
     assert page.locator(".row .chip.todo").inner_text().lower() == "work needed"
     assert page.locator("#coverage").inner_text() == "lab covers every chapter · work needed in 1 chapter"
@@ -409,7 +594,7 @@ def _rows(page) -> list[str]:
 
 def test_editor_errors_show_above_the_editor(page):
     page.click(".card")
-    page.click(".row-actions .btn >> text=spans")
+    page.click(".row-actions .btn >> text=Edit")
     page.click("[data-mark=invariant]")
     toast = page.locator("#toast")
     sync_api.expect(toast).to_be_visible()
@@ -444,7 +629,7 @@ def test_draft_is_offered_after_a_reload(page):
 
 def test_keyboard_tagging_and_tag_chip(page):
     page.click(".card")
-    page.click(".row-actions .btn >> text=spans")
+    page.click(".row-actions .btn >> text=Edit")
     source = page.locator("#edSource")
     start = source.input_value().index("Rancher Prime on K3s")
     source.evaluate("(ta, [s, e]) => { ta.focus(); ta.setSelectionRange(s, e); }", [start, start + len("Rancher Prime")])
@@ -622,7 +807,7 @@ def test_narrow_layout_has_a_sticky_bar(page, width):
 
 def _open_translations(page):
     page.click(".card >> text=Welcome to the rodeo")
-    page.click(".row-actions .btn >> text=spans")
+    page.click(".row-actions .btn >> text=Edit")
     page.click("[data-edtab=translations]")
 
 

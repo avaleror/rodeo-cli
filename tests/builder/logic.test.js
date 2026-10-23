@@ -346,3 +346,95 @@ test("partFiles splits a rodeo into infrastructure and instructions, each with i
   assert.match(RB.partFiles(rodeo, "infrastructure").at(-1).content, /not part of this download/);
   assert.equal(RB.partOf("story/strings/es/a/@default/content.json"), "instructions");
 });
+
+// The preview tree as compact markup: [text] for a text leaf, <SPn> (<SPn+> for a continuation) for a rodeo span,
+// {label} for a generated label.
+function previewMarkup(body) {
+  const { spans } = RB.parseSpans(body);
+  const show = (nodes) => nodes.map((n) => {
+    if (n.label !== undefined) return "{" + n.label + "}";
+    if (n.span !== undefined) return "<SP" + n.span + (n.cont ? "+" : "") + ">" + show(n.children) + "</SP>";
+    if (n.tag) return "<" + n.tag + ">" + show(n.children) + "</" + n.tag + ">";
+    return "[" + (n.text !== undefined ? n.text : body.slice(n.s, n.e)) + "]";
+  }).join("");
+  return show(RB.previewTree(body, spans).nodes);
+}
+
+test("previewFormat: HTML when the first content is a block-level tag", () => {
+  assert.equal(RB.previewFormat("# Title\n\ntext"), "markdown");
+  assert.equal(RB.previewFormat("plain text"), "markdown");
+  assert.equal(RB.previewFormat("Some <b>inline</b> html"), "markdown");
+  assert.equal(RB.previewFormat('---\nslug: x\n---\n<!-- c -->\n<span lang="en" id="a"><p>x</p></span>'), "html");
+  assert.equal(RB.previewFormat("<!DOCTYPE html><html>"), "html");
+});
+
+test("previewTree renders Markdown and keeps every text leaf on its source", () => {
+  assert.equal(previewMarkup("---\nslug: x\n---\n# Hi *there*\n\n- a\n- **b**\n\n```\n<span no>x</span>\n```\n"),
+    "<pre>[---\nslug: x\n---]</pre><h1>[Hi ]<em>[there]</em></h1><ul><li><p>[a]</p></li><li><p><strong>[b]</strong></p></li></ul>" +
+    "<pre><code><SP0>[x]</SP></code></pre>");
+  assert.equal(previewMarkup("> q\n\n1. one\n2. `c` \\*e\\*\n\n---\n[l](https://x) &amp;"),
+    "<blockquote><p>[q]</p></blockquote><ol><li><p>[one]</p></li><li><p><code>[c]</code>[ ][*e][*]</p></li></ol><hr></hr>" +
+    "<p><a>[l]</a>[ ][&]</p>");
+});
+
+test("previewTree splits a span at block boundaries and crossing tags, badge part first", () => {
+  assert.equal(previewMarkup('<span lang="en" id="a">\nOne.\n\nTwo.\n</span>'), "<p><SP0>[One.]</SP></p><p><SP0+>[Two.\n]</SP></p>");
+  assert.equal(previewMarkup("**a <span no>b** c</span>"), "<p><strong>[a ]<SP0>[b]</SP></strong><SP0+>[ c]</SP></p>");
+});
+
+test("previewTree renders setext headings; their underline is hidden", () => {
+  assert.equal(previewMarkup("Title\n====="), "<h1>[Title]</h1>");
+  assert.equal(previewMarkup("Two\nlines\n  ---  \n\nnext"), "<h2>[Two\nlines]</h2><p>[next]</p>");
+  assert.equal(previewMarkup("Sub\n-"), "<h2>[Sub]</h2>");
+  const sample = '🗺 Explore <b class="smlmext">SUSE Multi-Linux Manager</b> 🗺\n=====================================';
+  assert.equal(previewMarkup(sample), "<h1>[🗺 Explore ]<b>[SUSE Multi-Linux Manager]</b>[ 🗺]</h1>");
+  assert.equal(previewMarkup('<span lang="en" id="t">Tagged</span>\n==='), "<h1><SP0>[Tagged]</SP></h1>");
+});
+
+test("previewTree: setext underlines versus rules, list items and lazy lines", () => {
+  assert.equal(previewMarkup("Para\n\n---"), "<p>[Para]</p><hr></hr>");
+  assert.equal(previewMarkup("Para\n- - -"), "<p>[Para]</p><hr></hr>");
+  assert.equal(previewMarkup("Para\n***"), "<p>[Para]</p><hr></hr>");
+  assert.equal(previewMarkup("Para\n- item"), "<p>[Para]</p><ul><li><p>[item]</p></li></ul>");
+  assert.equal(previewMarkup("Para\n    ==="), "<p>[Para\n    ===]</p>");
+  assert.equal(previewMarkup("Para\n= ="), "<p>[Para\n= =]</p>");
+  assert.equal(previewMarkup("- item\n---"), "<ul><li><p>[item]</p></li></ul><hr></hr>");
+  assert.equal(previewMarkup("- item\n-"), "<ul><li><p>[item]</p></li><li></li></ul>");
+  assert.equal(previewMarkup("- item\n  ---"), "<ul><li><h2>[item]</h2></li></ul>");
+  assert.equal(previewMarkup("> quote\n---"), "<blockquote><p>[quote]</p></blockquote><hr></hr>");
+  assert.equal(previewMarkup("> quote\nlazy\n==="), "<blockquote><p>[quote\nlazy\n===]</p></blockquote>");
+  assert.equal(previewMarkup("> quote\n> ==="), "<blockquote><h1>[quote]</h1></blockquote>");
+});
+
+test("previewTree renders GitHub alerts as callouts with a generated title", () => {
+  const kinds = { NOTE: "Note", tip: "Tip", Important: "Important", WARNING: "Warning", caution: "Caution" };
+  for (const [marker, title] of Object.entries(kinds)) {
+    const body = "> [!" + marker + "]  \n> Body *text*.";
+    assert.equal(previewMarkup(body), "<blockquote><p>{" + title + "}</p><p>[Body ]<em>[text]</em>[.]</p></blockquote>");
+    const bq = RB.previewTree(body, []).nodes[0];
+    assert.equal(bq.attrs.class, "callout callout-" + marker.toLowerCase());
+    assert.equal(bq.children[0].attrs.class, "callout-title");
+  }
+  assert.equal(previewMarkup("> [!NOTE]\n> If you wish to access the lab,\n> use the link."),
+    "<blockquote><p>{Note}</p><p>[If you wish to access the lab,\n][use the link.]</p></blockquote>");
+  assert.equal(previewMarkup("> [!TIP] Same line.\n> More."), "<blockquote><p>{Tip}</p><p>[Same line.\n][More.]</p></blockquote>");
+  assert.equal(previewMarkup('> [!WARNING]\n> <span lang="en" id="w">Careful</span>'),
+    "<blockquote><p>{Warning}</p><p><SP0>[Careful]</SP></p></blockquote>");
+  assert.equal(previewMarkup("> [!NOTE]x"), "<blockquote><p>[[!NOTE]x]</p></blockquote>");
+  assert.equal(previewMarkup("> [!OTHER]\n> x"), "<blockquote><p>[[!OTHER]\n][x]</p></blockquote>");
+  assert.equal(previewMarkup("> text\n> [!NOTE]"), "<blockquote><p>[text\n][[!NOTE]]</p></blockquote>");
+  assert.deepEqual(RB.previewTree("> plain", []).nodes[0].attrs, {});
+});
+
+test("previewTree keeps only allowed HTML", () => {
+  const body = '<p onclick="x()">A <a href="javascript:x()">bad</a> <a href="https://ok">ok</a></p><script>s()</script>' +
+    '<iframe src="x"></iframe><img src="https://i/x.png" alt="pic"><font>kept</font>';
+  assert.equal(previewMarkup(body), "<p>[A ]<a>[bad]</a>[ ]<a>[ok]</a></p><a>[pic]</a>[kept]");
+  const { nodes } = RB.previewTree(body, []);
+  assert.deepEqual(nodes[0].attrs, {});
+  assert.deepEqual(nodes[0].children[1].attrs, {});
+  assert.deepEqual(nodes[0].children[3].attrs, { href: "https://ok", rel: "noopener", target: "_blank" });
+  assert.equal(nodes[1].attrs.class, "md-img");
+  assert.equal(RB.safeHref("java\tscript:alert(1)"), null);
+  assert.equal(RB.safeHref("docs/x.md#a"), "docs/x.md#a");
+});

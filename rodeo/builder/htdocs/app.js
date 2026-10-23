@@ -134,12 +134,21 @@ function provided() {
   return new Set(liabImported() ? importBase().addons : state.labAddons);
 }
 
-function missing(chapter) { const p = provided(); return (chapter.needs || []).filter((n) => n !== RB.MISSING_ADDON && !p.has(n)); }
+function missing(chapter) { const p = provided(); return (chapter.needs || []).filter((n) => !isWorkNeed(n) && !p.has(n)); }
 
-function workNeeded() { return state.chapters.filter((c) => (c.needs || []).includes(RB.MISSING_ADDON)); }
+// A need no lab engine provides yet: missing_addon, or a tag no engine offers (only decided while the
+// lab-in-a-box catalogue is loaded; without it an unknown need stays a need the lab lacks).
+function isWorkNeed(n) {
+  return n === RB.MISSING_ADDON || (!state.liab.error && !offeredNeeds().includes(n));
+}
+
+function workNeeds(chapter) { return (chapter.needs || []).filter(isWorkNeed); }
+
+function workNeeded() { return state.chapters.filter((c) => workNeeds(c).length); }
 
 function needChip(n, miss) {
   if (n === RB.MISSING_ADDON) return el("span", { class: "chip todo", title: "Placeholder: this chapter needs something no engine provides yet", text: "work needed" });
+  if (isWorkNeed(n)) return el("span", { class: "chip todo", title: "No lab engine provides " + n + " yet: work needed", text: n });
   return el("span", { class: "chip " + (miss.includes(n) ? "missing" : "ok"), text: n,
     title: miss.includes(n) ? "The " + state.engine + " lab engine doesn't provide " + n : null });
 }
@@ -251,7 +260,7 @@ function rodeo() {
     name: state.name, title: state.title, base: baseProfile(), plan: plan(),
     definition: isLiab() && !liabImported() ? engine().definition : "",
     chapters: state.chapters, variants: allVariants(), story: story(), labJson: state.labJson, strings: state.strings,
-    content: contentSource(),
+    content: contentSource(), workNeeds: [...new Set(state.chapters.flatMap(workNeeds))],
   };
 }
 
@@ -669,7 +678,8 @@ function renderChapters() {
       el("div", { class: "row-meta", text: [c.workshop, c.mins + " min", c.check ? "checks/check-" + c.id + ".sh" : ""].filter(Boolean).join(" · ") }),
       el("div", { class: "chips" }, (c.needs || []).map((n) => needChip(n, miss)))),
     el("div", { class: "row-actions" },
-      el("button", { class: "btn sm" + (w ? " warn" : ""), type: "button", text: spans + " spans" + (w ? " · " + w + " ⚠" : "") + " ✎",
+      el("button", { class: "btn sm" + (w ? " warn" : ""), type: "button", text: "Edit" + (w ? " · " + w + " ⚠" : ""),
+        title: "Edit this chapter's story: " + spans + (spans === 1 ? " span" : " spans") + (w ? ", " + w + (w === 1 ? " warning" : " warnings") : ""),
         onclick: () => openEditor(i) }),
       el("button", { class: "btn sm", type: "button", "aria-label": "Move up", text: "↑", disabled: i === 0, onclick: () => move(i, -1) }),
       el("button", { class: "btn sm", type: "button", "aria-label": "Move down", text: "↓", disabled: i === state.chapters.length - 1, onclick: () => move(i, 1) }),
@@ -1015,6 +1025,7 @@ function chapterTemplate(id) {
 
 function openNewChapter() {
   ncNeeds.clear();
+  $("#ncNeedInput").value = "";
   $("#ncTitle").value = "";
   $("#ncMins").value = "10";
   $("#ncCheck").checked = false;
@@ -1032,9 +1043,70 @@ function renderNewChapterChips() {
   $("#ncWorkshops").replaceChildren(...libraryGroups().map((g) => el("button", {
     type: "button", class: "chip" + (state.newWorkshop === g.id ? " on" : ""), text: g.title, "aria-pressed": String(state.newWorkshop === g.id),
     onclick: () => { state.newWorkshop = g.id; renderNewChapterChips(); } })));
-  $("#ncNeeds").replaceChildren(...offeredNeeds().map((c) => el("button", {
-    type: "button", class: "chip" + (ncNeeds.has(c) ? " on" : ""), text: c, "aria-pressed": String(ncNeeds.has(c)),
-    onclick: () => { if (ncNeeds.has(c)) ncNeeds.delete(c); else ncNeeds.add(c); renderNewChapterChips(); } })));
+  $("#ncNeeds").replaceChildren(...[...ncNeeds].map((n) => el("span", {
+    class: "chip " + (isWorkNeed(n) ? "todo" : "on"), title: isWorkNeed(n) ? "No lab engine provides " + n + " yet: work needed" : null },
+  n, el("button", { class: "x", type: "button", text: "×", "aria-label": "Remove " + n,
+    onclick: () => { ncNeeds.delete(n); renderNewChapterChips(); $("#ncNeedInput").focus(); } }))));
+  renderNeedOptions();
+}
+
+// The needs field: typing lists the offered needs that match; Enter or a click adds the highlighted one,
+// or the typed text as a new need (work needed) when nothing offered matches it.
+const needPick = { open: false, active: 0 };
+
+function needOptions() {
+  const q = $("#ncNeedInput").value.trim().toLowerCase();
+  const slug = q.replace(/[^a-z0-9_-]+/g, "_").replace(/^[_-]+|[_-]+$/g, "").slice(0, 48);
+  const free = offeredNeeds().filter((n) => !ncNeeds.has(n) && n.toLowerCase().includes(q));
+  const opts = [...free.filter((n) => n.toLowerCase().startsWith(q)), ...free.filter((n) => !n.toLowerCase().startsWith(q))]
+    .map((n) => ({ need: n, text: n }));
+  if (slug && !offeredNeeds().includes(slug) && !ncNeeds.has(slug)) opts.push({ need: slug, text: "Add \u201c" + slug + "\u201d as a new need", fresh: true });
+  return opts;
+}
+
+function renderNeedOptions() {
+  const list = $("#ncNeedList"), input = $("#ncNeedInput"), opts = needPick.open ? needOptions() : [];
+  needPick.active = Math.min(needPick.active, Math.max(0, opts.length - 1));
+  list.replaceChildren(...opts.map((o, i) => el("li", {
+    id: "ncNeedOpt" + i, role: "option", class: (o.fresh ? "fresh" : "") + (i === needPick.active ? " on" : ""),
+    "aria-selected": String(i === needPick.active), text: o.text,
+    onmousedown: (ev) => { ev.preventDefault(); addNeed(o.need); } })));
+  list.hidden = !opts.length;
+  input.setAttribute("aria-expanded", String(opts.length > 0));
+  if (opts.length) input.setAttribute("aria-activedescendant", "ncNeedOpt" + needPick.active);
+  else input.removeAttribute("aria-activedescendant");
+  const on = list.querySelector(".on");
+  if (on) on.scrollIntoView({ block: "nearest" });
+}
+
+function addNeed(n) {
+  if (!n) return;
+  ncNeeds.add(n);
+  $("#ncNeedInput").value = "";
+  needPick.active = 0;
+  renderNewChapterChips();
+}
+
+function needKey(ev) {
+  const opts = needOptions();
+  if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+    ev.preventDefault();
+    if (!needPick.open) needPick.open = true;
+    else if (opts.length) needPick.active = (needPick.active + (ev.key === "ArrowDown" ? 1 : -1) + opts.length) % opts.length;
+  } else if (ev.key === "Enter" || ev.key === ",") {
+    ev.preventDefault();
+    if (needPick.open && opts.length) addNeed(opts[needPick.active].need);
+    return;
+  } else if (ev.key === "Escape" && needPick.open) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    needPick.open = false;
+  } else if (ev.key === "Backspace" && !ev.target.value && ncNeeds.size) {
+    ncNeeds.delete([...ncNeeds].at(-1));
+    renderNewChapterChips();
+    return;
+  } else return;
+  renderNeedOptions();
 }
 
 // Drafts the chapter body with a generating rmstory engine, from the brief and the rodeo.
@@ -1084,8 +1156,46 @@ let pop = null;
 
 function editing() { return state.chapters[state.editing]; }
 
+// What Cancel restores: every chapter's text (translating can rename span ids in any
+// chapter), the stored translations and the story variants, as they were when the editor opened.
+let edSnapshot = null;
+// Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) history of the open chapter's text. Typing is grouped by pauses.
+const edHistory = { past: [], future: [], typedAt: 0 };
+const HISTORY_MAX = 200;
+
+function remember(before) {
+  edHistory.past.push(before);
+  if (edHistory.past.length > HISTORY_MAX) edHistory.past.shift();
+  edHistory.future = [];
+}
+
+function stepHistory(from, to) {
+  if (!from.length) return;
+  to.push(editing().body);
+  showBody(from.pop());
+  edHistory.typedAt = 0;
+}
+
+function editorChanged() {
+  return state.chapters.some((c, i) => c.body !== edSnapshot.bodies[i]) || JSON.stringify(state.strings) !== edSnapshot.strings
+    || state.extraVariants.join() !== edSnapshot.variants.join();
+}
+
+function cancelEditor() {
+  if (editorChanged() && !window.confirm("Discard the changes made in the story editor?")) return;
+  state.chapters.forEach((c, i) => { c.body = edSnapshot.bodies[i]; });
+  state.strings = JSON.parse(edSnapshot.strings);
+  state.extraVariants = edSnapshot.variants;
+  closeEditor();
+  scheduleDraft();
+}
+
 function openEditor(i) {
   state.editing = i;
+  edSnapshot = { bodies: state.chapters.map((c) => c.body), strings: JSON.stringify(state.strings), variants: state.extraVariants.slice() };
+  edHistory.past = [];
+  edHistory.future = [];
+  edHistory.typedAt = 0;
   $("#editor").hidden = false;
   $("#edSource").value = editing().body;
   renderEditor();
@@ -1100,6 +1210,12 @@ function closeEditor() {
 }
 
 function setBody(body, keepSel) {
+  if (body !== editing().body) remember(editing().body);
+  edHistory.typedAt = 0;
+  showBody(body, keepSel);
+}
+
+function showBody(body, keepSel) {
   const ta = $("#edSource"), s = ta.selectionStart, e = ta.selectionEnd;
   editing().body = body;
   ta.value = body;
@@ -1150,34 +1266,52 @@ function updateCaret() {
   });
 }
 
-// The preview shows the source with tags hidden. Every text piece carries its
-// source offset (data-s) so a selection there maps back to the markdown.
+// The preview renders the chapter as Markdown or HTML (RB.previewTree) with its spans
+// highlighted. Every text piece carries its source offset (data-s, plus data-e when it shows
+// decoded text such as an entity) so a selection there maps back to the source; generated
+// labels (callout titles) are plain text outside any piece.
 function renderPreview(body, spans) {
-  const root = el("div"), stack = [root];
-  const events = [];
-  for (const sp of spans) { events.push([sp.start, sp.openEnd, "open", sp]); events.push([sp.closeStart, sp.end, "close", sp]); }
-  events.sort((a, b) => a[0] - b[0]);
-  let pos = 0;
-  const text = (to) => { if (to > pos) stack.at(-1).append(el("span", { class: "seg", dataset: { s: String(pos) }, text: body.slice(pos, to) })); };
-  for (const [at, after, type, sp] of events) {
-    text(at);
-    if (type === "open") {
-      const k = RB.kind(sp.attrs);
-      const node = el("span", { class: "sp k-" + k + (sp.attrs.hist && !sp.attrs.no ? " hist" : ""), dataset: { i: String(sp.index) },
+  const node = (n) => {
+    if (n.label !== undefined) return n.label;
+    if (n.span !== undefined) {
+      const sp = spans[n.span], k = RB.kind(sp.attrs);
+      return el("span", { class: "sp k-" + k + (sp.attrs.hist && !sp.attrs.no ? " hist" : ""), dataset: { i: String(sp.index) },
         title: (sp.attrs.id || "no id") + " · " + k + (sp.attrs.hist ? " · hist=" + sp.attrs.hist : "") },
-      sp.attrs.id ? el("span", { class: "badge", "aria-hidden": "true", text: sp.attrs.id }) : null);
-      stack.at(-1).append(node);
-      stack.push(node);
-    } else stack.pop();
-    pos = after;
-  }
-  text(body.length);
-  $("#edPreview").replaceChildren(...root.childNodes);
+      sp.attrs.id && !n.cont ? el("span", { class: "badge", "aria-hidden": "true", text: sp.attrs.id }) : null, n.children.map(node));
+    }
+    if (n.tag) return el(n.tag, n.attrs, n.children.map(node));
+    return n.text === undefined ? el("span", { class: "seg", dataset: { s: String(n.s) }, text: body.slice(n.s, n.e) })
+      : el("span", { class: "seg", dataset: { s: String(n.s), e: String(n.e) }, text: n.text });
+  };
+  const { format, nodes } = RB.previewTree(body, spans), pv = $("#edPreview");
+  pv.dataset.format = format;
+  pv.replaceChildren(...nodes.map(node));
 }
 
-function previewOffset(node, offset) {
-  const seg = (node.nodeType === 3 ? node.parentElement : node).closest(".seg");
-  return seg ? parseInt(seg.dataset.s, 10) + offset : -1;
+const segStart = (seg) => parseInt(seg.dataset.s, 10);
+const segEnd = (seg) => (seg.dataset.e ? parseInt(seg.dataset.e, 10) : segStart(seg) + seg.textContent.length);
+
+// The source offset of a selection boundary (side "start" or "end") in the preview, -1 outside it.
+// A boundary that is not inside a text piece (an element edge, a badge, a piece's far end) maps
+// to the start of the next piece for "start" and to the end of the previous one for "end", so
+// hidden markup between pieces stays out of the selection.
+function previewOffset(node, offset, side) {
+  const pv = $("#edPreview");
+  if (!pv.contains(node)) return -1;
+  const seg = node.nodeType === 3 ? node.parentElement.closest(".seg") : null;
+  if (seg && (side === "start" ? offset < node.length : offset > 0)) {
+    if (!seg.dataset.e) return segStart(seg) + offset;
+    return side === "start" ? segStart(seg) : segEnd(seg);
+  }
+  const at = document.createRange();
+  at.setStart(node, offset);
+  const segs = [...pv.querySelectorAll(".seg")];
+  if (side === "start") {
+    const next = segs.find((s) => at.comparePoint(s, 0) >= 0);
+    return next ? segStart(next) : -1;
+  }
+  const prev = segs.filter((s) => at.comparePoint(s, s.childNodes.length) <= 0).pop();
+  return prev ? segEnd(prev) : -1;
 }
 
 function renderSpanList(body, spans, warnings) {
@@ -1443,7 +1577,14 @@ function markSelection(type) {
 
 function bindEditor() {
   const ta = $("#edSource");
-  ta.addEventListener("input", () => { closePop(); editing().body = ta.value; renderEditor(); });
+  ta.addEventListener("input", () => {
+    closePop();
+    const now = Date.now();
+    if (now - edHistory.typedAt > 800) remember(editing().body);
+    edHistory.typedAt = now;
+    editing().body = ta.value;
+    renderEditor();
+  });
   ta.addEventListener("mouseup", (ev) => { if (ta.selectionEnd > ta.selectionStart) tagChip(ta.selectionStart, ta.selectionEnd, ev.clientX, ev.clientY); });
   for (const type of ["select", "keyup", "click"]) ta.addEventListener(type, updateCaret);
   ta.addEventListener("keydown", (ev) => {
@@ -1458,9 +1599,9 @@ function bindEditor() {
   pv.addEventListener("mouseup", (ev) => {
     const sel = getSelection();
     if (!sel || sel.isCollapsed) return;
-    const a = previewOffset(sel.anchorNode, sel.anchorOffset), b = previewOffset(sel.focusNode, sel.focusOffset);
-    if (a < 0 || b < 0) return;
-    tagChip(Math.min(a, b), Math.max(a, b), ev.clientX, ev.clientY);
+    const r = sel.getRangeAt(0), a = previewOffset(r.startContainer, r.startOffset, "start"), b = previewOffset(r.endContainer, r.endOffset, "end");
+    if (a < 0 || b <= a) return;
+    tagChip(a, b, ev.clientX, ev.clientY);
   });
   pv.addEventListener("dblclick", (ev) => {
     const node = ev.target.closest(".sp");
@@ -1484,6 +1625,15 @@ function bindEditor() {
     renderEditor();
   });
   $("#edDone").addEventListener("click", closeEditor);
+  $("#edCancel").addEventListener("click", cancelEditor);
+  document.addEventListener("keydown", (ev) => {
+    if ($("#editor").hidden || !(ev.ctrlKey || ev.metaKey) || ev.altKey) return;
+    const t = ev.target;
+    if (t !== $("#edSource") && (t.matches("input, textarea, select") || t.isContentEditable)) return;
+    const key = ev.key.toLowerCase();
+    if (key === "z" && !ev.shiftKey) { ev.preventDefault(); stepHistory(edHistory.past, edHistory.future); }
+    else if ((key === "z" && ev.shiftKey) || key === "y") { ev.preventDefault(); stepHistory(edHistory.future, edHistory.past); }
+  });
   document.addEventListener("mousedown", (ev) => { if (pop && !ev.target.closest("#popover")) closePop(); });
 }
 
@@ -1793,6 +1943,24 @@ function trapTab(ev) {
   else if (!ev.shiftKey && active === last) { ev.preventDefault(); first.focus(); }
 }
 
+// Scrolling one of two panes scrolls the other to the same proportion of its height.
+// The position set on the follower is remembered so its own scroll event doesn't echo back.
+function linkScroll(a, b) {
+  const placed = new Map();
+  const follow = (src, dst) => () => {
+    const echo = placed.get(src);
+    placed.delete(src);
+    if (echo !== undefined && Math.abs(echo - src.scrollTop) <= 1) return;
+    const range = src.scrollHeight - src.clientHeight, room = dst.scrollHeight - dst.clientHeight;
+    const top = range > 0 ? Math.round((src.scrollTop / range) * room) : 0;
+    if (Math.abs(dst.scrollTop - top) <= 1) return;
+    dst.scrollTop = top;
+    placed.set(dst, dst.scrollTop);
+  };
+  a.addEventListener("scroll", follow(a, b), { passive: true });
+  b.addEventListener("scroll", follow(b, a), { passive: true });
+}
+
 // ── column widths ───────────────────────────────────────────────────────
 
 // Drag a separator, or focus it and use ←/→ (Shift: bigger steps); double-click resets.
@@ -1850,6 +2018,7 @@ function initResizers() {
 
 function bind() {
   initResizers();
+  linkScroll($("#edSource"), $("#edPreview"));
   document.addEventListener("mousedown", (ev) => {
     if (state.info && !ev.target.closest(".info-pop, .info-btn")) toggleInfo(state.info);
     if (!$("#filterMenu").hidden && !ev.target.closest("#filterMenu, #filterBtn")) setFilterMenu(false);
@@ -1924,6 +2093,11 @@ function bind() {
   $("#importModal").addEventListener("mousedown", (ev) => { if (ev.target === ev.currentTarget) closeImport(); });
   $("#newForm").addEventListener("submit", createChapter);
   $("#ncCancel").addEventListener("click", closeNewChapter);
+  const needInput = $("#ncNeedInput");
+  needInput.addEventListener("input", () => { needPick.open = true; needPick.active = 0; renderNeedOptions(); });
+  needInput.addEventListener("focus", () => { needPick.open = true; renderNeedOptions(); });
+  needInput.addEventListener("blur", () => { needPick.open = false; renderNeedOptions(); });
+  needInput.addEventListener("keydown", needKey);
   $("#newModal").addEventListener("mousedown", (ev) => { if (ev.target === ev.currentTarget) closeNewChapter(); });
   $("#embedClose").addEventListener("click", closeEmbed);
   document.addEventListener("keydown", (ev) => {

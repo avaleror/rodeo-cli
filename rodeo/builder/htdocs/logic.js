@@ -244,6 +244,554 @@ const RB = (() => {
     return out;
   }
 
+  // ── story preview (Markdown or HTML, rendered without a DOM) ─────────────
+  //
+  // previewTree(body, spans) returns { format, nodes } for the editor's preview. A node is
+  // a text leaf { s, e } (shows body.slice(s, e); { s, e, text } when it shows decoded text,
+  // e.g. an entity), an element { tag, attrs, children } (tags and attributes from an
+  // allow-list only), a rodeo span { span: index, cont, children } (cont: a continuation
+  // of a span split by a block boundary or a crossing tag) or a generated label { label }
+  // (text that is not in the source, e.g. a callout title). Markup that is not shown (`**`,
+  // `#`, tags, comments) produces no leaf, so every text leaf maps straight back to the source.
+
+  const FRONT_MATTER_RE = /^---[ \t]*\n[\s\S]*?\n---[ \t]*(?:\n|$)/;
+  const HTML_START_RE = /^<(?:!doctype\b|(?:html|head|body|p|div|h[1-6]|ul|ol|li|table|section|article|header|footer|main|nav|blockquote|pre|figure|details|dl|hr|br|img)\b)/i;
+  const PREVIEW_BLOCK = new Set(["p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "blockquote", "pre", "hr",
+    "table", "caption", "thead", "tbody", "tfoot", "tr", "th", "td", "dl", "dt", "dd", "section", "article", "header", "footer",
+    "main", "nav", "aside", "figure", "figcaption", "details", "summary"]);
+  const PREVIEW_INLINE = new Set(["a", "b", "strong", "i", "em", "u", "s", "del", "ins", "code", "kbd", "samp", "var",
+    "sub", "sup", "mark", "small", "abbr", "cite", "q", "br", "img"]);
+  // Dropped with everything inside them; any other unknown tag is dropped and its content kept.
+  const PREVIEW_DROP = new Set(["script", "style", "iframe", "frame", "frameset", "object", "embed", "template", "noscript",
+    "noembed", "svg", "math", "textarea", "select", "title", "head"]);
+  const PREVIEW_VOID = new Set(["br", "hr", "img", "input", "meta", "link", "base", "col", "area", "source", "track", "wbr"]);
+  // Opening the key closes an open element of one of these names on top of the stack.
+  const AUTO_CLOSE = { li: ["li"], dt: ["dt", "dd"], dd: ["dt", "dd"], tr: ["tr", "td", "th"], td: ["td", "th"], th: ["td", "th"],
+    thead: ["tbody", "tfoot"], tbody: ["thead", "tbody"], tfoot: ["thead", "tbody"] };
+  const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'", nbsp: " " };
+  const ENTITY_RE = /&(?:#(\d{1,7})|#x([0-9a-f]{1,6})|([a-z]+));/gi;
+  const HIDDEN = "\u0000";
+  // Containers whose whitespace-only text is dropped (it would only add stray text nodes).
+  const STRUCTURAL = new Set(["ul", "ol", "dl", "table", "thead", "tbody", "tfoot", "tr"]);
+
+  function frontMatterEnd(body) {
+    const m = FRONT_MATTER_RE.exec(body);
+    return m ? m[0].length : 0;
+  }
+
+  // "html" when the first thing after the front matter (HTML comments and <span> tags
+  // ignored) is a block-level HTML tag or a doctype; anything else is "markdown".
+  function previewFormat(body) {
+    const rest = body.slice(frontMatterEnd(body)).replace(/<!--[\s\S]*?(?:-->|$)|<\/?span\b[^>]*>/gi, "").trimStart();
+    return HTML_START_RE.test(rest) ? "html" : "markdown";
+  }
+
+  function decodeEntity(m, dec, hex, name) {
+    const code = dec ? parseInt(dec, 10) : hex ? parseInt(hex, 16) : -1;
+    if (code >= 0) return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : null;
+    return Object.prototype.hasOwnProperty.call(ENTITIES, name.toLowerCase()) ? ENTITIES[name.toLowerCase()] : null;
+  }
+
+  function decodeEntities(text) {
+    return text.replace(ENTITY_RE, (m, dec, hex, name) => decodeEntity(m, dec, hex, name) ?? m);
+  }
+
+  // http(s), mailto and scheme-less (relative, #anchor) URLs; anything else is no link.
+  function safeHref(url) {
+    const clean = decodeEntities(url).replace(/[\s\u0000-\u001f]/g, "");
+    const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(clean);
+    if (!clean) return null;
+    return !scheme || ["http", "https", "mailto"].includes(scheme[1].toLowerCase()) ? clean : null;
+  }
+
+  function linkAttrs(url, extra) {
+    const href = safeHref(url);
+    return href === null ? { ...extra } : { ...extra, href, rel: "noopener", target: "_blank" };
+  }
+
+  // Builds the node tree from parser events; inline elements open lazily (at their first
+  // text) and are reopened as continuations when a block boundary or a crossing close splits them.
+  function previewBuilder(body) {
+    const root = { children: [] }, stack = [{ node: root, inline: false }];
+    let pending = [];
+    const top = () => stack[stack.length - 1];
+    const lift = () => {
+      const lifted = [];
+      while (top().inline) lifted.unshift(stack.pop().ev);
+      pending = [...lifted, ...pending];
+    };
+    const materialize = () => {
+      for (const ev of pending) {
+        const node = ev.span !== undefined ? { span: ev.span, cont: !!ev.shown, children: [] } : { tag: ev.tag, attrs: ev.attrs, children: [] };
+        ev.shown = true;
+        top().node.children.push(node);
+        stack.push({ node, ev, inline: true });
+      }
+      pending = [];
+    };
+    return {
+      root,
+      text(s, e, raw) {
+        if (e <= s) return;
+        if (!/\S/.test(body.slice(s, e)) && (pending.length || top().node === root || STRUCTURAL.has(top().node.tag))) return;
+        materialize();
+        const out = top().node.children;
+        if (raw) { out.push({ s, e }); return; }
+        let at = s, m;
+        const src = body.slice(s, e);
+        ENTITY_RE.lastIndex = 0;
+        while ((m = ENTITY_RE.exec(src))) {
+          const text = decodeEntity(...m);
+          if (text === null) continue;
+          if (m.index + s > at) out.push({ s: at, e: s + m.index });
+          out.push({ s: s + m.index, e: s + m.index + m[0].length, text });
+          at = s + m.index + m[0].length;
+        }
+        if (e > at) out.push({ s: at, e });
+      },
+      open(ev) {
+        if (!ev.block) { pending.push(ev); return; }
+        lift();
+        const node = { tag: ev.tag, attrs: ev.attrs, children: [] };
+        top().node.children.push(node);
+        stack.push({ node, ev, inline: false });
+      },
+      close(ev) {
+        const at = pending.indexOf(ev.ref);
+        if (at >= 0) {
+          pending.splice(at, 1);
+          if (ev.ref.span !== undefined && !ev.ref.shown) top().node.children.push({ span: ev.ref.span, cont: false, children: [] });
+          return;
+        }
+        const depth = stack.findIndex((x) => x.ev === ev.ref);
+        if (depth < 1) return;
+        const reopen = stack.splice(depth).slice(1).map((x) => x.ev);
+        pending = [...reopen, ...pending];
+      },
+      void(ev) {
+        if (ev.block) lift(); else materialize();
+        top().node.children.push({ tag: ev.tag, attrs: ev.attrs, children: [] });
+      },
+      label(ev) {
+        top().node.children.push({ label: ev.text });
+      },
+    };
+  }
+
+  // ── Markdown ──
+
+  const MD_FENCE = /^( {0,3})(`{3,}|~{3,})([^`]*)$/;
+  const MD_ATX = /^ {0,3}(#{1,6})(?=[ \t]|$)/;
+  const MD_HR = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
+  const MD_QUOTE = /^ {0,3}> ?/;
+  const MD_SETEXT = /^ {0,3}(?:(=+)|-+)[ \t]*$/;
+  // A GitHub alert: the first line of a block quote; what follows the marker is the callout body.
+  const MD_ALERT = /^ {0,3}\[!(note|tip|important|warning|caution)\](?:[ \t]+|$)/i;
+  const MD_ALERT_TITLE = { note: "Note", tip: "Tip", important: "Important", warning: "Warning", caution: "Caution" };
+  const MD_ITEM = /^( {0,3})([-*+]|\d{1,9}[.)])([ \t]+|$)/;
+  const MD_BLANK = /^\s*$/;
+  const MD_HIDDEN_ONLY = /^\s*\u0000[\s\u0000]*$/;
+  const MD_PUNCT = /[!-/:-@[-`{-~\u0000]/;
+  const HTML_TAG_RE = /^<(\/?)([a-zA-Z][\w-]*)((?:[^>"']|"[^"]*"|'[^']*')*)>/;
+
+  function mdStartsBlock(t) {
+    return MD_FENCE.test(t) || MD_ATX.test(t) || MD_HR.test(t) || MD_QUOTE.test(t) || /^ {0,3}([-*+]|\d{1,9}[.)])[ \t]+\S/.test(t);
+  }
+
+  // A line without its first n characters; lazy marks a paragraph continuation line outside its container's markers.
+  function mdStrip(line, n) { return { s: line.s + n, text: line.text.slice(n), lazy: line.lazy }; }
+
+  function mdBlocks(lines, out) {
+    const open = (tag, attrs, s) => { const ev = { t: "open", tag, attrs, block: true, at: s }; out.push(ev); return ev; };
+    const close = (ref, at) => out.push({ t: "close", ref, at });
+    const end = (ln) => ln.s + ln.text.length;
+    for (let i = 0; i < lines.length;) {
+      const ln = lines[i], t = ln.text;
+      let m;
+      if (MD_BLANK.test(t) || MD_HIDDEN_ONLY.test(t)) { i++; continue; }
+      if ((m = MD_FENCE.exec(t))) {
+        const mark = m[2], fence = new RegExp("^ {0,3}[" + mark[0] + "]{" + mark.length + ",}\\s*$");
+        let j = i + 1;
+        while (j < lines.length && !fence.test(lines[j].text)) j++;
+        const pre = open("pre", {}, ln.s), code = { t: "open", tag: "code", attrs: {}, block: false, at: ln.s };
+        out.push(code);
+        for (let k = i + 1; k < j; k++) out.push({ t: "text", s: lines[k].s, e: end(lines[k]) + (k < j - 1 ? 1 : 0), raw: true });
+        close(code, j < lines.length ? lines[j].s : end(lines[j - 1]));
+        close(pre, j < lines.length ? end(lines[j]) : end(lines[j - 1]));
+        i = j + 1;
+      } else if ((m = MD_ATX.exec(t))) {
+        let a = m[0].length;
+        while (t[a] === " " || t[a] === "\t") a++;
+        const tail = /(?:^|[ \t]+)#+[ \t]*$|[ \t]+$/.exec(t.slice(a));
+        const h = open("h" + m[1].length, {}, ln.s);
+        mdInline([{ s: ln.s + a, text: t.slice(a, tail ? a + tail.index : t.length) }], out);
+        close(h, end(ln));
+        i++;
+      } else if (MD_HR.test(t)) {
+        out.push({ t: "void", tag: "hr", attrs: {}, block: true, at: ln.s });
+        i++;
+      } else if (MD_QUOTE.test(t)) {
+        const inner = [];
+        let j = i;
+        while (j < lines.length) {
+          const q = MD_QUOTE.exec(lines[j].text);
+          if (q) inner.push(mdStrip(lines[j], q[0].length));
+          else if (MD_BLANK.test(lines[j].text) || MD_BLANK.test(inner[inner.length - 1].text) || mdStartsBlock(lines[j].text)) break;
+          else inner.push({ ...lines[j], lazy: true });
+          j++;
+        }
+        const alert = MD_ALERT.exec(inner[0].text);
+        const bq = open("blockquote", alert ? { class: "callout callout-" + alert[1].toLowerCase() } : {}, ln.s);
+        if (alert) {
+          const title = open("p", { class: "callout-title" }, inner[0].s);
+          out.push({ t: "label", text: MD_ALERT_TITLE[alert[1].toLowerCase()], at: inner[0].s });
+          close(title, inner[0].s + alert[0].length);
+          inner[0] = mdStrip(inner[0], alert[0].length);
+        }
+        mdBlocks(inner, out);
+        close(bq, end(lines[j - 1]));
+        i = j;
+      } else if ((m = MD_ITEM.exec(t))) {
+        const ordered = /\d/.test(m[2]), delim = m[2].slice(-1);
+        const same = (x) => x && /\d/.test(x[2]) === ordered && x[2].slice(-1) === delim;
+        const list = open(ordered ? "ol" : "ul", ordered && parseInt(m[2], 10) !== 1 ? { start: String(parseInt(m[2], 10)) } : {}, ln.s);
+        let last = ln;
+        while (i < lines.length) {
+          const mm = MD_ITEM.exec(lines[i].text);
+          if (!same(mm)) break;
+          const pad = mm[3].length, marker = mm[1].length + mm[2].length;
+          const indent = marker + (pad === 0 || pad > 4 ? 1 : pad);
+          const inner = [mdStrip(lines[i], Math.min(indent, lines[i].text.length))];
+          let j = i + 1;
+          while (j < lines.length) {
+            const lt = lines[j].text, ind = /^ */.exec(lt)[0].length;
+            if (MD_BLANK.test(lt)) inner.push(mdStrip(lines[j], lt.length));
+            else if (ind >= indent) inner.push(mdStrip(lines[j], indent));
+            else if (!MD_BLANK.test(inner[inner.length - 1].text) && !mdStartsBlock(lt) && !same(MD_ITEM.exec(lt))) inner.push({ ...mdStrip(lines[j], ind), lazy: true });
+            else break;
+            j++;
+          }
+          while (inner.length > 1 && MD_BLANK.test(inner[inner.length - 1].text)) inner.pop();
+          const li = open("li", {}, lines[i].s);
+          mdBlocks(inner, out);
+          last = inner[inner.length - 1];
+          close(li, end(last));
+          i = j;
+          while (i < lines.length && MD_BLANK.test(lines[i].text) && i + 1 < lines.length && (MD_BLANK.test(lines[i + 1].text) || same(MD_ITEM.exec(lines[i + 1].text)))) i++;
+        }
+        close(list, end(last));
+      } else {
+        // A setext underline (not a lazy continuation line) turns the paragraph into a heading.
+        const para = [ln];
+        let j = i + 1, setext = null;
+        while (j < lines.length && !MD_BLANK.test(lines[j].text)) {
+          if (!lines[j].lazy && (setext = MD_SETEXT.exec(lines[j].text))) break;
+          if (mdStartsBlock(lines[j].text)) break;
+          para.push(lines[j++]);
+        }
+        const p = open(setext ? (setext[1] ? "h1" : "h2") : "p", {}, ln.s);
+        mdInline(para, out);
+        close(p, end(setext ? lines[j] : para[para.length - 1]));
+        i = setext ? j + 1 : j;
+      }
+    }
+  }
+
+  // Inline Markdown over lines (each { s, text }), joined by their source newlines.
+  function mdInline(lines, out) {
+    const src = [];
+    let str = "";
+    lines.forEach((ln, n) => {
+      for (let k = 0; k < ln.text.length; k++) src.push(ln.s + k);
+      str += ln.text;
+      if (n < lines.length - 1) { src.push(ln.s + ln.text.length); str += "\n"; }
+    });
+    src.push(src.length ? src[src.length - 1] + 1 : lines.length ? lines[0].s : 0);
+    out.push(...mdRun(str, src, 0, str.length));
+  }
+
+  // Source text events for str[a, b), split where the source is not contiguous.
+  function mdText(src, a, b, raw) {
+    const evs = [];
+    for (let k = a; k < b;) {
+      let j = k + 1;
+      while (j < b && src[j] === src[j - 1] + 1) j++;
+      evs.push({ t: "text", s: src[k], e: src[j - 1] + 1, raw });
+      k = j;
+    }
+    return evs;
+  }
+
+  // [text](url "title") at str[k] === "[": the ranges of its text and URL, or null.
+  function mdLink(str, k, end) {
+    let depth = 0, close = -1;
+    for (let j = k; j < end; j++) {
+      if (str[j] === "\\") { j++; continue; }
+      if (str[j] === "[") depth++;
+      else if (str[j] === "]" && --depth === 0) { close = j; break; }
+    }
+    if (close < 0 || str[close + 1] !== "(") return null;
+    const m = /^\(\s*(<[^<>\n]*>|[^\s()]*(?:\([^\s()]*\)[^\s()]*)*)(?:\s+("[^"]*"|'[^']*'|\([^)]*\)))?\s*\)/.exec(str.slice(close + 1, end));
+    if (!m) return null;
+    const angle = m[1].startsWith("<"), urlA = close + 1 + m[0].indexOf(m[1]) + (angle ? 1 : 0);
+    const urlB = urlA + m[1].length - (angle ? 2 : 0);
+    return { textA: k + 1, textB: close, urlA, urlB, title: m[2] ? m[2].slice(1, -1) : "", end: close + 1 + m[0].length };
+  }
+
+  // Inline HTML inside Markdown: allowed tags become elements, dropped-content tags hide what they wrap.
+  function mdHtml(str, k, end, tags, evs, src) {
+    const m = HTML_TAG_RE.exec(str.slice(k, end));
+    if (!m) return 0;
+    const name = m[2].toLowerCase(), at = src[k];
+    if (name === "span") return 0;
+    if (m[1]) {
+      const at2 = tags.map((x) => x.tag).lastIndexOf(name);
+      if (at2 >= 0) evs.push({ t: "close", ref: tags.splice(at2, 1)[0], at });
+      return m[0].length;
+    }
+    if (PREVIEW_DROP.has(name)) {
+      const closeAt = str.slice(k + m[0].length, end).toLowerCase().indexOf("</" + name);
+      if (closeAt < 0) return end - k;
+      const gt = str.indexOf(">", k + m[0].length + closeAt);
+      return (gt < 0 || gt >= end ? end : gt + 1) - k;
+    }
+    if (!PREVIEW_INLINE.has(name) && !PREVIEW_BLOCK.has(name)) return m[0].length;
+    const attrs = htmlAttrs(m[3]);
+    if (name === "img") {
+      const label = attrs.alt && attrs.alt.value ? attrs.alt : attrs.src;
+      if (!label) return m[0].length;
+      const a = { t: "open", tag: "a", attrs: linkAttrs(attrs.src ? attrs.src.value : "", { class: "md-img" }), block: false, at };
+      const off = k + 1 + m[2].length;
+      evs.push(a, ...mdText(src, off + label.s, off + label.e), { t: "close", ref: a, at });
+      return m[0].length;
+    }
+    if (PREVIEW_VOID.has(name)) {
+      if (name === "br" || name === "hr") evs.push({ t: "void", tag: name, attrs: {}, block: name === "hr", at });
+      return m[0].length;
+    }
+    const ev = { t: "open", tag: name, attrs: htmlAllowed(name, attrs), block: false, at };
+    evs.push(ev);
+    tags.push(ev);
+    return m[0].length;
+  }
+
+  function mdRun(str, src, start, end) {
+    const toks = [], tags = [];
+    let k = start, textStart = start, link;
+    const flush = (to) => { if (to > textStart) toks.push({ type: "text", a: textStart, b: to }); };
+    const evs = (list) => toks.push({ type: "evs", list });
+    while (k < end) {
+      const c = str[k];
+      if (c === "\\" && k + 1 < end && /[!-/:-@[-`{-~]/.test(str[k + 1])) {
+        flush(k);
+        textStart = k + 1;
+        k += 2;
+      } else if (c === "`") {
+        let n = 1;
+        while (str[k + n] === "`") n++;
+        let close = -1;
+        for (let j = k + n; j < end; j++) {
+          if (str[j] !== "`") continue;
+          let r = 1;
+          while (str[j + r] === "`") r++;
+          if (r === n) { close = j; break; }
+          j += r - 1;
+        }
+        if (close < 0) { k += n; continue; }
+        flush(k);
+        const code = { t: "open", tag: "code", attrs: {}, block: false, at: src[k] };
+        evs([code, ...mdText(src, k + n, close, true), { t: "close", ref: code, at: src[close] }]);
+        k = textStart = close + n;
+      } else if (c === "*" || c === "_") {
+        let n = 1;
+        while (str[k + n] === c) n++;
+        flush(k);
+        const prev = k > start ? str[k - 1] : "\n", next = k + n < end ? str[k + n] : "\n";
+        const left = !/\s/.test(next) && (!MD_PUNCT.test(next) || /\s/.test(prev) || MD_PUNCT.test(prev));
+        const right = !/\s/.test(prev) && (!MD_PUNCT.test(prev) || /\s/.test(next) || MD_PUNCT.test(next));
+        toks.push({ type: "delim", ch: c, a: k, total: n, openUsed: 0, closeUsed: 0, opens: [], closes: [],
+          canOpen: c === "*" ? left : left && (!right || MD_PUNCT.test(prev)),
+          canClose: c === "*" ? right : right && (!left || MD_PUNCT.test(next)) });
+        k = textStart = k + n;
+      } else if ((c === "[" || (c === "!" && str[k + 1] === "[")) && (link = mdLink(str, c === "!" ? k + 1 : k, end))) {
+        const url = str.slice(link.urlA, link.urlB).split(HIDDEN).join("");
+        flush(k);
+        const a = { t: "open", tag: "a", attrs: linkAttrs(url, c === "!" ? { class: "md-img" } : link.title ? { title: link.title } : {}), block: false, at: src[k] };
+        const body = c === "!" ? (link.textB > link.textA ? mdText(src, link.textA, link.textB) : mdText(src, link.urlA, link.urlB))
+          : mdRun(str, src, link.textA, link.textB);
+        evs([a, ...body, { t: "close", ref: a, at: src[link.textB] }]);
+        k = textStart = link.end;
+      } else if (c === "<") {
+        const auto = /^<([a-zA-Z][a-zA-Z0-9+.-]{1,31}:[^\s<>]*)>/.exec(str.slice(k, end));
+        if (auto) {
+          flush(k);
+          const a = { t: "open", tag: "a", attrs: linkAttrs(auto[1], {}), block: false, at: src[k] };
+          evs([a, ...mdText(src, k + 1, k + 1 + auto[1].length), { t: "close", ref: a, at: src[k + auto[0].length - 1] }]);
+          k = textStart = k + auto[0].length;
+          continue;
+        }
+        const list = [], n = mdHtml(str, k, end, tags, list, src);
+        if (!n) { k++; continue; }
+        flush(k);
+        evs(list);
+        k = textStart = k + n;
+      } else k++;
+    }
+    flush(end);
+    for (let ci = 0; ci < toks.length; ci++) {
+      const closer = toks[ci];
+      if (closer.type !== "delim" || !closer.canClose) continue;
+      for (let oi = ci - 1; oi >= 0 && closer.total - closer.openUsed - closer.closeUsed > 0;) {
+        const opener = toks[oi], left = opener.type === "delim" ? opener.total - opener.openUsed - opener.closeUsed : 0;
+        if (!left || !opener.canOpen || opener.ch !== closer.ch) { oi--; continue; }
+        const use = left >= 2 && closer.total - closer.openUsed - closer.closeUsed >= 2 ? 2 : 1;
+        opener.openUsed += use;
+        const o = { t: "open", tag: use === 2 ? "strong" : "em", attrs: {}, block: false, at: src[opener.a + opener.total - opener.openUsed] };
+        opener.opens.unshift(o);
+        closer.closes.push({ t: "close", ref: o, at: src[closer.a + closer.closeUsed] });
+        closer.closeUsed += use;
+        for (let j = oi + 1; j < ci; j++) if (toks[j].type === "delim") toks[j].canOpen = toks[j].canClose = false;
+      }
+    }
+    const out = [];
+    for (const tok of toks) {
+      if (tok.type === "text") out.push(...mdText(src, tok.a, tok.b));
+      else if (tok.type === "evs") out.push(...tok.list);
+      else out.push(...tok.closes, ...mdText(src, tok.a + tok.closeUsed, tok.a + tok.total - tok.openUsed), ...tok.opens);
+    }
+    for (const ev of tags.reverse()) out.push({ t: "close", ref: ev, at: src[end] });
+    return out;
+  }
+
+  // ── HTML ──
+
+  // Attributes of a tag as { name: { value, s, e } }, s/e being the value's offsets in src.
+  function htmlAttrs(src) {
+    const out = {}, re = /([a-zA-Z_:][\w:.-]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+    let m;
+    while ((m = re.exec(src))) {
+      const raw = m[2] ?? m[3] ?? m[4] ?? "", quoted = m[2] !== undefined || m[3] !== undefined;
+      const s = m[2] === undefined && m[3] === undefined && m[4] === undefined ? m.index + m[0].length
+        : m.index + m[0].length - raw.length - (quoted ? 1 : 0);
+      out[m[1].toLowerCase()] = { value: raw, s, e: s + raw.length };
+    }
+    return out;
+  }
+
+  function htmlAllowed(name, attrs) {
+    const value = (k) => attrs[k] && decodeEntities(attrs[k].value);
+    const digits = (k) => (attrs[k] && /^\d{1,4}$/.test(attrs[k].value) ? attrs[k].value : undefined);
+    if (name === "a") return linkAttrs(attrs.href ? attrs.href.value : "", value("title") ? { title: value("title") } : {});
+    if (name === "abbr") return value("title") ? { title: value("title") } : {};
+    if (name === "td" || name === "th") return { colspan: digits("colspan"), rowspan: digits("rowspan") };
+    if (name === "ol") return { start: digits("start") };
+    if (name === "details") return { open: attrs.open ? true : undefined };
+    return {};
+  }
+
+  function htmlEvents(scan, from, out) {
+    const re = /<(\/?)([a-zA-Z][\w-]*)((?:[^>"']|"[^"]*"|'[^']*')*)>|<![^>]*>|<\?[^>]*>/g, tags = [];
+    const closeTop = (at) => out.push({ t: "close", ref: tags.pop(), at });
+    let last = from, m;
+    re.lastIndex = from;
+    while ((m = re.exec(scan))) {
+      const name = (m[2] || "").toLowerCase();
+      if (name === "span") continue;
+      if (m.index > last) out.push({ t: "text", s: last, e: m.index });
+      last = re.lastIndex;
+      if (!name) continue;
+      if (m[1]) {
+        const at = tags.map((x) => x.tag).lastIndexOf(name);
+        if (at >= 0) while (tags.length > at) closeTop(m.index);
+        continue;
+      }
+      if (PREVIEW_DROP.has(name)) {
+        const closeAt = scan.toLowerCase().indexOf("</" + name, re.lastIndex), gt = closeAt < 0 ? -1 : scan.indexOf(">", closeAt);
+        last = re.lastIndex = gt < 0 ? scan.length : gt + 1;
+        continue;
+      }
+      if (!PREVIEW_BLOCK.has(name) && !PREVIEW_INLINE.has(name)) continue;
+      const top = tags[tags.length - 1];
+      if (top && ((AUTO_CLOSE[name] || []).includes(top.tag) || (top.tag === "p" && PREVIEW_BLOCK.has(name)))) closeTop(m.index);
+      const attrs = htmlAttrs(m[3]), block = PREVIEW_BLOCK.has(name), off = m.index + 1 + m[2].length;
+      if (name === "img") {
+        const label = attrs.alt && attrs.alt.value ? attrs.alt : attrs.src;
+        if (!label) continue;
+        const a = { t: "open", tag: "a", attrs: linkAttrs(attrs.src ? attrs.src.value : "", { class: "md-img" }), block: false, at: m.index };
+        out.push(a, { t: "text", s: off + label.s, e: off + label.e }, { t: "close", ref: a, at: m.index });
+      } else if (PREVIEW_VOID.has(name)) out.push({ t: "void", tag: name, attrs: {}, block, at: m.index });
+      else {
+        const ev = { t: "open", tag: name, attrs: htmlAllowed(name, attrs), block, at: m.index };
+        out.push(ev);
+        tags.push(ev);
+      }
+    }
+    if (scan.length > last) out.push({ t: "text", s: last, e: scan.length });
+    while (tags.length) closeTop(scan.length);
+  }
+
+  function previewTree(body, spans) {
+    const rodeo = [];
+    for (const sp of spans) {
+      const ev = { t: "open", span: sp.index, block: false };
+      rodeo.push([sp.start, ev, sp.openEnd], [sp.closeStart, { t: "close", ref: ev }, sp.end]);
+    }
+    rodeo.sort((a, b) => a[0] - b[0]);
+    let scan = "", at = 0;
+    for (const [s, , e] of rodeo) { scan += body.slice(at, s) + HIDDEN.repeat(e - s); at = e; }
+    scan = (scan + body.slice(at)).replace(/<!--[\s\S]*?(?:-->|$)/g, (c) => HIDDEN.repeat(c.length));
+    const events = [], fm = frontMatterEnd(body), format = previewFormat(body);
+    if (fm) {
+      const pre = { t: "open", tag: "pre", attrs: { class: "fm" }, block: true, at: 0 };
+      events.push(pre, { t: "text", s: 0, e: body[fm - 1] === "\n" ? fm - 1 : fm, raw: true }, { t: "close", ref: pre, at: fm });
+    }
+    if (format === "html") htmlEvents(scan, fm, events);
+    else {
+      const lines = [];
+      for (let s = fm; s <= scan.length;) {
+        const n = scan.indexOf("\n", s), e = n < 0 ? scan.length : n;
+        lines.push({ s, text: scan.slice(s, e) });
+        if (n < 0) break;
+        s = n + 1;
+      }
+      mdBlocks(lines, events);
+    }
+    const b = previewBuilder(body);
+    let r = 0;
+    const flush = (p, inclusive) => {
+      while (r < rodeo.length && (rodeo[r][0] < p || (inclusive && rodeo[r][0] === p))) {
+        const ev = rodeo[r++][1];
+        if (ev.t === "open") b.open(ev); else b.close(ev);
+      }
+    };
+    const shown = (s, e, raw) => {
+      for (let k = s; k < e;) {
+        if (scan[k] === HIDDEN) { k++; continue; }
+        let j = k + 1;
+        while (j < e && scan[j] !== HIDDEN) j++;
+        b.text(k, j, raw);
+        k = j;
+      }
+    };
+    for (const ev of events) {
+      if (ev.t === "text") {
+        flush(ev.s, true);
+        let cur = ev.s;
+        while (r < rodeo.length && rodeo[r][0] < ev.e) {
+          shown(cur, rodeo[r][0], ev.raw);
+          cur = rodeo[r][0];
+          flush(cur, true);
+        }
+        shown(cur, ev.e, ev.raw);
+      } else {
+        flush(ev.at, ev.t !== "close");
+        b[ev.t](ev);
+      }
+    }
+    flush(Infinity);
+    return { format, nodes: b.root.children };
+  }
+
   // ── translations (rmstory's filesystem store) ────────────────────────────
 
   // Ids of the translatable spans, in chapter order: the rows a translation fills.
@@ -635,10 +1183,12 @@ const RB = (() => {
     const lines = ["# " + (rodeo.title || name), "", "Generated by the Rodeo Builder.", "", "## Install", ""];
     lines.push((rodeo.base ? "Installs into `" + dir + "`, on top of the `" + rodeo.base + "` profile (named in `builder.yaml`):"
       : "Installs into `" + dir + "`:"), "", "```bash", "rodeo new " + name + " --from-zip " + name + ".zip", "```");
-    const todo = rodeo.chapters.filter((ch) => (ch.needs || []).includes(MISSING_ADDON));
+    const work = new Set([MISSING_ADDON, ...(rodeo.workNeeds || [])]);
+    const todo = rodeo.chapters.filter((ch) => (ch.needs || []).some((n) => work.has(n)));
     if (todo.length) {
-      lines.push("", "## Work needed", "", "These chapters need something no lab engine provides yet (`" + MISSING_ADDON + "`):", "",
-        ...todo.map((ch) => "- " + ch.title + " (`" + ch.id + "`)"));
+      const tags = (ch) => (ch.needs || []).filter((n) => n !== MISSING_ADDON && work.has(n));
+      lines.push("", "## Work needed", "", "These chapters need something no lab engine provides yet (`" + MISSING_ADDON + "`, or a need named below):", "",
+        ...todo.map((ch) => "- " + ch.title + " (`" + ch.id + "`)" + (tags(ch).length ? ": " + tags(ch).map((n) => "`" + n + "`").join(", ") : "")));
     }
     lines.push("", "## Deploy", "", "```bash", "rodeo up --profile " + name, "```", "",
       "Render the story: `rodeo story render --config-dir " + dir + "`" +
@@ -768,6 +1318,7 @@ const RB = (() => {
     storyYaml, checkScript, readme, files, labJsonAddons, crc32, zip,
     renumber, nameMissing, translatableIds, storedSource, sourceTexts, missingPlaceholders, stringsFiles, translatedLanguages, draftPrompt, storyRole, storyParts, maskExercises, retoldChapters, contentBlock, PARTS, partOf, partFiles, CATALOG_REPO, catalogEntry, publishLinks,
     parseSourceUrl, importGroupId, detectFormat, chapterFromMarkdown, chapterFromInstruqt, chaptersMeta, storyIds, chapterFromStory,
+    previewFormat, previewTree, safeHref,
   };
 })();
 

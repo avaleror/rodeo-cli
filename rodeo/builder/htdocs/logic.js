@@ -249,9 +249,10 @@ const RB = (() => {
   // previewTree(body, spans) returns { format, nodes } for the editor's preview. A node is
   // a text leaf { s, e } (shows body.slice(s, e); { s, e, text } when it shows decoded text,
   // e.g. an entity), an element { tag, attrs, children } (tags and attributes from an
-  // allow-list only) or a rodeo span { span: index, cont, children } (cont: a continuation
-  // of a span split by a block boundary or a crossing tag). Markup that is not shown (`**`,
-  // `#`, tags, comments) produces no leaf, so every leaf maps straight back to the source.
+  // allow-list only), a rodeo span { span: index, cont, children } (cont: a continuation
+  // of a span split by a block boundary or a crossing tag) or a generated label { label }
+  // (text that is not in the source, e.g. a callout title). Markup that is not shown (`**`,
+  // `#`, tags, comments) produces no leaf, so every text leaf maps straight back to the source.
 
   const FRONT_MATTER_RE = /^---[ \t]*\n[\s\S]*?\n---[ \t]*(?:\n|$)/;
   const HTML_START_RE = /^<(?:!doctype\b|(?:html|head|body|p|div|h[1-6]|ul|ol|li|table|section|article|header|footer|main|nav|blockquote|pre|figure|details|dl|hr|br|img)\b)/i;
@@ -371,6 +372,9 @@ const RB = (() => {
         if (ev.block) lift(); else materialize();
         top().node.children.push({ tag: ev.tag, attrs: ev.attrs, children: [] });
       },
+      label(ev) {
+        top().node.children.push({ label: ev.text });
+      },
     };
   }
 
@@ -380,6 +384,10 @@ const RB = (() => {
   const MD_ATX = /^ {0,3}(#{1,6})(?=[ \t]|$)/;
   const MD_HR = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
   const MD_QUOTE = /^ {0,3}> ?/;
+  const MD_SETEXT = /^ {0,3}(?:(=+)|-+)[ \t]*$/;
+  // A GitHub alert: the first line of a block quote; what follows the marker is the callout body.
+  const MD_ALERT = /^ {0,3}\[!(note|tip|important|warning|caution)\](?:[ \t]+|$)/i;
+  const MD_ALERT_TITLE = { note: "Note", tip: "Tip", important: "Important", warning: "Warning", caution: "Caution" };
   const MD_ITEM = /^( {0,3})([-*+]|\d{1,9}[.)])([ \t]+|$)/;
   const MD_BLANK = /^\s*$/;
   const MD_HIDDEN_ONLY = /^\s*\u0000[\s\u0000]*$/;
@@ -390,7 +398,8 @@ const RB = (() => {
     return MD_FENCE.test(t) || MD_ATX.test(t) || MD_HR.test(t) || MD_QUOTE.test(t) || /^ {0,3}([-*+]|\d{1,9}[.)])[ \t]+\S/.test(t);
   }
 
-  function mdStrip(line, n) { return { s: line.s + n, text: line.text.slice(n) }; }
+  // A line without its first n characters; lazy marks a paragraph continuation line outside its container's markers.
+  function mdStrip(line, n) { return { s: line.s + n, text: line.text.slice(n), lazy: line.lazy }; }
 
   function mdBlocks(lines, out) {
     const open = (tag, attrs, s) => { const ev = { t: "open", tag, attrs, block: true, at: s }; out.push(ev); return ev; };
@@ -428,10 +437,17 @@ const RB = (() => {
           const q = MD_QUOTE.exec(lines[j].text);
           if (q) inner.push(mdStrip(lines[j], q[0].length));
           else if (MD_BLANK.test(lines[j].text) || MD_BLANK.test(inner[inner.length - 1].text) || mdStartsBlock(lines[j].text)) break;
-          else inner.push(lines[j]);
+          else inner.push({ ...lines[j], lazy: true });
           j++;
         }
-        const bq = open("blockquote", {}, ln.s);
+        const alert = MD_ALERT.exec(inner[0].text);
+        const bq = open("blockquote", alert ? { class: "callout callout-" + alert[1].toLowerCase() } : {}, ln.s);
+        if (alert) {
+          const title = open("p", { class: "callout-title" }, inner[0].s);
+          out.push({ t: "label", text: MD_ALERT_TITLE[alert[1].toLowerCase()], at: inner[0].s });
+          close(title, inner[0].s + alert[0].length);
+          inner[0] = mdStrip(inner[0], alert[0].length);
+        }
         mdBlocks(inner, out);
         close(bq, end(lines[j - 1]));
         i = j;
@@ -451,7 +467,7 @@ const RB = (() => {
             const lt = lines[j].text, ind = /^ */.exec(lt)[0].length;
             if (MD_BLANK.test(lt)) inner.push(mdStrip(lines[j], lt.length));
             else if (ind >= indent) inner.push(mdStrip(lines[j], indent));
-            else if (!MD_BLANK.test(inner[inner.length - 1].text) && !mdStartsBlock(lt)) inner.push(mdStrip(lines[j], ind));
+            else if (!MD_BLANK.test(inner[inner.length - 1].text) && !mdStartsBlock(lt) && !same(MD_ITEM.exec(lt))) inner.push({ ...mdStrip(lines[j], ind), lazy: true });
             else break;
             j++;
           }
@@ -465,13 +481,18 @@ const RB = (() => {
         }
         close(list, end(last));
       } else {
+        // A setext underline (not a lazy continuation line) turns the paragraph into a heading.
         const para = [ln];
-        let j = i + 1;
-        while (j < lines.length && !MD_BLANK.test(lines[j].text) && !mdStartsBlock(lines[j].text)) para.push(lines[j++]);
-        const p = open("p", {}, ln.s);
+        let j = i + 1, setext = null;
+        while (j < lines.length && !MD_BLANK.test(lines[j].text)) {
+          if (!lines[j].lazy && (setext = MD_SETEXT.exec(lines[j].text))) break;
+          if (mdStartsBlock(lines[j].text)) break;
+          para.push(lines[j++]);
+        }
+        const p = open(setext ? (setext[1] ? "h1" : "h2") : "p", {}, ln.s);
         mdInline(para, out);
-        close(p, end(para[para.length - 1]));
-        i = j;
+        close(p, end(setext ? lines[j] : para[para.length - 1]));
+        i = setext ? j + 1 : j;
       }
     }
   }

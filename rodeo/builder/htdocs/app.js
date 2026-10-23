@@ -1268,9 +1268,11 @@ function updateCaret() {
 
 // The preview renders the chapter as Markdown or HTML (RB.previewTree) with its spans
 // highlighted. Every text piece carries its source offset (data-s, plus data-e when it shows
-// decoded text such as an entity) so a selection there maps back to the source.
+// decoded text such as an entity) so a selection there maps back to the source; generated
+// labels (callout titles) are plain text outside any piece.
 function renderPreview(body, spans) {
   const node = (n) => {
+    if (n.label !== undefined) return n.label;
     if (n.span !== undefined) {
       const sp = spans[n.span], k = RB.kind(sp.attrs);
       return el("span", { class: "sp k-" + k + (sp.attrs.hist && !sp.attrs.no ? " hist" : ""), dataset: { i: String(sp.index) },

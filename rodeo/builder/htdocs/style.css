@@ -335,6 +335,14 @@ div.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 2p
 .preview li > p { margin: 0; }
 .preview li > ul, .preview li > ol { margin: 0; }
 .preview blockquote { margin: 0 0 .8em; padding: 2px 0 2px 12px; border-left: 3px solid var(--line); color: var(--muted); }
+.preview blockquote.callout { --callout: var(--hist); padding: 8px 12px; border-left-color: var(--callout); border-radius: 0 4px 4px 0;
+  background: color-mix(in srgb, var(--callout) 9%, var(--panel)); color: var(--ink); }
+.preview blockquote.callout > :last-child { margin-bottom: 0; }
+.preview blockquote.callout-tip { --callout: var(--accent-ink); }
+.preview blockquote.callout-important { --callout: color-mix(in srgb, var(--hist) 55%, var(--coral)); }
+.preview blockquote.callout-warning { --callout: var(--amber); }
+.preview blockquote.callout-caution { --callout: var(--coral); }
+.preview .callout-title { margin: 0 0 .3em; color: var(--callout); font: 700 12px var(--mono); text-transform: uppercase; letter-spacing: .06em; }
 .preview code { font: 400 13px var(--mono); background: var(--lab); border-radius: 2px; padding: 0 3px; box-shadow: 0 0 0 1px var(--line); }
 .preview pre { margin: 0 0 .8em; padding: 10px 12px; background: var(--lab); border-radius: 4px; box-shadow: 0 0 0 1px var(--line); white-space: pre-wrap; font: 400 13px/1.6 var(--mono); }
 .preview pre code { background: none; box-shadow: none; padding: 0; }

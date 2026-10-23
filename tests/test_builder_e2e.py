@@ -372,6 +372,21 @@ def test_story_preview_selection_tags_the_source(page):
     page.click("#popover >> text=No-lang")
     assert re.search(r'\n\n<span lang="nolang"[^>]*>Some \*\*<span no>bold words</span>\*\* and `code`\.</span>\n$',
                      source.input_value())
+    source.fill("Setext title\n=====\n\n> [!NOTE]\n> Callout body.\n")
+    pv = page.locator("#edPreview")
+    assert pv.locator("h1").inner_text() == "Setext title"
+    callout = pv.locator("blockquote.callout.callout-note")
+    assert callout.locator(".callout-title").text_content() == "Note"
+    assert "[!NOTE]" not in pv.inner_text() and "===" not in pv.inner_text()
+    page.evaluate(_SELECT_IN_PREVIEW, ["h1", True])
+    page.click("#popover >> text=Tag selection")
+    page.click("#popover >> text=Translatable")
+    assert re.match(r'<span lang="en" id="[^"]+">Setext title</span>\n=====\n', source.input_value())
+    page.evaluate(_SELECT_IN_PREVIEW, ["blockquote", True])
+    page.click("#popover >> text=Tag selection")
+    page.click("#popover >> text=Invariant")
+    assert source.input_value().endswith("\n\n> [!NOTE]\n> <span no>Callout body.</span>\n")
+    assert pv.locator("blockquote.callout .sp.k-invariant").inner_text() == "Callout body."
 
 
 def test_story_editor_panes_scroll_together(page):

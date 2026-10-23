@@ -29,15 +29,32 @@
 
   <main class="cols">
     <aside class="col left" aria-label="Chapter library">
-      <div class="col-head">
-        <h2>Chapter library · <span id="libCount">0</span></h2>
-        <div class="col-head-actions">
-          <button id="importBtn" class="btn sm" type="button" title="Import a workshop's chapters from a git URL">Import</button>
-          <button id="newChapterBtn" class="btn outline sm" type="button">+ New</button>
+      <div class="lib-top">
+        <div class="col-head lib-head">
+          <h2 class="lib-title">Chapter library <span id="libCount" class="lib-count" title="Chapters in the library">0</span></h2>
+          <div class="col-head-actions">
+            <button id="importBtn" class="btn sm" type="button" title="Import a workshop's chapters from a git URL">Import</button>
+            <button id="newChapterBtn" class="btn outline sm" type="button">+ New</button>
+          </div>
+        </div>
+        <div class="lib-tools">
+          <label class="sr-only" for="search">Search chapters</label>
+          <input id="search" class="input" type="search" placeholder="Search chapters" autocomplete="off">
+          <button id="filterBtn" class="btn icon-btn" type="button" aria-expanded="false" aria-controls="filterMenu" aria-label="Filter chapters" title="Filter chapters">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12l-4.5 5.5V13l-3 1.5V8.5z"/></svg>
+            <span id="filterCount" class="icon-badge" hidden></span>
+          </button>
+          <button id="detailsBtn" class="btn icon-btn" type="button" aria-pressed="false" aria-label="Show time and needs on the cards" title="Show time and needs on the cards">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h7"/></svg>
+          </button>
+          <fieldset id="filterMenu" class="filter-menu" hidden>
+            <legend>Show only</legend>
+            <label><input type="checkbox" value="engine"> Workshops for this lab engine</label>
+            <label><input type="checkbox" value="runnable"> Chapters this lab can run</label>
+            <label><input type="checkbox" value="added"> Chapters not in the rodeo yet</label>
+          </fieldset>
         </div>
       </div>
-      <label class="sr-only" for="search">Search chapters</label>
-      <input id="search" class="input" type="search" placeholder="Search chapters" autocomplete="off">
       <div id="library"></div>
     </aside>
 
@@ -54,11 +71,11 @@
         <button id="draftRestore" class="btn primary sm" type="button">Restore</button>
         <button id="draftFresh" class="btn sm" type="button">Start fresh</button>
       </div>
-      <p class="part-head" id="partInfra">Infrastructure <span class="muted">· the lab: rodeo up</span></p>
+      <p class="part-head" id="partInfra">Infrastructure, built by rodeo up</p>
       <h2 class="sec"><span class="num">01</span> Lab engine <span id="engineNow" class="now"></span></h2>
       <div id="engines" class="engines" role="radiogroup" aria-label="Lab engine"></div>
       <div id="enginePanel" class="panel"></div>
-      <p class="part-head" id="partInstructions">Instructions <span class="muted">· the chapters: rodeo content apply</span></p>
+      <p class="part-head" id="partInstructions">Instructions, updated by rodeo content apply</p>
       <h2 class="sec"><span class="num">02</span> Chapters <span id="coverage" class="status"></span></h2>
       <p id="insertHint" class="hint"></p>
       <div id="engineBanner" class="banner bad" role="alert" hidden></div>

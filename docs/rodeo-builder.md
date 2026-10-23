@@ -76,7 +76,10 @@ rodeo up --profile <name>     # after Save to profiles
   double-click a span to change its type,
   language, id or story variant. Ids follow rmstory's rules (`<chapter>.N`,
   `<parent>.N` when nested) and the editor shows the same warnings as
-  `rmstory validate`.
+  `rmstory validate`. The source and the preview sit side by side and scroll
+  together; the preview renders the chapter as Markdown or HTML (only safe tags,
+  images as links), with its spans marked. Ctrl+Z / Ctrl+Shift+Z undo and redo;
+  **Cancel** closes the editor and discards its changes, **Done** keeps them.
 - **Translations.** The story editor's **translations** tab lists every
   translatable span per language. Click a cell to write or review a
   translation; a nested span stays in it as `<span id="..."/>`. The download

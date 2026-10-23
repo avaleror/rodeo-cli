@@ -302,10 +302,16 @@
           <button id="edRemove" type="button" class="btn sm">Remove span</button>
           <span id="edSel" class="sel-info"></span>
         </div>
-        <label class="sr-only" for="edSource">Chapter source</label>
-        <textarea id="edSource" class="textarea source" spellcheck="false"></textarea>
-        <span class="label">Tagged preview</span>
-        <div id="edPreview" class="preview"></div>
+        <div class="ed-panes">
+          <div class="ed-pane">
+            <label class="label" for="edSource">Source</label>
+            <textarea id="edSource" class="textarea source" spellcheck="false"></textarea>
+          </div>
+          <div class="ed-pane">
+            <span class="label">Tagged preview</span>
+            <div id="edPreview" class="preview"></div>
+          </div>
+        </div>
       </div>
       <div class="ed-right">
         <div class="tabs" role="tablist">

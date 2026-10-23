@@ -1870,6 +1870,24 @@ function trapTab(ev) {
   else if (!ev.shiftKey && active === last) { ev.preventDefault(); first.focus(); }
 }
 
+// Scrolling one of two panes scrolls the other to the same proportion of its height.
+// The position set on the follower is remembered so its own scroll event doesn't echo back.
+function linkScroll(a, b) {
+  const placed = new Map();
+  const follow = (src, dst) => () => {
+    const echo = placed.get(src);
+    placed.delete(src);
+    if (echo !== undefined && Math.abs(echo - src.scrollTop) <= 1) return;
+    const range = src.scrollHeight - src.clientHeight, room = dst.scrollHeight - dst.clientHeight;
+    const top = range > 0 ? Math.round((src.scrollTop / range) * room) : 0;
+    if (Math.abs(dst.scrollTop - top) <= 1) return;
+    dst.scrollTop = top;
+    placed.set(dst, dst.scrollTop);
+  };
+  a.addEventListener("scroll", follow(a, b), { passive: true });
+  b.addEventListener("scroll", follow(b, a), { passive: true });
+}
+
 // ── column widths ───────────────────────────────────────────────────────
 
 // Drag a separator, or focus it and use ←/→ (Shift: bigger steps); double-click resets.
@@ -1927,6 +1945,7 @@ function initResizers() {
 
 function bind() {
   initResizers();
+  linkScroll($("#edSource"), $("#edPreview"));
   document.addEventListener("mousedown", (ev) => {
     if (state.info && !ev.target.closest(".info-pop, .info-btn")) toggleInfo(state.info);
     if (!$("#filterMenu").hidden && !ev.target.closest("#filterMenu, #filterBtn")) setFilterMenu(false);

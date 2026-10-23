@@ -369,6 +369,21 @@ def test_story_preview_selection_tags_the_source(page):
                      source.input_value())
 
 
+def test_story_editor_panes_scroll_together(page):
+    page.set_viewport_size({"width": 1440, "height": 700})
+    page.click(".card")
+    page.locator(".row-actions .btn").first.click()
+    source, preview = page.locator("#edSource"), page.locator("#edPreview")
+    source.evaluate("ta => { ta.value += '\\n\\nMore text.'.repeat(80); ta.dispatchEvent(new Event('input')); }")
+    source.evaluate("ta => { ta.scrollTop = ta.scrollHeight; }")
+    page.wait_for_function("() => { const p = document.querySelector('#edPreview'); return p.scrollTop > 0 && "
+                           "p.scrollTop >= p.scrollHeight - p.clientHeight - 2; }")
+    box = source.bounding_box()
+    assert box["y"] >= 0 and box["y"] + box["height"] <= 700
+    preview.evaluate("p => { p.scrollTop = 0; }")
+    page.wait_for_function("() => document.querySelector('#edSource').scrollTop <= 1")
+
+
 def test_theme_toggle(page):
     assert page.evaluate("document.documentElement.dataset.theme") == "dark"
     page.click("#themeBtn")

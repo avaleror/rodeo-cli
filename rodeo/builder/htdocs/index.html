@@ -174,8 +174,13 @@
       <div id="ncWorkshops" class="chips"></div>
       <label class="label" for="ncMins">Minutes</label>
       <input id="ncMins" class="input mono" type="number" min="1" max="240" value="10">
-      <span class="label">Requires from the lab</span>
-      <div id="ncNeeds" class="chips"></div>
+      <label class="label" for="ncNeedInput">Requires from the lab</label>
+      <div id="ncNeeds" class="chips need-picked"></div>
+      <div class="need-field">
+        <input id="ncNeedInput" class="input mono" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false"
+               aria-controls="ncNeedList" autocomplete="off" placeholder="Type to search, Enter to add">
+        <ul id="ncNeedList" class="need-list" role="listbox" aria-label="Needs" hidden></ul>
+      </div>
       <div id="ncDraft" class="nc-draft" hidden>
         <label class="label" for="ncBrief">Draft with an engine</label>
         <textarea id="ncBrief" class="textarea brief" placeholder="What the student does in this chapter and what they should learn"></textarea>

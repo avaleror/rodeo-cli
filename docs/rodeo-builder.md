@@ -55,13 +55,14 @@ rodeo up --profile <name>     # after Save to profiles
   chapter or a span offers **Undo** for a few seconds. When every chapter comes
   from workshops that run on one other engine, a banner offers to switch to it. A chapter that needs something the lab doesn't provide is marked, and
   for lab-in-a-box one click adds the missing add-on. Chapters that come with a
-  check script bring it along. A new chapter can only ask for what an engine
-  really provides: the native engines' capabilities and lab-in-a-box's catalogue
-  (add-ons, infrastructure services, Kubernetes cluster types). If the
-  lab-in-a-box catalogue could not be read, the page says why instead of showing
-  an empty list. `missing_addon` is always offered: a placeholder for something no
-  engine provides yet. It only marks the chapter as "work needed" (also listed in
-  the download's README); it never blocks the rodeo and never reaches the lab.
+  check script bring it along. A new chapter's **Requires from the lab** field
+  suggests, as you type, what an engine really provides: the native engines'
+  capabilities and lab-in-a-box's catalogue (add-ons, infrastructure services,
+  Kubernetes cluster types). If the lab-in-a-box catalogue could not be read, the
+  page says why. When nothing matches, Enter adds what you typed as a new need: a
+  placeholder for something no engine provides yet, like `missing_addon`. Such a
+  need only marks the chapter as "work needed" (also listed, by name, in the
+  download's README); it never blocks the rodeo and never reaches the lab.
 - **Import.** **Import** above the library adds a workshop from a URL: a git
   repository or a directory in one (`https://<host>/<owner>/<repo>/tree/<ref>/<dir>`).
   The builder detects the format (a rodeo `story/`, an Instruqt track

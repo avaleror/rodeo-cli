@@ -134,12 +134,21 @@ function provided() {
   return new Set(liabImported() ? importBase().addons : state.labAddons);
 }
 
-function missing(chapter) { const p = provided(); return (chapter.needs || []).filter((n) => n !== RB.MISSING_ADDON && !p.has(n)); }
+function missing(chapter) { const p = provided(); return (chapter.needs || []).filter((n) => !isWorkNeed(n) && !p.has(n)); }
 
-function workNeeded() { return state.chapters.filter((c) => (c.needs || []).includes(RB.MISSING_ADDON)); }
+// A need no lab engine provides yet: missing_addon, or a tag no engine offers (only decided while the
+// lab-in-a-box catalogue is loaded; without it an unknown need stays a need the lab lacks).
+function isWorkNeed(n) {
+  return n === RB.MISSING_ADDON || (!state.liab.error && !offeredNeeds().includes(n));
+}
+
+function workNeeds(chapter) { return (chapter.needs || []).filter(isWorkNeed); }
+
+function workNeeded() { return state.chapters.filter((c) => workNeeds(c).length); }
 
 function needChip(n, miss) {
   if (n === RB.MISSING_ADDON) return el("span", { class: "chip todo", title: "Placeholder: this chapter needs something no engine provides yet", text: "work needed" });
+  if (isWorkNeed(n)) return el("span", { class: "chip todo", title: "No lab engine provides " + n + " yet: work needed", text: n });
   return el("span", { class: "chip " + (miss.includes(n) ? "missing" : "ok"), text: n,
     title: miss.includes(n) ? "The " + state.engine + " lab engine doesn't provide " + n : null });
 }
@@ -251,7 +260,7 @@ function rodeo() {
     name: state.name, title: state.title, base: baseProfile(), plan: plan(),
     definition: isLiab() && !liabImported() ? engine().definition : "",
     chapters: state.chapters, variants: allVariants(), story: story(), labJson: state.labJson, strings: state.strings,
-    content: contentSource(),
+    content: contentSource(), workNeeds: [...new Set(state.chapters.flatMap(workNeeds))],
   };
 }
 
@@ -1016,6 +1025,7 @@ function chapterTemplate(id) {
 
 function openNewChapter() {
   ncNeeds.clear();
+  $("#ncNeedInput").value = "";
   $("#ncTitle").value = "";
   $("#ncMins").value = "10";
   $("#ncCheck").checked = false;
@@ -1033,9 +1043,70 @@ function renderNewChapterChips() {
   $("#ncWorkshops").replaceChildren(...libraryGroups().map((g) => el("button", {
     type: "button", class: "chip" + (state.newWorkshop === g.id ? " on" : ""), text: g.title, "aria-pressed": String(state.newWorkshop === g.id),
     onclick: () => { state.newWorkshop = g.id; renderNewChapterChips(); } })));
-  $("#ncNeeds").replaceChildren(...offeredNeeds().map((c) => el("button", {
-    type: "button", class: "chip" + (ncNeeds.has(c) ? " on" : ""), text: c, "aria-pressed": String(ncNeeds.has(c)),
-    onclick: () => { if (ncNeeds.has(c)) ncNeeds.delete(c); else ncNeeds.add(c); renderNewChapterChips(); } })));
+  $("#ncNeeds").replaceChildren(...[...ncNeeds].map((n) => el("span", {
+    class: "chip " + (isWorkNeed(n) ? "todo" : "on"), title: isWorkNeed(n) ? "No lab engine provides " + n + " yet: work needed" : null },
+  n, el("button", { class: "x", type: "button", text: "×", "aria-label": "Remove " + n,
+    onclick: () => { ncNeeds.delete(n); renderNewChapterChips(); $("#ncNeedInput").focus(); } }))));
+  renderNeedOptions();
+}
+
+// The needs field: typing lists the offered needs that match; Enter or a click adds the highlighted one,
+// or the typed text as a new need (work needed) when nothing offered matches it.
+const needPick = { open: false, active: 0 };
+
+function needOptions() {
+  const q = $("#ncNeedInput").value.trim().toLowerCase();
+  const slug = q.replace(/[^a-z0-9_-]+/g, "_").replace(/^[_-]+|[_-]+$/g, "").slice(0, 48);
+  const free = offeredNeeds().filter((n) => !ncNeeds.has(n) && n.toLowerCase().includes(q));
+  const opts = [...free.filter((n) => n.toLowerCase().startsWith(q)), ...free.filter((n) => !n.toLowerCase().startsWith(q))]
+    .map((n) => ({ need: n, text: n }));
+  if (slug && !offeredNeeds().includes(slug) && !ncNeeds.has(slug)) opts.push({ need: slug, text: "Add \u201c" + slug + "\u201d as a new need", fresh: true });
+  return opts;
+}
+
+function renderNeedOptions() {
+  const list = $("#ncNeedList"), input = $("#ncNeedInput"), opts = needPick.open ? needOptions() : [];
+  needPick.active = Math.min(needPick.active, Math.max(0, opts.length - 1));
+  list.replaceChildren(...opts.map((o, i) => el("li", {
+    id: "ncNeedOpt" + i, role: "option", class: (o.fresh ? "fresh" : "") + (i === needPick.active ? " on" : ""),
+    "aria-selected": String(i === needPick.active), text: o.text,
+    onmousedown: (ev) => { ev.preventDefault(); addNeed(o.need); } })));
+  list.hidden = !opts.length;
+  input.setAttribute("aria-expanded", String(opts.length > 0));
+  if (opts.length) input.setAttribute("aria-activedescendant", "ncNeedOpt" + needPick.active);
+  else input.removeAttribute("aria-activedescendant");
+  const on = list.querySelector(".on");
+  if (on) on.scrollIntoView({ block: "nearest" });
+}
+
+function addNeed(n) {
+  if (!n) return;
+  ncNeeds.add(n);
+  $("#ncNeedInput").value = "";
+  needPick.active = 0;
+  renderNewChapterChips();
+}
+
+function needKey(ev) {
+  const opts = needOptions();
+  if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+    ev.preventDefault();
+    if (!needPick.open) needPick.open = true;
+    else if (opts.length) needPick.active = (needPick.active + (ev.key === "ArrowDown" ? 1 : -1) + opts.length) % opts.length;
+  } else if (ev.key === "Enter" || ev.key === ",") {
+    ev.preventDefault();
+    if (needPick.open && opts.length) addNeed(opts[needPick.active].need);
+    return;
+  } else if (ev.key === "Escape" && needPick.open) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    needPick.open = false;
+  } else if (ev.key === "Backspace" && !ev.target.value && ncNeeds.size) {
+    ncNeeds.delete([...ncNeeds].at(-1));
+    renderNewChapterChips();
+    return;
+  } else return;
+  renderNeedOptions();
 }
 
 // Drafts the chapter body with a generating rmstory engine, from the brief and the rodeo.
@@ -2020,6 +2091,11 @@ function bind() {
   $("#importModal").addEventListener("mousedown", (ev) => { if (ev.target === ev.currentTarget) closeImport(); });
   $("#newForm").addEventListener("submit", createChapter);
   $("#ncCancel").addEventListener("click", closeNewChapter);
+  const needInput = $("#ncNeedInput");
+  needInput.addEventListener("input", () => { needPick.open = true; needPick.active = 0; renderNeedOptions(); });
+  needInput.addEventListener("focus", () => { needPick.open = true; renderNeedOptions(); });
+  needInput.addEventListener("blur", () => { needPick.open = false; renderNeedOptions(); });
+  needInput.addEventListener("keydown", needKey);
   $("#newModal").addEventListener("mousedown", (ev) => { if (ev.target === ev.currentTarget) closeNewChapter(); });
   $("#embedClose").addEventListener("click", closeEmbed);
   document.addEventListener("keydown", (ev) => {

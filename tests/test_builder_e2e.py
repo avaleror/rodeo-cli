@@ -154,6 +154,11 @@ def _open_library(page) -> None:
         page.locator(".group-head[aria-expanded=false]").first.click()
 
 
+def _add_need(page, text: str) -> None:
+    page.fill("#ncNeedInput", text)
+    page.press("#ncNeedInput", "Enter")
+
+
 def _zip(page) -> dict[str, str]:
     with page.expect_download() as info:
         page.click("#downloadBtn")
@@ -195,7 +200,7 @@ def test_compose_native_rodeo_and_download(page):
 def test_drag_and_drop_reorders(page):
     page.click("#newChapterBtn")
     page.fill("#ncTitle", "Fleet GitOps")
-    page.click("#ncNeeds .chip >> text=fleet")
+    _add_need(page, "fleet")
     page.click("#newForm button[type=submit]")
     page.locator(".card", has_text="Welcome").drag_to(page.locator(".row").first)
     titles = page.locator(".row .row-title").all_inner_texts()
@@ -208,7 +213,7 @@ def test_drag_and_drop_reorders(page):
 def test_labinabox_engine_adds_needed_addons_and_definition(page):
     page.click("#newChapterBtn")
     page.fill("#ncTitle", "Manage clients")
-    page.click("#ncNeeds .chip >> text=smlm")
+    _add_need(page, "smlm")
     page.click("#ncCheck")
     page.click("#newForm button[type=submit]")
     page.click(".engine >> text=lab-in-a-box")
@@ -464,7 +469,8 @@ def test_plan_yaml_can_be_edited(page):
 
 def test_only_available_needs_are_offered_and_unknown_addons_refused(page):
     page.click("#newChapterBtn")
-    offered = page.locator("#ncNeeds .chip").all_inner_texts()
+    page.focus("#ncNeedInput")
+    offered = page.locator("#ncNeedList li").all_inner_texts()
     assert {"smlm", "client_registration", "pxe", "rke2", "rancher", "harvester"} <= set(offered)
     assert "argocd" not in offered and "neuvector" not in offered
     page.click("#ncCancel")
@@ -517,10 +523,37 @@ def test_live_server_saves_into_profiles(page):
     sync_api.expect(page.locator("#toastText")).to_have_text(re.compile("^Saved"))
 
 
+def test_new_chapter_needs_autocomplete_and_new_tags(page):
+    page.click("#newChapterBtn")
+    page.fill("#ncTitle", "Quantum lab")
+    page.fill("#ncNeedInput", "flee")
+    assert page.locator("#ncNeedList li").all_inner_texts()[0] == "fleet"
+    page.press("#ncNeedInput", "Enter")
+    page.fill("#ncNeedInput", "Quantum Lab")
+    options = page.locator("#ncNeedList li").all_inner_texts()
+    assert options == ["Add \u201cquantum_lab\u201d as a new need"]
+    page.press("#ncNeedInput", "Enter")
+    assert [c.split()[0] for c in page.locator("#ncNeeds .chip").all_inner_texts()] == ["fleet", "quantum_lab"]
+    assert "todo" in page.locator("#ncNeeds .chip", has_text="quantum_lab").get_attribute("class")
+    page.focus("#ncNeedInput")
+    page.keyboard.press("Backspace")
+    page.keyboard.press("Backspace")
+    assert page.locator("#ncNeeds .chip").count() == 0
+    _add_need(page, "fleet")
+    _add_need(page, "quantum lab")
+    page.keyboard.press("Escape")
+    assert page.locator("#ncNeedList").is_hidden() and page.locator("#newModal").is_visible()
+    page.click("#newForm button[type=submit]")
+    assert page.locator(".row .chip.todo").inner_text() == "quantum_lab"
+    assert page.locator("#coverage").inner_text() == "lab covers every chapter · work needed in 1 chapter"
+    readme = _zip(page)["my-rodeo/README.md"]
+    assert "## Work needed" in readme and "- Quantum lab (`quantum-lab`): `quantum_lab`" in readme
+
+
 def test_missing_addon_marks_work_needed_without_blocking(page):
     page.click("#newChapterBtn")
     page.fill("#ncTitle", "Future feature")
-    page.click("#ncNeeds .chip >> text=missing_addon")
+    _add_need(page, "missing_addon")
     page.click("#newForm button[type=submit]")
     assert page.locator(".row .chip.todo").inner_text().lower() == "work needed"
     assert page.locator("#coverage").inner_text() == "lab covers every chapter · work needed in 1 chapter"

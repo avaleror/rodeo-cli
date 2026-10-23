@@ -377,6 +377,18 @@ div.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 2p
 .rm-check { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 10px 0; font-size: 12px; }
 .nc-draft { border: 1px dashed var(--line); padding: 4px 10px 8px; margin: 10px 0 4px; border-radius: 2px; }
 .textarea.brief { min-height: 64px; }
+.need-picked:empty { display: none; }
+.need-picked { margin-bottom: 8px; }
+.need-field { position: relative; }
+.need-list {
+  position: absolute; z-index: 5; top: calc(100% + 4px); left: 0; right: 0; max-height: 220px; overflow-y: auto; margin: 0; padding: 4px;
+  list-style: none; border-radius: 6px; background: var(--panel); box-shadow: 0 0 0 1px var(--accent), 0 16px 40px rgba(0, 0, 0, .45);
+}
+.need-list[hidden] { display: none; }
+.need-list li { padding: 6px 8px; border-radius: 4px; font: 400 13px var(--mono); cursor: pointer; }
+.need-list li.on { background: var(--tint); color: var(--accent-ink); }
+.need-list li.fresh { color: var(--amber); font-family: inherit; }
+.need-list li.fresh.on { background: var(--amber-bg); }
 .part {
   --part: var(--accent); margin-top: 22px; padding: 14px 18px 20px; border-radius: 10px; border-top: 3px solid var(--part);
   background: color-mix(in srgb, var(--part) 5%, var(--bg)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--part) 28%, var(--line));

@@ -286,6 +286,9 @@
           <button class="btn primary sm" type="submit">Save credential</button>
         </div>
       </form>
+      <h3 class="label">In ~/.rodeo/secrets.yaml</h3>
+      <p class="note muted">Read-only, names only: rodeo up reads these directly, and the deploy dialog can use them by name.</p>
+      <ul id="fileSecretList" class="file-secret-list"></ul>
       <div class="modal-foot">
         <span></span>
         <button id="settingsClose" class="btn" type="button">Close</button>

@@ -440,6 +440,11 @@ div.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 2p
 .dp-secret .label { flex: 1; min-width: 200px; }
 .dp-secret .select { flex: none; width: 150px; margin-bottom: 6px; }
 .dp-secret .note { flex-basis: 100%; margin: 4px 0 0; }
+.file-secret-list { list-style: none; padding: 0; margin: 10px 0 12px; display: flex; flex-wrap: wrap; gap: 6px; }
+.file-secret-list .chip { font-family: var(--mono); overflow-wrap: anywhere; }
+.dp-ref { flex-basis: 100%; display: flex; align-items: center; gap: 8px; margin: 2px 0 0; font: 400 12px var(--mono); color: var(--accent-ink); }
+.dp-ref[hidden] { display: none; }
+.dp-secret input[readonly] { color: var(--muted); border-style: dashed; }
 .popover {
   position: fixed; z-index: 30; width: 310px; background: var(--panel); border-radius: 6px; padding: 12px;
   box-shadow: 0 0 0 1px var(--accent), 0 20px 60px rgba(0, 0, 0, .5);

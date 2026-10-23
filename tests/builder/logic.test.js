@@ -493,3 +493,13 @@ test("vaultErrors checks name, required fields, freeform keys and the password",
   assert.deepEqual(RB.vaultErrors(generic, { ...free, rows: [{ key: "a", value: "" }] }), ["Fill in a."]);
   assert.ok(RB.VAULT_KEY_RE.test("a" + "b".repeat(63)) && !RB.VAULT_KEY_RE.test("a" + "b".repeat(64)));
 });
+
+test("vaultFileKeys puts the secrets.yaml keys sharing a word with the secret first", () => {
+  const all = ["alpha", "harvester_token", "my_regcode", "scc_mirror_password", "zeta"];
+  const vault = { file_secrets: ["zeta", "scc_mirror_password", "alpha", "my_regcode", "harvester_token"].map((key) => ({ key })) };
+  assert.deepEqual(RB.vaultFileKeys(vault, "scc_regcode"), ["my_regcode", "scc_mirror_password", "alpha", "harvester_token", "zeta"]);
+  assert.deepEqual(RB.vaultFileKeys(vault, "other"), all);
+  assert.deepEqual(RB.vaultFileKeys(vault, "_"), all);
+  assert.deepEqual(RB.vaultFileKeys({ items: [] }, "scc_regcode"), []);
+  assert.deepEqual(RB.vaultFileKeys(null, "scc_regcode"), []);
+});

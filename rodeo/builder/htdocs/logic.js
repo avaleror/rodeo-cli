@@ -1369,6 +1369,15 @@ const RB = (() => {
     return errors;
   }
 
+  // The secrets.yaml key names of `vault.file_secrets` to offer for the plan secret `key`: those
+  // sharing a `_`-separated word with it first, then the rest, each group alphabetical.
+  function vaultFileKeys(vault, key) {
+    const words = new Set(String(key).split("_").filter(Boolean));
+    const keys = ((vault && vault.file_secrets) || []).map((f) => f.key).sort();
+    const near = (k) => k.split("_").some((w) => words.has(w));
+    return [...keys.filter(near), ...keys.filter((k) => !near(k))];
+  }
+
   return {
     MISSING_ADDON, SOURCE_LANGUAGE, LANGUAGES, slugify, uniqueId, parseSpans, parseAttrs, kind, needsId, openTag, inner,
     withKind, wrapTarget, nextId, wrap, retag, unwrap, idsIn, validate, warningsByChapter, engineNeeds, variantsIn, storyIndex,
@@ -1377,7 +1386,7 @@ const RB = (() => {
     renumber, nameMissing, translatableIds, storedSource, sourceTexts, missingPlaceholders, stringsFiles, translatedLanguages, draftPrompt, storyRole, storyParts, maskExercises, retoldChapters, contentBlock, PARTS, partOf, partFiles, CATALOG_REPO, catalogEntry, publishLinks,
     parseSourceUrl, importGroupId, detectFormat, chapterFromMarkdown, chapterFromInstruqt, chaptersMeta, storyIds, chapterFromStory,
     previewFormat, previewTree, safeHref,
-    VAULT_KEY_RE, VAULT_MIN_PASSWORD, vaultType, vaultCandidates, vaultFill, vaultFields, vaultErrors,
+    VAULT_KEY_RE, VAULT_MIN_PASSWORD, vaultType, vaultCandidates, vaultFill, vaultFields, vaultErrors, vaultFileKeys,
   };
 })();
 

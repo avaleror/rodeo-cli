@@ -1760,9 +1760,13 @@ async function startDeploy(saveFirst) {
   if (saveFirst && !(await save(false))) return;
   const r = rodeo(), name = RB.slugify(state.name);
   const files = RB.files(r).map((f) => ({ path: f.path, content: f.content, executable: f.mode === 0o755 }));
-  const secrets = Object.fromEntries([...$("#dpSecretFields").querySelectorAll("input")].map((i) => [i.name, i.value]));
+  const inputs = [...$("#dpSecretFields").querySelectorAll("input")];
+  const secrets = Object.fromEntries(inputs.filter((i) => !i.dataset.ref).map((i) => [i.name, i.value]));
+  const refs = Object.fromEntries(inputs.filter((i) => i.dataset.ref).map((i) => [i.name, i.dataset.ref]));
+  const payload = { name, base: r.base || null, files, secrets };
+  if (Object.keys(refs).length) payload.secret_refs = refs;
   $("#dpSubmit").disabled = true;
-  const res = await apiPost("deploy", { name, base: r.base || null, files, secrets }).catch((err) => ({ status: 0, body: { error: err.message } }));
+  const res = await apiPost("deploy", payload).catch((err) => ({ status: 0, body: { error: err.message } }));
   $("#dpSubmit").disabled = false;
   if (res.status === 200 && res.body.secrets) {
     $("#dpSecrets").hidden = false;
@@ -1830,6 +1834,9 @@ function renderVaultList() {
     el("span", { class: "vault-when", text: "added " + vaultWhen(item.created) + " · last used " + vaultWhen(item.used) }),
     el("button", { class: "btn sm", type: "button", text: "Delete", "aria-label": "Delete " + item.name, onclick: () => deleteCredential(item) })))
     : el("li", { class: "vault-empty", text: "No stored credentials yet." }));
+  const keys = state.vault.file_secrets || [];
+  fill($("#fileSecretList"), keys.length ? keys.map((f) => el("li", {}, el("span", { class: "chip", text: f.key })))
+    : el("li", { class: "vault-empty", text: "No keys there." }));
 }
 
 function openSettings() {
@@ -1969,22 +1976,44 @@ async function unlockVault(ev) {
   $("#vpPass").select();
 }
 
-// The secret input of the deploy dialog, with "Use stored…" when a stored credential could fill it.
+// The secret input of the deploy dialog, with "Use stored…" when a stored credential or a
+// secrets.yaml key could fill it.
 function deploySecret(key) {
-  const label = el("label", { class: "label" }, key,
-    el("input", { class: "input mono", type: "password", name: key, autocomplete: "off", required: true }));
+  const input = el("input", { class: "input mono", type: "password", name: key, autocomplete: "off", required: true });
+  const label = el("label", { class: "label" }, key, input);
   const items = vaultOn() ? RB.vaultCandidates(state.vault, key) : [];
-  if (!items.length) return label;
+  const fileKeys = window.RB_STATIC ? [] : RB.vaultFileKeys(state.vault, key);
+  if (!items.length && !fileKeys.length) return label;
   const note = el("p", { class: "note", role: "status" });
+  const ref = el("p", { class: "dp-ref", hidden: true }, el("span"),
+    el("button", { class: "btn sm", type: "button", text: "Clear", "aria-label": "Type " + key + " instead",
+      onclick: () => { useFileSecret(input, ""); input.focus(); } }));
   const pick = el("select", { class: "select", "aria-label": "Use a stored credential for " + key },
     el("option", { value: "", text: "Use stored…" }),
-    items.map((item) => el("option", { value: item.id, text: item.name + " (" + typeLabel(item.type) + ")" })));
+    items.map((item) => el("option", { value: item.id, text: item.name + " (" + typeLabel(item.type) + ")" })),
+    fileKeys.length ? el("optgroup", { label: "secrets.yaml" }, fileKeys.map((k) => el("option", { value: "file:" + k, text: k }))) : null);
   pick.addEventListener("change", () => {
     const item = items.find((i) => i.id === pick.value);
+    const fileKey = pick.value.startsWith("file:") ? pick.value.slice(5) : "";
     pick.value = "";
+    if (fileKey) { note.textContent = ""; useFileSecret(input, fileKey); }
     if (item) useStored(item, key, note);
   });
-  return el("div", { class: "dp-secret" }, label, pick, note);
+  return el("div", { class: "dp-secret" }, label, pick, fileKeys.length ? ref : null, note);
+}
+
+// Makes a deploy secret input stand for the secrets.yaml key `fileKey` (sent as a secret_refs
+// name, no value), or back to a typed value when `fileKey` is "".
+function useFileSecret(input, fileKey) {
+  const ref = input.closest(".dp-secret").querySelector(".dp-ref");
+  input.value = "";
+  input.readOnly = !!fileKey;
+  input.required = !fileKey;
+  input.placeholder = fileKey ? "from secrets.yaml" : "";
+  if (fileKey) input.dataset.ref = fileKey;
+  else delete input.dataset.ref;
+  ref.firstChild.textContent = fileKey ? "from secrets.yaml: " + fileKey : "";
+  ref.hidden = !fileKey;
 }
 
 // Fills `key`, and every other secret of the dialog the credential maps, from the opened credential.
@@ -1993,7 +2022,11 @@ async function useStored(item, key, note) {
   if (!fields) return;
   const inputs = [...$("#dpSecretFields").querySelectorAll("input")];
   const got = RB.vaultFill(RB.vaultType(state.vault, item.type), fields, inputs.map((i) => i.name));
-  for (const i of inputs) if (i.name in got) i.value = got[i.name];
+  for (const i of inputs) {
+    if (!(i.name in got)) continue;
+    if (i.dataset.ref) useFileSecret(i, "");
+    i.value = got[i.name];
+  }
   note.textContent = key in got ? "Filled from " + item.name + (Object.keys(got).length > 1 ? ": " + Object.keys(got).join(", ") : "") + "."
     : "This credential has no " + key + " field.";
   note.classList.toggle("bad-text", !(key in got));

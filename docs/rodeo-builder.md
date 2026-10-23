@@ -262,6 +262,12 @@ loopback (not `--expose`, not the published page).
   credential fills secrets whose names match its field names.
 - The filled values go where typed ones go: into `~/.rodeo/secrets.yaml` for
   `rodeo up`. Deleting a stored credential does not remove them from there.
+- Settings also lists the keys already in `~/.rodeo/secrets.yaml`, names only
+  and read-only: `rodeo up` reads that file directly. In the deploy dialog,
+  **Use stored…** offers them under *secrets.yaml* (names sharing a word with
+  the secret first). Picking one asks no password and locks the input
+  ("from secrets.yaml: <key>", **Clear** to type instead); the builder copies the
+  value on its host, so it never reaches the browser.
 
 ## Publish to GitHub
 

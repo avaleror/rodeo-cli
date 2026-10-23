@@ -1236,8 +1236,9 @@ VAULT_TYPES = [
 class FakeVault:
     """The vault endpoints, answered in the browser (page.route) from an in-memory store."""
 
-    def __init__(self, available=True):
+    def __init__(self, available=True, file_secrets=()):
         self.available = available
+        self.file_secrets = [{"key": k} for k in file_secrets]
         self.items: dict[str, dict] = {}
         self.calls: list[tuple[str, dict]] = []
 
@@ -1255,7 +1256,7 @@ class FakeVault:
         if req.method == "GET":
             items = [{k: i[k] for k in ("id", "name", "type", "created", "used")} for i in self.items.values()]
             return route.fulfill(json={"available": self.available, "reason": "" if self.available else "listens beyond loopback",
-                                       "types": VAULT_TYPES, "items": items})
+                                       "types": VAULT_TYPES, "items": items, "file_secrets": self.file_secrets})
         body = req.post_data_json
         self.calls.append((action, body))
         if action == "vault-add":
@@ -1428,3 +1429,64 @@ def test_deploy_dialog_uses_stored_credentials(page, monkeypatch):
     assert not any(v in ("AK-STORED", "SK-STORED", "awspassword", "miscpassword") for v in _values(page))
     assert "SK-STORED" not in page.content()
     assert not page.evaluate("JSON.stringify(localStorage).includes('SK-STORED') || JSON.stringify(state).includes('SK-STORED')")
+
+
+@pytest.mark.parametrize("page", ["live"], indirect=True)
+def test_settings_lists_secrets_yaml_key_names(page):
+    FakeVault().install(page)
+    page.click("#settingsBtn")
+    sync_api.expect(page.locator("#fileSecretList")).to_have_text("No keys there.")
+    page.click("#settingsClose")
+    FakeVault(file_secrets=["harvester_token", "my_regcode"]).install(page)
+    page.click("#settingsBtn")
+    sync_api.expect(page.locator("#settingsModal")).to_contain_text("In ~/.rodeo/secrets.yaml")
+    sync_api.expect(page.locator("#fileSecretList .chip")).to_have_text(["harvester_token", "my_regcode"])
+    assert page.locator("#fileSecretList button, #fileSecretList input").count() == 0
+
+
+@pytest.mark.parametrize("page", ["live_deploy"], indirect=True)
+def test_deploy_dialog_uses_secrets_yaml_keys_by_reference(page):
+    vault = FakeVault(file_secrets=["alpha", "my_regcode", "zeta"])
+    vault.add("scc", "scc", {"regcode": "REG-STORED"}, "sccpassword")
+    vault.install(page)
+    posts: list[dict] = []
+
+    def deploy(route):
+        if route.request.method != "POST":
+            return route.fallback()
+        posts.append(route.request.post_data_json)
+        return route.fulfill(json={"current": None, "secrets": ["scc_regcode", "admin_token"], "message": "secrets"})
+
+    page.route(re.compile(r".*/api\?action=deploy$"), deploy)
+    page.click(".card >> text=Welcome to the rodeo")
+    page.click("#deployBtn")
+    page.click("#dpSubmit")
+    field = page.locator("#dpSecretFields input[name=scc_regcode]")
+    sync_api.expect(field).to_be_visible()
+    assert "secret_refs" not in posts[0]
+    pick = "#dpSecretFields select[aria-label='Use a stored credential for {}']"
+    assert page.locator(pick.format("scc_regcode") + " option").all_inner_texts() == [
+        "Use stored…", "scc (SCC)", "my_regcode", "alpha", "zeta"]
+    assert page.locator(pick.format("scc_regcode") + " optgroup").get_attribute("label") == "secrets.yaml"
+    assert page.locator(pick.format("admin_token") + " option").all_inner_texts() == ["Use stored…", "alpha", "my_regcode", "zeta"]
+
+    marker = page.locator(".dp-secret:has(input[name=scc_regcode]) .dp-ref")
+    field.fill("typed")
+    page.select_option(pick.format("scc_regcode"), "file:my_regcode")
+    sync_api.expect(marker).to_contain_text("from secrets.yaml: my_regcode")
+    assert page.locator("#vaultPrompt").is_hidden() and vault.calls == []
+    sync_api.expect(field).not_to_be_editable()
+    assert field.input_value() == ""
+    page.click("button[aria-label='Type scc_regcode instead']")
+    sync_api.expect(marker).to_be_hidden()
+    sync_api.expect(field).to_be_editable()
+    field.fill("typed")
+    assert field.input_value() == "typed"
+
+    page.select_option(pick.format("scc_regcode"), "file:my_regcode")
+    page.fill("#dpSecretFields input[name=admin_token]", "ADMIN-TYPED")
+    with page.expect_request(lambda r: r.url.endswith("action=deploy") and r.method == "POST") as req:
+        page.click("#dpSubmit")
+    body = req.value.post_data_json
+    assert body["secret_refs"] == {"scc_regcode": "my_regcode"}
+    assert body["secrets"] == {"admin_token": "ADMIN-TYPED"}

@@ -6,6 +6,7 @@ import stat
 
 import pytest
 
+from rodeo import secretgen
 from rodeo.builder import api as api_mod
 from rodeo.builder import vault
 from rodeo.builder.api import Api
@@ -164,12 +165,39 @@ def test_failures_outside_window_do_not_lock():
     limiter.check("a" * 16)
 
 
+def _secrets_yaml(text: str) -> None:
+    path = secretgen.secrets_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+
+
+def test_file_secrets_lists_keys_never_values():
+    _secrets_yaml('# comment\nzeta_token: "VALUE-ZETA"\nalpha_password: "VALUE-ALPHA"\nport: 8443\n'
+                  'flag: true\nratio: 1.5\nnested:\n  inner: VALUE-NESTED\nlisted: [VALUE-LISTED]\nempty:\n')
+    status, body = _api().dispatch("vault")
+    assert status == 200
+    assert body["file_secrets"] == [{"key": k} for k in ("alpha_password", "flag", "port", "ratio", "zeta_token")]
+    assert "VALUE-" not in json.dumps(body) and "8443" not in json.dumps(body)
+
+
+@pytest.mark.parametrize("content", [None, "", "- a\n- b\n", "key: [unclosed\n", b"\xff\xfe: x\n"])
+def test_file_secrets_empty_when_missing_or_invalid(content):
+    if isinstance(content, bytes):
+        secretgen.secrets_path().parent.mkdir(parents=True, exist_ok=True)
+        secretgen.secrets_path().write_bytes(content)
+    elif content is not None:
+        _secrets_yaml(content)
+    assert _api().dispatch("vault") == (200, {"available": True, "reason": "", "types": vault.types(),
+                                              "items": [], "file_secrets": []})
+
+
 def test_api_gated_on_can_deploy():
     vault.add("gh", "github", {"token": "t"}, PW)
+    _secrets_yaml('my_key: "v"\n')
     api = _api(can_deploy=False)
     assert api.dispatch("vault") == (200, {"available": False,
                                            "reason": "stored credentials " + api_mod.LOOPBACK_ONLY,
-                                           "types": [], "items": []})
+                                           "types": [], "items": [], "file_secrets": []})
     for action in api_mod.VAULT_ACTIONS:
         assert _post(api, action, {"id": "0" * 16, "password": PW})[0] == 403
     assert Api().dispatch("vault-open", "POST", body=b"{}")[0] == 403

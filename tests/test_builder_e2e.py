@@ -274,8 +274,8 @@ def test_selected_engine_is_marked(page):
     selected = page.locator(".engine.on")
     assert selected.count() == 1
     assert selected.locator(".engine-name").inner_text() == "rancher"
-    assert selected.locator(".selected").inner_text().lower() == "selected"
-    assert page.locator(".engine .selected").count() == 1
+    assert page.locator(".engine[aria-checked=true]").count() == 1
+    assert selected.locator(".engine-title").inner_text() == "Rancher Prime" and "VMs" not in selected.inner_text()
     assert "rancher" in page.locator("#engineNow").inner_text()
     page.click(".engine >> text=suse-virt")
     assert page.locator(".engine.on .engine-name").inner_text() == "suse-virt"
@@ -566,6 +566,36 @@ def test_engine_cards_move_with_arrow_keys(page):
     page.keyboard.press("Enter")
     assert page.locator(".engine.on .engine-name").inner_text() == focused
     assert page.locator("[data-tab=rodeo]").get_attribute("aria-selected") == "true"
+
+
+def test_engine_info_and_resizable_columns(page):
+    card = page.locator(".engine-card", has=page.locator(".engine-name", has_text="suse-virt"))
+    card.locator(".info-btn").click()
+    info = card.locator(".engine-info")
+    sync_api.expect(info).to_be_visible()
+    assert "4 VMs" in info.inner_text() and "longhorn" in info.inner_text()
+    assert page.locator(".engine.on .engine-name").inner_text() == "rancher"
+    page.keyboard.press("Escape")
+    page.mouse.move(700, 800)
+    sync_api.expect(info).to_be_hidden()
+    left = page.locator(".col.left")
+    width = left.bounding_box()["width"]
+    sep = page.locator("#resizeLeft").bounding_box()
+    page.mouse.move(sep["x"] + 1, 400)
+    page.mouse.down()
+    page.mouse.move(sep["x"] + 101, 400, steps=5)
+    page.mouse.up()
+    assert abs(left.bounding_box()["width"] - (width + 100)) <= 2
+    page.locator("#resizeRight").focus()
+    right = page.locator(".col.right").bounding_box()["width"]
+    page.keyboard.press("ArrowLeft")
+    assert page.locator(".col.right").bounding_box()["width"] == right + 16
+    page.reload()
+    page.wait_for_selector(".engine")
+    assert abs(page.locator(".col.left").bounding_box()["width"] - (width + 100)) <= 2
+    sep = page.locator("#resizeLeft").bounding_box()
+    page.mouse.dblclick(sep["x"] + 1, 400)
+    assert abs(page.locator(".col.left").bounding_box()["width"] - width) <= 2
 
 
 @pytest.mark.parametrize("page", ["site", "live"], indirect=True)

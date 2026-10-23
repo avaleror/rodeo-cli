@@ -315,7 +315,7 @@ function groupInfo(g) {
   const row = (label, ...value) => [el("dt", { text: label }), el("dd", {}, ...value)];
   const parts = String(g.sub || "").replace(/^https:\/\//, "").split("/").flatMap((s, i) => (i ? ["/", el("wbr"), s] : [s]));
   const source = /^https:\/\//.test(g.sub || "") ? el("a", { href: g.sub, target: "_blank", rel: "noopener" }, parts) : parts;
-  return el("div", { class: "group-info" + (state.info === g.id ? " open" : ""), id: "info-" + g.id, role: "region", "aria-label": "About " + g.title },
+  return el("div", { class: "info-pop group-info" + (state.info === g.id ? " open" : ""), id: "info-" + g.id, role: "region", "aria-label": "About " + g.title },
     el("dl", { class: "info-card" },
       row(g.imported ? "Imported from" : "Source", source),
       g.engine ? row("Lab engine", g.engine + (groupMatches(g) ? " (this rodeo's)" : "")) : null,
@@ -328,6 +328,7 @@ function groupInfo(g) {
 function toggleInfo(id) {
   state.info = state.info === id ? null : id;
   renderLibrary();
+  renderEngines();
 }
 
 // A chapter card's tooltip: its time and needs, what this lab lacks for it, what a click does.
@@ -426,18 +427,32 @@ function engineSummary(e) {
   return r.nodes + (r.nodes === 1 ? " VM" : " VMs") + " · " + gib(r.memory_mib) + " RAM";
 }
 
+// A lab engine's (i) panel: what it builds, its size, base profile and what it provides.
+function engineInfo(e) {
+  const id = "engine:" + e.name, row = (label, ...value) => [el("dt", { text: label }), el("dd", {}, ...value)];
+  const r = e.resources;
+  return el("div", { class: "info-pop engine-info" + (state.info === id ? " open" : ""), id: "info-" + id, role: "region", "aria-label": "About " + e.name },
+    el("dl", { class: "info-card" },
+      row("Builds", e.note),
+      row("Size", e.external ? "the lab you design" : r.nodes + " VMs, " + gib(r.memory_mib) + " RAM, " + r.vcpu + " vCPU"),
+      e.base ? row("Base profile", e.base) : null,
+      e.provides.length ? row("Provides", chipList(e.provides, "ok")) : null));
+}
+
 function renderEngines() {
   const box = $("#engines");
   box.replaceChildren(...state.engines.map((e) => {
-    const on = e.name === state.engine;
-    return el("button", {
-      class: "engine" + (on ? " on" : ""), type: "button", role: "radio", "aria-checked": String(on), tabindex: on ? "0" : "-1",
-      onclick: () => selectEngine(e.name), onkeydown: engineKey,
-    }, el("span", { class: "engine-top" }, el("span", { class: "radio", "aria-hidden": "true" }),
-      el("span", { class: "engine-name", text: e.name }), on ? el("span", { class: "selected", text: "selected" }) : null),
-    el("span", { class: "engine-title", text: e.title }),
-    el("span", { class: "engine-sub", text: engineSummary(e) }),
-    e.provides.length ? el("span", { class: "engine-provides", text: e.provides.join(" · ") }) : null);
+    const on = e.name === state.engine, id = "engine:" + e.name;
+    return el("div", { class: "engine-card" },
+      el("button", {
+        class: "engine" + (on ? " on" : ""), type: "button", role: "radio", "aria-checked": String(on), tabindex: on ? "0" : "-1",
+        onclick: () => selectEngine(e.name), onkeydown: engineKey,
+      }, el("span", { class: "engine-top" }, el("span", { class: "radio", "aria-hidden": "true" }),
+        el("span", { class: "engine-name", text: e.name })),
+      el("span", { class: "engine-title", text: e.title })),
+      el("button", { class: "info-btn", type: "button", text: "i", title: "About " + e.name, "aria-label": "About " + e.name,
+        "aria-expanded": String(state.info === id), "aria-controls": "info-" + id, onclick: () => toggleInfo(id) }),
+      engineInfo(e));
   }));
   const e = engine();
   $("#engineNow").textContent = e ? "· " + e.name + (baseProfile() && baseProfile() !== e.name ? " · " + baseProfile() : "") : "";
@@ -1778,11 +1793,65 @@ function trapTab(ev) {
   else if (!ev.shiftKey && active === last) { ev.preventDefault(); first.focus(); }
 }
 
+// ── column widths ───────────────────────────────────────────────────────
+
+// Drag a separator, or focus it and use ←/→ (Shift: bigger steps); double-click resets.
+// The widths are kept in this browser only.
+const COLS_KEY = "rodeo-builder-cols";
+const COL_LIMITS = { lw: [220, 560, 290], rw: [260, 600, 320] };
+const colWidths = {};
+
+function setColWidth(key, px) {
+  const [min, max] = COL_LIMITS[key];
+  colWidths[key] = Math.round(Math.min(max, Math.max(min, px)));
+  $(".cols").style.setProperty("--" + key, colWidths[key] + "px");
+  $(key === "lw" ? "#resizeLeft" : "#resizeRight").setAttribute("aria-valuenow", String(colWidths[key]));
+}
+
+function saveCols() {
+  try { localStorage.setItem(COLS_KEY, JSON.stringify(colWidths)); } catch (err) { /* no storage: widths reset on reload */ }
+}
+
+function initResizers() {
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(COLS_KEY) || "{}") || {}; } catch (err) { saved = {}; }
+  for (const [sel, key, dir] of [["#resizeLeft", "lw", 1], ["#resizeRight", "rw", -1]]) {
+    const sep = $(sel), [min, max, initial] = COL_LIMITS[key];
+    sep.setAttribute("aria-valuemin", String(min));
+    sep.setAttribute("aria-valuemax", String(max));
+    setColWidth(key, Number(saved[key]) || initial);
+    sep.addEventListener("pointerdown", (ev) => {
+      ev.preventDefault();
+      sep.setPointerCapture(ev.pointerId);
+      const x0 = ev.clientX, w0 = colWidths[key];
+      const move = (e) => setColWidth(key, w0 + dir * (e.clientX - x0));
+      const end = () => {
+        sep.removeEventListener("pointermove", move);
+        document.body.classList.remove("resizing");
+        saveCols();
+      };
+      document.body.classList.add("resizing");
+      sep.addEventListener("pointermove", move);
+      sep.addEventListener("pointerup", end, { once: true });
+      sep.addEventListener("pointercancel", end, { once: true });
+    });
+    sep.addEventListener("dblclick", () => { setColWidth(key, initial); saveCols(); });
+    sep.addEventListener("keydown", (ev) => {
+      const step = { ArrowLeft: -1, ArrowRight: 1 }[ev.key];
+      if (!step) return;
+      ev.preventDefault();
+      setColWidth(key, colWidths[key] + dir * step * (ev.shiftKey ? 64 : 16));
+      saveCols();
+    });
+  }
+}
+
 // ── init ────────────────────────────────────────────────────────────────
 
 function bind() {
+  initResizers();
   document.addEventListener("mousedown", (ev) => {
-    if (state.info && !ev.target.closest(".group-info, .info-btn")) toggleInfo(state.info);
+    if (state.info && !ev.target.closest(".info-pop, .info-btn")) toggleInfo(state.info);
     if (!$("#filterMenu").hidden && !ev.target.closest("#filterMenu, #filterBtn")) setFilterMenu(false);
   });
   $("#filterBtn").addEventListener("click", () => setFilterMenu($("#filterMenu").hidden));

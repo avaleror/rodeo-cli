@@ -22,8 +22,8 @@ rodeo up --profile <name>     # after Save to profiles
 ## What you compose
 
 - **Lab engine.** `suse-virt`, `rancher` and `suse-edge` are rodeo's own
-  engines; each shows what it provides (for example Harvester, KubeVirt,
-  Longhorn, Rancher, Fleet). `lab-in-a-box` builds any lab lab-in-a-box can:
+  engines; the **(i)** on each shows its size and what it provides (for example
+  Harvester, KubeVirt, Longhorn, Rancher, Fleet). `lab-in-a-box` builds any lab lab-in-a-box can:
     - **Open in Lab Builder** opens lab-in-a-box's lab-builder with this rodeo's
       add-ons filled in. Download the lab.json there and upload it here to bring
       its add-ons back.

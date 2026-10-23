@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.27.0](https://github.com/avaleror/rodeo-cli/compare/v0.26.0...v0.27.0) (2026-10-23)
+
+
+### Features
+
+* /builder credentials ([cb9b310](https://github.com/avaleror/rodeo-cli/commit/cb9b3100a679fca63235ca09fe781c6852cdfb0d))
+* /builder layout ([48863f5](https://github.com/avaleror/rodeo-cli/commit/48863f5a44b3e8276593a7cd56f3d052c2c94bb0))
+* /builder story editor ([0feb03b](https://github.com/avaleror/rodeo-cli/commit/0feb03bec008bfc10fd93797ce93035c52e21871))
+* **builder:** a new chapter's needs are an autocomplete field that takes new tags ([0f8d8dc](https://github.com/avaleror/rodeo-cli/commit/0f8d8dc4d362dd785c582a486146020487161349))
+* **builder:** a quieter chapter library ([6e8e215](https://github.com/avaleror/rodeo-cli/commit/6e8e215a62374196e1cd9565345598514d69cb34))
+* **builder:** a quieter chapter library ([301c727](https://github.com/avaleror/rodeo-cli/commit/301c727ef8063caa9c768e0b252563aeb150564d))
+* **builder:** ask for a reload after a builder restart, "Validate" button, zip file list on click ([225e483](https://github.com/avaleror/rodeo-cli/commit/225e483d471cdbedfdb5b93b50409fe92e1bfe5f))
+* **builder:** encrypted credential store, one password per credential ([bc3eb0b](https://github.com/avaleror/rodeo-cli/commit/bc3eb0b99b02e1f80e290654f08a95567f92ed15))
+* **builder:** list secrets.yaml keys in Settings and use them in the deploy dialog by reference ([ac11a81](https://github.com/avaleror/rodeo-cli/commit/ac11a81c94afbc0471b6ff7ce8862c79d4bf0227))
+* **builder:** name the user menu entry and its dialog "Settings" ([0ff7436](https://github.com/avaleror/rodeo-cli/commit/0ff74361f3f28b56eb18416e8257ed255804836b))
+* **builder:** render the story preview as Markdown or HTML ([81de866](https://github.com/avaleror/rodeo-cli/commit/81de86691da3b70abfffecfb7426f2672933a140))
+* **builder:** resizable columns, separate sections, compact engine cards ([de45263](https://github.com/avaleror/rodeo-cli/commit/de452634296130401bde9f981e73713b149e99e7))
+* **builder:** setext headings and GitHub alert callouts in the story preview ([600b7b7](https://github.com/avaleror/rodeo-cli/commit/600b7b73f2f205d75ece3ddc06bbaf950d31c9d1))
+* **builder:** Settings with stored credentials and "Use stored" in the deploy dialog ([752d029](https://github.com/avaleror/rodeo-cli/commit/752d0295825f890995c42c8145ef0ba4efb08066))
+* **builder:** story editor source and preview side by side, scrolling together ([5dd991c](https://github.com/avaleror/rodeo-cli/commit/5dd991c694a5dbad874a411fd7d8e340af0a126e))
+* **builder:** user menu always shown, Settings disabled with the reason where credentials cannot be stored ([310ffa9](https://github.com/avaleror/rodeo-cli/commit/310ffa90a74627803641a457ea3aa937eea6da9a))
+* **builder:** user menu in the header with Manage credentials and the builder's user ([ca15d6a](https://github.com/avaleror/rodeo-cli/commit/ca15d6a5816e79f0b050af8cf2a3fcf90df65c90))
+
+
+### Bug Fixes
+
+* **builder:** story editor Cancel and Ctrl+Z, "Edit" button, editor above the library ([19ec9a7](https://github.com/avaleror/rodeo-cli/commit/19ec9a7435fe5c71663fa67cf9fe38e3e6b693e5))
+
+
+### Documentation
+
+* add step-by-step guide for deploying to AWS from a Mac ([d12184e](https://github.com/avaleror/rodeo-cli/commit/d12184eb224df27255d24d68c71a0637c239d4c8))
+* add step-by-step guide for deploying to AWS from a Mac ([29bfdde](https://github.com/avaleror/rodeo-cli/commit/29bfdde738a91ec4519b33bb4e7abfd6c3485c95))
+
 ## [0.26.0](https://github.com/avaleror/rodeo-cli/compare/v0.25.4...v0.26.0) (2026-10-23)
 
 

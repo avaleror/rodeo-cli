@@ -1311,6 +1311,64 @@ const RB = (() => {
     return out;
   }
 
+  // ── stored credentials (the live builder's vault) ───────────────────────
+  // `vault` is the server's GET vault answer ({types, items}). A type maps plan secret names to
+  // its field names in `keys`; a freeform type stores any `key: value` rows instead.
+
+  const VAULT_KEY_RE = /^[a-z][a-z0-9_]{0,63}$/;
+  const VAULT_MIN_PASSWORD = 8;
+
+  function vaultType(vault, id) { return ((vault && vault.types) || []).find((t) => t.id === id) || null; }
+
+  // The stored credentials that can fill the plan secret `key`: those whose type maps it, and every
+  // freeform one (its field names are only known once it is opened).
+  function vaultCandidates(vault, key) {
+    return ((vault && vault.items) || []).filter((item) => {
+      const type = vaultType(vault, item.type);
+      return !!type && (!!type.freeform || Object.prototype.hasOwnProperty.call(type.keys || {}, key));
+    });
+  }
+
+  // {secret: value} for each of `keys` that an opened credential's `fields` provide.
+  function vaultFill(type, fields, keys) {
+    const out = {};
+    for (const k of keys) {
+      const field = type && type.freeform ? k : ((type && type.keys) || {})[k];
+      if (field && Object.prototype.hasOwnProperty.call(fields, field) && typeof fields[field] === "string" && fields[field] !== "") out[k] = fields[field];
+    }
+    return out;
+  }
+
+  // The fields object vault-add stores: the type's non-empty fields, or a freeform form's rows.
+  function vaultFields(type, form) {
+    if (type && type.freeform) return Object.fromEntries((form.rows || []).map((r) => [r.key.trim(), r.value]));
+    return Object.fromEntries((type ? type.fields : []).map((f) => [f.name, (form.fields || {})[f.name] || ""])
+      .filter(([, v]) => v !== ""));
+  }
+
+  // What stops the add-credential form ({name, fields | rows, password, repeat}) from being saved.
+  function vaultErrors(type, form) {
+    const errors = [];
+    if (!String(form.name || "").trim()) errors.push("Give the credential a name.");
+    if (!type) errors.push("Pick a type.");
+    else if (type.freeform) {
+      const rows = form.rows || [], seen = new Set();
+      if (!rows.length) errors.push("Add at least one field.");
+      for (const r of rows) {
+        const key = r.key.trim();
+        if (!VAULT_KEY_RE.test(key)) errors.push("Field name \"" + key + "\": lowercase letters, digits and _, starting with a letter.");
+        else if (seen.has(key)) errors.push("Field " + key + " is there twice.");
+        else if (r.value === "") errors.push("Fill in " + key + ".");
+        seen.add(key);
+      }
+    } else {
+      for (const f of type.fields) if (!f.optional && !(form.fields || {})[f.name]) errors.push("Fill in " + f.label + ".");
+    }
+    if (String(form.password || "").length < VAULT_MIN_PASSWORD) errors.push("The password needs at least " + VAULT_MIN_PASSWORD + " characters.");
+    else if (form.password !== form.repeat) errors.push("The passwords don't match.");
+    return errors;
+  }
+
   return {
     MISSING_ADDON, SOURCE_LANGUAGE, LANGUAGES, slugify, uniqueId, parseSpans, parseAttrs, kind, needsId, openTag, inner,
     withKind, wrapTarget, nextId, wrap, retag, unwrap, idsIn, validate, warningsByChapter, engineNeeds, variantsIn, storyIndex,
@@ -1319,6 +1377,7 @@ const RB = (() => {
     renumber, nameMissing, translatableIds, storedSource, sourceTexts, missingPlaceholders, stringsFiles, translatedLanguages, draftPrompt, storyRole, storyParts, maskExercises, retoldChapters, contentBlock, PARTS, partOf, partFiles, CATALOG_REPO, catalogEntry, publishLinks,
     parseSourceUrl, importGroupId, detectFormat, chapterFromMarkdown, chapterFromInstruqt, chaptersMeta, storyIds, chapterFromStory,
     previewFormat, previewTree, safeHref,
+    VAULT_KEY_RE, VAULT_MIN_PASSWORD, vaultType, vaultCandidates, vaultFill, vaultFields, vaultErrors,
   };
 })();
 

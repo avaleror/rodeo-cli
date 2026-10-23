@@ -53,7 +53,7 @@ const state = {
   editing: -1, edTab: "spans", drag: null, cursor: -1, undo: null, copied: false,
   strings: {}, story: null, trLang: "", trEngine: "", trEdit: null, busy: "", rmCheck: null, imported: [],
   contentUrl: "", contentFormat: "rmstory",
-  deploy: null, deployLogOpen: false, savedAs: "",
+  deploy: null, deployLogOpen: false, savedAs: "", vault: null,
 };
 
 let toastTimer = 0;
@@ -1744,6 +1744,8 @@ function openDeploy() {
 
 function closeDeploy() {
   $("#deployModal").hidden = true;
+  $("#dpSecrets").hidden = true;
+  $("#dpSecretFields").replaceChildren();
   $("#deployBtn").focus();
 }
 
@@ -1757,8 +1759,7 @@ async function startDeploy(saveFirst) {
   $("#dpSubmit").disabled = false;
   if (res.status === 200 && res.body.secrets) {
     $("#dpSecrets").hidden = false;
-    $("#dpSecretFields").replaceChildren(...res.body.secrets.map((k) => el("label", { class: "label" }, k,
-      el("input", { class: "input mono", type: "password", name: k, autocomplete: "off", required: true }))));
+    $("#dpSecretFields").replaceChildren(...res.body.secrets.map(deploySecret));
     $("#dpResult").textContent = "Fill in the secrets this lab needs, then deploy.";
     $("#dpSecretFields input").focus();
     return;
@@ -1789,6 +1790,207 @@ async function stopDeploy() {
   state.deploy = { ...state.deploy, current: res.body.current };
   renderDeploy();
   pollDeploy();
+}
+
+// ── stored credentials (live server on loopback only, GET vault) ────────
+// Each credential is encrypted under its own password, asked every time it is opened. Neither
+// passwords nor decrypted values are kept: not in state, not in storage, and not in the DOM once
+// a dialog closes.
+
+let vaultAsk = null;
+
+function vaultOn() { return !window.RB_STATIC && !!state.vault && state.vault.available; }
+
+async function refreshVault() {
+  state.vault = await apiGet("vault").catch(() => state.vault);
+  $("#settingsBtn").hidden = !vaultOn();
+  if (!$("#settingsModal").hidden) renderVaultList();
+}
+
+function vaultWhen(v) {
+  if (!v) return "never";
+  const d = new Date(typeof v === "number" && v < 1e12 ? v * 1000 : v);
+  return isNaN(d) ? String(v) : d.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+}
+
+function typeLabel(id) { const t = RB.vaultType(state.vault, id); return t ? t.label : id; }
+
+function renderVaultList() {
+  const items = state.vault.items || [];
+  fill($("#vaultList"), items.length ? items.map((item) => el("li", { class: "vault-item" },
+    el("span", { class: "vault-name", text: item.name }),
+    el("span", { class: "chip", text: typeLabel(item.type) }),
+    el("span", { class: "vault-when", text: "added " + vaultWhen(item.created) + " · last used " + vaultWhen(item.used) }),
+    el("button", { class: "btn sm", type: "button", text: "Delete", "aria-label": "Delete " + item.name, onclick: () => deleteCredential(item) })))
+    : el("li", { class: "vault-empty", text: "No stored credentials yet." }));
+}
+
+function openSettings() {
+  if (!vaultOn()) return;
+  resetVaultForm();
+  renderVaultList();
+  $("#settingsModal").hidden = false;
+  $("#vaultAddBtn").focus();
+  refreshVault();
+}
+
+function closeSettings() {
+  resetVaultForm();
+  $("#settingsModal").hidden = true;
+  $("#settingsBtn").focus();
+}
+
+// A password input with a Show/Hide toggle; `what` names it for the toggle's label.
+function secretInput(props, what) {
+  const input = el("input", { class: "input mono", type: "password", autocomplete: "off", spellcheck: "false", ...props });
+  const toggle = el("button", { class: "btn sm", type: "button", text: "Show", "aria-pressed": "false",
+    "aria-label": "Show " + what, onclick: () => {
+      const show = input.type === "password";
+      input.type = show ? "text" : "password";
+      toggle.textContent = show ? "Hide" : "Show";
+      toggle.setAttribute("aria-pressed", String(show));
+    } });
+  return el("div", { class: "secret-input" }, input, toggle);
+}
+
+function vaultRow() {
+  const row = el("div", { class: "vault-row" },
+    el("input", { class: "input mono vault-key", "aria-label": "Field name", placeholder: "field_name", autocomplete: "off", spellcheck: "false" }),
+    secretInput({ class: "input mono vault-value", "aria-label": "Field value" }, "the field value"),
+    el("button", { class: "x-btn", type: "button", "aria-label": "Remove this field", text: "×", onclick: () => row.remove() }));
+  return row;
+}
+
+function renderVaultFields() {
+  const type = RB.vaultType(state.vault, $("#vaType").value);
+  if (!type) { fill($("#vaFields")); return; }
+  if (type.freeform) {
+    const rows = el("div", { id: "vaRows" }, vaultRow());
+    fill($("#vaFields"), el("span", { class: "label", text: "Fields" }), rows,
+      el("button", { class: "btn sm vault-add-row", type: "button", text: "+ Add field", onclick: () => rows.append(vaultRow()) }));
+    return;
+  }
+  fill($("#vaFields"), type.fields.flatMap((f) => {
+    const id = "vaf-" + f.name, props = { id, dataset: { field: f.name } };
+    const input = f.multiline ? el("textarea", { class: "textarea mono short", spellcheck: "false", ...props })
+      : f.secret ? secretInput(props, f.label) : el("input", { class: "input mono", autocomplete: "off", spellcheck: "false", ...props });
+    return [el("label", { class: "label", for: id, text: f.label + (f.optional ? " (optional)" : "") }), input];
+  }));
+}
+
+// Empties every input of the add form (secret values included) and hides it.
+function resetVaultForm() {
+  $("#vaultForm").reset();
+  $("#vaultForm").hidden = true;
+  $("#vaultAddBtn").hidden = false;
+  $("#vaType").replaceChildren(...((state.vault && state.vault.types) || []).map((t) => el("option", { value: t.id, text: t.label })));
+  fill($("#vaFields"));
+  $("#vaResult").textContent = "";
+}
+
+function openVaultForm() {
+  resetVaultForm();
+  renderVaultFields();
+  $("#vaultForm").hidden = false;
+  $("#vaultAddBtn").hidden = true;
+  $("#vaName").focus();
+}
+
+async function addCredential(ev) {
+  ev.preventDefault();
+  const type = RB.vaultType(state.vault, $("#vaType").value);
+  const form = {
+    name: $("#vaName").value.trim(), password: $("#vaPass").value, repeat: $("#vaPass2").value,
+    fields: Object.fromEntries([...$("#vaFields").querySelectorAll("[data-field]")].map((i) => [i.dataset.field, i.value])),
+    rows: [...$("#vaFields").querySelectorAll(".vault-row")].map((r) => ({ key: r.querySelector(".vault-key").value, value: r.querySelector(".vault-value").value })),
+  };
+  const errors = RB.vaultErrors(type, form);
+  if (errors.length) { $("#vaResult").textContent = errors.join(" "); return; }
+  const btn = $("#vaultForm [type=submit]");
+  btn.disabled = true;
+  const res = await apiPost("vault-add", { name: form.name, type: type.id, fields: RB.vaultFields(type, form), password: form.password })
+    .catch((err) => ({ status: 0, body: { error: err.message } }));
+  btn.disabled = false;
+  if (res.status !== 200) { $("#vaResult").textContent = "Not saved: " + (res.body.error || res.status); return; }
+  resetVaultForm();
+  $("#vaultAddBtn").focus();
+  toast("Stored " + form.name);
+  await refreshVault();
+}
+
+async function deleteCredential(item) {
+  if (!window.confirm("Delete the stored credential " + item.name + "? Its encrypted file is removed from this host.")) return;
+  const res = await apiPost("vault-delete", { id: item.id }).catch((err) => ({ status: 0, body: { error: err.message } }));
+  if (res.status !== 200 && res.status !== 404) { toast("Delete failed: " + (res.body.error || res.status), true); return; }
+  toast("Deleted " + item.name);
+  await refreshVault();
+}
+
+// Asks for a credential's password and resolves to its decrypted fields, or null when cancelled.
+function openVault(item) {
+  return new Promise((resolve) => {
+    vaultAsk = { item, resolve, back: document.activeElement };
+    $("#vpTitle").textContent = "Password for " + item.name;
+    $("#vpPass").value = "";
+    $("#vpError").textContent = "";
+    $("#vaultPrompt").hidden = false;
+    $("#vpPass").focus();
+  });
+}
+
+function closeVaultPrompt(fields) {
+  const ask = vaultAsk;
+  vaultAsk = null;
+  $("#vpPass").value = "";
+  $("#vpError").textContent = "";
+  $("#vaultPrompt").hidden = true;
+  if (!ask) return;
+  if (ask.back && ask.back.isConnected) ask.back.focus();
+  ask.resolve(fields || null);
+}
+
+async function unlockVault(ev) {
+  ev.preventDefault();
+  if (!vaultAsk) return;
+  const password = $("#vpPass").value;
+  if (!password) { $("#vpError").textContent = "Type the password."; return; }
+  $("#vpSubmit").disabled = true;
+  const res = await apiPost("vault-open", { id: vaultAsk.item.id, password }).catch((err) => ({ status: 0, body: { error: err.message } }));
+  $("#vpSubmit").disabled = false;
+  if (res.status === 200) { closeVaultPrompt(res.body.fields); return; }
+  $("#vpError").textContent = res.status === 403 ? "Wrong password: try again." : (res.body.error || "Could not open it (" + res.status + ").");
+  $("#vpPass").select();
+}
+
+// The secret input of the deploy dialog, with "Use stored…" when a stored credential could fill it.
+function deploySecret(key) {
+  const label = el("label", { class: "label" }, key,
+    el("input", { class: "input mono", type: "password", name: key, autocomplete: "off", required: true }));
+  const items = vaultOn() ? RB.vaultCandidates(state.vault, key) : [];
+  if (!items.length) return label;
+  const note = el("p", { class: "note", role: "status" });
+  const pick = el("select", { class: "select", "aria-label": "Use a stored credential for " + key },
+    el("option", { value: "", text: "Use stored…" }),
+    items.map((item) => el("option", { value: item.id, text: item.name + " (" + typeLabel(item.type) + ")" })));
+  pick.addEventListener("change", () => {
+    const item = items.find((i) => i.id === pick.value);
+    pick.value = "";
+    if (item) useStored(item, key, note);
+  });
+  return el("div", { class: "dp-secret" }, label, pick, note);
+}
+
+// Fills `key`, and every other secret of the dialog the credential maps, from the opened credential.
+async function useStored(item, key, note) {
+  const fields = await openVault(item);
+  if (!fields) return;
+  const inputs = [...$("#dpSecretFields").querySelectorAll("input")];
+  const got = RB.vaultFill(RB.vaultType(state.vault, item.type), fields, inputs.map((i) => i.name));
+  for (const i of inputs) if (i.name in got) i.value = got[i.name];
+  note.textContent = key in got ? "Filled from " + item.name + (Object.keys(got).length > 1 ? ": " + Object.keys(got).join(", ") : "") + "."
+    : "This credential has no " + key + " field.";
+  note.classList.toggle("bad-text", !(key in got));
+  refreshVault();
 }
 
 // ── publish to GitHub ───────────────────────────────────────────────────
@@ -1922,6 +2124,8 @@ async function publishRodeo(ev) {
 const FOCUSABLE = "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), iframe, [tabindex]:not([tabindex='-1'])";
 
 function openDialog() {
+  if (!$("#vaultPrompt").hidden) return $("#vaultPrompt .modal");
+  if (!$("#settingsModal").hidden) return $("#settingsModal .modal");
   if (!$("#newModal").hidden) return $("#newModal .modal");
   if (!$("#importModal").hidden) return $("#importModal .modal");
   if (!$("#publishModal").hidden) return $("#publishModal .modal");
@@ -2083,6 +2287,16 @@ function bind() {
   $("#deploySave").addEventListener("click", () => save(false));
   $("#deployStop").addEventListener("click", stopDeploy);
   $("#deployLogBtn").addEventListener("click", () => { state.deployLogOpen = !state.deployLogOpen; renderDeploy(); });
+  $("#settingsBtn").addEventListener("click", openSettings);
+  $("#settingsClose").addEventListener("click", closeSettings);
+  $("#settingsModal").addEventListener("mousedown", (ev) => { if (ev.target === ev.currentTarget) closeSettings(); });
+  $("#vaultAddBtn").addEventListener("click", openVaultForm);
+  $("#vaType").addEventListener("change", renderVaultFields);
+  $("#vaultForm").addEventListener("submit", addCredential);
+  $("#vaCancel").addEventListener("click", () => { resetVaultForm(); $("#vaultAddBtn").focus(); });
+  $("#vpForm").addEventListener("submit", unlockVault);
+  $("#vpCancel").addEventListener("click", () => closeVaultPrompt());
+  $("#vaultPrompt").addEventListener("mousedown", (ev) => { if (ev.target === ev.currentTarget) closeVaultPrompt(); });
   $("#publishForm").addEventListener("submit", publishRodeo);
   $("#pubCancel").addEventListener("click", closePublish);
   $("#pubLoginBtn").addEventListener("click", githubLogin);
@@ -2106,6 +2320,8 @@ function bind() {
     if (!$("#filterMenu").hidden) { setFilterMenu(false); $("#filterBtn").focus(); }
     else if (state.info) toggleInfo(state.info);
     else if (pop) closePop();
+    else if (!$("#vaultPrompt").hidden) closeVaultPrompt();
+    else if (!$("#settingsModal").hidden) closeSettings();
     else if (!$("#newModal").hidden) closeNewChapter();
     else if (!$("#importModal").hidden) closeImport();
     else if (!$("#publishModal").hidden) closePublish();
@@ -2130,6 +2346,8 @@ async function init() {
       $("#saveBtn").hidden = !state.server.save;
       state.deploy = await apiGet("deploy").catch((err) => ({ available: false, reason: err.message, current: null }));
       if (state.deploy.current && state.deploy.current.status === "running") pollDeploy();
+      state.vault = await apiGet("vault").catch((err) => ({ available: false, reason: err.message, types: [], items: [] }));
+      $("#settingsBtn").hidden = !vaultOn();
       $("#saveBtn").title = "Write this rodeo to " + state.server.profiles_dir + "/<name>/";
     }
     offerDraft();

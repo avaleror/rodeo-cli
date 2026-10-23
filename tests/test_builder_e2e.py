@@ -139,13 +139,18 @@ def page(request, monkeypatch):
         pg = context.new_page()
         errors: list[str] = []
         pg.on("pageerror", lambda exc: errors.append(str(exc)))
-        pg.on("console", lambda msg: errors.append(msg.text) if msg.type == "error" else None)
+        pg.on("console", lambda msg: errors.append(msg.text) if msg.type == "error" and not _refused_unlock(msg) else None)
         pg.goto(url)
         pg.wait_for_selector(".engine")
         _open_library(pg)
         yield pg
         browser.close()
         assert errors == [], errors
+
+
+def _refused_unlock(msg) -> bool:
+    """Chromium's log line for a vault-open answered 403 or 429 (a wrong password, too many tries)."""
+    return msg.text.startswith("Failed to load resource") and "action=vault-open" in msg.location.get("url", "")
 
 
 def _open_library(page) -> None:
@@ -1196,3 +1201,216 @@ def test_live_deploys_without_saving_and_says_so(page, monkeypatch):
     page.click("#deploySave")
     sync_api.expect(banner).to_contain_text("saved as the profile my-rodeo")
     assert page.locator("#deploySave").is_hidden()
+
+
+VAULT_TYPES = [
+    {"id": "aws", "label": "AWS", "fields": [
+        {"name": "access_key_id", "label": "Access key ID", "secret": False, "optional": False, "multiline": False},
+        {"name": "secret_access_key", "label": "Secret access key", "secret": True, "optional": False, "multiline": False}],
+     "keys": {"aws_access_key_id": "access_key_id", "aws_secret_access_key": "secret_access_key"}},
+    {"id": "scc", "label": "SCC", "fields": [
+        {"name": "regcode", "label": "Registration code", "secret": True, "optional": False, "multiline": False},
+        {"name": "email", "label": "Email", "secret": False, "optional": True, "multiline": False}],
+     "keys": {"scc_regcode": "regcode"}},
+    {"id": "ssh-key", "label": "SSH key", "fields": [
+        {"name": "private_key", "label": "Private key", "secret": True, "optional": False, "multiline": True}],
+     "keys": {"ssh_private_key": "private_key"}},
+    {"id": "generic", "label": "Generic", "fields": [], "keys": {}, "freeform": True},
+]
+
+
+class FakeVault:
+    """The vault endpoints, answered in the browser (page.route) from an in-memory store."""
+
+    def __init__(self, available=True):
+        self.available = available
+        self.items: dict[str, dict] = {}
+        self.calls: list[tuple[str, dict]] = []
+
+    def add(self, name, type_, fields, password):
+        item = {"id": "v{}".format(len(self.items) + 1), "name": name, "type": type_,
+                "created": "2026-10-23T10:00:00Z", "used": None, "fields": fields, "password": password}
+        self.items[item["id"]] = item
+        return {k: item[k] for k in ("id", "name", "type", "created", "used")}
+
+    def handle(self, route):
+        from urllib.parse import parse_qs, urlparse
+
+        req = route.request
+        action = parse_qs(urlparse(req.url).query)["action"][0]
+        if req.method == "GET":
+            items = [{k: i[k] for k in ("id", "name", "type", "created", "used")} for i in self.items.values()]
+            return route.fulfill(json={"available": self.available, "reason": "" if self.available else "listens beyond loopback",
+                                       "types": VAULT_TYPES, "items": items})
+        body = req.post_data_json
+        self.calls.append((action, body))
+        if action == "vault-add":
+            return route.fulfill(json={"item": self.add(body["name"], body["type"], body["fields"], body["password"])})
+        item = self.items.get(body["id"])
+        if item is None:
+            return route.fulfill(status=404, json={"error": "no such credential"})
+        if action == "vault-delete":
+            del self.items[body["id"]]
+            return route.fulfill(json={"ok": True})
+        if body["password"] == "too-many":
+            return route.fulfill(status=429, json={"error": "too many attempts: wait a minute"})
+        if body["password"] != item["password"]:
+            return route.fulfill(status=403, json={"error": "wrong password"})
+        item["used"] = "2026-10-23T11:00:00Z"
+        return route.fulfill(json={"fields": item["fields"]})
+
+    def install(self, page):
+        page.route(re.compile(r".*/api\?action=vault.*"), self.handle)
+        page.reload()
+        page.wait_for_selector(".engine")
+        _open_library(page)
+
+
+def _values(page) -> list[str]:
+    return page.evaluate("[...document.querySelectorAll('input, textarea')].map((i) => i.value)")
+
+
+def test_static_has_no_settings(page):
+    assert page.locator("#settingsBtn").is_hidden()
+
+
+@pytest.mark.parametrize("page", ["live"], indirect=True)
+def test_settings_hidden_when_the_vault_is_unavailable(page):
+    FakeVault(available=False).install(page)
+    assert page.locator("#settingsBtn").is_hidden()
+
+
+@pytest.mark.parametrize("page", ["live"], indirect=True)
+def test_settings_add_list_and_delete_credentials(page):
+    vault = FakeVault()
+    vault.install(page)
+    page.set_viewport_size({"width": 390, "height": 844})
+    box = page.locator("#settingsBtn").bounding_box()
+    assert box["x"] + box["width"] <= 390
+    page.set_viewport_size({"width": 1440, "height": 900})
+    page.click("#settingsBtn")
+    sync_api.expect(page.locator("#vaultList")).to_contain_text("No stored credentials yet.")
+    page.click("#vaultAddBtn")
+    page.select_option("#vaType", "scc")
+    sync_api.expect(page.locator("label[for=vaf-email]")).to_have_text("Email (optional)")
+    page.fill("#vaName", "my scc")
+    page.fill("#vaPass", "short")
+    page.fill("#vaPass2", "short")
+    page.click("#vaultForm [type=submit]")
+    sync_api.expect(page.locator("#vaResult")).to_contain_text("Fill in Registration code.")
+    sync_api.expect(page.locator("#vaResult")).to_contain_text("at least 8 characters")
+    page.fill("#vaf-regcode", "REG-SECRET-1")
+    assert page.locator("#vaf-regcode").get_attribute("type") == "password"
+    page.click("button[aria-label='Show Registration code']")
+    assert page.locator("#vaf-regcode").get_attribute("type") == "text"
+    page.fill("#vaPass", "longpassword")
+    page.fill("#vaPass2", "longpassword2")
+    page.click("#vaultForm [type=submit]")
+    sync_api.expect(page.locator("#vaResult")).to_contain_text("don't match")
+    assert vault.calls == []
+    page.fill("#vaPass2", "longpassword")
+    page.click("#vaultForm [type=submit]")
+    row = page.locator(".vault-item")
+    sync_api.expect(row).to_contain_text("my scc")
+    sync_api.expect(row).to_contain_text("SCC")
+    sync_api.expect(row).to_contain_text("last used never")
+    assert vault.calls == [("vault-add", {"name": "my scc", "type": "scc", "fields": {"regcode": "REG-SECRET-1"}, "password": "longpassword"})]
+    assert page.locator("#vaultForm").is_hidden()
+    assert not any(v in ("REG-SECRET-1", "longpassword") for v in _values(page))
+    assert "REG-SECRET-1" not in page.content()
+
+    page.click("#vaultAddBtn")
+    page.select_option("#vaType", "generic")
+    page.fill("#vaName", "misc")
+    page.fill(".vault-key", "Bad Key")
+    page.fill(".vault-value", "v1")
+    page.click(".vault-add-row")
+    page.locator(".vault-key").nth(1).fill("token")
+    page.locator(".vault-value").nth(1).fill("T-SECRET")
+    page.fill("#vaPass", "longpassword")
+    page.fill("#vaPass2", "longpassword")
+    page.click("#vaultForm [type=submit]")
+    sync_api.expect(page.locator("#vaResult")).to_contain_text("Field name \"Bad Key\"")
+    page.fill(".vault-key >> nth=0", "region")
+    page.click("#vaultForm [type=submit]")
+    sync_api.expect(page.locator(".vault-item")).to_have_count(2)
+    assert vault.calls[-1][1]["fields"] == {"region": "v1", "token": "T-SECRET"}
+
+    page.click("#vaultAddBtn")
+    page.fill("#vaName", "half typed")
+    page.select_option("#vaType", "aws")
+    page.fill("#vaf-secret_access_key", "SK-TYPED")
+    page.keyboard.press("Escape")
+    sync_api.expect(page.locator("#settingsModal")).to_be_hidden()
+    assert "SK-TYPED" not in _values(page) and "half typed" not in _values(page)
+
+    page.click("#settingsBtn")
+    page.once("dialog", lambda d: d.dismiss())
+    page.click("button[aria-label='Delete my scc']")
+    sync_api.expect(page.locator(".vault-item")).to_have_count(2)
+    page.once("dialog", lambda d: d.accept())
+    page.click("button[aria-label='Delete my scc']")
+    sync_api.expect(page.locator(".vault-item")).to_have_count(1)
+    assert ("vault-delete", {"id": "v1"}) in vault.calls
+    page.click("#settingsClose")
+    sync_api.expect(page.locator("#settingsModal")).to_be_hidden()
+
+
+@pytest.mark.parametrize("page", ["live_deploy"], indirect=True)
+def test_deploy_dialog_uses_stored_credentials(page, monkeypatch):
+    from rodeo.builder import deploywork
+
+    real = deploywork.ensure_plan_secrets
+    monkeypatch.setattr(deploywork, "ensure_plan_secrets", lambda plan, lab_path=None: (
+        real(plan, lab_path=lab_path)[0], ["aws_access_key_id", "aws_secret_access_key", "scc_regcode", "other_secret"]))
+    vault = FakeVault()
+    vault.add("work aws", "aws", {"access_key_id": "AK-STORED", "secret_access_key": "SK-STORED"}, "awspassword")
+    vault.add("misc", "generic", {"region": "eu"}, "miscpassword")
+    vault.items["v3"] = {**vault.items["v1"], "id": "v3", "name": "deploy key", "type": "ssh-key"}
+    vault.install(page)
+    page.click(".card >> text=Welcome to the rodeo")
+    page.click("#deployBtn")
+    page.click("#dpSubmit")
+    sync_api.expect(page.locator("#dpSecretFields input[name=aws_access_key_id]")).to_be_visible()
+    pick = "#dpSecretFields select[aria-label='Use a stored credential for {}']"
+    assert page.locator(pick.format("aws_access_key_id") + " option").all_inner_texts() == ["Use stored…", "work aws (AWS)", "misc (Generic)"]
+    assert page.locator(pick.format("scc_regcode") + " option").all_inner_texts() == ["Use stored…", "misc (Generic)"]
+
+    page.select_option(pick.format("aws_secret_access_key"), "v1")
+    sync_api.expect(page.locator("#vpTitle")).to_have_text("Password for work aws")
+    page.fill("#vpPass", "wrong-password")
+    page.click("#vpSubmit")
+    sync_api.expect(page.locator("#vpError")).to_contain_text("Wrong password")
+    assert page.locator("#vaultPrompt").is_visible()
+    page.fill("#vpPass", "too-many")
+    page.click("#vpSubmit")
+    sync_api.expect(page.locator("#vpError")).to_contain_text("too many attempts")
+    page.fill("#vpPass", "awspassword")
+    page.click("#vpSubmit")
+    sync_api.expect(page.locator("#vaultPrompt")).to_be_hidden()
+    assert page.input_value("#dpSecretFields input[name=aws_access_key_id]") == "AK-STORED"
+    assert page.input_value("#dpSecretFields input[name=aws_secret_access_key]") == "SK-STORED"
+    assert page.input_value("#dpSecretFields input[name=scc_regcode]") == ""
+    assert page.input_value("#vpPass") == ""
+
+    page.select_option(pick.format("aws_access_key_id"), "v1")
+    sync_api.expect(page.locator("#vaultPrompt")).to_be_visible()
+    assert page.input_value("#vpPass") == ""
+    page.keyboard.press("Escape")
+    sync_api.expect(page.locator("#vaultPrompt")).to_be_hidden()
+    assert page.locator("#deployModal").is_visible()
+
+    page.select_option(pick.format("scc_regcode"), "v2")
+    page.fill("#vpPass", "miscpassword")
+    page.click("#vpSubmit")
+    sync_api.expect(page.locator("#dpSecretFields")).to_contain_text("This credential has no scc_regcode field.")
+    assert page.input_value("#dpSecretFields input[name=scc_regcode]") == ""
+    assert [c for c in vault.calls if c[0] == "vault-open"] == [
+        ("vault-open", {"id": "v1", "password": p}) for p in ("wrong-password", "too-many", "awspassword")] + [
+        ("vault-open", {"id": "v2", "password": "miscpassword"})]
+
+    page.click("#dpCancel")
+    sync_api.expect(page.locator("#deployModal")).to_be_hidden()
+    assert not any(v in ("AK-STORED", "SK-STORED", "awspassword", "miscpassword") for v in _values(page))
+    assert "SK-STORED" not in page.content()
+    assert not page.evaluate("JSON.stringify(localStorage).includes('SK-STORED') || JSON.stringify(state).includes('SK-STORED')")

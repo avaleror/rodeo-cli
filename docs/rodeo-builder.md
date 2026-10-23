@@ -243,6 +243,26 @@ published page, the button is greyed out and says why on hover.
   and keeps saying the rodeo is not saved until you save it. One deploy runs at
   a time; rerun or resume from the lab directory with `rodeo up`.
 
+## Settings and stored credentials
+
+**Settings** (header) keeps the credentials you deploy with — SCC registration
+codes, registry and Application Collection logins, AWS keys, SSH keys, GitHub
+tokens, or any `key: value` fields — encrypted on the builder's host, one file
+per credential in `~/.rodeo/vault/`. It appears only on `rodeo builder` on
+loopback (not `--expose`, not the published page).
+
+- Each credential has its own password, at least 8 characters, asked every
+  time the credential is used. Neither the password nor the values are kept by
+  the page: the Settings list shows a credential's name, type, when it was added
+  and last used, never its values.
+- In the deploy dialog, each secret the lab asks for offers **Use stored…** with
+  the credentials that can fill it. After the password, the page fills that
+  secret and every other one the same credential provides (an AWS credential
+  fills both `aws_access_key_id` and `aws_secret_access_key`). A generic
+  credential fills secrets whose names match its field names.
+- The filled values go where typed ones go: into `~/.rodeo/secrets.yaml` for
+  `rodeo up`. Deleting a stored credential does not remove them from there.
+
 ## Publish to GitHub
 
 **Publish** puts the rodeo in a public GitHub repository of yours and opens a pull

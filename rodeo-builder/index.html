@@ -1,0 +1,2016 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A declarative CLI that deploys hands-on lab infrastructure (Harvester HCI, Rancher Prime, SUSE Edge) on KVM.">
+      
+      
+      
+        <link rel="canonical" href="https://avaleror.github.io/rodeo-cli/rodeo-builder/">
+      
+      
+        <link rel="prev" href="../custom-rodeos/">
+      
+      
+        <link rel="next" href="../fleet/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/logo/favicon.ico">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Rodeo Builder - rodeo-cli</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/custom.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#rodeo-builder" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="rodeo-cli" class="md-header__button md-logo" aria-label="rodeo-cli" data-md-component="logo">
+      
+  <img src="../assets/logo/horseshoe-mark.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            rodeo-cli
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Rodeo Builder
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/avaleror/rodeo-cli" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    avaleror/rodeo-cli
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../get-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Get started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../install/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Install on Linux and macOS
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../guide-harvester/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Profiles
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../custom-rodeos/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Create your own rodeo
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Rodeo Builder
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../fleet/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Fleet (multi-host workshops)
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../reference/plan/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../examples/bare-metal/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Examples
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../runbook/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Troubleshooting
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../architecture/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  For contributors
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="rodeo-cli" class="md-nav__button md-logo" aria-label="rodeo-cli" data-md-component="logo">
+      
+  <img src="../assets/logo/horseshoe-mark.svg" alt="logo">
+
+    </a>
+    rodeo-cli
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/avaleror/rodeo-cli" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    avaleror/rodeo-cli
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../get-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Get started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install on Linux and macOS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Profiles
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Profiles
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-harvester/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SUSE Virtualization (Harvester)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-rancher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rancher Prime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-suse-edge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SUSE Edge
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../custom-rodeos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Create your own rodeo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rodeo Builder
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rodeo Builder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-you-compose" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What you compose
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What you compose">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#with-rmstory-on-the-live-builder" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        With rmstory on the live builder
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#infrastructure-and-instructions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Infrastructure and instructions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#install-what-you-downloaded" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Install what you downloaded
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-live-builder" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The live builder
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deploy-without-saving" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deploy without saving
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#settings-and-stored-credentials" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Settings and stored credentials
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#publish-to-github" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Publish to GitHub
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-the-published-page-is-built" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the published page is built
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fleet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fleet (multi-host workshops)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    rodeo-plan.yaml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/definition/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    definition.yaml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Examples
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/bare-metal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bare metal
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/aws-macos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AWS from a Mac
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/instruqt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Instruqt track
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/workshop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workshop fleet inventory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing & CI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../runbook/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    For contributors
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    For contributors
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../claim-portal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claim portal (design)
+  
+
+    
+  </span>
+  
+  
+    
+  
+  
+    <span class="md-status md-status--approved design (2026-09-25); F5.0-F5.4 implemented 2026-09-30 (AWS), live end-to-end check pending"></span>
+  
+
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../claim-portal-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claim portal (implementation plan)
+  
+
+    
+  </span>
+  
+  
+    
+  
+  
+    <span class="md-status md-status--approved design; F5.0 live-checked 2026-09-30; F5.1-F5.4 implemented 2026-09-30, live end-to-end check pending"></span>
+  
+
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-you-compose" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What you compose
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What you compose">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#with-rmstory-on-the-live-builder" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        With rmstory on the live builder
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#infrastructure-and-instructions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Infrastructure and instructions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#install-what-you-downloaded" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Install what you downloaded
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-live-builder" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The live builder
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deploy-without-saving" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deploy without saving
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#settings-and-stored-credentials" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Settings and stored credentials
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#publish-to-github" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Publish to GitHub
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-the-published-page-is-built" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the published page is built
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="rodeo-builder">Rodeo Builder<a class="headerlink" href="#rodeo-builder" title="Permanent link">&para;</a></h1>
+<p><strong><a class="md-button md-button--primary" href="../builder/">→ Open the Rodeo Builder</a></strong></p>
+<p>The Rodeo Builder composes a new rodeo in the browser: pick the lab engine, put
+story chapters in order, tag their text for translation and story variants, and
+download the result as a profile you install with <code>rodeo</code>.</p>
+<p>It comes in two versions of the same page:</p>
+<ul>
+<li><strong>Published</strong> (the button above): a static page built by GitHub Actions with
+  the docs. Nothing you do there leaves your browser; you download a zip.</li>
+<li><strong>Live</strong>, installed with rodeo-cli: <code>rodeo builder</code> serves the page on your
+  machine, reads its data live and adds <strong>Save to profiles</strong>, which writes the
+  rodeo straight into <code>~/.rodeo/profiles/&lt;name&gt;/</code>.</li>
+</ul>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>rodeo<span class="w"> </span>builder<span class="w">                 </span><span class="c1"># opens http://127.0.0.1:8678/</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>rodeo<span class="w"> </span>up<span class="w"> </span>--profile<span class="w"> </span>&lt;name&gt;<span class="w">     </span><span class="c1"># after Save to profiles</span>
+</span></code></pre></div>
+<h2 id="what-you-compose">What you compose<a class="headerlink" href="#what-you-compose" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Lab engine.</strong> <code>suse-virt</code>, <code>rancher</code> and <code>suse-edge</code> are rodeo's own
+  engines; the <strong>(i)</strong> on each shows its size and what it provides (for example
+  Harvester, KubeVirt, Longhorn, Rancher, Fleet). <code>lab-in-a-box</code> builds any lab lab-in-a-box can:<ul>
+<li><strong>Open in Lab Builder</strong> opens lab-in-a-box's lab-builder with this rodeo's
+  add-ons filled in. Download the lab.json there and upload it here to bring
+  its add-ons back.</li>
+<li><strong>Embed here</strong> opens the lab-builder inside the page. Handing the lab back
+  directly needs a lab-in-a-box release with the embed hand-off; until then,
+  use Download there and Upload here.</li>
+<li><strong>Import existing lab</strong> starts from a bundled lab-in-a-box rodeo
+  (<code>smlm-workshop</code>) or from a lab.json.</li>
+</ul>
+</li>
+<li><strong>Chapters.</strong> The library lists every workshop's chapters: the bundled
+  examples' <code>story/</code> directories, the workshops whose chapters live in their own
+  repository (listed in <code>rodeo/builder/chapter_sources.yaml</code>: the SMLM workshop's
+  Instruqt track and the Virtualization workshop's exercises), the <code>story/</code> of
+  every published rodeo in the catalog (<code>rodeo/data/catalog.d/</code>, unless
+  <code>chapter_sources.yaml</code> already names its repository), and the chapters you
+  create with <strong>+ New</strong>. Workshops start collapsed: click a workshop's title to
+  show its chapters. The <strong>(i)</strong> next to it (hover, or click to keep it open)
+  shows where the chapters come from, the lab engine and profile they run on,
+  their count and time, and what they need. <strong>use</strong> sets the rodeo up as that
+  workshop: its lab engine and profile (for example <code>suse-virt</code> with the
+  <code>virt-workshop-aws</code> profile, whose extra setup the exercises need) and all its
+  chapters, in place of the rodeo's (<strong>Undo</strong> restores them); <strong>+ all</strong> adds its
+  chapters to the rodeo's. A chapter card shows its title; hover over it for its
+  time and needs, or turn on the list button next to the search to show them on
+  every card. The funnel button next to it shows only the workshops for this lab
+  engine, the chapters this lab can run, or the chapters not in the rodeo yet.
+  Drag chapters into the rodeo (anywhere on the list) or click them; click a
+  chapter again to take it out. Click a row in the rodeo to insert new chapters
+  after it instead of at the end. Reorder by dragging or with Alt+↑/↓. Removing a
+  chapter or a span offers <strong>Undo</strong> for a few seconds. When every chapter comes
+  from workshops that run on one other engine, a banner offers to switch to it. A chapter that needs something the lab doesn't provide is marked, and
+  for lab-in-a-box one click adds the missing add-on. Chapters that come with a
+  check script bring it along. A new chapter's <strong>Requires from the lab</strong> field
+  suggests, as you type, what an engine really provides: the native engines'
+  capabilities and lab-in-a-box's catalogue (add-ons, infrastructure services,
+  Kubernetes cluster types). If the lab-in-a-box catalogue could not be read, the
+  page says why. When nothing matches, Enter adds what you typed as a new need: a
+  placeholder for something no engine provides yet, like <code>missing_addon</code>. Such a
+  need only marks the chapter as "work needed" (also listed, by name, in the
+  download's README); it never blocks the rodeo and never reaches the lab.</li>
+<li><strong>Import.</strong> <strong>Import</strong> above the library adds a workshop from a URL: a git
+  repository or a directory in one (<code>https://&lt;host&gt;/&lt;owner&gt;/&lt;repo&gt;/tree/&lt;ref&gt;/&lt;dir&gt;</code>).
+  The builder detects the format (a rodeo <code>story/</code>, an Instruqt track
+  <code>&lt;dir&gt;/*/assignment.md</code>, or markdown <code>&lt;dir&gt;/*.md</code>) and lists its chapters as a
+  new group; <strong>×</strong> removes the group again. The published page reads public
+  github.com repositories through the GitHub API (60 unauthenticated requests an
+  hour); the rodeo builder server clones any public https repository (shallow
+  and sparse, no credentials). Imported groups are kept with the draft.</li>
+<li><strong>Story.</strong> <strong>Edit</strong> on a chapter opens the story editor (rows with span
+  warnings show how many). Select text and click <strong>Tag selection</strong>, use the toolbar, or press
+  Alt+T / Alt+I / Alt+N to mark it Translatable, Invariant or No-lang;
+  double-click a span to change its type,
+  language, id or story variant. Ids follow rmstory's rules (<code>&lt;chapter&gt;.N</code>,
+  <code>&lt;parent&gt;.N</code> when nested) and the editor shows the same warnings as
+  <code>rmstory validate</code>. The source and the preview sit side by side and scroll
+  together; the preview renders the chapter as Markdown or HTML (only safe tags,
+  images as links), with its spans marked. Ctrl+Z / Ctrl+Shift+Z undo and redo;
+  <strong>Cancel</strong> closes the editor and discards its changes, <strong>Done</strong> keeps them.</li>
+<li><strong>Translations.</strong> The story editor's <strong>translations</strong> tab lists every
+  translatable span per language. Click a cell to write or review a
+  translation; a nested span stays in it as <code>&lt;span id="..."/&gt;</code>. The download
+  carries them in rmstory's translation store, <code>story/strings/</code>, and
+  <code>rodeo story render --language &lt;lang&gt;</code> uses them (with <code>--engine</code> for the
+  spans still missing).</li>
+</ul>
+<p><strong>Review and download</strong> (step 03) checks the rodeo before you download it: the
+lab covers every chapter, the span ids are valid (each warning has a <strong>Fix</strong>
+button), the exact files in the zip (listed when you click <strong>N files in
+<name>.zip</strong>), and the commands to install it, ready to copy. Missing lab features and span warnings never block the download.</p>
+<p>The page keeps a draft of your rodeo in this browser. After a reload it offers
+to restore it.</p>
+<h3 id="with-rmstory-on-the-live-builder">With rmstory on the live builder<a class="headerlink" href="#with-rmstory-on-the-live-builder" title="Permanent link">&para;</a></h3>
+<p>When <code>rmstory</code> is installed where <code>rodeo builder</code> runs (<code>sudo rodeo install-deps
+--story</code>), the live page also uses it:</p>
+<ul>
+<li><strong>Translate missing</strong> (translations tab): fills the chosen language's missing
+  translations with an rmstory engine (<code>rmstory extract --engine &lt;e&gt; --to &lt;lang&gt;</code>).
+  They are stored as <code>draft</code>; what you wrote or reviewed is kept. rmstory also
+  gives unnamed spans an id (<code>&lt;chapter&gt;.N</code>).</li>
+<li><strong>Validate</strong> (step 03): rmstory's own <code>validate</code> on the chapters.</li>
+<li><strong>Draft with an engine</strong> (New chapter): an engine that can generate text
+  (<code>rmstory engines</code> says "translate + generate", for example <code>claude-code</code>,
+  <code>ollama</code> or <code>gemini</code>) drafts the chapter from your description, told what the
+  lab provides and which chapters come before it. Its spans are renumbered
+  <code>new-chapter.N</code>; review the draft before you create the chapter.</li>
+<li><strong>New story</strong> (rodeo tab): the same exercises told as a different story. You
+  say what is what with the span tags (story editor):</li>
+<li><strong>story</strong>: spans with a story variant (<code>hist</code>): retold;</li>
+<li><strong>exercise</strong>: translatable spans without a story variant: translated, never
+    retold;</li>
+<li><strong>fixed</strong>: invariant (<code>no</code>) or no-lang spans, and text outside spans: kept
+    word for word.</li>
+</ul>
+<p>Say what the new story is about and pick an engine that can generate text;
+  <code>rmstory generate rewrite --theme</code> rewrites the story spans and the exercise
+  spans never reach the engine. The retold chapters (ids <code>&lt;chapter&gt;-&lt;theme&gt;</code>,
+  story span ids <code>&lt;theme&gt;.&lt;id&gt;</code>; exercise and fixed spans keep their ids and
+  translations) become a library group and replace the rodeo's chapters;
+  <strong>Undo</strong> puts the originals back.</p>
+<p>Engines read their keys from the environment <code>rodeo builder</code> runs in, never from
+the page: for example <code>DEEPL_AUTH_KEY</code>, <code>GEMINI_API_KEY</code>, <code>RMSTORY_OLLAMA_URL</code>, or a
+logged-in <code>claude</code> command for <code>claude-code</code>. The published page writes
+translations by hand only.</p>
+<p>The right-hand panel sets the name, story title, language, deployment target and
+story variant, and previews every file of the download. <strong>plan.yaml</strong> is an
+editor: change anything and the download keeps it; <code>name</code>, <code>deployment_target</code>
+and <code>story</code> stay in sync with the rodeo tab, and <strong>Reset to generated</strong> drops your
+edits. Changing the lab engine regenerates the plan, after asking.</p>
+<h2 id="infrastructure-and-instructions">Infrastructure and instructions<a class="headerlink" href="#infrastructure-and-instructions" title="Permanent link">&para;</a></h2>
+<p>The page keeps the lab (<strong>Infrastructure</strong>: engine, base profile, plan,
+definition, lab-in-a-box lab) apart from what students read (<strong>Instructions</strong>:
+chapters, story variants, translations, checks). Step 03 downloads either the
+whole rodeo or one part: <strong>Infrastructure only</strong> (<code>&lt;name&gt;-infrastructure.zip</code>,
+installable with <code>rodeo new --from-zip</code>) or <strong>Instructions only</strong>
+(<code>&lt;name&gt;-instructions.zip</code>: <code>story/</code> and <code>checks/</code>, laid out to be pushed as a
+content repository).</p>
+<p><strong>Instructions repository</strong> (rodeo tab) points the plan at instructions kept in
+their own repository: the URL (<code>https://&lt;host&gt;/&lt;owner&gt;/&lt;repo&gt;[/tree/&lt;ref&gt;/&lt;path&gt;]</code>)
+and format become the plan's <code>content:</code> block. <code>rodeo up</code> renders them after
+the lab is up, and <code>rodeo content apply</code> updates them on a running lab without
+redeploying (see <a href="../reference/plan/#content-the-labs-instructions-apart-from-its-infrastructure">the plan reference</a>).</p>
+<h2 id="install-what-you-downloaded">Install what you downloaded<a class="headerlink" href="#install-what-you-downloaded" title="Permanent link">&para;</a></h2>
+<p>The zip holds one profile directory, <code>&lt;name&gt;/</code>, with <code>rodeo-plan.yaml</code>, the
+chapters (<code>story/NN-&lt;id&gt;.md</code>), <code>story/chapters.yaml</code> (minutes, needs and check
+script per chapter), one <code>story/stories/&lt;variant&gt;.yaml</code> per story variant,
+<code>checks/check-&lt;id&gt;.sh</code> stubs, a README with the exact commands and, when the
+rodeo starts from a profile (<code>suse-virt</code>, <code>rancher</code>, <code>suse-edge</code> or an imported
+lab-in-a-box rodeo), <code>builder.yaml</code> naming that base profile.</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>rodeo<span class="w"> </span>new<span class="w"> </span>&lt;name&gt;<span class="w"> </span>--from-zip<span class="w"> </span>&lt;name&gt;.zip
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>rodeo<span class="w"> </span>up<span class="w"> </span>--profile<span class="w"> </span>&lt;name&gt;
+</span></code></pre></div>
+<p><code>--from-zip</code> copies the base profile, lays the zip's files over it and writes
+<code>~/.rodeo/profiles/&lt;name&gt;/</code>. A new lab-in-a-box rodeo carries its own
+<code>definition.yaml</code> and needs no base. <code>--from &lt;profile&gt;</code> overrides the base and
+<code>--force</code> replaces an existing profile. The zip may only hold the files the
+builder writes; anything else (other paths, links, oversize files) is refused
+before anything is written. <strong>Save to profiles</strong> in <code>rodeo builder</code> does the same
+without the zip.</p>
+<p>A published rodeo (see <a href="#publish-to-github">Publish to GitHub</a>) installs the same
+way from its repository, and a catalog rodeo by its name alone:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>rodeo<span class="w"> </span>new<span class="w"> </span>&lt;name&gt;<span class="w"> </span>--from<span class="w"> </span>https://github.com/&lt;owner&gt;/&lt;repo&gt;<span class="o">[</span>@&lt;ref&gt;<span class="o">]</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>rodeo<span class="w"> </span>up<span class="w"> </span>--profile<span class="w"> </span>&lt;catalog<span class="w"> </span>name&gt;<span class="w">     </span><span class="c1"># fetched and installed on first use</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>rodeo<span class="w"> </span>profiles<span class="w">                        </span><span class="c1"># lists the catalog too</span>
+</span></code></pre></div>
+<p>The repository is fetched shallow, without credentials, and only the files a
+builder rodeo may hold are installed; <code>~/.rodeo/profiles/&lt;name&gt;/rodeo.lock</code>
+records the repository, ref and commit. <code>--force</code> re-fetches.</p>
+<h2 id="the-live-builder">The live builder<a class="headerlink" href="#the-live-builder" title="Permanent link">&para;</a></h2>
+<p><code>rodeo builder</code> serves <code>rodeo/builder/htdocs/</code> and answers the page's requests
+with <code>rodeo/builder/api.py</code> (<code>rodeo/builder/server.py</code>, standard library only).
+It links to and embeds lab-in-a-box's published static lab-builder, or the one
+<code>--lab-builder-url</code> names. With <code>--start-lab-builder</code> it starts the checkout's own
+dynamic lab-builder (<code>webui/run-local.py</code>) next to it on <code>--lab-builder-port</code>,
+opened on the host name the browser used for the builder (the published one when
+the checkout has none or it can't start). That lab-builder has no login or token,
+so any site you browse can save labs through it: it is off by default and only
+allowed on a loopback <code>--host</code>.
+At start it fetches the chapter sources (a source that can't be fetched is left
+out, with a warning) and the lab-in-a-box catalogue: <code>--labinabox &lt;checkout&gt;</code>,
+else <code>RODEO_LABINABOX_PATH</code>, else lab-in-a-box's latest release, fetched into
+<code>~/.rodeo/vendor/lab-in-a-box/</code> the way a deploy does.</p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Default</th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--host</code>, <code>--port</code></td>
+<td><code>127.0.0.1</code>, <code>8678</code></td>
+<td>Where to listen (<code>--port 0</code> picks a free port).</td>
+</tr>
+<tr>
+<td><code>--expose</code></td>
+<td>off</td>
+<td>Required for a non-loopback <code>--host</code>: anyone who reaches it can save profiles as you. <strong>Publish</strong> then uses the github.com pages, never this host's GitHub login.</td>
+</tr>
+<tr>
+<td><code>--allow-host NAME</code></td>
+<td></td>
+<td>Extra <code>Host</code> name to accept (the name or IP clients use with <code>--expose</code>).</td>
+</tr>
+<tr>
+<td><code>--labinabox</code></td>
+<td>latest release</td>
+<td>lab-in-a-box checkout for the catalogue and the lab-builder.</td>
+</tr>
+<tr>
+<td><code>--lab-builder-url URL</code> (<code>RODEO_LAB_BUILDER_URL</code>)</td>
+<td>the published lab-builder</td>
+<td>A lab-builder you already run (for example on an automation node) for the page to link to and embed; nothing is started.</td>
+</tr>
+<tr>
+<td><code>--start-lab-builder</code></td>
+<td>off</td>
+<td>Start the checkout's own dynamic lab-builder. Loopback <code>--host</code> only.</td>
+</tr>
+<tr>
+<td><code>--lab-builder-port</code></td>
+<td><code>8677</code></td>
+<td>Port of the lab-builder <code>--start-lab-builder</code> starts, on the same address as <code>--host</code>.</td>
+</tr>
+<tr>
+<td><code>--source ID=CHECKOUT</code>, <code>--no-fetch-sources</code></td>
+<td>fetch all</td>
+<td>Local chapter sources, or none.</td>
+</tr>
+<tr>
+<td><code>--open/--no-open</code></td>
+<td>open</td>
+<td>Open the page in a browser.</td>
+</tr>
+</tbody>
+</table>
+<p>Writes are guarded: the server only answers requests whose <code>Host</code> is an allowed
+name (loopback names by default), so other sites can't reach it through DNS
+rebinding, and <strong>Save</strong> sends a per-run token that only the served page has. The
+page runs under a Content-Security-Policy that allows only its own files (the fonts
+ship in <code>htdocs/fonts/</code>) and the lab-builder frame.</p>
+<h2 id="deploy-without-saving">Deploy without saving<a class="headerlink" href="#deploy-without-saving" title="Permanent link">&para;</a></h2>
+<p><strong>Deploy</strong> (header) runs the rodeo on the builder's host exactly as it is on the
+page, without saving it to your profiles first. It needs <code>rodeo builder</code> on
+loopback (not <code>--expose</code>) and root for <code>rodeo up</code>: the builder runs as root or
+the user has passwordless sudo (<code>sudo -n true</code>). Otherwise, and on the
+published page, the button is greyed out and says why on hover.</p>
+<ul>
+<li>The dialog says plainly that the rodeo is not saved, and offers <strong>Save to
+  profiles and deploy</strong> next to <strong>Deploy without saving</strong>.</li>
+<li>The deploy runs <code>rodeo up --yes --no-tmux --dir &lt;lab&gt;</code> from a copy in
+  <code>~/rodeo-labs/&lt;name&gt;-unsaved-&lt;UTC time&gt;/</code> (base profile plus the page's files,
+  as Save lays them out), its output in <code>&lt;lab&gt;/.builder-deploy.log</code>. Secrets
+  rodeo can generate go to the lab's <code>.rodeo-secrets.yaml</code>; ones only you have
+  (<code>operator_secrets</code>) are asked for in the dialog and written to
+  <code>~/.rodeo/secrets.yaml</code>, never shown again.</li>
+<li>A banner stays while it runs and after it ends, with the lab directory, the
+  log, <strong>Stop</strong> (interrupts <code>rodeo up</code> like Ctrl-C) and <strong>Save to profiles</strong>,
+  and keeps saying the rodeo is not saved until you save it. One deploy runs at
+  a time; rerun or resume from the lab directory with <code>rodeo up</code>.</li>
+</ul>
+<h2 id="settings-and-stored-credentials">Settings and stored credentials<a class="headerlink" href="#settings-and-stored-credentials" title="Permanent link">&para;</a></h2>
+<p><strong>Settings</strong>, in the user menu (the person icon at the right of the
+header, which also shows the <code>user@host</code> the builder runs as), keeps the
+credentials you deploy with — SCC registration codes, registry and Application Collection logins, AWS keys, SSH keys, GitHub
+tokens, or any <code>key: value</code> fields — encrypted on the builder's host, one file
+per credential in <code>~/.rodeo/vault/</code>. It works only on <code>rodeo builder</code> on
+loopback: with <code>--expose</code> and on the published page, Settings is greyed out in
+the menu with the reason.</p>
+<ul>
+<li>Each credential has its own password, at least 8 characters, asked every
+  time the credential is used. Neither the password nor the values are kept by
+  the page: the credentials list shows a credential's name, type, when it was added
+  and last used, never its values.</li>
+<li>In the deploy dialog, each secret the lab asks for offers <strong>Use stored…</strong> with
+  the credentials that can fill it. After the password, the page fills that
+  secret and every other one the same credential provides (an AWS credential
+  fills both <code>aws_access_key_id</code> and <code>aws_secret_access_key</code>). A generic
+  credential fills secrets whose names match its field names.</li>
+<li>The filled values go where typed ones go: into <code>~/.rodeo/secrets.yaml</code> for
+  <code>rodeo up</code>. Deleting a stored credential does not remove them from there.</li>
+<li>The dialog also lists the keys already in <code>~/.rodeo/secrets.yaml</code>, names only
+  and read-only: <code>rodeo up</code> reads that file directly. In the deploy dialog,
+  <strong>Use stored…</strong> offers them under <em>secrets.yaml</em> (names sharing a word with
+  the secret first). Picking one asks no password and locks the input
+  ("from secrets.yaml: <key>", <strong>Clear</strong> to type instead); the builder copies the
+  value on its host, so it never reaches the browser.</li>
+</ul>
+<h2 id="publish-to-github">Publish to GitHub<a class="headerlink" href="#publish-to-github" title="Permanent link">&para;</a></h2>
+<p><strong>Publish</strong> puts the rodeo in a public GitHub repository of yours and opens a pull
+request on rodeo-cli that adds it to the rodeo catalog
+(<code>rodeo/data/catalog.d/&lt;name&gt;.yaml</code>: name, title, repository, ref, engine,
+languages). The repository holds the files of the download.</p>
+<ul>
+<li><strong><code>rodeo builder</code> on loopback</strong> uses the GitHub login already on its host,
+  without storing it: <code>GH_TOKEN</code> or <code>GITHUB_TOKEN</code>, else the GitHub CLI's login
+  (<code>gh auth token</code>), else git's stored github.com credential. With none, <strong>Log
+  in to GitHub</strong> runs <code>gh auth login --web</code> and shows its one-time code to enter
+  at github.com/login/device; without <code>gh</code>, install it, run <code>gh auth login</code> or
+  set <code>GH_TOKEN</code> before <code>rodeo builder</code>. Publishing creates
+  <code>github.com/&lt;you&gt;/&lt;name&gt;</code>, pushes one commit on <code>main</code>, forks rodeo-cli when
+  you don't own it and opens the catalog pull request. <strong>Update my existing
+  repository</strong> pushes a new commit that replaces the files and opens no pull
+  request. <code>RODEO_CATALOG_REPO</code> points the pull request at another repository.</li>
+<li><strong>The published page</strong> (and <code>rodeo builder --expose</code>) links to github.com
+  pages that use your browser's GitHub login, and GitHub asks you to log in when
+  you aren't: create the repository, upload the unzipped download (or <code>git
+  push</code>), and add the catalog file, which forks rodeo-cli and opens the pull
+  request under your account.</li>
+</ul>
+<h2 id="how-the-published-page-is-built">How the published page is built<a class="headerlink" href="#how-the-published-page-is-built" title="Permanent link">&para;</a></h2>
+<p>The published page is the live page's static subset. <code>scripts/build-builder-static.py</code>
+embeds what <code>rodeo/builder/api.py</code> answers (engines and bundled chapters from
+<code>rodeo/data/</code>, the chapter sources' chapters, and the catalogue of lab-in-a-box's
+latest release) into the page and marks it static, which hides <strong>Save to
+profiles</strong>; the docs workflow publishes it at <code>builder/</code>. The build fetches each
+chapter source with a shallow, sparse git clone (only the chapter files and check
+scripts) and fails if one can't be fetched, or if the lab-in-a-box catalogue
+can't be read. Build it locally:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>python3<span class="w"> </span>scripts/build-builder-static.py<span class="w"> </span>--output<span class="w"> </span>/tmp/builder<span class="w"> </span>--labinabox<span class="w"> </span>/path/to/lab-in-a-box
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>python3<span class="w"> </span>-m<span class="w"> </span>http.server<span class="w"> </span>-d<span class="w"> </span>/tmp/builder<span class="w"> </span><span class="m">8000</span>
+</span></code></pre></div>
+<p><code>--source &lt;id&gt;=&lt;checkout&gt;</code> uses a local checkout for one chapter source,
+<code>--no-fetch-sources</code> builds without them (offline), and <code>--no-labinabox</code> builds
+without the lab-in-a-box catalogue (the page then shows it as unavailable).</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.top", "navigation.indexes", "content.code.copy", "content.code.annotate", "toc.follow", "search.suggest", "search.highlight"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

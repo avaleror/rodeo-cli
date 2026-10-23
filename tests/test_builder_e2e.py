@@ -142,9 +142,16 @@ def page(request, monkeypatch):
         pg.on("console", lambda msg: errors.append(msg.text) if msg.type == "error" else None)
         pg.goto(url)
         pg.wait_for_selector(".engine")
+        _open_library(pg)
         yield pg
         browser.close()
         assert errors == [], errors
+
+
+def _open_library(page) -> None:
+    page.wait_for_selector(".group-head")
+    while page.locator(".group-head[aria-expanded=false]").count():
+        page.locator(".group-head[aria-expanded=false]").first.click()
 
 
 def _zip(page) -> dict[str, str]:
@@ -276,14 +283,17 @@ def test_selected_engine_is_marked(page):
 
 
 def test_source_group_switches_engine_and_base(page):
-    library = page.locator("#library").inner_text()
-    assert "Virtualization workshop" in library and "Exercise 1: The Arrival" in library
+    page.click(".card >> text=Welcome to the rodeo")
     group = page.locator(".group", has_text="Virtualization workshop")
     group.get_by_role("button", name="use", exact=True).click()
     assert page.locator(".engine.on .engine-name").inner_text() == "suse-virt"
     assert "virt-workshop-aws" in page.locator("#engineNow").inner_text()
-    assert group.get_by_role("button", name="use", exact=True).count() == 0
-    group.locator(".card", has_text="The Arrival").click()
+    assert _rows(page)[0] == "Exercise 1: The Arrival" and "Welcome to the rodeo" not in _rows(page)
+    assert len(_rows(page)) == group.locator(".card").count()
+    page.click("#toastUndo")
+    assert _rows(page) == ["Welcome to the rodeo"]
+    assert page.locator(".engine.on .engine-name").inner_text() == "rancher"
+    group.get_by_role("button", name="use", exact=True).click()
     assert page.locator("#coverage").inner_text() == "lab covers every chapter"
     files = _zip(page)
     assert yaml.safe_load(files["my-rodeo/builder.yaml"]) == {"base": "virt-workshop-aws"}
@@ -467,10 +477,47 @@ def test_row_cursor_sets_the_insert_position(page):
     assert page.locator(".row.cursor .row-title").inner_text() == "Gamma"
 
 
+def test_library_info_filters_and_details(page):
+    page.reload()
+    page.wait_for_selector(".group-head")
+    virt = page.locator(".group", has_text="Virtualization workshop")
+    assert page.locator(".group", has_text="First ride").locator(".card").count() == 0
+    virt.get_by_role("button", name="use", exact=True).click()
+    assert virt.locator(".card").count() == 0 and page.locator(".row").count() > 0
+    page.click("#toastUndo")
+    assert page.locator(".row").count() == 0
+    virt.locator(".info-btn").click()
+    info = virt.locator(".group-info")
+    sync_api.expect(info).to_be_visible()
+    assert "suse-virt" in info.inner_text() and "virt-workshop-aws" in info.inner_text()
+    chip = info.locator(".chip.missing", has_text="kubevirt")
+    assert chip.inner_text() == "kubevirt" and "rancher lab engine doesn't provide kubevirt" in chip.get_attribute("title")
+    page.keyboard.press("Escape")
+    assert page.locator(".group-info.open").count() == 0
+    page.mouse.move(700, 500)
+    sync_api.expect(info).to_be_hidden()
+    page.locator(".group", has_text="First ride").locator(".group-head").click()
+    card = page.locator(".card", has_text="Welcome to the rodeo")
+    assert card.locator(".card-meta").count() == 0 and "10 min" in card.get_attribute("title")
+    page.click("#detailsBtn")
+    assert "10 min" in card.locator(".card-meta").inner_text()
+    page.click("#filterBtn")
+    page.check("#filterMenu input[value=engine]")
+    sync_api.expect(virt).to_have_count(0)
+    assert page.locator("#filterCount").inner_text() == "1"
+    page.uncheck("#filterMenu input[value=engine]")
+    page.check("#filterMenu input[value=added]")
+    page.keyboard.press("Escape")
+    assert page.locator("#filterMenu").is_hidden()
+    card.click()
+    sync_api.expect(card).to_have_count(0)
+    assert page.locator(".row").count() == 1
+
+
 def test_remove_offers_undo_and_library_cards_toggle(page):
     card = page.locator(".card", has_text="Welcome to the rodeo")
     card.click()
-    assert "added ✓" in card.inner_text()
+    assert "added" in card.get_attribute("class") and "click to remove" in card.get_attribute("title")
     card.click()
     assert page.locator(".row").count() == 0
     page.click("#toastUndo")

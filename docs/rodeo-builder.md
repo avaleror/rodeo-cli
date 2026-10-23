@@ -38,9 +38,17 @@ rodeo up --profile <name>     # after Save to profiles
   Instruqt track and the Virtualization workshop's exercises), the `story/` of
   every published rodeo in the catalog (`rodeo/data/catalog.d/`, unless
   `chapter_sources.yaml` already names its repository), and the chapters you
-  create with **+ New**. Each workshop shows the lab engine and profile its
-  chapters run on; **use** switches the rodeo to them (for example `suse-virt`
-  with the `virt-workshop-aws` profile, whose extra setup the exercises need).
+  create with **+ New**. Workshops start collapsed: click a workshop's title to
+  show its chapters. The **(i)** next to it (hover, or click to keep it open)
+  shows where the chapters come from, the lab engine and profile they run on,
+  their count and time, and what they need. **use** sets the rodeo up as that
+  workshop: its lab engine and profile (for example `suse-virt` with the
+  `virt-workshop-aws` profile, whose extra setup the exercises need) and all its
+  chapters, in place of the rodeo's (**Undo** restores them); **+ all** adds its
+  chapters to the rodeo's. A chapter card shows its title; hover over it for its
+  time and needs, or turn on the list button next to the search to show them on
+  every card. The funnel button next to it shows only the workshops for this lab
+  engine, the chapters this lab can run, or the chapters not in the rodeo yet.
   Drag chapters into the rodeo (anywhere on the list) or click them; click a
   chapter again to take it out. Click a row in the rodeo to insert new chapters
   after it instead of at the end. Reorder by dragging or with Alt+↑/↓. Removing a

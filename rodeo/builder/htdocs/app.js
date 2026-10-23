@@ -49,7 +49,7 @@ const state = {
   liab: { builder_url: "", error: "", addons: [], infrastructure: [], kclusters: [], imports: [] },
   engine: "rancher", base: null, planEdited: null, mode: "link", importProfile: "", labAddons: [], labJson: null,
   chapters: [], custom: [], name: "my-rodeo", title: "My rodeo", lang: "en", target: "baremetal",
-  variant: "", extraVariants: [], query: "", open: {}, newWorkshop: "custom", fileView: "rodeo-plan.yaml",
+  variant: "", extraVariants: [], query: "", open: {}, info: null, details: false, filters: { engine: false, added: false, runnable: false }, newWorkshop: "custom", fileView: "rodeo-plan.yaml",
   editing: -1, edTab: "spans", drag: null, cursor: -1, undo: null, copied: false,
   strings: {}, story: null, trLang: "", trEngine: "", trEdit: null, busy: "", rmCheck: null, imported: [],
   contentUrl: "", contentFormat: "rmstory",
@@ -140,7 +140,8 @@ function workNeeded() { return state.chapters.filter((c) => (c.needs || []).incl
 
 function needChip(n, miss) {
   if (n === RB.MISSING_ADDON) return el("span", { class: "chip todo", title: "Placeholder: this chapter needs something no engine provides yet", text: "work needed" });
-  return el("span", { class: "chip " + (miss.includes(n) ? "missing" : "ok"), text: miss.includes(n) ? "missing " + n : n });
+  return el("span", { class: "chip " + (miss.includes(n) ? "missing" : "ok"), text: n,
+    title: miss.includes(n) ? "The " + state.engine + " lab engine doesn't provide " + n : null });
 }
 
 function liabNames(kinds) {
@@ -157,7 +158,7 @@ function catalogueHint() {
 
 function libraryGroups() {
   const groups = [...state.workshops, ...state.imported].map((w) => ({ id: w.id, title: w.title, sub: w.source, chapters: w.chapters,
-    engine: w.engine, profile: w.profile, plan: w.plan, imported: !!w.imported }));
+    engine: w.engine, profile: w.profile, plan: w.plan, variants: w.variants, imported: !!w.imported }));
   groups.push({ id: "custom", title: "My chapters", sub: "created in this builder", chapters: state.custom });
   return groups;
 }
@@ -169,8 +170,18 @@ function groupMatches(g) {
   return baseProfile() === g.profile;
 }
 
+// Switches the lab to the group's engine and profile and replaces the rodeo's chapters with the group's.
 function useGroup(g) {
   if (!confirmPlanDrop()) return;
+  const keys = ["engine", "base", "planEdited", "mode", "importProfile", "labJson", "chapters", "cursor"];
+  const before = Object.fromEntries(keys.map((k) => [k, state[k]]));
+  const used = new Set();
+  state.chapters = g.chapters.map((ch) => {
+    const id = RB.uniqueId(ch.id, used);
+    used.add(id);
+    return { ...ch, id, workshop: g.title, from: libKey(g.id, ch.id) };
+  });
+  state.cursor = -1;
   state.engine = g.engine;
   state.planEdited = null;
   if (g.engine === "lab-in-a-box") {
@@ -182,7 +193,8 @@ function useGroup(g) {
     state.base = g.profile === engine().base ? null : { profile: g.profile, plan: g.plan };
   }
   render();
-  toast("Lab engine " + g.engine + " with the " + g.profile + " profile, as " + g.title + " needs");
+  toast(g.title + ": lab engine " + g.engine + " with the " + g.profile + " profile, " + g.chapters.length +
+    (g.chapters.length === 1 ? " chapter" : " chapters"), false, () => { Object.assign(state, before); render(); });
 }
 
 function confirmPlanDrop() {
@@ -295,27 +307,70 @@ function removeChapter(i) {
   toast("Removed \"" + title + "\"", false, () => { state.chapters = snapshot; render(); });
 }
 
+// A library group's (i) panel: where its chapters come from, what they run on and need.
+function groupInfo(g) {
+  const mins = g.chapters.reduce((n, c) => n + (c.mins || 0), 0);
+  const needs = [...new Set(g.chapters.flatMap((c) => c.needs || []))].sort();
+  const variants = Object.keys(g.variants || {});
+  const row = (label, ...value) => [el("dt", { text: label }), el("dd", {}, ...value)];
+  const parts = String(g.sub || "").replace(/^https:\/\//, "").split("/").flatMap((s, i) => (i ? ["/", el("wbr"), s] : [s]));
+  const source = /^https:\/\//.test(g.sub || "") ? el("a", { href: g.sub, target: "_blank", rel: "noopener" }, parts) : parts;
+  return el("div", { class: "group-info" + (state.info === g.id ? " open" : ""), id: "info-" + g.id, role: "region", "aria-label": "About " + g.title },
+    el("dl", { class: "info-card" },
+      row(g.imported ? "Imported from" : "Source", source),
+      g.engine ? row("Lab engine", g.engine + (groupMatches(g) ? " (this rodeo's)" : "")) : null,
+      g.profile ? row("Base profile", g.profile) : null,
+      row("Chapters", g.chapters.length + (g.chapters.length === 1 ? " chapter, " : " chapters, ") + mins + " min"),
+      needs.length ? row("Needs", el("span", { class: "chips" }, needs.map((n) => needChip(n, missing({ needs }))))) : null,
+      variants.length ? row("Story variants", variants.join(", ")) : null));
+}
+
+function toggleInfo(id) {
+  state.info = state.info === id ? null : id;
+  renderLibrary();
+}
+
+// A chapter card's tooltip: its time and needs, what this lab lacks for it, what a click does.
+function cardTip(c, added) {
+  const miss = missing(c), lines = [c.mins + " min" + (c.isNew ? ", new" : "")];
+  if ((c.needs || []).length) lines.push("Needs " + c.needs.join(", "));
+  if (miss.length) lines.push("The " + state.engine + " lab engine doesn't provide " + miss.join(", "));
+  lines.push(added ? "In the rodeo: click to remove" : "Click to add to this rodeo");
+  return lines.join("\n");
+}
+
+function shownChapters(g, q) {
+  const f = state.filters;
+  if (f.engine && g.engine && !groupMatches(g)) return [];
+  return g.chapters.filter((c) => (!q || (c.title + " " + c.id).toLowerCase().includes(q))
+    && !(f.added && inRodeo(g.id, c.id)) && !(f.runnable && missing(c).length));
+}
+
 function renderLibrary() {
   const box = $("#library");
   box.replaceChildren();
   const q = state.query.trim().toLowerCase();
-  let total = 0;
+  const narrowed = !!q || Object.values(state.filters).some(Boolean);
+  let total = 0, shown = 0;
   for (const g of libraryGroups()) {
-    const list = g.chapters.filter((c) => !q || (c.title + " " + c.id).toLowerCase().includes(q));
+    const list = shownChapters(g, q);
     total += g.chapters.length;
-    if (q && !list.length) continue;
-    const open = state.open[g.id] !== false;
+    shown += list.length;
+    if (narrowed && !list.length) continue;
+    const open = q ? true : state.open[g.id] ?? !g.engine;
     const head = el("div", { class: "group-bar" },
-      el("button", { class: "group-head", type: "button", "aria-expanded": String(open),
-        onclick: () => { state.open[g.id] = !open; renderLibrary(); } },
-        el("span", { class: "chev", text: open ? "▾" : "▸" }),
-        el("span", { class: "group-text" }, el("span", { class: "group-title", text: g.title }),
-          el("span", { class: "group-sub", text: g.sub }))),
+      el("div", { class: "group-line" },
+        el("button", { class: "group-head", type: "button", "aria-expanded": String(open),
+          onclick: () => { state.open[g.id] = !open; renderLibrary(); } },
+          el("span", { class: "chev", text: open ? "▾" : "▸" }),
+          el("span", { class: "group-title", text: g.title })),
+        el("button", { class: "info-btn", type: "button", text: "i", title: "About " + g.title, "aria-label": "About " + g.title,
+          "aria-expanded": String(state.info === g.id), "aria-controls": "info-" + g.id, onclick: () => toggleInfo(g.id) })),
+      groupInfo(g),
       el("div", { class: "group-actions" },
-        g.engine ? el("span", { class: "chip" + (groupMatches(g) ? " ok" : ""), title: "Runs on the " + g.engine +
-          " engine with the " + g.profile + " profile", text: g.engine + (g.profile && g.profile !== g.engine ? " · " + g.profile : "") }) : null,
-        g.engine && !groupMatches(g) ? el("button", { class: "btn sm outline", type: "button", text: "use",
-          title: "Switch the lab engine to " + g.engine + " (" + g.profile + ")", onclick: () => useGroup(g) }) : null,
+        g.engine ? el("button", { class: "btn sm outline", type: "button", text: "use",
+          title: "Use this workshop: the " + g.engine + " lab engine with the " + g.profile + " profile, and its " +
+            g.chapters.length + " chapters in place of the rodeo's", onclick: () => useGroup(g) }) : null,
         g.chapters.length ? el("button", { class: "btn sm", type: "button", text: "+ all " + g.chapters.length,
           onclick: () => { for (const c of g.chapters) addChapter(g, c); } }) : null,
         g.imported ? el("button", { class: "btn sm", type: "button", text: "×", "aria-label": "Remove " + g.title + " from the library",
@@ -327,18 +382,29 @@ function renderLibrary() {
         const added = inRodeo(g.id, c.id), lacks = missing(c).length > 0;
         cards.append(el("button", {
           class: "card" + (added ? " added" : "") + (lacks ? " lacks" : ""), type: "button", draggable: "true",
-          title: added ? "In the rodeo. Click to remove." : "Add to this rodeo",
+          title: cardTip(c, added),
           onclick: () => (added ? removeChapter(state.chapters.findIndex((x) => x.from === libKey(g.id, c.id))) : addChapter(g, c)),
           ondragstart: (ev) => { state.drag = { kind: "lib", group: g, chapter: c }; ev.dataTransfer.setData("text/plain", c.id); },
           ondragend: () => { state.drag = null; clearDrop(); },
         }, el("span", { class: "dot" }), el("span", { class: "card-title", text: c.title }),
-        el("span", { class: "card-meta", text: c.mins + " min" + (c.needs.length ? " · " + c.needs.join(", ") : "") +
-          (c.isNew ? " · new" : "") + (added ? " · added ✓" : "") })));
+        state.details ? el("span", { class: "card-meta", text: c.mins + " min" + (c.needs.length ? " · " + c.needs.join(", ") : "") +
+          (c.isNew ? " · new" : "") + (added ? " · added ✓" : "") }) : null));
       }
     }
     box.append(el("div", { class: "group" }, head, cards));
   }
+  if (narrowed && !shown) box.append(el("p", { class: "empty", text: "No chapter matches the search and filters." }));
   $("#libCount").textContent = String(total);
+  const active = Object.values(state.filters).filter(Boolean).length;
+  $("#filterCount").hidden = !active;
+  $("#filterCount").textContent = String(active);
+  $("#filterBtn").classList.toggle("outline", active > 0);
+  $("#detailsBtn").setAttribute("aria-pressed", String(state.details));
+}
+
+function setFilterMenu(open) {
+  $("#filterMenu").hidden = !open;
+  $("#filterBtn").setAttribute("aria-expanded", String(open));
 }
 
 // ── engines ─────────────────────────────────────────────────────────────
@@ -1715,6 +1781,13 @@ function trapTab(ev) {
 // ── init ────────────────────────────────────────────────────────────────
 
 function bind() {
+  document.addEventListener("mousedown", (ev) => {
+    if (state.info && !ev.target.closest(".group-info, .info-btn")) toggleInfo(state.info);
+    if (!$("#filterMenu").hidden && !ev.target.closest("#filterMenu, #filterBtn")) setFilterMenu(false);
+  });
+  $("#filterBtn").addEventListener("click", () => setFilterMenu($("#filterMenu").hidden));
+  $("#filterMenu").addEventListener("change", (ev) => { state.filters[ev.target.value] = ev.target.checked; renderLibrary(); });
+  $("#detailsBtn").addEventListener("click", () => { state.details = !state.details; renderLibrary(); });
   $("#search").addEventListener("input", (ev) => { state.query = ev.target.value; renderLibrary(); });
   $("#name").addEventListener("change", (ev) => { state.name = RB.slugify(ev.target.value) || state.name; render(); });
   $("#title").addEventListener("input", (ev) => { state.title = ev.target.value; renderFiles(); });
@@ -1787,7 +1860,9 @@ function bind() {
   document.addEventListener("keydown", (ev) => {
     if (ev.key === "Tab") { trapTab(ev); return; }
     if (ev.key !== "Escape") return;
-    if (pop) closePop();
+    if (!$("#filterMenu").hidden) { setFilterMenu(false); $("#filterBtn").focus(); }
+    else if (state.info) toggleInfo(state.info);
+    else if (pop) closePop();
     else if (!$("#newModal").hidden) closeNewChapter();
     else if (!$("#importModal").hidden) closeImport();
     else if (!$("#publishModal").hidden) closePublish();

@@ -182,6 +182,7 @@ Precedence: profile defaults < plan < paramfile < `-P`.
 | [Harvester profile guide](docs/guide-harvester.md) | Deploy Harvester HCI (2-node, 3-node, HA, full lab) |
 | [SUSE Edge profile guide](docs/guide-suse-edge.md) | Deploy the SUSE Edge 3.7 stack (Rancher + Elemental + EIB + edge nodes) |
 | [Bare metal example](docs/examples/bare-metal.md) | Full walkthrough on a physical or cloud host |
+| [AWS from a Mac](docs/examples/aws-macos.md) | Step by step from a clean Mac to a lab on AWS |
 | [Instruqt example](docs/examples/instruqt.md) | Build an Instruqt track image with a pre-deployed cluster |
 | [Install on Linux and macOS](docs/install.md) | KVM host vs control machine installs |
 | [Fleet (multi-host)](docs/fleet.md) | A lab per attendee across many hosts, plus the claim portal |

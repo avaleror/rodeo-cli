@@ -1291,14 +1291,19 @@ def _open_credentials(page):
     page.click("#credentialsBtn")
 
 
-def test_static_has_no_settings(page):
-    assert page.locator("#userBtn").is_hidden()
+def test_static_shows_settings_disabled(page):
+    page.click("#userBtn")
+    assert page.locator("#credentialsBtn").is_disabled()
+    assert page.locator("#userNote").inner_text() == "Settings need rodeo builder running on this machine."
 
 
 @pytest.mark.parametrize("page", ["live"], indirect=True)
-def test_settings_hidden_when_the_vault_is_unavailable(page):
+def test_settings_disabled_when_the_vault_is_unavailable(page):
     FakeVault(available=False).install(page)
-    assert page.locator("#userBtn").is_hidden()
+    page.click("#userBtn")
+    sync_api.expect(page.locator("#userNote")).to_have_text("Settings: listens beyond loopback.")
+    assert page.locator("#credentialsBtn").is_disabled()
+    assert page.locator("#userName").inner_text() == ""
 
 
 @pytest.mark.parametrize("page", ["live"], indirect=True)

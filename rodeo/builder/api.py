@@ -85,7 +85,7 @@ class Api:
             return {**publish.status(), "available": True} if self.can_publish else {"available": False}
         if action == "vault":
             if not self.can_deploy:
-                return {"available": False, "reason": "stored credentials " + LOOPBACK_ONLY,
+                return {"available": False, "reason": "storing credentials " + LOOPBACK_ONLY,
                         "types": [], "items": [], "file_secrets": []}
             if vault is None:
                 return {"available": False, "reason": NO_CRYPTOGRAPHY, "types": [], "items": [],
@@ -149,7 +149,7 @@ class Api:
 
     def _vault(self, action: str, body: bytes) -> tuple[int, dict[str, Any]]:
         if not self.can_deploy:
-            return 403, {"error": "stored credentials " + LOOPBACK_ONLY}
+            return 403, {"error": "storing credentials " + LOOPBACK_ONLY}
         if vault is None or self.vault_limiter is None:
             return 501, {"error": NO_CRYPTOGRAPHY}
         try:

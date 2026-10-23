@@ -249,8 +249,9 @@ published page, the button is greyed out and says why on hover.
 header, which also shows the `user@host` the builder runs as), keeps the
 credentials you deploy with — SCC registration codes, registry and Application Collection logins, AWS keys, SSH keys, GitHub
 tokens, or any `key: value` fields — encrypted on the builder's host, one file
-per credential in `~/.rodeo/vault/`. It appears only on `rodeo builder` on
-loopback (not `--expose`, not the published page).
+per credential in `~/.rodeo/vault/`. It works only on `rodeo builder` on
+loopback: with `--expose` and on the published page, Settings is greyed out in
+the menu with the reason.
 
 - Each credential has its own password, at least 8 characters, asked every
   time the credential is used. Neither the password nor the values are kept by

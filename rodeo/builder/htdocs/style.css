@@ -141,7 +141,10 @@ h2.sec .num { color: var(--accent-ink); font-family: var(--mono); font-size: 12p
 .user-name { margin: 0; padding: 6px 8px; font: 400 11.5px var(--mono); color: var(--muted); overflow-wrap: anywhere; }
 .user-name:empty { display: none; }
 .menu-item { border: 0; background: none; color: var(--ink); text-align: left; padding: 7px 8px; border-radius: 4px; cursor: pointer; font: inherit; }
-.menu-item:hover, .menu-item:focus-visible { background: var(--tint); }
+.menu-item:hover:not(:disabled), .menu-item:focus-visible { background: var(--tint); }
+.menu-item:disabled { color: var(--muted); cursor: default; }
+.user-note { margin: 0; padding: 2px 8px 6px; max-width: 260px; font-size: 12px; color: var(--muted); }
+.user-note[hidden] { display: none; }
 .filter-menu legend { float: left; width: 100%; padding: 0; margin-bottom: 2px; font: 400 11px var(--mono); color: var(--muted); }
 .filter-menu label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
 .filter-menu input { accent-color: var(--accent); margin: 0; }

@@ -199,7 +199,7 @@ def test_api_gated_on_can_deploy():
     _secrets_yaml('my_key: "v"\n')
     api = _api(can_deploy=False)
     assert api.dispatch("vault") == (200, {"available": False,
-                                           "reason": "stored credentials " + api_mod.LOOPBACK_ONLY,
+                                           "reason": "storing credentials " + api_mod.LOOPBACK_ONLY,
                                            "types": [], "items": [], "file_secrets": []})
     for action in api_mod.VAULT_ACTIONS:
         assert _post(api, action, {"id": "0" * 16, "password": PW})[0] == 403

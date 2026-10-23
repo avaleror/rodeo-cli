@@ -1840,10 +1840,14 @@ function renderVaultList() {
 }
 
 // The header's user menu: who the builder runs as, and the credentials it keeps for that user.
+// Without a vault, Settings stays in the menu, disabled, with the reason.
 function renderUserMenu() {
-  $("#userBtn").hidden = !vaultOn();
-  $("#userName").textContent = vaultOn() ? state.vault.user || "" : "";
-  if (!vaultOn()) setUserMenu(false);
+  const on = vaultOn();
+  $("#userName").textContent = on ? state.vault.user || "" : "";
+  $("#credentialsBtn").disabled = !on;
+  $("#userNote").hidden = on;
+  $("#userNote").textContent = on ? "" : window.RB_STATIC || !state.vault || !state.vault.reason
+    ? "Settings need rodeo builder running on this machine." : "Settings: " + state.vault.reason + ".";
 }
 
 function setUserMenu(open) {
@@ -2390,6 +2394,7 @@ function bind() {
 
 async function init() {
   bind();
+  renderUserMenu();
   try {
     const [engines, workshops, liab] = await Promise.all([apiGet("engines"), apiGet("workshops"), apiGet("labinabox")]);
     state.engines = engines.engines;

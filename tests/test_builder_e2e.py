@@ -1256,7 +1256,8 @@ class FakeVault:
         if req.method == "GET":
             items = [{k: i[k] for k in ("id", "name", "type", "created", "used")} for i in self.items.values()]
             return route.fulfill(json={"available": self.available, "reason": "" if self.available else "listens beyond loopback",
-                                       "types": VAULT_TYPES, "items": items, "file_secrets": self.file_secrets})
+                                       "types": VAULT_TYPES, "items": items, "file_secrets": self.file_secrets,
+                                       "user": "tester@labhost"})
         body = req.post_data_json
         self.calls.append((action, body))
         if action == "vault-add":
@@ -1285,14 +1286,19 @@ def _values(page) -> list[str]:
     return page.evaluate("[...document.querySelectorAll('input, textarea')].map((i) => i.value)")
 
 
+def _open_credentials(page):
+    page.click("#userBtn")
+    page.click("#credentialsBtn")
+
+
 def test_static_has_no_settings(page):
-    assert page.locator("#settingsBtn").is_hidden()
+    assert page.locator("#userBtn").is_hidden()
 
 
 @pytest.mark.parametrize("page", ["live"], indirect=True)
 def test_settings_hidden_when_the_vault_is_unavailable(page):
     FakeVault(available=False).install(page)
-    assert page.locator("#settingsBtn").is_hidden()
+    assert page.locator("#userBtn").is_hidden()
 
 
 @pytest.mark.parametrize("page", ["live"], indirect=True)
@@ -1300,10 +1306,16 @@ def test_settings_add_list_and_delete_credentials(page):
     vault = FakeVault()
     vault.install(page)
     page.set_viewport_size({"width": 390, "height": 844})
-    box = page.locator("#settingsBtn").bounding_box()
+    box = page.locator("#userBtn").bounding_box()
     assert box["x"] + box["width"] <= 390
     page.set_viewport_size({"width": 1440, "height": 900})
-    page.click("#settingsBtn")
+    page.click("#userBtn")
+    sync_api.expect(page.locator("#userMenu")).to_be_visible()
+    assert page.locator("#userName").inner_text() == "tester@labhost"
+    page.keyboard.press("Escape")
+    sync_api.expect(page.locator("#userMenu")).to_be_hidden()
+    _open_credentials(page)
+    sync_api.expect(page.locator("#userMenu")).to_be_hidden()
     sync_api.expect(page.locator("#vaultList")).to_contain_text("No stored credentials yet.")
     page.click("#vaultAddBtn")
     page.select_option("#vaType", "scc")
@@ -1359,7 +1371,7 @@ def test_settings_add_list_and_delete_credentials(page):
     sync_api.expect(page.locator("#settingsModal")).to_be_hidden()
     assert "SK-TYPED" not in _values(page) and "half typed" not in _values(page)
 
-    page.click("#settingsBtn")
+    _open_credentials(page)
     page.once("dialog", lambda d: d.dismiss())
     page.click("button[aria-label='Delete my scc']")
     sync_api.expect(page.locator(".vault-item")).to_have_count(2)
@@ -1434,11 +1446,11 @@ def test_deploy_dialog_uses_stored_credentials(page, monkeypatch):
 @pytest.mark.parametrize("page", ["live"], indirect=True)
 def test_settings_lists_secrets_yaml_key_names(page):
     FakeVault().install(page)
-    page.click("#settingsBtn")
+    _open_credentials(page)
     sync_api.expect(page.locator("#fileSecretList")).to_have_text("No keys there.")
     page.click("#settingsClose")
     FakeVault(file_secrets=["harvester_token", "my_regcode"]).install(page)
-    page.click("#settingsBtn")
+    _open_credentials(page)
     sync_api.expect(page.locator("#settingsModal")).to_contain_text("In ~/.rodeo/secrets.yaml")
     sync_api.expect(page.locator("#fileSecretList .chip")).to_have_text(["harvester_token", "my_regcode"])
     assert page.locator("#fileSecretList button, #fileSecretList input").count() == 0

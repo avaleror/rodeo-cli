@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import socket
 import stat
 
 import pytest
@@ -10,6 +11,7 @@ from rodeo import secretgen
 from rodeo.builder import api as api_mod
 from rodeo.builder import vault
 from rodeo.builder.api import Api
+from rodeo.paths import invoking_user
 
 PW = "correct horse"
 
@@ -188,7 +190,8 @@ def test_file_secrets_empty_when_missing_or_invalid(content):
     elif content is not None:
         _secrets_yaml(content)
     assert _api().dispatch("vault") == (200, {"available": True, "reason": "", "types": vault.types(),
-                                              "items": [], "file_secrets": []})
+                                              "items": [], "file_secrets": [],
+                                              "user": "{}@{}".format(invoking_user(), socket.gethostname())})
 
 
 def test_api_gated_on_can_deploy():

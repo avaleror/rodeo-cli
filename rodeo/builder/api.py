@@ -21,14 +21,17 @@ encrypted credential store, see :mod:`.vault`) also need ``can_deploy=True``;
 GET ``vault`` answers ``available: false`` without it or without the
 ``cryptography`` package. Its ``file_secrets`` lists the keys of
 ``~/.rodeo/secrets.yaml`` (never their values) that POST ``deploy`` can name in
-``secret_refs``; ``[]`` without ``can_deploy=True``.
+``secret_refs``; ``[]`` without ``can_deploy=True``. When available, ``user`` is
+``<login>@<host>``: whose ``~/.rodeo`` the credentials live in.
 """
 from __future__ import annotations
 
 import json
+import socket
 from pathlib import Path
 from typing import Any
 
+from ..paths import invoking_user
 from . import deploywork, discovery, imports, publish, storywork
 
 try:
@@ -88,7 +91,8 @@ class Api:
                 return {"available": False, "reason": NO_CRYPTOGRAPHY, "types": [], "items": [],
                         "file_secrets": deploywork.file_secret_keys()}
             return {"available": True, "reason": "", "types": vault.types(), "items": vault.list_items(),
-                    "file_secrets": deploywork.file_secret_keys()}
+                    "file_secrets": deploywork.file_secret_keys(),
+                    "user": "{}@{}".format(invoking_user(), socket.gethostname())}
         raise KeyError(action)
 
     def _server(self) -> dict[str, Any]:

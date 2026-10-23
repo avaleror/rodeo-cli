@@ -1814,7 +1814,7 @@ function vaultOn() { return !window.RB_STATIC && !!state.vault && state.vault.av
 
 async function refreshVault() {
   state.vault = await apiGet("vault").catch(() => state.vault);
-  $("#settingsBtn").hidden = !vaultOn();
+  renderUserMenu();
   if (!$("#settingsModal").hidden) renderVaultList();
 }
 
@@ -1839,8 +1839,21 @@ function renderVaultList() {
     : el("li", { class: "vault-empty", text: "No keys there." }));
 }
 
+// The header's user menu: who the builder runs as, and the credentials it keeps for that user.
+function renderUserMenu() {
+  $("#userBtn").hidden = !vaultOn();
+  $("#userName").textContent = vaultOn() ? state.vault.user || "" : "";
+  if (!vaultOn()) setUserMenu(false);
+}
+
+function setUserMenu(open) {
+  $("#userMenu").hidden = !open;
+  $("#userBtn").setAttribute("aria-expanded", String(open));
+}
+
 function openSettings() {
   if (!vaultOn()) return;
+  setUserMenu(false);
   resetVaultForm();
   renderVaultList();
   $("#settingsModal").hidden = false;
@@ -1851,7 +1864,7 @@ function openSettings() {
 function closeSettings() {
   resetVaultForm();
   $("#settingsModal").hidden = true;
-  $("#settingsBtn").focus();
+  $("#userBtn").focus();
 }
 
 // A password input with a Show/Hide toggle; `what` names it for the toggle's label.
@@ -2266,6 +2279,7 @@ function bind() {
   document.addEventListener("mousedown", (ev) => {
     if (state.info && !ev.target.closest(".info-pop, .info-btn")) toggleInfo(state.info);
     if (!$("#filterMenu").hidden && !ev.target.closest("#filterMenu, #filterBtn")) setFilterMenu(false);
+    if (!$("#userMenu").hidden && !ev.target.closest("#userMenu, #userBtn")) setUserMenu(false);
   });
   $("#filterBtn").addEventListener("click", () => setFilterMenu($("#filterMenu").hidden));
   $("#filterMenu").addEventListener("change", (ev) => { state.filters[ev.target.value] = ev.target.checked; renderLibrary(); });
@@ -2327,7 +2341,8 @@ function bind() {
   $("#deploySave").addEventListener("click", () => save(false));
   $("#deployStop").addEventListener("click", stopDeploy);
   $("#deployLogBtn").addEventListener("click", () => { state.deployLogOpen = !state.deployLogOpen; renderDeploy(); });
-  $("#settingsBtn").addEventListener("click", openSettings);
+  $("#userBtn").addEventListener("click", () => setUserMenu($("#userMenu").hidden));
+  $("#credentialsBtn").addEventListener("click", openSettings);
   $("#settingsClose").addEventListener("click", closeSettings);
   $("#settingsModal").addEventListener("mousedown", (ev) => { if (ev.target === ev.currentTarget) closeSettings(); });
   $("#vaultAddBtn").addEventListener("click", openVaultForm);
@@ -2358,6 +2373,7 @@ function bind() {
     if (ev.key === "Tab") { trapTab(ev); return; }
     if (ev.key !== "Escape") return;
     if (!$("#filterMenu").hidden) { setFilterMenu(false); $("#filterBtn").focus(); }
+    else if (!$("#userMenu").hidden) { setUserMenu(false); $("#userBtn").focus(); }
     else if (state.info) toggleInfo(state.info);
     else if (pop) closePop();
     else if (!$("#vaultPrompt").hidden) closeVaultPrompt();
@@ -2387,7 +2403,7 @@ async function init() {
       state.deploy = await apiGet("deploy").catch((err) => ({ available: false, reason: err.message, current: null }));
       if (state.deploy.current && state.deploy.current.status === "running") pollDeploy();
       state.vault = await apiGet("vault").catch((err) => ({ available: false, reason: err.message, types: [], items: [] }));
-      $("#settingsBtn").hidden = !vaultOn();
+      renderUserMenu();
       $("#saveBtn").title = "Write this rodeo to " + state.server.profiles_dir + "/<name>/";
     }
     offerDraft();

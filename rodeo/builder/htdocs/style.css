@@ -132,6 +132,16 @@ h2.sec .num { color: var(--accent-ink); font-family: var(--mono); font-size: 12p
   display: grid; gap: 8px; background: var(--panel); box-shadow: 0 0 0 1px var(--accent), 0 16px 40px rgba(0, 0, 0, .45); font-size: 13px;
 }
 .filter-menu[hidden] { display: none; }
+.user-wrap { position: relative; flex: none; }
+.user-menu {
+  position: absolute; z-index: 30; top: calc(100% + 6px); right: 0; min-width: 200px; padding: 6px; border-radius: 6px;
+  display: grid; gap: 2px; background: var(--panel); box-shadow: 0 0 0 1px var(--accent), 0 16px 40px rgba(0, 0, 0, .45); font-size: 13px;
+}
+.user-menu[hidden] { display: none; }
+.user-name { margin: 0; padding: 6px 8px; font: 400 11.5px var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.user-name:empty { display: none; }
+.menu-item { border: 0; background: none; color: var(--ink); text-align: left; padding: 7px 8px; border-radius: 4px; cursor: pointer; font: inherit; }
+.menu-item:hover, .menu-item:focus-visible { background: var(--tint); }
 .filter-menu legend { float: left; width: 100%; padding: 0; margin-bottom: 2px; font: 400 11px var(--mono); color: var(--muted); }
 .filter-menu label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
 .filter-menu input { accent-color: var(--accent); margin: 0; }
@@ -418,9 +428,6 @@ div.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 2p
 .unsaved { display: block; }
 .pub-steps { padding-left: 20px; margin: 10px 0 0; line-height: 1.6; }
 .pub-steps li { margin-bottom: 8px; }
-.btn.with-icon { display: inline-flex; align-items: center; gap: 6px; }
-.btn.with-icon[hidden] { display: none; }
-.btn.with-icon svg { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
 .backdrop.over { z-index: 25; }
 .modal.narrow { width: min(420px, calc(100vw - 32px)); }
 .modal h3.label { margin-top: 16px; }
@@ -488,7 +495,6 @@ div.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 2p
   .hdr { padding: 0 16px; }
   /* The sticky bar carries Download and the warnings. */
   .hdr-right #downloadBtn, .hdr-right #warnBtn, .hdr-right #publishBtn, .hdr-right #deployWrap { display: none; }
-  .btn.with-icon .btn-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 }
 @media (max-width: 480px) {
   .wordmark { display: none; }

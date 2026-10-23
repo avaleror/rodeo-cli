@@ -57,6 +57,7 @@
       </div>
       <div id="library"></div>
     </aside>
+    <div id="resizeLeft" class="resizer" role="separator" aria-orientation="vertical" aria-label="Resize the chapter library" tabindex="0"></div>
 
     <section class="col center" aria-label="Rodeo">
       <div id="deployBanner" class="banner deploy" role="status" hidden>
@@ -71,18 +72,26 @@
         <button id="draftRestore" class="btn primary sm" type="button">Restore</button>
         <button id="draftFresh" class="btn sm" type="button">Start fresh</button>
       </div>
-      <p class="part-head" id="partInfra">Infrastructure, built by rodeo up</p>
-      <h2 class="sec"><span class="num">01</span> Lab engine <span id="engineNow" class="now"></span></h2>
-      <div id="engines" class="engines" role="radiogroup" aria-label="Lab engine"></div>
-      <div id="enginePanel" class="panel"></div>
-      <p class="part-head" id="partInstructions">Instructions, updated by rodeo content apply</p>
-      <h2 class="sec"><span class="num">02</span> Chapters <span id="coverage" class="status"></span></h2>
-      <p id="insertHint" class="hint"></p>
-      <div id="engineBanner" class="banner bad" role="alert" hidden></div>
-      <div id="chapterList" class="lab"></div>
-      <h2 class="sec" id="review"><span class="num">03</span> Review and download</h2>
-      <div id="reviewPanel" class="panel"></div>
+      <section class="part part-infra" aria-labelledby="secEngine">
+        <p class="part-head" id="partInfra">Infrastructure, built by rodeo up</p>
+        <h2 class="sec" id="secEngine"><span class="num">01</span> Lab engine <span id="engineNow" class="now"></span></h2>
+        <div id="engines" class="engines" role="radiogroup" aria-label="Lab engine"></div>
+        <div id="enginePanel" class="panel"></div>
+      </section>
+      <section class="part part-instr" aria-labelledby="secChapters">
+        <p class="part-head" id="partInstructions">Instructions, updated by rodeo content apply</p>
+        <h2 class="sec" id="secChapters"><span class="num">02</span> Chapters <span id="coverage" class="status"></span></h2>
+        <p id="insertHint" class="hint"></p>
+        <div id="engineBanner" class="banner bad" role="alert" hidden></div>
+        <div id="chapterList" class="lab"></div>
+      </section>
+      <section class="part part-review" aria-labelledby="review">
+        <p class="part-head">Everything above, as files</p>
+        <h2 class="sec" id="review"><span class="num">03</span> Review and download</h2>
+        <div id="reviewPanel" class="panel"></div>
+      </section>
     </section>
+    <div id="resizeRight" class="resizer" role="separator" aria-orientation="vertical" aria-label="Resize the settings column" tabindex="0"></div>
 
     <aside class="col right" aria-label="Rodeo settings and files">
       <div class="tabs" role="tablist">

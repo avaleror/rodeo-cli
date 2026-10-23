@@ -275,6 +275,7 @@ div.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 2p
 .warn-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .warn-row .warn-msg { flex: 1; min-width: 160px; font-family: var(--mono); font-size: 12px; }
 .zip-files { list-style: none; padding: 0; margin: 0 0 12px; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 3px 18px; font: 400 12.5px var(--mono); color: var(--muted); }
+.zip-toggle { display: block; margin: 0 0 8px; text-transform: none; letter-spacing: 0; }
 .zip-files li { overflow-wrap: anywhere; }
 .zip-files li.story { color: var(--ink); }
 .install .term-bar .btn { margin-left: auto; color: #e8e4d9; border-color: #3a3a4a; }

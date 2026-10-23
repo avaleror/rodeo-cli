@@ -140,6 +140,7 @@ def page(request, monkeypatch):
         errors: list[str] = []
         pg.on("pageerror", lambda exc: errors.append(str(exc)))
         pg.on("console", lambda msg: errors.append(msg.text) if msg.type == "error" and not _refused_unlock(msg) else None)
+        pg.rb_errors = errors
         pg.goto(url)
         pg.wait_for_selector(".engine")
         _open_library(pg)
@@ -730,6 +731,9 @@ def test_review_lists_the_zip_and_warnings(page):
     assert page.locator("#warnBtn").inner_text().lower() == "1 ⚠ warning"
     review = page.locator("#reviewPanel")
     assert "1 span warning (same checks as rmstory validate)" in review.inner_text()
+    assert review.locator(".zip-files").is_hidden()
+    review.locator("#zipFilesBtn").click()
+    assert review.locator("#zipFilesBtn").get_attribute("aria-expanded") == "true"
     listed = set(review.locator(".zip-files li").all_inner_texts())
     assert "rodeo new my-rodeo --from-zip my-rodeo.zip" in review.locator("pre").inner_text()
     files = _zip(page)
@@ -856,6 +860,16 @@ def test_live_review_checks_with_rmstory(page):
     page.click(".card >> text=Welcome to the rodeo")
     page.click("#rmCheckBtn")
     sync_api.expect(page.locator(".rm-check")).to_contain_text("tagged span(s)")
+
+
+@pytest.mark.parametrize("page", ["live_rmstory"], indirect=True)
+def test_live_restarted_builder_asks_for_a_reload(page):
+    page.evaluate("document.querySelector('meta[name=\"rodeo-builder-token\"]').content = 'from-before-a-restart'")
+    page.click(".card >> text=Welcome to the rodeo")
+    page.click("#rmCheckBtn")
+    sync_api.expect(page.locator("#toastText")).to_have_text(
+        "rmstory check failed: the builder was restarted: reload the page to continue")
+    page.rb_errors[:] = [e for e in page.rb_errors if not e.startswith("Failed to load resource")]
 
 
 @pytest.mark.parametrize("page", ["live_rmstory"], indirect=True)

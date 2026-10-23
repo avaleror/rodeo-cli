@@ -90,8 +90,8 @@ rodeo up --profile <name>     # after Save to profiles
 
 **Review and download** (step 03) checks the rodeo before you download it: the
 lab covers every chapter, the span ids are valid (each warning has a **Fix**
-button), the exact files in the zip, and the commands to install it, ready to
-copy. Missing lab features and span warnings never block the download.
+button), the exact files in the zip (listed when you click **N files in
+<name>.zip**), and the commands to install it, ready to copy. Missing lab features and span warnings never block the download.
 
 The page keeps a draft of your rodeo in this browser. After a reload it offers
 to restore it.
@@ -105,7 +105,7 @@ When `rmstory` is installed where `rodeo builder` runs (`sudo rodeo install-deps
   translations with an rmstory engine (`rmstory extract --engine <e> --to <lang>`).
   They are stored as `draft`; what you wrote or reviewed is kept. rmstory also
   gives unnamed spans an id (`<chapter>.N`).
-- **Check with rmstory** (step 03): rmstory's own `validate` on the chapters.
+- **Validate** (step 03): rmstory's own `validate` on the chapters.
 - **Draft with an engine** (New chapter): an engine that can generate text
   (`rmstory engines` says "translate + generate", for example `claude-code`,
   `ollama` or `gemini`) drafts the chapter from your description, told what the

@@ -14,13 +14,18 @@ async function apiGet(action, params = {}) {
 }
 
 // POST to the live server; the write token comes from the meta tag it serves.
+// A server restarted since the page loaded has a new token: its 403 asks for a reload.
 async function apiPost(action, payload) {
   const meta = document.querySelector('meta[name="rodeo-builder-token"]');
   const res = await fetch("api?" + new URLSearchParams({ action }).toString(), {
     method: "POST", body: JSON.stringify(payload),
     headers: { "Content-Type": "application/json", Accept: "application/json", "X-Rodeo-Builder-Token": meta ? meta.content : "" },
   });
-  return { status: res.status, body: await res.json() };
+  const body = await res.json();
+  if (res.status === 403 && /X-Rodeo-Builder-Token/.test(body.error || "")) {
+    body.error = "the builder was restarted: reload the page to continue";
+  }
+  return { status: res.status, body };
 }
 
 const $ = (sel) => document.querySelector(sel);
@@ -761,8 +766,10 @@ function renderReview() {
         i >= 0 ? el("button", { class: "btn sm warn", type: "button", text: "Fix ✎", onclick: () => openEditor(i) }) : null);
     }),
     renderRmstoryCheck(),
-    el("span", { class: "label", text: plural(files.length, "file") + " in " + name + ".zip" }),
-    el("ul", { class: "zip-files" }, files.map((f) => el("li", { class: RB.partOf(f) === "instructions" ? "story" : "",
+    el("button", { class: "btn sm zip-toggle", type: "button", id: "zipFilesBtn", "aria-expanded": String(!!state.zipOpen),
+      "aria-controls": "zipFiles", text: (state.zipOpen ? "▾ " : "▸ ") + plural(files.length, "file") + " in " + name + ".zip",
+      onclick: () => { state.zipOpen = !state.zipOpen; renderReview(); } }),
+    el("ul", { class: "zip-files", id: "zipFiles", hidden: state.zipOpen ? null : true }, files.map((f) => el("li", { class: RB.partOf(f) === "instructions" ? "story" : "",
       title: RB.partOf(f), text: name + "/" + f }))),
     el("div", { class: "term install" }, el("div", { class: "term-bar" }, el("i"), el("i"), el("i"), el("span", { text: "install" }), copy),
       el("pre", { text: cmd })),
@@ -775,13 +782,13 @@ function renderReview() {
       state.server && state.server.save ? el("span", { class: "muted", text: "Save to profiles (top right) writes it straight into your profiles." }) : null));
 }
 
-// The live builder's "Check with rmstory": rmstory's own validate on the chapters.
+// The live builder's "Validate": rmstory's own validate on the chapters.
 function renderRmstoryCheck() {
   if (!storyTools()) return null;
   const res = state.rmCheck, stale = res && res.key !== chaptersKey();
   const head = el("div", { class: "rm-check" },
     el("button", { class: "btn sm", type: "button", id: "rmCheckBtn", disabled: state.busy ? true : null,
-      text: state.busy === "validate" ? "Checking…" : "Check with rmstory", onclick: rmstoryCheck }),
+      text: state.busy === "validate" ? "Validating…" : "Validate", onclick: rmstoryCheck }),
     el("span", { class: "muted", text: res ? res.summary + (stale ? " · the chapters changed since: check again" : "")
       : "Runs rmstory validate on the builder's host" }));
   if (!res || stale) return head;

@@ -96,7 +96,7 @@ button.chip { cursor: pointer; }
 .alert { margin: 10px 0; padding: 10px 12px; border: 1px solid var(--coral); background: var(--warn); color: var(--coral); border-radius: 2px; font-size: 13px; }
 
 /* ── layout ───────────────────────────────────────────────────────────── */
-.cols { flex: 1; display: grid; grid-template-columns: var(--lw, 290px) 0 minmax(0, 1fr) 0 var(--rw, 320px); min-height: 0; }
+.cols { flex: 1; isolation: isolate; display: grid; grid-template-columns: var(--lw, 290px) 0 minmax(0, 1fr) 0 var(--rw, 320px); min-height: 0; }
 .resizer { position: relative; z-index: 15; cursor: col-resize; touch-action: none; outline: none; }
 .resizer::before { content: ""; position: absolute; top: 0; bottom: 0; left: -5px; width: 10px; }
 .resizer::after { content: ""; position: absolute; top: 0; bottom: 0; left: -1px; width: 3px; background: transparent; transition: background .12s; }

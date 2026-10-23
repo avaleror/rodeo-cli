@@ -70,8 +70,8 @@ rodeo up --profile <name>     # after Save to profiles
   github.com repositories through the GitHub API (60 unauthenticated requests an
   hour); the rodeo builder server clones any public https repository (shallow
   and sparse, no credentials). Imported groups are kept with the draft.
-- **Story.** **N spans ✎** opens the story editor (rows with span warnings show
-  how many). Select text and click **Tag selection**, use the toolbar, or press
+- **Story.** **Edit** on a chapter opens the story editor (rows with span
+  warnings show how many). Select text and click **Tag selection**, use the toolbar, or press
   Alt+T / Alt+I / Alt+N to mark it Translatable, Invariant or No-lang;
   double-click a span to change its type,
   language, id or story variant. Ids follow rmstory's rules (`<chapter>.N`,

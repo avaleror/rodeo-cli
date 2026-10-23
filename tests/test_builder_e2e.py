@@ -231,7 +231,9 @@ def test_labinabox_engine_adds_needed_addons_and_definition(page):
 
 def test_story_editor_tags_a_selection(page):
     page.click(".card")
-    page.click(".row-actions .btn >> text=spans")
+    button = page.locator(".row-actions .btn").first
+    assert button.inner_text().lower() == "edit" and "spans" in button.get_attribute("title")
+    button.click()
     assert not page.locator("#editor").is_hidden()
     source = page.locator("#edSource")
     text = source.input_value()
@@ -245,6 +247,36 @@ def test_story_editor_tags_a_selection(page):
     assert "welcome.first-task" in page.locator("#storiesView").inner_text()
     page.click("#edDone")
     assert page.locator("#editor").is_hidden()
+
+
+def test_story_editor_undo_and_cancel(page):
+    page.click(".card")
+    page.locator(".row-actions .btn").first.click()
+    title = page.locator(".lib-title").bounding_box()
+    assert page.evaluate("([x, y]) => !!document.elementFromPoint(x, y).closest('#editor')",
+                         [title["x"] + 10, title["y"] + 10])
+    source = page.locator("#edSource")
+    original = source.input_value()
+    start = original.index("Rancher Prime on K3s")
+    source.evaluate("(ta, [s, e]) => { ta.focus(); ta.setSelectionRange(s, e); }", [start, start + len("Rancher Prime")])
+    page.click("[data-mark=invariant]")
+    tagged = source.input_value()
+    assert "<span no>Rancher Prime</span>" in tagged
+    source.focus()
+    page.keyboard.press("Control+z")
+    assert source.input_value() == original
+    page.keyboard.press("Control+Shift+z")
+    assert source.input_value() == tagged
+    source.evaluate("ta => ta.setSelectionRange(ta.value.length, ta.value.length)")
+    page.keyboard.type("more")
+    assert source.input_value() == tagged + "more"
+    page.keyboard.press("Control+z")
+    assert source.input_value() == tagged
+    page.once("dialog", lambda d: d.accept())
+    page.click("#edCancel")
+    assert page.locator("#editor").is_hidden()
+    page.locator(".row-actions .btn").first.click()
+    assert source.input_value() == original
 
 
 def test_theme_toggle(page):
@@ -409,7 +441,7 @@ def _rows(page) -> list[str]:
 
 def test_editor_errors_show_above_the_editor(page):
     page.click(".card")
-    page.click(".row-actions .btn >> text=spans")
+    page.click(".row-actions .btn >> text=Edit")
     page.click("[data-mark=invariant]")
     toast = page.locator("#toast")
     sync_api.expect(toast).to_be_visible()
@@ -444,7 +476,7 @@ def test_draft_is_offered_after_a_reload(page):
 
 def test_keyboard_tagging_and_tag_chip(page):
     page.click(".card")
-    page.click(".row-actions .btn >> text=spans")
+    page.click(".row-actions .btn >> text=Edit")
     source = page.locator("#edSource")
     start = source.input_value().index("Rancher Prime on K3s")
     source.evaluate("(ta, [s, e]) => { ta.focus(); ta.setSelectionRange(s, e); }", [start, start + len("Rancher Prime")])
@@ -622,7 +654,7 @@ def test_narrow_layout_has_a_sticky_bar(page, width):
 
 def _open_translations(page):
     page.click(".card >> text=Welcome to the rodeo")
-    page.click(".row-actions .btn >> text=spans")
+    page.click(".row-actions .btn >> text=Edit")
     page.click("[data-edtab=translations]")
 
 

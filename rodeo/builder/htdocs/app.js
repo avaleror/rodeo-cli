@@ -669,7 +669,8 @@ function renderChapters() {
       el("div", { class: "row-meta", text: [c.workshop, c.mins + " min", c.check ? "checks/check-" + c.id + ".sh" : ""].filter(Boolean).join(" · ") }),
       el("div", { class: "chips" }, (c.needs || []).map((n) => needChip(n, miss)))),
     el("div", { class: "row-actions" },
-      el("button", { class: "btn sm" + (w ? " warn" : ""), type: "button", text: spans + " spans" + (w ? " · " + w + " ⚠" : "") + " ✎",
+      el("button", { class: "btn sm" + (w ? " warn" : ""), type: "button", text: "Edit" + (w ? " · " + w + " ⚠" : ""),
+        title: "Edit this chapter's story: " + spans + (spans === 1 ? " span" : " spans") + (w ? ", " + w + (w === 1 ? " warning" : " warnings") : ""),
         onclick: () => openEditor(i) }),
       el("button", { class: "btn sm", type: "button", "aria-label": "Move up", text: "↑", disabled: i === 0, onclick: () => move(i, -1) }),
       el("button", { class: "btn sm", type: "button", "aria-label": "Move down", text: "↓", disabled: i === state.chapters.length - 1, onclick: () => move(i, 1) }),
@@ -1084,8 +1085,46 @@ let pop = null;
 
 function editing() { return state.chapters[state.editing]; }
 
+// What Cancel restores: every chapter's text (translating can rename span ids in any
+// chapter), the stored translations and the story variants, as they were when the editor opened.
+let edSnapshot = null;
+// Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) history of the open chapter's text. Typing is grouped by pauses.
+const edHistory = { past: [], future: [], typedAt: 0 };
+const HISTORY_MAX = 200;
+
+function remember(before) {
+  edHistory.past.push(before);
+  if (edHistory.past.length > HISTORY_MAX) edHistory.past.shift();
+  edHistory.future = [];
+}
+
+function stepHistory(from, to) {
+  if (!from.length) return;
+  to.push(editing().body);
+  showBody(from.pop());
+  edHistory.typedAt = 0;
+}
+
+function editorChanged() {
+  return state.chapters.some((c, i) => c.body !== edSnapshot.bodies[i]) || JSON.stringify(state.strings) !== edSnapshot.strings
+    || state.extraVariants.join() !== edSnapshot.variants.join();
+}
+
+function cancelEditor() {
+  if (editorChanged() && !window.confirm("Discard the changes made in the story editor?")) return;
+  state.chapters.forEach((c, i) => { c.body = edSnapshot.bodies[i]; });
+  state.strings = JSON.parse(edSnapshot.strings);
+  state.extraVariants = edSnapshot.variants;
+  closeEditor();
+  scheduleDraft();
+}
+
 function openEditor(i) {
   state.editing = i;
+  edSnapshot = { bodies: state.chapters.map((c) => c.body), strings: JSON.stringify(state.strings), variants: state.extraVariants.slice() };
+  edHistory.past = [];
+  edHistory.future = [];
+  edHistory.typedAt = 0;
   $("#editor").hidden = false;
   $("#edSource").value = editing().body;
   renderEditor();
@@ -1100,6 +1139,12 @@ function closeEditor() {
 }
 
 function setBody(body, keepSel) {
+  if (body !== editing().body) remember(editing().body);
+  edHistory.typedAt = 0;
+  showBody(body, keepSel);
+}
+
+function showBody(body, keepSel) {
   const ta = $("#edSource"), s = ta.selectionStart, e = ta.selectionEnd;
   editing().body = body;
   ta.value = body;
@@ -1443,7 +1488,14 @@ function markSelection(type) {
 
 function bindEditor() {
   const ta = $("#edSource");
-  ta.addEventListener("input", () => { closePop(); editing().body = ta.value; renderEditor(); });
+  ta.addEventListener("input", () => {
+    closePop();
+    const now = Date.now();
+    if (now - edHistory.typedAt > 800) remember(editing().body);
+    edHistory.typedAt = now;
+    editing().body = ta.value;
+    renderEditor();
+  });
   ta.addEventListener("mouseup", (ev) => { if (ta.selectionEnd > ta.selectionStart) tagChip(ta.selectionStart, ta.selectionEnd, ev.clientX, ev.clientY); });
   for (const type of ["select", "keyup", "click"]) ta.addEventListener(type, updateCaret);
   ta.addEventListener("keydown", (ev) => {
@@ -1484,6 +1536,15 @@ function bindEditor() {
     renderEditor();
   });
   $("#edDone").addEventListener("click", closeEditor);
+  $("#edCancel").addEventListener("click", cancelEditor);
+  document.addEventListener("keydown", (ev) => {
+    if ($("#editor").hidden || !(ev.ctrlKey || ev.metaKey) || ev.altKey) return;
+    const t = ev.target;
+    if (t !== $("#edSource") && (t.matches("input, textarea, select") || t.isContentEditable)) return;
+    const key = ev.key.toLowerCase();
+    if (key === "z" && !ev.shiftKey) { ev.preventDefault(); stepHistory(edHistory.past, edHistory.future); }
+    else if ((key === "z" && ev.shiftKey) || key === "y") { ev.preventDefault(); stepHistory(edHistory.future, edHistory.past); }
+  });
   document.addEventListener("mousedown", (ev) => { if (pop && !ev.target.closest("#popover")) closePop(); });
 }
 

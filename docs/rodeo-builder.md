@@ -243,9 +243,9 @@ published page, the button is greyed out and says why on hover.
   and keeps saying the rodeo is not saved until you save it. One deploy runs at
   a time; rerun or resume from the lab directory with `rodeo up`.
 
-## Stored credentials
+## Settings and stored credentials
 
-**Manage credentials**, in the user menu (the person icon at the right of the
+**Settings**, in the user menu (the person icon at the right of the
 header, which also shows the `user@host` the builder runs as), keeps the
 credentials you deploy with — SCC registration codes, registry and Application Collection logins, AWS keys, SSH keys, GitHub
 tokens, or any `key: value` fields — encrypted on the builder's host, one file

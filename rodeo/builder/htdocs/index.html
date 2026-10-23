@@ -31,7 +31,7 @@
         </button>
         <div id="userMenu" class="user-menu" role="menu" aria-label="User menu" hidden>
           <p id="userName" class="user-name"></p>
-          <button id="credentialsBtn" class="menu-item" type="button" role="menuitem">Manage credentials</button>
+          <button id="credentialsBtn" class="menu-item" type="button" role="menuitem">Settings</button>
         </div>
       </div>
     </div>
@@ -270,8 +270,8 @@
 
   <div id="settingsModal" class="backdrop" hidden>
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
-      <h2 id="settingsTitle">Credentials</h2>
-      <h3 class="label">Stored encrypted</h3>
+      <h2 id="settingsTitle">Settings</h2>
+      <h3 class="label">Credentials</h3>
       <p class="note muted">Stored encrypted on this builder's host (~/.rodeo/vault/), each under its own password,
         asked every time you use it. Values are never shown here: the deploy dialog fills them in.</p>
       <ul id="vaultList" class="vault-list"></ul>

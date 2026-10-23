@@ -78,6 +78,7 @@ nav:
     - definition.yaml: reference/definition.md
   - Examples:
     - Bare metal: examples/bare-metal.md
+    - AWS from a Mac: examples/aws-macos.md
     - Instruqt track: examples/instruqt.md
     - Workshop fleet inventory: examples/workshop.md
     - Testing & CI: examples/testing.md

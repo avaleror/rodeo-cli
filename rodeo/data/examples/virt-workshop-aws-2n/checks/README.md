@@ -20,3 +20,5 @@ They only need a kubeconfig for the Harvester cluster. In order, each script
 uses `$KUBECONFIG` if set, then `~/.kube/config` (where Exercise 1.3 saves
 the one downloaded from the Harvester UI), then `~/.rodeo/harvester-kubeconfig`
 of whoever ran `rodeo up`. Without any of them, the script says so and stops.
+If kubectl rejects the certificate (a kubeconfig still pointing at the
+public `<host-ip>:8443`), it prints the one-line fix from Exercise 1.5.

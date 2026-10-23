@@ -34,7 +34,8 @@ SOURCE_LANGUAGE = "en"
 
 
 def story_dir(cfg: dict) -> Path | None:
-    """The lab's story/ directory, or None when the lab has no narrative.
+    """The lab's story/ directory, or None when the lab has no narrative. Without one, an
+    rmstory ``content:`` fetched by ``rodeo content apply`` (see :mod:`rodeo.content`).
 
     Prefers cfg["config_dir"]; falls back to the detected lab dir so the
     command works from inside a lab that has a plan but no definition.yaml
@@ -49,7 +50,13 @@ def story_dir(cfg: dict) -> Path | None:
     if not root:
         return None
     candidate = Path(root) / "story"
-    return candidate if candidate.is_dir() else None
+    if candidate.is_dir():
+        return candidate
+    from .content import content_root, content_spec
+
+    spec = content_spec(cfg)
+    fetched = content_root(Path(root), spec) if spec and spec["format"] == "rmstory" else None
+    return fetched if fetched is not None and fetched.is_dir() else None
 
 
 def story_facts(cfg: dict) -> dict:
@@ -145,8 +152,10 @@ def render_story(
     language: str | None = None,
     story_id: str | None = None,
     engine: str | None = None,
+    root: Path | None = None,
 ) -> str:
-    """Return the rendered workshop hand-out for this lab.
+    """Return the rendered workshop hand-out for this lab (from *root* when given, else
+    :func:`story_dir`).
 
     Precedence for the knobs: explicit argument > plan ``story:`` block >
     defaults (source language, all spans, no machine translation).
@@ -156,7 +165,7 @@ def render_story(
     story_id = story_id or story_cfg.get("id") or ""
     engine = engine or story_cfg.get("engine") or ""
 
-    root = story_dir(cfg)
+    root = root or story_dir(cfg)
     if root is None:
         raise ConfigError(
             "this lab has no story/ directory — create <lab>/story/ with "

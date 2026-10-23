@@ -63,11 +63,20 @@ def test_install_refuses_to_overwrite_without_force():
 
 
 @pytest.mark.parametrize("path", ["../escape.yaml", "/etc/passwd", "story/../../x", "custom/scripts/10-run.sh",
-                                  ".hidden", "story/.git/config", "notes.txt", "story\\x.md", "story//x.md"])
+                                  ".hidden", "story/.git/config", "notes.txt", "story\\x.md", "story//x.md",
+                                  "story/strings/es/../x/@default/content.json", "story/strings/es/x/@default/x.json",
+                                  "story/strings/ES/x/@default/content.json", "story/strings/es/.x/@default/content.json",
+                                  "story/strings/es/x/other/content.json", "story/strings/es/x.md"])
 def test_install_refuses_paths_a_builder_rodeo_never_has(path):
     with pytest.raises(ValueError):
         install_profile("ride", _files() + [ProfileFile(path, b"x")])
     assert not custom_profile_dir("ride").exists()
+
+
+def test_install_keeps_the_rmstory_translation_store():
+    leaf = "story/strings/pt-br/intro.1/@default/content.json"
+    install_profile("ride", _files() + [ProfileFile(leaf, b'{"content": "Ola"}')])
+    assert (custom_profile_dir("ride") / leaf).read_bytes() == b'{"content": "Ola"}'
 
 
 def test_install_checks_name_modes_sizes_and_plan(monkeypatch):

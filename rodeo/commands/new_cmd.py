@@ -11,6 +11,8 @@ a ``rodeo-plan.yaml`` (type, resources, credentials). See docs/custom-rodeos.md.
 
 ``rodeo new mylab --from-zip mylab.zip`` installs a rodeo downloaded from the Rodeo
 Builder: its files laid over the base profile its ``builder.yaml`` names (or --from).
+``rodeo new mylab --from https://github.com/<owner>/<repo>[@<ref>]`` does the same with
+a published rodeo's repository (see :mod:`rodeo.catalog`).
 """
 from __future__ import annotations
 
@@ -20,6 +22,7 @@ from pathlib import Path
 import click
 from rich.console import Console
 
+from .. import catalog
 from ..labseed import PROFILE_EXAMPLE, scaffold_profile
 from ..profile_install import install_profile, manifest_base, read_zip
 
@@ -31,14 +34,18 @@ console = Console()
 @click.argument("name")
 @click.option("--from", "from_base", default=None,
               help="Working lab to copy as the starting point (default: harvester; with --from-zip, "
-                   "the base named in the zip's builder.yaml). Bundled: " + ", ".join(PROFILE_EXAMPLE) + ".")
+                   "the base named in the zip's builder.yaml), or a published rodeo's repository "
+                   "https://<host>/<owner>/<repo>[@<ref>]. Bundled: " + ", ".join(PROFILE_EXAMPLE) + ".")
 @click.option("--from-zip", "from_zip", type=click.Path(exists=True, dir_okay=False, path_type=Path),
               help="Install a rodeo downloaded from the Rodeo Builder.")
 @click.option("--force", is_flag=True, help="Overwrite an existing custom profile of this name.")
 def new_cmd(name: str, from_base: str | None, from_zip: Path | None, force: bool) -> None:
     """Create an editable custom rodeo named NAME under ~/.rodeo/profiles/."""
     try:
-        if from_zip:
+        if from_base and from_base.startswith("https://") and not from_zip:
+            repo, ref = catalog.parse_spec(from_base)
+            dest = catalog.install(name, repo, ref, force=force)
+        elif from_zip:
             files = read_zip(from_zip)
             from_base = from_base or manifest_base(files)
             dest = install_profile(name, files, base=from_base, force=force)
@@ -49,7 +56,7 @@ def new_cmd(name: str, from_base: str | None, from_zip: Path | None, force: bool
                 raise FileNotFoundError(
                     f"--from '{from_base}' is not a bundled base. Use one of: {', '.join(PROFILE_EXAMPLE)}")
             dest = scaffold_profile(name, from_base=from_base, force=force)
-    except (FileExistsError, FileNotFoundError, ValueError, zipfile.BadZipFile) as exc:
+    except (FileExistsError, FileNotFoundError, ValueError, RuntimeError, zipfile.BadZipFile) as exc:
         console.print(f"[red]✗  {exc}[/red]")
         raise SystemExit(1)
 

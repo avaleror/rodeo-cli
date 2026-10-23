@@ -8,8 +8,9 @@ the files over it and writes the result to ``~/.rodeo/profiles/<name>/``.
 
 The files come from a browser or a downloaded zip, so they are checked before
 anything is written: only the paths a builder rodeo has (plan, definition,
-README, lab.json, the builder manifest, ``story/`` and ``checks/``), no hidden
-or parent segments, bounded sizes, and executable bits only on ``checks/``.
+README, lab.json, the builder manifest, ``story/`` and ``checks/``; under
+``story/strings/`` only rmstory's store layout), no hidden or parent segments,
+bounded sizes, and executable bits only on ``checks/``.
 """
 from __future__ import annotations
 
@@ -30,7 +31,9 @@ NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 _SEGMENT_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$")
 _TOP_FILES = {"rodeo-plan.yaml", "definition.yaml", "README.md", "lab.json", MANIFEST}
 _TOP_DIRS = {"story", "checks"}
-MAX_FILES = 500
+# rmstory's filesystem translation store: story/strings/<lang>/<span id>/@default/content.json
+_STRINGS_RE = re.compile(r"^story/strings/[a-z]{2,3}(-[a-z0-9]{2,8})*/[A-Za-z0-9_][A-Za-z0-9._:-]{0,127}/@default/content\.json$")
+MAX_FILES = 2000
 MAX_FILE_BYTES = 2 * 1024 * 1024
 MAX_TOTAL_BYTES = 20 * 1024 * 1024
 _TARGETS = ("baremetal", "instruqt", "aws")
@@ -52,6 +55,10 @@ def check_name(name: str) -> str:
 
 def check_path(path: str) -> str:
     """A safe profile-relative path from the builder's set, or ValueError."""
+    if path.startswith("story/strings/"):
+        if not _STRINGS_RE.match(path):
+            raise ValueError(f"{path!r} is not a file a builder rodeo can hold")
+        return path
     parts = path.split("/")
     ok = (
         all(_SEGMENT_RE.match(p) for p in parts)
@@ -117,24 +124,30 @@ def install_profile(name: str, files: list[ProfileFile], base: str | None = None
     work = Path(tempfile.mkdtemp(prefix=f".{name}.", dir=dest.parent))
     try:
         stage = work / name
-        if src:
-            shutil.copytree(src, stage)
-        else:
-            stage.mkdir()
-        for f in files:
-            target = stage / f.path
-            target.parent.mkdir(parents=True, exist_ok=True)
-            if target.is_symlink() or target.is_dir():
-                raise ValueError(f"{f.path} would replace a {'link' if target.is_symlink() else 'directory'} of the base")
-            target.write_bytes(f.data)
-            target.chmod(0o755 if f.executable else 0o644)
-        _normalize(stage / "rodeo-plan.yaml", name)
+        write_rodeo(stage, name, files, src)
         if dest.exists():
             shutil.rmtree(dest)
         stage.rename(dest)
     finally:
         shutil.rmtree(work, ignore_errors=True)
     return dest
+
+
+def write_rodeo(stage: Path, name: str, files: list[ProfileFile], src: Path | None) -> None:
+    """Create *stage* from the base profile directory *src* (or empty) with *files* laid over it
+    and the plan normalized for *name*. *files* must have passed :func:`check_files`."""
+    if src:
+        shutil.copytree(src, stage)
+    else:
+        stage.mkdir()
+    for f in files:
+        target = stage / f.path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.is_symlink() or target.is_dir():
+            raise ValueError(f"{f.path} would replace a {'link' if target.is_symlink() else 'directory'} of the base")
+        target.write_bytes(f.data)
+        target.chmod(0o755 if f.executable else 0o644)
+    _normalize(stage / "rodeo-plan.yaml", name)
 
 
 def _normalize(plan: Path, name: str) -> None:

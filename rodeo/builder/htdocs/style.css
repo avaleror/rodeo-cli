@@ -1,3 +1,8 @@
+/* Fonts shipped in fonts/ (latin subset, SIL Open Font License: fonts/OFL-*.txt). */
+@font-face { font-family: "Syne"; font-style: normal; font-weight: 400 800; font-display: swap; src: url("fonts/syne.woff2") format("woff2"); }
+@font-face { font-family: "Space Mono"; font-style: normal; font-weight: 400; font-display: swap; src: url("fonts/space-mono-400.woff2") format("woff2"); }
+@font-face { font-family: "Space Mono"; font-style: normal; font-weight: 700; font-display: swap; src: url("fonts/space-mono-700.woff2") format("woff2"); }
+
 /* Rodeo Builder — tokens from docs/stylesheets/custom.css (dark terminal look,
    green accent, Syne + Space Mono). No inline styles anywhere: every rule is here. */
 
@@ -99,6 +104,7 @@ h2.sec { font-size: 15px; font-weight: 700; margin: 6px 0 12px; display: flex; f
 h2.sec .num { color: var(--accent-ink); font-family: var(--mono); font-size: 12px; }
 .col-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
 .col-head h2 { font-size: 14px; margin: 0; white-space: nowrap; letter-spacing: .06em; }
+.col-head-actions { display: flex; gap: 6px; flex: none; }
 .status { font: 700 13px var(--mono); color: var(--accent-ink); margin-left: auto; }
 .status.bad { color: var(--coral); }
 
@@ -283,6 +289,33 @@ div.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 2p
 .matrix th, .matrix td { border-bottom: 1px solid var(--line); padding: 5px 4px; text-align: left; }
 .matrix th:not(:first-child), .matrix td:not(:first-child) { width: 78px; }
 .matrix td.unstored { color: var(--muted); }
+.tr-bar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+.tr-bar .select { width: auto; min-width: 0; }
+.tr-cell { font: 400 11px var(--mono); background: none; border: 1px solid transparent; color: var(--muted); padding: 2px 4px; cursor: pointer; border-radius: 2px; }
+.tr-cell:hover, .tr-cell.on { border-color: var(--accent); }
+.tr-cell.st-reviewed, .tr-cell.st-published { color: var(--accent-ink); }
+.tr-cell.st-draft { color: var(--amber); }
+.tr-edit { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.tr-src { white-space: pre-wrap; font: 400 12px/1.6 var(--mono); margin: 4px 0 8px; color: var(--muted); }
+.tr-text { min-height: 90px; }
+.tr-actions { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
+.tr-actions .select { width: auto; }
+.rm-check { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 10px 0; font-size: 12px; }
+.nc-draft { border: 1px dashed var(--line); padding: 4px 10px 8px; margin: 10px 0 4px; border-radius: 2px; }
+.textarea.brief { min-height: 64px; }
+.part-head { margin: 22px 0 -6px; font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent-ink); }
+.part-head:first-of-type { margin-top: 4px; }
+.bad-text { color: var(--coral); }
+.deploy-wrap { display: inline-flex; }
+.btn[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
+.banner.deploy { background: var(--amber-bg); box-shadow: 0 0 0 1px var(--amber); }
+.banner.deploy.ok { background: var(--tint); box-shadow: 0 0 0 1px var(--accent); }
+.banner.deploy.bad { background: var(--warn); box-shadow: 0 0 0 1px var(--coral); }
+.deploy-log { flex-basis: 100%; max-height: 280px; overflow: auto; margin: 8px 0 0; padding: 8px; background: var(--term); color: #e8e4d9;
+  font-family: var(--mono); font-size: 12px; white-space: pre-wrap; }
+.unsaved { display: block; }
+.pub-steps { padding-left: 20px; margin: 10px 0 0; line-height: 1.6; }
+.pub-steps li { margin-bottom: 8px; }
 .popover {
   position: fixed; z-index: 30; width: 310px; background: var(--panel); border-radius: 6px; padding: 12px;
   box-shadow: 0 0 0 1px var(--accent), 0 20px 60px rgba(0, 0, 0, .5);
@@ -321,4 +354,9 @@ div.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 2p
   .col.center { flex: none; }
   .tag { display: none; }
   .hdr { padding: 0 16px; }
+  /* The sticky bar carries Download and the warnings. */
+  .hdr-right #downloadBtn, .hdr-right #warnBtn, .hdr-right #publishBtn, .hdr-right #deployWrap { display: none; }
+}
+@media (max-width: 480px) {
+  .wordmark { display: none; }
 }

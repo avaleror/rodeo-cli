@@ -1,5 +1,52 @@
 # Changelog
 
+## [0.26.0](https://github.com/avaleror/rodeo-cli/compare/v0.25.4...v0.26.0) (2026-10-23)
+
+
+### Features
+
+* builder fonts deploy ([d1d1808](https://github.com/avaleror/rodeo-cli/commit/d1d1808cf6cbe931f30133da4c26fd9a5904e31d))
+* builder rmstory ([92f50fd](https://github.com/avaleror/rodeo-cli/commit/92f50fdacb48a91c3658b33cc08c72f381121120))
+* **builder:** deploy a rodeo from the page without saving it ([776207d](https://github.com/avaleror/rodeo-cli/commit/776207d573bb03e99db8dc9827d0265ea2b5eb90))
+* **builder:** import a workshop by URL into the chapter library ([bc45b02](https://github.com/avaleror/rodeo-cli/commit/bc45b02efce731ad63908ddf8b9ab1847301283e))
+* **builder:** list catalog rodeos' chapters next to chapter_sources.… ([8ea43fc](https://github.com/avaleror/rodeo-cli/commit/8ea43fce25d321da2db5a725a876c85108b992b5))
+* **builder:** list catalog rodeos' chapters next to chapter_sources.yaml ([dea959a](https://github.com/avaleror/rodeo-cli/commit/dea959a6bb0d5e9c3022dbf204591f7a7dd65309))
+* **builder:** new story — retell the rodeo's chapters about a theme ([7b8cc86](https://github.com/avaleror/rodeo-cli/commit/7b8cc864195bf28668bd7095a756215f2bdb3fad))
+* **builder:** publish a rodeo to GitHub with the user's own login ([7805160](https://github.com/avaleror/rodeo-cli/commit/78051608dc915f10af4acd8dbc84762a7363fda2))
+* **builder:** rmstory on the live builder — translations, rmstory ch… ([2353a19](https://github.com/avaleror/rodeo-cli/commit/2353a194f2a059c5719b2e11f08c8cc632cfb219))
+* **builder:** rmstory on the live builder — translations, rmstory check, chapter drafts ([a7f5e19](https://github.com/avaleror/rodeo-cli/commit/a7f5e19b7e8ef9a454eb063edf827264a71cebca))
+* **builder:** rodeo builder runs lab-in-a-box's dynamic lab-builder … ([bf45a79](https://github.com/avaleror/rodeo-cli/commit/bf45a79279055c59f0b7930446ef54dfab34f3d5))
+* **builder:** rodeo builder runs lab-in-a-box's dynamic lab-builder next to it ([3b2ccf1](https://github.com/avaleror/rodeo-cli/commit/3b2ccf15ad402ec20e38d11db5add5a4f785ca5e))
+* **builder:** ship the page's fonts instead of loading them from Google Fonts ([43330ca](https://github.com/avaleror/rodeo-cli/commit/43330ca12f2a810700ff19dd88c27573d2668fde))
+* **catalog:** install published rodeos from their repositories ([6bc32b0](https://github.com/avaleror/rodeo-cli/commit/6bc32b039abc8d7743a277c434baddf8a3546571))
+* **content:** keep a lab's instructions apart from its infrastructure ([dadd2dd](https://github.com/avaleror/rodeo-cli/commit/dadd2dd28ec8ecf6330f53ee105b1637a75ba940))
+* **fleet:** rodeo fleet up runs a whole workshop in one command ([2b7ae2d](https://github.com/avaleror/rodeo-cli/commit/2b7ae2d0c813b45151bcf4aef0752addaf69b668))
+* **fleet:** rodeo fleet up runs a whole workshop in one command ([8f5bfb1](https://github.com/avaleror/rodeo-cli/commit/8f5bfb11a8c32da22a92f3c8b04fefe618b5b939))
+
+
+### Bug Fixes
+
+* builder labinabox interpreter ([f9a68d4](https://github.com/avaleror/rodeo-cli/commit/f9a68d4031b31baa2fc912d6d251a625de3f5352))
+* **builder:** header fits a phone (Download and warnings move to the sticky bar, the wordmark hides below 480px) ([c591662](https://github.com/avaleror/rodeo-cli/commit/c5916628f9715efc42bb18fefe0a6ebb2b652a5f))
+* **builder:** imports never follow symlinks, the local lab-builder is opt-in, its hand-back works ([f38978b](https://github.com/avaleror/rodeo-cli/commit/f38978bfcf2a4a94704c90e3fb42df8a41aae216))
+* **builder:** imports never follow symlinks, the local lab-builder is opt-in, its hand-back works ([81ed097](https://github.com/avaleror/rodeo-cli/commit/81ed09789837ef9615b7175232a024d8ed20d328))
+* **builder:** new story retells only the spans the author tagged as story ([e677011](https://github.com/avaleror/rodeo-cli/commit/e677011493f597816f5eb6343a3655113c70d994))
+* **builder:** publish says what a refused token can't do and falls back to the catalog link ([fe124cb](https://github.com/avaleror/rodeo-cli/commit/fe124cb2c92c53e10e5a3768ac700b209354359a))
+* **builder:** read lab-in-a-box 1.20+ add-ons without python3.11 on PATH; an empty add-on catalogue is an error ([a3effd6](https://github.com/avaleror/rodeo-cli/commit/a3effd69f0af4cb8a92badcb0faf86b7866b3940))
+* **content:** rodeo content apply never follows a symlink out of the repository ([5146e26](https://github.com/avaleror/rodeo-cli/commit/5146e2619fc63c8c31db18f22a855eb9eacff9af))
+* **content:** rodeo content apply never follows a symlink out of the repository ([086f87f](https://github.com/avaleror/rodeo-cli/commit/086f87f9e40abbab6f40497245b4edf1cfd2957b))
+* **deploy:** stop the running step when a plain-output deploy is inte… ([496b33a](https://github.com/avaleror/rodeo-cli/commit/496b33a0344e7ed8a305e18a8e42a01165b15c0f))
+* **deploy:** stop the running step when a plain-output deploy is interrupted ([a09b643](https://github.com/avaleror/rodeo-cli/commit/a09b6439ee28d2b1adbde73e4ed8fa24fedfa79e))
+* **lab-in-a-box:** accept the base image download fields lab-in-a-box 1.20+ reads but no longer declares ([96d2410](https://github.com/avaleror/rodeo-cli/commit/96d2410c89dc11be3ebd8b1287042752680a92d1))
+* **lab-in-a-box:** accept the base image download fields lab-in-a-box… ([2976c4e](https://github.com/avaleror/rodeo-cli/commit/2976c4ed5e95e731feaadf5cbbcce89ad19addac))
+
+## [0.25.4](https://github.com/avaleror/rodeo-cli/compare/v0.25.3...v0.25.4) (2026-10-16)
+
+
+### Bug Fixes
+
+* **virt-workshop:** checks point at the VIP fix on an x509 kubeconfig ([#112](https://github.com/avaleror/rodeo-cli/issues/112)) ([00cf222](https://github.com/avaleror/rodeo-cli/commit/00cf222efe35714e7e5a470236c2560e2fb564d5))
+
 ## [0.25.3](https://github.com/avaleror/rodeo-cli/compare/v0.25.2...v0.25.3) (2026-10-16)
 
 

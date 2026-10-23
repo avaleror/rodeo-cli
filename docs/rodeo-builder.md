@@ -35,8 +35,10 @@ rodeo up --profile <name>     # after Save to profiles
 - **Chapters.** The library lists every workshop's chapters: the bundled
   examples' `story/` directories, the workshops whose chapters live in their own
   repository (listed in `rodeo/builder/chapter_sources.yaml`: the SMLM workshop's
-  Instruqt track and the Virtualization workshop's exercises), and the chapters
-  you create with **+ New**. Each workshop shows the lab engine and profile its
+  Instruqt track and the Virtualization workshop's exercises), the `story/` of
+  every published rodeo in the catalog (`rodeo/data/catalog.d/`, unless
+  `chapter_sources.yaml` already names its repository), and the chapters you
+  create with **+ New**. Each workshop shows the lab engine and profile its
   chapters run on; **use** switches the rodeo to them (for example `suse-virt`
   with the `virt-workshop-aws` profile, whose extra setup the exercises need).
   Drag chapters into the rodeo (anywhere on the list) or click them; click a
@@ -52,14 +54,27 @@ rodeo up --profile <name>     # after Save to profiles
   an empty list. `missing_addon` is always offered: a placeholder for something no
   engine provides yet. It only marks the chapter as "work needed" (also listed in
   the download's README); it never blocks the rodeo and never reaches the lab.
+- **Import.** **Import** above the library adds a workshop from a URL: a git
+  repository or a directory in one (`https://<host>/<owner>/<repo>/tree/<ref>/<dir>`).
+  The builder detects the format (a rodeo `story/`, an Instruqt track
+  `<dir>/*/assignment.md`, or markdown `<dir>/*.md`) and lists its chapters as a
+  new group; **×** removes the group again. The published page reads public
+  github.com repositories through the GitHub API (60 unauthenticated requests an
+  hour); the rodeo builder server clones any public https repository (shallow
+  and sparse, no credentials). Imported groups are kept with the draft.
 - **Story.** **N spans ✎** opens the story editor (rows with span warnings show
   how many). Select text and click **Tag selection**, use the toolbar, or press
   Alt+T / Alt+I / Alt+N to mark it Translatable, Invariant or No-lang;
   double-click a span to change its type,
   language, id or story variant. Ids follow rmstory's rules (`<chapter>.N`,
   `<parent>.N` when nested) and the editor shows the same warnings as
-  `rmstory validate`. Translations are filled after install, by
-  `rodeo story render --language <lang>`.
+  `rmstory validate`.
+- **Translations.** The story editor's **translations** tab lists every
+  translatable span per language. Click a cell to write or review a
+  translation; a nested span stays in it as `<span id="..."/>`. The download
+  carries them in rmstory's translation store, `story/strings/`, and
+  `rodeo story render --language <lang>` uses them (with `--engine` for the
+  spans still missing).
 
 **Review and download** (step 03) checks the rodeo before you download it: the
 lab covers every chapter, the span ids are valid (each warning has a **Fix**
@@ -69,11 +84,62 @@ copy. Missing lab features and span warnings never block the download.
 The page keeps a draft of your rodeo in this browser. After a reload it offers
 to restore it.
 
+### With rmstory on the live builder
+
+When `rmstory` is installed where `rodeo builder` runs (`sudo rodeo install-deps
+--story`), the live page also uses it:
+
+- **Translate missing** (translations tab): fills the chosen language's missing
+  translations with an rmstory engine (`rmstory extract --engine <e> --to <lang>`).
+  They are stored as `draft`; what you wrote or reviewed is kept. rmstory also
+  gives unnamed spans an id (`<chapter>.N`).
+- **Check with rmstory** (step 03): rmstory's own `validate` on the chapters.
+- **Draft with an engine** (New chapter): an engine that can generate text
+  (`rmstory engines` says "translate + generate", for example `claude-code`,
+  `ollama` or `gemini`) drafts the chapter from your description, told what the
+  lab provides and which chapters come before it. Its spans are renumbered
+  `new-chapter.N`; review the draft before you create the chapter.
+- **New story** (rodeo tab): the same exercises told as a different story. You
+  say what is what with the span tags (story editor):
+  - **story**: spans with a story variant (`hist`): retold;
+  - **exercise**: translatable spans without a story variant: translated, never
+    retold;
+  - **fixed**: invariant (`no`) or no-lang spans, and text outside spans: kept
+    word for word.
+
+  Say what the new story is about and pick an engine that can generate text;
+  `rmstory generate rewrite --theme` rewrites the story spans and the exercise
+  spans never reach the engine. The retold chapters (ids `<chapter>-<theme>`,
+  story span ids `<theme>.<id>`; exercise and fixed spans keep their ids and
+  translations) become a library group and replace the rodeo's chapters;
+  **Undo** puts the originals back.
+
+Engines read their keys from the environment `rodeo builder` runs in, never from
+the page: for example `DEEPL_AUTH_KEY`, `GEMINI_API_KEY`, `RMSTORY_OLLAMA_URL`, or a
+logged-in `claude` command for `claude-code`. The published page writes
+translations by hand only.
+
 The right-hand panel sets the name, story title, language, deployment target and
 story variant, and previews every file of the download. **plan.yaml** is an
 editor: change anything and the download keeps it; `name`, `deployment_target`
 and `story` stay in sync with the rodeo tab, and **Reset to generated** drops your
 edits. Changing the lab engine regenerates the plan, after asking.
+
+## Infrastructure and instructions
+
+The page keeps the lab (**Infrastructure**: engine, base profile, plan,
+definition, lab-in-a-box lab) apart from what students read (**Instructions**:
+chapters, story variants, translations, checks). Step 03 downloads either the
+whole rodeo or one part: **Infrastructure only** (`<name>-infrastructure.zip`,
+installable with `rodeo new --from-zip`) or **Instructions only**
+(`<name>-instructions.zip`: `story/` and `checks/`, laid out to be pushed as a
+content repository).
+
+**Instructions repository** (rodeo tab) points the plan at instructions kept in
+their own repository: the URL (`https://<host>/<owner>/<repo>[/tree/<ref>/<path>]`)
+and format become the plan's `content:` block. `rodeo up` renders them after
+the lab is up, and `rodeo content apply` updates them on a running lab without
+redeploying (see [the plan reference](reference/plan.md#content-the-labs-instructions-apart-from-its-infrastructure)).
 
 ## Install what you downloaded
 
@@ -97,10 +163,30 @@ builder writes; anything else (other paths, links, oversize files) is refused
 before anything is written. **Save to profiles** in `rodeo builder` does the same
 without the zip.
 
+A published rodeo (see [Publish to GitHub](#publish-to-github)) installs the same
+way from its repository, and a catalog rodeo by its name alone:
+
+```bash
+rodeo new <name> --from https://github.com/<owner>/<repo>[@<ref>]
+rodeo up --profile <catalog name>     # fetched and installed on first use
+rodeo profiles                        # lists the catalog too
+```
+
+The repository is fetched shallow, without credentials, and only the files a
+builder rodeo may hold are installed; `~/.rodeo/profiles/<name>/rodeo.lock`
+records the repository, ref and commit. `--force` re-fetches.
+
 ## The live builder
 
 `rodeo builder` serves `rodeo/builder/htdocs/` and answers the page's requests
 with `rodeo/builder/api.py` (`rodeo/builder/server.py`, standard library only).
+It links to and embeds lab-in-a-box's published static lab-builder, or the one
+`--lab-builder-url` names. With `--start-lab-builder` it starts the checkout's own
+dynamic lab-builder (`webui/run-local.py`) next to it on `--lab-builder-port`,
+opened on the host name the browser used for the builder (the published one when
+the checkout has none or it can't start). That lab-builder has no login or token,
+so any site you browse can save labs through it: it is off by default and only
+allowed on a loopback `--host`.
 At start it fetches the chapter sources (a source that can't be fetched is left
 out, with a warning) and the lab-in-a-box catalogue: `--labinabox <checkout>`,
 else `RODEO_LABINABOX_PATH`, else lab-in-a-box's latest release, fetched into
@@ -109,17 +195,64 @@ else `RODEO_LABINABOX_PATH`, else lab-in-a-box's latest release, fetched into
 | Option | Default | |
 |---|---|---|
 | `--host`, `--port` | `127.0.0.1`, `8678` | Where to listen (`--port 0` picks a free port). |
-| `--expose` | off | Required for a non-loopback `--host`: anyone who reaches it can save profiles as you. |
+| `--expose` | off | Required for a non-loopback `--host`: anyone who reaches it can save profiles as you. **Publish** then uses the github.com pages, never this host's GitHub login. |
 | `--allow-host NAME` | | Extra `Host` name to accept (the name or IP clients use with `--expose`). |
-| `--labinabox`, `--lab-builder-url` | latest release, published lab-builder | Catalogue source and the lab-builder the page links to. |
+| `--labinabox` | latest release | lab-in-a-box checkout for the catalogue and the lab-builder. |
+| `--lab-builder-url URL` (`RODEO_LAB_BUILDER_URL`) | the published lab-builder | A lab-builder you already run (for example on an automation node) for the page to link to and embed; nothing is started. |
+| `--start-lab-builder` | off | Start the checkout's own dynamic lab-builder. Loopback `--host` only. |
+| `--lab-builder-port` | `8677` | Port of the lab-builder `--start-lab-builder` starts, on the same address as `--host`. |
 | `--source ID=CHECKOUT`, `--no-fetch-sources` | fetch all | Local chapter sources, or none. |
 | `--open/--no-open` | open | Open the page in a browser. |
 
 Writes are guarded: the server only answers requests whose `Host` is an allowed
 name (loopback names by default), so other sites can't reach it through DNS
 rebinding, and **Save** sends a per-run token that only the served page has. The
-page runs under a Content-Security-Policy that allows its own files, Google Fonts
-and the lab-builder frame.
+page runs under a Content-Security-Policy that allows only its own files (the fonts
+ship in `htdocs/fonts/`) and the lab-builder frame.
+
+## Deploy without saving
+
+**Deploy** (header) runs the rodeo on the builder's host exactly as it is on the
+page, without saving it to your profiles first. It needs `rodeo builder` on
+loopback (not `--expose`) and root for `rodeo up`: the builder runs as root or
+the user has passwordless sudo (`sudo -n true`). Otherwise, and on the
+published page, the button is greyed out and says why on hover.
+
+- The dialog says plainly that the rodeo is not saved, and offers **Save to
+  profiles and deploy** next to **Deploy without saving**.
+- The deploy runs `rodeo up --yes --no-tmux --dir <lab>` from a copy in
+  `~/rodeo-labs/<name>-unsaved-<UTC time>/` (base profile plus the page's files,
+  as Save lays them out), its output in `<lab>/.builder-deploy.log`. Secrets
+  rodeo can generate go to the lab's `.rodeo-secrets.yaml`; ones only you have
+  (`operator_secrets`) are asked for in the dialog and written to
+  `~/.rodeo/secrets.yaml`, never shown again.
+- A banner stays while it runs and after it ends, with the lab directory, the
+  log, **Stop** (interrupts `rodeo up` like Ctrl-C) and **Save to profiles**,
+  and keeps saying the rodeo is not saved until you save it. One deploy runs at
+  a time; rerun or resume from the lab directory with `rodeo up`.
+
+## Publish to GitHub
+
+**Publish** puts the rodeo in a public GitHub repository of yours and opens a pull
+request on rodeo-cli that adds it to the rodeo catalog
+(`rodeo/data/catalog.d/<name>.yaml`: name, title, repository, ref, engine,
+languages). The repository holds the files of the download.
+
+- **`rodeo builder` on loopback** uses the GitHub login already on its host,
+  without storing it: `GH_TOKEN` or `GITHUB_TOKEN`, else the GitHub CLI's login
+  (`gh auth token`), else git's stored github.com credential. With none, **Log
+  in to GitHub** runs `gh auth login --web` and shows its one-time code to enter
+  at github.com/login/device; without `gh`, install it, run `gh auth login` or
+  set `GH_TOKEN` before `rodeo builder`. Publishing creates
+  `github.com/<you>/<name>`, pushes one commit on `main`, forks rodeo-cli when
+  you don't own it and opens the catalog pull request. **Update my existing
+  repository** pushes a new commit that replaces the files and opens no pull
+  request. `RODEO_CATALOG_REPO` points the pull request at another repository.
+- **The published page** (and `rodeo builder --expose`) links to github.com
+  pages that use your browser's GitHub login, and GitHub asks you to log in when
+  you aren't: create the repository, upload the unzipped download (or `git
+  push`), and add the catalog file, which forks rodeo-cli and opens the pull
+  request under your account.
 
 ## How the published page is built
 

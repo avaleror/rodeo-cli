@@ -14,12 +14,16 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+from .. import catalog
 
 DATA = Path(__file__).resolve().parent.parent / "data"
 EXAMPLES = DATA / "examples"
@@ -69,6 +73,7 @@ _FRONT_MATTER_RE = re.compile(r"\A---\n(.*?)\n---\n?", re.S)
 _TIME_RE = re.compile(r"^\*\*Time:\*\*\s*(\d+)\s*min", re.M | re.I)
 
 SOURCES_FILE = Path(__file__).resolve().parent / "chapter_sources.yaml"
+SOURCE_FORMATS = ("instruqt", "markdown", "rmstory")
 # Instruqt's timelimit is an upper bound, not a duration: challenges get this.
 INSTRUQT_MINUTES = 20
 
@@ -197,19 +202,21 @@ def workshops(sources: dict[str, Path] | None = None) -> dict[str, Any]:
         out.append({
             "id": src["id"],
             "title": src["title"],
-            "source": "{}/tree/{}/{}".format(src["repo"].removesuffix(".git"), src["ref"], src["path"]),
+            "source": "{}/tree/{}/{}".format(src["repo"].removesuffix(".git"), src["ref"] or "HEAD", src["path"]),
             "engine": src["engine"],
             "profile": src["profile"],
-            "plan": _plan_text(_profile_example(src["profile"])),
+            "plan": _plan_text(_profile_example(src["profile"])) if src["profile"] else "",
             "chapters": source_chapters(src, checkout),
-            "variants": {},
+            "variants": _variants(checkout / src["path"].strip("/")) if src["format"] == "rmstory" else {},
         })
     return {"workshops": out}
 
 
 def chapter_sources() -> list[dict[str, Any]]:
     """chapter_sources.yaml, with repo/ref/path taken from a profile's workshop:
-    block where a source names one."""
+    block where a source names one, then one ``rmstory`` source per catalog rodeo
+    (:mod:`rodeo.catalog`) whose repository the file does not list: its ``story/``,
+    id ``catalog-<name>``, no base profile, the default branch when the entry has no ref."""
     out = []
     for raw in _read_yaml(SOURCES_FILE).get("sources") or []:
         src = dict(raw)
@@ -219,10 +226,22 @@ def chapter_sources() -> list[dict[str, Any]]:
             src.setdefault("ref", ws.get("ref") or ws.get("branch") or "main")
             src.setdefault("path", "tracks/{}".format(ws.get("track")))
         missing = [k for k in ("id", "title", "engine", "profile", "format", "repo", "ref", "path") if not src.get(k)]
-        if missing or src["format"] not in ("instruqt", "markdown"):
+        if missing or src["format"] not in SOURCE_FORMATS:
             raise ValueError("chapter source {}: missing {} or unknown format".format(src.get("id"), missing))
         out.append(src)
+    listed = {s["repo"].removesuffix(".git").lower() for s in out}
+    for name, entry in catalog.entries().items():
+        if entry["repo"].removesuffix(".git").lower() in listed:
+            continue
+        out.append({"id": "catalog-" + name, "title": entry.get("title") or name, "engine": entry.get("engine") or "",
+                    "profile": "", "format": "rmstory", "repo": entry["repo"], "ref": entry["ref"], "path": "story",
+                    "needs": []})
     return out
+
+
+# A cloned symlink is checked out as a plain file holding its target, so reading a
+# chapter never follows it out of the clone (to /etc/passwd, /proc/self/environ...).
+NO_SYMLINKS = ["-c", "core.symlinks=false"]
 
 
 def source_fetch_commands(src: dict[str, Any], dest: Path) -> list[list[str]]:
@@ -230,13 +249,15 @@ def source_fetch_commands(src: dict[str, Any], dest: Path) -> list[list[str]]:
     path = src["path"].strip("/")
     if src["format"] == "instruqt":
         patterns = ["/{}/*/assignment.md".format(path), "/{}/*/check-*".format(path)]
+    elif src["format"] == "rmstory":
+        patterns = ["/{}/*.md".format(path), "/{}/chapters.yaml".format(path), "/{}/stories/*.yaml".format(path)]
     else:
         patterns = ["/{}/*.md".format(path)]
         if src.get("checks"):
             patterns.append("/{}/*".format(str(Path(src["checks"]).parent).strip("/")))
     return [
-        ["git", "clone", "-q", "--depth", "1", "--filter=blob:none", "--sparse",
-         "--branch", src["ref"], src["repo"], str(dest)],
+        ["git", "clone", "-q", "--depth", "1", "--filter=blob:none", "--sparse", *NO_SYMLINKS,
+         *(["--branch", src["ref"]] if src["ref"] else []), "--", src["repo"], str(dest)],
         ["git", "-C", str(dest), "sparse-checkout", "set", "--no-cone", *patterns],
     ]
 
@@ -270,9 +291,11 @@ def _check_script(directory: Path) -> str:
 
 
 def source_chapters(src: dict[str, Any], checkout: Path) -> list[dict[str, Any]]:
-    """Chapters of one fetched source: Instruqt challenges or markdown files."""
+    """Chapters of one fetched source: Instruqt challenges, markdown files or a rodeo story/."""
     root = checkout / src["path"].strip("/")
     needs = list(src.get("needs") or [])
+    if src["format"] == "rmstory":
+        return [{**ch, "needs": ch["needs"] or needs} for ch in _chapters(root)]
     out = []
     if src["format"] == "instruqt":
         for challenge in sorted(p for p in root.iterdir() if (p / "assignment.md").is_file()):
@@ -337,6 +360,21 @@ print(json.dumps([{"name": c["name"].removeprefix("install_"), "kind": c.get("ki
 """
 
 LIAB_KINDS = {"addon": "addons", "infrastructure": "infrastructure", "kcluster": "kclusters"}
+_SHEBANG_ENV = re.compile(r"^#!\s*/usr/bin/env\s+(\S+)")
+
+
+def _addon_interpreter(checkout: Path) -> str:
+    """The interpreter lab-in-a-box's add-on scripts name in their ``#!/usr/bin/env <name>``
+    line (for example ``python3.11``), or "" when none does."""
+    for script in sorted((checkout / "scripts").glob("install_*")):
+        try:
+            with script.open(errors="replace") as fh:
+                match = _SHEBANG_ENV.match(fh.readline())
+        except OSError:
+            continue
+        if match:
+            return match.group(1)
+    return ""
 
 
 def labinabox_addons(checkout: Path) -> list[dict[str, Any]]:
@@ -345,13 +383,26 @@ def labinabox_addons(checkout: Path) -> list[dict[str, Any]]:
     the release does not report one) and targets ("vm", "baremetal", "container", ...).
 
     Runs in a separate interpreter so lab-in-a-box's modules and environment
-    never mix with rodeo's. Raises RuntimeError when the checkout can't answer.
+    never mix with rodeo's. lab-in-a-box runs each add-on script for its schema and
+    leaves out the ones it can't run, so when the interpreter their first line names
+    is not on PATH, that name points at this Python for the run. Raises RuntimeError
+    when the checkout can't answer or reports no add-ons.
     """
-    r = subprocess.run([sys.executable, "-c", _LIAB_COMPONENTS, str(checkout)],
-                       capture_output=True, text=True, env={**os.environ})
+    env = {**os.environ}
+    with tempfile.TemporaryDirectory(prefix="rodeo-liab-python-") as shim:
+        wanted = _addon_interpreter(checkout)
+        if wanted and not shutil.which(wanted):
+            os.symlink(sys.executable, os.path.join(shim, wanted))
+            env["PATH"] = shim + os.pathsep + env.get("PATH", "")
+        r = subprocess.run([sys.executable, "-c", _LIAB_COMPONENTS, str(checkout)],
+                           capture_output=True, text=True, env=env)
     if r.returncode != 0:
         raise RuntimeError("lab-in-a-box add-ons from {}: {}".format(checkout, r.stderr.strip()[-300:]))
-    return json.loads(r.stdout)
+    items = json.loads(r.stdout)
+    if not any(item["kind"] == "addon" for item in items):
+        raise RuntimeError("lab-in-a-box add-ons from {}: none reported (its add-on scripts could not "
+                           "be run{})".format(checkout, " with " + wanted if wanted else ""))
+    return items
 
 
 def labinabox(checkout: Path | None = None, builder_url: str = LAB_BUILDER_URL,

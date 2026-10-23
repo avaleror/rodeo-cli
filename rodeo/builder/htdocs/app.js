@@ -51,6 +51,9 @@ const state = {
   chapters: [], custom: [], name: "my-rodeo", title: "My rodeo", lang: "en", target: "baremetal",
   variant: "", extraVariants: [], query: "", open: {}, newWorkshop: "custom", fileView: "rodeo-plan.yaml",
   editing: -1, edTab: "spans", drag: null, cursor: -1, undo: null, copied: false,
+  strings: {}, story: null, trLang: "", trEngine: "", trEdit: null, busy: "", rmCheck: null, imported: [],
+  contentUrl: "", contentFormat: "rmstory",
+  deploy: null, deployLogOpen: false, savedAs: "",
 };
 
 let toastTimer = 0;
@@ -71,7 +74,7 @@ function toast(msg, bad, undo) {
 
 const DRAFT_KEY = "rodeo-builder-draft-v1";
 const DRAFT_FIELDS = ["engine", "base", "planEdited", "mode", "importProfile", "labAddons", "labJson", "chapters",
-  "custom", "name", "title", "lang", "target", "variant", "extraVariants"];
+  "custom", "name", "title", "lang", "target", "variant", "extraVariants", "strings", "imported", "contentUrl", "contentFormat"];
 let draftOn = true, draftTimer = 0;
 
 function scheduleDraft() {
@@ -153,8 +156,8 @@ function catalogueHint() {
 }
 
 function libraryGroups() {
-  const groups = state.workshops.map((w) => ({ id: w.id, title: w.title, sub: w.source, chapters: w.chapters,
-    engine: w.engine, profile: w.profile, plan: w.plan }));
+  const groups = [...state.workshops, ...state.imported].map((w) => ({ id: w.id, title: w.title, sub: w.source, chapters: w.chapters,
+    engine: w.engine, profile: w.profile, plan: w.plan, imported: !!w.imported }));
   groups.push({ id: "custom", title: "My chapters", sub: "created in this builder", chapters: state.custom });
   return groups;
 }
@@ -203,7 +206,22 @@ function baseProfile() {
 
 function story() { return { language: state.lang, id: state.variant }; }
 
-function planOptions() { return { name: state.name, target: state.target, story: story() }; }
+// The plan's content: (where the instructions live) from the Instructions repository field; null when
+// the field is empty or not a repository URL (contentError() says why).
+function contentSource() {
+  if (!state.contentUrl.trim()) return null;
+  try {
+    const s = RB.parseSourceUrl(state.contentUrl);
+    return { repo: "https://" + s.host + "/" + s.owner + "/" + s.repo, ref: s.ref, path: s.path, format: state.contentFormat };
+  } catch (_) { return null; }
+}
+
+function contentError() {
+  if (!state.contentUrl.trim()) return "";
+  try { RB.parseSourceUrl(state.contentUrl); return ""; } catch (err) { return err.message; }
+}
+
+function planOptions() { return { name: state.name, target: state.target, story: story(), content: contentSource() }; }
 
 function generatedPlan() {
   if (liabImported()) return RB.planFromBase(importBase().plan, planOptions());
@@ -220,8 +238,41 @@ function rodeo() {
   return {
     name: state.name, title: state.title, base: baseProfile(), plan: plan(),
     definition: isLiab() && !liabImported() ? engine().definition : "",
-    chapters: state.chapters, variants: allVariants(), story: story(), labJson: state.labJson,
+    chapters: state.chapters, variants: allVariants(), story: story(), labJson: state.labJson, strings: state.strings,
+    content: contentSource(),
   };
+}
+
+// ── rmstory on the live server ──────────────────────────────────────────
+
+// The server's rmstory ({engines}) when this is the live builder and rmstory runs there.
+function storyTools() { return !window.RB_STATIC && state.story && state.story.available ? state.story : null; }
+
+function storyEngines(generate) {
+  const tools = storyTools();
+  return tools ? tools.engines.filter((e) => !generate || e.generate).map((e) => e.name) : [];
+}
+
+function chapterPayload() { return state.chapters.map((c) => ({ id: c.id, body: c.body })); }
+
+function chaptersKey() { return state.chapters.map((c) => c.id + "\u0000" + c.body).join("\u0001"); }
+
+// POSTs a rmstory action; resolves to the answer, or rejects with the server's error.
+async function storyPost(action, payload) {
+  const res = await apiPost(action, payload);
+  if (res.status !== 200) throw new Error(res.body.error || "HTTP " + res.status);
+  return res.body;
+}
+
+async function rmstoryCheck() {
+  if (!state.chapters.length) { toast("Add at least one chapter first.", true); return; }
+  state.busy = "validate";
+  renderReview();
+  try {
+    state.rmCheck = { ...(await storyPost("validate", { chapters: chapterPayload() })), key: chaptersKey() };
+  } catch (err) { toast("rmstory check failed: " + err.message, true); }
+  state.busy = "";
+  renderReview();
 }
 
 // ── library ─────────────────────────────────────────────────────────────
@@ -266,7 +317,9 @@ function renderLibrary() {
         g.engine && !groupMatches(g) ? el("button", { class: "btn sm outline", type: "button", text: "use",
           title: "Switch the lab engine to " + g.engine + " (" + g.profile + ")", onclick: () => useGroup(g) }) : null,
         g.chapters.length ? el("button", { class: "btn sm", type: "button", text: "+ all " + g.chapters.length,
-          onclick: () => { for (const c of g.chapters) addChapter(g, c); } }) : null));
+          onclick: () => { for (const c of g.chapters) addChapter(g, c); } }) : null,
+        g.imported ? el("button", { class: "btn sm", type: "button", text: "×", "aria-label": "Remove " + g.title + " from the library",
+          title: "Remove this imported workshop from the library", onclick: () => removeImported(g.id) }) : null));
     const cards = el("div", { class: "cards" });
     if (open) {
       if (!list.length) cards.append(el("div", { class: "empty", text: g.id === "custom" ? "No chapters yet: + New." : "No chapters." }));
@@ -358,8 +411,9 @@ function addAddon(name) {
   render();
 }
 
+// A "{host}" in the lab-builder URL (rodeo builder's own lab-builder) is the host this page came from.
 function labBuilderUrl(extra) {
-  const url = new URL(state.liab.builder_url, location.href);
+  const url = new URL(String(state.liab.builder_url).replace("{host}", location.hostname), location.href);
   if (state.labAddons.length) url.searchParams.set("addons", state.labAddons.join(","));
   for (const [k, v] of Object.entries(extra || {})) url.searchParams.set(k, v);
   return url.toString();
@@ -476,7 +530,7 @@ function openEmbed() {
 
 window.addEventListener("message", (ev) => {
   if (!state.liab.builder_url) return;
-  const origin = new URL(state.liab.builder_url, location.href).origin;
+  const origin = new URL(String(state.liab.builder_url).replace("{host}", location.hostname), location.href).origin;
   if (ev.origin !== origin || !ev.data || ev.data.type !== "labinabox:lab") return;
   useLab(ev.data.lab, "the lab-builder");
   closeEmbed();
@@ -615,16 +669,90 @@ function renderReview() {
         el("span", { class: "warn-msg", text: (w.id ? w.id + ": " : "") + w.msg }),
         i >= 0 ? el("button", { class: "btn sm warn", type: "button", text: "Fix ✎", onclick: () => openEditor(i) }) : null);
     }),
+    renderRmstoryCheck(),
     el("span", { class: "label", text: plural(files.length, "file") + " in " + name + ".zip" }),
-    el("ul", { class: "zip-files" }, files.map((f) => el("li", { class: f.startsWith("story/") ? "story" : "", text: name + "/" + f }))),
+    el("ul", { class: "zip-files" }, files.map((f) => el("li", { class: RB.partOf(f) === "instructions" ? "story" : "",
+      title: RB.partOf(f), text: name + "/" + f }))),
     el("div", { class: "term install" }, el("div", { class: "term-bar" }, el("i"), el("i"), el("i"), el("span", { text: "install" }), copy),
       el("pre", { text: cmd })),
     el("div", { class: "review-foot" },
-      el("button", { class: "btn primary" + (n ? "" : " dim"), type: "button", text: "Download " + name + ".zip", onclick: download }),
+      el("button", { class: "btn primary" + (n ? "" : " dim"), type: "button", text: "Download " + name + ".zip", onclick: () => download() }),
+      el("button", { class: "btn outline sm", type: "button", id: "dlInfra", text: "Infrastructure only",
+        title: "The lab: plan, definition, lab-in-a-box lab (" + name + "-infrastructure.zip)", onclick: () => download("infrastructure") }),
+      el("button", { class: "btn outline sm" + (n ? "" : " dim"), type: "button", id: "dlInstructions", text: "Instructions only",
+        title: "The chapters and checks, laid out as a content repository (" + name + "-instructions.zip)", onclick: () => download("instructions") }),
       state.server && state.server.save ? el("span", { class: "muted", text: "Save to profiles (top right) writes it straight into your profiles." }) : null));
 }
 
+// The live builder's "Check with rmstory": rmstory's own validate on the chapters.
+function renderRmstoryCheck() {
+  if (!storyTools()) return null;
+  const res = state.rmCheck, stale = res && res.key !== chaptersKey();
+  const head = el("div", { class: "rm-check" },
+    el("button", { class: "btn sm", type: "button", id: "rmCheckBtn", disabled: state.busy ? true : null,
+      text: state.busy === "validate" ? "Checking…" : "Check with rmstory", onclick: rmstoryCheck }),
+    el("span", { class: "muted", text: res ? res.summary + (stale ? " · the chapters changed since: check again" : "")
+      : "Runs rmstory validate on the builder's host" }));
+  if (!res || stale) return head;
+  return [head, res.warnings.map((w) => {
+    const i = state.chapters.findIndex((c) => c.id === w.chapter);
+    return el("div", { class: "alert warn-row" }, el("strong", { text: (i >= 0 ? state.chapters[i].title : w.chapter) + " · line " + w.line }),
+      el("span", { class: "warn-msg", text: "rmstory " + (w.error ? "error" : "warning") + ": " + w.message }),
+      i >= 0 ? el("button", { class: "btn sm warn", type: "button", text: "Fix ✎", onclick: () => openEditor(i) }) : null);
+  })];
+}
+
 // ── right panel ─────────────────────────────────────────────────────────
+
+function renderNewStory() {
+  const engines = storyEngines(true), select = $("#nsEngine"), picked = select.value;
+  $("#newStory").hidden = !engines.length;
+  if (select.options.length !== engines.length) select.replaceChildren(...engines.map((e) => el("option", { value: e, text: e })));
+  if (engines.includes(picked)) select.value = picked;
+  const parts = RB.storyParts(state.chapters), btn = $("#nsBtn");
+  $("#nsParts").textContent = parts.story
+    ? "Retells " + plural(parts.story, "story span") + "; keeps " + plural(parts.exercise, "exercise span") + " and "
+      + plural(parts.fixed, "fixed span") + " word for word."
+    : "Nothing to retell yet: in the story editor, give the story's spans a story variant.";
+  btn.disabled = !!state.busy || !parts.story;
+  btn.textContent = state.busy === "retell" ? "Retelling…" : "Retell";
+}
+
+// "New story": rmstory retells the rodeo's story spans about a theme (exercise spans never
+// reach the engine, see RB.maskExercises); the retold chapters become a library group and
+// replace the rodeo's chapters (Undo puts the originals back).
+async function retellStory() {
+  const theme = $("#nsTheme").value.trim(), engineName = $("#nsEngine").value;
+  if (!theme) { toast("Say what the new story is about", true); $("#nsTheme").focus(); return; }
+  if (!state.chapters.length) { toast("Add at least one chapter first.", true); return; }
+  const used = new Set(libraryGroups().map((g) => g.id));
+  const slug = RB.slugify(theme).slice(0, 20).replace(/-+$/, "") || "story", id = RB.uniqueId("story-" + slug, used);
+  const tagged = state.chapters.map((c) => ({ ...c, body: RB.nameMissing(c.body, c.id) }));
+  const masked = Object.fromEntries(tagged.map((c) => [c.id, RB.maskExercises(c.body)]));
+  state.busy = "retell";
+  render();
+  try {
+    const res = await storyPost("retell", { chapters: tagged.map((c) => ({ id: c.id, body: masked[c.id].body })), theme, engine: engineName });
+    const bodies = Object.fromEntries(res.chapters.map((c) => [c.id, c.body]));
+    const kept = Object.fromEntries(tagged.map((c) => [c.id, masked[c.id].kept]));
+    const retold = RB.retoldChapters(tagged, bodies, id.slice(6), kept);
+    const group = { id, title: theme, source: "retold from " + (state.title || "this rodeo") + " with " + engineName, format: "rmstory",
+      engine: "", profile: "", plan: "", variants: {}, imported: true,
+      chapters: retold.map(({ workshop, from, ...ch }) => ch) };
+    const before = { chapters: state.chapters, imported: state.imported };
+    state.imported = [...state.imported, group];
+    state.chapters = group.chapters.map((ch) => ({ ...ch, workshop: group.title, from: libKey(group.id, ch.id) }));
+    state.cursor = -1;
+    state.busy = "";
+    render();
+    toast("New story: " + plural(group.chapters.length, "chapter") + " retold. Review them before you download", false,
+      () => { state.chapters = before.chapters; state.imported = before.imported; render(); });
+  } catch (err) {
+    state.busy = "";
+    render();
+    toast("Retelling failed: " + err.message, true);
+  }
+}
 
 function renderSettings() {
   $("#name").value = state.name;
@@ -637,6 +765,14 @@ function renderSettings() {
   box.replaceChildren(...options.map(([v, label]) => el("button", {
     type: "button", class: "chip" + (state.variant === v ? " on" : ""), "aria-pressed": String(state.variant === v),
     text: label, onclick: () => { state.variant = v; render(); } })));
+  renderNewStory();
+  $("#contentUrl").value = state.contentUrl;
+  $("#contentFormat").value = state.contentFormat;
+  const c = contentSource(), bad = contentError();
+  $("#contentNote").textContent = bad ? bad : c ? "The plan gets content: " + c.repo + (c.ref ? " @ " + c.ref : "") + (c.path ? " /" + c.path : "")
+    + ". rodeo up renders it; rodeo content apply updates it on a running lab."
+    : "Optional. Empty: the instructions are this rodeo's own story/ (the chapters above).";
+  $("#contentNote").classList.toggle("bad-text", !!bad);
   const mins = state.chapters.reduce((n, c) => n + (c.mins || 0), 0);
   $("#estimate").textContent = "Estimated run time: " + mins + " min (" + state.chapters.length + " chapters)";
   $("#counts").textContent = state.chapters.length + " chapters · " + mins + " min · " + state.engine;
@@ -681,6 +817,7 @@ function renderFiles() {
 }
 
 function render() {
+  renderDeploy();
   renderLibrary();
   renderEngines();
   renderChapters();
@@ -689,6 +826,100 @@ function render() {
   renderFiles();
   renderReview();
   scheduleDraft();
+}
+
+// ── import a workshop by URL ────────────────────────────────────────────
+// The live builder fetches any public https git repository (rodeo/builder/imports.py);
+// the published page reads public github.com repositories through GitHub's API.
+
+function openImport() {
+  $("#imUrl").value = "";
+  $("#imNote").textContent = window.RB_STATIC
+    ? "A public github.com repository: a rodeo story/ directory, an Instruqt track (<challenge>/assignment.md) or markdown files (*.md). GitHub allows 60 requests an hour without a login; rodeo builder imports from any git host."
+    : "A public https git repository: a rodeo story/ directory, an Instruqt track (<challenge>/assignment.md) or markdown files (*.md).";
+  $("#importModal").hidden = false;
+  $("#imUrl").focus();
+}
+
+function closeImport() {
+  $("#importModal").hidden = true;
+  $("#importBtn").focus();
+}
+
+async function ghFetch(url, json) {
+  const res = await fetch(url, json ? { headers: { Accept: "application/vnd.github+json" } } : {});
+  if (res.status === 403 || res.status === 429) throw new Error("GitHub refused: without a login it allows 60 requests an hour. Try later, or import with rodeo builder");
+  if (res.status === 404) throw new Error("not found on GitHub (only public repositories can be imported)");
+  if (!res.ok) throw new Error("GitHub answered " + res.status);
+  return json ? res.json() : res.text();
+}
+
+// The published page's import: one tree listing, then the raw chapter files.
+async function importFromGitHub(url) {
+  const src = RB.parseSourceUrl(url);
+  if (src.host !== "github.com") throw new Error("the published builder imports from github.com only; other git hosts need rodeo builder");
+  const api = "https://api.github.com/repos/" + src.owner + "/" + src.repo;
+  const ref = src.ref || (await ghFetch(api, true)).default_branch;
+  const tree = await ghFetch(api + "/git/trees/" + encodeURIComponent(ref) + "?recursive=1", true);
+  const files = tree.tree.filter((t) => t.type === "blob").map((t) => t.path);
+  const { format, dir } = RB.detectFormat(files, src.path);
+  const pre = dir ? dir + "/" : "";
+  const raw = (path) => ghFetch("https://raw.githubusercontent.com/" + src.owner + "/" + src.repo + "/" +
+    encodeURIComponent(ref) + "/" + path.split("/").map(encodeURIComponent).join("/"), false);
+  const direct = files.filter((f) => f.startsWith(pre) && !f.slice(pre.length).includes("/")).sort();
+  let title = src.path ? src.path.split("/").pop() : src.repo, chapters = [];
+  const variants = {};
+  if (format === "rmstory") {
+    const meta = direct.includes(pre + "chapters.yaml") ? RB.chaptersMeta(await raw(pre + "chapters.yaml")) : null;
+    chapters = await Promise.all(direct.filter((f) => f.endsWith(".md")).map(async (f) => RB.chapterFromStory(f.slice(pre.length), await raw(f), meta)));
+    for (const f of files.filter((f) => /^stories\/[^/]+\.yaml$/.test(f.slice(pre.length)) && f.startsWith(pre)).sort()) {
+      variants[f.slice(pre.length + 8, -5)] = RB.storyIds(await raw(f));
+    }
+    if (meta && meta.title) title = meta.title;
+  } else if (format === "instruqt") {
+    const dirs = [...new Set(files.filter((f) => f.startsWith(pre) && /^[^/]+\/assignment\.md$/.test(f.slice(pre.length)))
+      .map((f) => f.slice(pre.length).split("/")[0]))].sort();
+    chapters = await Promise.all(dirs.map(async (d) => {
+      const check = files.filter((f) => f.startsWith(pre + d + "/check-")).sort()[0];
+      return RB.chapterFromInstruqt(d, await raw(pre + d + "/assignment.md"), check ? await raw(check) : "");
+    }));
+  } else {
+    chapters = await Promise.all(direct.filter((f) => f.endsWith(".md")).map(async (f) => RB.chapterFromMarkdown(f.slice(pre.length), await raw(f))));
+  }
+  if (chapters.length > 200) throw new Error("too many chapters (" + chapters.length + " > 200)");
+  return { id: RB.importGroupId(src), title, source: "https://github.com/" + src.owner + "/" + src.repo + (src.path ? "/tree/" + ref + "/" + src.path : ""),
+    format, engine: "", profile: "", plan: "", chapters, variants, imported: true };
+}
+
+async function importWorkshop(ev) {
+  ev.preventDefault();
+  const url = $("#imUrl").value.trim(), btn = $("#imSubmit");
+  if (!url) return;
+  btn.disabled = true;
+  btn.textContent = "Importing…";
+  try {
+    let group;
+    if (window.RB_STATIC) group = await importFromGitHub(url);
+    else {
+      const res = await apiPost("import", { url });
+      if (res.status !== 200) throw new Error(res.body.error || "HTTP " + res.status);
+      group = res.body.workshop;
+    }
+    state.imported = [...state.imported.filter((g) => g.id !== group.id), group];
+    state.open[group.id] = true;
+    closeImport();
+    render();
+    toast("Imported " + plural(group.chapters.length, "chapter") + " (" + group.format + ") from " + group.title);
+  } catch (err) { toast("Import failed: " + err.message, true); }
+  btn.disabled = false;
+  btn.textContent = "Import";
+}
+
+function removeImported(id) {
+  const before = state.imported;
+  state.imported = state.imported.filter((g) => g.id !== id);
+  render();
+  toast("Imported workshop removed from the library", false, () => { state.imported = before; render(); });
 }
 
 // ── new chapter ─────────────────────────────────────────────────────────
@@ -708,6 +939,9 @@ function openNewChapter() {
   $("#ncCheck").checked = false;
   $("#ncAppend").checked = true;
   $("#ncBody").value = chapterTemplate("new-chapter");
+  const engines = storyEngines(true);
+  $("#ncDraft").hidden = !engines.length;
+  $("#ncEngine").replaceChildren(...engines.map((e) => el("option", { value: e, text: e })));
   renderNewChapterChips();
   $("#newModal").hidden = false;
   $("#ncTitle").focus();
@@ -720,6 +954,24 @@ function renderNewChapterChips() {
   $("#ncNeeds").replaceChildren(...offeredNeeds().map((c) => el("button", {
     type: "button", class: "chip" + (ncNeeds.has(c) ? " on" : ""), text: c, "aria-pressed": String(ncNeeds.has(c)),
     onclick: () => { if (ncNeeds.has(c)) ncNeeds.delete(c); else ncNeeds.add(c); renderNewChapterChips(); } })));
+}
+
+// Drafts the chapter body with a generating rmstory engine, from the brief and the rodeo.
+async function draftChapter() {
+  const brief = $("#ncBrief").value.trim();
+  if (!brief) { toast("Describe the chapter first", true); $("#ncBrief").focus(); return; }
+  const title = $("#ncTitle").value.trim() || "Chapter title", btn = $("#ncDraftBtn");
+  const prompt = RB.draftPrompt(brief, { title, rodeo: state.title, provides: [...provided()].sort(),
+    chapters: state.chapters.map((c) => c.title), mins: parseInt($("#ncMins").value, 10) || 0 });
+  btn.disabled = true;
+  btn.textContent = "Drafting…";
+  try {
+    const res = await storyPost("draft", { prompt, lang: RB.SOURCE_LANGUAGE, engine: $("#ncEngine").value });
+    $("#ncBody").value = "# " + title + "\n\n" + RB.renumber(res.body, "new-chapter");
+    toast("Draft ready: review it before you create the chapter");
+  } catch (err) { toast("Draft failed: " + err.message, true); }
+  btn.disabled = false;
+  btn.textContent = "Draft";
 }
 
 function closeNewChapter() {
@@ -739,7 +991,7 @@ function createChapter(ev) {
   const ch = { id, file: "", title, mins: Math.max(1, parseInt($("#ncMins").value, 10) || 10), needs: [...ncNeeds],
     check: $("#ncCheck").checked, spans: 0, body, isNew: true };
   if (group.id === "custom") state.custom.push(ch);
-  else state.workshops.find((w) => w.id === group.id).chapters.push(ch);
+  else [...state.workshops, ...state.imported].find((w) => w.id === group.id).chapters.push(ch);
   closeNewChapter();
   if ($("#ncAppend").checked) addChapter(group, ch); else render();
   toast("Chapter \"" + title + "\" created as " + id);
@@ -874,17 +1126,102 @@ function renderStories() {
   if (!allVariants().length) box.append(el("p", { class: "empty", text: "No variants: add one, then tag spans with it." }));
 }
 
+function trLanguages() {
+  return [...new Set([...RB.LANGUAGES, ...Object.keys(state.strings)])].filter((l) => l !== RB.SOURCE_LANGUAGE).sort();
+}
+
+function trRow(lang, id) { return (state.strings[lang] || {})[id]; }
+
+function setTrRow(lang, id, row) {
+  const rows = { ...(state.strings[lang] || {}) };
+  if (row) rows[id] = row; else delete rows[id];
+  state.strings = { ...state.strings, [lang]: rows };
+  scheduleDraft();
+  renderFiles();
+}
+
+// The Translations tab: rmstory's store for this rodeo, one row per translatable span.
+// Every cell can be written by hand; the live builder also fills the gaps with an engine.
 function renderTranslations() {
-  const ids = [];
-  for (const ch of state.chapters) for (const sp of RB.parseSpans(ch.body).spans) {
-    if (sp.attrs.id && RB.kind(sp.attrs) === "translatable" && !ids.includes(sp.attrs.id)) ids.push(sp.attrs.id);
+  const ids = RB.translatableIds(state.chapters), src = RB.sourceTexts(state.chapters), langs = trLanguages();
+  if (!langs.includes(state.trLang)) state.trLang = langs[0];
+  const engines = storyEngines(false), tools = storyTools();
+  if (!engines.includes(state.trEngine)) state.trEngine = engines[0] || "";
+  const intro = tools
+    ? el("div", { class: "tr-bar" },
+      el("select", { class: "select", "aria-label": "Language to fill", onchange: (ev) => { state.trLang = ev.target.value; } },
+        langs.map((l) => el("option", { value: l, text: l, selected: l === state.trLang ? true : null }))),
+      el("select", { class: "select", "aria-label": "rmstory engine", onchange: (ev) => { state.trEngine = ev.target.value; } },
+        engines.map((e) => el("option", { value: e, text: e, selected: e === state.trEngine ? true : null }))),
+      el("button", { class: "btn sm primary", type: "button", id: "trRun", disabled: state.busy ? true : null,
+        text: state.busy === "translate" ? "Translating…" : "Translate missing", onclick: translateMissing }))
+    : null;
+  const note = el("p", { class: "muted note" }, tools
+    ? "Translate missing fills the spans that have no translation in that language with the engine (stored as draft); what you wrote or reviewed is kept. The engine's key is read where rodeo builder runs."
+    : window.RB_STATIC ? ["Click a cell to write a translation. Machine translation needs the live builder, ", el("code", { text: "rodeo builder" }), "."]
+      : "Click a cell to write a translation. Machine translation needs rmstory on the builder's host: " + ((state.story && state.story.error) || "not available") + ".");
+  const cell = (lang, id) => {
+    const row = trRow(lang, id), on = state.trEdit && state.trEdit.lang === lang && state.trEdit.id === id;
+    return el("td", {}, el("button", { type: "button", class: "tr-cell " + (row ? "st-" + (row.status || "draft") : "unstored") + (on ? " on" : ""),
+      title: row ? row.content : "no " + lang + " translation stored", text: row ? row.status || "draft" : "—",
+      onclick: () => { state.trEdit = on ? null : { lang, id }; renderTranslations(); } }));
+  };
+  fill($("#translationsView"), intro, note,
+    ids.length ? el("table", { class: "matrix" }, el("thead", {}, el("tr", {}, el("th", { text: "id" }), langs.map((l) => el("th", { text: l })))),
+      el("tbody", {}, ids.map((id) => el("tr", {}, el("td", { text: id }), langs.map((l) => cell(l, id))))))
+      : el("p", { class: "empty", text: "No translatable spans yet: tag text as Translatable first." }),
+    renderTrEdit(src));
+}
+
+function renderTrEdit(src) {
+  const at = state.trEdit;
+  if (!at || !(at.id in src)) return null;
+  const row = trRow(at.lang, at.id), ta = el("textarea", { class: "textarea tr-text", id: "trText", "aria-label": at.lang + " translation of " + at.id });
+  ta.value = row ? row.content : "";
+  const status = el("select", { class: "select", "aria-label": "Status" },
+    ["reviewed", "draft"].map((s) => el("option", { value: s, text: s, selected: (row ? row.status : "reviewed") === s ? true : null })));
+  const save = () => {
+    const text = ta.value.trim();
+    if (!text) { toast("Write the translation first, or remove it", true); return; }
+    const lacks = RB.missingPlaceholders(src[at.id], text);
+    if (lacks.length) { toast("Keep " + lacks.join(" ") + " in the translation: it stands for a nested span", true); return; }
+    setTrRow(at.lang, at.id, { content: text, status: status.value, updated_by: "rodeo-builder" });
+    state.trEdit = null;
+    renderTranslations();
+  };
+  return el("div", { class: "tr-edit" },
+    el("span", { class: "label", text: at.id + " · " + RB.SOURCE_LANGUAGE }), el("pre", { class: "tr-src", text: src[at.id] }),
+    el("span", { class: "label", text: at.lang }), ta,
+    el("div", { class: "tr-actions" }, status,
+      el("button", { class: "btn sm primary", type: "button", text: "Save", onclick: save }),
+      row ? el("button", { class: "btn sm", type: "button", text: "Remove", onclick: () => { setTrRow(at.lang, at.id, null); state.trEdit = null; renderTranslations(); } }) : null,
+      el("button", { class: "btn sm", type: "button", text: "Cancel", onclick: () => { state.trEdit = null; renderTranslations(); } })));
+}
+
+async function translateMissing() {
+  if (!RB.translatableIds(state.chapters).length) { toast("No translatable spans yet: tag some text first.", true); return; }
+  const lang = state.trLang, before = Object.keys(state.strings[lang] || {}).length;
+  state.busy = "translate";
+  renderTranslations();
+  let res = null;
+  try {
+    res = await storyPost("translate", { chapters: chapterPayload(), to: lang, engine: state.trEngine, strings: state.strings });
+  } catch (err) { toast("Translate failed: " + err.message, true); }
+  state.busy = "";
+  if (res) {
+    state.strings = res.strings;
+    let changed = 0;
+    for (const c of res.chapters) {
+      const ch = state.chapters.find((x) => x.id === c.id);
+      if (ch && ch.body !== c.body) { ch.body = c.body; changed++; }
+    }
+    const added = Object.keys(state.strings[lang] || {}).length - before;
+    toast(plural(added, lang + " translation") + " filled as draft with " + state.trEngine +
+      (changed ? " · rmstory gave unnamed spans an id in " + plural(changed, "chapter") : ""));
+    if (state.editing >= 0) $("#edSource").value = editing().body;
+    render();
   }
-  const langs = RB.LANGUAGES.filter((l) => l !== RB.SOURCE_LANGUAGE);
-  $("#translationsView").replaceChildren(
-    el("p", { class: "muted" }, "Translations live in rmstory's translation store; the builder does not read or fill it yet. After install, ",
-      el("code", { text: "rodeo story render --language de" }), " fills the rest."),
-    el("table", { class: "matrix" }, el("thead", {}, el("tr", {}, el("th", { text: "id" }), langs.map((l) => el("th", { text: l })))),
-      el("tbody", {}, ids.map((id) => el("tr", {}, el("td", { text: id }), langs.map((l) => el("td", { class: "unstored", title: "no " + l + " translation stored", text: "not stored" })))))));
+  if (state.editing >= 0) renderEditor(); else renderTranslations();
 }
 
 function closePop() { $("#popover").hidden = true; pop = null; }
@@ -1071,21 +1408,23 @@ function bindEditor() {
 
 // ── download ────────────────────────────────────────────────────────────
 
-function download() {
-  if (!state.chapters.length) { toast("Add at least one chapter first.", true); return; }
+// The whole rodeo, or one part ("infrastructure": the lab; "instructions": story/ and checks/).
+function download(part) {
+  part = RB.PARTS.includes(part) ? part : "";
+  if (!state.chapters.length && part !== "infrastructure") { toast("Add at least one chapter first.", true); return; }
   const name = RB.slugify(state.name);
   if (!name) { toast("Give the rodeo a name first", true); $("#name").focus(); return; }
   state.name = name;
-  const r = rodeo();
-  const warnings = RB.validate(r.chapters);
-  const entries = RB.files(r).map((f) => ({ ...f, path: name + "/" + f.path }));
+  const r = rodeo(), file = name + (part ? "-" + part : "");
+  const warnings = part === "infrastructure" ? [] : RB.validate(r.chapters);
+  const entries = (part ? RB.partFiles(r, part) : RB.files(r)).map((f) => ({ ...f, path: file + "/" + f.path }));
   const blob = new Blob([RB.zip(entries)], { type: "application/zip" });
-  const a = el("a", { href: URL.createObjectURL(blob), download: name + ".zip" });
+  const a = el("a", { href: URL.createObjectURL(blob), download: file + ".zip" });
   document.body.append(a);
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-  toast(name + ".zip: " + entries.length + " files" + (warnings.length ? " · " + warnings.length + " span warnings (Fix ✎ in the review list)" : ""), warnings.length > 0);
+  toast(file + ".zip: " + entries.length + " files" + (warnings.length ? " · " + warnings.length + " span warnings (Fix ✎ in the review list)" : ""), warnings.length > 0);
 }
 
 // ── save (live server only) ─────────────────────────────────────────────
@@ -1095,22 +1434,256 @@ async function save(force) {
   if (!name) { toast("Give the rodeo a name first", true); $("#name").focus(); return; }
   state.name = name;
   if (!force && state.server.profiles.includes(name)) {
-    if (window.confirm("A profile named " + name + " already exists in " + state.server.profiles_dir + ". Replace it?")) save(true);
-    return;
+    if (window.confirm("A profile named " + name + " already exists in " + state.server.profiles_dir + ". Replace it?")) return save(true);
+    return false;
   }
   const r = rodeo();
   const files = RB.files(r).map((f) => ({ path: f.path, content: f.content, executable: f.mode === 0o755 }));
   let res;
   try {
     res = await apiPost("save", { name, base: r.base || null, files, force: !!force });
-  } catch (err) { toast("Save failed: " + err.message, true); return; }
+  } catch (err) { toast("Save failed: " + err.message, true); return false; }
   if (res.status === 409 && !force) {
-    if (window.confirm("A profile named " + name + " already exists in " + state.server.profiles_dir + ". Replace it?")) save(true);
+    if (window.confirm("A profile named " + name + " already exists in " + state.server.profiles_dir + ". Replace it?")) return save(true);
+    return false;
+  }
+  if (res.status !== 200) { toast("Save failed: " + (res.body.error || res.status), true); return false; }
+  if (!state.server.profiles.includes(name)) state.server.profiles.push(name);
+  state.savedAs = name;
+  renderDeploy();
+  toast("Saved " + res.body.path + " · deploy with: rodeo up --profile " + name);
+  return true;
+}
+
+// ── deploy without saving (live server only, rodeo/builder/deploywork.py) ──
+// The deploy runs from a copy in ~/rodeo-labs/<name>-unsaved-<time>/: the page says so before,
+// during and after, until the rodeo is saved.
+
+let deployPoll = 0;
+
+function deployReason() {
+  if (window.RB_STATIC) return "Only available in rodeo builder, the dynamic version: run rodeo builder on the host that deploys the lab.";
+  if (!state.deploy) return "Checking whether this builder can deploy…";
+  return state.deploy.available ? "" : state.deploy.reason;
+}
+
+function renderDeploy() {
+  const reason = deployReason(), btn = $("#deployBtn"), cur = state.deploy && state.deploy.current;
+  btn.setAttribute("aria-disabled", reason ? "true" : "false");
+  $("#deployWrap").title = reason || "Deploy this rodeo with rodeo up, without saving it first";
+  const banner = $("#deployBanner");
+  banner.hidden = !cur;
+  if (!cur) return;
+  const saved = state.savedAs ? " This rodeo is saved as the profile " + state.savedAs + "." : " This rodeo is not saved: the lab directory is a copy, not one of your profiles.";
+  const text = {
+    running: "Deploying an unsaved rodeo from " + cur.lab + "…",
+    stopping: "Stopping the deploy in " + cur.lab + "…",
+    succeeded: "Deployed from an unsaved rodeo: " + cur.lab + ".",
+    failed: "Deploy failed (exit " + cur.rc + "). Fix it and rerun from the lab: cd " + cur.lab + " && rodeo up",
+    stopped: "Deploy stopped. Resume from the lab: cd " + cur.lab + " && rodeo up",
+  }[cur.status] || cur.status;
+  $("#deployText").textContent = text + saved;
+  banner.classList.toggle("ok", cur.status === "succeeded");
+  banner.classList.toggle("bad", cur.status === "failed" || cur.status === "stopped");
+  $("#deploySave").hidden = !!state.savedAs || !(state.server && state.server.save);
+  $("#deployStop").hidden = cur.status !== "running";
+  $("#deployLogBtn").setAttribute("aria-expanded", String(state.deployLogOpen));
+  $("#deployLog").hidden = !state.deployLogOpen;
+  $("#deployLog").textContent = cur.log || "(no output yet)";
+}
+
+function openDeploy() {
+  const reason = deployReason();
+  if (reason) { toast(reason, true); return; }
+  const name = RB.slugify(state.name);
+  if (!name) { toast("Give the rodeo a name first", true); $("#name").focus(); return; }
+  if (!state.chapters.length) { toast("Add at least one chapter first.", true); return; }
+  const cur = state.deploy.current;
+  if (cur && (cur.status === "running" || cur.status === "stopping")) { toast("A deploy is already running: see the banner", true); return; }
+  state.name = name;
+  $("#dpWhere").textContent = "rodeo up runs on this builder's host (target " + state.target + ", as " + state.deploy.as
+    + ") from a new lab directory, ~/rodeo-labs/" + name + "-unsaved-<time>/: a copy of what is on this page now.";
+  $("#dpSecrets").hidden = true;
+  $("#dpSecretFields").replaceChildren();
+  $("#dpResult").textContent = "";
+  $("#dpSaveDeploy").hidden = !(state.server && state.server.save);
+  $("#deployModal").hidden = false;
+  $("#dpSubmit").focus();
+}
+
+function closeDeploy() {
+  $("#deployModal").hidden = true;
+  $("#deployBtn").focus();
+}
+
+async function startDeploy(saveFirst) {
+  if (saveFirst && !(await save(false))) return;
+  const r = rodeo(), name = RB.slugify(state.name);
+  const files = RB.files(r).map((f) => ({ path: f.path, content: f.content, executable: f.mode === 0o755 }));
+  const secrets = Object.fromEntries([...$("#dpSecretFields").querySelectorAll("input")].map((i) => [i.name, i.value]));
+  $("#dpSubmit").disabled = true;
+  const res = await apiPost("deploy", { name, base: r.base || null, files, secrets }).catch((err) => ({ status: 0, body: { error: err.message } }));
+  $("#dpSubmit").disabled = false;
+  if (res.status === 200 && res.body.secrets) {
+    $("#dpSecrets").hidden = false;
+    $("#dpSecretFields").replaceChildren(...res.body.secrets.map((k) => el("label", { class: "label" }, k,
+      el("input", { class: "input mono", type: "password", name: k, autocomplete: "off", required: true }))));
+    $("#dpResult").textContent = "Fill in the secrets this lab needs, then deploy.";
+    $("#dpSecretFields input").focus();
     return;
   }
-  if (res.status !== 200) { toast("Save failed: " + (res.body.error || res.status), true); return; }
-  if (!state.server.profiles.includes(name)) state.server.profiles.push(name);
-  toast("Saved " + res.body.path + " · deploy with: rodeo up --profile " + name);
+  if (res.status !== 200) { $("#dpResult").textContent = "Deploy failed to start: " + (res.body.error || res.status); return; }
+  if (!saveFirst) state.savedAs = "";
+  state.deploy = { ...state.deploy, current: res.body.current };
+  closeDeploy();
+  renderDeploy();
+  pollDeploy();
+}
+
+function pollDeploy() {
+  clearTimeout(deployPoll);
+  deployPoll = setTimeout(async () => {
+    state.deploy = await apiGet("deploy").catch(() => state.deploy);
+    renderDeploy();
+    const cur = state.deploy.current;
+    if (cur && (cur.status === "running" || cur.status === "stopping")) pollDeploy();
+    else if (cur) toast(cur.status === "succeeded" ? "Deploy finished: " + cur.lab : "Deploy " + cur.status + ": see the banner", cur.status !== "succeeded");
+  }, 2000);
+}
+
+async function stopDeploy() {
+  if (!window.confirm("Stop the running deploy? rodeo up is interrupted like Ctrl-C; the lab may be half built.")) return;
+  const res = await apiPost("deploy-stop", {}).catch((err) => ({ status: 0, body: { error: err.message } }));
+  if (res.status !== 200) { toast("Stop failed: " + (res.body.error || res.status), true); return; }
+  state.deploy = { ...state.deploy, current: res.body.current };
+  renderDeploy();
+  pollDeploy();
+}
+
+// ── publish to GitHub ───────────────────────────────────────────────────
+// The live builder on loopback publishes with the host's GitHub login (rodeo/builder/publish.py),
+// asking for a device-flow login when there is none; otherwise the dialog lists github.com
+// pages that use the browser's GitHub login.
+
+let pubPoll = 0;
+
+function publishLanguages() {
+  const r = rodeo();
+  return [state.lang || RB.SOURCE_LANGUAGE, ...RB.translatedLanguages(r.strings, RB.translatableIds(r.chapters))]
+    .filter((l, i, all) => all.indexOf(l) === i);
+}
+
+function pubLive() { return !window.RB_STATIC && state.github && state.github.available; }
+
+async function openPublish() {
+  const name = RB.slugify(state.name);
+  if (!name) { toast("Give the rodeo a name first", true); $("#name").focus(); return; }
+  state.name = name;
+  $("#pubName").value = name;
+  $("#pubUpdate").checked = false;
+  $("#pubResult").replaceChildren();
+  $("#publishModal").hidden = false;
+  if (!window.RB_STATIC) state.github = await apiGet("github").catch((err) => ({ available: true, logged_in: false, error: err.message }));
+  renderPublish();
+  if (pubLive() && !state.github.logged_in && state.github.device && state.github.device.pending) pollGithub();
+  (pubLive() ? $("#pubName") : $("#pubUser")).focus();
+}
+
+function closePublish() {
+  clearTimeout(pubPoll);
+  $("#publishModal").hidden = true;
+  $("#publishBtn").focus();
+}
+
+function link(href, text) { return el("a", { href, target: "_blank", rel: "noopener", text }); }
+
+function renderPublish() {
+  const live = pubLive(), gh = state.github || {};
+  $("#pubStatic").hidden = live;
+  $("#pubLive").hidden = !live || !gh.logged_in;
+  $("#pubSubmit").hidden = !live || !gh.logged_in;
+  $("#pubLogin").hidden = !live || gh.logged_in;
+  if (!live) {
+    $("#pubAccount").textContent = "These github.com pages use your browser's GitHub login; GitHub asks you to log in if you are not.";
+    renderPublishSteps();
+    return;
+  }
+  $("#pubCatalog").textContent = gh.catalog || RB.CATALOG_REPO;
+  const d = gh.device || {};
+  $("#pubAccount").textContent = gh.logged_in ? "Publishing as " + gh.login + " (GitHub login from " + gh.source + ")."
+    : gh.error || "No GitHub login on the builder's host yet.";
+  $("#pubLoginBtn").disabled = !!d.pending;
+  $("#pubLoginBtn").hidden = !gh.gh;
+  $("#pubDevice").replaceChildren(...(d.pending && d.code
+    ? ["Enter the code ", el("strong", { class: "mono", text: d.code }), " at ", link(d.url, d.url), ". This dialog notices the login."]
+    : [d.error ? d.error + ". " : "", gh.gh ? "The GitHub CLI on the builder's host signs you in with a one-time code."
+      : "Install the GitHub CLI (gh) on the builder's host and open Publish again, or run gh auth login or set GH_TOKEN there."]));
+}
+
+function renderPublishSteps() {
+  const user = $("#pubUser").value.trim(), name = RB.slugify(state.name);
+  const box = $("#pubSteps");
+  if (!/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/.test(user)) {
+    box.replaceChildren(el("li", { class: "muted", text: "Type your GitHub account to get the links." }));
+    return;
+  }
+  const l = RB.publishLinks({ user, name, title: state.title, engine: state.engine, languages: publishLanguages() });
+  box.replaceChildren(
+    el("li", {}, link(l.create, "Create the repository " + user + "/" + name), " (public)."),
+    el("li", {}, el("button", { class: "btn sm", type: "button", text: "Download rodeo", onclick: download }), " then ",
+      link(l.upload, "upload the unzipped files"), ", or push them: ", el("code", { text: "git push " + l.repo + " main" }), "."),
+    el("li", {}, link(l.catalog, "Add it to the rodeo catalog"), ": GitHub forks rodeo-cli and opens the pull request for you."));
+}
+
+async function githubLogin() {
+  $("#pubLoginBtn").disabled = true;
+  const res = await apiPost("github-login", {}).catch((err) => ({ status: 0, body: { error: err.message } }));
+  if (res.status !== 200) { state.github = { ...state.github, error: res.body.error }; renderPublish(); return; }
+  state.github = { ...state.github, device: res.body };
+  renderPublish();
+  if (res.body.code) window.open(res.body.url, "_blank", "noopener");
+  pollGithub();
+}
+
+// Re-reads the login every 3 s while the dialog is open and gh's device login is pending.
+function pollGithub() {
+  clearTimeout(pubPoll);
+  pubPoll = setTimeout(async () => {
+    if ($("#publishModal").hidden) return;
+    state.github = await apiGet("github").catch(() => state.github);
+    renderPublish();
+    if (!state.github.logged_in && state.github.device && state.github.device.pending) pollGithub();
+  }, 3000);
+}
+
+async function publishRodeo(ev) {
+  ev.preventDefault();
+  const name = RB.slugify($("#pubName").value);
+  if (!name) { $("#pubName").focus(); return; }
+  state.name = name;
+  render();
+  const r = rodeo(), btn = $("#pubSubmit"), update = $("#pubUpdate").checked;
+  const files = RB.files(r).map((f) => ({ path: f.path, content: f.content, executable: f.mode === 0o755 }));
+  btn.disabled = true;
+  btn.textContent = "Publishing…";
+  $("#pubResult").textContent = "";
+  try {
+    const res = await apiPost("publish", { name, title: state.title, engine: state.engine, languages: publishLanguages(), files, update });
+    if (res.status === 401) { state.github = { ...state.github, logged_in: false, error: res.body.error }; renderPublish(); }
+    else if (res.status === 409) $("#pubResult").textContent = res.body.error + ": tick Update to push to it, or pick another name.";
+    else if (res.status !== 200) $("#pubResult").textContent = "Publish failed: " + (res.body.error || res.status);
+    else {
+      const catalog = RB.publishLinks({ user: res.body.login, name, title: state.title, engine: state.engine,
+        languages: publishLanguages(), catalog: state.github.catalog }).catalog;
+      $("#pubResult").replaceChildren("Published ", link(res.body.repo, res.body.repo),
+        ...(res.body.pull_request ? [" · catalog pull request ", link(res.body.pull_request, res.body.pull_request)] : []),
+        ...(res.body.catalog_error ? [". The catalog pull request failed (" + res.body.catalog_error + "): ",
+          link(catalog, "add it to the catalog on github.com")] : []), ".");
+      toast("Published " + res.body.repo);
+    }
+  } catch (err) { $("#pubResult").textContent = "Publish failed: " + err.message; }
+  btn.disabled = false;
+  btn.textContent = "Publish";
 }
 
 // ── dialogs ─────────────────────────────────────────────────────────────
@@ -1119,6 +1692,9 @@ const FOCUSABLE = "a[href], button:not([disabled]), input:not([disabled]), selec
 
 function openDialog() {
   if (!$("#newModal").hidden) return $("#newModal .modal");
+  if (!$("#importModal").hidden) return $("#importModal .modal");
+  if (!$("#publishModal").hidden) return $("#publishModal .modal");
+  if (!$("#deployModal").hidden) return $("#deployModal .modal");
   if (!$("#embedOverlay").hidden) return $("#embedOverlay .embed");
   if (!$("#editor").hidden) return $("#editor");
   return null;
@@ -1145,6 +1721,8 @@ function bind() {
   $("#lang").replaceChildren(...RB.LANGUAGES.map((l) => el("option", { value: l, text: l + (l === RB.SOURCE_LANGUAGE ? " (source)" : "") })));
   $("#lang").addEventListener("change", (ev) => { state.lang = ev.target.value; render(); });
   $("#target").addEventListener("change", (ev) => { state.target = ev.target.value; render(); });
+  $("#contentUrl").addEventListener("change", (ev) => { state.contentUrl = ev.target.value.trim(); render(); });
+  $("#contentFormat").addEventListener("change", (ev) => { state.contentFormat = ev.target.value; render(); });
   document.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => {
     document.querySelectorAll("[data-tab]").forEach((x) => { x.classList.toggle("on", x === b); x.setAttribute("aria-selected", String(x === b)); });
     for (const t of ["rodeo", "plan", "story"]) $("#tab-" + t).hidden = t !== b.dataset.tab;
@@ -1158,6 +1736,7 @@ function bind() {
   themeBtn.addEventListener("click", () => { window.RBTheme.toggle(); showTheme(); });
   showTheme();
   $("#downloadBtn").addEventListener("click", download);
+  $("#ncDraftBtn").addEventListener("click", draftChapter);
   $("#stickyDownload").addEventListener("click", download);
   $("#warnBtn").addEventListener("click", scrollToReview);
   $("#stickyWarn").addEventListener("click", scrollToReview);
@@ -1182,6 +1761,25 @@ function bind() {
     toast("plan.yaml regenerated", false, () => { state.planEdited = edited; render(); });
   });
   $("#newChapterBtn").addEventListener("click", openNewChapter);
+  $("#importBtn").addEventListener("click", openImport);
+  $("#nsBtn").addEventListener("click", retellStory);
+  $("#publishBtn").addEventListener("click", openPublish);
+  $("#deployBtn").addEventListener("click", openDeploy);
+  $("#deployForm").addEventListener("submit", (ev) => { ev.preventDefault(); startDeploy(false); });
+  $("#dpSaveDeploy").addEventListener("click", () => startDeploy(true));
+  $("#dpCancel").addEventListener("click", closeDeploy);
+  $("#deployModal").addEventListener("mousedown", (ev) => { if (ev.target === ev.currentTarget) closeDeploy(); });
+  $("#deploySave").addEventListener("click", () => save(false));
+  $("#deployStop").addEventListener("click", stopDeploy);
+  $("#deployLogBtn").addEventListener("click", () => { state.deployLogOpen = !state.deployLogOpen; renderDeploy(); });
+  $("#publishForm").addEventListener("submit", publishRodeo);
+  $("#pubCancel").addEventListener("click", closePublish);
+  $("#pubLoginBtn").addEventListener("click", githubLogin);
+  $("#pubUser").addEventListener("input", renderPublishSteps);
+  $("#publishModal").addEventListener("mousedown", (ev) => { if (ev.target === ev.currentTarget) closePublish(); });
+  $("#importForm").addEventListener("submit", importWorkshop);
+  $("#imCancel").addEventListener("click", closeImport);
+  $("#importModal").addEventListener("mousedown", (ev) => { if (ev.target === ev.currentTarget) closeImport(); });
   $("#newForm").addEventListener("submit", createChapter);
   $("#ncCancel").addEventListener("click", closeNewChapter);
   $("#newModal").addEventListener("mousedown", (ev) => { if (ev.target === ev.currentTarget) closeNewChapter(); });
@@ -1191,6 +1789,9 @@ function bind() {
     if (ev.key !== "Escape") return;
     if (pop) closePop();
     else if (!$("#newModal").hidden) closeNewChapter();
+    else if (!$("#importModal").hidden) closeImport();
+    else if (!$("#publishModal").hidden) closePublish();
+    else if (!$("#deployModal").hidden) closeDeploy();
     else if (!$("#embedOverlay").hidden) closeEmbed();
     else if (!$("#editor").hidden) closeEditor();
   });
@@ -1206,8 +1807,11 @@ async function init() {
     state.workshops = workshops.workshops;
     state.liab = { ...state.liab, ...liab };
     if (!window.RB_STATIC) {
+      state.story = await apiGet("story").catch((err) => ({ available: false, error: err.message, engines: [] }));
       state.server = await apiGet("server");
       $("#saveBtn").hidden = !state.server.save;
+      state.deploy = await apiGet("deploy").catch((err) => ({ available: false, reason: err.message, current: null }));
+      if (state.deploy.current && state.deploy.current.status === "running") pollDeploy();
       $("#saveBtn").title = "Write this rodeo to " + state.server.profiles_dir + "/<name>/";
     }
     offerDraft();

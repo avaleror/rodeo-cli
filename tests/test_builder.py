@@ -94,6 +94,30 @@ def test_labinabox_catalogue_is_split_by_kind(labinabox_checkout):
     assert [a["name"] for a in data["kclusters"]] == ["rke2"]
 
 
+def test_labinabox_addons_run_without_their_named_interpreter(tmp_path):
+    checkout = _fake_labinabox(tmp_path, (
+        "import os, subprocess\n"
+        "def dispatch(action, method, params, body):\n"
+        "    script = os.path.join(os.environ['LABBUILDER_SCRIPTS_DIR'], 'install_smlm')\n"
+        "    r = subprocess.run([script, '--schema', 'json'], capture_output=True, text=True)\n"
+        "    names = [r.stdout.strip()] if r.returncode == 0 else []\n"
+        "    return 200, {'components': [{'name': n, 'targets': []} for n in names]}\n"))
+    script = checkout / "scripts" / "install_smlm"
+    script.parent.mkdir()
+    script.write_text("#!/usr/bin/env python3.0-rodeo-missing\nprint('install_smlm')\n")
+    script.chmod(0o755)
+    assert discovery.labinabox_addons(checkout) == [{"name": "smlm", "kind": "addon", "targets": []}]
+
+
+def test_labinabox_without_addons_fails_loudly(tmp_path):
+    checkout = _fake_labinabox(tmp_path, (
+        "def dispatch(action, method, params, body):\n"
+        "    return 200, {'components': [{'name': 'rke2', 'kind': 'kcluster', 'targets': []}]}\n"))
+    with pytest.raises(RuntimeError, match="none reported"):
+        discovery.labinabox_addons(checkout)
+    assert "none reported" in discovery.labinabox(checkout)["error"]
+
+
 def test_labinabox_addons_fail_loudly(tmp_path):
     checkout = _fake_labinabox(tmp_path, "def dispatch(*a):\n    return 500, {'error': 'boom'}\n")
     with pytest.raises(RuntimeError, match="boom"):
@@ -198,7 +222,7 @@ def test_static_build_embeds_every_answer(tmp_path, labinabox_checkout):
                         "--no-fetch-sources", "--labinabox", str(labinabox_checkout)],
                        capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
-    assert sorted(p.name for p in out.iterdir()) == ["app.js", "assets", "index.html", "logic.js", "style.css", "theme.js"]
+    assert sorted(p.name for p in out.iterdir()) == ["app.js", "assets", "fonts", "index.html", "logic.js", "style.css", "theme.js"]
     html = (out / "index.html").read_text()
     assert "__RODEOVERSION__" not in html
     payload = re.search(r'<script id="static-api-data" type="application/json">(.*?)</script>', html, re.S).group(1)
@@ -251,7 +275,8 @@ def test_chapter_sources_reject_incomplete_entries(tmp_path, monkeypatch):
 def test_source_fetch_commands_are_sparse_and_shallow(tmp_path):
     virt = next(s for s in discovery.chapter_sources() if s["id"] == "virt-workshop")
     clone, sparse = discovery.source_fetch_commands(virt, tmp_path / "v")
-    assert clone[:8] == ["git", "clone", "-q", "--depth", "1", "--filter=blob:none", "--sparse", "--branch"]
+    assert clone[:10] == ["git", "clone", "-q", "--depth", "1", "--filter=blob:none", "--sparse",
+                          "-c", "core.symlinks=false", "--branch"]
     assert sparse[-2:] == ["/docs/exercises/*.md", "/checks/*"]
     smlm = next(s for s in discovery.chapter_sources() if s["id"] == "smlm-workshop")
     assert discovery.source_fetch_commands(smlm, tmp_path / "s")[1][-2:] == [
@@ -295,6 +320,49 @@ def test_workshops_list_fetched_sources_after_the_bundled_ones(markdown_source):
     assert virt["source"] == "https://github.com/avaleror/suse-virt-workshop/tree/main/docs/exercises"
     assert yaml.safe_load(virt["plan"])["name"] and virt["profile"] == "virt-workshop-aws"
     assert shops[0]["profile"] == "rancher" and yaml.safe_load(shops[0]["plan"])["type"] == "rancher"
+
+
+def _catalog(monkeypatch, **entries):
+    from rodeo import catalog
+
+    monkeypatch.setattr(catalog, "entries", lambda: entries)
+
+
+def test_catalog_rodeos_are_chapter_sources_after_the_file(monkeypatch, tmp_path):
+    _catalog(monkeypatch,
+             ride={"name": "ride", "title": "Ride", "repo": "https://github.com/rider/ride", "ref": "", "engine": "rancher"},
+             dup={"name": "dup", "repo": "https://github.com/avaleror/suse-virt-workshop.git", "ref": "main"})
+    sources = discovery.chapter_sources()
+    assert [s["id"] for s in sources] == ["smlm-workshop", "virt-workshop", "catalog-ride"]
+    ride = sources[-1]
+    assert (ride["format"], ride["path"], ride["profile"], ride["engine"], ride["title"]) == ("rmstory", "story", "", "rancher", "Ride")
+    clone, sparse = discovery.source_fetch_commands(ride, tmp_path / "r")
+    assert "--branch" not in clone and clone[-3:] == ["--", "https://github.com/rider/ride", str(tmp_path / "r")]
+    assert sparse[-3:] == ["/story/*.md", "/story/chapters.yaml", "/story/stories/*.yaml"]
+
+
+def test_rmstory_sources_read_a_story_directory(monkeypatch, tmp_path):
+    _catalog(monkeypatch, ride={"name": "ride", "title": "Ride", "repo": "https://github.com/rider/ride", "ref": "v1",
+                                "engine": "rancher"})
+    story = tmp_path / "story"
+    (story / "stories").mkdir(parents=True)
+    (story / "01-hello.md").write_text('# Hello\n<span lang="en" id="hello.1" hist="short">Hi</span>\n')
+    (story / "02-bye.md").write_text("# Bye\n")
+    (story / "chapters.yaml").write_text("chapters:\n  - file: 01-hello.md\n    mins: 7\n    needs: [rancher]\n")
+    (story / "stories" / "short.yaml").write_text("- hello.1\n")
+    shops = discovery.workshops({"catalog-ride": tmp_path})["workshops"]
+    ride = next(w for w in shops if w["id"] == "catalog-ride")
+    assert [(c["id"], c["mins"], c["needs"]) for c in ride["chapters"]] == [("hello", 7, ["rancher"]), ("bye", 10, [])]
+    assert ride["variants"] == {"short": ["hello.1"]} and ride["plan"] == "" and ride["profile"] == ""
+    assert ride["source"] == "https://github.com/rider/ride/tree/v1/story"
+
+
+def test_chapter_sources_accept_the_rmstory_format_in_the_file(monkeypatch, tmp_path):
+    _catalog(monkeypatch)
+    f = tmp_path / "sources.yaml"
+    f.write_text("sources:\n  - {id: s, title: S, engine: rancher, profile: rancher, format: rmstory, repo: https://h/a/b, ref: main, path: story}\n")
+    monkeypatch.setattr(discovery, "SOURCES_FILE", f)
+    assert [s["id"] for s in discovery.chapter_sources()] == ["s"]
 
 
 def test_static_build_with_local_sources(tmp_path, instruqt_source, markdown_source):

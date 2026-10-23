@@ -195,6 +195,9 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
 
     console.print("\n[bold]rodeo up[/bold] — let's get a lab running.\n")
 
+    if profile and profile_kind(profile) is None:
+        _install_from_catalog(profile)
+
     # AWS from a laptop = control plane: provision EC2, then remote-run up.
     # On the EC2 guest itself (IMDS), fall through to a normal local deploy
     # with baremetal phase behaviour.
@@ -433,6 +436,23 @@ def _aws_done_message(
         )
     lines.append(f"  Tear down host:  rodeo destroy --cloud --yes --config-dir {lab}\n")
     return "\n".join(lines)
+
+
+def _install_from_catalog(profile: str) -> None:
+    """Install the catalog rodeo *profile* as a custom profile; no-op when it is not listed."""
+    from .. import catalog
+
+    entry = catalog.find(profile)
+    if entry is None:
+        return
+    console.print(f"[bold]'{profile}'[/bold] is a published rodeo: fetching [cyan]{entry['repo']}[/cyan]"
+                  + (f" at {entry['ref']}" if entry["ref"] else "") + "...")
+    try:
+        dest = catalog.install(profile, entry["repo"], entry["ref"])
+    except (FileExistsError, FileNotFoundError, ValueError, RuntimeError) as exc:
+        console.print(f"[red]✗  {exc}[/red]")
+        raise SystemExit(1)
+    console.print(f"[dim]Installed as {dest}[/dim]\n")
 
 
 def _runs_on_this_machine(lab: Path | None, profile: str | None) -> bool:
@@ -765,4 +785,20 @@ def _deploy(lab: Path, assume_yes: bool, reconcile: bool = True) -> None:
             raise SystemExit(1)
 
     code = execute_deploy(cfg, root, reconcile=reconcile)
+    if code == 0:
+        _apply_content(cfg, lab)
     raise SystemExit(code)
+
+
+def _apply_content(cfg: dict, lab: Path) -> None:
+    """Fetch and render the plan's content: (instructions) on the deployed lab; only warns."""
+    from .. import content
+
+    try:
+        if content.content_spec(cfg) is None:
+            return
+        result = content.apply(cfg, lab)
+    except (ConfigError, RuntimeError, OSError) as exc:
+        console.print(f"[yellow]⚠  Instructions (content:) not applied: {exc}. Retry with: rodeo content apply[/yellow]")
+        return
+    console.print(f"[green]✓  Instructions rendered in {lab / content.GUIDE}[/green] ({len(result['files'])} files)")

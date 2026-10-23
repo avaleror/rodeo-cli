@@ -7,6 +7,7 @@ Playwright or its Chromium is not installed, unless RB_E2E_REQUIRED is set
 from __future__ import annotations
 
 import functools
+import json
 import io
 import os
 import re
@@ -61,6 +62,63 @@ def live(labinabox_checkout, markdown_source):
 
 
 @pytest.fixture()
+def live_local_lab_builder(labinabox_checkout, markdown_source):
+    """The live server linking to the lab-builder it started itself (``http://{host}:<port>/``)."""
+    from rodeo.builder.api import Api
+    from rodeo.builder.server import make_server
+
+    api = Api(labinabox_checkout, "http://{host}:9/lab-builder/", "1.0.0", {"virt-workshop": markdown_source}, can_save=True)
+    server = make_server(api, "127.0.0.1", 0, "0.0.0-test")
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield "http://127.0.0.1:{}/".format(server.server_address[1])
+    server.shutdown()
+    server.server_close()
+
+
+@pytest.fixture()
+def live_deploy(labinabox_checkout, markdown_source, tmp_path, monkeypatch):
+    """The live server allowed to deploy, with a fake rodeo that runs three phases."""
+    from rodeo.builder import deploywork
+    from rodeo.builder.api import Api
+    from rodeo.builder.server import make_server
+
+    fake = tmp_path / "fake-rodeo"
+    fake.write_text("#!{}\nimport sys, time\nprint('rodeo', *sys.argv[1:], flush=True)\n"
+                    "for i in range(3):\n    print('phase', i, flush=True)\n    time.sleep(0.3)\n".format(sys.executable))
+    fake.chmod(0o755)
+    monkeypatch.setattr(deploywork, "find_rodeo_bin", lambda: str(fake))
+    monkeypatch.setattr(deploywork, "capability", lambda run=None: {"available": True, "reason": "", "as": "root"})
+    api = Api(labinabox_checkout, "http://127.0.0.1:9/lab-builder/", "1.0.0", {"virt-workshop": markdown_source},
+              can_save=True, can_deploy=True)
+    server = make_server(api, "127.0.0.1", 0, "0.0.0-test")
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield "http://127.0.0.1:{}/".format(server.server_address[1])
+    server.shutdown()
+    server.server_close()
+
+
+@pytest.fixture()
+def live_github(labinabox_checkout, markdown_source):
+    """The live server listening on loopback only, so Publish uses the host's GitHub login."""
+    from rodeo.builder.api import Api
+    from rodeo.builder.server import make_server
+
+    api = Api(labinabox_checkout, "http://127.0.0.1:9/lab-builder/", "1.0.0",
+              {"virt-workshop": markdown_source}, can_save=True, can_publish=True)
+    server = make_server(api, "127.0.0.1", 0, "0.0.0-test")
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield "http://127.0.0.1:{}/".format(server.server_address[1])
+    server.shutdown()
+    server.server_close()
+
+
+@pytest.fixture()
+def live_rmstory(fake_rmstory, live):
+    """The live server with a fake rmstory on its PATH (engines deepl and ollama)."""
+    return live
+
+
+@pytest.fixture()
 def page(request, monkeypatch):
     # conftest points HOME at a temp dir; Playwright finds its browsers under the
     # real user's ~/.cache/ms-playwright unless PLAYWRIGHT_BROWSERS_PATH says otherwise.
@@ -81,9 +139,7 @@ def page(request, monkeypatch):
         pg = context.new_page()
         errors: list[str] = []
         pg.on("pageerror", lambda exc: errors.append(str(exc)))
-        pg.on("console", lambda msg: errors.append(msg.text)
-              if msg.type == "error" and "fonts.g" not in (msg.location or {}).get("url", "") else None)
-        pg.route("https://fonts.googleapis.com/**", lambda route: route.abort())
+        pg.on("console", lambda msg: errors.append(msg.text) if msg.type == "error" else None)
         pg.goto(url)
         pg.wait_for_selector(".engine")
         yield pg
@@ -465,6 +521,17 @@ def test_engine_cards_move_with_arrow_keys(page):
     assert page.locator("[data-tab=rodeo]").get_attribute("aria-selected") == "true"
 
 
+@pytest.mark.parametrize("page", ["site", "live"], indirect=True)
+def test_header_fits_a_phone(page):
+    page.set_viewport_size({"width": 390, "height": 844})
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+    brand = page.locator(".brand").bounding_box()
+    buttons = [b.bounding_box() for b in page.locator(".hdr-right .btn").all() if b.is_visible()]
+    assert buttons and all(brand["x"] + brand["width"] <= b["x"] for b in buttons)
+    assert all(b["x"] + b["width"] <= 390 for b in buttons)
+    sync_api.expect(page.locator("#stickyDownload")).to_be_visible()
+
+
 @pytest.mark.parametrize("width", [1000, 600])
 def test_narrow_layout_has_a_sticky_bar(page, width):
     page.set_viewport_size({"width": width, "height": 800})
@@ -474,3 +541,396 @@ def test_narrow_layout_has_a_sticky_bar(page, width):
     assert "1 chapters" in bar.inner_text()
     assert page.locator("#chapterList").bounding_box()["height"] > 40
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+
+
+def _open_translations(page):
+    page.click(".card >> text=Welcome to the rodeo")
+    page.click(".row-actions .btn >> text=spans")
+    page.click("[data-edtab=translations]")
+
+
+def test_static_translations_are_written_by_hand(page):
+    _open_translations(page)
+    view = page.locator("#translationsView")
+    assert page.locator("#trRun").count() == 0 and "rodeo builder" in view.inner_text()
+    assert view.locator("thead th").all_inner_texts() == ["id", "de", "es", "fr"]
+    page.locator("tr", has_text="welcome.login").locator(".tr-cell").first.click()
+    assert '<span id="welcome.rancher-url"/>' in page.locator(".tr-src").inner_text()
+    page.fill("#trText", "Öffne den Browser")
+    page.click(".tr-actions .btn >> text=Save")
+    sync_api.expect(page.locator("#toastText")).to_contain_text('Keep <span id="welcome.rancher-url"/>')
+    page.locator("tr", has_text="welcome.intro").locator(".tr-cell").first.click()
+    page.fill("#trText", "Aufsitzen.")
+    page.click(".tr-actions .btn >> text=Save")
+    sync_api.expect(page.locator("tr", has_text="welcome.intro").locator(".tr-cell.st-reviewed")).to_have_count(1)
+    page.click("#edDone")
+    with page.expect_download() as dl:
+        page.click("#downloadBtn")
+    with zipfile.ZipFile(dl.value.path()) as zf:
+        row = json.loads(zf.read("my-rodeo/story/strings/de/welcome.intro/@default/content.json"))
+        assert "Translations in `story/strings/`: `de`" in zf.read("my-rodeo/README.md").decode()
+    assert row["content"] == "Aufsitzen." and row["status"] == "reviewed" and row["source_checksum"] is None
+
+
+@pytest.mark.parametrize("page", ["live_rmstory"], indirect=True)
+def test_live_translate_fills_the_missing_rows(page):
+    _open_translations(page)
+    page.select_option("#translationsView select[aria-label='Language to fill']", "es")
+    page.click("#trRun")
+    sync_api.expect(page.locator("#toastText")).to_contain_text("es translations filled as draft with deepl")
+    drafts = page.locator("#translationsView .tr-cell.st-draft")
+    assert drafts.count() == 2
+    drafts.first.click()
+    assert page.locator("#trText").input_value().startswith("[es] ")
+
+
+@pytest.mark.parametrize("page", ["live_rmstory"], indirect=True)
+def test_live_review_checks_with_rmstory(page):
+    page.click(".card >> text=Welcome to the rodeo")
+    page.click("#rmCheckBtn")
+    sync_api.expect(page.locator(".rm-check")).to_contain_text("tagged span(s)")
+
+
+@pytest.mark.parametrize("page", ["live_rmstory"], indirect=True)
+def test_live_new_chapter_is_drafted_with_an_engine(page):
+    page.click("#newChapterBtn")
+    assert page.locator("#ncDraft").is_visible()
+    assert page.locator("#ncEngine option").all_inner_texts() == ["ollama"]
+    page.fill("#ncTitle", "Open the UI")
+    page.fill("#ncBrief", "Log in to Rancher")
+    page.click("#ncDraftBtn")
+    sync_api.expect(page.locator("#toastText")).to_have_text(re.compile("^Draft ready"))
+    body = page.locator("#ncBody").input_value()
+    assert body.startswith("# Open the UI") and '<span lang="en" id="new-chapter.1">Log in to Rancher</span>' in body
+    page.click("#newForm button[type=submit]")
+    sync_api.expect(page.locator("#chapterList")).to_contain_text("Open the UI")
+
+
+def test_static_new_chapter_has_no_draft(page):
+    page.click("#newChapterBtn")
+    assert page.locator("#ncDraft").is_hidden()
+
+
+def _route_github(page, calls):
+    files = {"labs/01-intro/assignment.md": "---\ntitle: Intro to the lab\n---\n\nRead this.\n",
+             "labs/01-intro/check-workstation": "#!/bin/sh\nexit 0\n",
+             "labs/02-deploy/assignment.md": "---\ntitle: Deploy\n---\n\nDeploy it.\n", "README.md": "# Acme\n"}
+
+    def handle(route):
+        url = route.request.url
+        calls.append(url)
+        if url == "https://api.github.com/repos/acme/labs":
+            return route.fulfill(json={"default_branch": "main"})
+        if url == "https://api.github.com/repos/acme/labs/git/trees/main?recursive=1":
+            return route.fulfill(json={"tree": [{"path": p, "type": "blob"} for p in files], "truncated": False})
+        prefix = "https://raw.githubusercontent.com/acme/labs/main/"
+        if url.startswith(prefix) and url[len(prefix):] in files:
+            return route.fulfill(body=files[url[len(prefix):]])
+        return route.fulfill(status=404, body="{}")
+
+    page.route(re.compile(r"^https://(api\.github\.com|raw\.githubusercontent\.com)/.*"), handle)
+
+
+def test_static_imports_a_github_workshop(page):
+    calls = []
+    _route_github(page, calls)
+    page.click("#importBtn")
+    assert "github.com" in page.locator("#imNote").inner_text()
+    page.fill("#imUrl", "https://github.com/acme/labs/tree/main/labs")
+    page.click("#imSubmit")
+    sync_api.expect(page.locator("#toastText")).to_have_text("Imported 2 chapters (instruqt) from labs")
+    assert page.locator("#importModal").is_hidden()
+    group = page.locator(".group", has_text="github.com/acme/labs/tree/main/labs")
+    assert group.locator(".card-title").all_inner_texts() == ["Intro to the lab", "Deploy"]
+    group.locator(".card", has_text="Intro to the lab").click()
+    sync_api.expect(page.locator("#chapterList")).to_contain_text("Intro to the lab")
+    assert not any("api.github.com/repos/acme/labs/contents" in c for c in calls)
+    group.locator(".group-actions .btn", has_text="×").click()
+    sync_api.expect(page.locator(".group", has_text="acme/labs")).to_have_count(0)
+    page.click("#toastUndo")
+    sync_api.expect(page.locator(".group", has_text="acme/labs")).to_have_count(1)
+
+
+def test_static_import_says_why_it_failed(page):
+    page.click("#importBtn")
+    page.fill("#imUrl", "https://gitlab.com/acme/labs")
+    page.click("#imSubmit")
+    sync_api.expect(page.locator("#toastText")).to_contain_text("imports from github.com only")
+    assert page.locator("#importModal").is_visible()
+
+
+@pytest.mark.parametrize("page", ["live"], indirect=True)
+def test_live_imports_through_the_server(page, monkeypatch, tmp_path):
+    from rodeo.builder import imports
+
+    (tmp_path / "ws" / "story").mkdir(parents=True)
+    (tmp_path / "ws" / "story" / "01-hello.md").write_text('# Hello there\n<span lang="en" id="hello.1">Hi</span>\n')
+    seen = []
+
+    def fake(url):
+        seen.append(url)
+        return imports.read_group({"repo": "https://git.example.com/team/ws", "ref": "", "path": "ws"}, tmp_path)
+
+    monkeypatch.setattr(imports, "import_source", fake)
+    page.click("#importBtn")
+    assert "any" in page.locator("#imNote").inner_text() or "public https" in page.locator("#imNote").inner_text()
+    page.fill("#imUrl", "https://git.example.com/team/ws")
+    page.click("#imSubmit")
+    sync_api.expect(page.locator("#toastText")).to_have_text("Imported 1 chapter (rmstory) from ws")
+    assert seen == ["https://git.example.com/team/ws"]
+    sync_api.expect(page.locator(".group", has_text="git.example.com/team/ws")).to_contain_text("Hello there")
+
+
+@pytest.mark.parametrize("page", ["live_rmstory"], indirect=True)
+def test_live_new_story_retells_the_chapters(page):
+    page.click(".card >> text=Welcome to the rodeo")
+    assert page.locator("#newStory").is_visible()
+    assert page.locator("#nsEngine option").all_inner_texts() == ["ollama"]
+    assert page.locator("#nsParts").inner_text() == "Retells 1 story span; keeps 2 exercise spans and 2 fixed spans word for word."
+    page.fill("#nsTheme", "A space heist")
+    page.click("#nsBtn")
+    sync_api.expect(page.locator("#toastText")).to_have_text(re.compile(r"^New story: 1 chapter retold"))
+    group = page.locator(".group", has_text="retold from")
+    sync_api.expect(group).to_contain_text("A space heist")
+    page.click("#t-story")
+    files = page.locator("#fileList").inner_text()
+    assert "a-space-heist" in files
+    page.locator("#fileList li", has_text="a-space-heist").first.click()
+    preview = page.locator("#filePreview").inner_text()
+    assert '<span lang="en" id="a-space-heist.welcome.first-task" hist="first-ride">A space heist</span>' in preview
+    assert "Saddle up." in preview and 'id="welcome.login"' in preview and "<!--rodeo-keep" not in preview
+    page.click("#toastUndo")
+    page.click("#t-story")
+    assert "a-space-heist" not in page.locator("#fileList").inner_text()
+
+
+@pytest.mark.parametrize("page", ["live_rmstory"], indirect=True)
+def test_live_new_story_needs_story_spans(page):
+    page.click("#newChapterBtn")
+    page.fill("#ncTitle", "Only steps")
+    page.fill("#ncBody", '# Only steps\n<span lang="en" id="only-steps.1">Run it</span>\n')
+    page.click("#newForm button[type=submit]")
+    assert page.locator("#nsBtn").is_disabled()
+    assert page.locator("#nsParts").inner_text().startswith("Nothing to retell yet")
+
+
+def test_static_has_no_new_story(page):
+    assert page.locator("#newStory").is_hidden()
+
+
+def test_static_publish_links_use_the_browsers_github_login(page):
+    page.click("#publishBtn")
+    assert page.locator("#pubStatic").is_visible() and page.locator("#pubSubmit").is_hidden()
+    assert "Type your GitHub account" in page.locator("#pubSteps").inner_text()
+    page.fill("#pubUser", "rider")
+    links = page.locator("#pubSteps a")
+    name = page.locator("#name").input_value()
+    assert links.nth(0).get_attribute("href").startswith("https://github.com/new?name=" + name + "&")
+    assert links.nth(1).get_attribute("href") == "https://github.com/rider/{}/upload/main".format(name)
+    assert links.nth(2).get_attribute("href").startswith("https://github.com/avaleror/rodeo-cli/new/main?filename=rodeo%2Fdata%2Fcatalog.d%2F")
+    page.keyboard.press("Escape")
+    assert page.locator("#publishModal").is_hidden()
+
+
+@pytest.mark.parametrize("page", ["live"], indirect=True)
+def test_exposed_live_server_publishes_through_github_pages(page):
+    page.click("#publishBtn")
+    sync_api.expect(page.locator("#pubStatic")).to_be_visible()
+
+
+@pytest.mark.parametrize("page", ["live_github"], indirect=True)
+def test_live_publish_with_the_hosts_github_login(page, monkeypatch):
+    from rodeo.builder import publish
+
+    sent = []
+    monkeypatch.setattr(publish, "status", lambda: {"logged_in": True, "login": "rider", "source": "gh", "gh": True,
+                                                   "error": "", "device": {}, "catalog": "avaleror/rodeo-cli"})
+
+    def fake(req):
+        sent.append(req)
+        return {"repo": "https://github.com/rider/" + req["name"], "login": "rider",
+                "pull_request": "https://github.com/avaleror/rodeo-cli/pull/7"}
+
+    monkeypatch.setattr(publish, "publish", fake)
+    page.click(".card >> text=Welcome to the rodeo")
+    page.click("#publishBtn")
+    sync_api.expect(page.locator("#pubAccount")).to_have_text("Publishing as rider (GitHub login from gh).")
+    page.fill("#pubName", "my-ride")
+    page.click("#pubSubmit")
+    sync_api.expect(page.locator("#pubResult")).to_contain_text("Published https://github.com/rider/my-ride")
+    assert page.locator("#pubResult a").nth(1).get_attribute("href") == "https://github.com/avaleror/rodeo-cli/pull/7"
+    req = sent[0]
+    assert req["name"] == "my-ride" and req["update"] is False and req["languages"][0] == "en"
+    assert {"rodeo-plan.yaml", "README.md"} <= {f["path"] for f in req["files"]}
+    assert page.locator("#name").input_value() == "my-ride"
+
+
+@pytest.mark.parametrize("page", ["live_github"], indirect=True)
+def test_live_publish_offers_the_catalog_link_when_the_pr_fails(page, monkeypatch):
+    from rodeo.builder import publish
+
+    monkeypatch.setattr(publish, "status", lambda: {"logged_in": True, "login": "rider", "source": "GH_TOKEN", "gh": False,
+                                                   "error": "", "device": {}, "catalog": "rider/rodeo-cli"})
+    monkeypatch.setattr(publish, "publish", lambda req: {"repo": "https://github.com/rider/" + req["name"], "login": "rider",
+                                                         "pull_request": "", "catalog_error": "GitHub 403"})
+    page.click("#publishBtn")
+    sync_api.expect(page.locator("#pubSubmit")).to_be_visible()
+    page.click("#pubSubmit")
+    sync_api.expect(page.locator("#pubResult")).to_contain_text("The catalog pull request failed (GitHub 403)")
+    href = page.locator("#pubResult a", has_text="add it to the catalog").get_attribute("href")
+    assert href.startswith("https://github.com/rider/rodeo-cli/new/main?filename=rodeo%2Fdata%2Fcatalog.d%2F")
+
+
+@pytest.mark.parametrize("page", ["live_github"], indirect=True)
+def test_live_publish_asks_for_a_github_login(page, monkeypatch):
+    from rodeo.builder import publish
+
+    logged = {"in": False, "started": False}
+    monkeypatch.setattr(publish, "status", lambda: {
+        "logged_in": logged["in"], "login": "rider" if logged["in"] else "", "source": "gh", "gh": True, "error": "",
+        "catalog": "avaleror/rodeo-cli", "device": {"pending": logged["started"] and not logged["in"], "code": "AB12-CD34",
+                                                    "url": publish.DEVICE_URL} if logged["started"] else {}})
+
+    def start():
+        logged["started"] = True
+        return {"pending": True, "code": "AB12-CD34", "url": publish.DEVICE_URL, "error": ""}
+
+    monkeypatch.setattr(publish, "start_login", start)
+    page.click("#publishBtn")
+    sync_api.expect(page.locator("#pubLogin")).to_be_visible()
+    assert page.locator("#pubSubmit").is_hidden()
+    page.context.route("https://github.com/**", lambda route: route.fulfill(body="device page"))
+    with page.context.expect_page() as popup:
+        page.click("#pubLoginBtn")
+    popup.value.wait_for_load_state()
+    assert popup.value.url == publish.DEVICE_URL
+    popup.value.close()
+    sync_api.expect(page.locator("#pubDevice")).to_contain_text("AB12-CD34")
+    logged["in"] = True
+    sync_api.expect(page.locator("#pubAccount")).to_have_text("Publishing as rider (GitHub login from gh).", timeout=10_000)
+    assert page.locator("#pubSubmit").is_visible()
+
+
+@pytest.mark.parametrize("page", ["live_github"], indirect=True)
+def test_live_publish_without_gh_says_how_to_log_in(page, monkeypatch):
+    from rodeo.builder import publish
+
+    monkeypatch.setattr(publish, "status", lambda: {"logged_in": False, "login": "", "source": "", "gh": False,
+                                                   "error": "", "device": {}, "catalog": "avaleror/rodeo-cli"})
+    page.click("#publishBtn")
+    sync_api.expect(page.locator("#pubDevice")).to_contain_text("Install the GitHub CLI (gh)")
+    assert page.locator("#pubLoginBtn").is_hidden()
+
+
+@pytest.mark.parametrize("page", ["live_local_lab_builder"], indirect=True)
+def test_live_links_and_embeds_its_own_lab_builder_on_the_pages_host(page):
+    page.click(".engine >> text=lab-in-a-box")
+    href = page.locator("#enginePanel a", has_text="Open lab-builder").get_attribute("href")
+    assert href == "http://127.0.0.1:9/lab-builder/"
+    page.click(".seg button >> text=Embed here")
+    page.click("#enginePanel button >> text=Open embedded lab-builder")
+    src = page.locator("#embedFrame").get_attribute("src")
+    assert src.startswith("http://127.0.0.1:9/lab-builder/?embed=1&origin=http%3A%2F%2F127.0.0.1%3A")
+
+
+@pytest.mark.parametrize("page", ["live_local_lab_builder"], indirect=True)
+def test_live_takes_the_lab_its_own_lab_builder_hands_back(page):
+    handback = ("<script>parent.postMessage({type: 'labinabox:lab', lab: {nodes: {n1: {addons: ['smlm']}}}}, '*')"
+                "</script>")
+    page.route("http://127.0.0.1:9/**", lambda route: route.fulfill(body=handback, content_type="text/html"))
+    page.click(".engine >> text=lab-in-a-box")
+    page.click(".seg button >> text=Embed here")
+    page.click("#enginePanel button >> text=Open embedded lab-builder")
+    sync_api.expect(page.locator("#toastText")).to_have_text("Lab from the lab-builder: smlm")
+    assert page.locator("#embedOverlay").is_hidden()
+def _zip_of(page, selector) -> tuple[str, dict[str, str]]:
+    with page.expect_download() as info:
+        page.click(selector)
+    with zipfile.ZipFile(io.BytesIO(Path(info.value.path()).read_bytes())) as zf:
+        return info.value.suggested_filename, {n: zf.read(n).decode() for n in zf.namelist()}
+
+
+def test_infrastructure_and_instructions_download_apart(page):
+    assert page.locator("#partInfra").is_visible() and page.locator("#partInstructions").is_visible()
+    page.click(".card >> text=Welcome to the rodeo")
+    name, infra = _zip_of(page, "#dlInfra")
+    assert name == "my-rodeo-infrastructure.zip"
+    assert "my-rodeo-infrastructure/rodeo-plan.yaml" in infra and not any("/story/" in n for n in infra)
+    assert "not part of this download" in infra["my-rodeo-infrastructure/README.md"]
+    name, instr = _zip_of(page, "#dlInstructions")
+    assert name == "my-rodeo-instructions.zip"
+    assert sorted(n.split("/", 1)[1] for n in instr) == ["README.md", "story/01-welcome.md", "story/chapters.yaml",
+                                                         "story/stories/first-ride.yaml"]
+    full = _zip(page)
+    assert "my-rodeo/story/01-welcome.md" in full and "my-rodeo/rodeo-plan.yaml" in full
+
+
+def test_instructions_repository_goes_into_the_plan(page):
+    page.fill("#contentUrl", "github.com/acme/labs")
+    page.locator("#contentUrl").dispatch_event("change")
+    sync_api.expect(page.locator("#contentNote")).to_contain_text("https://")
+    page.fill("#contentUrl", "https://github.com/acme/labs/tree/v2/story")
+    page.locator("#contentUrl").dispatch_event("change")
+    sync_api.expect(page.locator("#contentNote")).to_contain_text("The plan gets content: https://github.com/acme/labs @ v2 /story")
+    page.click(".card >> text=Welcome to the rodeo")
+    _, infra = _zip_of(page, "#dlInfra")
+    plan = yaml.safe_load(infra["my-rodeo-infrastructure/rodeo-plan.yaml"])
+    assert plan["content"] == {"repo": "https://github.com/acme/labs", "ref": "v2", "path": "story", "format": "rmstory"}
+    assert "rodeo content apply" in infra["my-rodeo-infrastructure/README.md"]
+
+
+@pytest.mark.parametrize("page", ["site", "live"], indirect=True)
+def test_page_loads_its_own_fonts_and_nothing_from_other_hosts(page):
+    origin = page.evaluate("location.origin")
+    seen = []
+    page.on("request", lambda req: seen.append(req.url))
+    page.reload()
+    page.wait_for_selector(".engine")
+    page.evaluate("document.fonts.ready.then(() => true)")
+    assert page.evaluate("document.fonts.check('700 16px Syne') && document.fonts.check('16px \"Space Mono\"')")
+    loaded = page.evaluate("[...document.fonts].filter((f) => f.status === 'loaded').map((f) => f.family)")
+    assert {"Syne", "Space Mono"} <= {f.strip('"') for f in loaded}
+    assert seen and all(u.startswith(origin) or u.startswith("data:") for u in seen), [u for u in seen if not u.startswith(origin)]
+
+
+def test_static_deploy_is_greyed_out_with_why(page):
+    assert page.locator("#deployBtn").get_attribute("aria-disabled") == "true"
+    assert "Only available in rodeo builder, the dynamic version" in page.locator("#deployWrap").get_attribute("title")
+    page.click("#deployBtn", force=True)
+    sync_api.expect(page.locator("#toastText")).to_contain_text("Only available in rodeo builder")
+    assert page.locator("#deployModal").is_hidden()
+
+
+@pytest.mark.parametrize("page", ["live"], indirect=True)
+def test_exposed_live_server_does_not_deploy(page):
+    sync_api.expect(page.locator("#deployWrap")).to_have_attribute("title", re.compile("listens on this machine only"))
+    assert page.locator("#deployBtn").get_attribute("aria-disabled") == "true"
+
+
+@pytest.mark.parametrize("page", ["live_deploy"], indirect=True)
+def test_live_deploys_without_saving_and_says_so(page, monkeypatch):
+    from rodeo.builder import deploywork
+
+    real = deploywork.ensure_plan_secrets
+    monkeypatch.setattr(deploywork, "ensure_plan_secrets", lambda plan, lab_path=None: (real(plan, lab_path=lab_path)[0], ["scc_regcode"]))
+    page.click(".card >> text=Welcome to the rodeo")
+    sync_api.expect(page.locator("#deployBtn")).to_have_attribute("aria-disabled", "false")
+    page.click("#deployBtn")
+    sync_api.expect(page.locator("#deployModal .unsaved")).to_contain_text("This rodeo is not saved.")
+    assert "my-rodeo-unsaved-" in page.locator("#dpWhere").inner_text()
+    page.click("#dpSubmit")
+    sync_api.expect(page.locator("#dpSecretFields input[name=scc_regcode]")).to_be_visible()
+    page.fill("#dpSecretFields input[name=scc_regcode]", "REG-123")
+    page.click("#dpSubmit")
+    sync_api.expect(page.locator("#deployModal")).to_be_hidden()
+    banner = page.locator("#deployText")
+    sync_api.expect(banner).to_contain_text("Deploying an unsaved rodeo")
+    sync_api.expect(banner).to_contain_text("This rodeo is not saved")
+    sync_api.expect(banner).to_contain_text("Deployed from an unsaved rodeo", timeout=15_000)
+    page.click("#deployLogBtn")
+    sync_api.expect(page.locator("#deployLog")).to_contain_text("phase 2")
+    assert "rodeo up --yes --no-tmux --dir" in page.locator("#deployLog").inner_text()
+    assert "REG-123" in deploywork.secrets_path().read_text()
+    page.click("#deploySave")
+    sync_api.expect(banner).to_contain_text("saved as the profile my-rodeo")
+    assert page.locator("#deploySave").is_hidden()

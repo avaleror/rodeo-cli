@@ -1195,34 +1195,50 @@ function updateCaret() {
   });
 }
 
-// The preview shows the source with tags hidden. Every text piece carries its
-// source offset (data-s) so a selection there maps back to the markdown.
+// The preview renders the chapter as Markdown or HTML (RB.previewTree) with its spans
+// highlighted. Every text piece carries its source offset (data-s, plus data-e when it shows
+// decoded text such as an entity) so a selection there maps back to the source.
 function renderPreview(body, spans) {
-  const root = el("div"), stack = [root];
-  const events = [];
-  for (const sp of spans) { events.push([sp.start, sp.openEnd, "open", sp]); events.push([sp.closeStart, sp.end, "close", sp]); }
-  events.sort((a, b) => a[0] - b[0]);
-  let pos = 0;
-  const text = (to) => { if (to > pos) stack.at(-1).append(el("span", { class: "seg", dataset: { s: String(pos) }, text: body.slice(pos, to) })); };
-  for (const [at, after, type, sp] of events) {
-    text(at);
-    if (type === "open") {
-      const k = RB.kind(sp.attrs);
-      const node = el("span", { class: "sp k-" + k + (sp.attrs.hist && !sp.attrs.no ? " hist" : ""), dataset: { i: String(sp.index) },
+  const node = (n) => {
+    if (n.span !== undefined) {
+      const sp = spans[n.span], k = RB.kind(sp.attrs);
+      return el("span", { class: "sp k-" + k + (sp.attrs.hist && !sp.attrs.no ? " hist" : ""), dataset: { i: String(sp.index) },
         title: (sp.attrs.id || "no id") + " · " + k + (sp.attrs.hist ? " · hist=" + sp.attrs.hist : "") },
-      sp.attrs.id ? el("span", { class: "badge", "aria-hidden": "true", text: sp.attrs.id }) : null);
-      stack.at(-1).append(node);
-      stack.push(node);
-    } else stack.pop();
-    pos = after;
-  }
-  text(body.length);
-  $("#edPreview").replaceChildren(...root.childNodes);
+      sp.attrs.id && !n.cont ? el("span", { class: "badge", "aria-hidden": "true", text: sp.attrs.id }) : null, n.children.map(node));
+    }
+    if (n.tag) return el(n.tag, n.attrs, n.children.map(node));
+    return n.text === undefined ? el("span", { class: "seg", dataset: { s: String(n.s) }, text: body.slice(n.s, n.e) })
+      : el("span", { class: "seg", dataset: { s: String(n.s), e: String(n.e) }, text: n.text });
+  };
+  const { format, nodes } = RB.previewTree(body, spans), pv = $("#edPreview");
+  pv.dataset.format = format;
+  pv.replaceChildren(...nodes.map(node));
 }
 
-function previewOffset(node, offset) {
-  const seg = (node.nodeType === 3 ? node.parentElement : node).closest(".seg");
-  return seg ? parseInt(seg.dataset.s, 10) + offset : -1;
+const segStart = (seg) => parseInt(seg.dataset.s, 10);
+const segEnd = (seg) => (seg.dataset.e ? parseInt(seg.dataset.e, 10) : segStart(seg) + seg.textContent.length);
+
+// The source offset of a selection boundary (side "start" or "end") in the preview, -1 outside it.
+// A boundary that is not inside a text piece (an element edge, a badge, a piece's far end) maps
+// to the start of the next piece for "start" and to the end of the previous one for "end", so
+// hidden markup between pieces stays out of the selection.
+function previewOffset(node, offset, side) {
+  const pv = $("#edPreview");
+  if (!pv.contains(node)) return -1;
+  const seg = node.nodeType === 3 ? node.parentElement.closest(".seg") : null;
+  if (seg && (side === "start" ? offset < node.length : offset > 0)) {
+    if (!seg.dataset.e) return segStart(seg) + offset;
+    return side === "start" ? segStart(seg) : segEnd(seg);
+  }
+  const at = document.createRange();
+  at.setStart(node, offset);
+  const segs = [...pv.querySelectorAll(".seg")];
+  if (side === "start") {
+    const next = segs.find((s) => at.comparePoint(s, 0) >= 0);
+    return next ? segStart(next) : -1;
+  }
+  const prev = segs.filter((s) => at.comparePoint(s, s.childNodes.length) <= 0).pop();
+  return prev ? segEnd(prev) : -1;
 }
 
 function renderSpanList(body, spans, warnings) {
@@ -1510,9 +1526,9 @@ function bindEditor() {
   pv.addEventListener("mouseup", (ev) => {
     const sel = getSelection();
     if (!sel || sel.isCollapsed) return;
-    const a = previewOffset(sel.anchorNode, sel.anchorOffset), b = previewOffset(sel.focusNode, sel.focusOffset);
-    if (a < 0 || b < 0) return;
-    tagChip(Math.min(a, b), Math.max(a, b), ev.clientX, ev.clientY);
+    const r = sel.getRangeAt(0), a = previewOffset(r.startContainer, r.startOffset, "start"), b = previewOffset(r.endContainer, r.endOffset, "end");
+    if (a < 0 || b <= a) return;
+    tagChip(a, b, ev.clientX, ev.clientY);
   });
   pv.addEventListener("dblclick", (ev) => {
     const node = ev.target.closest(".sp");

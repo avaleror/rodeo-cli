@@ -319,7 +319,25 @@ div.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 2p
 .toolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .toolbar .lbl { font: 400 12px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-right: 4px; }
 .source { background: var(--term); color: #e8e4d9; border-color: var(--line); min-height: 240px; }
-.preview { padding: 14px 16px; border-radius: 8px; background: var(--panel); box-shadow: 0 0 0 1px var(--line); font-size: 14px; line-height: 1.8; white-space: pre-wrap; word-break: break-word; }
+.preview { padding: 14px 16px; border-radius: 8px; background: var(--panel); box-shadow: 0 0 0 1px var(--line); font-size: 14px; line-height: 1.8; word-break: break-word; }
+.preview > :first-child { margin-top: 0; }
+.preview > :last-child { margin-bottom: 0; }
+.preview p { margin: 0 0 .8em; }
+.preview h1, .preview h2, .preview h3, .preview h4, .preview h5, .preview h6 { margin: 1.1em 0 .4em; line-height: 1.3; font-weight: 800; letter-spacing: -0.01em; }
+.preview h1 { font-size: 22px; } .preview h2 { font-size: 19px; } .preview h3 { font-size: 16px; }
+.preview h4, .preview h5, .preview h6 { font-size: 14px; }
+.preview ul, .preview ol { margin: 0 0 .8em; padding-left: 1.6em; }
+.preview li > p { margin: 0; }
+.preview li > ul, .preview li > ol { margin: 0; }
+.preview blockquote { margin: 0 0 .8em; padding: 2px 0 2px 12px; border-left: 3px solid var(--line); color: var(--muted); }
+.preview code { font: 400 13px var(--mono); background: var(--lab); border-radius: 2px; padding: 0 3px; box-shadow: 0 0 0 1px var(--line); }
+.preview pre { margin: 0 0 .8em; padding: 10px 12px; background: var(--lab); border-radius: 4px; box-shadow: 0 0 0 1px var(--line); white-space: pre-wrap; font: 400 13px/1.6 var(--mono); }
+.preview pre code { background: none; box-shadow: none; padding: 0; }
+.preview pre.fm { color: var(--muted); font-size: 12px; background: none; border: 1px dashed var(--line); box-shadow: none; }
+.preview hr { border: 0; border-top: 1px solid var(--line); margin: 1em 0; }
+.preview table { border-collapse: collapse; margin: 0 0 .8em; }
+.preview th, .preview td { border: 1px solid var(--line); padding: 2px 8px; text-align: left; vertical-align: top; }
+.preview a.md-img::before { content: "image: "; color: var(--muted); font: 400 12px var(--mono); }
 .sp { position: relative; border-radius: 2px; padding: 0 1px; }
 .sp.k-translatable { background: var(--tint); box-shadow: 0 0 0 1px var(--accent); }
 .sp.k-invariant { background: var(--amber-bg); color: var(--amber); font-family: var(--mono); }

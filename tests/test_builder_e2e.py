@@ -279,6 +279,96 @@ def test_story_editor_undo_and_cancel(page):
     assert source.input_value() == original
 
 
+def _edit_body(page, body: str):
+    page.click(".card")
+    page.locator(".row-actions .btn").first.click()
+    source = page.locator("#edSource")
+    source.fill(body)
+    return source
+
+
+_SELECT_IN_PREVIEW = """([sel, whole]) => {
+  const node = document.querySelector('#edPreview ' + sel), r = document.createRange();
+  if (whole) r.selectNodeContents(node);
+  else { const t = node.querySelector('.seg').firstChild; r.setStart(t, 0); r.setEnd(t, t.length); }
+  getSelection().removeAllRanges();
+  getSelection().addRange(r);
+  document.querySelector('#edPreview').dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: 200, clientY: 200 }));
+}"""
+
+
+def test_story_preview_renders_markdown(page):
+    _edit_body(page, "---\nslug: demo\n---\n# Big title\n\nSome *soft* and **strong** text with `kubectl get pods`, "
+                     '<span lang="en" id="demo.tagged">a tagged span</span>.\n\n- first item\n- second item\n\n'
+                     "1. one\n2. two\n\n> quoted\n\n```bash\necho hi\n```\n\n---\n\n"
+                     "[docs](https://example.com) ![logo](https://example.com/x.png) [bad](javascript:alert(1))\n")
+    pv = page.locator("#edPreview")
+    assert pv.get_attribute("data-format") == "markdown"
+    assert "slug: demo" in pv.locator("pre.fm").inner_text()
+    assert pv.locator("h1").inner_text() == "Big title"
+    assert pv.locator("p em").inner_text() == "soft"
+    assert pv.locator("p strong").inner_text() == "strong"
+    assert pv.locator("p > code").inner_text() == "kubectl get pods"
+    assert pv.locator("ul > li").all_inner_texts() == ["first item", "second item"]
+    assert pv.locator("ol > li").all_inner_texts() == ["one", "two"]
+    assert pv.locator("blockquote").inner_text() == "quoted"
+    assert pv.locator("pre code").inner_text() == "echo hi"
+    assert pv.locator("hr").count() == 1
+    span = pv.locator(".sp.k-translatable")
+    assert span.locator(".badge").inner_text() == "demo.tagged" and "a tagged span" in span.inner_text()
+    link = pv.locator("a", has_text="docs")
+    assert link.get_attribute("href") == "https://example.com"
+    assert link.get_attribute("target") == "_blank" and link.get_attribute("rel") == "noopener"
+    assert pv.locator("img").count() == 0
+    assert pv.locator("a.md-img").get_attribute("href") == "https://example.com/x.png"
+    assert pv.locator("a", has_text="bad").get_attribute("href") is None
+    text = pv.inner_text()
+    assert "**" not in text and "# Big" not in text and "`" not in text and "<span" not in text
+
+
+def test_story_preview_renders_only_safe_html(page):
+    _edit_body(page, '<h2>Hello</h2>\n<p onclick="window.pwned=1">Para <b>bold</b> <span no>inv</span> &amp; '
+                     '<a href="https://example.com" onclick="window.pwned=2">link</a> '
+                     '<a href="javascript:window.pwned=3">bad</a></p>\n<script>window.pwned=4</script>'
+                     '<iframe src="https://example.com"></iframe><style>body { display: none }</style>'
+                     '<img src="https://example.com/x.png" alt="pic" onerror="window.pwned=5">\n'
+                     "<ul><li>one<li>two</ul>")
+    pv = page.locator("#edPreview")
+    assert pv.get_attribute("data-format") == "html"
+    assert pv.locator("h2").inner_text() == "Hello"
+    assert pv.locator("p b").inner_text() == "bold"
+    assert pv.locator("p .sp.k-invariant").inner_text() == "inv"
+    assert "Para bold inv & link bad" in pv.locator("p").inner_text()
+    assert pv.locator("ul > li").all_inner_texts() == ["one", "two"]
+    assert pv.locator("script, style, iframe, img, [onclick], [onerror]").count() == 0
+    assert "pwned" not in pv.inner_text()
+    link = pv.locator("a", has_text="link")
+    assert link.get_attribute("href") == "https://example.com" and link.get_attribute("target") == "_blank"
+    assert link.get_attribute("rel") == "noopener"
+    assert pv.locator("a", has_text="bad").get_attribute("href") is None
+    assert pv.locator("a.md-img").inner_text() == "pic"
+    pv.locator("p b").click()
+    assert page.evaluate("window.pwned") is None
+
+
+def test_story_preview_selection_tags_the_source(page):
+    source = _edit_body(page, "## Heading here\n\nSome **bold words** and `code`.\n")
+    page.evaluate(_SELECT_IN_PREVIEW, ["strong", False])
+    page.click("#popover >> text=Tag selection")
+    page.click("#popover >> text=Invariant")
+    assert source.input_value() == "## Heading here\n\nSome **<span no>bold words</span>** and `code`.\n"
+    assert page.locator("#edPreview strong .sp.k-invariant").inner_text() == "bold words"
+    page.evaluate(_SELECT_IN_PREVIEW, ["h2", True])
+    page.click("#popover >> text=Tag selection")
+    page.click("#popover >> text=Translatable")
+    assert re.match(r'## <span lang="en" id="[^"]+">Heading here</span>\n', source.input_value())
+    page.evaluate(_SELECT_IN_PREVIEW, ["p", True])
+    page.click("#popover >> text=Tag selection")
+    page.click("#popover >> text=No-lang")
+    assert re.search(r'\n\n<span lang="nolang"[^>]*>Some \*\*<span no>bold words</span>\*\* and `code`\.</span>\n$',
+                     source.input_value())
+
+
 def test_theme_toggle(page):
     assert page.evaluate("document.documentElement.dataset.theme") == "dark"
     page.click("#themeBtn")

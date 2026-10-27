@@ -295,6 +295,21 @@ echo "==> Linking rodeo to $RODEO_BIN"
 mkdir -p "$(dirname "$RODEO_BIN")"
 ln -sf "$VENV/bin/rodeo" "$RODEO_BIN"
 
+# ── 5b. builder login, shared with lab-builder ────────────────────────────────
+# /etc/rodeo-builder/htpasswd is a link to lab-builder's Apache login file; an
+# existing one is kept as is, a missing one is created empty (no users yet).
+if [[ "$RODEO_MODE" == "kvm-host" ]] && [[ $IS_ROOT -eq 1 ]]; then
+  LB_LOGIN=/etc/lab-builder/htpasswd
+  if [[ ! -e "$LB_LOGIN" ]]; then
+    LB_GROUP=root
+    getent group www >/dev/null && LB_GROUP=www
+    install -d -m 750 -o root -g "$LB_GROUP" "$(dirname "$LB_LOGIN")"
+    install -m 640 -o root -g "$LB_GROUP" /dev/null "$LB_LOGIN"
+  fi
+  install -d -m 755 /etc/rodeo-builder
+  ln -sfn "$LB_LOGIN" /etc/rodeo-builder/htpasswd
+fi
+
 # ── 6. done ───────────────────────────────────────────────────────────────────
 VERSION=$("$RODEO_BIN" --version 2>/dev/null | awk '{print $NF}' || echo "installed")
 echo ""

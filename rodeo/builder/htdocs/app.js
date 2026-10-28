@@ -132,10 +132,14 @@ function draftDecided() {
 function engine() { return state.engines.find((e) => e.name === state.engine); }
 function importBase() { return state.liab.imports.find((i) => i.profile === state.importProfile); }
 function isLiab() { return state.engine === "lab-in-a-box"; }
-function liabImported() { return isLiab() && state.mode === "import" && !!importBase(); }
+function liabImported() { return isLiab() && !!importBase(); }
+
+// The lab-in-a-box lab of this rodeo: the one from the lab-builder or a lab.json, else the imported rodeo's.
+function currentLab() { return state.labJson || (liabImported() ? importBase().lab : null); }
 
 function provided() {
   if (!isLiab()) return new Set(engine() ? engine().provides : []);
+  if (state.labJson) return new Set(RB.labJsonAddons(state.labJson));
   return new Set(liabImported() ? importBase().addons : state.labAddons);
 }
 
@@ -263,9 +267,12 @@ function fillChoices() {
 
 function planOptions() { return { name: state.name, target: state.target, story: story(), content: contentSource() }; }
 
+// Plan text `text` with the lab from the lab-builder (or a lab.json) as its lab_in_a_box.lab.
+function withLab(text) { return state.labJson ? RB.setStoredLab(text, state.labJson) : text; }
+
 function generatedPlan() {
-  if (liabImported()) return RB.planFromBase(importBase().plan, planOptions());
-  if (isLiab()) return RB.planLabinabox({ ...planOptions(), addons: state.labAddons });
+  if (liabImported()) return RB.planFromBase(withLab(importBase().plan), planOptions());
+  if (isLiab()) return withLab(RB.planLabinabox({ ...planOptions(), addons: state.labAddons }));
   return RB.planFromBase(state.base ? state.base.plan : engine().plan, planOptions());
 }
 
@@ -520,11 +527,32 @@ function addAddon(name) {
   render();
 }
 
+// Longest lab-builder link that carries this rodeo's lab (GitHub Pages answers 414 above ~8 KB).
+const LAB_URL_MAX = 8000;
+
 // A "{host}" in the lab-builder URL (rodeo builder's own lab-builder) is the host this page came from.
-function labBuilderUrl(extra) {
-  const url = new URL(String(state.liab.builder_url).replace("{host}", location.hostname), location.href);
-  if (state.labAddons.length) url.searchParams.set("addons", state.labAddons.join(","));
+function labBuilderBase() { return new URL(String(state.liab.builder_url).replace("{host}", location.hostname), location.href); }
+
+function base64url(text) {
+  const bytes = new TextEncoder().encode(text);
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+// The lab-builder link: with this rodeo's lab (?lab=) when it fits in the link, else its add-ons
+// (?addons=); `extra` adds query parameters. The embedded lab-builder gets the lab by postMessage.
+function labBuilderUrl(extra, withLabParam = true) {
+  const url = labBuilderBase(), lab = currentLab();
   for (const [k, v] of Object.entries(extra || {})) url.searchParams.set(k, v);
+  if (lab && withLabParam) {
+    const linked = new URL(url);
+    linked.searchParams.set("lab", base64url(JSON.stringify(lab)));
+    if (linked.toString().length <= LAB_URL_MAX) return linked.toString();
+  }
+  if (lab && !withLabParam) return url.toString();
+  const addons = lab ? RB.labJsonAddons(lab) : state.labAddons;
+  if (addons.length) url.searchParams.set("addons", addons.join(","));
   return url.toString();
 }
 
@@ -540,10 +568,11 @@ function readLabJson(file) {
   reader.readAsText(file);
 }
 
+// A lab from the lab-builder or a lab.json becomes the plan's lab_in_a_box.lab; an imported rodeo stays.
 function useLab(lab, source) {
   state.labJson = lab;
   state.labAddons = RB.labJsonAddons(lab);
-  state.importProfile = "";
+  if (state.planEdited !== null) state.planEdited = RB.setStoredLab(state.planEdited, lab);
   toast("Lab from " + source + ": " + (state.labAddons.join(", ") || "no add-ons"));
   render();
 }
@@ -577,7 +606,7 @@ function renderEnginePanel() {
     el("input", { type: "file", accept: ".json,application/json", class: "sr-only",
       onchange: (ev) => ev.target.files[0] && readLabJson(ev.target.files[0]) }));
   if (state.mode === "link") {
-    box.append(el("p", { text: "Design the lab in lab-in-a-box's lab-builder (this rodeo's add-ons are prefilled), download its lab.json, then upload it here to bring the add-ons back." }),
+    box.append(el("p", { text: "Design the lab in lab-in-a-box's lab-builder (this rodeo's lab, or its add-ons when the lab is too large for a link, are prefilled), download its lab.json, then upload it here to bring the lab back." }),
       el("div", { class: "row2 chips" }, el("a", { class: "btn outline sm", href: labBuilderUrl(), target: "_blank", rel: "noopener", text: "Open lab-builder ↗" }), upload));
   } else if (state.mode === "embed") {
     box.append(el("p", { text: "Opens the lab-builder inside this page; \"Use this lab\" there hands the lab back. Needs a lab-in-a-box release with the embed hand-off; until then, use Download in the lab-builder and Upload here." }),
@@ -589,15 +618,15 @@ function renderEnginePanel() {
         onclick: () => { state.importProfile = state.importProfile === i.profile ? "" : i.profile; state.labJson = null; render(); },
       }, el("span", { class: "engine-name", text: i.profile }), el("span", { class: "engine-sub", text: i.addons.join(", ") })))), upload);
   }
-  if (state.labJson) box.append(el("p", { class: "mono muted", text: "lab.json loaded: kept in the download for reference." }));
+  if (state.labJson) box.append(el("p", { class: "mono muted", text: "Lab from the lab-builder: saved in rodeo-plan.yaml as lab_in_a_box.lab." }));
   if (state.liab.error) {
     box.append(el("div", { class: "alert", role: "alert" }, el("strong", { text: "lab-in-a-box catalogue unavailable. " }),
       state.liab.error + ". " + catalogueHint()));
   }
   box.append(el("span", { class: "label", text: "Lab add-ons" }));
-  if (liabImported()) {
-    box.append(chipList(importBase().addons, "ok"),
-      el("p", { class: "muted", text: "Add-ons of an imported rodeo are edited in its rodeo-plan.yaml after install." }));
+  if (liabImported() || state.labJson) {
+    box.append(chipList([...provided()], "ok"),
+      el("p", { class: "muted", text: "Add-ons of this lab are edited in the lab-builder (Embed here or Open in Lab Builder)." }));
   } else {
     box.append(el("div", { class: "chips" }, state.labAddons.length ? state.labAddons.map((a) => el("span", { class: "chip ok" },
       a, addonTargets(a).length && !addonTargets(a).some((t) => t === "vm" || t === "baremetal")
@@ -611,7 +640,7 @@ function renderEnginePanel() {
       el("div", { class: "addon-add" }, input, el("button", { class: "btn sm", type: "button", text: "Add", onclick: () => addAddon(input.value) })));
   }
   const need = neededAddons();
-  if (need.length && !liabImported()) {
+  if (need.length && !liabImported() && !state.labJson) {
     const addons = liabNames(["addons"]), inBuilder = liabNames(["infrastructure", "kclusters"]);
     box.append(el("span", { class: "label", text: "Needed by chapters" }),
       el("div", { class: "chips" }, need.map((n) => addons.includes(n)
@@ -627,19 +656,22 @@ function renderEnginePanel() {
 
 function closeEmbed() {
   $("#embedOverlay").hidden = true;
+  $("#embedFrame").onload = null;
   $("#embedFrame").src = "about:blank";
 }
 
+// Opens the lab-builder in the overlay and, once it has loaded, hands it this rodeo's lab.
 function openEmbed() {
-  const frame = $("#embedFrame");
-  frame.src = labBuilderUrl({ embed: "1", origin: location.origin });
+  const frame = $("#embedFrame"), lab = currentLab();
+  frame.onload = lab ? () => frame.contentWindow.postMessage({ type: "labinabox:load", lab }, labBuilderBase().origin) : null;
+  frame.src = labBuilderUrl({ embed: "1", origin: location.origin }, false);
   $("#embedNote").textContent = "Use this lab in the lab-builder hands the lab back here.";
   $("#embedOverlay").hidden = false;
 }
 
 window.addEventListener("message", (ev) => {
   if (!state.liab.builder_url) return;
-  const origin = new URL(String(state.liab.builder_url).replace("{host}", location.hostname), location.href).origin;
+  const origin = labBuilderBase().origin;
   if (ev.origin !== origin || !ev.data || ev.data.type !== "labinabox:lab") return;
   useLab(ev.data.lab, "the lab-builder");
   closeEmbed();

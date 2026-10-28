@@ -441,9 +441,8 @@ def test_upload_lab_json_brings_its_addons(page, tmp_path):
     page.set_input_files("#enginePanel input[type=file]", str(lab))
     sync_api.expect(page.locator("#enginePanel")).to_contain_text("client_registration")
     files = _zip(page)
-    assert yaml.safe_load(files["my-rodeo/rodeo-plan.yaml"])["lab_in_a_box"]["nodes"]["vm1"]["addons"] == \
-        ["client_registration", "smlm"]
-    assert "client_registration" in files["my-rodeo/lab.json"]
+    assert yaml.safe_load(files["my-rodeo/rodeo-plan.yaml"])["lab_in_a_box"]["lab"] == json.loads(lab.read_text())
+    assert "my-rodeo/lab.json" not in files
     page.set_input_files("#enginePanel input[type=file]", files=[{"name": "bad.json", "mimeType": "application/json",
                                                                   "buffer": b"{}"}])
     sync_api.expect(page.locator("#toast")).to_contain_text("Not a lab-in-a-box lab.json")
@@ -1469,3 +1468,25 @@ def test_deploy_dialog_uses_secrets_yaml_keys_by_reference(page):
     body = req.value.post_data_json
     assert body["secret_refs"] == {"scc_regcode": "my_regcode"}
     assert body["secrets"] == {"admin_token": "ADMIN-TYPED"}
+
+
+@pytest.mark.parametrize("page", ["live_local_lab_builder"], indirect=True)
+def test_live_embedded_lab_builder_edits_the_workshops_lab(page):
+    """The embedded lab-builder gets the imported workshop's lab; the lab it sends back
+    becomes that workshop's lab_in_a_box.lab, and the workshop stays."""
+    echo = ("<script>addEventListener('message', (ev) => { if (ev.data.type !== 'labinabox:load') return;"
+            " const lab = ev.data.lab; lab.nodes['smlm.rodeo.lab'].VM_MEM = '24576';"
+            " parent.postMessage({type: 'labinabox:lab', lab}, '*'); });</script>")
+    page.route("http://127.0.0.1:9/**", lambda route: route.fulfill(body=echo, content_type="text/html"))
+    page.click(".card")
+    page.click(".engine >> text=lab-in-a-box")
+    page.click(".seg button >> text=Import existing lab")
+    page.click(".imports .engine >> text=smlm-workshop")
+    page.click(".seg button >> text=Embed here")
+    page.click("#enginePanel button >> text=Open embedded lab-builder")
+    sync_api.expect(page.locator("#toastText")).to_contain_text("Lab from the lab-builder: client_registration, smlm")
+    plan = yaml.safe_load(_zip(page)["my-rodeo/rodeo-plan.yaml"])
+    lab = plan["lab_in_a_box"]["lab"]
+    assert len(lab["nodes"]) == 8 and lab["nodes"]["smlm.rodeo.lab"]["VM_MEM"] == "24576"
+    assert lab["smlm"]["smlm_admin_pass"] == "??smlm_admin_password"
+    assert plan["workshop"]["repo"].endswith("instruqt-SMLM") and "scratch" in plan["lab_in_a_box"]["variants"]

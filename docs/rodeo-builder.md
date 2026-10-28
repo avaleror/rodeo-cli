@@ -27,13 +27,19 @@ rodeo up --profile <name>     # after Save to profiles
   are rodeo's own engines; the **(i)** on each shows its size and what it provides (for example
   Harvester, KubeVirt, Longhorn, Rancher, Fleet). `lab-in-a-box` builds any lab lab-in-a-box can:
     - **Open in Lab Builder** opens lab-in-a-box's lab-builder with this rodeo's
-      add-ons filled in. Download the lab.json there and upload it here to bring
-      its add-ons back.
-    - **Embed here** opens the lab-builder inside the page. Handing the lab back
-      directly needs a lab-in-a-box release with the embed hand-off; until then,
-      use Download there and Upload here.
+      lab filled in (only its add-ons when the lab is too large for a link).
+      Download the lab.json there and upload it here to bring the lab back.
+    - **Embed here** opens the lab-builder inside the page with this rodeo's lab
+      loaded; "Send this lab" there hands it back. Needs a lab-in-a-box release
+      with the embed hand-off; until then, use Download there and Upload here.
     - **Import existing lab** starts from a bundled lab-in-a-box rodeo
-      (`smlm-workshop`) or from a lab.json.
+      (`smlm-workshop`) or from a lab.json. An imported rodeo stays selected on
+      every tab, so its lab is the one the lab-builder opens.
+
+  A lab brought back (sent, or uploaded as lab.json) becomes the plan's
+  `lab_in_a_box.lab` (see the plan reference); the rest of the plan, such as an
+  imported workshop's variants and `workshop:` block, is kept. Its add-ons are
+  then edited in the lab-builder.
 - **Chapters.** The library lists every workshop's chapters: the bundled
   examples' `story/` directories, the workshops whose chapters live in their own
   repository (listed in `rodeo/builder/chapter_sources.yaml`: the SMLM workshop's

@@ -306,7 +306,8 @@ def source_chapters(src: dict[str, Any], checkout: Path) -> list[dict[str, Any]]
 
 
 def labinabox_imports() -> list[dict[str, Any]]:
-    """Bundled lab-in-a-box rodeos a new rodeo can start from."""
+    """Bundled lab-in-a-box rodeos a new rodeo can start from: profile, title, add-ons,
+    plan text and the plan's lab_in_a_box.lab (None when it has none), ??placeholders kept."""
     from ..labseed import PROFILE_EXAMPLE
 
     out = []
@@ -314,12 +315,15 @@ def labinabox_imports() -> list[dict[str, Any]]:
         plan = _read_yaml(EXAMPLES / example_name / "rodeo-plan.yaml")
         if plan.get("type") != "lab-in-a-box":
             continue
+        overlay = plan.get("lab_in_a_box") or {}
+        lab = overlay.get("lab") if isinstance(overlay.get("lab"), dict) else None
         addons: set[str] = set()
-        for node in ((plan.get("lab_in_a_box") or {}).get("nodes") or {}).values():
+        nodes = [*(overlay.get("nodes") or {}).values(), *((lab or {}).get("nodes") or {}).values()]
+        for node in nodes:
             for addon in (node or {}).get("addons") or []:
                 addons.add(addon if isinstance(addon, str) else next(iter(addon)))
         out.append({"profile": profile, "title": plan.get("name") or profile,
-                    "addons": sorted(addons),
+                    "addons": sorted(addons), "lab": lab,
                     "plan": (EXAMPLES / example_name / "rodeo-plan.yaml").read_text()})
     return out
 

@@ -516,6 +516,28 @@ lab_in_a_box:
     smlm: {smlm_deployment: podman, smlm_admin_pass: "??smlm_admin_password"}
 ```
 
+**The lab itself:** `lab_in_a_box.lab` can instead hold a whole lab-in-a-box lab
+(`common`, `nodes` keyed by FQDN, `kclusters`, one section per add-on), as the
+lab-in-a-box lab-builder edits it. rodeo deploys it as written and sets only what
+belongs to the host: the common network keys and `lab_name`, each node's
+`BRIDGE`, `myip`, `mymac` and FQDN domain, the kclusters' `mydomain`, images
+(`ISO_URL`) and secrets. The lab's nodes are the lab's VMs: one that
+`definition.yaml` lists keeps that address, any other gets its `myip` host part
+in the lab's network when free (else the next free address); definition nodes the
+lab leaves out are not deployed. `nodes` and `sections` above, and a variant's,
+are merged into it. Reference VMs from add-on sections as `${node_fqdn:<vm>}` /
+`${node_ip:<vm>}`. `smlm-workshop` carries its lab this way.
+
+```yaml
+lab_in_a_box:
+  lab:
+    common: {config_method: cloud-init}
+    nodes:
+      smlm.rodeo.lab: {myip: "192.168.122.20", VM_MEM: "16384", VM_CPU: "8", VM_DSK: "300",
+                       ISO_IMAGE: smlm.qcow2, addons: [smlm]}
+    smlm: {smlm_deployment: podman, smlm_admin_pass: "??smlm_admin_password"}
+```
+
 **Variants:** `lab_in_a_box.variants.<name>` overlays the block, and
 `lab_in_a_box.variant` picks one (`-P lab_in_a_box.variant=<name>`). In an
 overlay, dicts merge, `null` deletes a key, and `images` merge by name

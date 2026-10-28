@@ -32,6 +32,24 @@ def test_engines_have_bases_resources_and_capabilities():
     assert yaml.safe_load(liab["definition"])["definition"]["nodes"][0]["name"] == "vm1"
     provides = {c for e in engines.values() for c in e["provides"]}
     assert data["capabilities"] == sorted(provides) and "rancher" in data["capabilities"]
+    assert data["targets"] == ["aws", "baremetal", "instruqt"]
+    assert data["content_formats"] == ["rmstory", "instruqt", "markdown"]
+
+
+def test_engines_and_targets_come_from_the_registries(monkeypatch):
+    from rodeo import host_context, profiles
+    from rodeo.profiles.rancher import RancherProfile
+
+    class Plugin(RancherProfile):
+        name = "plugin-type"
+        builder = {"title": "Plugin", "base": "rancher", "provides": ["plugin-cap"], "note": "From a plugin."}
+
+    monkeypatch.setitem(profiles._REGISTRY, "plugin-type", Plugin())
+    monkeypatch.setitem(host_context._TARGETS, "plugin-target", lambda cfg, facts: None)
+    data = discovery.engines()
+    assert [e["name"] for e in data["engines"]][-1] == "plugin-type"
+    assert "rancher-test" not in [e["name"] for e in data["engines"]]
+    assert "plugin-cap" in data["capabilities"] and "plugin-target" in data["targets"]
 
 
 def test_workshops_read_chapters_and_their_metadata():

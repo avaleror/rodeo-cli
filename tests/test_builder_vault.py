@@ -156,7 +156,7 @@ def test_delete_needs_the_password():
 def test_api_add_open_delete_with_a_login(logins):
     api = _api()
     add = {"name": "m", "type": "scc-mirror", "fields": {"username": "u", "password": "p"}, "password": PW}
-    assert _post(api, "vault-add", add) == (401, {"error": "log in to manage credentials (Authorization: Basic)"})
+    assert _post(api, "vault-add", add) == (401, {"error": "log in first (Authorization: Basic)"})
     bad = "Basic " + base64.b64encode(b"alice:nope").decode()
     assert _post(api, "vault-add", add, bad) == (401, {"error": "wrong user or password"})
     assert vault.list_items() == []
@@ -177,7 +177,7 @@ def test_api_add_open_delete_with_a_login(logins):
     assert _post(api, "vault-open", {"id": item_id, "password": PW})[0] == 404
     assert _post(api, "vault-delete", {"id": "liab-aws-x", "password": PW}, AUTH) == (
         403, {"error": "credentials of another engine are read-only in rodeo"})
-    assert logins.count("alice") == 7
+    assert logins.count("alice") == 2
 
 
 def test_api_add_and_delete_work_on_an_exposed_builder(logins):
@@ -186,6 +186,32 @@ def test_api_add_and_delete_work_on_an_exposed_builder(logins):
     item_id = _post(api, "vault-add", add, AUTH)[1]["item"]["id"]
     assert _post(api, "vault-open", {"id": item_id, "password": PW})[0] == 403
     assert _post(api, "vault-delete", {"id": item_id, "password": PW}, AUTH) == (200, {"ok": True})
+
+
+def test_exposed_builder_lists_and_opens_after_a_login(logins):
+    api = Api(can_save=True, can_deploy=True, need_login=True)
+    item_id = _post(api, "vault-add", {"name": "m", "type": "github", "fields": {"token": "t"}, "password": PW},
+                    AUTH)[1]["item"]["id"]
+    status, listed = api.dispatch("vault")
+    assert status == 200 and listed["login"] and listed["items"] == [] and listed["file_secrets"] == []
+    assert api.dispatch("login") == (401, {"error": "log in first (Authorization: Basic)"})
+    assert _post(api, "vault-open", {"id": item_id, "password": PW})[0] == 401
+    assert api.dispatch("login", auth=AUTH) == (200, {"user": "alice"})
+    assert [i["id"] for i in api.dispatch("vault", auth=AUTH)[1]["items"]] == [item_id]
+    assert _post(api, "vault-open", {"id": item_id, "password": PW}, AUTH) == (200, {"fields": {"token": "t"}})
+    assert logins.count("alice") == 1
+
+
+def test_a_login_is_checked_again_after_its_ttl(logins, monkeypatch):
+    now = [1000.0]
+    monkeypatch.setattr(api_mod.time, "monotonic", lambda: now[0])
+    api = _api()
+    assert api.dispatch("login", auth=AUTH)[0] == 200
+    now[0] += api_mod.LOGIN_TTL - 1
+    assert api.dispatch("login", auth=AUTH)[0] == 200
+    now[0] += 2
+    assert api.dispatch("login", auth=AUTH)[0] == 200
+    assert logins.count("alice") == 2
 
 
 def test_login_unavailable(monkeypatch, tmp_path):

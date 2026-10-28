@@ -21,8 +21,10 @@ rodeo up --profile <name>     # after Save to profiles
 
 ## What you compose
 
-- **Lab engine.** `suse-virt`, `rancher` and `suse-edge` are rodeo's own
-  engines; the **(i)** on each shows its size and what it provides (for example
+- **Lab engine.** The engines are the rodeo types installed (a plugin's
+  included); the deployment targets and instructions formats offered are the
+  ones rodeo knows, never a fixed list. `suse-virt`, `rancher` and `suse-edge`
+  are rodeo's own engines; the **(i)** on each shows its size and what it provides (for example
   Harvester, KubeVirt, Longhorn, Rancher, Fleet). `lab-in-a-box` builds any lab lab-in-a-box can:
     - **Open in Lab Builder** opens lab-in-a-box's lab-builder with this rodeo's
       add-ons filled in. Download the lab.json there and upload it here to bring
@@ -207,7 +209,7 @@ else `RODEO_LABINABOX_PATH`, else lab-in-a-box's latest release, fetched into
 | Option | Default | |
 |---|---|---|
 | `--host`, `--port` | `127.0.0.1`, `8678` | Where to listen (`--port 0` picks a free port). |
-| `--expose` | off | Required for a non-loopback `--host`: anyone who reaches it can save profiles as you. **Publish** then uses the github.com pages, never this host's GitHub login. |
+| `--expose` | off | Required for a non-loopback `--host`: anyone who reaches it can save profiles as you. **Publish** then uses the github.com pages, never this host's GitHub login; **Deploy** and stored credentials need a login. |
 | `--allow-host NAME` | | Extra `Host` name to accept (the name or IP clients use with `--expose`). |
 | `--labinabox` | latest release | lab-in-a-box checkout for the catalogue and the lab-builder. |
 | `--lab-builder-url URL` (`RODEO_LAB_BUILDER_URL`) | the published lab-builder | A lab-builder you already run (for example on an automation node) for the page to link to and embed; nothing is started. |
@@ -225,10 +227,17 @@ ship in `htdocs/fonts/`) and the lab-builder frame.
 ## Deploy without saving
 
 **Deploy** (header) runs the rodeo on the builder's host exactly as it is on the
-page, without saving it to your profiles first. It needs `rodeo builder` on
-loopback (not `--expose`) and root for `rodeo up`: the builder runs as root or
-the user has passwordless sudo (`sudo -n true`). Otherwise, and on the
-published page, the button is greyed out and says why on hover.
+page, without saving it to your profiles first. It needs root for `rodeo up`:
+the builder runs as root or the user has passwordless sudo (`sudo -n true`).
+Otherwise, and on the published page, the button is greyed out and says why on
+hover.
+
+- On an `--expose` builder, deploying and using stored credentials need a
+  login from `/etc/rodeo-builder/htpasswd`: the first **Deploy** makes the
+  browser ask for it (Cancel leaves the page as it was), and the browser sends
+  it with every request after. The builder checks a login again after 5
+  minutes. The builder serves plain HTTP, so the login crosses the network
+  unencrypted. On loopback no login is asked.
 
 - The dialog says plainly that the rodeo is not saved, and offers **Save to
   profiles and deploy** next to **Deploy without saving**.

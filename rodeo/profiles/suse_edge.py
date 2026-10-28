@@ -6,6 +6,8 @@ from .base import BASE_VERSIONS, RodeoProfile
 
 class SuseEdgeProfile(RodeoProfile):
     name = "suse-edge"
+    builder = {"title": "SUSE Edge", "base": "suse-edge", "provides": ["rancher", "fleet", "elemental", "eib"],
+               "note": "Rancher Prime, Elemental and EIB with four edge nodes."}
     # pxe_server and cluster phases are suse-virt specific — Edge uses cloud-init VMs.
     # elemental installs Elemental Operator (CRDs + Operator) on the management cluster
     # after Rancher Prime is up. Edge nodes then register via TPM + Elemental.

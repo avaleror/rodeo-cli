@@ -124,6 +124,26 @@ def test_start_refuses_bad_requests_and_no_root(fake_rodeo, monkeypatch):
     assert deployer.status() is None
 
 
+def test_api_deploys_on_an_exposed_server_after_a_login(fake_rodeo, monkeypatch):
+    import base64
+
+    from rodeo.builder import login
+
+    monkeypatch.setattr(login, "verify", lambda user, password: (user, password) == ("alice", "alicepass"))
+    auth = "Basic " + base64.b64encode(b"alice:alicepass").decode()
+    api = Api(can_save=True, can_deploy=True, need_login=True)
+    status, info = api.dispatch("deploy")
+    assert status == 200 and info["available"] and info["login"] and info["current"] is None
+    body = json.dumps({"name": "ride", "files": FILES}).encode()
+    assert api.dispatch("deploy", "POST", body=body) == (401, {"error": "log in first (Authorization: Basic)"})
+    assert api.dispatch("deploy-stop", "POST", body=b"{}")[0] == 401
+    status, info = api.dispatch("deploy", auth=auth)
+    assert status == 200 and "login" not in info
+    status, answer = api.dispatch("deploy", "POST", body=body, auth=auth)
+    assert status == 200 and answer["current"]["status"] == "running"
+    _wait(api.deployer)
+
+
 def test_api_deploys_only_on_a_loopback_live_server(fake_rodeo):
     body = json.dumps({"name": "ride", "files": FILES}).encode()
     assert Api().dispatch("deploy", "POST", body=body) == (403, {"error": "deploying needs the rodeo builder server"})

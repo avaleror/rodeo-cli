@@ -1,27 +1,46 @@
 """Rodeo Builder: the encrypted credential store (rodeo/builder/vault.py)."""
 from __future__ import annotations
 
+import base64
 import json
-import socket
 import stat
+import subprocess
 
 import pytest
 
-from rodeo import secretgen
+from rodeo import labinabox_host, secretgen
 from rodeo.builder import api as api_mod
-from rodeo.builder import vault
+from rodeo.builder import login, vault
 from rodeo.builder.api import Api
-from rodeo.paths import invoking_user
 
 PW = "correct horse"
+AUTH = "Basic " + base64.b64encode(b"alice:alicepass").decode()
+
+
+@pytest.fixture(autouse=True)
+def _no_engine_store(tmp_path, monkeypatch):
+    monkeypatch.setattr(labinabox_host, "CREDENTIALS_DIR", tmp_path / "engine-credentials")
+
+
+@pytest.fixture()
+def logins(monkeypatch):
+    """login.verify accepting alice:alicepass only; the calls it got."""
+    calls = []
+
+    def verify(user, password):
+        calls.append(user)
+        return (user, password) == ("alice", "alicepass")
+
+    monkeypatch.setattr(login, "verify", verify)
+    return calls
 
 
 def _api(can_deploy: bool = True) -> Api:
     return Api(can_save=True, can_deploy=can_deploy)
 
 
-def _post(api: Api, action: str, body: dict) -> tuple[int, dict]:
-    return api.dispatch(action, "POST", body=json.dumps(body).encode("utf-8"))
+def _post(api: Api, action: str, body: dict, auth: str = "") -> tuple[int, dict]:
+    return api.dispatch(action, "POST", body=json.dumps(body).encode("utf-8"), auth=auth)
 
 
 def _file(item_id: str):
@@ -75,7 +94,8 @@ def test_list_has_metadata_only():
     assert status == 200 and body["available"] is True and body["reason"] == ""
     assert {t["id"] for t in body["types"]} >= {"scc", "scc-mirror", "aws", "generic", "ssh-key"}
     [item] = body["items"]
-    assert set(item) == {"id", "name", "type", "created", "used"}
+    assert set(item) == {"id", "name", "type", "created", "used", "engine"}
+    assert item["engine"] == "rodeo"
     assert "secret-token" not in json.dumps(body)
     assert "ct" not in item
 
@@ -118,26 +138,106 @@ def test_id_traversal_rejected(bad):
     with pytest.raises(ValueError):
         vault.open_item(bad, PW)
     with pytest.raises(ValueError):
-        vault.delete(bad)
+        vault.delete(bad, PW)
     assert _post(_api(), "vault-open", {"id": bad, "password": PW})[0] == 400
-    assert _post(_api(), "vault-delete", {"id": bad})[0] == 400
 
 
-def test_api_add_open_delete():
+def test_delete_needs_the_password():
+    item_id = vault.add("m", "scc-mirror", {"username": "u", "password": "p"}, PW)["id"]
+    with pytest.raises(vault.WrongPassword):
+        vault.delete(item_id, "not the password")
+    assert _file(item_id).exists()
+    vault.delete(item_id, PW)
+    assert not _file(item_id).exists()
+    with pytest.raises(FileNotFoundError):
+        vault.delete(item_id, PW)
+
+
+def test_api_add_open_delete_with_a_login(logins):
     api = _api()
-    status, body = _post(api, "vault-add", {"name": "m", "type": "scc-mirror",
-                                            "fields": {"username": "u", "password": "p"}, "password": PW})
+    add = {"name": "m", "type": "scc-mirror", "fields": {"username": "u", "password": "p"}, "password": PW}
+    assert _post(api, "vault-add", add) == (401, {"error": "log in to manage credentials (Authorization: Basic)"})
+    bad = "Basic " + base64.b64encode(b"alice:nope").decode()
+    assert _post(api, "vault-add", add, bad) == (401, {"error": "wrong user or password"})
+    assert vault.list_items() == []
+    status, body = _post(api, "vault-add", add, AUTH)
     assert status == 200
     item_id = body["item"]["id"]
     assert _post(api, "vault-open", {"id": item_id, "password": PW}) == (
         200, {"fields": {"username": "u", "password": "p"}})
     assert _post(api, "vault-open", {"id": item_id, "password": "nope-nope"}) == (
         403, {"error": "wrong password"})
-    assert _post(api, "vault-add", {"name": "M", "type": "github", "fields": {"token": "t"},
-                                    "password": PW})[0] == 400
-    assert _post(api, "vault-delete", {"id": item_id}) == (200, {"ok": True})
-    assert _post(api, "vault-delete", {"id": item_id})[0] == 404
+    assert _post(api, "vault-add", {**add, "name": "M"}, AUTH)[0] == 400
+    assert _post(api, "vault-delete", {"id": item_id, "password": PW})[0] == 401
+    assert _post(api, "vault-delete", {"id": item_id, "password": "nope-nope"}, AUTH) == (
+        403, {"error": "wrong password"})
+    assert _file(item_id).exists()
+    assert _post(api, "vault-delete", {"id": item_id, "password": PW}, AUTH) == (200, {"ok": True})
+    assert _post(api, "vault-delete", {"id": item_id, "password": PW}, AUTH)[0] == 404
     assert _post(api, "vault-open", {"id": item_id, "password": PW})[0] == 404
+    assert _post(api, "vault-delete", {"id": "liab-aws-x", "password": PW}, AUTH) == (
+        403, {"error": "credentials of another engine are read-only in rodeo"})
+    assert logins.count("alice") == 7
+
+
+def test_api_add_and_delete_work_on_an_exposed_builder(logins):
+    api = _api(can_deploy=False)
+    add = {"name": "m", "type": "github", "fields": {"token": "t"}, "password": PW}
+    item_id = _post(api, "vault-add", add, AUTH)[1]["item"]["id"]
+    assert _post(api, "vault-open", {"id": item_id, "password": PW})[0] == 403
+    assert _post(api, "vault-delete", {"id": item_id, "password": PW}, AUTH) == (200, {"ok": True})
+
+
+def test_login_unavailable(monkeypatch, tmp_path):
+    monkeypatch.setattr(login, "LOGIN_FILE", tmp_path / "missing")
+    assert _post(_api(), "vault-add", {"name": "m"}, AUTH)[0] == 501
+
+
+def test_failed_logins_wait_longer_from_the_fifth(logins):
+    now = [1000.0]
+    api = _api()
+    api.login_limiter = vault.OpenLimiter(clock=lambda: now[0])
+    bad = "Basic " + base64.b64encode(b"alice:nope").decode()
+    add = {"name": "m", "type": "github", "fields": {"token": "t"}, "password": PW}
+    for _ in range(5):
+        assert _post(api, "vault-add", add, bad)[0] == 401
+    assert _post(api, "vault-add", add, AUTH) == (429, {"error": "too many attempts, wait 60 seconds"})
+    now[0] += 61
+    assert _post(api, "vault-add", add, bad)[0] == 401
+    assert _post(api, "vault-add", add, AUTH) == (429, {"error": "too many attempts, wait 120 seconds"})
+    now[0] += 121
+    assert _post(api, "vault-add", add, AUTH)[0] == 200
+
+
+@pytest.mark.parametrize("header,expected", [
+    ("Basic " + base64.b64encode(b"alice:pw:with:colons").decode(), ("alice", "pw:with:colons")),
+    ("Basic " + base64.b64encode(b"-rf:pw").decode(), None),
+    ("Basic " + base64.b64encode(b"nocolon").decode(), None),
+    ("Basic !!!", None),
+    ("Bearer x", None),
+    ("", None),
+])
+def test_parse_basic(header, expected):
+    assert login.parse_basic(header) == expected
+
+
+def test_verify_uses_htpasswd_on_stdin(monkeypatch, tmp_path):
+    users = tmp_path / "htpasswd"
+    users.write_text("alice:x\n")
+    monkeypatch.setattr(login, "LOGIN_FILE", users)
+    monkeypatch.setattr(login.shutil, "which", lambda name: "/usr/bin/" + name)
+    calls = []
+
+    def run(cmd, input, **kw):
+        calls.append((cmd, input))
+        return subprocess.CompletedProcess(cmd, 0 if input == b"alicepass" else 3)
+
+    monkeypatch.setattr(login.subprocess, "run", run)
+    assert login.verify("alice", "alicepass") is True
+    assert login.verify("alice", "wrong") is False
+    assert login.verify("-x", "alicepass") is False
+    assert calls[0] == (["/usr/bin/htpasswd", "-i", "-v", str(users), "alice"], b"alicepass")
+    assert len(calls) == 2
 
 
 def test_rate_limit_with_fake_clock():
@@ -146,25 +246,54 @@ def test_rate_limit_with_fake_clock():
     api.vault_limiter = vault.OpenLimiter(clock=lambda: now[0])
     item_id = vault.add("gh", "github", {"token": "t"}, PW)["id"]
     other = vault.add("gh2", "github", {"token": "u"}, PW)["id"]
-    for _ in range(5):
+    for _ in range(4):
         assert _post(api, "vault-open", {"id": item_id, "password": "wrong-pass"})[0] == 403
+    assert _post(api, "vault-open", {"id": item_id, "password": "wrong-pass"})[0] == 403
     assert _post(api, "vault-open", {"id": item_id, "password": PW}) == (
-        429, {"error": "too many attempts, wait a minute"})
+        429, {"error": "too many attempts, wait 60 seconds"})
     assert _post(api, "vault-open", {"id": other, "password": PW})[0] == 200
     now[0] += 59
     assert _post(api, "vault-open", {"id": item_id, "password": PW})[0] == 429
     now[0] += 2
     assert _post(api, "vault-open", {"id": item_id, "password": PW})[0] == 200
+    for _ in range(5):
+        assert _post(api, "vault-open", {"id": item_id, "password": "wrong-pass"})[0] == 403
+    assert _post(api, "vault-open", {"id": item_id, "password": PW})[1]["error"].endswith("wait 60 seconds")
 
 
-def test_failures_outside_window_do_not_lock():
+def test_backoff_doubles_up_to_an_hour_and_resets():
     now = [0.0]
     limiter = vault.OpenLimiter(clock=lambda: now[0])
+    waits = []
+    for _ in range(12):
+        limiter.failed("k")
+        try:
+            limiter.check("k")
+            waits.append(0)
+        except vault.TooManyAttempts as exc:
+            waits.append(int(str(exc).split()[-2]))
+        now[0] += waits[-1]
+    assert waits == [0, 0, 0, 0, 60, 120, 240, 480, 960, 1920, 3600, 3600]
+    now[0] += 3600 + 1
+    limiter.failed("k")
+    limiter.check("k")
+    limiter.succeeded("k")
     for _ in range(4):
-        limiter.failed("a" * 16)
-    now[0] += 61
-    limiter.failed("a" * 16)
-    limiter.check("a" * 16)
+        limiter.failed("k")
+    limiter.check("k")
+
+
+def test_backoff_shared_through_a_file(tmp_path):
+    path = tmp_path / "state" / "attempts.json"
+    for _ in range(5):
+        vault.OpenLimiter(path=path).failed("k")
+    with pytest.raises(vault.TooManyAttempts):
+        vault.OpenLimiter(path=path).check("k")
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    vault.OpenLimiter(path=path).succeeded("k")
+    vault.OpenLimiter(path=path).check("k")
+    path.write_text("not json")
+    vault.OpenLimiter(path=path).check("k")
 
 
 def _secrets_yaml(text: str) -> None:
@@ -190,8 +319,7 @@ def test_file_secrets_empty_when_missing_or_invalid(content):
     elif content is not None:
         _secrets_yaml(content)
     assert _api().dispatch("vault") == (200, {"available": True, "reason": "", "types": vault.types(),
-                                              "items": [], "file_secrets": [],
-                                              "user": "{}@{}".format(invoking_user(), socket.gethostname())})
+                                              "items": [], "file_secrets": []})
 
 
 def test_api_gated_on_can_deploy():
@@ -201,9 +329,9 @@ def test_api_gated_on_can_deploy():
     assert api.dispatch("vault") == (200, {"available": False,
                                            "reason": "storing credentials " + api_mod.LOOPBACK_ONLY,
                                            "types": [], "items": [], "file_secrets": []})
+    assert _post(api, "vault-open", {"id": "0" * 16, "password": PW})[0] == 403
     for action in api_mod.VAULT_ACTIONS:
-        assert _post(api, action, {"id": "0" * 16, "password": PW})[0] == 403
-    assert Api().dispatch("vault-open", "POST", body=b"{}")[0] == 403
+        assert Api().dispatch(action, "POST", body=b"{}", auth=AUTH)[0] == 403
 
 
 def test_missing_cryptography(monkeypatch):

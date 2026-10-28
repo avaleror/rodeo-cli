@@ -470,6 +470,26 @@ Live KVM regression is still manual (or geekohive) before touching MAC/DHCP/ISO 
 | New workshop/demo | Separate repo: `rodeo-plan.yaml` (type + deployment_target) + lab guide + host setup docs |
 | Multi-host workshop fan-out | `rodeo/fleet/` + `workshop.yaml`: see [Fleet](fleet.md); do not multi-host the phase engine |
 
+### Credential stores of other engines
+
+The builder's credentials come from rodeo's own store (`rodeo/builder/vault.py`)
+and from the stores of other engines, read-only (`rodeo/builder/engine_credentials.py`,
+today the lab-in-a-box engine's). Reusing the credentials an engine keeps in its own
+store needs, from that store:
+
+- **Engine name**: every credential listed carries `engine`, the engine whose
+  store holds it (`rodeo` for rodeo's own), shown on the Settings page.
+- **List without values**: id, name, type, created and last used; never a value
+  or anything that decrypts one.
+- **Application**: which provider or service each credential is for, shown on
+  the Settings page (lab-in-a-box: the file name's `<application>-` part).
+- **Open with a password**: values only after that credential's password, asked
+  each time; delete only after the password too.
+- **Type mapping**: from the engine's credential types to rodeo's
+  (`vault.TYPES`), so **Use stored…** offers them for the right plan secrets.
+- **Root-only access**: read and written through the root helper
+  (`rodeo-builder-helper`), never by the web server user.
+
 ---
 
 ## Fleet (multi-host workshops)

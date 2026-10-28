@@ -1806,7 +1806,8 @@ async function stopDeploy() {
 // ── stored credentials (live server on loopback only, GET vault) ────────
 // Each credential is encrypted under its own password, asked every time it is opened. Neither
 // passwords nor decrypted values are kept: not in state, not in storage, and not in the DOM once
-// a dialog closes.
+// a dialog closes. They are added and deleted on the Settings page (/rodeo-builder/settings/ over
+// HTTPS on this host, behind the web server's login), which the header's Settings link opens.
 
 let vaultAsk = null;
 
@@ -1814,151 +1815,19 @@ function vaultOn() { return !window.RB_STATIC && !!state.vault && state.vault.av
 
 async function refreshVault() {
   state.vault = await apiGet("vault").catch(() => state.vault);
-  renderUserMenu();
-  if (!$("#settingsModal").hidden) renderVaultList();
-}
-
-function vaultWhen(v) {
-  if (!v) return "never";
-  const d = new Date(typeof v === "number" && v < 1e12 ? v * 1000 : v);
-  return isNaN(d) ? String(v) : d.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
 }
 
 function typeLabel(id) { const t = RB.vaultType(state.vault, id); return t ? t.label : id; }
 
-function renderVaultList() {
-  const items = state.vault.items || [];
-  fill($("#vaultList"), items.length ? items.map((item) => el("li", { class: "vault-item" },
-    el("span", { class: "vault-name", text: item.name }),
-    el("span", { class: "chip", text: typeLabel(item.type) }),
-    el("span", { class: "vault-when", text: "added " + vaultWhen(item.created) + " · last used " + vaultWhen(item.used) }),
-    el("button", { class: "btn sm", type: "button", text: "Delete", "aria-label": "Delete " + item.name, onclick: () => deleteCredential(item) })))
-    : el("li", { class: "vault-empty", text: "No stored credentials yet." }));
-  const keys = state.vault.file_secrets || [];
-  fill($("#fileSecretList"), keys.length ? keys.map((f) => el("li", {}, el("span", { class: "chip", text: f.key })))
-    : el("li", { class: "vault-empty", text: "No keys there." }));
-}
-
-// The header's user menu: who the builder runs as, and the credentials it keeps for that user.
-// Without a vault, Settings stays in the menu, disabled, with the reason.
-function renderUserMenu() {
-  const on = vaultOn();
-  $("#userName").textContent = on ? state.vault.user || "" : "";
-  $("#credentialsBtn").disabled = !on;
-  $("#userNote").hidden = on;
-  $("#userNote").textContent = on ? "" : window.RB_STATIC || !state.vault || !state.vault.reason
-    ? "Settings need rodeo builder running on this machine." : "Settings: " + state.vault.reason + ".";
-}
-
-function setUserMenu(open) {
-  $("#userMenu").hidden = !open;
-  $("#userBtn").setAttribute("aria-expanded", String(open));
-}
-
-function openSettings() {
-  if (!vaultOn()) return;
-  setUserMenu(false);
-  resetVaultForm();
-  renderVaultList();
-  $("#settingsModal").hidden = false;
-  $("#vaultAddBtn").focus();
-  refreshVault();
-}
-
-function closeSettings() {
-  resetVaultForm();
-  $("#settingsModal").hidden = true;
-  $("#userBtn").focus();
-}
-
-// A password input with a Show/Hide toggle; `what` names it for the toggle's label.
-function secretInput(props, what) {
-  const input = el("input", { class: "input mono", type: "password", autocomplete: "off", spellcheck: "false", ...props });
-  const toggle = el("button", { class: "btn sm", type: "button", text: "Show", "aria-pressed": "false",
-    "aria-label": "Show " + what, onclick: () => {
-      const show = input.type === "password";
-      input.type = show ? "text" : "password";
-      toggle.textContent = show ? "Hide" : "Show";
-      toggle.setAttribute("aria-pressed", String(show));
-    } });
-  return el("div", { class: "secret-input" }, input, toggle);
-}
-
-function vaultRow() {
-  const row = el("div", { class: "vault-row" },
-    el("input", { class: "input mono vault-key", "aria-label": "Field name", placeholder: "field_name", autocomplete: "off", spellcheck: "false" }),
-    secretInput({ class: "input mono vault-value", "aria-label": "Field value" }, "the field value"),
-    el("button", { class: "x-btn", type: "button", "aria-label": "Remove this field", text: "×", onclick: () => row.remove() }));
-  return row;
-}
-
-function renderVaultFields() {
-  const type = RB.vaultType(state.vault, $("#vaType").value);
-  if (!type) { fill($("#vaFields")); return; }
-  if (type.freeform) {
-    const rows = el("div", { id: "vaRows" }, vaultRow());
-    fill($("#vaFields"), el("span", { class: "label", text: "Fields" }), rows,
-      el("button", { class: "btn sm vault-add-row", type: "button", text: "+ Add field", onclick: () => rows.append(vaultRow()) }));
-    return;
-  }
-  fill($("#vaFields"), type.fields.flatMap((f) => {
-    const id = "vaf-" + f.name, props = { id, dataset: { field: f.name } };
-    const input = f.multiline ? el("textarea", { class: "textarea mono short", spellcheck: "false", ...props })
-      : f.secret ? secretInput(props, f.label) : el("input", { class: "input mono", autocomplete: "off", spellcheck: "false", ...props });
-    return [el("label", { class: "label", for: id, text: f.label + (f.optional ? " (optional)" : "") }), input];
-  }));
-}
-
-// Empties every input of the add form (secret values included) and hides it.
-function resetVaultForm() {
-  $("#vaultForm").reset();
-  $("#vaultForm").hidden = true;
-  $("#vaultAddBtn").hidden = false;
-  $("#vaType").replaceChildren(...((state.vault && state.vault.types) || []).map((t) => el("option", { value: t.id, text: t.label })));
-  fill($("#vaFields"));
-  $("#vaResult").textContent = "";
-}
-
-function openVaultForm() {
-  resetVaultForm();
-  renderVaultFields();
-  $("#vaultForm").hidden = false;
-  $("#vaultAddBtn").hidden = true;
-  $("#vaName").focus();
-}
-
-async function addCredential(ev) {
-  ev.preventDefault();
-  const type = RB.vaultType(state.vault, $("#vaType").value);
-  const form = {
-    name: $("#vaName").value.trim(), password: $("#vaPass").value, repeat: $("#vaPass2").value,
-    fields: Object.fromEntries([...$("#vaFields").querySelectorAll("[data-field]")].map((i) => [i.dataset.field, i.value])),
-    rows: [...$("#vaFields").querySelectorAll(".vault-row")].map((r) => ({ key: r.querySelector(".vault-key").value, value: r.querySelector(".vault-value").value })),
-  };
-  const errors = RB.vaultErrors(type, form);
-  if (errors.length) { $("#vaResult").textContent = errors.join(" "); return; }
-  const btn = $("#vaultForm [type=submit]");
-  btn.disabled = true;
-  const res = await apiPost("vault-add", { name: form.name, type: type.id, fields: RB.vaultFields(type, form), password: form.password })
-    .catch((err) => ({ status: 0, body: { error: err.message } }));
-  btn.disabled = false;
-  if (res.status !== 200) { $("#vaResult").textContent = "Not saved: " + (res.body.error || res.status); return; }
-  resetVaultForm();
-  $("#vaultAddBtn").focus();
-  toast("Stored " + form.name);
-  await refreshVault();
-}
-
-async function deleteCredential(item) {
-  if (!window.confirm("Delete the stored credential " + item.name + "? Its encrypted file is removed from this host.")) return;
-  const res = await apiPost("vault-delete", { id: item.id }).catch((err) => ({ status: 0, body: { error: err.message } }));
-  if (res.status !== 200 && res.status !== 404) { toast("Delete failed: " + (res.body.error || res.status), true); return; }
-  toast("Deleted " + item.name);
-  await refreshVault();
-}
-
 // Asks for a credential's password and resolves to its decrypted fields, or null when cancelled.
-function openVault(item) {
+// Another engine's credential stored without encryption (`encrypted: false`) opens without one.
+async function openVault(item) {
+  if (item.encrypted === false) {
+    const res = await apiPost("vault-open", { id: item.id, password: "" }).catch((err) => ({ status: 0, body: { error: err.message } }));
+    if (res.status === 200) return res.body.fields;
+    toast("Could not open " + item.name + ": " + (res.body.error || res.status), true);
+    return null;
+  }
   return new Promise((resolve) => {
     vaultAsk = { item, resolve, back: document.activeElement };
     $("#vpTitle").textContent = "Password for " + item.name;
@@ -2007,7 +1876,7 @@ function deploySecret(key) {
       onclick: () => { useFileSecret(input, ""); input.focus(); } }));
   const pick = el("select", { class: "select", "aria-label": "Use a stored credential for " + key },
     el("option", { value: "", text: "Use stored…" }),
-    items.map((item) => el("option", { value: item.id, text: item.name + " (" + typeLabel(item.type) + ")" })),
+    items.map((item) => el("option", { value: item.id, text: item.name + " (" + (item.engine && item.engine !== "rodeo" ? item.app + ", " + item.engine : typeLabel(item.type)) + ")" })),
     fileKeys.length ? el("optgroup", { label: "secrets.yaml" }, fileKeys.map((k) => el("option", { value: "file:" + k, text: k }))) : null);
   pick.addEventListener("change", () => {
     const item = items.find((i) => i.id === pick.value);
@@ -2182,7 +2051,6 @@ const FOCUSABLE = "a[href], button:not([disabled]), input:not([disabled]), selec
 
 function openDialog() {
   if (!$("#vaultPrompt").hidden) return $("#vaultPrompt .modal");
-  if (!$("#settingsModal").hidden) return $("#settingsModal .modal");
   if (!$("#newModal").hidden) return $("#newModal .modal");
   if (!$("#importModal").hidden) return $("#importModal .modal");
   if (!$("#publishModal").hidden) return $("#publishModal .modal");
@@ -2283,7 +2151,6 @@ function bind() {
   document.addEventListener("mousedown", (ev) => {
     if (state.info && !ev.target.closest(".info-pop, .info-btn")) toggleInfo(state.info);
     if (!$("#filterMenu").hidden && !ev.target.closest("#filterMenu, #filterBtn")) setFilterMenu(false);
-    if (!$("#userMenu").hidden && !ev.target.closest("#userMenu, #userBtn")) setUserMenu(false);
   });
   $("#filterBtn").addEventListener("click", () => setFilterMenu($("#filterMenu").hidden));
   $("#filterMenu").addEventListener("change", (ev) => { state.filters[ev.target.value] = ev.target.checked; renderLibrary(); });
@@ -2345,14 +2212,6 @@ function bind() {
   $("#deploySave").addEventListener("click", () => save(false));
   $("#deployStop").addEventListener("click", stopDeploy);
   $("#deployLogBtn").addEventListener("click", () => { state.deployLogOpen = !state.deployLogOpen; renderDeploy(); });
-  $("#userBtn").addEventListener("click", () => setUserMenu($("#userMenu").hidden));
-  $("#credentialsBtn").addEventListener("click", openSettings);
-  $("#settingsClose").addEventListener("click", closeSettings);
-  $("#settingsModal").addEventListener("mousedown", (ev) => { if (ev.target === ev.currentTarget) closeSettings(); });
-  $("#vaultAddBtn").addEventListener("click", openVaultForm);
-  $("#vaType").addEventListener("change", renderVaultFields);
-  $("#vaultForm").addEventListener("submit", addCredential);
-  $("#vaCancel").addEventListener("click", () => { resetVaultForm(); $("#vaultAddBtn").focus(); });
   $("#vpForm").addEventListener("submit", unlockVault);
   $("#vpCancel").addEventListener("click", () => closeVaultPrompt());
   $("#vaultPrompt").addEventListener("mousedown", (ev) => { if (ev.target === ev.currentTarget) closeVaultPrompt(); });
@@ -2377,11 +2236,9 @@ function bind() {
     if (ev.key === "Tab") { trapTab(ev); return; }
     if (ev.key !== "Escape") return;
     if (!$("#filterMenu").hidden) { setFilterMenu(false); $("#filterBtn").focus(); }
-    else if (!$("#userMenu").hidden) { setUserMenu(false); $("#userBtn").focus(); }
     else if (state.info) toggleInfo(state.info);
     else if (pop) closePop();
     else if (!$("#vaultPrompt").hidden) closeVaultPrompt();
-    else if (!$("#settingsModal").hidden) closeSettings();
     else if (!$("#newModal").hidden) closeNewChapter();
     else if (!$("#importModal").hidden) closeImport();
     else if (!$("#publishModal").hidden) closePublish();
@@ -2394,7 +2251,6 @@ function bind() {
 
 async function init() {
   bind();
-  renderUserMenu();
   try {
     const [engines, workshops, liab] = await Promise.all([apiGet("engines"), apiGet("workshops"), apiGet("labinabox")]);
     state.engines = engines.engines;
@@ -2408,7 +2264,8 @@ async function init() {
       state.deploy = await apiGet("deploy").catch((err) => ({ available: false, reason: err.message, current: null }));
       if (state.deploy.current && state.deploy.current.status === "running") pollDeploy();
       state.vault = await apiGet("vault").catch((err) => ({ available: false, reason: err.message, types: [], items: [] }));
-      renderUserMenu();
+      $("#settingsBtn").href = "https://" + location.hostname + "/rodeo-builder/settings/";
+      $("#settingsBtn").hidden = false;
       $("#saveBtn").title = "Write this rodeo to " + state.server.profiles_dir + "/<name>/";
     }
     offerDraft();

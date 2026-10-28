@@ -310,6 +310,11 @@ if [[ "$RODEO_MODE" == "kvm-host" ]] && [[ $IS_ROOT -eq 1 ]]; then
   ln -sfn "$LB_LOGIN" /etc/rodeo-builder/htpasswd
 fi
 
+# ── 5c. builder Settings page (Apache, login above) ───────────────────────────
+if [[ "$RODEO_MODE" == "kvm-host" ]] && [[ $IS_ROOT -eq 1 ]]; then
+  bash "$RODEO_DIR/rodeo/builder/settings/install.sh" "$VENV/bin/python"
+fi
+
 # ── 6. done ───────────────────────────────────────────────────────────────────
 VERSION=$("$RODEO_BIN" --version 2>/dev/null | awk '{print $NF}' || echo "installed")
 echo ""

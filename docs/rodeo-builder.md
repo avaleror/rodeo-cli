@@ -245,18 +245,42 @@ published page, the button is greyed out and says why on hover.
 
 ## Settings and stored credentials
 
-**Settings**, in the user menu (the person icon at the right of the
-header, which also shows the `user@host` the builder runs as), keeps the
-credentials you deploy with — SCC registration codes, registry and Application Collection logins, AWS keys, SSH keys, GitHub
-tokens, or any `key: value` fields — encrypted on the builder's host, one file
-per credential in `~/.rodeo/vault/`. It works only on `rodeo builder` on
-loopback: with `--expose` and on the published page, Settings is greyed out in
-the menu with the reason.
+**Settings**, at the right of the header on the live builder, opens the
+Settings page in a new tab: `https://<builder host>/rodeo-builder/settings/`.
+It keeps the credentials you deploy with — SCC registration codes, registry and
+Application Collection logins, AWS keys, SSH keys, GitHub tokens, or any
+`key: value` fields — encrypted on that host, one file per credential in
+root's `~/.rodeo/vault/`, the store the builder reads.
 
-- Each credential has its own password, at least 8 characters, asked every
-  time the credential is used. Neither the password nor the values are kept by
-  the page: the credentials list shows a credential's name, type, when it was added
-  and last used, never its values.
+The page is served by the host's web server (Apache, set up by `install.sh` on a
+KVM host, see [Install](install.md#settings-page)), over HTTPS only, and only to
+a user who logs in: the browser asks for a user from
+`/etc/rodeo-builder/htpasswd`, and **Cancel** shows a page with **Log in** (ask
+again) and **Close**. Its API, `/rodeo-builder/admin?action=list|add|delete`,
+answers `403` without HTTPS, `401` without a logged-in user and `415` to a POST
+that is not `application/json`.
+
+- Each credential has its own password, at least 8 characters, asked when it is
+  added, every time it is used and to delete it: a delete with the wrong
+  password is refused. Neither the password nor the values are kept by the
+  page: a table shows each credential's name, application, engine (`rodeo` for
+  the ones stored here), whether it is encrypted, when it was added and last
+  used, never its values. The application of a rodeo credential is its type.
+- Credentials of other engines are listed and used too, with their engine's
+  name: today the lab-in-a-box engine's, from `/etc/lab_creation/credentials/`;
+  their application is the part of the file name `<application>-<account>.yaml`
+  before the first `-` (`aws-tmm.yaml`: `aws`).
+  They are read-only in rodeo (no **Delete**). One stored without encryption
+  opens without a password; an encrypted one asks for its passphrase.
+- Failed passwords and logins wait longer from the fifth in a row on: 1 minute,
+  then 2, 4, … up to 1 hour between tries. A success resets the count.
+- The builder's own API adds and deletes credentials too, for scripts:
+  `POST /api?action=vault-add` (`{name, type, fields, password}`) and
+  `vault-delete` (`{id, password}`), with the page's `X-Rodeo-Builder-Token` and
+  an `Authorization: Basic` login checked against `/etc/rodeo-builder/htpasswd`
+  (Apache's `htpasswd` tool). Without a login they answer `401`. An `--expose`
+  builder serves plain HTTP, so the login crosses the network unencrypted
+  there: prefer the Settings page.
 - In the deploy dialog, each secret the lab asks for offers **Use stored…** with
   the credentials that can fill it. After the password, the page fills that
   secret and every other one the same credential provides (an AWS credential
@@ -264,7 +288,7 @@ the menu with the reason.
   credential fills secrets whose names match its field names.
 - The filled values go where typed ones go: into `~/.rodeo/secrets.yaml` for
   `rodeo up`. Deleting a stored credential does not remove them from there.
-- The dialog also lists the keys already in `~/.rodeo/secrets.yaml`, names only
+- The page also lists the keys already in root's `~/.rodeo/secrets.yaml`, names only
   and read-only: `rodeo up` reads that file directly. In the deploy dialog,
   **Use stored…** offers them under *secrets.yaml* (names sharing a word with
   the secret first). Picking one asks no password and locks the input

@@ -9,14 +9,17 @@ changed name or type fails decryption. ``used`` (UTC time of the last
 successful :func:`open_item`) is stored outside the associated data.
 
 Passwords are never stored, cached or logged: every :func:`open_item` call
-needs the password again. :data:`TYPES` lists the credential types the page
+needs the password again, and so does :func:`delete`. :data:`TYPES` lists the credential types the page
 offers and, per type, which plan secret keys (``??key``) each field fills.
 """
 from __future__ import annotations
 
 import base64
+import contextlib
+import fcntl
 import hashlib
 import json
+import math
 import os
 import re
 import secrets
@@ -25,7 +28,7 @@ import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -41,8 +44,9 @@ MIN_PASSWORD = 8
 MAX_NAME = 64
 MAX_VALUE = 64 * 1024
 MAX_ATTEMPTS = 5
-ATTEMPT_WINDOW = 60.0
 LOCKOUT = 60.0
+MAX_LOCKOUT = 3600.0
+ENGINE = "rodeo"
 ID_RE = re.compile(r"^[0-9a-f]{16}$")
 FIELD_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 
@@ -174,8 +178,9 @@ def _docs() -> list[dict[str, Any]]:
 
 
 def list_items() -> list[dict[str, Any]]:
-    """Metadata of every credential (``id``, ``name``, ``type``, ``created``, ``used``), by name."""
-    return sorted((_meta(d) for d in _docs()), key=lambda m: str(m["name"]).lower())
+    """Metadata of every credential (``id``, ``name``, ``type``, ``created``, ``used``,
+    ``engine``: :data:`ENGINE`, the engine whose store holds it), by name."""
+    return sorted(({**_meta(d), "engine": ENGINE} for d in _docs()), key=lambda m: str(m["name"]).lower())
 
 
 def _check_fields(type_id: str, fields: Any) -> dict[str, str]:
@@ -235,9 +240,11 @@ def add(name: str, type_id: str, fields: dict[str, str], password: str) -> dict[
     return _meta(doc)
 
 
-def delete(item_id: str) -> None:
-    """Remove a credential. Raises ValueError on a bad id, FileNotFoundError when unknown."""
+def delete(item_id: str, password: str) -> None:
+    """Remove a credential once *password* opens it. Raises ValueError on a bad id,
+    FileNotFoundError when unknown and :class:`WrongPassword` when *password* does not open it."""
     path = _path(item_id)
+    open_item(item_id, password)
     with _lock:
         path.unlink()
 
@@ -273,36 +280,62 @@ def open_item(item_id: str, password: str) -> dict[str, str]:
 
 
 class OpenLimiter:
-    """Per-credential failed-open limit: after :data:`MAX_ATTEMPTS` failures within
-    :data:`ATTEMPT_WINDOW` seconds, :meth:`check` refuses that id for :data:`LOCKOUT` seconds."""
+    """Failed-attempt backoff per key (a credential id, a login name). From the
+    :data:`MAX_ATTEMPTS`-th failure in a row on, :meth:`check` refuses the key for
+    :data:`LOCKOUT` seconds after the last failure, doubled at every further failure up
+    to :data:`MAX_LOCKOUT`. A success resets the key, and so does a failure that comes
+    more than :data:`MAX_LOCKOUT` seconds after the wait of the previous one ended.
 
-    def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
+    With *path*, the counts are kept in that JSON file (0600, locked while used), shared
+    by every process that uses it; otherwise in memory."""
+
+    def __init__(self, clock: Callable[[], float] = time.time, path: Path | None = None) -> None:
         self.clock = clock
-        self._fails: dict[str, list[float]] = {}
-        self._until: dict[str, float] = {}
+        self.path = path
+        self._mem: dict[str, list[float]] = {}
         self._lock = threading.Lock()
 
-    def check(self, item_id: str) -> None:
-        """Raises :class:`TooManyAttempts` while *item_id* is locked out."""
+    @staticmethod
+    def _wait(fails: int) -> float:
+        return 0.0 if fails < MAX_ATTEMPTS else min(LOCKOUT * 2 ** (fails - MAX_ATTEMPTS), MAX_LOCKOUT)
+
+    @contextlib.contextmanager
+    def _state(self) -> Iterator[dict[str, list[float]]]:
         with self._lock:
-            until = self._until.get(item_id)
-            if until is None:
+            if self.path is None:
+                yield self._mem
                 return
-            if self.clock() < until:
-                raise TooManyAttempts("too many attempts, wait a minute")
-            del self._until[item_id]
-            self._fails.pop(item_id, None)
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o600)
+            with os.fdopen(fd, "r+", encoding="utf-8") as fh:
+                fcntl.flock(fh, fcntl.LOCK_EX)
+                try:
+                    state = json.loads(fh.read() or "{}")
+                    if not isinstance(state, dict):
+                        state = {}
+                except ValueError:
+                    state = {}
+                yield state
+                fh.seek(0)
+                fh.truncate()
+                json.dump(state, fh)
 
-    def failed(self, item_id: str) -> None:
-        with self._lock:
+    def check(self, key: str) -> None:
+        """Raises :class:`TooManyAttempts` while *key* has to wait."""
+        with self._state() as state:
+            fails, last = state.get(key, (0, 0.0))
+            wait = last + self._wait(int(fails)) - self.clock()
+        if wait > 0:
+            raise TooManyAttempts("too many attempts, wait {} seconds".format(math.ceil(wait)))
+
+    def failed(self, key: str) -> None:
+        with self._state() as state:
             now = self.clock()
-            fails = [t for t in self._fails.get(item_id, []) if now - t < ATTEMPT_WINDOW]
-            fails.append(now)
-            self._fails[item_id] = fails
-            if len(fails) >= MAX_ATTEMPTS:
-                self._until[item_id] = now + LOCKOUT
+            fails, last = state.get(key, (0, 0.0))
+            if now - (last + self._wait(int(fails))) > MAX_LOCKOUT:
+                fails = 0
+            state[key] = [int(fails) + 1, now]
 
-    def succeeded(self, item_id: str) -> None:
-        with self._lock:
-            self._fails.pop(item_id, None)
-            self._until.pop(item_id, None)
+    def succeeded(self, key: str) -> None:
+        with self._state() as state:
+            state.pop(key, None)

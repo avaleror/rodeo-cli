@@ -16,28 +16,31 @@ only when the Api was created with ``can_save=True`` (the live server); ``github
 ``publish`` and ``github-login`` also need ``can_publish=True``, and GET ``deploy``
 with POST ``deploy`` and ``deploy-stop`` (see :mod:`.deploywork`) ``can_deploy=True``:
 a server that listens on loopback only, so nobody else can act as its user.
-GET ``vault`` with POST ``vault-add``, ``vault-delete`` and ``vault-open`` (the
-encrypted credential store, see :mod:`.vault`) also need ``can_deploy=True``;
+GET ``vault`` with POST ``vault-open`` (stored credentials: rodeo's own,
+:mod:`.vault`, and other engines', :mod:`.engine_credentials`) also need
+``can_deploy=True``. POST ``vault-add`` and ``vault-delete`` (rodeo's store only;
+the Settings page, :mod:`.settings`, does the same) need the live server and a
+login (:mod:`.login`, *auth* of :meth:`Api.dispatch`), and ``vault-delete`` the
+credential's password. Failed logins and passwords wait longer from the fifth
+in a row on (:class:`.vault.OpenLimiter`);
 GET ``vault`` answers ``available: false`` without it or without the
 ``cryptography`` package. Its ``file_secrets`` lists the keys of
 ``~/.rodeo/secrets.yaml`` (never their values) that POST ``deploy`` can name in
-``secret_refs``; ``[]`` without ``can_deploy=True``. When available, ``user`` is
-``<login>@<host>``: whose ``~/.rodeo`` the credentials live in.
+``secret_refs``; ``[]`` without ``can_deploy=True``.
 """
 from __future__ import annotations
 
 import json
-import socket
 from pathlib import Path
 from typing import Any
 
-from ..paths import invoking_user
-from . import deploywork, discovery, imports, publish, storywork
+from . import deploywork, discovery, imports, login, publish, storywork
 
 try:
-    from . import vault
+    from . import engine_credentials, vault
 except ImportError:
     vault = None  # type: ignore[assignment]
+    engine_credentials = None  # type: ignore[assignment]
 
 PAGE_ACTIONS = ("engines", "workshops", "labinabox")
 STORY_ACTIONS = ("validate", "translate", "draft", "retell")
@@ -64,6 +67,7 @@ class Api:
         self.can_deploy = can_save and can_deploy
         self.deployer = deploywork.Deployer()
         self.vault_limiter = vault.OpenLimiter() if vault is not None else None
+        self.login_limiter = vault.OpenLimiter() if vault is not None else None
 
     def _get(self, action: str) -> dict[str, Any]:
         if action == "engines":
@@ -90,9 +94,9 @@ class Api:
             if vault is None:
                 return {"available": False, "reason": NO_CRYPTOGRAPHY, "types": [], "items": [],
                         "file_secrets": deploywork.file_secret_keys()}
-            return {"available": True, "reason": "", "types": vault.types(), "items": vault.list_items(),
-                    "file_secrets": deploywork.file_secret_keys(),
-                    "user": "{}@{}".format(invoking_user(), socket.gethostname())}
+            return {"available": True, "reason": "", "types": vault.types(),
+                    "items": vault.list_items() + engine_credentials.list_items(),
+                    "file_secrets": deploywork.file_secret_keys()}
         raise KeyError(action)
 
     def _server(self) -> dict[str, Any]:
@@ -147,34 +151,60 @@ class Api:
         except OSError as exc:
             return 500, {"error": str(exc)}
 
-    def _vault(self, action: str, body: bytes) -> tuple[int, dict[str, Any]]:
-        if not self.can_deploy:
-            return 403, {"error": "storing credentials " + LOOPBACK_ONLY}
+    def _login(self, auth: str) -> tuple[int, dict[str, Any]] | None:
+        """None when *auth* logs in; otherwise the refusal."""
+        creds = login.parse_basic(auth)
+        if creds is None:
+            return 401, {"error": "log in to manage credentials (Authorization: Basic)"}
+        key = "login:" + creds[0]
+        self.login_limiter.check(key)
+        try:
+            ok = login.verify(*creds)
+        except login.LoginUnavailable as exc:
+            return 501, {"error": str(exc)}
+        if not ok:
+            self.login_limiter.failed(key)
+            return 401, {"error": "wrong user or password"}
+        self.login_limiter.succeeded(key)
+        return None
+
+    def _vault(self, action: str, body: bytes, auth: str = "") -> tuple[int, dict[str, Any]]:
+        if action == "vault-open" and not self.can_deploy:
+            return 403, {"error": "using stored credentials " + LOOPBACK_ONLY}
         if vault is None or self.vault_limiter is None:
             return 501, {"error": NO_CRYPTOGRAPHY}
         try:
             req = json.loads(body.decode("utf-8"))
             if not isinstance(req, dict):
                 raise ValueError("send a JSON object")
+            if action != "vault-open":
+                refused = self._login(auth)
+                if refused is not None:
+                    return refused
             if action == "vault-add":
                 return 200, {"item": vault.add(req.get("name"), req.get("type"), req.get("fields"),
                                                req.get("password"))}
             item_id = req.get("id")
-            if action == "vault-delete":
-                vault.delete(item_id)
-                return 200, {"ok": True}
-            if not isinstance(item_id, str) or not vault.ID_RE.match(item_id):
+            engine = engine_credentials.is_engine_id(item_id)
+            if engine and action == "vault-delete":
+                return 403, {"error": "credentials of another engine are read-only in rodeo"}
+            if not isinstance(item_id, str) or not (engine_credentials.ID_RE if engine else vault.ID_RE).match(item_id):
                 raise ValueError("bad credential id")
             self.vault_limiter.check(item_id)
             try:
-                fields = vault.open_item(item_id, req.get("password"))
+                if action == "vault-delete":
+                    vault.delete(item_id, req.get("password"))
+                elif engine:
+                    fields = engine_credentials.open_item(item_id, req.get("password"), self.labinabox_checkout)
+                else:
+                    fields = vault.open_item(item_id, req.get("password"))
             except vault.WrongPassword:
                 self.vault_limiter.failed(item_id)
                 return 403, {"error": "wrong password"}
             self.vault_limiter.succeeded(item_id)
-            return 200, {"fields": fields}
-        except vault.TooManyAttempts:
-            return 429, {"error": "too many attempts, wait a minute"}
+            return 200, {"ok": True} if action == "vault-delete" else {"fields": fields}
+        except vault.TooManyAttempts as exc:
+            return 429, {"error": str(exc)}
         except FileNotFoundError:
             return 404, {"error": "unknown credential"}
         except ValueError as exc:
@@ -217,21 +247,22 @@ class Api:
             return 502, {"error": str(exc)}
 
     def dispatch(self, action: str, method: str = "GET", params: dict | None = None,
-                 body: bytes = b"") -> tuple[int, dict[str, Any]]:
+                 body: bytes = b"", auth: str = "") -> tuple[int, dict[str, Any]]:
+        """``(HTTP status, JSON body)`` of one request; *auth* is its Authorization header."""
         if method == "POST" and action in LIVE_ACTIONS:
             if not self.can_save:
                 what = {"save": "saving", "import": "importing a workshop", "deploy": "deploying",
                         "deploy-stop": "deploying", "publish": "publishing to GitHub",
                         "github-login": "publishing to GitHub", "vault-add": "storing credentials",
                         "vault-delete": "storing credentials",
-                        "vault-open": "storing credentials"}.get(action, "rmstory " + action)
+                        "vault-open": "using stored credentials"}.get(action, "rmstory " + action)
                 return 403, {"error": "{} needs the rodeo builder server".format(what)}
             if action in GITHUB_ACTIONS:
                 return self._github(action, body)
             if action in DEPLOY_ACTIONS:
                 return self._deploy(action, body)
             if action in VAULT_ACTIONS:
-                return self._vault(action, body)
+                return self._vault(action, body, auth)
             if action in STORY_ACTIONS:
                 return self._story(action, body)
             if action == "import":

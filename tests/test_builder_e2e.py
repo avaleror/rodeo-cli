@@ -1234,7 +1234,8 @@ VAULT_TYPES = [
 
 
 class FakeVault:
-    """The vault endpoints, answered in the browser (page.route) from an in-memory store."""
+    """The builder's vault endpoints (GET vault, POST vault-open), answered in the browser
+    (page.route) from an in-memory store."""
 
     def __init__(self, available=True, file_secrets=()):
         self.available = available
@@ -1254,20 +1255,15 @@ class FakeVault:
         req = route.request
         action = parse_qs(urlparse(req.url).query)["action"][0]
         if req.method == "GET":
-            items = [{k: i[k] for k in ("id", "name", "type", "created", "used")} for i in self.items.values()]
+            items = [{k: i[k] for k in ("id", "name", "type", "created", "used", "engine", "encrypted", "app") if k in i}
+                     for i in self.items.values()]
             return route.fulfill(json={"available": self.available, "reason": "" if self.available else "listens beyond loopback",
-                                       "types": VAULT_TYPES, "items": items, "file_secrets": self.file_secrets,
-                                       "user": "tester@labhost"})
+                                       "types": VAULT_TYPES, "items": items, "file_secrets": self.file_secrets})
         body = req.post_data_json
         self.calls.append((action, body))
-        if action == "vault-add":
-            return route.fulfill(json={"item": self.add(body["name"], body["type"], body["fields"], body["password"])})
         item = self.items.get(body["id"])
         if item is None:
             return route.fulfill(status=404, json={"error": "no such credential"})
-        if action == "vault-delete":
-            del self.items[body["id"]]
-            return route.fulfill(json={"ok": True})
         if body["password"] == "too-many":
             return route.fulfill(status=429, json={"error": "too many attempts: wait a minute"})
         if body["password"] != item["password"]:
@@ -1286,106 +1282,21 @@ def _values(page) -> list[str]:
     return page.evaluate("[...document.querySelectorAll('input, textarea')].map((i) => i.value)")
 
 
-def _open_credentials(page):
-    page.click("#userBtn")
-    page.click("#credentialsBtn")
-
-
-def test_static_shows_settings_disabled(page):
-    page.click("#userBtn")
-    assert page.locator("#credentialsBtn").is_disabled()
-    assert page.locator("#userNote").inner_text() == "Settings need rodeo builder running on this machine."
+def test_static_has_no_settings_link(page):
+    assert page.locator("#settingsBtn").is_hidden()
 
 
 @pytest.mark.parametrize("page", ["live"], indirect=True)
-def test_settings_disabled_when_the_vault_is_unavailable(page):
-    FakeVault(available=False).install(page)
-    page.click("#userBtn")
-    sync_api.expect(page.locator("#userNote")).to_have_text("Settings: listens beyond loopback.")
-    assert page.locator("#credentialsBtn").is_disabled()
-    assert page.locator("#userName").inner_text() == ""
-
-
-@pytest.mark.parametrize("page", ["live"], indirect=True)
-def test_settings_add_list_and_delete_credentials(page):
-    vault = FakeVault()
-    vault.install(page)
+def test_settings_link_opens_the_settings_page(page):
+    link = page.locator("#settingsBtn")
+    sync_api.expect(link).to_be_visible()
+    assert link.get_attribute("href") == "https://127.0.0.1/rodeo-builder/settings/"
+    assert link.get_attribute("target") == "_blank" and link.get_attribute("rel") == "noopener"
+    assert link.inner_text().strip().lower() == "settings"
     page.set_viewport_size({"width": 390, "height": 844})
-    box = page.locator("#userBtn").bounding_box()
+    box = link.bounding_box()
     assert box["x"] + box["width"] <= 390
-    page.set_viewport_size({"width": 1440, "height": 900})
-    page.click("#userBtn")
-    sync_api.expect(page.locator("#userMenu")).to_be_visible()
-    assert page.locator("#userName").inner_text() == "tester@labhost"
-    page.keyboard.press("Escape")
-    sync_api.expect(page.locator("#userMenu")).to_be_hidden()
-    _open_credentials(page)
-    sync_api.expect(page.locator("#userMenu")).to_be_hidden()
-    sync_api.expect(page.locator("#vaultList")).to_contain_text("No stored credentials yet.")
-    page.click("#vaultAddBtn")
-    page.select_option("#vaType", "scc")
-    sync_api.expect(page.locator("label[for=vaf-email]")).to_have_text("Email (optional)")
-    page.fill("#vaName", "my scc")
-    page.fill("#vaPass", "short")
-    page.fill("#vaPass2", "short")
-    page.click("#vaultForm [type=submit]")
-    sync_api.expect(page.locator("#vaResult")).to_contain_text("Fill in Registration code.")
-    sync_api.expect(page.locator("#vaResult")).to_contain_text("at least 8 characters")
-    page.fill("#vaf-regcode", "REG-SECRET-1")
-    assert page.locator("#vaf-regcode").get_attribute("type") == "password"
-    page.click("button[aria-label='Show Registration code']")
-    assert page.locator("#vaf-regcode").get_attribute("type") == "text"
-    page.fill("#vaPass", "longpassword")
-    page.fill("#vaPass2", "longpassword2")
-    page.click("#vaultForm [type=submit]")
-    sync_api.expect(page.locator("#vaResult")).to_contain_text("don't match")
-    assert vault.calls == []
-    page.fill("#vaPass2", "longpassword")
-    page.click("#vaultForm [type=submit]")
-    row = page.locator(".vault-item")
-    sync_api.expect(row).to_contain_text("my scc")
-    sync_api.expect(row).to_contain_text("SCC")
-    sync_api.expect(row).to_contain_text("last used never")
-    assert vault.calls == [("vault-add", {"name": "my scc", "type": "scc", "fields": {"regcode": "REG-SECRET-1"}, "password": "longpassword"})]
-    assert page.locator("#vaultForm").is_hidden()
-    assert not any(v in ("REG-SECRET-1", "longpassword") for v in _values(page))
-    assert "REG-SECRET-1" not in page.content()
-
-    page.click("#vaultAddBtn")
-    page.select_option("#vaType", "generic")
-    page.fill("#vaName", "misc")
-    page.fill(".vault-key", "Bad Key")
-    page.fill(".vault-value", "v1")
-    page.click(".vault-add-row")
-    page.locator(".vault-key").nth(1).fill("token")
-    page.locator(".vault-value").nth(1).fill("T-SECRET")
-    page.fill("#vaPass", "longpassword")
-    page.fill("#vaPass2", "longpassword")
-    page.click("#vaultForm [type=submit]")
-    sync_api.expect(page.locator("#vaResult")).to_contain_text("Field name \"Bad Key\"")
-    page.fill(".vault-key >> nth=0", "region")
-    page.click("#vaultForm [type=submit]")
-    sync_api.expect(page.locator(".vault-item")).to_have_count(2)
-    assert vault.calls[-1][1]["fields"] == {"region": "v1", "token": "T-SECRET"}
-
-    page.click("#vaultAddBtn")
-    page.fill("#vaName", "half typed")
-    page.select_option("#vaType", "aws")
-    page.fill("#vaf-secret_access_key", "SK-TYPED")
-    page.keyboard.press("Escape")
-    sync_api.expect(page.locator("#settingsModal")).to_be_hidden()
-    assert "SK-TYPED" not in _values(page) and "half typed" not in _values(page)
-
-    _open_credentials(page)
-    page.once("dialog", lambda d: d.dismiss())
-    page.click("button[aria-label='Delete my scc']")
-    sync_api.expect(page.locator(".vault-item")).to_have_count(2)
-    page.once("dialog", lambda d: d.accept())
-    page.click("button[aria-label='Delete my scc']")
-    sync_api.expect(page.locator(".vault-item")).to_have_count(1)
-    assert ("vault-delete", {"id": "v1"}) in vault.calls
-    page.click("#settingsClose")
-    sync_api.expect(page.locator("#settingsModal")).to_be_hidden()
+    assert page.locator("#settingsModal, #userMenu, #userBtn").count() == 0
 
 
 @pytest.mark.parametrize("page", ["live_deploy"], indirect=True)
@@ -1448,17 +1359,29 @@ def test_deploy_dialog_uses_stored_credentials(page, monkeypatch):
     assert not page.evaluate("JSON.stringify(localStorage).includes('SK-STORED') || JSON.stringify(state).includes('SK-STORED')")
 
 
-@pytest.mark.parametrize("page", ["live"], indirect=True)
-def test_settings_lists_secrets_yaml_key_names(page):
-    FakeVault().install(page)
-    _open_credentials(page)
-    sync_api.expect(page.locator("#fileSecretList")).to_have_text("No keys there.")
-    page.click("#settingsClose")
-    FakeVault(file_secrets=["harvester_token", "my_regcode"]).install(page)
-    _open_credentials(page)
-    sync_api.expect(page.locator("#settingsModal")).to_contain_text("In ~/.rodeo/secrets.yaml")
-    sync_api.expect(page.locator("#fileSecretList .chip")).to_have_text(["harvester_token", "my_regcode"])
-    assert page.locator("#fileSecretList button, #fileSecretList input").count() == 0
+@pytest.mark.parametrize("page", ["live_deploy"], indirect=True)
+def test_deploy_dialog_uses_other_engines_credentials(page, monkeypatch):
+    from rodeo.builder import deploywork
+
+    real = deploywork.ensure_plan_secrets
+    monkeypatch.setattr(deploywork, "ensure_plan_secrets", lambda plan, lab_path=None: (
+        real(plan, lab_path=lab_path)[0], ["aws_access_key_id", "aws_secret_access_key"]))
+    vault = FakeVault()
+    vault.items["liab-aws-tmm"] = {"id": "liab-aws-tmm", "name": "aws-tmm", "type": "generic", "created": "2026-10-23T10:00:00Z",
+                                   "used": None, "engine": "lab-in-a-box", "encrypted": False, "app": "aws", "password": "",
+                                   "fields": {"aws_access_key_id": "AK-ENGINE", "aws_region": "eu-west-2"}}
+    vault.install(page)
+    page.click(".card >> text=Welcome to the rodeo")
+    page.click("#deployBtn")
+    page.click("#dpSubmit")
+    pick = "#dpSecretFields select[aria-label='Use a stored credential for aws_access_key_id']"
+    sync_api.expect(page.locator(pick)).to_be_visible()
+    assert page.locator(pick + " option").all_inner_texts() == ["Use stored…", "aws-tmm (aws, lab-in-a-box)"]
+    page.select_option(pick, "liab-aws-tmm")
+    sync_api.expect(page.locator("#dpSecretFields input[name=aws_access_key_id]")).to_have_value("AK-ENGINE")
+    assert page.locator("#vaultPrompt").is_hidden()
+    assert vault.calls == [("vault-open", {"id": "liab-aws-tmm", "password": ""})]
+    page.click("#dpCancel")
 
 
 @pytest.mark.parametrize("page", ["live_deploy"], indirect=True)

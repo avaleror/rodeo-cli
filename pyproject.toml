@@ -38,7 +38,7 @@ where = ["."]
 include = ["rodeo*"]
 
 [tool.setuptools.package-data]
-rodeo = ["data/**/*", "portal/static/*", "builder/htdocs/**/*"]
+rodeo = ["data/**/*", "portal/static/*", "builder/htdocs/**/*", "builder/settings/**/*"]
 
 [tool.ruff]
 line-length = 100

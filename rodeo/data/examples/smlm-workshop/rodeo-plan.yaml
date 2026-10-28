@@ -173,56 +173,103 @@ lab_in_a_box:
       url: "??sles15sp6_image_url"
       sha256: "??sles15sp6_image_sha256"
 
-  nodes:
-    smlm:
-      ISO_IMAGE: smlm-workshop-server.qcow2
+  # The lab-in-a-box lab itself, as the lab-builder edits it (Rodeo Builder: embed or
+  # Open in Lab Builder, then send it back). rodeo renders it as written and sets
+  # what belongs to the host: network keys, each VM's bridge, address and MAC from
+  # definition.yaml, images and secrets. VM_MEM/VM_CPU/VM_DSK are what lab-in-a-box
+  # builds; resources: above are what rodeo checks this host for.
+  lab:
+    common:
       config_method: cloud-init
-      addons: [smlm]
-    # centos7, sles15 and ubuntu2404lts are registered by the students during
-    # the challenges. The zz* machines arrive already registered, under the
-    # system names the exercises use (as the track's setup-zz* scripts do).
-    centos7: &el7
-      ISO_IMAGE: CentOS-7-x86_64-GenericCloud-2211.qcow2
-      config_method: virt_customize
-      VM_BOOT: uefi=off
-      VM_DSK_BUS: sata
-      VM_NET_MODEL: e1000
-    zzcentos7:
-      <<: *el7
-      addons:
-        - client_registration:
-            client_registration_activation_key: 1-liberty7ltss
-            client_registration_profile_name: airco-dh4a-prod
-    sles15:
-      ISO_IMAGE: SLES15-SP5-Minimal-VM.x86_64-Cloud-GM.qcow2
-      ssh_pwauth: "true"
-    zzsles15a: &sp6
-      ISO_IMAGE: SLES15-SP6-Minimal-VM.x86_64-Cloud-GM.qcow2
-      ssh_pwauth: "true"
-      addons:
-        - client_registration:
-            client_registration_activation_key: 1-sles15sp6
-            client_registration_profile_name: at-ct-pro
-    zzsles15b:
-      <<: *sp6
-      addons:
-        - client_registration:
-            client_registration_activation_key: 1-sles15sp6
-            client_registration_profile_name: at-ft-pro
-    zzsles15c:
-      <<: *sp6
-      addons:
-        - client_registration:
-            client_registration_activation_key: 1-sles15sp6
-            client_registration_profile_name: at-ct-qa
-    ubuntu2404lts:
-      ISO_IMAGE: ubuntu-24.04-server-cloudimg-amd64.img
-      network_renderer: networkd
-      ssh_pwauth: "true"
+    nodes:
+      smlm.rodeo.lab:
+        myip: "192.168.122.20"
+        mymac: "02:00:00:5A:00:20"
+        VM_MEM: "16384"
+        VM_CPU: "8"
+        VM_DSK: "300"
+        ISO_IMAGE: smlm-workshop-server.qcow2
+        config_method: cloud-init
+        addons: [smlm]
+      # centos7, sles15 and ubuntu2404lts are registered by the students during
+      # the challenges. The zz* machines arrive already registered, under the
+      # system names the exercises use (as the track's setup-zz* scripts do).
+      centos7.rodeo.lab: &el7
+        myip: "192.168.122.31"
+        mymac: "02:00:00:5A:00:31"
+        VM_MEM: "1024"
+        VM_CPU: "1"
+        VM_DSK: "20"
+        ISO_IMAGE: CentOS-7-x86_64-GenericCloud-2211.qcow2
+        config_method: virt_customize
+        VM_BOOT: uefi=off
+        VM_DSK_BUS: sata
+        VM_NET_MODEL: e1000
+      zzcentos7.rodeo.lab:
+        myip: "192.168.122.32"
+        mymac: "02:00:00:5A:00:32"
+        VM_MEM: "1024"
+        VM_CPU: "1"
+        VM_DSK: "20"
+        <<: *el7
+        addons:
+          - client_registration:
+              client_registration_activation_key: 1-liberty7ltss
+              client_registration_profile_name: airco-dh4a-prod
+      sles15.rodeo.lab:
+        myip: "192.168.122.41"
+        mymac: "02:00:00:5A:00:41"
+        VM_MEM: "2048"
+        VM_CPU: "2"
+        VM_DSK: "30"
+        ISO_IMAGE: SLES15-SP5-Minimal-VM.x86_64-Cloud-GM.qcow2
+        ssh_pwauth: "true"
+      zzsles15a.rodeo.lab: &sp6
+        myip: "192.168.122.42"
+        mymac: "02:00:00:5A:00:42"
+        VM_MEM: "2048"
+        VM_CPU: "2"
+        VM_DSK: "30"
+        ISO_IMAGE: SLES15-SP6-Minimal-VM.x86_64-Cloud-GM.qcow2
+        ssh_pwauth: "true"
+        addons:
+          - client_registration:
+              client_registration_activation_key: 1-sles15sp6
+              client_registration_profile_name: at-ct-pro
+      zzsles15b.rodeo.lab:
+        myip: "192.168.122.43"
+        mymac: "02:00:00:5A:00:43"
+        VM_MEM: "2048"
+        VM_CPU: "2"
+        VM_DSK: "30"
+        <<: *sp6
+        addons:
+          - client_registration:
+              client_registration_activation_key: 1-sles15sp6
+              client_registration_profile_name: at-ft-pro
+      zzsles15c.rodeo.lab:
+        myip: "192.168.122.44"
+        mymac: "02:00:00:5A:00:44"
+        VM_MEM: "2048"
+        VM_CPU: "2"
+        VM_DSK: "30"
+        <<: *sp6
+        addons:
+          - client_registration:
+              client_registration_activation_key: 1-sles15sp6
+              client_registration_profile_name: at-ct-qa
+      ubuntu2404lts.rodeo.lab:
+        myip: "192.168.122.51"
+        mymac: "02:00:00:5A:00:51"
+        VM_MEM: "2048"
+        VM_CPU: "1"
+        VM_DSK: "20"
+        ISO_IMAGE: ubuntu-24.04-server-cloudimg-amd64.img
+        network_renderer: networkd
+        ssh_pwauth: "true"
 
-  # lab-in-a-box addon sections, passed through as-is (install_smlm.py's
-  # "smlm" JSON section). Mirrors track_scripts/setup-smlm + setup-zbastion.
-  sections:
+    # lab-in-a-box addon sections (install_smlm.py's "smlm" JSON section).
+    # Mirrors track_scripts/setup-smlm + setup-zbastion.
     smlm:
       smlm_deployment: podman
       smlm_preinstalled: "true"
@@ -312,6 +359,8 @@ lab_in_a_box:
       client_registration_server_ip: "${node_ip:smlm}"
       client_registration_admin_user: admin
       client_registration_admin_pass: "??smlm_admin_password"
+      # Required by the add-on's schema; each zz* VM above sets its own key.
+      client_registration_activation_key: 1-sles15sp6
 
 # The Instruqt track this lab is for, fetched into ./workshop at deploy time.
 workshop:

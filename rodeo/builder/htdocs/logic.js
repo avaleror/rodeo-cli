@@ -1070,6 +1070,57 @@ const RB = (() => {
 
   function yamlList(items) { return "[" + items.map(yamlScalar).join(", ") + "]"; }
 
+  // A string unquoted only when no YAML 1.1 reader takes it for a number, bool or null.
+  function yamlString(s) {
+    s = String(s);
+    return /^[A-Za-z_/@][\w./@-]*$/.test(s) && !/^(true|false|yes|no|on|off|y|n|null)$/i.test(s) ? s : JSON.stringify(s);
+  }
+
+  function yamlValue(v) {
+    if (v === null || v === undefined) return "null";
+    if (typeof v === "number" || typeof v === "boolean") return String(v);
+    if (typeof v === "object") return Array.isArray(v) ? "[]" : "{}";
+    return yamlString(v);
+  }
+
+  // `v` (a mapping or list) as YAML block lines indented by `pad`.
+  function yamlLines(v, pad) {
+    const nested = (x) => x && typeof x === "object" && Object.keys(x).length;
+    const out = [];
+    if (Array.isArray(v)) {
+      for (const item of v) {
+        if (!nested(item)) { out.push(pad + "- " + yamlValue(item)); continue; }
+        const inner = yamlLines(item, pad + "  ");
+        out.push(pad + "- " + inner[0].slice(pad.length + 2), ...inner.slice(1));
+      }
+      return out;
+    }
+    for (const [k, val] of Object.entries(v)) {
+      if (nested(val)) out.push(pad + yamlString(k) + ":", ...yamlLines(val, pad + "  "));
+      else out.push(pad + yamlString(k) + ": " + yamlValue(val));
+    }
+    return out;
+  }
+
+  // Plan text `text` with lab_in_a_box.lab set to lab-in-a-box lab `lab`: that block replaced,
+  // or added first under lab_in_a_box: (which is added when the plan has none).
+  function setStoredLab(text, lab) {
+    const block = ["  lab:", ...yamlLines(lab, "    ")];
+    const lines = text.split("\n");
+    const top = lines.findIndex((l) => /^lab_in_a_box:\s*(#.*)?$/.test(l));
+    if (top < 0) return text.replace(/\s*$/, "\n") + "\nlab_in_a_box:\n" + block.join("\n") + "\n";
+    let end = top + 1;
+    while (end < lines.length && !/^[^\s#]/.test(lines[end])) end++;
+    const at = lines.slice(top + 1, end).findIndex((l) => /^  lab:/.test(l));
+    if (at < 0) { lines.splice(top + 1, 0, ...block); return lines.join("\n"); }
+    const start = top + 1 + at;
+    let stop = start + 1;
+    while (stop < end && (!lines[stop].trim() || /^ {3}/.test(lines[stop]))) stop++;
+    while (stop > start + 1 && !lines[stop - 1].trim()) stop--;
+    lines.splice(start, stop - start, ...block);
+    return lines.join("\n");
+  }
+
   function setTopKey(text, key, value) {
     const line = key + ": " + yamlScalar(value);
     const re = new RegExp("^" + key + ":.*$", "m");
@@ -1199,8 +1250,8 @@ const RB = (() => {
         ". Render one with `--language <lang>`; spans without a stored translation need `--engine <name>`.");
     }
     if (rodeo.labJson) {
-      lines.push("", "`lab.json` is the lab designed in lab-in-a-box's lab-builder, kept for reference:",
-        "rodeo builds its own lab.json from `rodeo-plan.yaml` and `definition.yaml`.");
+      lines.push("", "The lab designed in lab-in-a-box's lab-builder is `lab_in_a_box.lab` in `rodeo-plan.yaml`:",
+        "rodeo deploys it as written, with this host's network, addresses and secrets.");
     }
     return lines.join("\n") + "\n";
   }
@@ -1215,7 +1266,6 @@ const RB = (() => {
     for (const v of rodeo.variants) out.push({ path: "story/stories/" + v + ".yaml", content: storyYaml(v, storyIndex(rodeo.chapters, v)) });
     out.push(...stringsFiles(rodeo.strings, translatableIds(rodeo.chapters), rodeo.date || new Date().toISOString()));
     for (const ch of rodeo.chapters) if (ch.check) out.push({ path: "checks/check-" + ch.id + ".sh", content: checkScript(ch), mode: 0o755 });
-    if (rodeo.labJson) out.push({ path: "lab.json", content: JSON.stringify(rodeo.labJson, null, 2) + "\n" });
     if (rodeo.base) out.push({ path: "builder.yaml", content: "# The profile this rodeo is built on: rodeo new --from-zip copies it first.\nbase: " + rodeo.base + "\n" });
     out.push({ path: "README.md", content: readme(rodeo) });
     return out;
@@ -1381,7 +1431,7 @@ const RB = (() => {
   return {
     MISSING_ADDON, SOURCE_LANGUAGE, LANGUAGES, slugify, uniqueId, parseSpans, parseAttrs, kind, needsId, openTag, inner,
     withKind, wrapTarget, nextId, wrap, retag, unwrap, idsIn, validate, warningsByChapter, engineNeeds, variantsIn, storyIndex,
-    setTopKey, dropTopBlock, storyBlock, planFromBase, planLabinabox, chapterFile, chaptersYaml,
+    setTopKey, setStoredLab, dropTopBlock, storyBlock, planFromBase, planLabinabox, chapterFile, chaptersYaml,
     storyYaml, checkScript, readme, files, labJsonAddons, crc32, zip,
     renumber, nameMissing, translatableIds, storedSource, sourceTexts, missingPlaceholders, stringsFiles, translatedLanguages, draftPrompt, storyRole, storyParts, maskExercises, retoldChapters, contentBlock, PARTS, partOf, partFiles, CATALOG_REPO, catalogEntry, publishLinks,
     parseSourceUrl, importGroupId, detectFormat, chapterFromMarkdown, chapterFromInstruqt, chaptersMeta, storyIds, chapterFromStory,

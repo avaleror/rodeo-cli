@@ -80,6 +80,9 @@ def test_labinabox_imports_list_bundled_labinabox_rodeos():
     assert set(imports) == {"smlm-workshop"}
     assert {"smlm", "client_registration"} <= set(imports["smlm-workshop"]["addons"])
     assert yaml.safe_load(imports["smlm-workshop"]["plan"])["type"] == "lab-in-a-box"
+    lab = imports["smlm-workshop"]["lab"]
+    assert lab == yaml.safe_load(imports["smlm-workshop"]["plan"])["lab_in_a_box"]["lab"]
+    assert len(lab["nodes"]) == 8 and lab["smlm"]["smlm_admin_pass"] == "??smlm_admin_password"
 
 
 def _fake_labinabox(tmp_path: Path, body: str) -> Path:
@@ -213,6 +216,41 @@ def test_generated_labinabox_plan_is_a_valid_rodeo(tmp_path):
     assert vm["addons"] == ["smlm", "client_registration"]
     assert vm["VM_MEM"] == "4096"
     assert lab_json["common"]["ISO_URL"].endswith("openSUSE-Leap-15.6-Minimal-VM.x86_64-Cloud.qcow2")
+
+
+@needs_node
+def test_a_lab_from_the_lab_builder_is_the_workshops_lab(tmp_path, monkeypatch):
+    """The SMLM workshop with a lab sent back from the lab-builder (one VM resized, one added):
+    the plan keeps the workshop and deploys that lab."""
+    from rodeo.config import load_config
+    from rodeo.labinabox import build_lab_json
+    from rodeo.labseed import example_dir
+
+    base = next(i for i in discovery.labinabox_imports() if i["profile"] == "smlm-workshop")
+    lab = base["lab"]
+    lab["nodes"]["smlm.rodeo.lab"]["VM_MEM"] = "24576"
+    lab["nodes"]["extra.rodeo.lab"] = {"myip": "192.168.122.61", "VM_MEM": "1024", "VM_CPU": "1", "VM_DSK": "10",
+                                       "ISO_IMAGE": "ubuntu-24.04-server-cloudimg-amd64.img", "flag": "on"}
+    out = _node_plans("console.log(JSON.stringify({plan: RB.planFromBase(RB.setStoredLab(" + json.dumps(base["plan"]) +
+                      ", " + json.dumps(lab) + "), {name: 'smlm-mine', target: 'baremetal', story: {language: 'en'}})}))")
+    plan, original = yaml.safe_load(out["plan"]), yaml.safe_load(base["plan"])
+    assert plan["lab_in_a_box"]["lab"] == lab
+    for key in ("workshop", "operator_secrets", "resources"):
+        assert plan[key] == original[key], key
+    assert plan["lab_in_a_box"]["variants"] == original["lab_in_a_box"]["variants"]
+    home = tmp_path / "home"
+    (home / ".rodeo").mkdir(parents=True)
+    keys = set(re.findall(r"\?\?(\w+)", out["plan"]))
+    (home / ".rodeo" / "secrets.yaml").write_text(yaml.safe_dump({k: "x" for k in keys}))
+    monkeypatch.setenv("HOME", str(home))
+    shutil.copytree(example_dir("smlm-workshop"), tmp_path / "smlm-mine")
+    (tmp_path / "smlm-mine" / "rodeo-plan.yaml").write_text(out["plan"])
+    cfg = load_config(tmp_path / "smlm-mine" / "rodeo-plan.yaml")
+    assert cfg["vms"]["extra"]["ip"] == "192.168.122.61"
+    rendered, _ = build_lab_json(cfg)
+    assert rendered["nodes"]["smlm.rodeo.lab"]["VM_MEM"] == "24576"
+    assert rendered["nodes"]["extra.rodeo.lab"]["flag"] == "on"
+    assert rendered["client_registration"]["client_registration_server_ip"] == "192.168.122.20"
 
 
 @needs_node

@@ -1204,6 +1204,16 @@ def test_exposed_live_server_does_not_deploy(page):
     assert page.locator("#deployBtn").get_attribute("aria-disabled") == "true"
 
 
+@pytest.mark.parametrize("page", ["site", "live"], indirect=True)
+def test_targets_and_formats_are_the_registered_ones(page):
+    assert page.locator("#target option").all_inner_texts() == ["aws", "baremetal", "instruqt"]
+    assert page.input_value("#target") == "baremetal"
+    assert page.locator("#contentFormat option").all_inner_texts() == ["rmstory story/", "Instruqt track", "markdown"]
+    page.select_option("#target", "aws")
+    page.click("[data-tab=plan]")
+    assert "deployment_target: aws" in page.locator("#planEditor").input_value()
+
+
 @pytest.mark.parametrize("page", ["live_login"], indirect=True)
 def test_exposed_live_server_deploys_after_a_login(page):
     page.click(".card >> text=Welcome to the rodeo")

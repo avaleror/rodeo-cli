@@ -50,7 +50,7 @@ function fill(node, ...children) {
 }
 
 const state = {
-  engines: [], capabilities: [], workshops: [], server: null,
+  engines: [], capabilities: [], targets: [], contentFormats: [], workshops: [], server: null,
   liab: { builder_url: "", error: "", addons: [], infrastructure: [], kclusters: [], imports: [] },
   engine: "rancher", base: null, planEdited: null, mode: "link", importProfile: "", labAddons: [], labJson: null,
   chapters: [], custom: [], name: "my-rodeo", title: "My rodeo", lang: "en", target: "baremetal",
@@ -245,6 +245,20 @@ function contentSource() {
 function contentError() {
   if (!state.contentUrl.trim()) return "";
   try { RB.parseSourceUrl(state.contentUrl); return ""; } catch (err) { return err.message; }
+}
+
+// Shown names of the instructions formats the server lists; one not named here shows its id.
+const FORMAT_LABELS = { rmstory: "rmstory story/", instruqt: "Instruqt track" };
+
+// The Deployment target and Instructions format choices: what the server lists (the registered
+// deployment targets and content formats), plus the rodeo's own value when it is not among them.
+function fillChoices() {
+  const opts = (values, cur, label) => [...new Set([...values, cur].filter(Boolean))]
+    .map((v) => el("option", { value: v, text: label(v) }));
+  $("#target").replaceChildren(...opts(state.targets, state.target, (v) => v));
+  $("#target").value = state.target;
+  $("#contentFormat").replaceChildren(...opts(state.contentFormats, state.contentFormat, (v) => FORMAT_LABELS[v] || v));
+  $("#contentFormat").value = state.contentFormat;
 }
 
 function planOptions() { return { name: state.name, target: state.target, story: story(), content: contentSource() }; }
@@ -856,7 +870,7 @@ function renderSettings() {
   $("#name").value = state.name;
   $("#title").value = state.title;
   $("#lang").value = state.lang;
-  $("#target").value = state.target;
+  fillChoices();
   const box = $("#variants");
   const options = [["", "all spans"], ...allVariants().map((v) => [v, v])];
   if (state.variant && !allVariants().includes(state.variant)) state.variant = "";
@@ -865,7 +879,6 @@ function renderSettings() {
     text: label, onclick: () => { state.variant = v; render(); } })));
   renderNewStory();
   $("#contentUrl").value = state.contentUrl;
-  $("#contentFormat").value = state.contentFormat;
   const c = contentSource(), bad = contentError();
   $("#contentNote").textContent = bad ? bad : c ? "The plan gets content: " + c.repo + (c.ref ? " @ " + c.ref : "") + (c.path ? " /" + c.path : "")
     + ". rodeo up renders it; rodeo content apply updates it on a running lab."
@@ -2271,6 +2284,8 @@ async function init() {
     const [engines, workshops, liab] = await Promise.all([apiGet("engines"), apiGet("workshops"), apiGet("labinabox")]);
     state.engines = engines.engines;
     state.capabilities = engines.capabilities;
+    state.targets = engines.targets;
+    state.contentFormats = engines.content_formats;
     state.workshops = workshops.workshops;
     state.liab = { ...state.liab, ...liab };
     if (!window.RB_STATIC) {

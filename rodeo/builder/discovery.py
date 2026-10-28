@@ -23,7 +23,7 @@ from typing import Any
 
 import yaml
 
-from .. import catalog
+from .. import catalog, content
 
 DATA = Path(__file__).resolve().parent.parent / "data"
 EXAMPLES = DATA / "examples"
@@ -32,36 +32,6 @@ PLATFORMS = DATA / "platforms"
 LAB_BUILDER_URL = "https://rmahique.github.io/lab-in-a-box/lab-builder/"
 DEFAULT_MINUTES = 10
 
-# Capabilities each native engine gives the chapters that run on it.
-ENGINES: dict[str, dict[str, Any]] = {
-    "suse-virt": {
-        "title": "SUSE Virtualization",
-        "base": "harvester",
-        "provides": ["harvester", "kubevirt", "longhorn", "rancher", "fleet"],
-        "note": "3-node Harvester HCI cluster with Rancher Prime on nested KVM.",
-    },
-    "rancher": {
-        "title": "Rancher Prime",
-        "base": "rancher",
-        "provides": ["rancher", "fleet"],
-        "note": "Rancher Prime on K3s plus K3s and RKE2 clusters it provisions.",
-    },
-    "suse-edge": {
-        "title": "SUSE Edge",
-        "base": "suse-edge",
-        "provides": ["rancher", "fleet", "elemental", "eib"],
-        "note": "Rancher Prime, Elemental and EIB with four edge nodes.",
-    },
-    "lab-in-a-box": {
-        "title": "lab-in-a-box",
-        "base": None,
-        "provides": [],
-        "note": "Any lab lab-in-a-box can build: VMs, clusters and add-ons.",
-        "external": True,
-    },
-}
-
-# Capabilities a new chapter can ask for (the union the UI offers).
 
 _HEADING_RE = re.compile(r"^#\s+(.+?)\s*$", re.M)
 _TAG_RE = re.compile(r"<[^>]+>")
@@ -73,7 +43,6 @@ _FRONT_MATTER_RE = re.compile(r"\A---\n(.*?)\n---\n?", re.S)
 _TIME_RE = re.compile(r"^\*\*Time:\*\*\s*(\d+)\s*min", re.M | re.I)
 
 SOURCES_FILE = Path(__file__).resolve().parent / "chapter_sources.yaml"
-SOURCE_FORMATS = ("instruqt", "markdown", "rmstory")
 # Instruqt's timelimit is an upper bound, not a duration: challenges get this.
 INSTRUQT_MINUTES = 20
 
@@ -109,9 +78,19 @@ def _resources(example: Path, engine: str) -> dict[str, int]:
 
 
 def engines() -> dict[str, Any]:
-    """Every engine with its base plan text (what a new rodeo starts from)."""
+    """Every rodeo type the builder offers (:attr:`.RodeoProfile.builder`), with its base
+    plan text (what a new rodeo starts from); ``capabilities``, the union of what they
+    provide; ``targets``, every registered ``deployment_target``; ``content_formats``,
+    every instructions format a plan's ``content:`` takes. Plugins' are included."""
+    from ..content import FORMATS
+    from ..host_context import known_targets
+    from ..profiles import registered_profiles
+
     out = []
-    for name, spec in ENGINES.items():
+    for profile in registered_profiles():
+        if not profile.builder:
+            continue
+        name, spec = profile.name, {"base": None, "provides": [], **profile.builder}
         entry = {"name": name, **spec}
         if spec["base"]:
             example = _profile_example(spec["base"])
@@ -121,8 +100,9 @@ def engines() -> dict[str, Any]:
             entry["resources"] = {"nodes": 1, "memory_mib": 4096, "vcpu": 2}
             entry["definition"] = (PLATFORMS / name / "definition.yaml").read_text()
         out.append(entry)
-    capabilities = sorted({c for spec in ENGINES.values() for c in spec["provides"]})
-    return {"engines": out, "capabilities": capabilities}
+    capabilities = sorted({c for e in out for c in e["provides"]})
+    return {"engines": out, "capabilities": capabilities, "targets": known_targets(),
+            "content_formats": list(FORMATS)}
 
 
 def _chapter_title(body: str, fallback: str) -> str:
@@ -226,7 +206,7 @@ def chapter_sources() -> list[dict[str, Any]]:
             src.setdefault("ref", ws.get("ref") or ws.get("branch") or "main")
             src.setdefault("path", "tracks/{}".format(ws.get("track")))
         missing = [k for k in ("id", "title", "engine", "profile", "format", "repo", "ref", "path") if not src.get(k)]
-        if missing or src["format"] not in SOURCE_FORMATS:
+        if missing or src["format"] not in content.FORMATS:
             raise ValueError("chapter source {}: missing {} or unknown format".format(src.get("id"), missing))
         out.append(src)
     listed = {s["repo"].removesuffix(".git").lower() for s in out}

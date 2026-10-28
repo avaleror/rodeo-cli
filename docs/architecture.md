@@ -459,8 +459,8 @@ Live KVM regression is still manual (or geekohive) before touching MAC/DHCP/ISO 
 
 | Add… | Where |
 |------|-------|
-| New tech platform | New `RodeoProfile` + `definition.yaml`, then `profiles.register_profile()` (in-tree: `profiles/__init__.py`; out-of-tree: a `rodeo.plugins` entry point) |
-| New deployment_target | `host_context.register_host_context(name, overlay)`, validation, `--target`, prompt, and plan shaping all follow; add `up_cmd.py` auto-detection only if the target is probeable |
+| New tech platform | New `RodeoProfile` + `definition.yaml`, then `profiles.register_profile()` (in-tree: `profiles/__init__.py`; out-of-tree: a `rodeo.plugins` entry point). Its `builder` attribute (title, base profile, capabilities it provides, note) offers it in the Rodeo Builder |
+| New deployment_target | `host_context.register_host_context(name, overlay)`, validation, `--target`, prompt, plan shaping and the Rodeo Builder's target choice all follow; add `up_cmd.py` auto-detection only if the target is probeable |
 | Profile success screen | Override `RodeoProfile.success_extra_sections()` / `success_next_steps()`, `success.py` renders URLs/credentials, the profile owns the narrative |
 | New Python phase | `profiles.base.register_stream_phase()` + a `stream_*` generator on DeployRunner + add to `profile.phases` |
 | New host provider | `providers.registry.register_provider()` with a factory returning a `HostProvider` |

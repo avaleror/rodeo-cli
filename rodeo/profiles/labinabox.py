@@ -24,6 +24,8 @@ register_stream_phase("labinabox", "stream_labinabox")
 
 class LabInABoxProfile(RodeoProfile):
     name = "lab-in-a-box"
+    builder = {"title": "lab-in-a-box", "base": None, "provides": [],
+               "note": "Any lab lab-in-a-box can build: VMs, clusters and add-ons.", "external": True}
     # kvm_host: packages, libvirt, firewall DNAT (rodeo's Ansible role).
     # labinabox_host / labinabox: see rodeo/engine/labinabox_phase.py.
     # custom_scripts: <lab>/custom/scripts/* post-steps, re-run every time.

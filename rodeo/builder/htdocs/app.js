@@ -1730,9 +1730,25 @@ function renderDeploy() {
   $("#deployLog").textContent = cur.log || "(no output yet)";
 }
 
-function openDeploy() {
+// On an exposed builder deploying needs a login: GET login makes the browser ask for it, and
+// sends it with every request after; deploy and vault are then read again with it.
+async function deployLogin() {
+  if (!state.deploy.login) return true;
+  try {
+    await apiGet("login");
+  } catch (err) {
+    toast("Deploying needs a login: " + err.message, true);
+    return false;
+  }
+  state.deploy = await apiGet("deploy").catch(() => state.deploy);
+  await refreshVault();
+  return !state.deploy.login;
+}
+
+async function openDeploy() {
   const reason = deployReason();
   if (reason) { toast(reason, true); return; }
+  if (!(await deployLogin())) return;
   const name = RB.slugify(state.name);
   if (!name) { toast("Give the rodeo a name first", true); $("#name").focus(); return; }
   if (!state.chapters.length) { toast("Add at least one chapter first.", true); return; }
@@ -1803,7 +1819,7 @@ async function stopDeploy() {
   pollDeploy();
 }
 
-// ── stored credentials (live server on loopback only, GET vault) ────────
+// ── stored credentials (live server, after a login on an exposed one; GET vault) ──
 // Each credential is encrypted under its own password, asked every time it is opened. Neither
 // passwords nor decrypted values are kept: not in state, not in storage, and not in the DOM once
 // a dialog closes. They are added and deleted on the Settings page (/rodeo-builder/settings/ over

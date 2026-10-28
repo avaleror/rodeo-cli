@@ -6,6 +6,7 @@ Playwright or its Chromium is not installed, unless RB_E2E_REQUIRED is set
 """
 from __future__ import annotations
 
+import base64
 import functools
 import json
 import io
@@ -78,6 +79,19 @@ def live_local_lab_builder(labinabox_checkout, markdown_source):
 @pytest.fixture()
 def live_deploy(labinabox_checkout, markdown_source, tmp_path, monkeypatch):
     """The live server allowed to deploy, with a fake rodeo that runs three phases."""
+    yield from _deploy_server(labinabox_checkout, markdown_source, tmp_path, monkeypatch, need_login=False)
+
+
+@pytest.fixture()
+def live_login(labinabox_checkout, markdown_source, tmp_path, monkeypatch):
+    """live_deploy needing a login (an exposed server), accepting alice:alicepass."""
+    from rodeo.builder import login
+
+    monkeypatch.setattr(login, "verify", lambda user, password: (user, password) == ("alice", "alicepass"))
+    yield from _deploy_server(labinabox_checkout, markdown_source, tmp_path, monkeypatch, need_login=True)
+
+
+def _deploy_server(labinabox_checkout, markdown_source, tmp_path, monkeypatch, need_login):
     from rodeo.builder import deploywork
     from rodeo.builder.api import Api
     from rodeo.builder.server import make_server
@@ -89,7 +103,7 @@ def live_deploy(labinabox_checkout, markdown_source, tmp_path, monkeypatch):
     monkeypatch.setattr(deploywork, "find_rodeo_bin", lambda: str(fake))
     monkeypatch.setattr(deploywork, "capability", lambda run=None: {"available": True, "reason": "", "as": "root"})
     api = Api(labinabox_checkout, "http://127.0.0.1:9/lab-builder/", "1.0.0", {"virt-workshop": markdown_source},
-              can_save=True, can_deploy=True)
+              can_save=True, can_deploy=True, need_login=need_login)
     server = make_server(api, "127.0.0.1", 0, "0.0.0-test")
     threading.Thread(target=server.serve_forever, daemon=True).start()
     yield "http://127.0.0.1:{}/".format(server.server_address[1])
@@ -150,8 +164,10 @@ def page(request, monkeypatch):
 
 
 def _refused_unlock(msg) -> bool:
-    """Chromium's log line for a vault-open answered 403 or 429 (a wrong password, too many tries)."""
-    return msg.text.startswith("Failed to load resource") and "action=vault-open" in msg.location.get("url", "")
+    """Chromium's log line for a vault-open answered 403 or 429 (a wrong password, too many tries),
+    or for a login refused with 401."""
+    url = msg.location.get("url", "")
+    return msg.text.startswith("Failed to load resource") and ("action=vault-open" in url or "action=login" in url)
 
 
 def _open_library(page) -> None:
@@ -1186,6 +1202,19 @@ def test_static_deploy_is_greyed_out_with_why(page):
 def test_exposed_live_server_does_not_deploy(page):
     sync_api.expect(page.locator("#deployWrap")).to_have_attribute("title", re.compile("listens on this machine only"))
     assert page.locator("#deployBtn").get_attribute("aria-disabled") == "true"
+
+
+@pytest.mark.parametrize("page", ["live_login"], indirect=True)
+def test_exposed_live_server_deploys_after_a_login(page):
+    page.click(".card >> text=Welcome to the rodeo")
+    sync_api.expect(page.locator("#deployBtn")).to_have_attribute("aria-disabled", "false")
+    page.click("#deployBtn")
+    sync_api.expect(page.locator("#toastText")).to_contain_text("Deploying needs a login: log in first")
+    assert page.locator("#deployModal").is_hidden()
+    page.context.set_extra_http_headers({"Authorization": "Basic " + base64.b64encode(b"alice:alicepass").decode()})
+    page.click("#deployBtn")
+    sync_api.expect(page.locator("#deployModal")).to_be_visible()
+    assert "as root" in page.locator("#dpWhere").inner_text()
 
 
 @pytest.mark.parametrize("page", ["live_deploy"], indirect=True)

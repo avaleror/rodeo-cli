@@ -72,7 +72,8 @@ def _labinabox_checkout(given: Path | None) -> tuple[Path | None, str, str]:
 @click.option("--port", default=8678, show_default=True, type=click.IntRange(0, 65535), help="Port (0 picks a free one).")
 @click.option("--expose", is_flag=True,
               help="Allow a non-loopback --host. Anyone who can reach it can save profiles as you; "
-                   "Publish then uses github.com pages instead of this host's GitHub login.")
+                   "Publish then uses github.com pages instead of this host's GitHub login; "
+                   "deploying and stored credentials need a login from /etc/rodeo-builder/htpasswd.")
 @click.option("--allow-host", "allow_hosts", multiple=True, metavar="NAME",
               help="Extra Host header name to accept (with --expose: the name or IP clients use).")
 @click.option("--labinabox", "labinabox", type=click.Path(file_okay=False, path_type=Path),
@@ -126,7 +127,7 @@ def builder_cmd(bind: str, port: int, expose: bool, allow_hosts: tuple[str, ...]
         try:
             api = Api(checkout, lab_builder_url, liab_version, checkouts, can_save=True,
                       labinabox_missing=liab_missing, can_publish=_is_loopback(bind),
-                      can_deploy=_is_loopback(bind))
+                      can_deploy=True, need_login=not _is_loopback(bind))
             status, liab = api.dispatch("labinabox")
             if status == 200 and liab["error"]:
                 console.print(f"[yellow]⚠  lab-in-a-box catalogue: {liab['error']}[/yellow]")

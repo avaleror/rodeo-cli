@@ -15,22 +15,27 @@ and ``github-login`` publish to GitHub with the host's login. POST actions answe
 only when the Api was created with ``can_save=True`` (the live server); ``github``,
 ``publish`` and ``github-login`` also need ``can_publish=True``, and GET ``deploy``
 with POST ``deploy`` and ``deploy-stop`` (see :mod:`.deploywork`) ``can_deploy=True``:
-a server that listens on loopback only, so nobody else can act as its user.
-GET ``vault`` with POST ``vault-open`` (stored credentials: rodeo's own,
+a server that listens on loopback only, so nobody else can act as its user, or one
+created with ``need_login=True`` (an exposed server), where they also need a login.
+GET ``login`` answers ``{"user"}`` for a login and ``401`` without one. GET ``vault``
+with POST ``vault-open`` (stored credentials: rodeo's own,
 :mod:`.vault`, and other engines', :mod:`.engine_credentials`) also need
-``can_deploy=True``. POST ``vault-add`` and ``vault-delete`` (rodeo's store only;
+``can_deploy=True``, and a login with ``need_login=True``. POST ``vault-add`` and ``vault-delete`` (rodeo's store only;
 the Settings page, :mod:`.settings`, does the same) need the live server and a
 login (:mod:`.login`, *auth* of :meth:`Api.dispatch`), and ``vault-delete`` the
-credential's password. Failed logins and passwords wait longer from the fifth
+credential's password. A login is checked once per :data:`LOGIN_TTL` seconds; failed logins and passwords wait longer from the fifth
 in a row on (:class:`.vault.OpenLimiter`);
 GET ``vault`` answers ``available: false`` without it or without the
-``cryptography`` package. Its ``file_secrets`` lists the keys of
+``cryptography`` package, and ``login: true`` with nothing listed while a login is
+needed; GET ``deploy`` answers ``login: true`` then too. Its ``file_secrets`` lists the keys of
 ``~/.rodeo/secrets.yaml`` (never their values) that POST ``deploy`` can name in
 ``secret_refs``; ``[]`` without ``can_deploy=True``.
 """
 from __future__ import annotations
 
+import hashlib
 import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -49,6 +54,7 @@ DEPLOY_ACTIONS = ("deploy", "deploy-stop")
 VAULT_ACTIONS = ("vault-add", "vault-delete", "vault-open")
 LIVE_ACTIONS = ("save", "import", *STORY_ACTIONS, *GITHUB_ACTIONS, *DEPLOY_ACTIONS, *VAULT_ACTIONS)
 LOOPBACK_ONLY = "needs a rodeo builder that listens on this machine only"
+LOGIN_TTL = 300.0
 NO_CRYPTOGRAPHY = "stored credentials need the Python package cryptography (pip install cryptography)"
 
 
@@ -56,7 +62,8 @@ class Api:
     def __init__(self, labinabox_checkout: Path | None = None,
                  lab_builder_url: str = discovery.LAB_BUILDER_URL, labinabox_version: str = "",
                  source_checkouts: dict[str, Path] | None = None, can_save: bool = False,
-                 labinabox_missing: str = "", can_publish: bool = False, can_deploy: bool = False):
+                 labinabox_missing: str = "", can_publish: bool = False, can_deploy: bool = False,
+                 need_login: bool = False):
         self.labinabox_checkout = labinabox_checkout
         self.labinabox_missing = labinabox_missing
         self.source_checkouts = source_checkouts or {}
@@ -65,11 +72,13 @@ class Api:
         self.can_save = can_save
         self.can_publish = can_save and can_publish
         self.can_deploy = can_save and can_deploy
+        self.need_login = need_login
+        self._logins: dict[str, float] = {}
         self.deployer = deploywork.Deployer()
         self.vault_limiter = vault.OpenLimiter() if vault is not None else None
         self.login_limiter = vault.OpenLimiter() if vault is not None else None
 
-    def _get(self, action: str) -> dict[str, Any]:
+    def _get(self, action: str, auth: str = "") -> dict[str, Any]:
         if action == "engines":
             return discovery.engines()
         if action == "workshops":
@@ -84,6 +93,8 @@ class Api:
         if action == "deploy":
             if not self.can_deploy:
                 return {"available": False, "reason": "deploying " + LOOPBACK_ONLY, "as": "", "current": None}
+            if self.need_login and self._login(auth) is not None:
+                return {"available": True, "reason": "", "as": "", "current": None, "login": True}
             return {**deploywork.capability(), "current": self.deployer.status()}
         if action == "github":
             return {**publish.status(), "available": True} if self.can_publish else {"available": False}
@@ -94,6 +105,9 @@ class Api:
             if vault is None:
                 return {"available": False, "reason": NO_CRYPTOGRAPHY, "types": [], "items": [],
                         "file_secrets": deploywork.file_secret_keys()}
+            if self.need_login and self._login(auth) is not None:
+                return {"available": True, "reason": "", "types": vault.types(), "items": [],
+                        "file_secrets": [], "login": True}
             return {"available": True, "reason": "", "types": vault.types(),
                     "items": vault.list_items() + engine_credentials.list_items(),
                     "file_secrets": deploywork.file_secret_keys()}
@@ -133,9 +147,12 @@ class Api:
         except (RuntimeError, OSError) as exc:
             return 502, {"error": str(exc)}
 
-    def _deploy(self, action: str, body: bytes) -> tuple[int, dict[str, Any]]:
+    def _deploy(self, action: str, body: bytes, auth: str = "") -> tuple[int, dict[str, Any]]:
         if not self.can_deploy:
             return 403, {"error": "deploying " + LOOPBACK_ONLY}
+        refused = self._login(auth) if self.need_login else None
+        if refused is not None:
+            return refused
         if action == "deploy-stop":
             return 200, {"current": self.deployer.stop()}
         try:
@@ -153,19 +170,27 @@ class Api:
 
     def _login(self, auth: str) -> tuple[int, dict[str, Any]] | None:
         """None when *auth* logs in; otherwise the refusal."""
+        if self.login_limiter is None:
+            return 501, {"error": "logging in needs the Python package cryptography (pip install cryptography)"}
         creds = login.parse_basic(auth)
         if creds is None:
-            return 401, {"error": "log in to manage credentials (Authorization: Basic)"}
+            return 401, {"error": "log in first (Authorization: Basic)"}
+        seen = hashlib.sha256(auth.encode("utf-8")).hexdigest()
+        if self._logins.get(seen, 0.0) > time.monotonic():
+            return None
         key = "login:" + creds[0]
-        self.login_limiter.check(key)
         try:
+            self.login_limiter.check(key)
             ok = login.verify(*creds)
+        except vault.TooManyAttempts as exc:
+            return 429, {"error": str(exc)}
         except login.LoginUnavailable as exc:
             return 501, {"error": str(exc)}
         if not ok:
             self.login_limiter.failed(key)
             return 401, {"error": "wrong user or password"}
         self.login_limiter.succeeded(key)
+        self._logins[seen] = time.monotonic() + LOGIN_TTL
         return None
 
     def _vault(self, action: str, body: bytes, auth: str = "") -> tuple[int, dict[str, Any]]:
@@ -177,7 +202,7 @@ class Api:
             req = json.loads(body.decode("utf-8"))
             if not isinstance(req, dict):
                 raise ValueError("send a JSON object")
-            if action != "vault-open":
+            if action != "vault-open" or self.need_login:
                 refused = self._login(auth)
                 if refused is not None:
                     return refused
@@ -260,7 +285,7 @@ class Api:
             if action in GITHUB_ACTIONS:
                 return self._github(action, body)
             if action in DEPLOY_ACTIONS:
-                return self._deploy(action, body)
+                return self._deploy(action, body, auth)
             if action in VAULT_ACTIONS:
                 return self._vault(action, body, auth)
             if action in STORY_ACTIONS:
@@ -273,8 +298,11 @@ class Api:
                 return 500, {"error": str(exc)}
         if method != "GET":
             return 405, {"error": "{} {} is not supported".format(method, action)}
+        if action == "login":
+            refused = self._login(auth)
+            return refused or (200, {"user": login.parse_basic(auth)[0]})
         try:
-            return 200, self._get(action)
+            return 200, self._get(action, auth)
         except KeyError:
             return 404, {"error": "unknown action: {}".format(action)}
         except (OSError, RuntimeError, ValueError) as exc:

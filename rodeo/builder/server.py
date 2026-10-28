@@ -6,13 +6,14 @@ embedded ones, plus what only a server can do (save a rodeo straight into
 
     GET  /                   index.html (version filled in, write token in a meta tag)
     GET  /<file>             a file from htdocs/
-    GET  /api?action=<name>  Api.dispatch(name, "GET")
+    GET  /api?action=<name>  Api.dispatch(name, "GET", Authorization header)
     POST /api?action=save    Api.dispatch("save", "POST", body, Authorization header);
                              needs the X-Rodeo-Builder-Token header from the page's meta tag
 
 Every request must name an allowed Host (loopback names by default), which
 stops DNS-rebinding pages from reaching the server; the per-run token stops
-other sites from posting to it.
+other sites from posting to it. A 401 answer carries ``WWW-Authenticate: Basic``,
+so the browser asks for the login.
 """
 from __future__ import annotations
 
@@ -93,6 +94,8 @@ def make_handler(api: Api, version: str, allowed_hosts: tuple[str, ...], lab_bui
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Referrer-Policy", "no-referrer")
             self.send_header("Content-Security-Policy", self._policy())
+            if status == 401:
+                self.send_header("WWW-Authenticate", 'Basic realm="rodeo builder", charset="UTF-8"')
             self.end_headers()
             self.wfile.write(data)
 
@@ -117,7 +120,8 @@ def make_handler(api: Api, version: str, allowed_hosts: tuple[str, ...], lab_bui
             url = urlparse(self.path)
             if url.path == "/api":
                 action = (parse_qs(url.query).get("action") or [""])[0]
-                status, obj = api.dispatch(action, "GET", parse_qs(url.query))
+                status, obj = api.dispatch(action, "GET", parse_qs(url.query),
+                                           auth=self.headers.get("Authorization", ""))
                 self._json(status, obj)
                 return
             if url.path in ("/", "/index.html"):

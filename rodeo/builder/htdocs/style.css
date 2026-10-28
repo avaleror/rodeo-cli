@@ -132,19 +132,7 @@ h2.sec .num { color: var(--accent-ink); font-family: var(--mono); font-size: 12p
   display: grid; gap: 8px; background: var(--panel); box-shadow: 0 0 0 1px var(--accent), 0 16px 40px rgba(0, 0, 0, .45); font-size: 13px;
 }
 .filter-menu[hidden] { display: none; }
-.user-wrap { position: relative; flex: none; }
-.user-menu {
-  position: absolute; z-index: 30; top: calc(100% + 6px); right: 0; min-width: 200px; padding: 6px; border-radius: 6px;
-  display: grid; gap: 2px; background: var(--panel); box-shadow: 0 0 0 1px var(--accent), 0 16px 40px rgba(0, 0, 0, .45); font-size: 13px;
-}
-.user-menu[hidden] { display: none; }
-.user-name { margin: 0; padding: 6px 8px; font: 400 11.5px var(--mono); color: var(--muted); overflow-wrap: anywhere; }
-.user-name:empty { display: none; }
-.menu-item { border: 0; background: none; color: var(--ink); text-align: left; padding: 7px 8px; border-radius: 4px; cursor: pointer; font: inherit; }
-.menu-item:hover:not(:disabled), .menu-item:focus-visible { background: var(--tint); }
-.menu-item:disabled { color: var(--muted); cursor: default; }
-.user-note { margin: 0; padding: 2px 8px 6px; max-width: 260px; font-size: 12px; color: var(--muted); }
-.user-note[hidden] { display: none; }
+a.btn { display: inline-flex; align-items: center; color: var(--ink); text-decoration: none; }
 .filter-menu legend { float: left; width: 100%; padding: 0; margin-bottom: 2px; font: 400 11px var(--mono); color: var(--muted); }
 .filter-menu label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
 .filter-menu input { accent-color: var(--accent); margin: 0; }
@@ -434,10 +422,13 @@ div.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 2p
 .backdrop.over { z-index: 25; }
 .modal.narrow { width: min(420px, calc(100vw - 32px)); }
 .modal h3.label { margin-top: 16px; }
-.vault-list { list-style: none; padding: 0; margin: 10px 0 12px; display: grid; gap: 6px; }
-.vault-item { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 8px 10px; border: 1px solid var(--line); border-radius: 2px; }
-.vault-item .vault-name { font-weight: 700; overflow-wrap: anywhere; }
-.vault-item .vault-when { flex: 1; min-width: 180px; font: 400 12px var(--mono); color: var(--muted); }
+.table-wrap { overflow-x: auto; margin: 10px 0 12px; }
+.cred-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.cred-table th, .cred-table td { padding: 7px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; white-space: nowrap; }
+.cred-table thead th { font: 700 11px var(--mono); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.cred-table .vault-name { font-weight: 700; white-space: normal; overflow-wrap: anywhere; min-width: 120px; }
+.cred-table .vault-when { font: 400 12px var(--mono); color: var(--muted); }
+.cred-table .cred-action { text-align: right; }
 .vault-empty { font-size: 13px; color: var(--muted); }
 .vault-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
 .secret-input { display: flex; gap: 6px; }
@@ -452,6 +443,9 @@ div.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 2p
 .dp-secret .note { flex-basis: 100%; margin: 4px 0 0; }
 .file-secret-list { list-style: none; padding: 0; margin: 10px 0 12px; display: flex; flex-wrap: wrap; gap: 6px; }
 .file-secret-list .chip { font-family: var(--mono); overflow-wrap: anywhere; }
+.settings-page { max-width: 1040px; margin: 0 auto; padding: 24px 16px 48px; }
+.settings-page h1 { margin: 0 0 12px; font-size: 24px; }
+.settings-page h2.label { margin-top: 24px; }
 .dp-ref { flex-basis: 100%; display: flex; align-items: center; gap: 8px; margin: 2px 0 0; font: 400 12px var(--mono); color: var(--accent-ink); }
 .dp-ref[hidden] { display: none; }
 .dp-secret input[readonly] { color: var(--muted); border-style: dashed; }

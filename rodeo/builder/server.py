@@ -7,8 +7,8 @@ embedded ones, plus what only a server can do (save a rodeo straight into
     GET  /                   index.html (version filled in, write token in a meta tag)
     GET  /<file>             a file from htdocs/
     GET  /api?action=<name>  Api.dispatch(name, "GET")
-    POST /api?action=save    Api.dispatch("save", "POST", body); needs the
-                             X-Rodeo-Builder-Token header from the page's meta tag
+    POST /api?action=save    Api.dispatch("save", "POST", body, Authorization header);
+                             needs the X-Rodeo-Builder-Token header from the page's meta tag
 
 Every request must name an allowed Host (loopback names by default), which
 stops DNS-rebinding pages from reaching the server; the per-run token stops
@@ -150,7 +150,8 @@ def make_handler(api: Api, version: str, allowed_hosts: tuple[str, ...], lab_bui
                 self._json(413, {"error": "request body too large"})
                 return
             action = (parse_qs(url.query).get("action") or [""])[0]
-            status, obj = api.dispatch(action, "POST", parse_qs(url.query), self.rfile.read(length))
+            status, obj = api.dispatch(action, "POST", parse_qs(url.query), self.rfile.read(length),
+                                       self.headers.get("Authorization", ""))
             self._json(status, obj)
 
         def log_message(self, *args: Any) -> None:

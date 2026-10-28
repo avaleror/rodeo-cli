@@ -49,6 +49,35 @@ of starting a lab it cannot run (`--no-deploy` still sets the lab up).
 `RODEO_ALLOW_ANY_KVM_HOST=1` lets you try a local lab on an unsupported Linux
 anyway.
 
+### Settings page
+
+On a KVM host, as root, the installer also sets up the builder's Settings page
+(see [Rodeo Builder](rodeo-builder.md#settings-and-stored-credentials)), with
+`rodeo/builder/settings/install.sh`. Every way of installing rodeo-cli on a KVM
+host runs that script, again on every update:
+
+| Path | What |
+|------|------|
+| `/etc/rodeo-builder/htpasswd` | Login file: users who may open the page (created empty when missing) |
+| `/srv/www/rodeo-builder/` | The page, its CGI script and the "not logged in" page |
+| `/usr/local/sbin/rodeo-builder-helper` | Runs as root through `sudo`: lists, adds and deletes the stored credentials |
+| `/etc/sudoers.d/rodeo-builder` | Lets the web server user run only that helper |
+| `/etc/apache2/conf.d/rodeo-builder.conf` | HTTPS only, login on `/rodeo-builder/` (`/etc/httpd/conf.d/` on RHEL family) |
+
+It only adds its own files; no other site's or user's configuration is edited:
+
+- It stops, changing nothing, when Apache's configuration test already fails or
+  another configuration file already uses `/rodeo-builder` or `/rodeo-login`.
+- It enables only the modules the page needs that are not loaded yet (`cgid`,
+  `alias`, `auth_basic`, `authn_file`, `authz_user`). When the configuration
+  test fails with its file, it removes the file and disables those modules again.
+- The sudoers rule is checked on its own and with the whole sudo configuration;
+  when either fails it is not installed and an earlier version is put back.
+- A running Apache is reloaded gracefully (open connections finish).
+
+Without Apache it skips the page. Apache needs a TLS virtual host: over plain
+HTTP the page redirects to HTTPS.
+
 ### From a checkout (if you change rodeo itself)
 
 ```bash

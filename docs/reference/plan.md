@@ -459,6 +459,25 @@ content:
 `<lab>/content/`, records the commit in `<lab>/content.lock` and renders the
 guide into `<lab>/guide/` (owner-only files: facts can hold lab passwords):
 
+**Language branches.** A content repository keeps its source language on the
+default branch and each translation in a branch named after its language
+(`es`, `pt-br`...). Without a `ref`, a plan whose `story.language` isn't the
+source language (`en`) takes the branch named after that language. When the
+repository has no such branch, the instructions come from the default branch and
+rodeo warns. With either the language branch or `ref:` set to it, rodeo also
+warns when that branch is behind the default branch: the default branch has
+commits the language branch hasn't taken in. Changes under `rmstory/`,
+`rmstory-stories/`, `story/` and `.github/` don't count. A catalog rodeo
+(`rodeo new <name> --from <repo>@<lang>`, or a catalog `ref:`) gets the same
+warning when that ref is its plan's `story.language`.
+
+`rodeo story check [DIR]` runs that check on a clone of the content repository.
+For each language branch it lists the commits the branch misses, and it exits 1
+when a branch is behind, so it can gate CI (check out the full history, e.g.
+`fetch-depth: 0`). With no `--language`, it checks every branch named like a
+two-letter language tag. `--source` names the source branch when it isn't the
+clone's default.
+
 | format | read from `<path>` | guide |
 |---|---|---|
 | `rmstory` | `*.md`, `chapters.yaml`, `stories/`, `strings/` | `guide.md`, rendered like `rodeo story render` |

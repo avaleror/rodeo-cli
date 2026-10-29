@@ -15,6 +15,10 @@ A plan's optional ``content:`` block names where the instructions live:
 :func:`apply` fetches the content into ``<lab>/content/`` (``<lab>/content.lock``
 records the commit) and renders the guide into ``<lab>/guide/`` without touching
 the deployed environment, so the instructions can be updated on a running lab.
+Without a ``ref``, a plan whose ``story.language`` isn't the source language takes
+the repository's branch named after that language (see :mod:`rodeo.langbranch`),
+or the default branch, with a warning, when there is none; a language branch
+behind the default branch is warned about too.
 An rmstory content is also what ``rodeo story render`` reads when the lab has no
 ``story/`` of its own. The plan's ``workshop:`` block and an in-profile ``story/``
 work as before.
@@ -43,6 +47,7 @@ from typing import Any, Callable, Collection, Iterator
 
 import yaml
 
+from . import langbranch
 from .config import ConfigError
 from .labinabox_host import fetch_commands
 from .workshop import render_text
@@ -312,6 +317,7 @@ def apply(cfg: dict, lab: Path, run: Run = subprocess.run) -> dict[str, Any]:
     spec = content_spec(cfg)
     if spec is None:
         raise ConfigError("this plan has no content: block (see docs/reference/plan.md#content)")
+    spec, language = _language_branch(spec, cfg, run)
     commit = fetch(spec, lab, run)
     files = render(spec, lab, cfg)
     warnings: list[str] = []
@@ -319,5 +325,28 @@ def apply(cfg: dict, lab: Path, run: Run = subprocess.run) -> dict[str, Any]:
         checks = install_checks(cfg, lab)
     except (PermissionError, ConfigError) as exc:
         checks, warnings = None, [str(exc)]
-    return {"commit": commit, "files": files, "checks": checks, "warnings": warnings}
+    return {"commit": commit, "ref": spec["ref"], "files": files, "checks": checks, "warnings": warnings,
+            "language": language}
+
+
+def _language_branch(spec: dict[str, Any], cfg: dict, run: Run) -> tuple[dict[str, Any], list[str]]:
+    """*spec* with the plan's language branch as its ref when it has none and the repository
+    has that branch, and warnings: no such branch, or the branch is behind the default one."""
+    from .story import SOURCE_LANGUAGE
+
+    story = cfg.get("story") if isinstance(cfg.get("story"), dict) else {}
+    lang = str(story.get("language") or SOURCE_LANGUAGE).strip()
+    if lang == SOURCE_LANGUAGE or not langbranch.LANG_RE.match(lang) or spec["ref"] not in ("", lang):
+        return spec, []
+    try:
+        commits = langbranch.remote_behind(spec["repo"], lang, run)
+    except RuntimeError as exc:
+        return spec, [f"could not check the {lang} branch of {spec['repo']}: {exc}"]
+    if commits is None:
+        if spec["ref"]:
+            return spec, []
+        return spec, [f"{spec['repo']} has no {lang} branch: the instructions come from its default branch"]
+    warnings = [f"the {lang} branch is {len(commits)} commit(s) behind the default branch of {spec['repo']}: "
+                + "; ".join(commits[:5]) + (" ..." if len(commits) > 5 else "")] if commits else []
+    return {**spec, "ref": lang}, warnings
 

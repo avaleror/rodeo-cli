@@ -1,6 +1,8 @@
 """rodeo story — workshop narrative in different languages and variants.
 
 Group so A3 can add `story new` / `story rewrite` (LLM generation) later.
+`story check` compares a content repository's language branches with its source
+branch (see rodeo/langbranch.py).
 """
 from __future__ import annotations
 
@@ -63,3 +65,49 @@ def story_render_cmd(
     else:
         Path(output).write_text(text)
         console.print(f"[green]✓  Wrote {output}[/green]")
+
+
+@story_cmd.command("check")
+@click.argument("repo", default=".", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option("--language", "languages", multiple=True, metavar="LANG",
+              help="Language branch to check (repeatable); default: every branch named like a "
+                   "two-letter language tag (es, pt-br).")
+@click.option("--source", default=None, metavar="REF",
+              help="The source-language branch; default: the clone's default branch.")
+def story_check_cmd(repo: Path, languages: tuple[str, ...], source: str | None) -> None:
+    """Say which language branches of the content repository REPO (a git clone, default: here)
+    are behind its source branch, and the commits they miss.
+
+    Changes under rmstory/, rmstory-stories/, story/ and .github/ don't count. Exits 1
+    when a branch is behind or can't be checked. In CI, check out the full history
+    (e.g. fetch-depth: 0).
+    """
+    from .. import langbranch
+
+    try:
+        source = source or langbranch.default_branch(repo)
+        found = langbranch.language_branches(repo, source)
+    except RuntimeError as exc:
+        click.echo(f"✗  {repo}: {exc}")
+        raise SystemExit(1)
+    branches = {lang: found.get(lang, lang) for lang in languages} if languages else found
+    if not branches:
+        click.echo(f"No language branches next to {source}.")
+        return
+    failed = 0
+    for lang, ref in branches.items():
+        try:
+            commits = langbranch.behind(repo, ref, source)
+        except RuntimeError as exc:
+            failed += 1
+            click.echo(f"✗  {lang}: {exc}")
+            continue
+        if not commits:
+            click.echo(f"✓  {lang} is up to date with {source}")
+            continue
+        failed += 1
+        click.echo(f"✗  {lang} is {len(commits)} commit(s) behind {source}:")
+        for commit in commits:
+            click.echo(f"     {commit}")
+    if failed:
+        raise SystemExit(1)

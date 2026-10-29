@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Collection
 
 import click
 import yaml
@@ -14,9 +15,9 @@ from ._options import config_options
 console = Console()
 
 
-def report_apply(cfg: dict, lab: Path, result: dict, *, setup: bool = True) -> int:
+def report_apply(cfg: dict, lab: Path, result: dict, *, setup: bool = True, skip: Collection[str] = ()) -> int:
     """Print what content.apply did, then run the content's setup scripts (unless *setup* is
-    False); returns how many setup scripts failed."""
+    False) but those named in *skip*; returns how many setup scripts failed."""
     spec = content.content_spec(cfg)
     console.print(f"[green]✓  Instructions from {spec['repo']}[/green]"
                   + (f" @ {result['commit'][:12]}" if result["commit"] else ""))
@@ -31,8 +32,11 @@ def report_apply(cfg: dict, lab: Path, result: dict, *, setup: bool = True) -> i
             console.print("[yellow]⚠  The content's setup scripts were left out: deployment_target is 'instruqt' "
                           "and they belong in the baked image. Run them with: rodeo content apply[/yellow]")
         return 0
+    for script in content.setup_scripts(lab):
+        if script.name in skip:
+            console.print(f"  [dim]skip[/dim]  {script.name} (the profile's own copy ran)")
     failed = 0
-    for name, code, lines in content.run_setup(cfg, lab):
+    for name, code, lines in content.run_setup(cfg, lab, skip=skip):
         console.print(f"Running content setup script {name}...")
         for line in lines:
             console.print(f"  {line}", markup=False, highlight=False)

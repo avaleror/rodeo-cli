@@ -792,8 +792,8 @@ def _deploy(lab: Path, assume_yes: bool, reconcile: bool = True) -> None:
 
 def _apply_content(cfg: dict, lab: Path) -> None:
     """Fetch and render the plan's content: (instructions) on the deployed lab, install its checks
-    and run its setup scripts (not on Instruqt for profiles that guard their custom scripts);
-    only warns."""
+    and run its setup scripts (not on Instruqt for profiles that guard their custom scripts, not
+    those named like one of the lab's own custom scripts); only warns."""
     from .. import content
     from .content_cmd import report_apply
 
@@ -805,6 +805,7 @@ def _apply_content(cfg: dict, lab: Path) -> None:
         console.print(f"[yellow]⚠  Instructions (content:) not applied: {exc}. Retry with: rodeo content apply[/yellow]")
         return
     console.print(f"[green]✓  Instructions rendered in {lab / content.GUIDE}[/green] ({len(result['files'])} files)")
-    failed = report_apply(cfg, lab, {**result, "files": []}, setup=not content.setup_guarded(cfg))
+    failed = report_apply(cfg, lab, {**result, "files": []}, setup=not content.setup_guarded(cfg),
+                          skip=content.profile_script_names(cfg))
     if failed:
         console.print(f"[yellow]⚠  {failed} content setup script(s) failed. Retry with: rodeo content apply[/yellow]")

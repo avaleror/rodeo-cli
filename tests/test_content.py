@@ -8,8 +8,10 @@ from pathlib import Path
 import pytest
 import yaml
 from click.testing import CliRunner
+from rich.console import Console
 
 from rodeo import content
+from rodeo.commands import clean as clean_mod
 from rodeo.commands import up_cmd
 from rodeo.commands.content_cmd import content_cmd
 from rodeo.config import ConfigError
@@ -251,20 +253,87 @@ def test_content_apply_runs_setup_and_fails_on_a_failing_script(tmp_path, monkey
     monkeypatch.chdir(lab)
     monkeypatch.setattr(content, "apply", lambda cfg, where: {"commit": "abc", "files": [], "checks": Path("/opt/rodeo/ride/checks"),
                                                                "warnings": []})
-    monkeypatch.setattr(content, "run_setup", lambda cfg, where: iter([("10-a.sh", 0, ["hi"]), ("20-b.sh", 2, [])]))
+    monkeypatch.setattr(content, "run_setup", lambda cfg, where, skip: iter([("10-a.sh", 0, ["hi"]), ("20-b.sh", 2, [])]))
     r = CliRunner().invoke(content_cmd, ["apply"])
     assert r.exit_code == 1
     assert "Checks installed in /opt/rodeo/ride/checks" in r.output and "10-a.sh" in r.output and "20-b.sh exited 2" in r.output
-    monkeypatch.setattr(content, "run_setup", lambda cfg, where: iter([("10-a.sh", 0, [])]))
+    monkeypatch.setattr(content, "run_setup", lambda cfg, where, skip: iter([("10-a.sh", 0, [])]))
     assert CliRunner().invoke(content_cmd, ["apply"]).exit_code == 0
 
 
 def test_up_runs_setup_unless_guarded(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(content, "apply", lambda cfg, lab: {"commit": "", "files": [], "checks": None, "warnings": []})
     ran = []
-    monkeypatch.setattr(content, "run_setup", lambda cfg, lab: ran.append(cfg["deployment_target"]) or iter([("s.sh", 1, [])]))
+    monkeypatch.setattr(content, "run_setup", lambda cfg, lab, skip: ran.append(cfg["deployment_target"]) or iter([("s.sh", 1, [])]))
     monkeypatch.setattr(content, "setup_scripts", lambda lab: [lab / "s.sh"])
     block = {"repo": "https://github.com/a/b", "format": "rmstory"}
     up_cmd._apply_content({"type": "suse-virt", "deployment_target": "baremetal", "content": block}, tmp_path)
     up_cmd._apply_content({"type": "suse-virt", "deployment_target": "instruqt", "content": block}, tmp_path)
     assert ran == ["baremetal"]
+
+
+def test_remove_checks_of_one_plan_or_all(tmp_path, monkeypatch):
+    root = tmp_path / "opt"
+    monkeypatch.setattr(content, "CHECKS_ROOT", root)
+    for plan in ("ride", "other"):
+        (root / plan / "checks").mkdir(parents=True)
+        (root / plan / "checks" / "c.sh").write_text("x")
+    (root / "other" / "notes.txt").write_text("kept")
+    assert content.remove_checks({"name": "ride"}) == root / "ride" / "checks"
+    assert not (root / "ride").exists()
+    assert content.remove_checks({"name": "ride"}) is None
+    assert content.remove_checks({"name": "../x"}) is None
+    (root / "ride" / "checks").mkdir(parents=True)
+    assert content.remove_all_checks() == [root / "other" / "checks", root / "ride" / "checks"]
+    assert sorted(p.relative_to(root).as_posix() for p in root.rglob("*")) == ["other", "other/notes.txt"]
+    monkeypatch.setattr(content, "CHECKS_ROOT", tmp_path / "none")
+    assert content.remove_all_checks() == []
+
+
+@pytest.mark.parametrize("args,left", [([], ["other", "other/checks", "other/checks/c.sh"]), (["--all"], [])])
+def test_clean_removes_the_content_checks(tmp_path, monkeypatch, args, left):
+    root = tmp_path / "opt"
+    monkeypatch.setattr(content, "CHECKS_ROOT", root)
+    for plan in ("ride", "other"):
+        (root / plan / "checks").mkdir(parents=True)
+        (root / plan / "checks" / "c.sh").write_text("x")
+    cfg = {"name": "ride", "type": "suse-virt", "vms": {}, "libvirt": {"uri": "test:///default"},
+           "storage": {"image_dir": str(tmp_path / "images")}}
+    monkeypatch.setattr(clean_mod, "console", Console(width=400))
+    monkeypatch.setattr(clean_mod, "is_root", lambda: True)
+    monkeypatch.setattr(clean_mod, "load_config", lambda *a, **kw: cfg)
+    monkeypatch.setattr(clean_mod, "discover_rodeo_vm_names", lambda uri: [])
+    monkeypatch.setattr(clean_mod, "LibvirtDriver", lambda uri: (_ for _ in ()).throw(RuntimeError("no libvirt")))
+    monkeypatch.setattr(clean_mod.subprocess, "run", lambda *a, **kw: subprocess.CompletedProcess(a, 0, "", ""))
+    monkeypatch.setattr(clean_mod, "reset_from", lambda *a: None)
+    monkeypatch.setattr("rodeo.paths.rodeo_state_dir", lambda: tmp_path / "state")
+    r = CliRunner().invoke(clean_mod.clean_cmd, ["--yes", *args])
+    assert r.exit_code == 0, r.output
+    assert f"delete   {root / 'ride' / 'checks'}" in r.output
+    assert sorted(p.relative_to(root).as_posix() for p in root.rglob("*")) == left
+
+
+def test_up_leaves_out_content_scripts_the_profile_ran(tmp_path, monkeypatch, capsys):
+    lab = _fetched(tmp_path / "lab", {"custom/scripts/50-cache.sh": ("x", 0o755), "custom/scripts/80-new.sh": ("x", 0o755)})
+    own = lab / "custom" / "scripts"
+    own.mkdir(parents=True)
+    for name, mode in (("50-cache.sh", 0o755), ("80-new.sh", 0o644)):
+        (own / name).write_text("x")
+        (own / name).chmod(mode)
+    cfg = {"type": "suse-virt", "deployment_target": "baremetal", "config_dir": str(lab),
+           "content": {"repo": "https://github.com/a/b", "format": "rmstory"}}
+    assert content.profile_script_names(cfg) == {"50-cache.sh"}
+    assert content.profile_script_names({**cfg, "config_dir": ""}) == set()
+    monkeypatch.setattr(content, "apply", lambda cfg, lab: {"commit": "", "files": [], "checks": None, "warnings": []})
+    ran = []
+
+    def fake_run(cmd, **kw):
+        ran.append(Path(cmd[0]).name)
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    real = content.run_setup
+    monkeypatch.setattr(content, "run_setup", lambda cfg, where, skip: real(cfg, where, fake_run, skip))
+    monkeypatch.setattr("rodeo.config.find_ansible_root", lambda cfg: None)
+    up_cmd._apply_content(cfg, lab)
+    assert ran == ["80-new.sh"]
+    assert "skip  50-cache.sh (the profile's own copy ran)" in capsys.readouterr().out

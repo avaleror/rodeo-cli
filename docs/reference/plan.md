@@ -465,8 +465,29 @@ guide into `<lab>/guide/` (owner-only files: facts can hold lab passwords):
 | `instruqt` | `<challenge>/assignment.md` | one `<challenge>.md` each, `facts` and `replace` applied |
 | `markdown` | `*.md` | one file each, `replace` applied |
 
-`rodeo up` applies it after a successful deploy; a failure there only warns.
-`rodeo content show` prints the block and the last fetched commit. An rmstory
+At the repository's root, whatever `path` names, the content can also carry the
+profile layout's `checks/` and `custom/scripts/`:
+
+- `checks/` is installed into `/opt/rodeo/<plan name>/checks/`, root-owned and
+  readable and runnable by every user on the host (a student's account
+  included), replacing the previous copy. Installing needs root; without it the
+  guide is still rendered and the command says how to rerun.
+- `custom/scripts/` holds setup scripts: the executable ones run in sorted order
+  on the host, from that directory, with the environment the profile's own
+  `custom/scripts/` get (`KUBECONFIG`, `RODEO_PLAN_NAME`, `RODEO_CONFIG_DIR`,
+  `RODEO_LAB_DIR`) plus `RODEO_CONTENT_DIR`, the fetched repository. They run on
+  every apply, so write them to be idempotent. Each prints its output; a failing
+  one doesn't stop the others, and `rodeo content apply` then exits 1.
+
+The scripts run as the user running rodeo (root under `rodeo up`), from whatever
+`ref` points at: pin a tag or commit when the repository isn't yours.
+
+`rodeo up` applies it after a successful deploy, after the profile's own
+`custom/scripts/`; a failure there only warns. On `deployment_target: instruqt`,
+`rodeo up` leaves the setup scripts out for the engines that leave out their
+profile's custom scripts (they belong in the baked image); `rodeo content apply`
+runs them. `rodeo content show` prints the block, the last fetched commit, the
+setup scripts and where the checks are installed. An rmstory
 content is also what `rodeo story render` reads when the lab has no `story/`
 of its own. The `workshop:` block (Instruqt tracks for lab-in-a-box labs) and an
 in-profile `story/` keep working as before.

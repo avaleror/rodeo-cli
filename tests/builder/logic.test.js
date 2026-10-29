@@ -569,3 +569,14 @@ test("addOperatorSecrets adds keys to the plan's operator_secrets", () => {
   assert.equal(RB.addOperatorSecrets(block, ["b", "c"]), "operator_secrets:\n  - a   # note\n  - b\n  - c\n\nresources: {}\n");
   assert.equal(RB.addOperatorSecrets(block, ["a"]), block);
 });
+
+test("labSummary and labDriveWarnings describe a lab", () => {
+  const lab = { pxe: {}, kclusters: { hv: { clu_type: "harvester" } },
+    nodes: { "h1.lab": { myip: "10.0.0.5", VM_CPU: "8", VM_MEM: "16384", kcluster: "hv", addons: ["rancher", { longhorn: {} }] }, "b.lab": {} } };
+  const s = RB.labSummary(lab);
+  assert.deepEqual(s.nodes[0], { name: "h1.lab", ip: "10.0.0.5", cpu: "8", mem: "16384", addons: ["rancher", "longhorn"], kcluster: "hv" });
+  assert.deepEqual(s.kclusters, [{ name: "hv", type: "harvester" }]);
+  const w = RB.labDriveWarnings(lab);
+  assert.ok(w[0].startsWith("Harvester nodes (h1.lab)") && w[1].startsWith("pxe:"));
+  assert.deepEqual(RB.labDriveWarnings({ nodes: { "a.lab": {} } }), []);
+});

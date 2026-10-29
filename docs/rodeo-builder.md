@@ -56,6 +56,11 @@ rodeo up --profile <name>     # after Save to profiles
   `${node_ip:smlm}`, which rodeo fills with each host's and instance's values;
   settings unchanged from the lab the rodeo already had stay as written. Addresses
   that look like the lab's but belong to no node are listed in the panel to check.
+
+  With a lab, the panel lists its nodes (address, vCPU, RAM, add-ons, cluster)
+  and Kubernetes clusters, read-only, and flags what rodeo deploys but does not
+  fully drive: Harvester nodes and PXE-booted nodes. On the command line,
+  `rodeo new <name> --from-lab-json <file>` does the same import.
 - **Chapters.** The library lists every workshop's chapters: the bundled
   examples' `story/` directories, the workshops whose chapters live in their own
   repository (listed in `rodeo/builder/chapter_sources.yaml`: the SMLM workshop's

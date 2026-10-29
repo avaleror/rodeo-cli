@@ -527,6 +527,8 @@ in the lab's network when free (else the next free address); definition nodes th
 lab leaves out are not deployed. `nodes` and `sections` above, and a variant's,
 are merged into it. Reference VMs from add-on sections as `${node_fqdn:<vm>}` /
 `${node_ip:<vm>}`. `smlm-workshop` carries its lab this way.
+`rodeo new <name> --from-lab-json <file>` writes such a plan from an existing lab
+(see [Create your own rodeo](../custom-rodeos.md)).
 
 ```yaml
 lab_in_a_box:

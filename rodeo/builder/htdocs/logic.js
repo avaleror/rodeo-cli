@@ -1415,6 +1415,31 @@ const RB = (() => {
     return { lab: out, warnings };
   }
 
+  // Rows of lab-in-a-box lab `lab` to show: its nodes (name, address, vCPU, RAM MiB, add-ons,
+  // Kubernetes cluster) and its kclusters (name, clu_type).
+  function labSummary(lab) {
+    const addonName = (a) => (typeof a === "string" ? a : Object.keys(a || {})[0]);
+    const nodes = Object.entries((lab && lab.nodes) || {}).map(([name, n]) => ({
+      name, ip: (n && n.myip) || "", cpu: (n && n.VM_CPU) || "", mem: (n && n.VM_MEM) || "",
+      addons: ((n && n.addons) || []).map(addonName).filter(Boolean), kcluster: (n && n.kcluster) || "" }));
+    const kclusters = Object.entries((lab && lab.kclusters) || {}).map(([name, c]) => ({ name, type: (c && c.clu_type) || "" }));
+    return { nodes, kclusters };
+  }
+
+  // Parts of lab-in-a-box lab `lab` rodeo deploys but does not fully drive (as rodeo/labimport.py).
+  function labDriveWarnings(lab) {
+    const out = [];
+    const harvester = new Set(Object.entries((lab && lab.kclusters) || {})
+      .filter(([, c]) => c && c.clu_type === "harvester").map(([name]) => name));
+    const members = Object.entries((lab && lab.nodes) || {})
+      .filter(([, n]) => n && harvester.has(n.kcluster)).map(([fqdn]) => fqdn).sort();
+    if (members.length) out.push("Harvester nodes (" + members.join(", ") + "): rodeo ssh and rodeo status treat them as plain VMs");
+    if (lab && "pxe" in lab) {
+      out.push("pxe: nodes that boot from PXE have no OS until lab-in-a-box installs them, so they are not reachable at first");
+    }
+    return out;
+  }
+
   // Plan text `text` with `keys` added to its top-level operator_secrets: list (which is added
   // when the plan has none); keys already listed are skipped.
   function addOperatorSecrets(text, keys) {
@@ -1560,7 +1585,7 @@ const RB = (() => {
     MISSING_ADDON, SOURCE_LANGUAGE, LANGUAGES, slugify, uniqueId, parseSpans, parseAttrs, kind, needsId, openTag, inner,
     withKind, wrapTarget, nextId, wrap, retag, unwrap, idsIn, validate, warningsByChapter, engineNeeds, variantsIn, storyIndex,
     setTopKey, setStoredLab, dropTopBlock, storyBlock, planFromBase, planLabinabox, chapterFile, chaptersYaml,
-    storyYaml, checkScript, readme, files, labJsonAddons, labJsonProvides, labSecretRefs, labWithSecretRefs, labWithNodeRefs, addOperatorSecrets, crc32, zip,
+    storyYaml, checkScript, readme, files, labJsonAddons, labJsonProvides, labSecretRefs, labWithSecretRefs, labWithNodeRefs, addOperatorSecrets, labSummary, labDriveWarnings, crc32, zip,
     renumber, nameMissing, translatableIds, storedSource, sourceTexts, missingPlaceholders, stringsFiles, translatedLanguages, draftPrompt, storyRole, storyParts, maskExercises, retoldChapters, contentBlock, PARTS, partOf, partFiles, CATALOG_REPO, catalogEntry, publishLinks,
     parseSourceUrl, importGroupId, detectFormat, chapterFromMarkdown, chapterFromInstruqt, chaptersMeta, storyIds, chapterFromStory,
     previewFormat, previewTree, safeHref,

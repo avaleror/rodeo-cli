@@ -373,6 +373,9 @@ div.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 2p
 .matrix th, .matrix td { border-bottom: 1px solid var(--line); padding: 5px 4px; text-align: left; }
 .matrix th:not(:first-child), .matrix td:not(:first-child) { width: 78px; }
 .matrix td.unstored { color: var(--muted); }
+.lab-summary { overflow-x: auto; margin: 4px 0 8px; }
+.lab-summary table { width: 100%; border-collapse: collapse; font: 400 12px var(--mono); }
+.lab-summary th, .lab-summary td { border-bottom: 1px solid var(--line); padding: 4px; text-align: left; white-space: nowrap; }
 .tr-bar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
 .tr-bar .select { width: auto; min-width: 0; }
 .tr-cell { font: 400 11px var(--mono); background: none; border: 1px solid transparent; color: var(--muted); padding: 2px 4px; cursor: pointer; border-radius: 2px; }

@@ -472,6 +472,24 @@ def test_uploaded_lab_keeps_no_secret_and_links_its_nodes(page, tmp_path):
     assert "smlm_admin_pass" in plan["operator_secrets"]
 
 
+def test_lab_panel_lists_the_labs_nodes_and_what_rodeo_does_not_drive(page, tmp_path):
+    lab = tmp_path / "lab.json"
+    lab.write_text(json.dumps({"common": {}, "pxe": {}, "kclusters": {"hv": {"clu_type": "harvester"}}, "nodes": {
+        "h1.lab": {"myip": "10.0.0.5", "VM_CPU": "8", "VM_MEM": "16384", "kcluster": "hv", "addons": ["smlm"]}}}))
+    page.click(".card")
+    page.click(".engine >> text=lab-in-a-box")
+    page.click(".seg button >> text=Import existing lab")
+    assert page.locator("#enginePanel .lab-summary").count() == 0
+    page.set_input_files("#enginePanel input[type=file]", str(lab))
+    row = page.locator("#enginePanel .lab-summary tbody tr")
+    sync_api.expect(row).to_have_count(1)
+    assert row.locator("td").all_text_contents() == ["h1.lab", "10.0.0.5", "8", "16384", "smlm", "hv"]
+    sync_api.expect(page.locator("#enginePanel")).to_contain_text("Kubernetes clusters: hv (harvester)")
+    drive = page.locator("#enginePanel .lab-drive li")
+    sync_api.expect(drive).to_have_count(2)
+    assert drive.nth(0).text_content().startswith("Harvester nodes (h1.lab)")
+
+
 def test_selected_engine_is_marked(page):
     selected = page.locator(".engine.on")
     assert selected.count() == 1

@@ -664,6 +664,7 @@ function renderEnginePanel() {
     box.append(el("div", { class: "alert", role: "alert" }, el("strong", { text: "lab-in-a-box catalogue unavailable. " }),
       state.liab.error + ". " + catalogueHint()));
   }
+  if (currentLab()) box.append(...labPanel(currentLab()));
   box.append(el("span", { class: "label", text: "Provides" }));
   if (currentLab()) {
     box.append(el("div", { class: "chips" }, [...provided()].sort().map((n) => providedChip(n, false))),
@@ -684,6 +685,26 @@ function renderEnginePanel() {
         ? el("button", { class: "chip need", type: "button", text: "+ " + n, onclick: () => addAddon(n) })
         : el("span", { class: "chip missing", title: "No engine provides it yet", text: n + " · not available" }))));
   }
+}
+
+// The lab's nodes and Kubernetes clusters, read-only (edited in the lab-builder), and what rodeo
+// deploys without fully driving.
+function labPanel(lab) {
+  const { nodes, kclusters } = RB.labSummary(lab), warn = RB.labDriveWarnings(lab);
+  const cell = (text) => el("td", { text: String(text) });
+  const clustered = nodes.some((n) => n.kcluster);
+  const heads = ["node", "address", "vCPU", "RAM MiB", "add-ons", ...(clustered ? ["cluster"] : [])];
+  const out = [el("span", { class: "label", text: "Lab" }),
+    el("div", { class: "lab-summary" }, el("table", {},
+      el("thead", {}, el("tr", {}, heads.map((h) => el("th", { text: h })))),
+      el("tbody", {}, nodes.map((n) => el("tr", {}, cell(n.name), cell(n.ip), cell(n.cpu), cell(n.mem), cell(n.addons.join(", ")),
+        clustered ? cell(n.kcluster) : null)))))];
+  if (kclusters.length) {
+    out.push(el("p", { class: "mono muted", text: "Kubernetes clusters: " + kclusters.map((c) => c.name + " (" + (c.type || "?") + ")").join(", ") }));
+  }
+  out.push(el("p", { class: "muted", text: "rodeo deploys this lab with the host's network, domain and node addresses." }));
+  if (warn.length) out.push(el("div", { class: "alert", role: "alert" }, el("ul", { class: "lab-drive" }, warn.map((w) => el("li", { text: w })))));
+  return out;
 }
 
 // ── embedded lab-builder ────────────────────────────────────────────────

@@ -71,9 +71,23 @@ def language_branches(repo: Path, source: str, run: Run = subprocess.run) -> dic
     out: dict[str, str] = {}
     for ref in refs.splitlines():
         name = ref.removeprefix("origin/")
-        if name != source_name and _AUTO_RE.match(name):
+        if name != source_name and is_language_branch(name):
             out.setdefault(name, ref)
     return dict(sorted(out.items()))
+
+
+def is_language_branch(name: str) -> bool:
+    """Whether a branch name reads as a two-letter language tag (``es``, ``pt-br``)."""
+    return bool(_AUTO_RE.match(name))
+
+
+def remote_language_branches(url: str, run: Run = subprocess.run) -> list[str]:
+    """The branches of the repository at *url* that :func:`is_language_branch`, sorted.
+    Raises RuntimeError when the repository can't be read."""
+    with tempfile.TemporaryDirectory(prefix="rodeo-langbranch-") as tmp:
+        out = _git(run, Path(tmp), ["ls-remote", "--heads", url])
+    names = (line.split("\t", 1)[-1].removeprefix("refs/heads/") for line in out.splitlines())
+    return sorted(name for name in names if is_language_branch(name))
 
 
 def remote_behind(url: str, branch: str, run: Run = subprocess.run) -> list[str] | None:

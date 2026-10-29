@@ -66,7 +66,9 @@ rodeo up --profile <name>     # after Save to profiles
   repository (listed in `rodeo/builder/chapter_sources.yaml`: the SMLM workshop's
   Instruqt track and the Virtualization workshop's exercises), the `story/` of
   every published rodeo in the catalog (`rodeo/data/catalog.d/`, unless
-  `chapter_sources.yaml` already names its repository), and the chapters you
+  `chapter_sources.yaml` already names its repository; its translations come
+  along, from `story/strings/` and from each language branch, so adding one of its
+  chapters adds the translations of its spans you don't have yet), and the chapters you
   create with **+ New**. Workshops start collapsed: click a workshop's title to
   show its chapters. The **(i)** next to it (hover, or click to keep it open)
   shows where the chapters come from, the lab engine and profile they run on,
@@ -347,8 +349,23 @@ languages). The repository holds the files of the download.
   set `GH_TOKEN` before `rodeo builder`. Publishing creates
   `github.com/<you>/<name>`, pushes one commit on `main`, forks rodeo-cli when
   you don't own it and opens the catalog pull request. **Update my existing
-  repository** pushes a new commit that replaces the files and opens no pull
-  request. `RODEO_CATALOG_REPO` points the pull request at another repository.
+  repository** pushes a new commit that replaces the files (the repository's
+  `.github/` stays) and opens no pull request. `RODEO_CATALOG_REPO` points the
+  pull request at another repository.
+
+  Translations go to language branches. `main` holds the source language
+  (`story.language: en`). Each translated language gets a branch named after it:
+  `main` plus that language's `story/strings/<lang>/`, with `story.language:
+  <lang>`. On an update, an existing language branch only gets its
+  `story/strings/<lang>/` replaced. `main` also gets
+  `.github/workflows/rodeo-languages.yml`: on every push to `main`, it opens a
+  pull request `main` → `<lang>` for each language branch that is behind `main`
+  (the check of `rodeo story check`), and you resolve any conflicts in it.
+  Publish lets the repository's Actions open those pull requests (**Allow GitHub
+  Actions to create and approve pull requests**). The result lists the language
+  branches and warns about anything left out: the workflow, when the GitHub login
+  can't write workflows (it needs the `workflow` scope); that setting, when GitHub
+  refuses it; a language branch that couldn't be pushed.
 - **The published page** (and `rodeo builder --expose`) links to github.com
   pages that use your browser's GitHub login, and GitHub asks you to log in when
   you aren't: create the repository, upload the unzipped download (or `git

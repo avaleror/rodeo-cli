@@ -233,8 +233,24 @@ test("the translation store ships as rmstory's filesystem layout", () => {
     chapters: [{ id: "w", title: "W", body: WELCOME }], variants: [], story: { language: "en", id: "" }, strings, date: "d" };
   const files = RB.files(rodeo);
   assert.ok(files.some((f) => f.path === "story/strings/de/w.intro/@default/content.json"));
-  assert.match(files.find((f) => f.path === "README.md").content, /Translations in `story\/strings\/`: `de`/);
+  assert.match(files.find((f) => f.path === "README.md").content, /Translations: `de`, in `story\/strings\/<lang>\/` \(a published repository keeps each one in a branch/);
   assert.deepEqual(RB.translatedLanguages(strings, ["w.task"]), []);
+});
+
+test("withStrings adds a library group's rows for the chapter's spans, keeping the rodeo's own", () => {
+  const mine = { es: { "w.intro": { content: "Mío", status: "reviewed" } } };
+  const add = {
+    es: { "w.intro": { content: "Suyo", status: "draft" }, "w.task": { content: "Tarea", status: "draft" }, "x.1": { content: "x" } },
+    de: { "w.task": { content: "Aufgabe", status: "draft" } },
+    fr: { "x.1": { content: "x" } },
+    en: { "w.task": { content: "Task" } },
+  };
+  assert.deepEqual(RB.withStrings(mine, add, ["w.intro", "w.task"]), {
+    es: { "w.intro": { content: "Mío", status: "reviewed" }, "w.task": { content: "Tarea", status: "draft" } },
+    de: { "w.task": { content: "Aufgabe", status: "draft" } },
+  });
+  assert.deepEqual(mine, { es: { "w.intro": { content: "Mío", status: "reviewed" } } });
+  assert.deepEqual(RB.withStrings({}, undefined, ["w.intro"]), {});
 });
 
 test("draftPrompt grounds the brief in the rodeo and the lab", () => {

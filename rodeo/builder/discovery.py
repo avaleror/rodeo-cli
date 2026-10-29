@@ -8,22 +8,28 @@
 
 Chapter metadata (minutes, needed capabilities, check script) comes from an
 optional ``story/chapters.yaml`` beside the chapters; rmstory ignores it.
+
+A catalog rodeo's translations come with its chapters: its ``story/strings/``
+on the default branch, then each language branch's ``story/strings/<lang>/``
+(:mod:`rodeo.langbranch`), which wins over the default branch's copy.
 """
 from __future__ import annotations
 
 import json
 import os
 import re
+import io
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-from .. import catalog, content
+from .. import catalog, content, langbranch
 
 DATA = Path(__file__).resolve().parent.parent / "data"
 EXAMPLES = DATA / "examples"
@@ -41,6 +47,8 @@ _NUMBER_PREFIX_RE = re.compile(r"^\d+-")
 _LEADING_NUMBER_RE = re.compile(r"^(\d+)")
 _FRONT_MATTER_RE = re.compile(r"\A---\n(.*?)\n---\n?", re.S)
 _TIME_RE = re.compile(r"^\*\*Time:\*\*\s*(\d+)\s*min", re.M | re.I)
+_STRINGS_LEAF_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9._:-]{0,127}/@default/content\.json$")
+STRINGS_MAX_BYTES = 256 * 1024
 
 SOURCES_FILE = Path(__file__).resolve().parent / "chapter_sources.yaml"
 # Instruqt's timelimit is an upper bound, not a duration: challenges get this.
@@ -188,6 +196,7 @@ def workshops(sources: dict[str, Path] | None = None) -> dict[str, Any]:
             "plan": _plan_text(_profile_example(src["profile"])) if src["profile"] else "",
             "chapters": source_chapters(src, checkout),
             "variants": _variants(checkout / src["path"].strip("/")) if src["format"] == "rmstory" else {},
+            "strings": _strings(checkout / src["path"].strip("/") / "strings") if src.get("languages") else {},
         })
     return {"workshops": out}
 
@@ -196,7 +205,8 @@ def chapter_sources() -> list[dict[str, Any]]:
     """chapter_sources.yaml, with repo/ref/path taken from a profile's workshop:
     block where a source names one, then one ``rmstory`` source per catalog rodeo
     (:mod:`rodeo.catalog`) whose repository the file does not list: its ``story/``,
-    id ``catalog-<name>``, no base profile, the default branch when the entry has no ref."""
+    id ``catalog-<name>``, no base profile, the default branch when the entry has no ref,
+    ``languages`` true (its translations are read too)."""
     out = []
     for raw in _read_yaml(SOURCES_FILE).get("sources") or []:
         src = dict(raw)
@@ -215,7 +225,7 @@ def chapter_sources() -> list[dict[str, Any]]:
             continue
         out.append({"id": "catalog-" + name, "title": entry.get("title") or name, "engine": entry.get("engine") or "",
                     "profile": "", "format": "rmstory", "repo": entry["repo"], "ref": entry["ref"], "path": "story",
-                    "needs": []})
+                    "needs": [], "languages": True})
     return out
 
 
@@ -231,6 +241,8 @@ def source_fetch_commands(src: dict[str, Any], dest: Path) -> list[list[str]]:
         patterns = ["/{}/*/assignment.md".format(path), "/{}/*/check-*".format(path)]
     elif src["format"] == "rmstory":
         patterns = ["/{}/*.md".format(path), "/{}/chapters.yaml".format(path), "/{}/stories/*.yaml".format(path)]
+        if src.get("languages"):
+            patterns.append("/{}/strings/*/*/@default/content.json".format(path))
     else:
         patterns = ["/{}/*.md".format(path)]
         if src.get("checks"):
@@ -262,7 +274,70 @@ def fetch_sources(dest: Path, given: dict[str, Path] | None = None,
                 break
         else:
             out[src["id"]] = target
+            if src.get("languages"):
+                errors.update(fetch_language_strings(src, target, run))
     return out, errors
+
+
+def fetch_language_strings(src: dict[str, Any], checkout: Path, run: Any = subprocess.run) -> dict[str, str]:
+    """Write each language branch's ``<path>/strings/<lang>/`` of *src* into its *checkout*
+    (only rmstory store files, links left out). Returns the errors, keyed
+    ``<source id> (<lang> branch)``; a branch without translations is no error."""
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+    path = src["path"].strip("/")
+    errors: dict[str, str] = {}
+    try:
+        branches = langbranch.remote_language_branches(src["repo"], run)
+    except RuntimeError as exc:
+        return {"{} (language branches)".format(src["id"]): str(exc)}
+    for lang in branches:
+        key = "{} ({} branch)".format(src["id"], lang)
+        r = run(["git", "-C", str(checkout), "fetch", "-q", "--depth", "1", "--filter=blob:none", "origin",
+                 "refs/heads/" + lang], capture_output=True, text=True, env=env)
+        if r.returncode != 0:
+            errors[key] = (r.stderr or "").strip()[-300:]
+            continue
+        prefix = "{}/strings/{}/".format(path, lang)
+        r = run(["git", "-C", str(checkout), "archive", "--format=tar", "FETCH_HEAD", "--", prefix],
+                capture_output=True, env=env)
+        if r.returncode != 0:
+            if b"did not match" not in (r.stderr or b""):
+                errors[key] = (r.stderr or b"").decode(errors="replace").strip()[-300:]
+            continue
+        dest = checkout / path / "strings" / lang
+        if dest.exists():
+            shutil.rmtree(dest)
+        with tarfile.open(fileobj=io.BytesIO(r.stdout)) as tar:
+            for member in tar.getmembers():
+                leaf = member.name.removeprefix(prefix)
+                if not (member.isfile() and member.name.startswith(prefix) and _STRINGS_LEAF_RE.match(leaf)
+                        and member.size <= STRINGS_MAX_BYTES):
+                    continue
+                target = dest / leaf
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(tar.extractfile(member).read())
+    return errors
+
+
+def _strings(root: Path) -> dict[str, dict[str, dict[str, str]]]:
+    """The rmstory store under *root* as the builder's ``{lang: {span id: row}}``; unreadable
+    rows and rmstory's own copies of the source text are left out."""
+    from .storywork import _SOURCE_WRITER, STATUSES
+
+    out: dict[str, dict[str, dict[str, str]]] = {}
+    for leaf in sorted(root.glob("*/*/@default/content.json")):
+        lang, span_id = leaf.parent.parent.parent.name, leaf.parent.parent.name
+        try:
+            record = json.loads(leaf.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if (not isinstance(record, dict) or not isinstance(record.get("content"), str)
+                or not langbranch.LANG_RE.match(lang) or record.get("updated_by") == _SOURCE_WRITER):
+            continue
+        out.setdefault(lang, {})[span_id] = {
+            "content": record["content"], "status": record.get("status") if record.get("status") in STATUSES else "draft",
+            "updated_by": str(record.get("updated_by") or "")}
+    return out
 
 
 def _check_script(directory: Path) -> str:

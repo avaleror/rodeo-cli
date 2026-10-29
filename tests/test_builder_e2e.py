@@ -127,6 +127,28 @@ def live_github(labinabox_checkout, markdown_source):
 
 
 @pytest.fixture()
+def live_catalog(labinabox_checkout, tmp_path, monkeypatch):
+    """The live server with a catalog rodeo whose checkout carries an es translation."""
+    from rodeo import catalog
+    from rodeo.builder.api import Api
+    from rodeo.builder.server import make_server
+
+    monkeypatch.setattr(catalog, "entries", lambda: {"ride": {"name": "ride", "title": "Ride", "engine": "rancher",
+                                                              "repo": "https://github.com/rider/ride", "ref": ""}})
+    story = tmp_path / "ride" / "story"
+    (story / "strings" / "es" / "saddle.1" / "@default").mkdir(parents=True)
+    (story / "01-saddle.md").write_text('# Saddle the ride\n<span lang="en" id="saddle.1">Saddle up</span>\n')
+    (story / "strings" / "es" / "saddle.1" / "@default" / "content.json").write_text(
+        json.dumps({"content": "Ensilla", "status": "reviewed", "updated_by": "rider"}))
+    api = Api(labinabox_checkout, "http://127.0.0.1:9/lab-builder/", "1.0.0", {"catalog-ride": tmp_path / "ride"}, can_save=True)
+    server = make_server(api, "127.0.0.1", 0, "0.0.0-test")
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield "http://127.0.0.1:{}/".format(server.server_address[1])
+    server.shutdown()
+    server.server_close()
+
+
+@pytest.fixture()
 def live_rmstory(fake_rmstory, live):
     """The live server with a fake rmstory on its PATH (engines deepl and ollama)."""
     return live
@@ -896,8 +918,19 @@ def test_static_translations_are_written_by_hand(page):
         page.click("#downloadBtn")
     with zipfile.ZipFile(dl.value.path()) as zf:
         row = json.loads(zf.read("my-rodeo/story/strings/de/welcome.intro/@default/content.json"))
-        assert "Translations in `story/strings/`: `de`" in zf.read("my-rodeo/README.md").decode()
+        assert "Translations: `de`, in `story/strings/<lang>/`" in zf.read("my-rodeo/README.md").decode()
     assert row["content"] == "Aufsitzen." and row["status"] == "reviewed" and row["source_checksum"] is None
+
+
+@pytest.mark.parametrize("page", ["live_catalog"], indirect=True)
+def test_a_catalog_chapter_brings_its_translations(page):
+    page.click(".card >> text=Saddle the ride")
+    with page.expect_download() as dl:
+        page.click("#downloadBtn")
+    with zipfile.ZipFile(dl.value.path()) as zf:
+        name = next(n for n in zf.namelist() if n.endswith("story/strings/es/saddle.1/@default/content.json"))
+        row = json.loads(zf.read(name))
+    assert row["content"] == "Ensilla" and row["status"] == "reviewed"
 
 
 @pytest.mark.parametrize("page", ["live_rmstory"], indirect=True)
@@ -1087,7 +1120,8 @@ def test_live_publish_with_the_hosts_github_login(page, monkeypatch):
     def fake(req):
         sent.append(req)
         return {"repo": "https://github.com/rider/" + req["name"], "login": "rider",
-                "pull_request": "https://github.com/avaleror/rodeo-cli/pull/7"}
+                "pull_request": "https://github.com/avaleror/rodeo-cli/pull/7", "branches": {"de": "created", "es": ""},
+                "warnings": ["the fr translation was not pushed: denied"]}
 
     monkeypatch.setattr(publish, "publish", fake)
     page.click(".card >> text=Welcome to the rodeo")
@@ -1097,6 +1131,8 @@ def test_live_publish_with_the_hosts_github_login(page, monkeypatch):
     page.click("#pubSubmit")
     sync_api.expect(page.locator("#pubResult")).to_contain_text("Published https://github.com/rider/my-ride")
     assert page.locator("#pubResult a").nth(1).get_attribute("href") == "https://github.com/avaleror/rodeo-cli/pull/7"
+    sync_api.expect(page.locator("#pubResult")).to_contain_text("Translations: de branch created, es branch unchanged.")
+    sync_api.expect(page.locator("#pubResult ul.pub-warnings li")).to_have_text(["the fr translation was not pushed: denied"])
     req = sent[0]
     assert req["name"] == "my-ride" and req["update"] is False and req["languages"][0] == "en"
     assert {"rodeo-plan.yaml", "README.md"} <= {f["path"] for f in req["files"]}

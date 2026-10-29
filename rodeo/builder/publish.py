@@ -10,7 +10,15 @@ page shows its one-time code; the next :func:`status` finds the new login.
 rodeo's files as one commit on ``main`` and opens a pull request on the catalog
 repository (``RODEO_CATALOG_REPO``, default ``avaleror/rodeo-cli``) adding
 ``rodeo/data/catalog.d/<name>.yaml``. With *update*, the files replace the
-existing repository's in a new commit and no pull request is opened.
+existing repository's in a new commit (its ``.github/`` is kept) and no pull
+request is opened.
+
+Translations live in language branches (see :mod:`rodeo.langbranch`): ``main``
+holds the source language, with the plan's ``story.language`` set to it, and the
+workflow :data:`WORKFLOW` that offers ``main``'s changes to each language branch
+as a pull request. Each translated language gets a branch named after it:
+``main`` plus its ``story/strings/<lang>/``, with ``story.language: <lang>``. An
+existing language branch only gets its ``story/strings/<lang>/`` replaced.
 """
 from __future__ import annotations
 
@@ -32,6 +40,7 @@ from typing import Any, Callable
 import yaml
 
 from ..profile_install import ProfileFile, check_files, check_name
+from ..story import SOURCE_LANGUAGE
 
 API = "https://api.github.com"
 HOST = "github.com"
@@ -42,6 +51,10 @@ TIMEOUT = 120
 _LANG_RE = re.compile(r"^[a-z]{2,3}(-[a-z0-9]{2,8})*$")
 _CODE_RE = re.compile(r"one-time code: ([A-Z0-9]{4}-[A-Z0-9]{4})")
 _ASKPASS = '!f() { echo username=x-access-token; echo "password=$RODEO_GH_TOKEN"; }; f'
+WORKFLOW = Path(__file__).resolve().parent.parent / "data" / "workflows" / "rodeo-languages.yml"
+WORKFLOW_PATH = ".github/workflows/rodeo-languages.yml"
+_STRINGS_PREFIX_RE = re.compile(r"^story/strings/([^/]+)/")
+_STORY_LANGUAGE_RE = re.compile(r"^(story:[^\n]*\n(?:[ \t]+[^\n]*\n|[ \t]*\n)*?)[ \t]+language:[^\n]*\n", re.M)
 
 Http = Callable[[str, str, str, "dict[str, Any] | None"], "tuple[int, Any]"]
 Run = Callable[..., "subprocess.CompletedProcess[str]"]
@@ -194,7 +207,7 @@ def catalog_entry(name: str, title: str, repo: str, engine: str, languages: list
                            "languages": languages}, sort_keys=False, allow_unicode=True)
 
 
-def _git(run: Run, args: list[str], cwd: Path, token: str, step: str) -> None:
+def _git(run: Run, args: list[str], cwd: Path, token: str, step: str) -> str:
     env = {**_quiet_env(), "RODEO_GH_TOKEN": token}
     cmd = ["git", "-c", "credential.helper=", "-c", "credential.helper=" + _ASKPASS, "-c", "core.hooksPath=/dev/null", *args]
     try:
@@ -203,6 +216,7 @@ def _git(run: Run, args: list[str], cwd: Path, token: str, step: str) -> None:
         raise PublishError("{} took longer than {} s".format(step, TIMEOUT)) from exc
     if r.returncode != 0:
         raise PublishError("{}: {}".format(step, (r.stderr or r.stdout).strip()[-300:]).replace(token, "***"))
+    return r.stdout or ""
 
 
 def _push(run: Run, files: list[ProfileFile], remote: str, author: tuple[str, str], token: str, message: str,
@@ -211,7 +225,7 @@ def _push(run: Run, files: list[ProfileFile], remote: str, author: tuple[str, st
         work = Path(tmp) / "repo"
         if update:
             _git(run, ["clone", "-q", "--depth", "1", "--", remote, str(work)], Path(tmp), token, "fetching " + remote)
-            _git(run, ["rm", "-rq", "--ignore-unmatch", "."], work, token, "clearing the old files")
+            _git(run, ["rm", "-rq", "--ignore-unmatch", "--", ".", ":!.github"], work, token, "clearing the old files")
         else:
             work.mkdir()
             _git(run, ["init", "-q", "-b", "main"], work, token, "git init")
@@ -224,6 +238,76 @@ def _push(run: Run, files: list[ProfileFile], remote: str, author: tuple[str, st
         _git(run, ["-c", "user.name=" + author[0], "-c", "user.email=" + author[1], "commit", "-q",
                    "--allow-empty", "-m", message], work, token, "git commit")
         _git(run, ["push", "-q", remote, "HEAD:main"], work, token, "pushing to " + remote)
+
+
+def split_languages(files: list[ProfileFile]) -> tuple[list[ProfileFile], dict[str, list[ProfileFile]]]:
+    """The files of ``main`` (all but other languages' ``story/strings/<lang>/``) and each
+    translated language's ``story/strings/<lang>/`` files, by language."""
+    main: list[ProfileFile] = []
+    langs: dict[str, list[ProfileFile]] = {}
+    for f in files:
+        match = _STRINGS_PREFIX_RE.match(f.path)
+        if match and match.group(1) != SOURCE_LANGUAGE:
+            langs.setdefault(match.group(1), []).append(f)
+        else:
+            main.append(f)
+    return main, dict(sorted(langs.items()))
+
+
+def with_story_language(plan: str, lang: str) -> str:
+    """*plan* (rodeo-plan.yaml text) with ``story.language: <lang>``, added when it has none."""
+    line = "  language: {}\n".format(lang)
+    if _STORY_LANGUAGE_RE.search(plan):
+        return _STORY_LANGUAGE_RE.sub(lambda m: m.group(1) + line, plan, count=1)
+    if re.search(r"^story:[ \t]*\n", plan, re.M):
+        return re.sub(r"^story:[ \t]*\n", lambda m: m.group(0) + line, plan, count=1, flags=re.M)
+    return plan.rstrip("\n") + "\n\nstory:\n" + line
+
+
+def _with_plan_language(files: list[ProfileFile], lang: str) -> list[ProfileFile]:
+    return [ProfileFile(f.path, with_story_language(f.data.decode("utf-8"), lang).encode("utf-8"), f.executable)
+            if f.path == "rodeo-plan.yaml" else f for f in files]
+
+
+def _push_language(run: Run, files: list[ProfileFile], lang: str, remote: str, author: tuple[str, str],
+                   token: str) -> str:
+    """Push *lang*'s translation files to its branch; returns "created" or "updated" ("" when
+    the branch already had them)."""
+    with tempfile.TemporaryDirectory(prefix="rodeo-builder-publish-") as tmp:
+        work = Path(tmp) / "repo"
+        heads = _git(run, ["ls-remote", "--heads", remote, lang], Path(tmp), token, "reading the branches of " + remote)
+        exists = bool(heads.strip())
+        _git(run, ["clone", "-q", "--depth", "1", "--branch", lang if exists else "main", "--", remote, str(work)],
+             Path(tmp), token, "fetching " + remote)
+        if exists:
+            _git(run, ["rm", "-rq", "--ignore-unmatch", "--", "story/strings/" + lang], work, token, "clearing " + lang)
+        else:
+            plan = work / "rodeo-plan.yaml"
+            if plan.is_file():
+                plan.write_text(with_story_language(plan.read_text(encoding="utf-8"), lang), encoding="utf-8")
+        for f in files:
+            dest = work / f.path
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(f.data)
+            dest.chmod(0o644)
+        _git(run, ["add", "-A"], work, token, "git add")
+        if exists and run(["git", "diff", "--cached", "--quiet"], cwd=str(work), capture_output=True).returncode == 0:
+            return ""
+        _git(run, ["-c", "user.name=" + author[0], "-c", "user.email=" + author[1], "commit", "-q", "-m",
+                   "Translation " + lang], work, token, "git commit")
+        _git(run, ["push", "-q", remote, "HEAD:refs/heads/" + lang], work, token, "pushing the {} branch".format(lang))
+    return "updated" if exists else "created"
+
+
+def _allow_workflow_pull_requests(http: Http, token: str, login: str, name: str) -> str:
+    """Let the repository's Actions open pull requests; returns why GitHub refused, or ""."""
+    code, body = http("PUT", API + "/repos/{}/{}/actions/permissions/workflow".format(login, name), token,
+                      {"default_workflow_permissions": "read", "can_approve_pull_request_reviews": True})
+    if code in (200, 204):
+        return ""
+    return ("GitHub refused to let this repository's Actions open pull requests ({}: {}); turn on "
+            "Settings → Actions → General → \"Allow GitHub Actions to create and approve pull requests\""
+            .format(code, _message(body)))
 
 
 def _open_catalog_pr(http: Http, token: str, login: str, name: str, entry: str, sleep: Callable[[float], None]) -> str:
@@ -261,8 +345,9 @@ def _open_catalog_pr(http: Http, token: str, login: str, name: str, entry: str, 
 def publish(req: Any, http: Http = _http, run: Run = subprocess.run,
             sleep: Callable[[float], None] = time.sleep) -> dict[str, Any]:
     """Publish ``{"name", "title", "engine", "languages", "files": [{"path", "content", "executable"}],
-    "update"}``; returns ``{"repo", "pull_request", "login", "catalog_error"}`` (*catalog_error*: why
-    the catalog pull request could not be opened; the repository is published). ValueError for a bad request,
+    "update"}``; returns ``{"repo", "pull_request", "login", "catalog_error", "branches", "warnings"}``
+    (*catalog_error*: why the catalog pull request could not be opened, the repository is published;
+    *branches*: ``{lang: "created" | "updated" | ""}``; *warnings*: what was left out and why). ValueError for a bad request,
     PermissionError without a GitHub login, PublishError when GitHub or git fails."""
     if not isinstance(req, dict):
         raise ValueError("send a JSON object")
@@ -291,11 +376,34 @@ def publish(req: Any, http: Http = _http, run: Run = subprocess.run,
         if code not in (200, 201):
             raise PublishError("creating github.com/{}/{} (GitHub {}): {}".format(login, name, code, _message(body)))
     repo = "https://{}/{}/{}".format(HOST, login, name)
-    _push(run, files, repo + ".git", author, token, ("Update" if update else "Publish") + " the rodeo " + name, update)
+    main_files, translations = split_languages(files)
+    main_files = _with_plan_language(main_files, SOURCE_LANGUAGE)
+    workflow = ProfileFile(WORKFLOW_PATH, WORKFLOW.read_bytes(), False)
+    message = ("Update" if update else "Publish") + " the rodeo " + name
+    warnings: list[str] = []
+    try:
+        _push(run, [*main_files, workflow], repo + ".git", author, token, message, update)
+    except PublishError as exc:
+        if "workflow" not in str(exc):
+            raise
+        _push(run, main_files, repo + ".git", author, token, message, update)
+        warnings.append("{} was not added: your GitHub login can't write workflows (it needs the workflow "
+                        "scope), so language branches aren't offered main's changes; add the file by hand"
+                        .format(WORKFLOW_PATH))
+    refused = _allow_workflow_pull_requests(http, token, login, name)
+    if refused:
+        warnings.append(refused)
+    branches: dict[str, str] = {}
+    for lang, lang_files in translations.items():
+        try:
+            branches[lang] = _push_language(run, lang_files, lang, repo + ".git", author, token)
+        except PublishError as exc:
+            warnings.append("the {} translation was not pushed: {}".format(lang, exc))
     pull, catalog_error = "", ""
     if not update:
         try:
             pull = _open_catalog_pr(http, token, login, name, catalog_entry(name, title, repo, engine, languages), sleep)
         except PublishError as exc:
             catalog_error = str(exc)
-    return {"repo": repo, "pull_request": pull, "login": login, "catalog_error": catalog_error}
+    return {"repo": repo, "pull_request": pull, "login": login, "catalog_error": catalog_error,
+            "branches": branches, "warnings": warnings}

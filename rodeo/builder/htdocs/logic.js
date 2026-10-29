@@ -850,6 +850,19 @@ const RB = (() => {
     return out;
   }
 
+  // *strings* with the rows of *add* ({lang: {id: row}}) for the span *ids* it lacks;
+  // rows *strings* already has are kept.
+  function withStrings(strings, add, ids) {
+    const keep = new Set(ids), out = { ...(strings || {}) };
+    for (const lang of Object.keys(add || {})) {
+      if (lang === SOURCE_LANGUAGE) continue;
+      const rows = { ...(out[lang] || {}) };
+      for (const id of Object.keys(add[lang])) if (keep.has(id) && !(id in rows)) rows[id] = add[lang][id];
+      if (Object.keys(rows).length) out[lang] = rows;
+    }
+    return out;
+  }
+
   // Languages with at least one stored row for the rodeo's spans.
   function translatedLanguages(strings, ids) {
     const keep = new Set(ids);
@@ -1246,8 +1259,9 @@ const RB = (() => {
       (rodeo.story.id ? " (variant `" + rodeo.story.id + "`)" : "") + ".");
     const langs = translatedLanguages(rodeo.strings, translatableIds(rodeo.chapters));
     if (langs.length) {
-      lines.push("", "Translations in `story/strings/`: " + langs.map((l) => "`" + l + "`").join(", ") +
-        ". Render one with `--language <lang>`; spans without a stored translation need `--engine <name>`.");
+      lines.push("", "Translations: " + langs.map((l) => "`" + l + "`").join(", ") +
+        ", in `story/strings/<lang>/` (a published repository keeps each one in a branch named after its language)." +
+        " Render one with `--language <lang>`; spans without a stored translation need `--engine <name>`.");
     }
     if (rodeo.labJson) {
       lines.push("", "The lab designed in lab-in-a-box's lab-builder is `lab_in_a_box.lab` in `rodeo-plan.yaml`:",
@@ -1586,7 +1600,7 @@ const RB = (() => {
     withKind, wrapTarget, nextId, wrap, retag, unwrap, idsIn, validate, warningsByChapter, engineNeeds, variantsIn, storyIndex,
     setTopKey, setStoredLab, dropTopBlock, storyBlock, planFromBase, planLabinabox, chapterFile, chaptersYaml,
     storyYaml, checkScript, readme, files, labJsonAddons, labJsonProvides, labSecretRefs, labWithSecretRefs, labWithNodeRefs, addOperatorSecrets, labSummary, labDriveWarnings, crc32, zip,
-    renumber, nameMissing, translatableIds, storedSource, sourceTexts, missingPlaceholders, stringsFiles, translatedLanguages, draftPrompt, storyRole, storyParts, maskExercises, retoldChapters, contentBlock, PARTS, partOf, partFiles, CATALOG_REPO, catalogEntry, publishLinks,
+    renumber, nameMissing, translatableIds, storedSource, sourceTexts, missingPlaceholders, stringsFiles, withStrings, translatedLanguages, draftPrompt, storyRole, storyParts, maskExercises, retoldChapters, contentBlock, PARTS, partOf, partFiles, CATALOG_REPO, catalogEntry, publishLinks,
     parseSourceUrl, importGroupId, detectFormat, chapterFromMarkdown, chapterFromInstruqt, chaptersMeta, storyIds, chapterFromStory,
     previewFormat, previewTree, safeHref,
     VAULT_KEY_RE, VAULT_MIN_PASSWORD, vaultType, vaultCandidates, vaultFill, vaultFields, vaultErrors, vaultFileKeys,

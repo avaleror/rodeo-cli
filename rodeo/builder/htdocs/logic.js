@@ -1319,6 +1319,122 @@ const RB = (() => {
     return [...names].filter(Boolean).sort();
   }
 
+  // Lab keys whose values are credentials: passwords, tokens, registration codes, API and secret keys.
+  const SECRET_KEY_RE = /(^|_)(pass|password|passwd|pwd|pwd_hash|token|regcode|secret|secret_key|private_key|api_keys?)$/i;
+  const SECRET_REF_RE = /^\?\?([A-Za-z0-9_]+)$/;
+  const LAB_OWN_KEYS = new Set(["common", "nodes", "kclusters", "schema_versions"]);
+  const isScalar = (v) => v !== null && v !== undefined && typeof v !== "object";
+
+  // Keys of every "??<key>" value in `v`.
+  function labSecretRefs(v, out = new Set()) {
+    if (Array.isArray(v)) v.forEach((x) => labSecretRefs(x, out));
+    else if (v && typeof v === "object") Object.values(v).forEach((x) => labSecretRefs(x, out));
+    else if (typeof v === "string" && SECRET_REF_RE.test(v)) out.add(SECRET_REF_RE.exec(v)[1]);
+    return out;
+  }
+
+  // {lab, replaced}: lab-in-a-box lab `lab` with every non-empty credential value (SECRET_KEY_RE)
+  // as a "??<key>" placeholder, and the new keys. The key is the field name; a field of the records
+  // of a list field is prefixed with that field (smlm_users[].password → smlm_users_password).
+  // Equal values share one key; another value under a taken name gets _2, _3, … Names in `taken`
+  // and the lab's own ??keys are never reused.
+  function labWithSecretRefs(lab, taken = []) {
+    const used = new Set([...taken, ...labSecretRefs(lab)]), byValue = new Map(), replaced = [];
+    const keyFor = (name, value) => {
+      if (byValue.has(value)) return byValue.get(value);
+      let key = name.replace(/[^A-Za-z0-9_]/g, "_");
+      for (let n = 2; used.has(key); n++) key = name.replace(/[^A-Za-z0-9_]/g, "_") + "_" + n;
+      used.add(key);
+      byValue.set(value, key);
+      replaced.push(key);
+      return key;
+    };
+    const walk = (v, prefix) => {
+      if (Array.isArray(v)) return v.map((x) => walk(x, prefix));
+      if (!v || typeof v !== "object") return v;
+      const out = {};
+      for (const [k, val] of Object.entries(v)) {
+        if (SECRET_KEY_RE.test(k) && isScalar(val) && val !== "" && !String(val).startsWith("??")) {
+          out[k] = "??" + keyFor(prefix ? prefix + "_" + k : k, String(val));
+        } else {
+          out[k] = walk(val, Array.isArray(val) && k !== "addons" ? k : "");
+        }
+      }
+      return out;
+    };
+    return { lab: walk(lab, ""), replaced };
+  }
+
+  const IP_RE = /(?<![\d.])\d{1,3}(?:\.\d{1,3}){3}(?![\d]|\.\d)/g;
+  const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+  // {lab, warnings}: lab-in-a-box lab `lab` with literal node FQDNs and IPs in its add-on values
+  // (add-on sections, nodes' and kclusters' addons) as ${node_fqdn:<vm>} / ${node_ip:<vm>}.
+  // A value equal to the one at the same place in `before` (the lab stored until now) is kept.
+  // Warnings name values that look like a lab address (an IP in a node's /24, a name in the
+  // lab's domain, not after "@") but match no node.
+  function labWithNodeRefs(lab, before) {
+    const nodes = Object.entries((lab && lab.nodes) || {});
+    const warnings = [];
+    if (!nodes.length) return { lab, warnings };
+    const short = (fqdn) => fqdn.split(".")[0];
+    const names = nodes.map(([fqdn]) => fqdn).sort((a, b) => b.length - a.length);
+    const ips = new Map(nodes.filter(([, n]) => n && n.myip).map(([fqdn, n]) => [String(n.myip), short(fqdn)]));
+    const nets = new Set([...ips.keys()].map((ip) => ip.split(".").slice(0, 3).join(".")));
+    const domain = (lab.common && lab.common.mydomain) || names[0].split(".").slice(1).join(".");
+    const fqdnRe = names.length ? new RegExp("(?<![\\w.@-])(" + names.map(escapeRe).join("|") + ")(?![\\w-])", "g") : null;
+    const ipRe = ips.size ? new RegExp("(?<![\\d.])(" + [...ips.keys()].map(escapeRe).join("|") + ")(?![\\d]|\\.\\d)", "g") : null;
+    const hostRe = domain ? new RegExp("(?<![\\w.@-])[A-Za-z0-9][\\w-]*(?:\\.[\\w-]+)*\\." + escapeRe(domain) + "(?![\\w-])", "g") : null;
+    const fill = (s, path) => {
+      let out = fqdnRe ? s.replace(fqdnRe, (m) => "${node_fqdn:" + short(m) + "}") : s;
+      if (ipRe) out = out.replace(ipRe, (m) => "${node_ip:" + ips.get(m) + "}");
+      for (const m of out.match(IP_RE) || []) {
+        if (nets.has(m.split(".").slice(0, 3).join("."))) warnings.push(path + ": " + m + " is in the lab's network but no node has it");
+      }
+      for (const m of (hostRe && out.match(hostRe)) || []) warnings.push(path + ": " + m + " is in the lab's domain but no node has that name");
+      return out;
+    };
+    const walk = (v, old, path) => {
+      if (typeof v === "string") return v === old ? v : fill(v, path);
+      if (Array.isArray(v)) return v.map((x, i) => walk(x, Array.isArray(old) ? old[i] : undefined, path + "[" + i + "]"));
+      if (!v || typeof v !== "object") return v;
+      const o = old && typeof old === "object" ? old : {};
+      return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x, o[k], path ? path + "." + k : k)]));
+    };
+    const prev = before && typeof before === "object" ? before : {};
+    const out = {};
+    for (const [k, v] of Object.entries(lab)) {
+      if (!LAB_OWN_KEYS.has(k)) { out[k] = walk(v, prev[k], k); continue; }
+      if (k !== "nodes" && k !== "kclusters") { out[k] = v; continue; }
+      out[k] = Object.fromEntries(Object.entries(v || {}).map(([name, entry]) => {
+        if (!entry || typeof entry !== "object" || !("addons" in entry)) return [name, entry];
+        const old = ((prev[k] || {})[name] || {}).addons;
+        return [name, { ...entry, addons: walk(entry.addons, old, k + "." + name + ".addons") }];
+      }));
+    }
+    return { lab: out, warnings };
+  }
+
+  // Plan text `text` with `keys` added to its top-level operator_secrets: list (which is added
+  // when the plan has none); keys already listed are skipped.
+  function addOperatorSecrets(text, keys) {
+    const lines = text.split("\n");
+    const top = lines.findIndex((l) => /^operator_secrets:/.test(l));
+    const inline = top >= 0 ? /^operator_secrets:\s*\[([^\]]*)\]/.exec(lines[top]) : null;
+    let end = top + 1;
+    while (top >= 0 && !inline && end < lines.length && /^(\s+\S|\s*$)/.test(lines[end])) end++;
+    const listed = inline ? inline[1].split(",").map((s) => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean)
+      : lines.slice(top + 1, end).map((l) => /^\s+-\s*["']?([A-Za-z0-9_]+)/.exec(l)).filter(Boolean).map((m) => m[1]);
+    const add = [...new Set(keys)].filter((k) => !listed.includes(k));
+    if (!add.length) return text;
+    if (top < 0) return text.replace(/\s*$/, "\n") + "\noperator_secrets:\n" + add.map((k) => "  - " + k).join("\n") + "\n";
+    if (inline) { lines[top] = "operator_secrets: " + yamlList([...listed, ...add]); return lines.join("\n"); }
+    let last = end;
+    while (last > top + 1 && !/^\s+-/.test(lines[last - 1])) last--;
+    lines.splice(last, 0, ...add.map((k) => "  - " + k));
+    return lines.join("\n");
+  }
+
   // ── zip (stored, no compression) ─────────────────────────────────────────
 
   const CRC_TABLE = (() => {
@@ -1444,7 +1560,7 @@ const RB = (() => {
     MISSING_ADDON, SOURCE_LANGUAGE, LANGUAGES, slugify, uniqueId, parseSpans, parseAttrs, kind, needsId, openTag, inner,
     withKind, wrapTarget, nextId, wrap, retag, unwrap, idsIn, validate, warningsByChapter, engineNeeds, variantsIn, storyIndex,
     setTopKey, setStoredLab, dropTopBlock, storyBlock, planFromBase, planLabinabox, chapterFile, chaptersYaml,
-    storyYaml, checkScript, readme, files, labJsonAddons, labJsonProvides, crc32, zip,
+    storyYaml, checkScript, readme, files, labJsonAddons, labJsonProvides, labSecretRefs, labWithSecretRefs, labWithNodeRefs, addOperatorSecrets, crc32, zip,
     renumber, nameMissing, translatableIds, storedSource, sourceTexts, missingPlaceholders, stringsFiles, translatedLanguages, draftPrompt, storyRole, storyParts, maskExercises, retoldChapters, contentBlock, PARTS, partOf, partFiles, CATALOG_REPO, catalogEntry, publishLinks,
     parseSourceUrl, importGroupId, detectFormat, chapterFromMarkdown, chapterFromInstruqt, chaptersMeta, storyIds, chapterFromStory,
     previewFormat, previewTree, safeHref,

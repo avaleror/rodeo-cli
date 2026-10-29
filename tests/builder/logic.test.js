@@ -510,3 +510,62 @@ test("labJsonProvides lists add-ons, Kubernetes cluster types and other sections
   assert.deepEqual(RB.labJsonProvides(lab), ["longhorn", "pxe", "rancher", "rke2", "smlm"]);
   assert.deepEqual(RB.labJsonProvides(null), []);
 });
+
+test("labWithSecretRefs turns credential values into ??placeholders", () => {
+  const lab = {
+    common: { ROOT_PWD_HASH: "$6$abc" },
+    nodes: { "a.lab": { addons: [{ client_registration: { client_registration_admin_pass: "s3cret", client_registration_activation_key: "1-sles" } }] } },
+    kclusters: { k1: { clu_type: "rke2", clu_token: "tok-one-1234567890" }, k2: { clu_type: "rke2", clu_token: "tok-two-1234567890" } },
+    smlm: {
+      smlm_admin_pass: "??smlm_admin_pass", smlm_scc_regcode: "REG-1", smlm_ssl_password: "",
+      smlm_users: [{ username: "a", password: "s3cret" }, { username: "b", password: "other" }],
+    },
+  };
+  const { lab: out, replaced } = RB.labWithSecretRefs(lab, ["smlm_scc_regcode"]);
+  assert.equal(out.common.ROOT_PWD_HASH, "??ROOT_PWD_HASH");
+  assert.equal(out.nodes["a.lab"].addons[0].client_registration.client_registration_admin_pass, "??client_registration_admin_pass");
+  assert.equal(out.nodes["a.lab"].addons[0].client_registration.client_registration_activation_key, "1-sles");
+  assert.equal(out.kclusters.k1.clu_token, "??clu_token");
+  assert.equal(out.kclusters.k2.clu_token, "??clu_token_2");
+  assert.equal(out.smlm.smlm_admin_pass, "??smlm_admin_pass");
+  assert.equal(out.smlm.smlm_scc_regcode, "??smlm_scc_regcode_2");
+  assert.equal(out.smlm.smlm_ssl_password, "");
+  assert.equal(out.smlm.smlm_users[0].password, "??client_registration_admin_pass");
+  assert.equal(out.smlm.smlm_users[1].password, "??smlm_users_password");
+  assert.deepEqual(replaced, ["ROOT_PWD_HASH", "client_registration_admin_pass", "clu_token", "clu_token_2", "smlm_scc_regcode_2", "smlm_users_password"]);
+  assert.ok(!JSON.stringify(out).includes("s3cret"));
+});
+
+test("labWithNodeRefs links literal node names and addresses, keeps stored values", () => {
+  const lab = {
+    common: { mydomain: "rodeo.lab" },
+    nodes: {
+      "smlm.rodeo.lab": { myip: "192.168.122.20" },
+      "c1.rodeo.lab": { myip: "192.168.122.2", addons: [{ client_registration: { client_registration_server: "smlm.rodeo.lab" } }] },
+    },
+    smlm: { url: "https://smlm.rodeo.lab/pub", ip: "192.168.122.20", near: "192.168.122.201", gw: "192.168.122.1",
+      mail: "admin@rodeo.lab", other: "db.rodeo.lab", kept: "smlm.rodeo.lab" },
+  };
+  const before = { smlm: { kept: "smlm.rodeo.lab" } };
+  const { lab: out, warnings } = RB.labWithNodeRefs(lab, before);
+  assert.equal(out.smlm.url, "https://${node_fqdn:smlm}/pub");
+  assert.equal(out.smlm.ip, "${node_ip:smlm}");
+  assert.equal(out.smlm.near, "192.168.122.201");
+  assert.equal(out.smlm.mail, "admin@rodeo.lab");
+  assert.equal(out.smlm.kept, "smlm.rodeo.lab");
+  assert.equal(out.nodes["c1.rodeo.lab"].addons[0].client_registration.client_registration_server, "${node_fqdn:smlm}");
+  assert.equal(out.nodes["c1.rodeo.lab"].myip, "192.168.122.2");
+  assert.deepEqual(warnings, [
+    "smlm.near: 192.168.122.201 is in the lab's network but no node has it",
+    "smlm.gw: 192.168.122.1 is in the lab's network but no node has it",
+    "smlm.other: db.rodeo.lab is in the lab's domain but no node has that name",
+  ]);
+});
+
+test("addOperatorSecrets adds keys to the plan's operator_secrets", () => {
+  assert.equal(RB.addOperatorSecrets("type: x\n", ["a"]), "type: x\n\noperator_secrets:\n  - a\n");
+  assert.equal(RB.addOperatorSecrets("operator_secrets: [a]\nb: 1\n", ["a", "c"]), "operator_secrets: [a, c]\nb: 1\n");
+  const block = "operator_secrets:\n  - a   # note\n  - b\n\nresources: {}\n";
+  assert.equal(RB.addOperatorSecrets(block, ["b", "c"]), "operator_secrets:\n  - a   # note\n  - b\n  - c\n\nresources: {}\n");
+  assert.equal(RB.addOperatorSecrets(block, ["a"]), block);
+});

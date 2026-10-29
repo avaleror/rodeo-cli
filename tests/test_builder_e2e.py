@@ -450,6 +450,28 @@ def test_upload_lab_json_brings_its_addons(page, tmp_path):
     sync_api.expect(page.locator("#toast")).to_contain_text("Not a lab-in-a-box lab.json")
 
 
+def test_uploaded_lab_keeps_no_secret_and_links_its_nodes(page, tmp_path):
+    lab = tmp_path / "lab.json"
+    lab.write_text(json.dumps({"common": {"mydomain": "rodeo.lab"}, "nodes": {
+        "smlm.rodeo.lab": {"myip": "192.168.122.20", "addons": ["smlm"]},
+        "c1.rodeo.lab": {"myip": "192.168.122.31", "addons": [{"client_registration": {}}]}},
+        "smlm": {"smlm_admin_pass": "Hunter2-literal", "smlm_mirror": "db.rodeo.lab"},
+        "client_registration": {"client_registration_server": "smlm.rodeo.lab"}}))
+    page.click(".card")
+    page.click(".engine >> text=lab-in-a-box")
+    page.click(".seg button >> text=Import existing lab")
+    page.set_input_files("#enginePanel input[type=file]", str(lab))
+    sync_api.expect(page.locator("#toast")).to_contain_text("smlm_admin_pass")
+    sync_api.expect(page.locator("#enginePanel .lab-warnings")).to_contain_text("db.rodeo.lab")
+    files = _zip(page)
+    assert "Hunter2-literal" not in json.dumps(files)
+    plan = yaml.safe_load(files["my-rodeo/rodeo-plan.yaml"])
+    stored = plan["lab_in_a_box"]["lab"]
+    assert stored["smlm"]["smlm_admin_pass"] == "??smlm_admin_pass"
+    assert stored["client_registration"]["client_registration_server"] == "${node_fqdn:smlm}"
+    assert "smlm_admin_pass" in plan["operator_secrets"]
+
+
 def test_selected_engine_is_marked(page):
     selected = page.locator(".engine.on")
     assert selected.count() == 1

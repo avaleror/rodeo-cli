@@ -46,6 +46,16 @@ rodeo up --profile <name>     # after Save to profiles
   `lab_in_a_box.lab` (see the plan reference); the rest of the plan, such as an
   imported workshop's variants and `workshop:` block, is kept. Its add-ons are
   then edited in the lab-builder.
+
+  No credential from that lab reaches the plan. Values of password, token,
+  registration code, API key and secret key fields become `??<field>`
+  placeholders, and those placeholders are added to the plan's
+  `operator_secrets`, so `rodeo up` asks for them once; the toast names them.
+  Node names and addresses written literally in add-on settings (for example
+  `client_registration_server: smlm.rodeo.lab`) become `${node_fqdn:smlm}` /
+  `${node_ip:smlm}`, which rodeo fills with each host's and instance's values;
+  settings unchanged from the lab the rodeo already had stay as written. Addresses
+  that look like the lab's but belong to no node are listed in the panel to check.
 - **Chapters.** The library lists every workshop's chapters: the bundled
   examples' `story/` directories, the workshops whose chapters live in their own
   repository (listed in `rodeo/builder/chapter_sources.yaml`: the SMLM workshop's

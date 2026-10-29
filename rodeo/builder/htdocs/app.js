@@ -52,7 +52,7 @@ function fill(node, ...children) {
 const state = {
   engines: [], capabilities: [], targets: [], contentFormats: [], workshops: [], server: null,
   liab: { builder_url: "", error: "", addons: [], infrastructure: [], kclusters: [], imports: [] },
-  engine: "rancher", base: null, planEdited: null, mode: "embed", importProfile: "", labAddons: [], labJson: null,
+  engine: "rancher", base: null, planEdited: null, mode: "embed", importProfile: "", labAddons: [], labJson: null, labSecrets: [], labWarnings: [],
   chapters: [], custom: [], name: "my-rodeo", title: "My rodeo", lang: "en", target: "baremetal",
   variant: "", extraVariants: [], query: "", open: {}, info: null, details: false, filters: { engine: false, added: false, runnable: false }, newWorkshop: "custom", fileView: "rodeo-plan.yaml",
   editing: -1, edTab: "spans", drag: null, cursor: -1, undo: null, copied: false,
@@ -206,7 +206,7 @@ function useGroup(g) {
     state.base = null;
     state.mode = "import";
     state.importProfile = g.profile;
-    state.labJson = null;
+    Object.assign(state, { labJson: null, labSecrets: [], labWarnings: [] });
   } else {
     state.base = g.profile === engine().base ? null : { profile: g.profile, plan: g.plan };
   }
@@ -267,8 +267,11 @@ function fillChoices() {
 
 function planOptions() { return { name: state.name, target: state.target, story: story(), content: contentSource() }; }
 
-// Plan text `text` with the lab from the lab-builder (or a lab.json) as its lab_in_a_box.lab.
-function withLab(text) { return state.labJson ? RB.setStoredLab(text, state.labJson) : text; }
+// Plan text `text` with the lab from the lab-builder (or a lab.json) as its lab_in_a_box.lab and
+// that lab's credentials in operator_secrets.
+function withLab(text) {
+  return state.labJson ? RB.addOperatorSecrets(RB.setStoredLab(text, state.labJson), state.labSecrets) : text;
+}
 
 function generatedPlan() {
   if (liabImported()) return RB.planFromBase(withLab(importBase().plan), planOptions());
@@ -589,11 +592,24 @@ function readLabJson(file) {
 }
 
 // A lab from the lab-builder or a lab.json becomes the plan's lab_in_a_box.lab; an imported rodeo stays.
+// Its credentials become ??placeholders: those that replaced a value, or that the plan did not
+// reference before (typed in the lab-builder), go to operator_secrets. Literal node names and
+// addresses that differ from the stored lab become ${node_fqdn:<vm>} / ${node_ip:<vm>}.
 function useLab(lab, source) {
-  state.labJson = lab;
-  state.labAddons = RB.labJsonAddons(lab);
-  if (state.planEdited !== null) state.planEdited = RB.setStoredLab(state.planEdited, lab);
-  toast("Lab from " + source + ": " + (state.labAddons.join(", ") || "no add-ons"));
+  const planRefs = new Set([...plan().matchAll(/\?\?([A-Za-z0-9_]+)/g)].map((m) => m[1]));
+  const masked = RB.labWithSecretRefs(lab, [...planRefs]);
+  const linked = RB.labWithNodeRefs(masked.lab, currentLab());
+  const refs = RB.labSecretRefs(linked.lab);
+  const typed = [...refs].filter((k) => !planRefs.has(k) && !masked.replaced.includes(k));
+  state.labSecrets = [...new Set([...state.labSecrets.filter((k) => refs.has(k)), ...masked.replaced, ...typed])];
+  state.labJson = linked.lab;
+  state.labWarnings = linked.warnings;
+  state.labAddons = RB.labJsonAddons(linked.lab);
+  if (state.planEdited !== null) state.planEdited = RB.addOperatorSecrets(RB.setStoredLab(state.planEdited, linked.lab), state.labSecrets);
+  const notes = ["Lab from " + source + ": " + (state.labAddons.join(", ") || "no add-ons")];
+  if (masked.replaced.length) notes.push("credentials replaced by ??placeholders (operator_secrets): " + masked.replaced.join(", "));
+  if (linked.warnings.length) notes.push(linked.warnings.length + " address(es) to check, listed in the lab panel");
+  toast(notes.join("; "));
   render();
 }
 
@@ -635,10 +651,15 @@ function renderEnginePanel() {
     box.append(el("p", { text: "Start from a bundled lab-in-a-box rodeo, or from a lab.json." }),
       el("div", { class: "imports" }, state.liab.imports.map((i) => el("button", {
         class: "engine" + (state.importProfile === i.profile ? " on" : ""), type: "button",
-        onclick: () => { state.importProfile = state.importProfile === i.profile ? "" : i.profile; state.labJson = null; render(); },
+        onclick: () => { state.importProfile = state.importProfile === i.profile ? "" : i.profile; Object.assign(state, { labJson: null, labSecrets: [], labWarnings: [] }); render(); },
       }, el("span", { class: "engine-name", text: i.profile }), el("span", { class: "engine-sub", text: i.addons.join(", ") })))), upload);
   }
   if (state.labJson) box.append(el("p", { class: "mono muted", text: "Lab from the lab-builder: saved in rodeo-plan.yaml as lab_in_a_box.lab." }));
+  if (state.labJson && state.labWarnings.length) {
+    box.append(el("div", { class: "alert", role: "alert" }, el("strong", { text: "Addresses no lab node has: " }),
+      "rodeo changes node names and addresses per host and instance, these stay as written.",
+      el("ul", { class: "lab-warnings" }, state.labWarnings.map((w) => el("li", { class: "mono", text: w })))));
+  }
   if (state.liab.error) {
     box.append(el("div", { class: "alert", role: "alert" }, el("strong", { text: "lab-in-a-box catalogue unavailable. " }),
       state.liab.error + ". " + catalogueHint()));

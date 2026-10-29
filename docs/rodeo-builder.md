@@ -26,15 +26,21 @@ rodeo up --profile <name>     # after Save to profiles
   ones rodeo knows, never a fixed list. `suse-virt`, `rancher` and `suse-edge`
   are rodeo's own engines; the **(i)** on each shows its size and what it provides (for example
   Harvester, KubeVirt, Longhorn, Rancher, Fleet). `lab-in-a-box` builds any lab lab-in-a-box can:
-    - **Open in Lab Builder** opens lab-in-a-box's lab-builder with this rodeo's
-      lab filled in (only its add-ons when the lab is too large for a link).
-      Download the lab.json there and upload it here to bring the lab back.
-    - **Embed here** opens the lab-builder inside the page with this rodeo's lab
-      loaded; "Send this lab" there hands it back. Needs a lab-in-a-box release
-      with the embed hand-off; until then, use Download there and Upload here.
+    - **Embed here** (the default) opens the lab-builder inside the page with
+      this rodeo's lab loaded; "Send this lab" there hands it back.
     - **Import existing lab** starts from a bundled lab-in-a-box rodeo
       (`smlm-workshop`) or from a lab.json. An imported rodeo stays selected on
       every tab, so its lab is the one the lab-builder opens.
+    - **Open in Lab Builder** opens lab-in-a-box's lab-builder in its own tab
+      with this rodeo's lab filled in (only its add-ons when the lab is too large
+      for a link). Download the lab.json there and upload it here to bring the lab back.
+
+  **Provides** lists what the lab offers chapters, from lab-in-a-box's whole
+  catalogue: add-ons, Kubernetes clusters (`rke2`, `k3s`, ...) and infrastructure
+  (such as `pxe`). Type a name to add one. Add-ons go into the generated plan;
+  Kubernetes clusters and infrastructure are set up in the lab-builder (Embed
+  here), whose lab brings them back. With a lab, it lists that lab's add-ons
+  (on VMs and Kubernetes clusters), Kubernetes cluster types and infrastructure.
 
   A lab brought back (sent, or uploaded as lab.json) becomes the plan's
   `lab_in_a_box.lab` (see the plan reference); the rest of the plan, such as an

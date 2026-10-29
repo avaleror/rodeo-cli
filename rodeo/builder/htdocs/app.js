@@ -52,7 +52,7 @@ function fill(node, ...children) {
 const state = {
   engines: [], capabilities: [], targets: [], contentFormats: [], workshops: [], server: null,
   liab: { builder_url: "", error: "", addons: [], infrastructure: [], kclusters: [], imports: [] },
-  engine: "rancher", base: null, planEdited: null, mode: "link", importProfile: "", labAddons: [], labJson: null,
+  engine: "rancher", base: null, planEdited: null, mode: "embed", importProfile: "", labAddons: [], labJson: null,
   chapters: [], custom: [], name: "my-rodeo", title: "My rodeo", lang: "en", target: "baremetal",
   variant: "", extraVariants: [], query: "", open: {}, info: null, details: false, filters: { engine: false, added: false, runnable: false }, newWorkshop: "custom", fileView: "rodeo-plan.yaml",
   editing: -1, edTab: "spans", drag: null, cursor: -1, undo: null, copied: false,
@@ -139,8 +139,8 @@ function currentLab() { return state.labJson || (liabImported() ? importBase().l
 
 function provided() {
   if (!isLiab()) return new Set(engine() ? engine().provides : []);
-  if (state.labJson) return new Set(RB.labJsonAddons(state.labJson));
-  return new Set(liabImported() ? importBase().addons : state.labAddons);
+  if (currentLab()) return new Set(RB.labJsonProvides(currentLab()));
+  return new Set(state.labAddons);
 }
 
 function missing(chapter) { const p = provided(); return (chapter.needs || []).filter((n) => !isWorkNeed(n) && !p.has(n)); }
@@ -272,7 +272,7 @@ function withLab(text) { return state.labJson ? RB.setStoredLab(text, state.labJ
 
 function generatedPlan() {
   if (liabImported()) return RB.planFromBase(withLab(importBase().plan), planOptions());
-  if (isLiab()) return withLab(RB.planLabinabox({ ...planOptions(), addons: state.labAddons }));
+  if (isLiab()) return withLab(RB.planLabinabox({ ...planOptions(), addons: chosenAddons() }));
   return RB.planFromBase(state.base ? state.base.plan : engine().plan, planOptions());
 }
 
@@ -518,11 +518,31 @@ function addonTargets(name) {
   return a ? a.targets : [];
 }
 
+// The catalogue kind of `name`: "addons", "infrastructure" or "kclusters" ("" when lab-in-a-box has no such item).
+function liabKind(name) { return ["addons", "infrastructure", "kclusters"].find((k) => liabNames([k]).includes(name)) || ""; }
+
+const KIND_LABELS = { infrastructure: "infrastructure", kclusters: "Kubernetes cluster" };
+
+// The chosen add-ons only: Kubernetes clusters and infrastructure are set up in the lab-builder.
+function chosenAddons() { return state.labAddons.filter((n) => liabKind(n) === "addons"); }
+
+// A Provides chip: the name, what kind of item it is, and an × when it can be removed.
+function providedChip(name, removable) {
+  const kind = liabKind(name), inBuilder = removable && KIND_LABELS[kind];
+  const hint = KIND_LABELS[kind] ? KIND_LABELS[kind] + (inBuilder ? " · set up in the lab-builder" : "")
+    : addonTargets(name).length && !addonTargets(name).some((t) => t === "vm" || t === "baremetal") ? "cluster" : "";
+  return el("span", { class: "chip ok", title: inBuilder ? "rodeo's generated one-VM lab has no " + KIND_LABELS[kind] +
+      " of its own: add it in the lab-builder (Embed here), which brings the lab back with it" : null },
+    name, hint ? el("span", { class: "muted", text: "(" + hint + ")" }) : null,
+    removable ? el("button", { class: "x", type: "button", "aria-label": "Remove " + name, text: "×",
+      onclick: () => { state.labAddons = state.labAddons.filter((x) => x !== name); render(); } }) : null);
+}
+
 function addAddon(name) {
   name = name.trim().toLowerCase().replace(/^install_/, "");
   if (!name || state.labAddons.includes(name)) return;
-  if (state.liab.error) { toast("The lab-in-a-box catalogue is unavailable, so add-ons cannot be checked. " + catalogueHint(), true); return; }
-  if (!liabNames(["addons"]).includes(name)) { toast(name + " is not a lab-in-a-box add-on" + (state.liab.version ? " in " + state.liab.version : ""), true); return; }
+  if (state.liab.error) { toast("The lab-in-a-box catalogue is unavailable, so what it provides cannot be checked. " + catalogueHint(), true); return; }
+  if (!liabKind(name)) { toast(name + " is not something lab-in-a-box provides" + (state.liab.version ? " in " + state.liab.version : ""), true); return; }
   state.labAddons.push(name);
   render();
 }
@@ -551,7 +571,7 @@ function labBuilderUrl(extra, withLabParam = true) {
     if (linked.toString().length <= LAB_URL_MAX) return linked.toString();
   }
   if (lab && !withLabParam) return url.toString();
-  const addons = lab ? RB.labJsonAddons(lab) : state.labAddons;
+  const addons = lab ? RB.labJsonAddons(lab) : chosenAddons();
   if (addons.length) url.searchParams.set("addons", addons.join(","));
   return url.toString();
 }
@@ -597,7 +617,7 @@ function renderEnginePanel() {
     box.append(el("span", { class: "label", text: "Provides" }), chipList(e.provides, "ok"));
     return;
   }
-  const modes = [["link", "Open in Lab Builder"], ["embed", "Embed here"], ["import", "Import existing lab"]];
+  const modes = [["embed", "Embed here"], ["import", "Import existing lab"], ["link", "Open in Lab Builder"]];
   box.append(el("h3", { text: "Lab built by lab-in-a-box" }), el("p", { text: e.note }),
     el("div", { class: "seg", role: "tablist" }, modes.map(([m, label]) => el("button", {
       type: "button", class: state.mode === m ? "on" : "", "aria-selected": String(state.mode === m),
@@ -609,8 +629,8 @@ function renderEnginePanel() {
     box.append(el("p", { text: "Design the lab in lab-in-a-box's lab-builder (this rodeo's lab, or its add-ons when the lab is too large for a link, are prefilled), download its lab.json, then upload it here to bring the lab back." }),
       el("div", { class: "row2 chips" }, el("a", { class: "btn outline sm", href: labBuilderUrl(), target: "_blank", rel: "noopener", text: "Open lab-builder ↗" }), upload));
   } else if (state.mode === "embed") {
-    box.append(el("p", { text: "Opens the lab-builder inside this page; \"Use this lab\" there hands the lab back. Needs a lab-in-a-box release with the embed hand-off; until then, use Download in the lab-builder and Upload here." }),
-      el("div", { class: "chips" }, el("button", { class: "btn outline sm", type: "button", text: "Open embedded lab-builder", onclick: openEmbed }), upload));
+    box.append(el("p", { text: "Opens the lab-builder inside this page with this rodeo's lab; \"Send this lab\" there hands it back." }),
+      el("div", { class: "chips" }, el("button", { class: "btn outline sm", type: "button", text: "Open embedded lab-builder", onclick: openEmbed })));
   } else {
     box.append(el("p", { text: "Start from a bundled lab-in-a-box rodeo, or from a lab.json." }),
       el("div", { class: "imports" }, state.liab.imports.map((i) => el("button", {
@@ -623,33 +643,26 @@ function renderEnginePanel() {
     box.append(el("div", { class: "alert", role: "alert" }, el("strong", { text: "lab-in-a-box catalogue unavailable. " }),
       state.liab.error + ". " + catalogueHint()));
   }
-  box.append(el("span", { class: "label", text: "Lab add-ons" }));
-  if (liabImported() || state.labJson) {
-    box.append(chipList([...provided()], "ok"),
-      el("p", { class: "muted", text: "Add-ons of this lab are edited in the lab-builder (Embed here or Open in Lab Builder)." }));
+  box.append(el("span", { class: "label", text: "Provides" }));
+  if (currentLab()) {
+    box.append(el("div", { class: "chips" }, [...provided()].sort().map((n) => providedChip(n, false))),
+      el("p", { class: "muted", text: "What this lab provides is edited in the lab-builder (Embed here or Open in Lab Builder)." }));
   } else {
-    box.append(el("div", { class: "chips" }, state.labAddons.length ? state.labAddons.map((a) => el("span", { class: "chip ok" },
-      a, addonTargets(a).length && !addonTargets(a).some((t) => t === "vm" || t === "baremetal")
-        ? el("span", { class: "muted", text: "(cluster)" }) : null,
-      el("button", { class: "x", type: "button", "aria-label": "Remove " + a, text: "×",
-        onclick: () => { state.labAddons = state.labAddons.filter((x) => x !== a); render(); } })))
+    box.append(el("div", { class: "chips" }, state.labAddons.length ? state.labAddons.map((a) => providedChip(a, true))
       : el("span", { class: "muted mono", text: "none yet" })));
-    const input = el("input", { class: "input mono", list: "addonOptions", placeholder: "add-on name", "aria-label": "Add-on name",
-      onkeydown: (ev) => { if (ev.key === "Enter") { ev.preventDefault(); addAddon(input.value); } } });
-    box.append(el("datalist", { id: "addonOptions" }, state.liab.addons.map((a) => el("option", { value: a.name }))),
+    const input = el("input", { class: "input mono", list: "addonOptions", placeholder: "add-on, Kubernetes cluster or infrastructure",
+      "aria-label": "What the lab provides", onkeydown: (ev) => { if (ev.key === "Enter") { ev.preventDefault(); addAddon(input.value); } } });
+    box.append(el("datalist", { id: "addonOptions" }, ["addons", "kclusters", "infrastructure"].flatMap((k) => (state.liab[k] || [])
+      .map((a) => el("option", { value: a.name, label: KIND_LABELS[k] ? a.name + " (" + KIND_LABELS[k] + ")" : a.name })))),
       el("div", { class: "addon-add" }, input, el("button", { class: "btn sm", type: "button", text: "Add", onclick: () => addAddon(input.value) })));
   }
   const need = neededAddons();
-  if (need.length && !liabImported() && !state.labJson) {
-    const addons = liabNames(["addons"]), inBuilder = liabNames(["infrastructure", "kclusters"]);
+  if (need.length && !currentLab()) {
     box.append(el("span", { class: "label", text: "Needed by chapters" }),
-      el("div", { class: "chips" }, need.map((n) => addons.includes(n)
+      el("div", { class: "chips" }, need.map((n) => liabKind(n)
         ? el("button", { class: "chip need", type: "button", text: "+ " + n, onclick: () => addAddon(n) })
-        : el("span", { class: "chip missing", title: inBuilder.includes(n) ? "Set it up in the lab-builder, then upload the lab.json"
-          : "No engine provides it yet", text: n + (inBuilder.includes(n) ? " · lab-builder" : " · not available") }))));
+        : el("span", { class: "chip missing", title: "No engine provides it yet", text: n + " · not available" }))));
   }
-  const more = [["Infrastructure", state.liab.infrastructure], ["Kubernetes clusters", state.liab.kclusters]].filter(([, l]) => l && l.length);
-  for (const [label, list] of more) box.append(el("span", { class: "label", text: label + " (in the lab-builder)" }), chipList(list.map((a) => a.name)));
 }
 
 // ── embedded lab-builder ────────────────────────────────────────────────

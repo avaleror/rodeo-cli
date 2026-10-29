@@ -1307,6 +1307,18 @@ const RB = (() => {
     return [...names].filter(Boolean).sort();
   }
 
+  // What a lab-in-a-box lab provides: its add-ons (on VMs and Kubernetes clusters), its
+  // Kubernetes cluster types (clu_type) and its other sections (infrastructure such as pxe).
+  function labJsonProvides(lab) {
+    const names = new Set(labJsonAddons(lab));
+    for (const c of Object.values((lab && lab.kclusters) || {})) {
+      if (c && c.clu_type) names.add(c.clu_type);
+      for (const a of (c && c.addons) || []) names.add(typeof a === "string" ? a : Object.keys(a)[0]);
+    }
+    for (const key of Object.keys(lab || {})) if (!["common", "nodes", "kclusters", "schema_versions"].includes(key)) names.add(key);
+    return [...names].filter(Boolean).sort();
+  }
+
   // ── zip (stored, no compression) ─────────────────────────────────────────
 
   const CRC_TABLE = (() => {
@@ -1432,7 +1444,7 @@ const RB = (() => {
     MISSING_ADDON, SOURCE_LANGUAGE, LANGUAGES, slugify, uniqueId, parseSpans, parseAttrs, kind, needsId, openTag, inner,
     withKind, wrapTarget, nextId, wrap, retag, unwrap, idsIn, validate, warningsByChapter, engineNeeds, variantsIn, storyIndex,
     setTopKey, setStoredLab, dropTopBlock, storyBlock, planFromBase, planLabinabox, chapterFile, chaptersYaml,
-    storyYaml, checkScript, readme, files, labJsonAddons, crc32, zip,
+    storyYaml, checkScript, readme, files, labJsonAddons, labJsonProvides, crc32, zip,
     renumber, nameMissing, translatableIds, storedSource, sourceTexts, missingPlaceholders, stringsFiles, translatedLanguages, draftPrompt, storyRole, storyParts, maskExercises, retoldChapters, contentBlock, PARTS, partOf, partFiles, CATALOG_REPO, catalogEntry, publishLinks,
     parseSourceUrl, importGroupId, detectFormat, chapterFromMarkdown, chapterFromInstruqt, chaptersMeta, storyIds, chapterFromStory,
     previewFormat, previewTree, safeHref,

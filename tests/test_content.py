@@ -145,7 +145,7 @@ def test_content_commands(tmp_path, monkeypatch):
 
     def fake_apply(cfg, where):
         calls.append(where)
-        return {"commit": "abcdef1234567890", "files": [where / "guide" / "01-a.md"]}
+        return {"commit": "abcdef1234567890", "files": [where / "guide" / "01-a.md"], "checks": None, "warnings": []}
 
     monkeypatch.setattr(content, "apply", fake_apply)
     r = CliRunner().invoke(content_cmd, ["apply"])
@@ -167,7 +167,8 @@ def test_content_show_without_a_block(tmp_path, monkeypatch):
 
 def test_up_applies_content_after_a_deploy_and_only_warns(monkeypatch, tmp_path, capsys):
     applied = []
-    monkeypatch.setattr(content, "apply", lambda cfg, lab: applied.append(lab) or {"commit": "", "files": [lab / "guide" / "g.md"]})
+    monkeypatch.setattr(content, "apply", lambda cfg, lab: applied.append(lab) or {"commit": "", "files": [lab / "guide" / "g.md"],
+                                                                          "checks": None, "warnings": []})
     cfg = {"content": {"repo": "https://github.com/a/b", "format": "rmstory"}}
     up_cmd._apply_content(cfg, tmp_path)
     up_cmd._apply_content({}, tmp_path)
@@ -178,3 +179,92 @@ def test_up_applies_content_after_a_deploy_and_only_warns(monkeypatch, tmp_path,
     monkeypatch.setattr(content, "apply", failing)
     up_cmd._apply_content(cfg, tmp_path)
     up_cmd._apply_content({"content": {"repo": "http://bad", "format": "rmstory"}}, tmp_path)
+
+
+# ── checks/ and custom/scripts/ of the content ─────────────────────────────
+
+def _fetched(lab: Path, files: dict[str, tuple[str, int]]) -> Path:
+    """A lab whose content was fetched with *files* ({path: (text, mode)})."""
+    for rel, (text, mode) in files.items():
+        path = lab / content.CHECKOUT / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+        path.chmod(mode)
+    return lab
+
+
+def test_install_checks_into_opt_rodeo(tmp_path, monkeypatch):
+    monkeypatch.setattr(content, "CHECKS_ROOT", tmp_path / "opt")
+    monkeypatch.setattr(content.os, "geteuid", lambda: 0)
+    lab = _fetched(tmp_path / "lab", {"checks/check-1.sh": ("#!/bin/sh\n", 0o700), "checks/README.md": ("r", 0o600),
+                                      "checks/lib/x.sh": ("x", 0o600)})
+    (lab / "content" / "checks" / "link").symlink_to("/etc/passwd")
+    dest = content.install_checks({"name": "ride"}, lab)
+    assert dest == tmp_path / "opt" / "ride" / "checks"
+    assert sorted(p.relative_to(dest).as_posix() for p in dest.rglob("*")) == ["README.md", "check-1.sh", "lib", "lib/x.sh"]
+    assert (dest / "check-1.sh").stat().st_mode & 0o777 == 0o755
+    assert (dest / "README.md").stat().st_mode & 0o777 == 0o644
+    assert (dest / "lib").stat().st_mode & 0o777 == 0o755 and dest.stat().st_mode & 0o777 == 0o755
+    (lab / "content" / "checks" / "README.md").unlink()
+    content.install_checks({"name": "ride"}, lab)
+    assert not (dest / "README.md").exists()
+    assert content.install_checks({"name": "ride"}, tmp_path / "empty") is None
+    with pytest.raises(ConfigError, match="can't name a directory"):
+        content.install_checks({"name": "../x"}, lab)
+    monkeypatch.setattr(content.os, "geteuid", lambda: 1000)
+    with pytest.raises(PermissionError, match="needs root"):
+        content.install_checks({"name": "ride"}, lab)
+
+
+def test_apply_reports_checks_it_could_not_install(tmp_path, monkeypatch):
+    lab = _fetched(tmp_path / "lab", {"checks/c.sh": ("x", 0o755)})
+    monkeypatch.setattr(content, "fetch", lambda spec, where, run: "abc")
+    monkeypatch.setattr(content, "render", lambda spec, where, cfg: [where / "guide" / "g.md"])
+    monkeypatch.setattr(content.os, "geteuid", lambda: 1000)
+    cfg = {"name": "ride", "content": {"repo": "https://github.com/a/b", "format": "markdown"}}
+    result = content.apply(cfg, lab)
+    assert result["checks"] is None and "needs root" in result["warnings"][0]
+
+
+def test_setup_scripts_run_in_order_with_rodeos_environment(tmp_path, monkeypatch):
+    out = tmp_path / "ran.txt"
+    script = "#!/bin/sh\necho \"$(basename \"$0\") $PWD $RODEO_PLAN_NAME $RODEO_CONTENT_DIR\" >> " + str(out) + "\n"
+    lab = _fetched(tmp_path / "lab", {"custom/scripts/20-b.sh": (script + "echo failing; exit 3\n", 0o755),
+                                      "custom/scripts/10-a.sh": (script + "echo hello\n", 0o755),
+                                      "custom/scripts/README.md": ("not run", 0o644)})
+    results = list(content.run_setup({"name": "ride", "config_dir": str(lab), "ansible": {}}, lab))
+    assert [(name, code) for name, code, _ in results] == [("10-a.sh", 0), ("20-b.sh", 3)]
+    assert results[0][2] == ["hello"] and results[1][2] == ["failing"]
+    scripts = lab / "content" / "custom" / "scripts"
+    assert out.read_text().splitlines() == [f"10-a.sh {scripts} ride {lab / 'content'}", f"20-b.sh {scripts} ride {lab / 'content'}"]
+    assert list(content.run_setup({"name": "ride"}, tmp_path / "none")) == []
+
+
+def test_setup_is_left_out_of_rodeo_up_where_custom_scripts_are():
+    assert content.setup_guarded({"type": "suse-virt", "deployment_target": "instruqt"})
+    assert not content.setup_guarded({"type": "suse-virt", "deployment_target": "baremetal"})
+    assert not content.setup_guarded({"type": "lab-in-a-box", "deployment_target": "instruqt"})
+
+
+def test_content_apply_runs_setup_and_fails_on_a_failing_script(tmp_path, monkeypatch):
+    lab = _lab_with_plan(tmp_path, {"repo": "https://github.com/a/b", "format": "markdown", "path": "docs"})
+    monkeypatch.chdir(lab)
+    monkeypatch.setattr(content, "apply", lambda cfg, where: {"commit": "abc", "files": [], "checks": Path("/opt/rodeo/ride/checks"),
+                                                               "warnings": []})
+    monkeypatch.setattr(content, "run_setup", lambda cfg, where: iter([("10-a.sh", 0, ["hi"]), ("20-b.sh", 2, [])]))
+    r = CliRunner().invoke(content_cmd, ["apply"])
+    assert r.exit_code == 1
+    assert "Checks installed in /opt/rodeo/ride/checks" in r.output and "10-a.sh" in r.output and "20-b.sh exited 2" in r.output
+    monkeypatch.setattr(content, "run_setup", lambda cfg, where: iter([("10-a.sh", 0, [])]))
+    assert CliRunner().invoke(content_cmd, ["apply"]).exit_code == 0
+
+
+def test_up_runs_setup_unless_guarded(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(content, "apply", lambda cfg, lab: {"commit": "", "files": [], "checks": None, "warnings": []})
+    ran = []
+    monkeypatch.setattr(content, "run_setup", lambda cfg, lab: ran.append(cfg["deployment_target"]) or iter([("s.sh", 1, [])]))
+    monkeypatch.setattr(content, "setup_scripts", lambda lab: [lab / "s.sh"])
+    block = {"repo": "https://github.com/a/b", "format": "rmstory"}
+    up_cmd._apply_content({"type": "suse-virt", "deployment_target": "baremetal", "content": block}, tmp_path)
+    up_cmd._apply_content({"type": "suse-virt", "deployment_target": "instruqt", "content": block}, tmp_path)
+    assert ran == ["baremetal"]

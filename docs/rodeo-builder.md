@@ -179,7 +179,8 @@ content repository).
 **Instructions repository** (rodeo tab) points the plan at instructions kept in
 their own repository: the URL (`https://<host>/<owner>/<repo>[/tree/<ref>/<path>]`)
 and format become the plan's `content:` block. `rodeo up` renders them after
-the lab is up, and `rodeo content apply` updates them on a running lab without
+the lab is up, installs the repository's `checks/` for every user of the host and
+runs its `custom/scripts/`, and `rodeo content apply` updates them on a running lab without
 redeploying (see [the plan reference](reference/plan.md#content-the-labs-instructions-apart-from-its-infrastructure)).
 
 ## Install what you downloaded

@@ -18,6 +18,16 @@ the deployed environment, so the instructions can be updated on a running lab.
 An rmstory content is also what ``rodeo story render`` reads when the lab has no
 ``story/`` of its own. The plan's ``workshop:`` block and an in-profile ``story/``
 work as before.
+
+A content repository has the profile layout at its root, whatever ``path`` names:
+
+- ``checks/`` is installed by :func:`install_checks` into
+  ``/opt/rodeo/<plan name>/checks/`` (root-owned, readable and runnable by every
+  user on the host);
+- ``custom/scripts/`` holds the content's setup scripts: :func:`run_setup` runs the
+  executable ones in sorted order on the host, from that directory, with the
+  environment the profile's own custom scripts get plus ``RODEO_CONTENT_DIR`` (the
+  fetched repository). They should be idempotent: they run on every apply.
 """
 from __future__ import annotations
 
@@ -27,7 +37,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
 import yaml
 
@@ -37,6 +47,9 @@ from .workshop import render_text
 
 FORMATS = ("rmstory", "instruqt", "markdown")
 CHECKOUT = "content"
+CHECKS_ROOT = Path("/opt/rodeo")
+SETUP_TIMEOUT = 1800
+_PLAN_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 LOCK = "content.lock"
 GUIDE = "guide"
 TIMEOUT = 300
@@ -145,12 +158,117 @@ def render(spec: dict[str, Any], lab: Path, cfg: dict) -> list[Path]:
     return written
 
 
+def checks_dir(cfg: dict) -> Path:
+    """Where the content's checks are installed: ``/opt/rodeo/<plan name>/checks``."""
+    name = str(cfg.get("name") or "")
+    if not _PLAN_NAME_RE.match(name):
+        raise ConfigError(f"plan name '{name}' can't name a directory under {CHECKS_ROOT}")
+    return CHECKS_ROOT / name / "checks"
+
+
+def install_checks(cfg: dict, lab: Path) -> Path | None:
+    """Copy the fetched content's ``checks/`` to :func:`checks_dir`, replacing what was there.
+
+    Directories get mode 755, files 755 when executable in the repository and 644
+    otherwise; anything but plain files and directories is skipped. Returns the
+    directory, or None when the content has no ``checks/``. Raises PermissionError
+    when not running as root.
+    """
+    src = lab / CHECKOUT / "checks"
+    if not src.is_dir():
+        return None
+    dest = checks_dir(cfg)
+    if os.geteuid() != 0:
+        raise PermissionError(f"installing the checks into {dest} needs root: sudo rodeo content apply")
+    dest.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+    stage = Path(tempfile.mkdtemp(prefix=".checks.", dir=dest.parent))
+    try:
+        for item in sorted(src.rglob("*")):
+            target = stage / item.relative_to(src)
+            if item.is_symlink():
+                continue
+            if item.is_dir():
+                target.mkdir(mode=0o755, exist_ok=True)
+            elif item.is_file():
+                target.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+                shutil.copyfile(item, target)
+                target.chmod(0o755 if os.access(item, os.X_OK) else 0o644)
+        stage.chmod(0o755)
+        if dest.exists():
+            shutil.rmtree(dest)
+        stage.rename(dest)
+    finally:
+        shutil.rmtree(stage, ignore_errors=True)
+    return dest
+
+
+def setup_scripts(lab: Path) -> list[Path]:
+    """The fetched content's executable ``custom/scripts/*``, in the order they run."""
+    scripts = lab / CHECKOUT / "custom" / "scripts"
+    if not scripts.is_dir():
+        return []
+    return sorted(f for f in scripts.iterdir() if f.is_file() and not f.is_symlink() and os.access(f, os.X_OK))
+
+
+def setup_guarded(cfg: dict) -> bool:
+    """True when ``rodeo up`` leaves the setup scripts out: on ``deployment_target: instruqt``
+    with a profile that guards its own custom scripts (they belong in the baked image)."""
+    from .profiles import get_profile
+
+    if cfg.get("deployment_target", "baremetal") != "instruqt":
+        return False
+    return "custom_scripts" in get_profile(str(cfg.get("type") or "suse-virt")).guarded_phases
+
+
+def run_setup(cfg: dict, lab: Path, run: Run = subprocess.run) -> Iterator[tuple[str, int, list[str]]]:
+    """Run :func:`setup_scripts`; yields ``(script name, exit code, output lines)`` for each.
+
+    Every script runs even when an earlier one failed; a script that times out
+    after SETUP_TIMEOUT seconds or can't start yields exit code -1.
+    """
+    from .config import find_ansible_root
+    from .paths import harvester_kubeconfig_path
+
+    scripts = setup_scripts(lab)
+    if not scripts:
+        return
+    env = {**os.environ, "RODEO_PLAN_NAME": str(cfg.get("name", "default")),
+           "RODEO_CONFIG_DIR": str(cfg.get("config_dir", "")), "RODEO_CONTENT_DIR": str(lab / CHECKOUT)}
+    root = find_ansible_root(cfg)
+    if root is not None:
+        env["RODEO_LAB_DIR"] = str(root)
+    if harvester_kubeconfig_path().exists():
+        env["KUBECONFIG"] = str(harvester_kubeconfig_path())
+    for script in scripts:
+        try:
+            r = run([str(script)], cwd=str(script.parent), env=env, capture_output=True, text=True,
+                    timeout=SETUP_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            yield script.name, -1, [f"timed out after {SETUP_TIMEOUT} s"]
+            continue
+        except OSError as exc:
+            yield script.name, -1, [str(exc)]
+            continue
+        yield script.name, r.returncode, [line for line in (r.stdout + r.stderr).splitlines() if line.strip()]
+
+
 def apply(cfg: dict, lab: Path, run: Run = subprocess.run) -> dict[str, Any]:
-    """Fetch the plan's content and render the guide; ``{"commit", "files"}``.
-    Raises ConfigError when the plan has no ``content:`` block."""
+    """Fetch the plan's content, render the guide and install its checks.
+
+    Returns ``{"commit", "files", "checks", "warnings"}``: ``checks`` is the
+    installed directory or None, ``warnings`` says why the checks weren't
+    installed. The setup scripts are :func:`run_setup`'s. Raises ConfigError when
+    the plan has no ``content:`` block.
+    """
     spec = content_spec(cfg)
     if spec is None:
         raise ConfigError("this plan has no content: block (see docs/reference/plan.md#content)")
     commit = fetch(spec, lab, run)
-    return {"commit": commit, "files": render(spec, lab, cfg)}
+    files = render(spec, lab, cfg)
+    warnings: list[str] = []
+    try:
+        checks = install_checks(cfg, lab)
+    except (PermissionError, ConfigError) as exc:
+        checks, warnings = None, [str(exc)]
+    return {"commit": commit, "files": files, "checks": checks, "warnings": warnings}
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -394,7 +395,9 @@ def test_catalog_rodeos_are_chapter_sources_after_the_file(monkeypatch, tmp_path
     assert (ride["format"], ride["path"], ride["profile"], ride["engine"], ride["title"]) == ("rmstory", "story", "", "rancher", "Ride")
     clone, sparse = discovery.source_fetch_commands(ride, tmp_path / "r")
     assert "--branch" not in clone and clone[-3:] == ["--", "https://github.com/rider/ride", str(tmp_path / "r")]
-    assert sparse[-3:] == ["/story/*.md", "/story/chapters.yaml", "/story/stories/*.yaml"]
+    assert sparse[-4:] == ["/story/*.md", "/story/chapters.yaml", "/story/stories/*.yaml",
+                           "/story/strings/*/*/@default/content.json"]
+    assert ride["languages"] is True
 
 
 def test_rmstory_sources_read_a_story_directory(monkeypatch, tmp_path):
@@ -432,3 +435,63 @@ def test_static_build_with_local_sources(tmp_path, instruqt_source, markdown_sou
     bad = subprocess.run([sys.executable, str(BUILD), "--output", str(tmp_path / "b2"), "--source", "nope"],
                          capture_output=True, text=True)
     assert bad.returncode != 0 and "ID=CHECKOUT" in bad.stderr
+
+
+def _row(text, **extra):
+    return json.dumps({"content": text, "status": "reviewed", "updated_by": "me", **extra})
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+def test_catalog_sources_bring_their_language_branches_translations(monkeypatch, tmp_path):
+    env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
+           "GIT_COMMITTER_EMAIL": "t@t", "GIT_CONFIG_NOSYSTEM": "1"}
+    origin = tmp_path / "origin"
+
+    def git(*args):
+        subprocess.run(["git", "-C", str(origin), *args], check=True, capture_output=True, env=env)
+
+    def put(path, text):
+        (origin / path).parent.mkdir(parents=True, exist_ok=True)
+        (origin / path).write_text(text)
+
+    origin.mkdir()
+    git("init", "-q", "-b", "main")
+    put("story/01-hello.md", '# Hello\n<span lang="en" id="hello.1">Hi</span>\n')
+    put("story/strings/de/hello.1/@default/content.json", _row("Hallo"))
+    put("story/strings/es/hello.1/@default/content.json", _row("Hola (old)"))
+    git("add", "-A")
+    git("commit", "-q", "-m", "source")
+    for branch in ("pt-br", "dev"):
+        git("branch", branch)
+    git("checkout", "-q", "-b", "es")
+    put("story/strings/es/hello.1/@default/content.json", _row("Hola"))
+    put("story/strings/es/gone.1/@default/content.json", "not json")
+    put("story/strings/es/evil.sh", "#!/bin/sh\n")
+    put("story/strings/es/x.1/@default/copy.json", _row("x", updated_by="rmstory.extract"))
+    git("add", "-A")
+    git("commit", "-q", "-m", "es")
+    git("checkout", "-q", "main")
+    _catalog(monkeypatch, ride={"name": "ride", "title": "Ride", "repo": "file://" + str(origin), "ref": "", "engine": "rancher"})
+    monkeypatch.setattr(discovery, "SOURCES_FILE", tmp_path / "none.yaml")
+    checkouts, errors = discovery.fetch_sources(tmp_path / "work")
+    assert errors == {} and list(checkouts) == ["catalog-ride"]
+    strings = checkouts["catalog-ride"] / "story" / "strings"
+    assert sorted(p.relative_to(strings).as_posix() for p in strings.rglob("*.json")) == [
+        "de/hello.1/@default/content.json", "es/gone.1/@default/content.json", "es/hello.1/@default/content.json"]
+    ride = next(w for w in discovery.workshops(checkouts)["workshops"] if w["id"] == "catalog-ride")
+    assert ride["strings"] == {"de": {"hello.1": {"content": "Hallo", "status": "reviewed", "updated_by": "me"}},
+                               "es": {"hello.1": {"content": "Hola", "status": "reviewed", "updated_by": "me"}}}
+    assert [c["id"] for c in ride["chapters"]] == ["hello"]
+
+
+def test_a_language_branch_that_fails_is_reported_and_the_source_kept(tmp_path):
+    src = {"id": "catalog-ride", "repo": "https://example.invalid/r", "path": "story"}
+
+    def run(cmd, **kw):
+        if "ls-remote" in cmd:
+            return subprocess.CompletedProcess(cmd, 0, "abc\trefs/heads/es\nabc\trefs/heads/main\n", "")
+        return subprocess.CompletedProcess(cmd, 128, b"" if kw.get("text") is None else "", "fatal: no es")
+
+    assert discovery.fetch_language_strings(src, tmp_path, run) == {"catalog-ride (es branch)": "fatal: no es"}
+    refused = discovery.fetch_language_strings(src, tmp_path, lambda cmd, **kw: subprocess.CompletedProcess(cmd, 128, "", "denied"))
+    assert refused == {"catalog-ride (language branches)": "denied"}

@@ -176,7 +176,7 @@ function catalogueHint() {
 
 function libraryGroups() {
   const groups = [...state.workshops, ...state.imported].map((w) => ({ id: w.id, title: w.title, sub: w.source, chapters: w.chapters,
-    engine: w.engine, profile: w.profile, plan: w.plan, variants: w.variants, imported: !!w.imported }));
+    engine: w.engine, profile: w.profile, plan: w.plan, variants: w.variants, strings: w.strings, imported: !!w.imported }));
   groups.push({ id: "custom", title: "My chapters", sub: "created in this builder", chapters: state.custom });
   return groups;
 }
@@ -327,9 +327,11 @@ async function rmstoryCheck() {
 
 // ── library ─────────────────────────────────────────────────────────────
 
-// Inserts at `at`, else after the row cursor (which then moves to the new row), else at the end.
+// Inserts at `at`, else after the row cursor (which then moves to the new row), else at the end;
+// the group's translations of the chapter's spans join the rodeo's.
 function addChapter(group, ch, at) {
   if (inRodeo(group.id, ch.id)) return;
+  if (group.strings) state.strings = RB.withStrings(state.strings, group.strings, RB.translatableIds([ch]));
   const used = new Set(state.chapters.map((c) => c.id));
   const copy = { ...ch, id: RB.uniqueId(ch.id, used), workshop: group.title, from: libKey(group.id, ch.id) };
   if (at === undefined && state.cursor >= 0) { at = state.cursor + 1; state.cursor = at; }
@@ -2153,7 +2155,10 @@ async function publishRodeo(ev) {
       $("#pubResult").replaceChildren("Published ", link(res.body.repo, res.body.repo),
         ...(res.body.pull_request ? [" · catalog pull request ", link(res.body.pull_request, res.body.pull_request)] : []),
         ...(res.body.catalog_error ? [". The catalog pull request failed (" + res.body.catalog_error + "): ",
-          link(catalog, "add it to the catalog on github.com")] : []), ".");
+          link(catalog, "add it to the catalog on github.com")] : []), ".",
+        ...(Object.keys(res.body.branches || {}).length ? [" Translations: " + Object.entries(res.body.branches)
+          .map(([lang, what]) => lang + " branch " + (what || "unchanged")).join(", ") + "."] : []),
+        ...((res.body.warnings || []).length ? [el("ul", { class: "pub-warnings" }, res.body.warnings.map((w) => el("li", { text: w })))] : []));
       toast("Published " + res.body.repo);
     }
   } catch (err) { $("#pubResult").textContent = "Publish failed: " + err.message; }

@@ -242,6 +242,7 @@ def test_labinabox_engine_adds_needed_addons_and_definition(page):
     assert "lab missing: smlm" in page.locator("#coverage").inner_text()
     page.click(".chip.need >> text=+ smlm")
     assert page.locator("#coverage").inner_text() == "lab covers every chapter"
+    page.click(".seg button >> text=Open in Lab Builder")
     href = page.locator("#enginePanel a").get_attribute("href")
     assert href.endswith("/lab-builder/?addons=smlm")
     files = _zip(page)
@@ -438,6 +439,7 @@ def test_upload_lab_json_brings_its_addons(page, tmp_path):
     lab.write_text('{"common": {}, "nodes": {"a.lab": {"addons": ["smlm", {"client_registration": {}}]}}}')
     page.click(".card")
     page.click(".engine >> text=lab-in-a-box")
+    page.click(".seg button >> text=Import existing lab")
     page.set_input_files("#enginePanel input[type=file]", str(lab))
     sync_api.expect(page.locator("#enginePanel")).to_contain_text("client_registration")
     files = _zip(page)
@@ -513,8 +515,8 @@ def test_only_available_needs_are_offered_and_unknown_addons_refused(page):
     page.click(".engine >> text=lab-in-a-box")
     page.fill("#enginePanel .addon-add input", "argocd")
     page.click("#enginePanel .addon-add button")
-    assert "argocd is not a lab-in-a-box add-on" in page.locator("#toast").inner_text()
-    assert page.locator("#enginePanel").get_by_text("Kubernetes clusters (in the lab-builder)").count() == 1
+    assert "argocd is not something lab-in-a-box provides" in page.locator("#toast").inner_text()
+    assert page.locator("#enginePanel").get_by_text("(in the lab-builder)").count() == 0
 
 
 @pytest.fixture()
@@ -1121,6 +1123,10 @@ def test_live_publish_without_gh_says_how_to_log_in(page, monkeypatch):
 @pytest.mark.parametrize("page", ["live_local_lab_builder"], indirect=True)
 def test_live_links_and_embeds_its_own_lab_builder_on_the_pages_host(page):
     page.click(".engine >> text=lab-in-a-box")
+    assert page.locator(".seg button").all_text_contents() == ["Embed here", "Import existing lab", "Open in Lab Builder"]
+    assert page.locator(".seg button.on").text_content() == "Embed here"
+    assert page.locator("#enginePanel input[type=file]").count() == 0
+    page.click(".seg button >> text=Open in Lab Builder")
     href = page.locator("#enginePanel a", has_text="Open lab-builder").get_attribute("href")
     assert href == "http://127.0.0.1:9/lab-builder/"
     page.click(".seg button >> text=Embed here")
@@ -1490,3 +1496,30 @@ def test_live_embedded_lab_builder_edits_the_workshops_lab(page):
     assert len(lab["nodes"]) == 8 and lab["nodes"]["smlm.rodeo.lab"]["VM_MEM"] == "24576"
     assert lab["smlm"]["smlm_admin_pass"] == "??smlm_admin_password"
     assert plan["workshop"]["repo"].endswith("instruqt-SMLM") and "scratch" in plan["lab_in_a_box"]["variants"]
+
+
+def test_imported_workshop_lists_what_its_lab_provides(page):
+    page.click(".engine >> text=lab-in-a-box")
+    page.click(".seg button >> text=Import existing lab")
+    page.click(".imports .engine >> text=smlm-workshop")
+    panel = page.locator("#enginePanel")
+    sync_api.expect(panel).to_contain_text("Provides")
+    assert panel.get_by_text("Lab add-ons").count() == 0
+    chips = panel.locator(".chip.ok").all_text_contents()
+    assert all(any(c.startswith(n) for c in chips) for n in ("client_registration", "smlm"))
+
+
+def test_provides_offers_kubernetes_clusters_and_infrastructure_too(page):
+    page.click(".engine >> text=lab-in-a-box")
+    offered = page.eval_on_selector_all("#addonOptions option", "os => os.map((o) => o.value)")
+    assert {"smlm", "rke2", "pxe"} <= set(offered)
+    for name in ("smlm", "rke2", "pxe"):
+        page.fill("#enginePanel .addon-add input", name)
+        page.click("#enginePanel .addon-add button")
+    chips = page.locator("#enginePanel .chip.ok").all_text_contents()
+    assert any(c.startswith("rke2(Kubernetes cluster") for c in chips) and any(c.startswith("pxe(infrastructure") for c in chips)
+    page.click(".card")
+    plan = yaml.safe_load(_zip(page)["my-rodeo/rodeo-plan.yaml"])
+    assert plan["lab_in_a_box"]["nodes"]["vm1"]["addons"] == ["smlm"]
+    page.click(".seg button >> text=Open in Lab Builder")
+    assert page.locator("#enginePanel a").get_attribute("href").endswith("/lab-builder/?addons=smlm")

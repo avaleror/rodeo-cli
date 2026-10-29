@@ -503,3 +503,10 @@ test("vaultFileKeys puts the secrets.yaml keys sharing a word with the secret fi
   assert.deepEqual(RB.vaultFileKeys({ items: [] }, "scc_regcode"), []);
   assert.deepEqual(RB.vaultFileKeys(null, "scc_regcode"), []);
 });
+
+test("labJsonProvides lists add-ons, Kubernetes cluster types and other sections", () => {
+  const lab = { common: {}, schema_versions: { lab: "2.5" }, pxe: {}, smlm: {},
+    nodes: { "a.lab": { addons: ["smlm"] } }, kclusters: { k1: { clu_type: "rke2", addons: ["rancher", { longhorn: {} }] } } };
+  assert.deepEqual(RB.labJsonProvides(lab), ["longhorn", "pxe", "rancher", "rke2", "smlm"]);
+  assert.deepEqual(RB.labJsonProvides(null), []);
+});

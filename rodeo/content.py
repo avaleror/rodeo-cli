@@ -23,11 +23,13 @@ A content repository has the profile layout at its root, whatever ``path`` names
 
 - ``checks/`` is installed by :func:`install_checks` into
   ``/opt/rodeo/<plan name>/checks/`` (root-owned, readable and runnable by every
-  user on the host);
+  user on the host); ``rodeo clean`` removes it (:func:`remove_checks`);
 - ``custom/scripts/`` holds the content's setup scripts: :func:`run_setup` runs the
   executable ones in sorted order on the host, from that directory, with the
   environment the profile's own custom scripts get plus ``RODEO_CONTENT_DIR`` (the
   fetched repository). They should be idempotent: they run on every apply.
+  ``rodeo up`` leaves out the ones named like a script of the lab's own
+  ``custom/scripts/`` (:func:`profile_script_names`), which already ran.
 """
 from __future__ import annotations
 
@@ -37,7 +39,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Any, Callable, Iterator
+from typing import Any, Callable, Collection, Iterator
 
 import yaml
 
@@ -202,6 +204,39 @@ def install_checks(cfg: dict, lab: Path) -> Path | None:
     return dest
 
 
+def remove_checks(cfg: dict) -> Path | None:
+    """Remove :func:`checks_dir`, and its plan directory when that is left empty.
+
+    Returns the removed directory, or None when there was none (or the plan name
+    can't name one).
+    """
+    try:
+        dest = checks_dir(cfg)
+    except ConfigError:
+        return None
+    return _remove_checks(dest)
+
+
+def remove_all_checks() -> list[Path]:
+    """Remove the checks of every plan under CHECKS_ROOT; returns the removed directories."""
+    if not CHECKS_ROOT.is_dir():
+        return []
+    removed = (_remove_checks(plan / "checks") for plan in sorted(CHECKS_ROOT.iterdir())
+               if plan.is_dir() and not plan.is_symlink())
+    return [path for path in removed if path]
+
+
+def _remove_checks(dest: Path) -> Path | None:
+    if dest.is_symlink() or not dest.is_dir():
+        return None
+    shutil.rmtree(dest)
+    try:
+        dest.parent.rmdir()
+    except OSError:
+        pass
+    return dest
+
+
 def setup_scripts(lab: Path) -> list[Path]:
     """The fetched content's executable ``custom/scripts/*``, in the order they run."""
     scripts = lab / CHECKOUT / "custom" / "scripts"
@@ -220,8 +255,22 @@ def setup_guarded(cfg: dict) -> bool:
     return "custom_scripts" in get_profile(str(cfg.get("type") or "suse-virt")).guarded_phases
 
 
-def run_setup(cfg: dict, lab: Path, run: Run = subprocess.run) -> Iterator[tuple[str, int, list[str]]]:
-    """Run :func:`setup_scripts`; yields ``(script name, exit code, output lines)`` for each.
+def profile_script_names(cfg: dict) -> set[str]:
+    """Names of the lab's own ``custom/scripts/*`` that the profile's ``custom_scripts`` phase runs."""
+    from .profiles import get_profile
+
+    if "custom_scripts" not in get_profile(str(cfg.get("type") or "suse-virt")).phases or not cfg.get("config_dir"):
+        return set()
+    scripts = Path(cfg["config_dir"]) / "custom" / "scripts"
+    if not scripts.is_dir():
+        return set()
+    return {f.name for f in scripts.iterdir() if f.is_file() and os.access(f, os.X_OK)}
+
+
+def run_setup(cfg: dict, lab: Path, run: Run = subprocess.run,
+              skip: Collection[str] = ()) -> Iterator[tuple[str, int, list[str]]]:
+    """Run :func:`setup_scripts` but those named in *skip*; yields ``(script name, exit code,
+    output lines)`` for each.
 
     Every script runs even when an earlier one failed; a script that times out
     after SETUP_TIMEOUT seconds or can't start yields exit code -1.
@@ -229,7 +278,7 @@ def run_setup(cfg: dict, lab: Path, run: Run = subprocess.run) -> Iterator[tuple
     from .config import find_ansible_root
     from .paths import harvester_kubeconfig_path
 
-    scripts = setup_scripts(lab)
+    scripts = [s for s in setup_scripts(lab) if s.name not in skip]
     if not scripts:
         return
     env = {**os.environ, "RODEO_PLAN_NAME": str(cfg.get("name", "default")),

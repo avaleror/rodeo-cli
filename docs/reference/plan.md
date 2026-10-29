@@ -471,7 +471,8 @@ profile layout's `checks/` and `custom/scripts/`:
 - `checks/` is installed into `/opt/rodeo/<plan name>/checks/`, root-owned and
   readable and runnable by every user on the host (a student's account
   included), replacing the previous copy. Installing needs root; without it the
-  guide is still rendered and the command says how to rerun.
+  guide is still rendered and the command says how to rerun. `rodeo clean`
+  removes it (`rodeo clean --all`: every plan's).
 - `custom/scripts/` holds setup scripts: the executable ones run in sorted order
   on the host, from that directory, with the environment the profile's own
   `custom/scripts/` get (`KUBECONFIG`, `RODEO_PLAN_NAME`, `RODEO_CONFIG_DIR`,
@@ -483,7 +484,9 @@ The scripts run as the user running rodeo (root under `rodeo up`), from whatever
 `ref` points at: pin a tag or commit when the repository isn't yours.
 
 `rodeo up` applies it after a successful deploy, after the profile's own
-`custom/scripts/`; a failure there only warns. On `deployment_target: instruqt`,
+`custom/scripts/`; a failure there only warns. A content script named like one of
+the profile's own `custom/scripts/` is left out there, since the profile's copy
+already ran. On `deployment_target: instruqt`,
 `rodeo up` leaves the setup scripts out for the engines that leave out their
 profile's custom scripts (they belong in the baked image); `rodeo content apply`
 runs them. `rodeo content show` prints the block, the last fetched commit, the

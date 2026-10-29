@@ -14,7 +14,9 @@ A catalog rodeo's repository holds the files of a Rodeo Builder download
 profile...). :func:`install` fetches it (shallow, no credentials or prompts) and
 installs it as the custom profile ``~/.rodeo/profiles/<name>/`` the way
 ``rodeo new --from-zip`` does, with ``rodeo.lock`` recording the repository,
-ref and commit it came from.
+ref and commit it came from. When that ref is the branch of the installed plan's
+``story.language``, :func:`language_warning` says whether it is behind the
+repository's default branch (see :mod:`rodeo.langbranch`).
 """
 from __future__ import annotations
 
@@ -105,3 +107,27 @@ def install(name: str, repo: str, ref: str = "", force: bool = False, run: Run =
         profile = install_profile(name, files, base=manifest_base(files), force=force)
     (profile / LOCK).write_text(yaml.safe_dump({"repo": repo, "ref": ref, "commit": commit}, sort_keys=False))
     return profile
+
+
+def language_warning(profile: Path, repo: str, ref: str, run: Run = subprocess.run) -> str | None:
+    """A warning when *ref* is the language branch of the installed plan's ``story.language``
+    and it is behind *repo*'s default branch (or can't be checked); None otherwise."""
+    from . import langbranch
+    from .story import SOURCE_LANGUAGE
+
+    try:
+        plan = yaml.safe_load((profile / "rodeo-plan.yaml").read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return None
+    story = plan.get("story") if isinstance(plan, dict) and isinstance(plan.get("story"), dict) else {}
+    lang = str(story.get("language") or "").strip()
+    if not ref or ref != lang or lang == SOURCE_LANGUAGE:
+        return None
+    try:
+        commits = langbranch.remote_behind(repo, ref, run)
+    except RuntimeError as exc:
+        return f"could not check whether the {ref} branch is behind the default branch: {exc}"
+    if not commits:
+        return None
+    return (f"the {ref} branch is {len(commits)} commit(s) behind the default branch of {repo}: "
+            + "; ".join(commits[:5]) + (" ..." if len(commits) > 5 else ""))

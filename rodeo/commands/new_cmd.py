@@ -52,6 +52,9 @@ def new_cmd(name: str, from_base: str | None, from_zip: Path | None, from_lab: P
         if from_base and from_base.startswith("https://") and not from_zip:
             repo, ref = catalog.parse_spec(from_base)
             dest = catalog.install(name, repo, ref, force=force)
+            warning = catalog.language_warning(dest, repo, ref)
+            if warning:
+                console.print(f"[yellow]⚠  {warning}[/yellow]", highlight=False)
         elif from_zip:
             files = read_zip(from_zip)
             from_base = from_base or manifest_base(files)

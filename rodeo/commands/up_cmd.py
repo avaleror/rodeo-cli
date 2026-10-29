@@ -452,6 +452,9 @@ def _install_from_catalog(profile: str) -> None:
     except (FileExistsError, FileNotFoundError, ValueError, RuntimeError) as exc:
         console.print(f"[red]✗  {exc}[/red]")
         raise SystemExit(1)
+    warning = catalog.language_warning(dest, entry["repo"], entry["ref"])
+    if warning:
+        console.print(f"[yellow]⚠  {warning}[/yellow]", highlight=False)
     console.print(f"[dim]Installed as {dest}[/dim]\n")
 
 

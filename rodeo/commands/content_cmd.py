@@ -20,7 +20,10 @@ def report_apply(cfg: dict, lab: Path, result: dict, *, setup: bool = True, skip
     False) but those named in *skip*; returns how many setup scripts failed."""
     spec = content.content_spec(cfg)
     console.print(f"[green]✓  Instructions from {spec['repo']}[/green]"
+                  + (f" ({result['ref']})" if result.get("ref") else "")
                   + (f" @ {result['commit'][:12]}" if result["commit"] else ""))
+    for warning in result.get("language", []):
+        console.print(f"[yellow]⚠  {warning}[/yellow]", highlight=False)
     for path in result["files"]:
         console.print(f"   {path}")
     if result["checks"]:

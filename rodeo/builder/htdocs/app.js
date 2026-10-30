@@ -1890,10 +1890,13 @@ function deployReason() {
   return state.deploy.available ? "" : state.deploy.reason;
 }
 
+const DEPLOY_TIP = "Builds the lab on this host now with rodeo up, from a copy of the rodeo as it is on this page. "
+  + "It does not save the rodeo: Save to profiles keeps it.";
+
 function renderDeploy() {
   const reason = deployReason(), btn = $("#deployBtn"), cur = state.deploy && state.deploy.current;
   btn.setAttribute("aria-disabled", reason ? "true" : "false");
-  $("#deployWrap").title = reason || "Deploy this rodeo with rodeo up, without saving it first";
+  setTip($("#deployWrap"), DEPLOY_TIP + (reason ? "\nNot available here: " + reason : ""));
   const banner = $("#deployBanner");
   banner.hidden = !cur;
   if (!cur) return;
@@ -2249,6 +2252,53 @@ async function publishRodeo(ev) {
   btn.textContent = "Publish";
 }
 
+// ── header notes ────────────────────────────────────────────────────────
+// A header control's data-tip, shown under it while the pointer is over the control or the
+// note, or while the control has keyboard focus; a click on the control or Escape hides it.
+
+let tipAnchor = null;
+
+function showTip(anchor) {
+  const tip = $("#hdrTip");
+  tipAnchor = anchor;
+  tip.textContent = anchor.dataset.tip;
+  tip.hidden = false;
+  anchor.setAttribute("aria-describedby", "hdrTip");
+  const r = anchor.getBoundingClientRect();
+  tip.style.top = Math.round(r.bottom + 8) + "px";
+  tip.style.left = Math.round(Math.max(8, Math.min(r.left, window.innerWidth - tip.offsetWidth - 8))) + "px";
+}
+
+function hideTip() {
+  if (tipAnchor) tipAnchor.removeAttribute("aria-describedby");
+  tipAnchor = null;
+  $("#hdrTip").hidden = true;
+}
+
+// Sets *anchor*'s note, refreshing it when it is the one shown.
+function setTip(anchor, text) {
+  anchor.dataset.tip = text;
+  if (tipAnchor === anchor) showTip(anchor);
+}
+
+function initTips() {
+  const bar = $(".hdr-right"), tip = $("#hdrTip");
+  const inside = (node) => node && ((tipAnchor && tipAnchor.contains(node)) || tip.contains(node));
+  bar.addEventListener("mouseover", (ev) => {
+    const anchor = ev.target.closest("[data-tip]");
+    if (anchor && anchor !== tipAnchor) showTip(anchor);
+  });
+  bar.addEventListener("focusin", (ev) => {
+    const anchor = ev.target.closest("[data-tip]");
+    if (anchor && ev.target.matches(":focus-visible")) showTip(anchor);
+  });
+  bar.addEventListener("click", hideTip);
+  bar.addEventListener("focusout", (ev) => { if (!inside(ev.relatedTarget)) hideTip(); });
+  for (const box of [bar, tip]) box.addEventListener("mouseout", (ev) => { if (tipAnchor && !inside(ev.relatedTarget)) hideTip(); });
+  document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && tipAnchor) hideTip(); });
+  window.addEventListener("resize", hideTip);
+}
+
 // ── dialogs ─────────────────────────────────────────────────────────────
 
 const FOCUSABLE = "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), iframe, [tabindex]:not([tabindex='-1'])";
@@ -2379,6 +2429,7 @@ function bind() {
   };
   themeBtn.addEventListener("click", () => { window.RBTheme.toggle(); showTheme(); });
   showTheme();
+  initTips();
   $("#downloadBtn").addEventListener("click", download);
   $("#ncDraftBtn").addEventListener("click", draftChapter);
   $("#stickyDownload").addEventListener("click", download);
@@ -2472,7 +2523,8 @@ async function init() {
       state.vault = await apiGet("vault").catch((err) => ({ available: false, reason: err.message, types: [], items: [] }));
       $("#settingsBtn").href = "https://" + location.hostname + "/rodeo-builder/settings/";
       $("#settingsBtn").hidden = false;
-      $("#saveBtn").title = "Write this rodeo to " + state.server.profiles_dir + "/<name>/";
+      setTip($("#saveBtn"), "Writes this rodeo to " + state.server.profiles_dir + "/<name>/ on this host, "
+        + "so rodeo up --profile <name> deploys it here.");
     }
     offerDraft();
     render();

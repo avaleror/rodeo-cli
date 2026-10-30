@@ -22,11 +22,12 @@
       <button id="warnBtn" class="btn warn" type="button" hidden></button>
       <button id="saveBtn" class="btn outline" type="button" hidden>Save to profiles</button>
       <span id="deployWrap" class="deploy-wrap"><button id="deployBtn" class="btn outline" type="button">Deploy</button></span>
-      <button id="publishBtn" class="btn outline" type="button" title="Publish this rodeo to a GitHub repository and the rodeo catalog">Publish</button>
-      <button id="downloadBtn" class="btn primary" type="button">Download rodeo</button>
+      <button id="publishBtn" class="btn outline" type="button" data-tip="Puts this rodeo in a public GitHub repository of yours and opens a pull request that adds it to the rodeo catalog, so anyone can install it with rodeo up --profile &lt;name&gt;. Each translation gets a branch of its own.">Publish</button>
+      <button id="downloadBtn" class="btn primary" type="button" data-tip="Downloads the rodeo as a zip. Install it on any host with rodeo new &lt;name&gt; --from-zip &lt;file&gt;, then rodeo up --profile &lt;name&gt;.">Download rodeo</button>
       <a id="settingsBtn" class="btn" href="/rodeo-builder/settings/" target="_blank" rel="noopener"
-        title="Stored credentials: opens the Settings page, which needs a login" hidden>Settings</a>
+        data-tip="Stored credentials: opens the Settings page, which needs a login" hidden>Settings</a>
     </div>
+    <div id="hdrTip" class="hdr-tip" role="tooltip" hidden></div>
   </header>
 
   <main class="cols">

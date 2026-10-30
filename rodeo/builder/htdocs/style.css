@@ -305,6 +305,16 @@ div.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 2p
 .toast.bad { box-shadow: 0 0 0 1px var(--coral), 0 12px 36px rgba(0, 0, 0, .5); }
 .toast .btn { color: #e8e4d9; border-color: #3a3a4a; flex: none; }
 
+/* Header controls' notes (app.js showTip), 8px under the control; ::before fills that gap
+   so the pointer can move onto the note without closing it. */
+.hdr-tip {
+  position: fixed; z-index: 90; max-width: min(340px, calc(100vw - 16px)); padding: 9px 12px;
+  border-radius: 6px; background: var(--term2); color: #e8e4d9; font: 400 12px/1.5 var(--mono);
+  box-shadow: 0 0 0 1px var(--line), 0 12px 36px rgba(0, 0, 0, .45); white-space: pre-line;
+}
+.hdr-tip::before { content: ""; position: absolute; left: 0; right: 0; top: -8px; height: 8px; }
+.hdr-tip[hidden] { display: none; }
+
 /* ── overlays ─────────────────────────────────────────────────────────── */
 .backdrop { position: fixed; inset: 0; background: var(--backdrop); display: flex; align-items: center; justify-content: center; z-index: 20; }
 .modal {

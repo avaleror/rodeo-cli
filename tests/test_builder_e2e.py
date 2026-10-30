@@ -1344,9 +1344,44 @@ def test_page_loads_its_own_fonts_and_nothing_from_other_hosts(page):
     assert seen and all(u.startswith(origin) or u.startswith("data:") for u in seen), [u for u in seen if not u.startswith(origin)]
 
 
+def test_header_notes_stay_while_the_pointer_is_on_them(page):
+    tip = page.locator("#hdrTip")
+    assert tip.is_hidden() and page.locator(".hdr-right [title]").count() == 0
+    page.hover("#publishBtn")
+    sync_api.expect(tip).to_be_visible()
+    assert "public GitHub repository" in tip.inner_text()
+    assert page.locator("#publishBtn").get_attribute("aria-describedby") == "hdrTip"
+    page.wait_for_timeout(2500)
+    assert tip.is_visible()
+    box = tip.bounding_box()
+    page.mouse.move(box["x"] + 10, box["y"] - 4)
+    page.mouse.move(box["x"] + 10, box["y"] + box["height"] / 2)
+    page.wait_for_timeout(500)
+    assert tip.is_visible()
+    assert box["x"] >= 0 and box["x"] + box["width"] <= page.viewport_size["width"]
+    page.hover("#downloadBtn")
+    sync_api.expect(tip).to_contain_text("rodeo new <name> --from-zip <file>")
+    page.mouse.move(5, 400)
+    sync_api.expect(tip).to_be_hidden()
+    assert page.locator("#publishBtn").get_attribute("aria-describedby") is None
+    page.focus("#downloadBtn")
+    page.keyboard.press("Shift+Tab")
+    sync_api.expect(tip).to_be_visible()
+    assert "public GitHub repository" in tip.inner_text()
+    page.keyboard.press("Escape")
+    sync_api.expect(tip).to_be_hidden()
+    page.hover("#publishBtn")
+    sync_api.expect(tip).to_be_visible()
+    page.click("#publishBtn")
+    sync_api.expect(tip).to_be_hidden()
+
+
 def test_static_deploy_is_greyed_out_with_why(page):
     assert page.locator("#deployBtn").get_attribute("aria-disabled") == "true"
-    assert "Only available in rodeo builder, the dynamic version" in page.locator("#deployWrap").get_attribute("title")
+    page.hover("#deployWrap")
+    sync_api.expect(page.locator("#hdrTip")).to_contain_text("Builds the lab on this host now with rodeo up")
+    sync_api.expect(page.locator("#hdrTip")).to_contain_text("Not available here: Only available in rodeo builder, the dynamic version")
+    page.mouse.move(5, 400)
     page.click("#deployBtn", force=True)
     sync_api.expect(page.locator("#toastText")).to_contain_text("Only available in rodeo builder")
     assert page.locator("#deployModal").is_hidden()
@@ -1354,7 +1389,7 @@ def test_static_deploy_is_greyed_out_with_why(page):
 
 @pytest.mark.parametrize("page", ["live"], indirect=True)
 def test_exposed_live_server_does_not_deploy(page):
-    sync_api.expect(page.locator("#deployWrap")).to_have_attribute("title", re.compile("listens on this machine only"))
+    sync_api.expect(page.locator("#deployWrap")).to_have_attribute("data-tip", re.compile("listens on this machine only"))
     assert page.locator("#deployBtn").get_attribute("aria-disabled") == "true"
 
 

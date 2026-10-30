@@ -1454,6 +1454,39 @@ const RB = (() => {
     return out;
   }
 
+  // Fields of `lab` that the lab-in-a-box `schema` ({common, nodes, kclusters, addons: {name:
+  // [fields]}}) doesn't declare, as dotted paths; the same rule as rodeo/labinabox.py
+  // unknown_fields (an add-on the schema lacks is reported as the add-on itself).
+  const IMAGE_DOWNLOAD_FIELDS = ["ISO_URL", "ISO_SHA256_URL"];
+  function labUnknownFields(lab, schema) {
+    const addons = schema.addons || {}, out = [];
+    const known = (list) => new Set([...(list || []), ...IMAGE_DOWNLOAD_FIELDS]);
+    const common = known(schema.common), nodeFields = known(schema.nodes), clusterFields = new Set(schema.kclusters || []);
+    const has = (list, key) => (list || []).includes(key);
+    for (const k of Object.keys(lab.common || {})) if (!common.has(k)) out.push("common." + k);
+    for (const [name, node] of Object.entries(lab.nodes || {})) {
+      for (const k of Object.keys(node || {})) if (!nodeFields.has(k)) out.push("nodes." + name + "." + k);
+      for (const entry of (node && node.addons) || []) {
+        const pairs = entry && typeof entry === "object" ? Object.entries(entry) : [[entry, {}]];
+        for (const [addon, overrides] of pairs) {
+          if (!(addon in addons)) { out.push("nodes." + name + ".addons." + addon); continue; }
+          for (const k of Object.keys(overrides || {})) if (!has(addons[addon], k)) out.push("nodes." + name + ".addons." + addon + "." + k);
+        }
+      }
+    }
+    for (const [name, cluster] of Object.entries(lab.kclusters || {})) {
+      for (const k of Object.keys(cluster || {})) if (!clusterFields.has(k)) out.push("kclusters." + name + "." + k);
+    }
+    for (const [key, section] of Object.entries(lab)) {
+      if (["nodes", "common", "kclusters"].includes(key)) continue;
+      if (!(key in addons)) out.push(key);
+      else if (section && typeof section === "object" && !Array.isArray(section)) {
+        for (const k of Object.keys(section)) if (!has(addons[key], k)) out.push(key + "." + k);
+      }
+    }
+    return out;
+  }
+
   // Plan text `text` with `keys` added to its top-level operator_secrets: list (which is added
   // when the plan has none); keys already listed are skipped.
   function addOperatorSecrets(text, keys) {
@@ -1599,7 +1632,7 @@ const RB = (() => {
     MISSING_ADDON, SOURCE_LANGUAGE, LANGUAGES, slugify, uniqueId, parseSpans, parseAttrs, kind, needsId, openTag, inner,
     withKind, wrapTarget, nextId, wrap, retag, unwrap, idsIn, validate, warningsByChapter, engineNeeds, variantsIn, storyIndex,
     setTopKey, setStoredLab, dropTopBlock, storyBlock, planFromBase, planLabinabox, chapterFile, chaptersYaml,
-    storyYaml, checkScript, readme, files, labJsonAddons, labJsonProvides, labSecretRefs, labWithSecretRefs, labWithNodeRefs, addOperatorSecrets, labSummary, labDriveWarnings, crc32, zip,
+    storyYaml, checkScript, readme, files, labJsonAddons, labJsonProvides, labSecretRefs, labWithSecretRefs, labWithNodeRefs, addOperatorSecrets, labSummary, labDriveWarnings, labUnknownFields, crc32, zip,
     renumber, nameMissing, translatableIds, storedSource, sourceTexts, missingPlaceholders, stringsFiles, withStrings, translatedLanguages, draftPrompt, storyRole, storyParts, maskExercises, retoldChapters, contentBlock, PARTS, partOf, partFiles, CATALOG_REPO, catalogEntry, publishLinks,
     parseSourceUrl, importGroupId, detectFormat, chapterFromMarkdown, chapterFromInstruqt, chaptersMeta, storyIds, chapterFromStory,
     previewFormat, previewTree, safeHref,

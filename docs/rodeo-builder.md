@@ -59,7 +59,9 @@ rodeo up --profile <name>     # after Save to profiles
 
   With a lab, the panel lists its nodes (address, vCPU, RAM, add-ons, cluster)
   and Kubernetes clusters, read-only, and flags what rodeo deploys but does not
-  fully drive: Harvester nodes and PXE-booted nodes. On the command line,
+  fully drive: Harvester nodes and PXE-booted nodes. It also lists the lab's
+  fields the builder's lab-in-a-box release doesn't know (its schema is read with
+  the catalogue), which `rodeo up` would refuse. On the command line,
   `rodeo new <name> --from-lab-json <file>` does the same import.
 - **Chapters.** The library lists every workshop's chapters: the bundled
   examples' `story/` directories, the workshops whose chapters live in their own

@@ -100,10 +100,15 @@ def _new_from_lab(name: str, path: Path, from_base: str | None, from_zip: Path |
     if imported.replaced:
         console.print("[bold]Credentials replaced by ??placeholders[/bold] (operator_secrets, asked once by rodeo up):")
         console.print("  " + ", ".join(imported.replaced) + "\n")
-    if imported.warnings:
+    unknown, where = labimport.schema_check(imported.lab)
+    warnings = imported.warnings + [f"{field}: lab-in-a-box ({where}) doesn't know this field; rodeo up refuses it"
+                                    for field in unknown or []]
+    if warnings:
         console.print("[bold yellow]Check:[/bold yellow]")
-        for w in imported.warnings:
-            console.print(f"  [yellow]•[/yellow] {w}")
+        for w in warnings:
+            console.print(f"  [yellow]•[/yellow] {w}", highlight=False)
         console.print()
+    if unknown is None:
+        console.print(f"[dim]Not checked against a lab-in-a-box schema ({where}): rodeo up checks it before building.[/dim]\n")
     console.print("[bold]Then deploy it:[/bold]")
     console.print(f"  rodeo up --profile {name}\n")

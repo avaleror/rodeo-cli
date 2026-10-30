@@ -418,6 +418,35 @@ print(json.dumps([{"name": c["name"].removeprefix("install_"), "kind": c.get("ki
                    "targets": c.get("targets", [])} for c in body["components"]]))
 """
 
+# The checkout's schema, shaped like rodeo.labinabox_host.schema_from_outputs: the field
+# names of the base sections and of each add-on (the base schema's other sections, such as
+# pxe, count as add-ons).
+_LIAB_SCHEMA = r"""
+import json, os, sys
+repo = sys.argv[1]
+os.environ["LABBUILDER_SCRIPTS_DIR"] = os.path.join(repo, "scripts")
+os.environ["LABBUILDER_LIBS_DIR"] = os.path.join(repo, "libs")
+os.environ["LABBUILDER_STATUS_FILE"] = os.devnull
+sys.path.insert(0, os.path.join(repo, "webui", "lib"))
+import api
+status, base = api.dispatch("base", "GET", {}, b"")
+if status != 200:
+    sys.exit("base: " + str(base))
+names = lambda section: [f["name"] for f in (section or {}).get("fields", [])]
+sections = base["sections"]
+out = {"common": names(sections.get("common")), "nodes": names(sections.get("nodes")),
+       "kclusters": names(sections.get("kclusters")),
+       "addons": {k: names(v) for k, v in sections.items() if k not in ("common", "nodes", "kclusters")}}
+status, body = api.dispatch("components", "GET", {}, b"")
+for c in body.get("components", []) if status == 200 else []:
+    if (c.get("kind") or "addon") != "addon":
+        continue
+    status, schema = api.dispatch("schema", "GET", {"name": [c["name"]]}, b"")
+    if status == 200:
+        out["addons"][c["name"].removeprefix("install_")] = names(schema)
+print(json.dumps(out))
+"""
+
 LIAB_KINDS = {"addon": "addons", "infrastructure": "infrastructure", "kcluster": "kclusters"}
 _SHEBANG_ENV = re.compile(r"^#!\s*/usr/bin/env\s+(\S+)")
 
@@ -436,6 +465,29 @@ def _addon_interpreter(checkout: Path) -> str:
     return ""
 
 
+def _run_liab(script: str, checkout: Path) -> tuple["subprocess.CompletedProcess[str]", str]:
+    """Run *script* (given the checkout's path) in a separate interpreter; returns the result and
+    the interpreter name the add-on scripts' first line asks for ("" when none), which points at
+    this Python for the run when it is not on PATH."""
+    env = {**os.environ}
+    with tempfile.TemporaryDirectory(prefix="rodeo-liab-python-") as shim:
+        wanted = _addon_interpreter(checkout)
+        if wanted and not shutil.which(wanted):
+            os.symlink(sys.executable, os.path.join(shim, wanted))
+            env["PATH"] = shim + os.pathsep + env.get("PATH", "")
+        r = subprocess.run([sys.executable, "-c", script, str(checkout)], capture_output=True, text=True, env=env)
+    return r, wanted
+
+
+def labinabox_schema(checkout: Path) -> dict[str, Any]:
+    """The schema of a lab-in-a-box checkout, from its own lab-builder API, in the shape
+    :func:`rodeo.labinabox.unknown_fields` takes. Raises RuntimeError when the checkout can't answer."""
+    r, _ = _run_liab(_LIAB_SCHEMA, checkout)
+    if r.returncode != 0:
+        raise RuntimeError("lab-in-a-box schema from {}: {}".format(checkout, r.stderr.strip()[-300:]))
+    return json.loads(r.stdout)
+
+
 def labinabox_addons(checkout: Path) -> list[dict[str, Any]]:
     """Catalogue of a lab-in-a-box checkout, from its own lab-builder API: short name
     (as plans use it), kind ("addon", "infrastructure" or "kcluster"; "addon" when
@@ -447,14 +499,7 @@ def labinabox_addons(checkout: Path) -> list[dict[str, Any]]:
     is not on PATH, that name points at this Python for the run. Raises RuntimeError
     when the checkout can't answer or reports no add-ons.
     """
-    env = {**os.environ}
-    with tempfile.TemporaryDirectory(prefix="rodeo-liab-python-") as shim:
-        wanted = _addon_interpreter(checkout)
-        if wanted and not shutil.which(wanted):
-            os.symlink(sys.executable, os.path.join(shim, wanted))
-            env["PATH"] = shim + os.pathsep + env.get("PATH", "")
-        r = subprocess.run([sys.executable, "-c", _LIAB_COMPONENTS, str(checkout)],
-                           capture_output=True, text=True, env=env)
+    r, wanted = _run_liab(_LIAB_COMPONENTS, checkout)
     if r.returncode != 0:
         raise RuntimeError("lab-in-a-box add-ons from {}: {}".format(checkout, r.stderr.strip()[-300:]))
     items = json.loads(r.stdout)
@@ -471,10 +516,12 @@ def labinabox(checkout: Path | None = None, builder_url: str = LAB_BUILDER_URL,
 
     ``error`` says why the catalogue is missing (*missing*, the caller's reason
     for having no checkout; or the checkout's API failed); it is empty when the
-    catalogue was read.
+    catalogue was read. ``schema`` is the checkout's :func:`labinabox_schema`, or
+    None with ``schema_error`` saying why.
     """
     out: dict[str, Any] = {"builder_url": builder_url, "version": version, "error": "",
-                           "imports": labinabox_imports(), **{key: [] for key in LIAB_KINDS.values()}}
+                           "imports": labinabox_imports(), **{key: [] for key in LIAB_KINDS.values()},
+                           "schema": None, "schema_error": ""}
     if checkout is None:
         out["error"] = missing or "no lab-in-a-box checkout was given, so its catalogue is unknown"
         return out
@@ -485,4 +532,8 @@ def labinabox(checkout: Path | None = None, builder_url: str = LAB_BUILDER_URL,
         return out
     for item in items:
         out[LIAB_KINDS.get(item["kind"], "addons")].append(item)
+    try:
+        out["schema"] = labinabox_schema(checkout)
+    except (OSError, RuntimeError, ValueError) as exc:
+        out["schema_error"] = str(exc)
     return out

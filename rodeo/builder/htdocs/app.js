@@ -706,6 +706,16 @@ function labPanel(lab) {
   }
   out.push(el("p", { class: "muted", text: "rodeo deploys this lab with the host's network, domain and node addresses." }));
   if (warn.length) out.push(el("div", { class: "alert", role: "alert" }, el("ul", { class: "lab-drive" }, warn.map((w) => el("li", { text: w })))));
+  const liab = "lab-in-a-box" + (state.liab.version ? " " + state.liab.version : "");
+  const unknown = state.liab.schema ? RB.labUnknownFields(lab, state.liab.schema) : [];
+  if (unknown.length) {
+    out.push(el("div", { class: "alert", role: "alert" }, el("strong", { text: "Fields " + liab + " doesn't know: " }),
+      "rodeo up refuses to deploy them; change them in the lab-builder or deploy with a lab-in-a-box that has them.",
+      el("ul", { class: "lab-unknown" }, unknown.map((f) => el("li", { class: "mono", text: f })))));
+  } else if (!state.liab.schema && !state.liab.error) {
+    out.push(el("p", { class: "muted lab-unchecked", text: "Not checked against " + liab + "'s schema"
+      + (state.liab.schema_error ? " (" + state.liab.schema_error + ")" : "") + ": rodeo up checks it before building." }));
+  }
   return out;
 }
 

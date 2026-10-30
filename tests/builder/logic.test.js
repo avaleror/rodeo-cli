@@ -237,6 +237,20 @@ test("the translation store ships as rmstory's filesystem layout", () => {
   assert.deepEqual(RB.translatedLanguages(strings, ["w.task"]), []);
 });
 
+test("labUnknownFields reports what a lab-in-a-box schema lacks, like rodeo's unknown_fields", () => {
+  const old = { common: ["ISO_IMAGE"], nodes: ["myip", "addons"], kclusters: ["clu_type"],
+    addons: { smlm: ["smlm_admin_pass"] } };
+  const lab = { common: { ISO_IMAGE: "x", VM_ROOT_PASS: "p", ISO_URL: "https://x" },
+    nodes: { a: { myip: "1", ssh_pwauth: "true", ISO_SHA256_URL: "https://x/s",
+      addons: ["smlm", { client_registration: { x: 1 } }, { smlm: { smlm_admin_pass: "p", smlm_new: 1 } }] } },
+    kclusters: { k: { clu_type: "rke2", clu_rel: "v1" } },
+    smlm: { smlm_admin_pass: "p", smlm_preinstalled: "true" }, pxe: {} };
+  assert.deepEqual(RB.labUnknownFields(lab, old), [
+    "common.VM_ROOT_PASS", "nodes.a.ssh_pwauth", "nodes.a.addons.client_registration", "nodes.a.addons.smlm.smlm_new",
+    "kclusters.k.clu_rel", "smlm.smlm_preinstalled", "pxe"]);
+  assert.deepEqual(RB.labUnknownFields({ nodes: {} }, { common: [], nodes: [] }), []);
+});
+
 test("withStrings adds a library group's rows for the chapter's spans, keeping the rodeo's own", () => {
   const mine = { es: { "w.intro": { content: "Mío", status: "reviewed" } } };
   const add = {

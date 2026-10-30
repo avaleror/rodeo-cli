@@ -6,6 +6,7 @@ so the CLI and the Rodeo Builder import a lab the same way.
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -141,3 +142,59 @@ def test_smlm_lab_imported_from_a_file_has_the_workshops_vms(tmp_path):
     assert sorted(cfg["vms"]) == sorted(key.split(".")[0] for key in smlm_lab["nodes"])
     for key, node in smlm_lab["nodes"].items():
         assert cfg["vms"][key.split(".")[0]]["ip"] == node["myip"]
+
+
+def test_schema_check_uses_the_installed_lab_in_a_box(tmp_path, monkeypatch):
+    from rodeo import labinabox_host as host
+
+    (tmp_path / "lab_schema").write_text("")
+    monkeypatch.setattr(host, "LIAB_BIN", tmp_path)
+    base = {"sections": {"common": {"fields": [{"name": "mydomain"}]}, "nodes": {"fields": [{"name": "myip"}, {"name": "addons"}]},
+                         "kclusters": {"fields": []}}}
+    calls = []
+
+    def run(cmd, **kw):
+        calls.append(cmd)
+        if cmd[1] == "--base":
+            return subprocess.CompletedProcess(cmd, 0, json.dumps(base), "")
+        if cmd[1].endswith("install_smlm"):
+            return subprocess.CompletedProcess(cmd, 0, json.dumps({"fields": [{"name": "smlm_admin_pass"}]}), "")
+        return subprocess.CompletedProcess(cmd, 1, "", "no such add-on")
+
+    lab = {"common": {"mydomain": "x", "VM_ROOT": "y"}, "nodes": {"a.lab": {"myip": "1", "addons": ["smlm", "nope"]}},
+           "smlm": {"smlm_admin_pass": "??p", "smlm_extra": 1}}
+    unknown, where = labimport.schema_check(lab, run)
+    assert unknown == ["common.VM_ROOT", "nodes.a.lab.addons.nope", "smlm.smlm_extra"]
+    assert where == "installed in {}".format(tmp_path)
+    assert labimport.schema_check(lab, lambda cmd, **kw: subprocess.CompletedProcess(cmd, 1, "", "broken"))[0] is None
+
+
+def test_schema_check_falls_back_to_a_fetched_or_local_checkout(tmp_path, monkeypatch):
+    from rodeo import labinabox_host as host
+    from rodeo.builder import discovery
+
+    monkeypatch.setattr(host, "LIAB_BIN", tmp_path / "none")
+    vendor = tmp_path / "vendor"
+    for ver in ("1.9.0", "1.25.0", "1.10.2"):
+        (vendor / ver / "webui").mkdir(parents=True)
+    monkeypatch.setattr(host, "checkout_dir", lambda ref: vendor / ref)
+    seen = []
+    monkeypatch.setattr(discovery, "labinabox_schema", lambda checkout: seen.append(checkout.name) or
+                        {"common": [], "nodes": ["myip"], "kclusters": [], "addons": {}})
+    assert labimport.schema_check({"nodes": {"a": {"myip": "1", "x": 2}}}) == (["nodes.a.x"], "1.25.0")
+    monkeypatch.setenv("RODEO_LABINABOX_PATH", str(tmp_path / "mine"))
+    assert labimport.schema_check({"nodes": {}})[1] == "RODEO_LABINABOX_PATH" and seen == ["1.25.0", "mine"]
+    monkeypatch.delenv("RODEO_LABINABOX_PATH")
+    monkeypatch.setattr(host, "checkout_dir", lambda ref: tmp_path / "empty" / ref)
+    assert labimport.schema_check({"nodes": {}}) == (None, "no lab-in-a-box is installed or fetched on this machine")
+
+
+def test_new_from_lab_json_lists_the_fields_lab_in_a_box_lacks(tmp_path, monkeypatch):
+    monkeypatch.setattr(labimport, "schema_check", lambda lab: (["nodes.a.lab.FOO"], "1.25.0"))
+    src = tmp_path / "lab.json"
+    src.write_text(json.dumps({"nodes": {"a.lab": {"myip": "10.0.0.2", "FOO": 1}}}))
+    out = " ".join(CliRunner().invoke(new_cmd, ["one", "--from-lab-json", str(src)]).output.split())
+    assert "nodes.a.lab.FOO: lab-in-a-box (1.25.0) doesn't know this field; rodeo up refuses it" in out
+    monkeypatch.setattr(labimport, "schema_check", lambda lab: (None, "no lab-in-a-box is installed or fetched on this machine"))
+    out = " ".join(CliRunner().invoke(new_cmd, ["two", "--from-lab-json", str(src)]).output.split())
+    assert "Not checked against a lab-in-a-box schema (no lab-in-a-box is installed or fetched on this machine)" in out

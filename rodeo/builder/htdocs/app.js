@@ -176,7 +176,8 @@ function catalogueHint() {
 
 function libraryGroups() {
   const groups = [...state.workshops, ...state.imported].map((w) => ({ id: w.id, title: w.title, sub: w.source, chapters: w.chapters,
-    engine: w.engine, profile: w.profile, plan: w.plan, variants: w.variants, strings: w.strings, imported: !!w.imported }));
+    engine: w.engine, profile: w.profile, plan: w.plan, variants: w.variants, strings: w.strings, repo: w.repo,
+    imported: !!w.imported }));
   groups.push({ id: "custom", title: "My chapters", sub: "created in this builder", chapters: state.custom });
   return groups;
 }
@@ -186,6 +187,80 @@ function groupMatches(g) {
   if (!g.engine || g.engine !== state.engine) return false;
   if (g.engine === "lab-in-a-box") return liabImported() && importBase().profile === g.profile;
   return baseProfile() === g.profile;
+}
+
+// ── start from a workshop ───────────────────────────────────────────────
+// Whole workshops a rodeo can start from: the library's groups that come with a lab engine
+// (bundled workshops, chapter sources with a profile, catalog rodeos) and the bundled
+// lab-in-a-box rodeos no group covers. Starting replaces the rodeo's lab and chapters.
+
+function startGroups() {
+  const groups = libraryGroups().filter((g) => g.engine && !g.imported)
+    .map((g) => ({ ...g, kind: g.id.startsWith("catalog-") ? "catalog" : "workshop" }));
+  const labs = state.liab.imports.filter((i) => !groups.some((g) => g.engine === "lab-in-a-box" && g.profile === i.profile))
+    .map((i) => ({ id: "liab-" + i.profile, title: i.title, engine: "lab-in-a-box", profile: i.profile, chapters: [], kind: "lab" }));
+  return [...groups, ...labs];
+}
+
+function renderStart() {
+  const box = $("#startFrom"), list = startGroups(), open = state.open.__start ?? true;
+  box.hidden = !list.length;
+  box.replaceChildren(
+    el("button", { class: "group-head start-head", type: "button", "aria-expanded": String(open), "aria-controls": "startList",
+      onclick: () => { state.open.__start = !open; renderStart(); } },
+      el("span", { class: "chev", text: open ? "▾" : "▸" }), el("span", { class: "start-title", text: "Start from a workshop" }),
+      el("span", { class: "lib-count", text: String(list.length) })),
+    open ? el("p", { class: "start-note muted", text: "Replaces this rodeo's lab and chapters with a whole workshop's. To add chapters to this rodeo, use the chapter library below." }) : null,
+    el("div", { class: "start-list", id: "startList", hidden: open ? null : true }, list.map((g) => {
+      const langs = Object.keys(g.strings || {}).sort();
+      const meta = [g.engine + (g.profile ? " · " + g.profile : ""), plural(g.chapters.length, "chapter"),
+        ...(langs.length ? ["translated: " + langs.join(", ")] : [])].join(" · ");
+      const offline = g.kind === "catalog" && window.RB_STATIC;
+      return el("div", { class: "start-item" },
+        el("div", { class: "start-text" }, el("span", { class: "start-name", text: g.title }), el("span", { class: "start-meta", text: meta }),
+          offline ? el("span", { class: "start-cli", text: "rodeo builder starts from it; here: rodeo new " + g.id.slice(8) + " --from " + g.repo }) : null),
+        offline ? null : el("button", { class: "btn sm outline", type: "button", text: "Start from", "aria-label": "Start from " + g.title,
+          onclick: (ev) => startFrom(g, ev.currentTarget) }));
+    })));
+}
+
+async function startFrom(g, btn) {
+  if (g.kind !== "catalog") { useGroup(g); return; }
+  btn.disabled = true;
+  btn.textContent = "Fetching…";
+  try {
+    const res = await apiPost("workshop-rodeo", { source: g.id });
+    if (res.status !== 200) toast("Could not fetch " + g.title + ": " + (res.body.error || res.status), true);
+    else useRodeo(res.body.rodeo);
+  } catch (err) { toast("Could not fetch " + g.title + ": " + err.message, true); }
+  btn.disabled = false;
+  btn.textContent = "Start from";
+}
+
+// Replaces the rodeo with a fetched catalog rodeo (rodeo/builder/discovery.py catalog_rodeo): its plan,
+// lab, chapters and translations.
+function useRodeo(d) {
+  if (!state.engines.some((e) => e.name === d.engine)) { toast(d.title + " runs on the " + (d.engine || "unknown") + " lab engine, which this builder does not have", true); return; }
+  if (!confirmPlanDrop()) return;
+  const keys = ["engine", "base", "planEdited", "mode", "importProfile", "labJson", "labSecrets", "labWarnings", "labAddons",
+    "chapters", "cursor", "strings"];
+  const before = Object.fromEntries(keys.map((k) => [k, state[k]]));
+  const used = new Set();
+  state.chapters = d.chapters.map((ch) => {
+    const id = RB.uniqueId(ch.id, used);
+    used.add(id);
+    return { ...ch, id, workshop: d.title, from: libKey(d.id, ch.id) };
+  });
+  state.cursor = -1;
+  state.engine = d.engine;
+  state.planEdited = d.plan;
+  state.base = d.profile && d.profile !== engine().base ? { profile: d.profile, plan: d.plan } : null;
+  Object.assign(state, { mode: d.engine === "lab-in-a-box" ? "import" : state.mode, importProfile: "", labJson: d.lab || null,
+    labSecrets: [], labWarnings: [], labAddons: d.lab ? RB.labJsonAddons(d.lab) : [], strings: d.strings || {} });
+  render();
+  toast(d.title + ": its plan" + (d.lab ? ", lab" : "") + " and " + plural(d.chapters.length, "chapter")
+    + (d.warnings.length ? " (not read: " + d.warnings.join("; ") + ")" : ""), d.warnings.length > 0,
+    () => { Object.assign(state, before); render(); });
 }
 
 // Switches the lab to the group's engine and profile and replaces the rodeo's chapters with the group's.
@@ -409,9 +484,6 @@ function renderLibrary() {
           "aria-expanded": String(state.info === g.id), "aria-controls": "info-" + g.id, onclick: () => toggleInfo(g.id) })),
       groupInfo(g),
       el("div", { class: "group-actions" },
-        g.engine ? el("button", { class: "btn sm outline", type: "button", text: "use",
-          title: "Use this workshop: the " + g.engine + " lab engine with the " + g.profile + " profile, and its " +
-            g.chapters.length + " chapters in place of the rodeo's", onclick: () => useGroup(g) }) : null,
         g.chapters.length ? el("button", { class: "btn sm", type: "button", text: "+ all " + g.chapters.length,
           onclick: () => { for (const c of g.chapters) addChapter(g, c); } }) : null,
         g.imported ? el("button", { class: "btn sm", type: "button", text: "×", "aria-label": "Remove " + g.title + " from the library",
@@ -1028,6 +1100,7 @@ function renderFiles() {
 
 function render() {
   renderDeploy();
+  renderStart();
   renderLibrary();
   renderEngines();
   renderChapters();

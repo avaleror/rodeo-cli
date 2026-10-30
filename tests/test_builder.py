@@ -512,3 +512,68 @@ def test_the_catalogue_carries_the_checkouts_schema(labinabox_checkout):
         "    return (500, 'no') if action == 'base' else (200, {'components': [{'name': 'install_x'}]})\n")
     out = discovery.labinabox(broken)
     assert out["schema"] is None and "lab-in-a-box schema from" in out["schema_error"] and out["addons"]
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+def test_a_catalog_rodeo_is_fetched_whole_to_start_from(monkeypatch, tmp_path):
+    env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
+           "GIT_COMMITTER_EMAIL": "t@t", "GIT_CONFIG_NOSYSTEM": "1"}
+    origin = tmp_path / "origin"
+
+    def git(*args):
+        subprocess.run(["git", "-C", str(origin), *args], check=True, capture_output=True, env=env)
+
+    def put(path, text):
+        (origin / path).parent.mkdir(parents=True, exist_ok=True)
+        (origin / path).write_text(text)
+
+    origin.mkdir()
+    git("init", "-q", "-b", "main")
+    put("rodeo-plan.yaml", "type: lab-in-a-box\nname: ride\nlab_in_a_box:\n  lab:\n    nodes:\n      a.lab: {myip: 10.0.0.2}\n")
+    put("builder.yaml", "base: smlm-workshop\n")
+    put("story/01-saddle.md", '# Saddle\n<span lang="en" id="saddle.1">Saddle up</span>\n')
+    put("story/chapters.yaml", "chapters:\n  - file: 01-saddle.md\n    mins: 7\n")
+    put("checks/check-saddle.sh", "#!/bin/sh\nexit 0\n")
+    git("add", "-A")
+    git("commit", "-q", "-m", "rodeo")
+    git("checkout", "-q", "-b", "es")
+    put("story/strings/es/saddle.1/@default/content.json", _row("Ensilla"))
+    git("add", "-A")
+    git("commit", "-q", "-m", "es")
+    git("checkout", "-q", "main")
+    _catalog(monkeypatch, ride={"name": "ride", "title": "Ride", "repo": "file://" + str(origin), "ref": "", "engine": "x"})
+    monkeypatch.setattr(discovery.catalog, "find", lambda name: discovery.catalog.entries().get(name))
+    rodeo = discovery.catalog_rodeo("ride")
+    assert (rodeo["id"], rodeo["title"], rodeo["engine"], rodeo["profile"]) == ("catalog-ride", "Ride", "lab-in-a-box", "smlm-workshop")
+    assert rodeo["plan"].startswith("type: lab-in-a-box") and rodeo["lab"] == {"nodes": {"a.lab": {"myip": "10.0.0.2"}}}
+    assert [(c["id"], c["mins"], c["check_script"]) for c in rodeo["chapters"]] == [("saddle", 7, "#!/bin/sh\nexit 0\n")]
+    assert rodeo["strings"] == {"es": {"saddle.1": {"content": "Ensilla", "status": "reviewed", "updated_by": "me"}}}
+    assert rodeo["warnings"] == []
+    with pytest.raises(ValueError, match="not in the rodeo catalog"):
+        discovery.catalog_rodeo("nope")
+    (origin / "rodeo-plan.yaml").write_text("type: [unclosed\n")
+    git("commit", "-q", "-am", "broken")
+    with pytest.raises(ValueError, match="not YAML"):
+        discovery.catalog_rodeo("ride")
+    git("rm", "-q", "rodeo-plan.yaml")
+    git("commit", "-q", "-m", "gone")
+    with pytest.raises(ValueError, match="has no rodeo-plan.yaml"):
+        discovery.catalog_rodeo("ride")
+
+
+def test_workshop_rodeo_is_live_only_and_takes_a_catalog_source(monkeypatch, labinabox_checkout):
+    monkeypatch.setattr(discovery, "catalog_rodeo", lambda name: {"id": "catalog-" + name})
+    live = Api(labinabox_checkout, "u", "1", {}, can_save=True)
+    assert live.dispatch("workshop-rodeo", "POST", {}, b'{"source": "catalog-ride"}') == (200, {"rodeo": {"id": "catalog-ride"}})
+    status, body = live.dispatch("workshop-rodeo", "POST", {}, b'{"source": "https://evil/x"}')
+    assert status == 400 and "catalog-<name>" in body["error"]
+    assert live.dispatch("workshop-rodeo", "POST", {}, b"not json")[0] == 400
+
+    def refuse(name):
+        raise RuntimeError("fetching: denied")
+
+    monkeypatch.setattr(discovery, "catalog_rodeo", refuse)
+    assert live.dispatch("workshop-rodeo", "POST", {}, b'{"source": "catalog-ride"}') == (502, {"error": "fetching: denied"})
+    static = Api(labinabox_checkout, "u", "1", {})
+    status, body = static.dispatch("workshop-rodeo", "POST", {}, b'{"source": "catalog-ride"}')
+    assert status == 403 and "starting from a published rodeo" in body["error"]

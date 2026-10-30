@@ -63,7 +63,18 @@ rodeo up --profile <name>     # after Save to profiles
   fields the builder's lab-in-a-box release doesn't know (its schema is read with
   the catalogue), which `rodeo up` would refuse. On the command line,
   `rodeo new <name> --from-lab-json <file>` does the same import.
-- **Chapters.** The library lists every workshop's chapters: the bundled
+- **Start from a workshop.** Above the chapter library, a list of whole workshops
+  to start a rodeo from: the bundled examples, the chapter sources that come with
+  a profile, every published rodeo in the catalog, and the bundled lab-in-a-box
+  rodeos (also under the lab panel's **Import existing lab**). **Start from**
+  replaces the rodeo's lab and chapters with the workshop's: its lab engine and
+  profile (for example `suse-virt` with the `virt-workshop-aws` profile, whose
+  extra setup the exercises need) and all its chapters (**Undo** restores them).
+  A catalog rodeo is fetched when you start from it, so it brings everything it
+  was published with: its plan, its lab-in-a-box lab, its chapters with their
+  checks, and its translations, language branches included. The published page
+  can't fetch it; there its entry shows `rodeo new <name> --from <repo>`.
+- **Chapters.** The library lists every workshop's chapters, to add to the rodeo: the bundled
   examples' `story/` directories, the workshops whose chapters live in their own
   repository (listed in `rodeo/builder/chapter_sources.yaml`: the SMLM workshop's
   Instruqt track and the Virtualization workshop's exercises), the `story/` of
@@ -74,11 +85,8 @@ rodeo up --profile <name>     # after Save to profiles
   create with **+ New**. Workshops start collapsed: click a workshop's title to
   show its chapters. The **(i)** next to it (hover, or click to keep it open)
   shows where the chapters come from, the lab engine and profile they run on,
-  their count and time, and what they need. **use** sets the rodeo up as that
-  workshop: its lab engine and profile (for example `suse-virt` with the
-  `virt-workshop-aws` profile, whose extra setup the exercises need) and all its
-  chapters, in place of the rodeo's (**Undo** restores them); **+ all** adds its
-  chapters to the rodeo's. A chapter card shows its title; hover over it for its
+  their count and time, and what they need. **+ all** adds its chapters to the
+  rodeo's. A chapter card shows its title; hover over it for its
   time and needs, or turn on the list button next to the search to show them on
   every card. The funnel button next to it shows only the workshops for this lab
   engine, the chapters this lab can run, or the chapters not in the rodeo yet.

@@ -117,6 +117,19 @@ h2.sec .num { color: var(--accent-ink); font-family: var(--mono); font-size: 12p
 /* ── chapter library ──────────────────────────────────────────────────── */
 .group { margin-top: 14px; }
 .lib-top { position: sticky; top: -18px; z-index: 25; margin: -18px -18px 0; padding: 18px 18px 12px; background: var(--lab); border-bottom: 1px solid var(--line); }
+.start-from + .lib-top { margin-top: 14px; border-top: 1px solid var(--line); }
+.start-from .start-head { width: 100%; }
+.start-from .start-title { font: 800 17px/1.1 var(--display); color: var(--accent-ink); }
+.start-note { margin: 6px 0 0; font-size: 12px; }
+.start-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.start-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px;
+  border-radius: 6px; background: var(--panel); box-shadow: 0 0 0 1px var(--line);
+}
+.start-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.start-name { font-weight: 700; font-size: 13px; overflow-wrap: anywhere; }
+.start-meta, .start-cli { font: 400 11px/1.45 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.start-item .btn { flex: none; }
 .lib-tools { position: relative; display: flex; gap: 6px; align-items: center; }
 .lib-tools .input { flex: 1; min-width: 0; }
 .icon-btn { position: relative; flex: none; width: 34px; height: 34px; padding: 0; display: inline-grid; place-items: center; }

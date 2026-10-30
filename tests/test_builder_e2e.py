@@ -549,10 +549,58 @@ def test_selected_engine_is_marked(page):
     assert page.locator(".engine.on").get_attribute("aria-checked") == "true"
 
 
+def _start(page, title):
+    page.locator("#startFrom .start-item", has_text=title).get_by_role("button", name="Start from " + title).click()
+
+
+def test_workshops_to_start_from_are_apart_from_the_chapter_library(page):
+    items = page.locator("#startFrom .start-item")
+    names = items.locator(".start-name").all_inner_texts()
+    assert "Virtualization workshop" in names and len(names) == len(set(names))
+    assert "suse-virt · virt-workshop-aws" in items.filter(has_text="Virtualization workshop").inner_text()
+    assert page.locator("#library .group-actions button", has_text="use").count() == 0
+    assert page.locator("#library .group", has_text="Virtualization workshop").count() == 1
+    page.click("#startFrom .start-head")
+    sync_api.expect(page.locator("#startList")).to_be_hidden()
+    page.click("#startFrom .start-head")
+    sync_api.expect(page.locator("#startList")).to_be_visible()
+
+
+@pytest.mark.parametrize("page", ["live_catalog"], indirect=True)
+def test_starting_from_a_catalog_rodeo_brings_its_plan_lab_and_translations(page, monkeypatch):
+    from rodeo.builder import discovery
+
+    asked = []
+
+    def fake(name):
+        asked.append(name)
+        return {"id": "catalog-ride", "title": "Ride", "engine": "rancher", "profile": "", "warnings": [],
+                "plan": "type: rancher\nname: ride\n# from the published rodeo\nresources: {}\n", "lab": None,
+                "chapters": [{"id": "saddle", "file": "01-saddle.md", "title": "Saddle the ride", "mins": 5, "needs": [],
+                              "check": "", "check_script": "#!/bin/sh\nexit 0\n", "spans": 1,
+                              "body": '# Saddle the ride\n<span lang="en" id="saddle.1">Saddle up</span>\n'}],
+                "variants": {}, "strings": {"de": {"saddle.1": {"content": "Aufsitzen", "status": "draft", "updated_by": "x"}}}}
+
+    monkeypatch.setattr(discovery, "catalog_rodeo", fake)
+    page.click(".card >> text=Saddle the ride")
+    _start(page, "Ride")
+    sync_api.expect(page.locator("#toastText")).to_contain_text("Ride: its plan and 1 chapter")
+    assert asked == ["ride"] and _rows(page) == ["Saddle the ride"]
+    page.click("#toastUndo")
+    assert _rows(page) == ["Saddle the ride"] and page.locator(".engine.on .engine-name").inner_text() == "rancher"
+    _start(page, "Ride")
+    sync_api.expect(page.locator("#toastText")).to_contain_text("Ride: its plan and 1 chapter")
+    files = _zip(page)
+    plan = next(v for k, v in files.items() if k.endswith("rodeo-plan.yaml"))
+    assert "# from the published rodeo" in plan
+    assert any(k.endswith("story/strings/de/saddle.1/@default/content.json") for k in files)
+    assert not any(k.endswith("story/strings/es/saddle.1/@default/content.json") for k in files)
+
+
 def test_source_group_switches_engine_and_base(page):
     page.click(".card >> text=Welcome to the rodeo")
     group = page.locator(".group", has_text="Virtualization workshop")
-    group.get_by_role("button", name="use", exact=True).click()
+    _start(page, "Virtualization workshop")
     assert page.locator(".engine.on .engine-name").inner_text() == "suse-virt"
     assert "virt-workshop-aws" in page.locator("#engineNow").inner_text()
     assert _rows(page)[0] == "Exercise 1: The Arrival" and "Welcome to the rodeo" not in _rows(page)
@@ -560,7 +608,7 @@ def test_source_group_switches_engine_and_base(page):
     page.click("#toastUndo")
     assert _rows(page) == ["Welcome to the rodeo"]
     assert page.locator(".engine.on .engine-name").inner_text() == "rancher"
-    group.get_by_role("button", name="use", exact=True).click()
+    _start(page, "Virtualization workshop")
     assert page.locator("#coverage").inner_text() == "lab covers every chapter"
     files = _zip(page)
     assert yaml.safe_load(files["my-rodeo/builder.yaml"]) == {"base": "virt-workshop-aws"}
@@ -777,7 +825,7 @@ def test_library_info_filters_and_details(page):
     page.wait_for_selector(".group-head")
     virt = page.locator(".group", has_text="Virtualization workshop")
     assert page.locator(".group", has_text="First ride").locator(".card").count() == 0
-    virt.get_by_role("button", name="use", exact=True).click()
+    _start(page, "Virtualization workshop")
     assert virt.locator(".card").count() == 0 and page.locator(".row").count() > 0
     page.click("#toastUndo")
     assert page.locator(".row").count() == 0

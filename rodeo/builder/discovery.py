@@ -190,6 +190,7 @@ def workshops(sources: dict[str, Path] | None = None) -> dict[str, Any]:
         out.append({
             "id": src["id"],
             "title": src["title"],
+            "repo": src["repo"],
             "source": "{}/tree/{}/{}".format(src["repo"].removesuffix(".git"), src["ref"] or "HEAD", src["path"]),
             "engine": src["engine"],
             "profile": src["profile"],
@@ -338,6 +339,53 @@ def _strings(root: Path) -> dict[str, dict[str, dict[str, str]]]:
             "content": record["content"], "status": record.get("status") if record.get("status") in STATUSES else "draft",
             "updated_by": str(record.get("updated_by") or "")}
     return out
+
+
+def catalog_rodeo(name: str, run: Any = subprocess.run) -> dict[str, Any]:
+    """The catalog rodeo *name* as the page starts a rodeo from it: ``{"id", "title", "engine",
+    "profile", "plan", "lab", "chapters", "variants", "strings", "warnings"}``.
+
+    Fetched now (shallow, no credentials or prompts, links as plain files): *plan* is its
+    ``rodeo-plan.yaml`` text, *lab* the plan's ``lab_in_a_box.lab`` (None without one),
+    *profile* the base its ``builder.yaml`` names, *chapters* its ``story/`` chapters with
+    their ``checks/check-<id>.sh``, *strings* its translations, language branches included
+    (*warnings*: the branches that could not be read). Raises ValueError when *name* is not
+    in the catalog or holds no plan, RuntimeError when the fetch fails.
+    """
+    entry = catalog.find(name)
+    if entry is None:
+        raise ValueError("{} is not in the rodeo catalog".format(name))
+    src = {"id": "catalog-" + name, "repo": entry["repo"], "path": "story"}
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+    with tempfile.TemporaryDirectory(prefix="rodeo-builder-catalog-") as tmp:
+        dest = Path(tmp) / "src"
+        r = run(["git", "clone", "-q", "--depth", "1", *NO_SYMLINKS, *(["--branch", entry["ref"]] if entry["ref"] else []),
+                 "--", entry["repo"], str(dest)], capture_output=True, text=True, env=env)
+        if r.returncode != 0:
+            raise RuntimeError("fetching {}: {}".format(entry["repo"], (r.stderr or "").strip()[-300:]))
+        warnings = list(fetch_language_strings(src, dest, run).values())
+        plan_file = dest / "rodeo-plan.yaml"
+        if not plan_file.is_file():
+            raise ValueError("{} has no rodeo-plan.yaml".format(entry["repo"]))
+        plan_text = plan_file.read_text(errors="replace")
+        try:
+            plan = yaml.safe_load(plan_text)
+        except yaml.YAMLError as exc:
+            raise ValueError("{}: rodeo-plan.yaml is not YAML ({})".format(entry["repo"], exc)) from None
+        plan = plan if isinstance(plan, dict) else {}
+        overlay = plan.get("lab_in_a_box") if isinstance(plan.get("lab_in_a_box"), dict) else {}
+        story = dest / "story"
+        chapters = _chapters(story) if story.is_dir() else []
+        for ch in chapters:
+            script = dest / "checks" / "check-{}.sh".format(ch["id"])
+            if script.is_file():
+                ch["check_script"] = script.read_text(errors="replace")
+        return {"id": src["id"], "title": entry.get("title") or name,
+                "engine": str(plan.get("type") or entry.get("engine") or ""),
+                "profile": str(_read_yaml(dest / "builder.yaml").get("base") or ""), "plan": plan_text,
+                "lab": overlay.get("lab") if isinstance(overlay.get("lab"), dict) else None,
+                "chapters": chapters, "variants": _variants(story) if story.is_dir() else {},
+                "strings": _strings(story / "strings"), "warnings": warnings}
 
 
 def _check_script(directory: Path) -> str:

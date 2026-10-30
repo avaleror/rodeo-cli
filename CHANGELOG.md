@@ -1,5 +1,69 @@
 # Changelog
 
+## [0.27.0](https://github.com/avaleror/rodeo-cli/compare/v0.26.0...v0.27.0) (2026-10-30)
+
+
+### Features
+
+* /builder credentials ([cb9b310](https://github.com/avaleror/rodeo-cli/commit/cb9b3100a679fca63235ca09fe781c6852cdfb0d))
+* /builder layout ([48863f5](https://github.com/avaleror/rodeo-cli/commit/48863f5a44b3e8276593a7cd56f3d052c2c94bb0))
+* /builder settings page ([5946e31](https://github.com/avaleror/rodeo-cli/commit/5946e319e24a3c4b14496ce5ac4496bd9325914b))
+* /builder start from workshop ([860ccb3](https://github.com/avaleror/rodeo-cli/commit/860ccb3a6e6177b9ab3d01a8604bc0a2119e4330))
+* /builder story editor ([0feb03b](https://github.com/avaleror/rodeo-cli/commit/0feb03bec008bfc10fd93797ce93035c52e21871))
+* **builder:** a lab brought back keeps no credential (??placeholders in operator_secrets) and links its literal node names and addresses ([f0a45ac](https://github.com/avaleror/rodeo-cli/commit/f0a45ac0e048aad58ab5cb00d3df8917d975eaab))
+* **builder:** a lab brought back keeps no credential (??placeholders… ([e6a2edd](https://github.com/avaleror/rodeo-cli/commit/e6a2edd26732d203c87f86bccd2d088a253855f8))
+* **builder:** a new chapter's needs are an autocomplete field that takes new tags ([0f8d8dc](https://github.com/avaleror/rodeo-cli/commit/0f8d8dc4d362dd785c582a486146020487161349))
+* **builder:** a quieter chapter library ([6e8e215](https://github.com/avaleror/rodeo-cli/commit/6e8e215a62374196e1cd9565345598514d69cb34))
+* **builder:** a quieter chapter library ([301c727](https://github.com/avaleror/rodeo-cli/commit/301c727ef8063caa9c768e0b252563aeb150564d))
+* **builder:** ask for a reload after a builder restart, "Validate" button, zip file list on click ([225e483](https://github.com/avaleror/rodeo-cli/commit/225e483d471cdbedfdb5b93b50409fe92e1bfe5f))
+* **builder:** deploy and stored credentials on an exposed builder after a login ([c6651ee](https://github.com/avaleror/rodeo-cli/commit/c6651eeec5b0fdf536c58e69e84690e4f983ffda))
+* **builder:** encrypted credential store, one password per credential ([bc3eb0b](https://github.com/avaleror/rodeo-cli/commit/bc3eb0b99b02e1f80e290654f08a95567f92ed15))
+* **builder:** engines, deployment targets and instructions formats from the registered ones, not fixed lists ([17c83e5](https://github.com/avaleror/rodeo-cli/commit/17c83e531351dd18cc31fccf9a5c32dfa7f4f100))
+* **builder:** header buttons show a note on what they do that stays … ([116c651](https://github.com/avaleror/rodeo-cli/commit/116c651a5f697f2fb98880566eae0ba06eeead52))
+* **builder:** header buttons show a note on what they do that stays while the pointer is on them ([60e1f1f](https://github.com/avaleror/rodeo-cli/commit/60e1f1f4125daba2e90599e04128a7c861e905c9))
+* **builder:** list secrets.yaml keys in Settings and use them in the deploy dialog by reference ([ac11a81](https://github.com/avaleror/rodeo-cli/commit/ac11a81c94afbc0471b6ff7ce8862c79d4bf0227))
+* **builder:** name the user menu entry and its dialog "Settings" ([0ff7436](https://github.com/avaleror/rodeo-cli/commit/0ff74361f3f28b56eb18416e8257ed255804836b))
+* **builder:** publish puts each translation in its language branch w… ([b88b88e](https://github.com/avaleror/rodeo-cli/commit/b88b88e963851ea863dd50c78259859b34c0bdae))
+* **builder:** publish puts each translation in its language branch with a workflow offering main's changes, and a catalog rodeo's import reads its language branches ([92f4115](https://github.com/avaleror/rodeo-cli/commit/92f4115ed1409c6f04a95305bb6780dba5677d1f))
+* **builder:** render the story preview as Markdown or HTML ([81de866](https://github.com/avaleror/rodeo-cli/commit/81de86691da3b70abfffecfb7426f2672933a140))
+* **builder:** resizable columns, separate sections, compact engine cards ([de45263](https://github.com/avaleror/rodeo-cli/commit/de452634296130401bde9f981e73713b149e99e7))
+* **builder:** setext headings and GitHub alert callouts in the story preview ([600b7b7](https://github.com/avaleror/rodeo-cli/commit/600b7b73f2f205d75ece3ddc06bbaf950d31c9d1))
+* **builder:** Settings page for credentials behind a web server logi… ([715c407](https://github.com/avaleror/rodeo-cli/commit/715c40773ef264da22bd63eb48a903d5a8d24ca6))
+* **builder:** Settings page for credentials behind a web server login, with other engines' credentials listed and usable ([3834d84](https://github.com/avaleror/rodeo-cli/commit/3834d84658961bc1f3cb18472aeba91d55c5a55e))
+* **builder:** Settings with stored credentials and "Use stored" in the deploy dialog ([752d029](https://github.com/avaleror/rodeo-cli/commit/752d0295825f890995c42c8145ef0ba4efb08066))
+* **builder:** start from a whole workshop in its own section, apart from the chapter library; catalog rodeos fetched on demand with their plan, lab and translations ([fe97acd](https://github.com/avaleror/rodeo-cli/commit/fe97acd753cc53cdb51d5db15cc0892effdfc999))
+* **builder:** story editor source and preview side by side, scrolling together ([5dd991c](https://github.com/avaleror/rodeo-cli/commit/5dd991c694a5dbad874a411fd7d8e340af0a126e))
+* **builder:** user menu always shown, Settings disabled with the reason where credentials cannot be stored ([310ffa9](https://github.com/avaleror/rodeo-cli/commit/310ffa90a74627803641a457ea3aa937eea6da9a))
+* **builder:** user menu in the header with Manage credentials and the builder's user ([ca15d6a](https://github.com/avaleror/rodeo-cli/commit/ca15d6a5816e79f0b050af8cf2a3fcf90df65c90))
+* **content:** install the content's checks/ for every user of the ho… ([24552e6](https://github.com/avaleror/rodeo-cli/commit/24552e6568154daaf099fbedd47a78d68244777b))
+* **content:** install the content's checks/ for every user of the host and run its custom/scripts/ after the lab is up ([93e146f](https://github.com/avaleror/rodeo-cli/commit/93e146fc4e184b45f6735c3a5b2db779191ec6cd))
+* **install:** link /etc/rodeo-builder/htpasswd to lab-builder's logi… ([520149a](https://github.com/avaleror/rodeo-cli/commit/520149a498d3f9f7326e44aae3fb74a89ff05ea4))
+* **install:** link /etc/rodeo-builder/htpasswd to lab-builder's login file, creating it when missing ([4d922c2](https://github.com/avaleror/rodeo-cli/commit/4d922c2ca260d68cfe3f65d68c976894f4ad467b))
+* **lab-in-a-box:** an imported lab is checked against lab-in-a-box's schema, in the builder and in rodeo new --from-lab-json ([c69f33f](https://github.com/avaleror/rodeo-cli/commit/c69f33ffe20b62494d32e5b4e44e25463fe7d90c))
+* **lab-in-a-box:** an imported lab is checked against lab-in-a-box's… ([93ca0b1](https://github.com/avaleror/rodeo-cli/commit/93ca0b17d854aab381225aaeadb6506eedae86de))
+* **lab-in-a-box:** plan carries the lab-in-a-box lab (lab_in_a_box.l… ([e1e8a6c](https://github.com/avaleror/rodeo-cli/commit/e1e8a6cdde44ace363af01802ea8ea4ca3459a7c))
+* **lab-in-a-box:** plan carries the lab-in-a-box lab (lab_in_a_box.lab), the builder sends it to the lab-builder and keeps the workshop when it comes back ([02909b1](https://github.com/avaleror/rodeo-cli/commit/02909b1dfbcb720c16bdee705cff22bdae599380))
+* **lab-in-a-box:** rodeo new --from-lab-json makes a rodeo from an e… ([eb0857c](https://github.com/avaleror/rodeo-cli/commit/eb0857ce11b619fad5233d3234afe9eaf70b30d4))
+* **lab-in-a-box:** rodeo new --from-lab-json makes a rodeo from an existing lab, the builder lists the lab's nodes and clusters ([39d0dd4](https://github.com/avaleror/rodeo-cli/commit/39d0dd48d5e8239a85666dce8312d48c30cc5a50))
+* **story:** rodeo story check compares a content repo's language branches with its source, content: takes the story.language branch and    warns when it is behind ([3a58cb1](https://github.com/avaleror/rodeo-cli/commit/3a58cb118d5b2b4bd3fe686fa45f970a1d233f72))
+
+
+### Bug Fixes
+
+* **builder:** builders started together fetch lab-in-a-box one at a time ([417a286](https://github.com/avaleror/rodeo-cli/commit/417a2868e645a75cb543eadb00c9fe56598cd546))
+* **builder:** lab-in-a-box panel opens on Embed here, Provides lists … ([8f39c5f](https://github.com/avaleror/rodeo-cli/commit/8f39c5f70e309de488d1b5c00e463155fa04cabb))
+* **builder:** lab-in-a-box panel opens on Embed here, Provides lists the whole catalogue, no upload in Embed ([a8ac582](https://github.com/avaleror/rodeo-cli/commit/a8ac582b6da34ee785f5ae504590e3dc3f38868e))
+* **builder:** story editor Cancel and Ctrl+Z, "Edit" button, editor above the library ([19ec9a7](https://github.com/avaleror/rodeo-cli/commit/19ec9a7435fe5c71663fa67cf9fe38e3e6b693e5))
+* **content:** rodeo clean removes the plan's installed checks, rodeo … ([86f6dd8](https://github.com/avaleror/rodeo-cli/commit/86f6dd836bea4b6656dfb45e21d8b2387e3709cd))
+* **content:** rodeo clean removes the plan's installed checks, rodeo up skips content scripts the profile already ran ([1b8f79d](https://github.com/avaleror/rodeo-cli/commit/1b8f79da697d4d8f435a7facb43909de87048aca))
+
+
+### Documentation
+
+* add step-by-step guide for deploying to AWS from a Mac ([d12184e](https://github.com/avaleror/rodeo-cli/commit/d12184eb224df27255d24d68c71a0637c239d4c8))
+* add step-by-step guide for deploying to AWS from a Mac ([29bfdde](https://github.com/avaleror/rodeo-cli/commit/29bfdde738a91ec4519b33bb4e7abfd6c3485c95))
+* Saving release notes ([ad2d57a](https://github.com/avaleror/rodeo-cli/commit/ad2d57a711f8566da96d11621aad099b2a9c0e35))
+
 ## [0.26.0](https://github.com/avaleror/rodeo-cli/compare/v0.25.4...v0.26.0) (2026-10-23)
 
 

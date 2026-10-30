@@ -495,3 +495,20 @@ def test_a_language_branch_that_fails_is_reported_and_the_source_kept(tmp_path):
     assert discovery.fetch_language_strings(src, tmp_path, run) == {"catalog-ride (es branch)": "fatal: no es"}
     refused = discovery.fetch_language_strings(src, tmp_path, lambda cmd, **kw: subprocess.CompletedProcess(cmd, 128, "", "denied"))
     assert refused == {"catalog-ride (language branches)": "denied"}
+
+
+def test_the_catalogue_carries_the_checkouts_schema(labinabox_checkout):
+    import json as _json
+
+    snapshot = _json.loads((Path(__file__).parent / "fixtures" / "labinabox_schema" / "schema.json").read_text())
+    out = discovery.labinabox(labinabox_checkout)
+    assert out["schema_error"] == "" and out["schema"]["nodes"] == snapshot["nodes"]
+    assert out["schema"]["addons"] == {"smlm": snapshot["addons"]["smlm"],
+                                       "client_registration": snapshot["addons"]["client_registration"]}
+    broken = labinabox_checkout.parent / "broken"
+    (broken / "webui" / "lib").mkdir(parents=True, exist_ok=True)
+    (broken / "webui" / "lib" / "api.py").write_text(
+        "def dispatch(action, method, params, body):\n"
+        "    return (500, 'no') if action == 'base' else (200, {'components': [{'name': 'install_x'}]})\n")
+    out = discovery.labinabox(broken)
+    assert out["schema"] is None and "lab-in-a-box schema from" in out["schema_error"] and out["addons"]

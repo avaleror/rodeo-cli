@@ -29,7 +29,11 @@ plan holds no secret; node names and addresses written literally in add-on setti
 become `${node_fqdn:<vm>}` / `${node_ip:<vm>}`. The command lists both, and what to
 check: addresses that look like the lab's but belong to no node, Harvester nodes
 (`rodeo ssh`/`status` treat them as plain VMs) and PXE-booted nodes (not reachable
-until lab-in-a-box installs them).
+until lab-in-a-box installs them). It also lists the fields the lab-in-a-box on this machine
+doesn't know, which `rodeo up` would refuse. It checks against the installed one, else
+`RODEO_LABINABOX_PATH`, else the newest release rodeo has fetched into `~/.rodeo/vendor/`.
+With none of those, it says the lab wasn't checked; `rodeo up` checks it before
+building anyway.
 
 ---
 

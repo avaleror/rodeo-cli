@@ -13,15 +13,21 @@ On the way in, the same rules as the Rodeo Builder's lab import (logic.js
   listed in the plan's ``operator_secrets``; the values are dropped;
 - literal node FQDNs and IPs in add-on values become ``${node_fqdn:<vm>}`` /
   ``${node_ip:<vm>}``, which rodeo fills per host and instance.
+
+:func:`schema_check` then compares the lab with the schema of the lab-in-a-box
+on this machine (installed, ``RODEO_LABINABOX_PATH``, or the newest one fetched
+into ``~/.rodeo/vendor/``), the check deploy runs before building.
 """
 from __future__ import annotations
 
 import copy
 import json
 import re
+import shlex
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import yaml
 
@@ -225,6 +231,40 @@ def profile_files(name: str, lab: dict, target: str = "baremetal") -> tuple[list
     files = [ProfileFile("rodeo-plan.yaml", plan_text(name, imported, target).encode()),
              ProfileFile("definition.yaml", PLATFORM_DEFINITION.read_bytes())]
     return files, imported
+
+
+def schema_check(lab: dict, run: Callable[..., Any] = subprocess.run) -> tuple[list[str] | None, str]:
+    """(fields of *lab* the local lab-in-a-box schema doesn't declare, which lab-in-a-box that is);
+    the fields are None when there is no lab-in-a-box here or its schema can't be read, and the
+    second item then says why."""
+    from . import labinabox_host as host
+    from .labinabox import unknown_fields
+
+    if (host.LIAB_BIN / "lab_schema").is_file():
+        outputs: dict[str, str] = {}
+        for name, cmd in host.schema_commands(host.addons_used(lab)).items():
+            r = run(shlex.split(cmd), capture_output=True, text=True)
+            if r.returncode == 0:
+                outputs[name] = r.stdout
+            elif name == "_base":
+                return None, f"the installed lab-in-a-box has no base schema ({r.stderr.strip()[:160]})"
+        try:
+            return unknown_fields(lab, host.schema_from_outputs(outputs)), f"installed in {host.LIAB_BIN}"
+        except (ValueError, KeyError) as exc:
+            return None, f"could not read the installed lab-in-a-box schema: {exc}"
+    checkout, where = host.local_override(), "RODEO_LABINABOX_PATH"
+    if checkout is None:
+        fetched = sorted((p for p in host.checkout_dir("latest").parent.glob("*") if (p / "webui").is_dir()),
+                         key=lambda p: [int(n) if n.isdigit() else n for n in re.split(r"(\d+)", p.name)])
+        checkout, where = (fetched[-1], fetched[-1].name) if fetched else (None, "")
+    if checkout is None:
+        return None, "no lab-in-a-box is installed or fetched on this machine"
+    from .builder.discovery import labinabox_schema
+
+    try:
+        return unknown_fields(lab, labinabox_schema(checkout)), where
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
+        return None, str(exc)
 
 
 def _scalar(value: Any) -> str:

@@ -118,17 +118,29 @@ def markdown_source(tmp_path_factory) -> Path:
     return make_markdown(tmp_path_factory.mktemp("markdown"))
 
 
+SCHEMA_SNAPSHOT = Path(__file__).parent / "fixtures" / "labinabox_schema" / "schema.json"
+
+
 def make_labinabox(root: Path) -> Path:
-    """A lab-in-a-box checkout whose lab-builder API answers a small catalogue."""
+    """A lab-in-a-box checkout whose lab-builder API answers a small catalogue, and the base
+    and add-on schemas of tests/fixtures/labinabox_schema/schema.json."""
     lib = root / "webui" / "lib"
     lib.mkdir(parents=True)
     (lib / "api.py").write_text(
+        "import json\n"
+        "SCHEMA = json.load(open({!r}))\n"
+        "fields = lambda names: {{'fields': [{{'name': n}} for n in names]}}\n"
         "def dispatch(action, method, params, body):\n"
-        "    return 200, {'components': [\n"
-        "        {'name': 'install_smlm', 'targets': ['container']},\n"
-        "        {'name': 'install_client_registration', 'kind': 'addon', 'targets': ['vm']},\n"
-        "        {'name': 'pxe', 'kind': 'infrastructure', 'targets': []},\n"
-        "        {'name': 'rke2', 'kind': 'kcluster', 'targets': []}]}\n")
+        "    if action == 'base':\n"
+        "        return 200, {{'sections': {{k: fields(SCHEMA[k]) for k in ('common', 'nodes', 'kclusters')}}}}\n"
+        "    if action == 'schema':\n"
+        "        name = params['name'][0].removeprefix('install_')\n"
+        "        return (200, fields(SCHEMA['addons'][name])) if name in SCHEMA['addons'] else (400, {{'error': name}})\n"
+        "    return 200, {{'components': [\n"
+        "        {{'name': 'install_smlm', 'targets': ['container']}},\n"
+        "        {{'name': 'install_client_registration', 'kind': 'addon', 'targets': ['vm']}},\n"
+        "        {{'name': 'pxe', 'kind': 'infrastructure', 'targets': []}},\n"
+        "        {{'name': 'rke2', 'kind': 'kcluster', 'targets': []}}]}}\n".format(str(SCHEMA_SNAPSHOT)))
     return root
 
 

@@ -510,6 +510,31 @@ def test_lab_panel_lists_the_labs_nodes_and_what_rodeo_does_not_drive(page, tmp_
     drive = page.locator("#enginePanel .lab-drive li")
     sync_api.expect(drive).to_have_count(2)
     assert drive.nth(0).text_content().startswith("Harvester nodes (h1.lab)")
+    from rodeo.labinabox import unknown_fields
+
+    snapshot = json.loads((REPO / "tests" / "fixtures" / "labinabox_schema" / "schema.json").read_text())
+    want = unknown_fields(json.loads(lab.read_text()), snapshot)
+    assert "pxe" in want
+    sync_api.expect(page.locator("#enginePanel .lab-unknown li")).to_have_text(want)
+    sync_api.expect(page.locator("#enginePanel")).to_contain_text("Fields lab-in-a-box doesn't know: rodeo up refuses")
+
+
+def test_bundled_lab_in_a_box_rodeos_pass_the_schema_check(page):
+    page.click(".card")
+    page.click(".engine >> text=lab-in-a-box")
+    page.click(".seg button >> text=Import existing lab")
+    buttons = page.locator("#enginePanel .imports .engine")
+    with_lab = 0
+    for i in range(buttons.count()):
+        name = buttons.nth(i).locator(".engine-name").inner_text()
+        buttons.nth(i).click()
+        sync_api.expect(buttons.nth(i)).to_have_class("engine on")
+        if page.locator("#enginePanel .lab-summary").count():
+            with_lab += 1
+            assert page.locator("#enginePanel .lab-unknown").count() == 0, name
+            assert page.locator("#enginePanel .lab-unchecked").count() == 0, name
+        buttons.nth(i).click()
+    assert with_lab >= 1
 
 
 def test_selected_engine_is_marked(page):

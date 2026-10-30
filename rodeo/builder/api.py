@@ -10,7 +10,9 @@ embedded by the static build), ``server`` (what the live server can do) and
 login Publish would use, see :mod:`.publish`).
 POST ``save`` writes a rodeo to ``~/.rodeo/profiles/<name>/``; POST ``validate``,
 ``translate`` and ``draft`` run rmstory (see :mod:`.storywork`); POST ``import``
-reads a workshop's chapters from a git URL (see :mod:`.imports`); POST ``publish``
+reads a workshop's chapters from a git URL (see :mod:`.imports`); POST
+``workshop-rodeo`` fetches a catalog rodeo to start from (see
+:func:`.discovery.catalog_rodeo`); POST ``publish``
 and ``github-login`` publish to GitHub with the host's login. POST actions answer
 only when the Api was created with ``can_save=True`` (the live server); ``github``,
 ``publish`` and ``github-login`` also need ``can_publish=True``, and GET ``deploy``
@@ -52,7 +54,7 @@ STORY_ACTIONS = ("validate", "translate", "draft", "retell")
 GITHUB_ACTIONS = ("publish", "github-login")
 DEPLOY_ACTIONS = ("deploy", "deploy-stop")
 VAULT_ACTIONS = ("vault-add", "vault-delete", "vault-open")
-LIVE_ACTIONS = ("save", "import", *STORY_ACTIONS, *GITHUB_ACTIONS, *DEPLOY_ACTIONS, *VAULT_ACTIONS)
+LIVE_ACTIONS = ("save", "import", "workshop-rodeo", *STORY_ACTIONS, *GITHUB_ACTIONS, *DEPLOY_ACTIONS, *VAULT_ACTIONS)
 LOOPBACK_ONLY = "needs a rodeo builder that listens on this machine only"
 LOGIN_TTL = 300.0
 NO_CRYPTOGRAPHY = "stored credentials need the Python package cryptography (pip install cryptography)"
@@ -142,6 +144,18 @@ class Api:
         try:
             req = json.loads(body.decode("utf-8"))
             return 200, {"workshop": imports.import_source(str(req.get("url") or "") if isinstance(req, dict) else "")}
+        except ValueError as exc:
+            return 400, {"error": str(exc)}
+        except (RuntimeError, OSError) as exc:
+            return 502, {"error": str(exc)}
+
+    def _workshop_rodeo(self, body: bytes) -> tuple[int, dict[str, Any]]:
+        try:
+            req = json.loads(body.decode("utf-8"))
+            source = str(req.get("source") or "") if isinstance(req, dict) else ""
+            if not source.startswith("catalog-"):
+                raise ValueError("send {\"source\": \"catalog-<name>\"}")
+            return 200, {"rodeo": discovery.catalog_rodeo(source.removeprefix("catalog-"))}
         except ValueError as exc:
             return 400, {"error": str(exc)}
         except (RuntimeError, OSError) as exc:
@@ -276,7 +290,8 @@ class Api:
         """``(HTTP status, JSON body)`` of one request; *auth* is its Authorization header."""
         if method == "POST" and action in LIVE_ACTIONS:
             if not self.can_save:
-                what = {"save": "saving", "import": "importing a workshop", "deploy": "deploying",
+                what = {"save": "saving", "import": "importing a workshop",
+                        "workshop-rodeo": "starting from a published rodeo", "deploy": "deploying",
                         "deploy-stop": "deploying", "publish": "publishing to GitHub",
                         "github-login": "publishing to GitHub", "vault-add": "storing credentials",
                         "vault-delete": "storing credentials",
@@ -292,6 +307,8 @@ class Api:
                 return self._story(action, body)
             if action == "import":
                 return self._import(body)
+            if action == "workshop-rodeo":
+                return self._workshop_rodeo(body)
             try:
                 return self._save(body)
             except OSError as exc:

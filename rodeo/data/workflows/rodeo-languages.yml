@@ -1,0 +1,37 @@
+# Language branches (rodeo story check): main holds the source language, each
+# translation a branch named after its language (es, pt-br...). On every push to
+# main, each language branch that is behind main gets a pull request main → <lang>;
+# conflicts between the source changes and a translation are resolved in it.
+# Changes under rmstory/, rmstory-stories/, story/ and .github/ don't count.
+name: rodeo language branches
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  offer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Open a pull request for each language branch behind main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for ref in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin); do
+            lang=${ref#origin/}
+            [ "$lang" != main ] || continue
+            echo "$lang" | grep -Eq '^[a-z]{2}(-[a-z0-9]{2,8})*$' || continue
+            base=$(git merge-base origin/main "$ref") || { echo "$lang shares no history with main"; continue; }
+            behind=$(git log --oneline "$base..origin/main" -- . ':!rmstory' ':!rmstory-stories' ':!story' ':!.github')
+            if [ -z "$behind" ]; then echo "$lang is up to date with main"; continue; fi
+            if [ -n "$(gh pr list --base "$lang" --head main --state open --json number --jq '.[].number')" ]; then
+              echo "$lang: a pull request from main is already open"; continue
+            fi
+            gh pr create --base "$lang" --head main --title "Bring $lang up to date with main" \
+              --body "$(printf 'main has commits the %s translation has not taken in:\n\n```\n%s\n```\n' "$lang" "$behind")"
+          done

@@ -341,8 +341,8 @@ def test_seed_smlm_workshop_keeps_bake_kit_and_secret_refs(tmp_path):
         assert (lab / rel).is_file(), rel
     plan = yaml.safe_load((lab / "rodeo-plan.yaml").read_text())
     assert plan["name"] == "my-smlm"
-    assert plan["lab_in_a_box"]["sections"]["smlm"]["smlm_admin_pass"] == "??smlm_admin_password"
-    assert plan["lab_in_a_box"]["nodes"]["zzsles15c"]["ISO_IMAGE"].startswith("SLES15-SP6")
+    assert plan["lab_in_a_box"]["lab"]["smlm"]["smlm_admin_pass"] == "??smlm_admin_password"
+    assert plan["lab_in_a_box"]["lab"]["nodes"]["zzsles15c.rodeo.lab"]["ISO_IMAGE"].startswith("SLES15-SP6")
 
 
 def test_bake_plan_loads_with_only_the_smlm_node(tmp_path):
@@ -719,9 +719,11 @@ def test_smlm_workshop_lab_json_only_uses_known_lab_in_a_box_fields(tmp_path):
 
 def test_smlm_workshop_lab_json_has_every_required_lab_in_a_box_field(tmp_path):
     lab, _ = build_lab_json(_smlm_cfg(tmp_path, FULL_SECRETS))
-    every_node_has_image = all(n.get("ISO_IMAGE") for n in lab["nodes"].values())
+    image = {"SOURCE_IMAGE", "ISO_IMAGE"}  # lab-in-a-box reads ISO_IMAGE when SOURCE_IMAGE is unset
+    every_node_has_image = all(image & set(n) for n in lab["nodes"].values())
     missing = [f"common.{k}" for k in _SCHEMA["required"]["common"]
-               if k not in lab["common"] and not (k == "ISO_IMAGE" and every_node_has_image)]
+               if not (image & set(lab["common"]) if k in image else k in lab["common"])
+               and not (k in image and every_node_has_image)]
     missing += [f"nodes.{n}.{k}" for n, v in lab["nodes"].items()
                 for k in _SCHEMA["required"]["nodes"] if k not in v]
     assert missing == []
@@ -740,13 +742,21 @@ def test_unknown_fields_reports_what_an_older_lab_in_a_box_lacks():
 
     old = {"common": ["ISO_IMAGE"], "nodes": ["myip", "addons"], "kclusters": [],
            "addons": {"smlm": ["smlm_admin_pass"]}}
-    lab = {"common": {"ISO_IMAGE": "x", "ISO_URL": "u"},
+    lab = {"common": {"ISO_IMAGE": "x", "VM_ROOT_PASS": "p"},
            "nodes": {"a": {"myip": "1", "ssh_pwauth": "true",
                            "addons": ["smlm", {"client_registration": {"x": 1}}]}},
            "smlm": {"smlm_admin_pass": "p", "smlm_preinstalled": "true"}}
     assert unknown_fields(lab, old) == [
-        "common.ISO_URL", "nodes.a.ssh_pwauth", "nodes.a.addons.client_registration",
+        "common.VM_ROOT_PASS", "nodes.a.ssh_pwauth", "nodes.a.addons.client_registration",
         "smlm.smlm_preinstalled"]
+
+
+def test_unknown_fields_accepts_the_image_download_fields():
+    from rodeo.labinabox import unknown_fields
+
+    lab = {"common": {"ISO_IMAGE": "leap.qcow2", "ISO_URL": "https://x/leap.qcow2", "ISO_SHA256_URL": "https://x/s"},
+           "nodes": {"a": {"ISO_IMAGE": "sp7.qcow2", "ISO_URL": "https://x/sp7.qcow2", "ISO_SHA256": "0" * 64}}}
+    assert "ISO_URL" not in _SCHEMA["common"] and unknown_fields(lab, _SCHEMA) == []
 
 
 
@@ -1069,7 +1079,7 @@ def test_instance_vms_and_node_refs_follow_the_instance(tmp_path):
 
 def test_unknown_node_ref_is_an_error(tmp_path):
     cfg = _smlm_cfg(tmp_path, FULL_SECRETS)
-    cfg["lab_in_a_box"]["sections"]["client_registration"]["client_registration_server_ip"] = "${node_ip:nope}"
+    cfg["lab_in_a_box"]["lab"]["client_registration"]["client_registration_server_ip"] = "${node_ip:nope}"
     with pytest.raises(ConfigError, match="no lab node named 'nope'"):
         build_lab_json(cfg)
 
@@ -1420,7 +1430,7 @@ def test_bake_and_scratch_sync_the_same_channels():
     channels and gets the children from the activation keys. Keep them equal."""
     plan = yaml.safe_load((SMLM / "rodeo-plan.yaml").read_text())
     bake = yaml.safe_load((SMLM / "bake" / "rodeo-plan.yaml").read_text())
-    keys = plan["lab_in_a_box"]["sections"]["smlm"]["smlm_activation_keys"]
+    keys = plan["lab_in_a_box"]["lab"]["smlm"]["smlm_activation_keys"]
     scratch = set(plan["lab_in_a_box"]["variants"]["scratch"]["sections"]["smlm"]["smlm_channels"])
     scratch |= {c for k in keys for c in k["smlm_activation_key_child_channels"].split()}
     assert set(bake["lab_in_a_box"]["sections"]["smlm"]["smlm_channels"]) == scratch
@@ -1615,3 +1625,100 @@ def test_workshop_boots_the_baked_server_with_cloud_init(tmp_path):
 def test_bake_scripts_are_valid_bash():
     for script in ("generalise.sh", "export-image.sh", "export-ami.sh"):
         subprocess.run(["bash", "-n", str(SMLM / "bake" / script)], check=True)
+
+
+# ── lab_in_a_box.lab: the plan carries the lab-in-a-box lab ──────────────────
+
+ALL_VARIANT_SECRETS = {**FULL_SECRETS, **{k: f"v-{k}" for k in (
+    "scc_regcode", "scc_mirror_user", "scc_mirror_password", "sles15sp7_image_url", "sles15sp7_image_sha256",
+    "aws_access_key_id", "aws_secret_access_key", "aws_security_group_id", "smlm_image_ami", "centos7_ami",
+    "sles15sp5_ami", "sles15sp6_ami", "ubuntu2404_ami")}}
+
+
+def _smlm_plan_cfg(tmp_path: Path, edit) -> dict:
+    """The smlm-workshop example loaded after `edit(plan)` changed its rodeo-plan.yaml."""
+    lab = tmp_path / "lab"
+    shutil.copytree(SMLM, lab)
+    plan = yaml.safe_load((lab / "rodeo-plan.yaml").read_text())
+    edit(plan)
+    (lab / "rodeo-plan.yaml").write_text(yaml.safe_dump(plan, sort_keys=False))
+    (tmp_path / ".rodeo").mkdir(exist_ok=True)
+    (tmp_path / ".rodeo" / "secrets.yaml").write_text(yaml.safe_dump(ALL_VARIANT_SECRETS))
+    return load_config(lab / "rodeo-plan.yaml")
+
+
+def _as_translated_plan(plan: dict) -> None:
+    """The stored lab written back as lab_in_a_box.nodes / sections (no lab:)."""
+    liab = plan["lab_in_a_box"]
+    stored = liab.pop("lab")
+    host_keys = ("myip", "mymac", "VM_MEM", "VM_CPU", "VM_DSK")
+    liab["nodes"] = {key.split(".")[0]: {k: v for k, v in node.items() if k not in host_keys}
+                     for key, node in stored["nodes"].items()}
+    liab["sections"] = {k: v for k, v in stored.items() if k not in ("nodes", "common")}
+
+
+@pytest.mark.parametrize("variant", ["image", "scratch", "aws"])
+@pytest.mark.parametrize("instance", [0, 2])
+def test_stored_lab_renders_as_the_translated_plan(tmp_path, variant, instance):
+    def pick(plan):
+        plan["lab_in_a_box"]["variant"] = variant
+        if instance:
+            plan["instance"] = instance
+
+    stored = _smlm_plan_cfg(tmp_path / "stored", pick)
+    translated = _smlm_plan_cfg(tmp_path / "translated", lambda p: (pick(p), _as_translated_plan(p)))
+    assert build_lab_json(stored) == build_lab_json(translated)
+    assert stored["vms"] == translated["vms"]
+
+
+def test_stored_lab_vms_are_the_labs(tmp_path):
+    def edit(plan):
+        nodes = plan["lab_in_a_box"]["lab"]["nodes"]
+        del nodes["ubuntu2404lts.rodeo.lab"]
+        nodes["extra.example.org"] = {"myip": "10.1.2.60", "VM_MEM": "4096", "VM_CPU": "2", "VM_DSK": "40",
+                                      "ISO_IMAGE": "ubuntu-24.04-server-cloudimg-amd64.img"}
+        nodes["clash.rodeo.lab"] = {"myip": "192.168.122.20", "ISO_IMAGE": "ubuntu-24.04-server-cloudimg-amd64.img"}
+
+    cfg = _smlm_plan_cfg(tmp_path, edit)
+    assert "ubuntu2404lts" not in cfg["vms"]
+    assert cfg["vms"]["extra"]["ip"] == "192.168.122.60"       # the lab's host part, in rodeo's network
+    assert cfg["vms"]["clash"]["ip"] not in {vm["ip"] for name, vm in cfg["vms"].items() if name != "clash"}
+    assert cfg["vms"]["smlm"]["ip"] == "192.168.122.20"        # definition.yaml's address wins
+    lab, _ = build_lab_json(cfg)
+    extra = lab["nodes"]["extra.rodeo.lab"]
+    assert extra["myip"] == "192.168.122.60" and extra["mymac"] == "02:00:C0:A8:7A:3C" and extra["BRIDGE"] == "virbr0"
+    assert extra["VM_MEM"] == "4096"
+    assert "ubuntu2404lts.rodeo.lab" not in lab["nodes"]
+
+
+def test_stored_lab_keeps_its_values_and_takes_the_hosts(tmp_path):
+    def edit(plan):
+        lab = plan["lab_in_a_box"]["lab"]
+        lab["common"].update({"mygw": "10.0.0.1", "mydomain": "lab.example", "lab_name": "x", "VM_MEM": "512"})
+        lab["nodes"]["smlm.rodeo.lab"].update({"myip": "10.0.0.5", "BRIDGE": "br9", "kcluster": "k1"})
+        lab["kclusters"] = {"k1": {"clu_type": "rke2", "clu_rel": "stable", "mydomain": "lab.example"}}
+        lab["schema_versions"] = {"lab": 3}
+
+    lab, _ = build_lab_json(_smlm_plan_cfg(tmp_path, edit))
+    common, smlm = lab["common"], lab["nodes"]["smlm.rodeo.lab"]
+    assert (common["mygw"], common["mydomain"], common["lab_name"]) == ("192.168.122.1", "rodeo.lab", "smlm-workshop")
+    assert common["VM_MEM"] == "512"
+    assert (smlm["myip"], smlm["BRIDGE"], smlm["kcluster"]) == ("192.168.122.20", "virbr0", "k1")
+    assert lab["kclusters"] == {"k1": {"clu_type": "rke2", "clu_rel": "stable", "mydomain": "rodeo.lab"}}
+    assert lab["schema_versions"] == {"lab": 3}
+
+
+def test_stored_lab_without_nodes_is_an_error(tmp_path):
+    cfg = _smlm_plan_cfg(tmp_path, lambda plan: plan["lab_in_a_box"].update(lab={"common": {}}))
+    with pytest.raises(ConfigError, match="nodes: map"):
+        build_lab_json(cfg)
+
+
+def test_smlm_lab_sets_required_client_registration_fields_in_its_section():
+    """The lab-builder checks an add-on's required fields in its shared section only
+    (per-VM overrides don't count), and won't send a lab back while one is missing."""
+    lab = yaml.safe_load((SMLM / "rodeo-plan.yaml").read_text())["lab_in_a_box"]["lab"]
+    assert lab["client_registration"]["client_registration_activation_key"]
+    for node in ("zzcentos7", "zzsles15a", "zzsles15b", "zzsles15c"):
+        override = lab["nodes"][f"{node}.rodeo.lab"]["addons"][0]["client_registration"]
+        assert override["client_registration_activation_key"].startswith("1-"), node

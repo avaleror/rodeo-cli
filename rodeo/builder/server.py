@@ -6,13 +6,14 @@ embedded ones, plus what only a server can do (save a rodeo straight into
 
     GET  /                   index.html (version filled in, write token in a meta tag)
     GET  /<file>             a file from htdocs/
-    GET  /api?action=<name>  Api.dispatch(name, "GET")
-    POST /api?action=save    Api.dispatch("save", "POST", body); needs the
-                             X-Rodeo-Builder-Token header from the page's meta tag
+    GET  /api?action=<name>  Api.dispatch(name, "GET", Authorization header)
+    POST /api?action=save    Api.dispatch("save", "POST", body, Authorization header);
+                             needs the X-Rodeo-Builder-Token header from the page's meta tag
 
 Every request must name an allowed Host (loopback names by default), which
 stops DNS-rebinding pages from reaching the server; the per-run token stops
-other sites from posting to it.
+other sites from posting to it. A 401 answer carries ``WWW-Authenticate: Basic``,
+so the browser asks for the login.
 """
 from __future__ import annotations
 
@@ -37,12 +38,21 @@ MIME = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=ut
         ".png": "image/png", ".ico": "image/x-icon", ".woff2": "font/woff2"}
 
 
-def csp(lab_builder_url: str) -> str:
-    """Content-Security-Policy for the page: own files, Google Fonts, the lab-builder frame."""
-    origin = urlparse(lab_builder_url)
+def host_name(header: str | None) -> str:
+    """The name in a Host header, port stripped (IPv6 keeps its brackets)."""
+    name = (header or "").strip().lower()
+    if name.startswith("["):
+        return name[:name.find("]") + 1] if "]" in name else name
+    return name.split(":", 1)[0] if name.count(":") == 1 else name
+
+
+def csp(lab_builder_url: str, host: str = "") -> str:
+    """Content-Security-Policy for the page: its own files (fonts included) and the lab-builder frame.
+    A ``{host}`` in *lab_builder_url* is the request's *host*."""
+    origin = urlparse(lab_builder_url.replace("{host}", host or "localhost"))
     frame = "{}://{}".format(origin.scheme, origin.netloc) if origin.scheme in ("http", "https") and origin.netloc else "'none'"
-    return ("default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; "
-            "font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; "
+    return ("default-src 'self'; script-src 'self'; style-src 'self'; "
+            "font-src 'self'; img-src 'self' data:; connect-src 'self'; "
             "frame-src {}; frame-ancestors 'none'; base-uri 'none'; form-action 'none'".format(frame))
 
 
@@ -70,6 +80,7 @@ def make_handler(api: Api, version: str, allowed_hosts: tuple[str, ...], lab_bui
                  token: str) -> type[BaseHTTPRequestHandler]:
     index = page(version, token)
     policy = csp(lab_builder_url)
+    per_host = "{host}" in lab_builder_url
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "rodeo-builder"
@@ -82,9 +93,17 @@ def make_handler(api: Api, version: str, allowed_hosts: tuple[str, ...], lab_bui
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Referrer-Policy", "no-referrer")
-            self.send_header("Content-Security-Policy", policy)
+            self.send_header("Content-Security-Policy", self._policy())
+            if status == 401:
+                self.send_header("WWW-Authenticate", 'Basic realm="rodeo builder", charset="UTF-8"')
             self.end_headers()
             self.wfile.write(data)
+
+        def _policy(self) -> str:
+            header = self.headers.get("Host")
+            if not per_host or not host_allowed(header, allowed_hosts):
+                return policy
+            return csp(lab_builder_url, host_name(header))
 
         def _json(self, status: int, obj: dict[str, Any]) -> None:
             self._send(status, json.dumps(obj).encode("utf-8"), "application/json; charset=utf-8")
@@ -101,7 +120,8 @@ def make_handler(api: Api, version: str, allowed_hosts: tuple[str, ...], lab_bui
             url = urlparse(self.path)
             if url.path == "/api":
                 action = (parse_qs(url.query).get("action") or [""])[0]
-                status, obj = api.dispatch(action, "GET", parse_qs(url.query))
+                status, obj = api.dispatch(action, "GET", parse_qs(url.query),
+                                           auth=self.headers.get("Authorization", ""))
                 self._json(status, obj)
                 return
             if url.path in ("/", "/index.html"):
@@ -134,7 +154,8 @@ def make_handler(api: Api, version: str, allowed_hosts: tuple[str, ...], lab_bui
                 self._json(413, {"error": "request body too large"})
                 return
             action = (parse_qs(url.query).get("action") or [""])[0]
-            status, obj = api.dispatch(action, "POST", parse_qs(url.query), self.rfile.read(length))
+            status, obj = api.dispatch(action, "POST", parse_qs(url.query), self.rfile.read(length),
+                                       self.headers.get("Authorization", ""))
             self._json(status, obj)
 
         def log_message(self, *args: Any) -> None:

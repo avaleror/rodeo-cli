@@ -39,6 +39,14 @@ def list_profile_types() -> list[str]:
     return sorted(_REGISTRY)
 
 
+def registered_profiles() -> list[RodeoProfile]:
+    """Every registered profile, plugins' included, in registration order."""
+    from ..plugins import load_plugins
+
+    load_plugins()
+    return list(_REGISTRY.values())
+
+
 def get_profile(type_name: str) -> RodeoProfile:
     profile = _REGISTRY.get(type_name)
     if profile is None:
@@ -53,4 +61,4 @@ def get_profile(type_name: str) -> RodeoProfile:
     return profile
 
 
-__all__ = ["RodeoProfile", "get_profile", "list_profile_types", "register_profile"]
+__all__ = ["RodeoProfile", "get_profile", "list_profile_types", "register_profile", "registered_profiles"]

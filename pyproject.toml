@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rodeo-cli"
-version = "0.25.3"
+version = "0.26.0"
 description = "Deploy and manage SUSE/Rancher learning labs (rodeos) on KVM"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -20,6 +20,7 @@ dependencies = [
     "textual>=0.60",
     "pyyaml>=6.0",
     "jinja2>=3.1",
+    "cryptography>=42",
 ]
 
 [project.optional-dependencies]
@@ -37,7 +38,7 @@ where = ["."]
 include = ["rodeo*"]
 
 [tool.setuptools.package-data]
-rodeo = ["data/**/*", "portal/static/*", "builder/htdocs/**/*"]
+rodeo = ["data/**/*", "portal/static/*", "builder/htdocs/**/*", "builder/settings/**/*"]
 
 [tool.ruff]
 line-length = 100

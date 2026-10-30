@@ -63,11 +63,20 @@ def test_install_refuses_to_overwrite_without_force():
 
 
 @pytest.mark.parametrize("path", ["../escape.yaml", "/etc/passwd", "story/../../x", "custom/scripts/10-run.sh",
-                                  ".hidden", "story/.git/config", "notes.txt", "story\\x.md", "story//x.md"])
+                                  ".hidden", "story/.git/config", "notes.txt", "story\\x.md", "story//x.md",
+                                  "story/strings/es/../x/@default/content.json", "story/strings/es/x/@default/x.json",
+                                  "story/strings/ES/x/@default/content.json", "story/strings/es/.x/@default/content.json",
+                                  "story/strings/es/x/other/content.json", "story/strings/es/x.md"])
 def test_install_refuses_paths_a_builder_rodeo_never_has(path):
     with pytest.raises(ValueError):
         install_profile("ride", _files() + [ProfileFile(path, b"x")])
     assert not custom_profile_dir("ride").exists()
+
+
+def test_install_keeps_the_rmstory_translation_store():
+    leaf = "story/strings/pt-br/intro.1/@default/content.json"
+    install_profile("ride", _files() + [ProfileFile(leaf, b'{"content": "Ola"}')])
+    assert (custom_profile_dir("ride") / leaf).read_bytes() == b'{"content": "Ola"}'
 
 
 def test_install_checks_name_modes_sizes_and_plan(monkeypatch):
@@ -249,3 +258,29 @@ def test_builder_command_serves_until_interrupted(monkeypatch, labinabox_checkou
     assert r.exit_code == 0, r.output
     assert re.search(r"http://127\.0\.0\.1:\d+/", r.output)
     assert [a["name"] for a in seen["liab"]["addons"]] == ["smlm", "client_registration"]
+
+
+def test_builders_started_together_fetch_lab_in_a_box_one_at_a_time(tmp_path, monkeypatch):
+    import sys
+
+    from rodeo import labinabox_host
+    from rodeo.commands import builder_cmd as cmd
+
+    busy = tmp_path / "busy"
+    fetch = ("import os, sys, time\n"
+             "fd = os.open(sys.argv[1], os.O_CREAT | os.O_EXCL)\n"
+             "time.sleep(0.3)\n"
+             "os.close(fd); os.unlink(sys.argv[1])\n")
+    monkeypatch.setattr(labinabox_host, "local_override", lambda: None)
+    monkeypatch.setattr(labinabox_host, "source", lambda cfg: ("https://example.invalid/liab.git", "1.0.0"))
+    monkeypatch.setattr(labinabox_host, "resolve_ref", lambda repo, ref: ref)
+    monkeypatch.setattr(labinabox_host, "checkout_dir", lambda ref: tmp_path / "vendor" / ref)
+    monkeypatch.setattr(labinabox_host, "fetch_commands",
+                        lambda repo, ref, dest: [[sys.executable, "-c", fetch, str(busy)]])
+    results = []
+    threads = [threading.Thread(target=lambda: results.append(cmd._labinabox_checkout(None))) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert results == [(tmp_path / "vendor" / "1.0.0", "1.0.0", "")] * 2

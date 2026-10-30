@@ -123,9 +123,9 @@ rodeo picks the region (`eu-north-1`, or `$RODEO_AWS_REGION`), the default VPC s
 |---------|-------------|
 | `up` | Front door: host check, install deps, pick lab, generate secrets, deploy, print login info. Wraps in tmux automatically: re-attach with `tmux attach -t rodeo-<profile>` |
 | `doctor` | Host readiness check and profile recommendation by available RAM |
-| `new` | Scaffold a custom lab from a bundled base: `rodeo new mylab --from harvester` · install a Rodeo Builder download: `rodeo new mylab --from-zip mylab.zip` |
+| `new` | Scaffold a custom lab from a bundled base: `rodeo new mylab --from harvester` · install a Rodeo Builder download: `rodeo new mylab --from-zip mylab.zip` · or a published rodeo: `rodeo new mylab --from https://github.com/<owner>/<repo>` |
 | `builder` | Rodeo Builder web UI, live: compose a rodeo and save it into your profiles (`rodeo builder`) |
-| `profiles` | List deployable profiles (bundled + your custom ones in `~/.rodeo/profiles/`) |
+| `profiles` | List deployable profiles (bundled, your custom ones in `~/.rodeo/profiles/`, and the published rodeos of the catalog) |
 | `list` | Show plans and the libvirt domains stamped for each one |
 | `install-deps` | Install host packages (KVM, libvirt, ansible, kubectl). `--story` adds rmstory + multilang from their GitHub release distro packages (refused without a matching `.sha512`); `--aws` adds the AWS CLI v2 (signature-checked) for labs whose VMs run in AWS |
 | `init` | Create `rodeo-plan.yaml` and `~/.rodeo/secrets.yaml` |
@@ -133,6 +133,7 @@ rodeo picks the region (`eu-north-1`, or `$RODEO_AWS_REGION`), the default VPC s
 | `instances` | Several copies of a lab-in-a-box lab on one host: `instances new <profile> --count N`, `instances list` |
 | `export` | Render the lab spec for another deployer: currently lab-in-a-box `lab.json` (`type: lab-in-a-box` labs deploy through it directly) |
 | `story` | Render the workshop hand-out (`story render`): languages and story variants via rmstory, topology facts filled in |
+| `content` | The lab's instructions apart from its infrastructure: `content apply` fetches the plan's `content:` and renders `<lab>/guide/` without redeploying |
 | `deploy` | Run the phase pipeline. Flags: `--from PHASE`, `--force`, `--reconcile` (default on) / `--no-reconcile`, `--check`, `--no-tui`, `-P key=value` |
 | `status` | VM states, VIP reachability, phase progress |
 | `stop` | Graceful stop in reverse definition order (infra-aware) |
@@ -181,6 +182,7 @@ Precedence: profile defaults < plan < paramfile < `-P`.
 | [Harvester profile guide](docs/guide-harvester.md) | Deploy Harvester HCI (2-node, 3-node, HA, full lab) |
 | [SUSE Edge profile guide](docs/guide-suse-edge.md) | Deploy the SUSE Edge 3.7 stack (Rancher + Elemental + EIB + edge nodes) |
 | [Bare metal example](docs/examples/bare-metal.md) | Full walkthrough on a physical or cloud host |
+| [AWS from a Mac](docs/examples/aws-macos.md) | Step by step from a clean Mac to a lab on AWS |
 | [Instruqt example](docs/examples/instruqt.md) | Build an Instruqt track image with a pre-deployed cluster |
 | [Install on Linux and macOS](docs/install.md) | KVM host vs control machine installs |
 | [Fleet (multi-host)](docs/fleet.md) | A lab per attendee across many hosts, plus the claim portal |

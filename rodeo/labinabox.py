@@ -27,6 +27,13 @@ Per-node knobs rodeo's definition has no field for (ISO_IMAGE, config_method,
 VM_BOOT, VM_DSK_BUS, VM_NET_MODEL, addons) come from the plan's
 lab_in_a_box.nodes.<short name> block.
 
+A plan may instead hold a whole lab-in-a-box lab (the lab-builder's) under
+lab_in_a_box.lab: it is rendered as written, except for what rodeo owns — the
+common network keys and lab_name, each node's BRIDGE / myip / mymac and FQDN
+domain, the kclusters' mydomain, images (ISO_URL) and secrets. Its nodes are the
+lab's VMs (topology_from_lab); lab_in_a_box.nodes / sections, and a variant's,
+are merged into it (effective_overlay).
+
 Not representable in lab-in-a-box today (reported as warnings or errors):
   - PXE/iPXE-booted nodes (Harvester) — lab-in-a-box has no PXE support.
   - exposed_services host DNAT — lab-in-a-box does not manage the host firewall.
@@ -51,6 +58,11 @@ LIAB_ADDONS = frozenset({
     "argocd", "insecure_app", "jenkins", "longhorn", "mariadb", "neuvector",
     "nv-demo-helm", "nv_testing", "rancher", "struts_demo", "suma", "wordpress",
 })
+
+# Base image download fields (common and nodes) lab-in-a-box reads without
+# declaring them in its schema: setup_lab.py fetches ISO_URL into ISO_LOC and
+# verifies it against ISO_SHA256 or the digest at ISO_SHA256_URL.
+IMAGE_DOWNLOAD_FIELDS = frozenset({"ISO_URL", "ISO_SHA256_URL"})
 
 # Node flavors that form the management Kubernetes cluster in rodeo profiles.
 _MGMT_FLAVORS = frozenset({"rancher"})
@@ -108,6 +120,21 @@ def _without_unused_images(overlay: dict) -> dict:
     return overlay
 
 
+def _into_stored_lab(overlay: dict) -> dict:
+    """With a stored lab (lab_in_a_box.lab), lab_in_a_box.nodes.<short name> and
+    sections are merged into it (see _merge) instead of staying overlays."""
+    lab = overlay.get("lab")
+    if not isinstance(lab, dict) or not isinstance(lab.get("nodes"), dict):
+        return overlay
+    by_short = {key.split(".")[0]: key for key in lab["nodes"]}
+    for short, over in (overlay.pop("nodes", None) or {}).items():
+        if short in by_short:
+            lab["nodes"][by_short[short]] = _merge(lab["nodes"][by_short[short]] or {}, over or {})
+    for key, value in (overlay.pop("sections", None) or {}).items():
+        lab[key] = _merge(lab.get(key), value)
+    return overlay
+
+
 def effective_overlay(cfg: dict) -> dict:
     """The plan's lab_in_a_box block with its selected variant applied.
 
@@ -120,7 +147,7 @@ def effective_overlay(cfg: dict) -> dict:
     variants = overlay.pop("variants", None) or {}
     name = overlay.get("variant")
     if not name:
-        return _without_unused_images(overlay)
+        return _without_unused_images(_into_stored_lab(overlay))
     if name not in variants:
         raise ConfigError(f"lab_in_a_box.variant '{name}' is not one of: {', '.join(variants) or '(none)'}")
     variant = dict(variants[name] or {})
@@ -130,7 +157,7 @@ def effective_overlay(cfg: dict) -> dict:
     merged = _merge(overlay, variant)
     if images is not None:
         merged["images"] = _merge_images(overlay.get("images") or [], images)
-    return _without_unused_images(merged)
+    return _without_unused_images(_into_stored_lab(merged))
 
 
 def variant_extras(cfg: dict) -> dict:
@@ -149,18 +176,80 @@ def apply_variant(plan: dict) -> dict:
     return out
 
 
+def stored_lab(cfg: dict) -> dict | None:
+    """The plan's lab_in_a_box.lab with its variant applied, or None when it has none."""
+    if not (cfg.get("lab_in_a_box") or {}).get("lab"):
+        return None
+    lab = effective_overlay(cfg).get("lab")
+    if not isinstance(lab, dict) or not isinstance(lab.get("nodes"), dict):
+        raise ConfigError("lab_in_a_box.lab must be a lab-in-a-box lab with a nodes: map")
+    return lab
+
+
+def _free_ip(cidr: str, wanted: str | None, taken: set) -> str:
+    """`wanted`'s host part in network `cidr` when that address is free, else the first free one."""
+    net = ipaddress.ip_network(cidr, strict=False)
+    hosts = [str(h) for h in net.hosts()]
+    if wanted:
+        try:
+            host_part = int(ipaddress.ip_address(wanted)) & int(net.hostmask)
+        except ValueError:
+            host_part = 0
+        candidate = str(net.network_address + host_part)
+        if candidate in hosts and candidate not in taken:
+            return candidate
+    free = next((h for h in hosts if h not in taken), None)
+    if free is None:
+        raise ConfigError(f"no free address left in {cidr} for the lab's VMs")
+    return free
+
+
+def topology_from_lab(topology: dict, lab: dict) -> dict:
+    """The definition's topology with the stored lab's VMs.
+
+    A lab node the definition lists keeps the definition's entry (address, MAC,
+    template); any other gets the lab's myip host part in the definition's network
+    when free (else the first free address), a MAC derived from that address and
+    the `vm` flavor. Definition nodes the lab doesn't list, and their start_order
+    and exposed_services entries, are left out.
+    """
+    topo = copy.deepcopy(topology)
+    defined = {n["name"]: n for n in topo.get("nodes", [])}
+    names = [key.split(".")[0] for key in lab["nodes"]]
+    net = topo.get("network", {})
+    taken = {net.get("gateway")} | {defined[n].get("ip") for n in names if n in defined}
+    nodes = []
+    for key, entry in lab["nodes"].items():
+        name = key.split(".")[0]
+        if name in defined:
+            nodes.append(defined[name])
+            continue
+        ip = _free_ip(net.get("cidr") or "192.168.122.0/24", (entry or {}).get("myip"), taken)
+        taken.add(ip)
+        mac = "02:00:" + ":".join(f"{int(o):02X}" for o in ip.split("."))
+        nodes.append({"name": name, "hostname": name, "ip": ip, "flavor": "vm", "ssh_user": "root",
+                      "mgmt_mac": mac, "interfaces": [{"role": "mgmt", "mac": mac}]})
+    topo["nodes"] = nodes
+    order = [n for n in topo.get("start_order", []) if n in names]
+    topo["start_order"] = order + [n for n in names if n not in order]
+    topo["exposed_services"] = [s for s in topo.get("exposed_services", []) if s.get("target") in names]
+    return topo
+
+
 def unknown_fields(lab: dict, schema: dict) -> list[str]:
     """lab.json fields a lab-in-a-box schema doesn't declare (dotted paths).
 
     `schema` is {"common": [...], "nodes": [...], "kclusters": [...],
     "addons": {name: [...]}} — the installed lab-in-a-box's own, or the test
     snapshot. An addon section/override for an addon the schema lacks is
-    reported as the addon itself.
+    reported as the addon itself. IMAGE_DOWNLOAD_FIELDS are never reported.
     """
     addons = schema.get("addons", {})
-    unknown = [f"common.{k}" for k in lab.get("common", {}) if k not in schema["common"]]
+    common = set(schema["common"]) | IMAGE_DOWNLOAD_FIELDS
+    node_fields = set(schema["nodes"]) | IMAGE_DOWNLOAD_FIELDS
+    unknown = [f"common.{k}" for k in lab.get("common", {}) if k not in common]
     for name, node in lab.get("nodes", {}).items():
-        unknown += [f"nodes.{name}.{k}" for k in node if k not in schema["nodes"]]
+        unknown += [f"nodes.{name}.{k}" for k in node if k not in node_fields]
         for entry in node.get("addons", []):
             for addon, overrides in (entry.items() if isinstance(entry, dict) else [(entry, {})]):
                 if addon not in addons:
@@ -298,6 +387,8 @@ def build_lab_json(cfg: dict, *, skip_unsupported: bool = False) -> tuple[dict, 
 
     pxe_node_names = {n["name"] for n in inv.get("pxe", {}).get("nodes", [])}
 
+    stored = stored_lab(cfg)
+    stored_nodes = {key.split(".")[0]: value or {} for key, value in (stored or {}).get("nodes", {}).items()}
     node_overrides: dict[str, dict] = overlay.get("nodes") or {}
     cluster_name = overlay.get("cluster_name", "mgmt")
     clu_type = overlay.get("cluster_type", "k3s")
@@ -312,7 +403,7 @@ def build_lab_json(cfg: dict, *, skip_unsupported: bool = False) -> tuple[dict, 
             unsupported.append(name)
             continue
 
-        entry: dict[str, Any] = {}
+        entry: dict[str, Any] = copy.deepcopy(stored_nodes.get(name, {}))
         if node.get("ip"):
             entry["myip"] = node["ip"]
         mac = _node_mgmt_mac(node)
@@ -322,10 +413,10 @@ def build_lab_json(cfg: dict, *, skip_unsupported: bool = False) -> tuple[dict, 
         entry["BRIDGE"] = bridge
 
         flavor = node.get("flavor", "")
-        sizing = _sizing(resources, flavor)
+        sizing = {k: v for k, v in _sizing(resources, flavor).items() if k not in entry}
         if sizing:
             entry.update(sizing)
-        else:
+        elif not all(k in entry for k in ("VM_MEM", "VM_CPU", "VM_DSK")):
             warnings.append(
                 f"node '{name}': no resources entry for flavor '{flavor}' — "
                 "lab-in-a-box will fall back to its common VM_MEM/VM_CPU/VM_DSK"
@@ -333,7 +424,7 @@ def build_lab_json(cfg: dict, *, skip_unsupported: bool = False) -> tuple[dict, 
 
         entry.update(node_overrides.get(name) or {})
 
-        if flavor in _MGMT_FLAVORS:
+        if flavor in _MGMT_FLAVORS and not stored:
             entry["kcluster"] = cluster_name
             if clu_type == "rke2":
                 entry["INSTALL_RKE2_TYPE"] = "server"
@@ -353,7 +444,8 @@ def build_lab_json(cfg: dict, *, skip_unsupported: bool = False) -> tuple[dict, 
             f"skipped PXE-booted node(s) not deployable by lab-in-a-box: {', '.join(sorted(unsupported))}"
         )
 
-    common: dict[str, Any] = {"lab_name": cfg.get("name", "rodeo")}
+    common: dict[str, Any] = copy.deepcopy((stored or {}).get("common") or {})
+    common["lab_name"] = cfg.get("name", "rodeo")
     if cidr:
         common["mymask"] = str(ipaddress.ip_network(cidr, strict=False).prefixlen)
         reverse = _reverse_zone(cidr)
@@ -368,14 +460,15 @@ def build_lab_json(cfg: dict, *, skip_unsupported: bool = False) -> tuple[dict, 
     # them, so common carries the largest of each.
     for key in ("VM_MEM", "VM_CPU", "VM_DSK"):
         values = [int(n[key]) for n in nodes.values() if str(n.get(key, "")).isdigit()]
-        if values:
+        if values and key not in common:
             common[key] = str(max(values))
     # rodeo guests are cloud-init provisioned (lab-in-a-box's default empty
     # config_method means ignition/combustion, which fits SLE Micro images).
-    common["config_method"] = overlay.get("config_method", "cloud-init")
+    if "config_method" in overlay or "config_method" not in common:
+        common["config_method"] = overlay.get("config_method", "cloud-init")
     if overlay.get("iso_image"):
         common["ISO_IMAGE"] = overlay["iso_image"]
-    elif not nodes or not all(n.get("ISO_IMAGE") for n in nodes.values()):
+    elif not common.get("ISO_IMAGE") and (not nodes or not all(n.get("ISO_IMAGE") for n in nodes.values())):
         warnings.append(
             "no base image set — lab-in-a-box needs common.ISO_IMAGE (a qcow2 in its "
             "ISO_LOC); set lab_in_a_box.iso_image in rodeo-plan.yaml or pass "
@@ -411,6 +504,11 @@ def build_lab_json(cfg: dict, *, skip_unsupported: bool = False) -> tuple[dict, 
                 holder.update(source)
 
     lab: dict[str, Any] = {"nodes": nodes, "common": common}
+    for key, value in (stored or {}).items():
+        if key not in lab:
+            lab[key] = copy.deepcopy(value)
+    for kcluster in (lab.get("kclusters") or {}).values() if stored else []:
+        kcluster["mydomain"] = domain
 
     if cluster_members:
         if overlay.get("addons") is not None:

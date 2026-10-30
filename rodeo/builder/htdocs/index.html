@@ -7,8 +7,6 @@
   <meta name="description" content="Compose a new rodeo: a lab engine and story chapters, downloaded as a ready-to-install profile.">
   <link rel="icon" href="assets/horseshoe-mark.svg" type="image/svg+xml">
   <script src="theme.js"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&amp;family=Syne:wght@400;600;700;800&amp;display=swap">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -23,37 +21,80 @@
       <button id="themeBtn" class="btn" type="button">Light</button>
       <button id="warnBtn" class="btn warn" type="button" hidden></button>
       <button id="saveBtn" class="btn outline" type="button" hidden>Save to profiles</button>
-      <button id="downloadBtn" class="btn primary" type="button">Download rodeo</button>
+      <span id="deployWrap" class="deploy-wrap"><button id="deployBtn" class="btn outline" type="button">Deploy</button></span>
+      <button id="publishBtn" class="btn outline" type="button" data-tip="Puts this rodeo in a public GitHub repository of yours and opens a pull request that adds it to the rodeo catalog, so anyone can install it with rodeo up --profile &lt;name&gt;. Each translation gets a branch of its own.">Publish</button>
+      <button id="downloadBtn" class="btn primary" type="button" data-tip="Downloads the rodeo as a zip. Install it on any host with rodeo new &lt;name&gt; --from-zip &lt;file&gt;, then rodeo up --profile &lt;name&gt;.">Download rodeo</button>
+      <a id="settingsBtn" class="btn" href="/rodeo-builder/settings/" target="_blank" rel="noopener"
+        data-tip="Stored credentials: opens the Settings page, which needs a login" hidden>Settings</a>
     </div>
+    <div id="hdrTip" class="hdr-tip" role="tooltip" hidden></div>
   </header>
 
   <main class="cols">
     <aside class="col left" aria-label="Chapter library">
-      <div class="col-head">
-        <h2>Chapter library · <span id="libCount">0</span></h2>
-        <button id="newChapterBtn" class="btn outline sm" type="button">+ New</button>
+      <div class="lib-top">
+        <div class="col-head lib-head">
+          <h2 class="lib-title">Chapter library <span id="libCount" class="lib-count" title="Chapters in the library">0</span></h2>
+          <div class="col-head-actions">
+            <button id="importBtn" class="btn sm" type="button" title="Import a workshop's chapters from a git URL">Import</button>
+            <button id="newChapterBtn" class="btn outline sm" type="button">+ New</button>
+          </div>
+        </div>
+        <div class="lib-tools">
+          <label class="sr-only" for="search">Search chapters</label>
+          <input id="search" class="input" type="search" placeholder="Search chapters" autocomplete="off">
+          <button id="filterBtn" class="btn icon-btn" type="button" aria-expanded="false" aria-controls="filterMenu" aria-label="Filter chapters" title="Filter chapters">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12l-4.5 5.5V13l-3 1.5V8.5z"/></svg>
+            <span id="filterCount" class="icon-badge" hidden></span>
+          </button>
+          <button id="detailsBtn" class="btn icon-btn" type="button" aria-pressed="false" aria-label="Show time and needs on the cards" title="Show time and needs on the cards">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h7"/></svg>
+          </button>
+          <fieldset id="filterMenu" class="filter-menu" hidden>
+            <legend>Show only</legend>
+            <label><input type="checkbox" value="engine"> Workshops for this lab engine</label>
+            <label><input type="checkbox" value="runnable"> Chapters this lab can run</label>
+            <label><input type="checkbox" value="added"> Chapters not in the rodeo yet</label>
+          </fieldset>
+        </div>
       </div>
-      <label class="sr-only" for="search">Search chapters</label>
-      <input id="search" class="input" type="search" placeholder="Search chapters" autocomplete="off">
       <div id="library"></div>
     </aside>
+    <div id="resizeLeft" class="resizer" role="separator" aria-orientation="vertical" aria-label="Resize the chapter library" tabindex="0"></div>
 
     <section class="col center" aria-label="Rodeo">
+      <div id="deployBanner" class="banner deploy" role="status" hidden>
+        <span id="deployText" class="banner-text"></span>
+        <button id="deploySave" class="btn primary sm" type="button">Save to profiles</button>
+        <button id="deployStop" class="btn sm" type="button">Stop</button>
+        <button id="deployLogBtn" class="btn sm" type="button" aria-expanded="false">Log</button>
+        <pre id="deployLog" class="deploy-log" hidden></pre>
+      </div>
       <div id="draftBanner" class="banner ok" hidden>
         <span id="draftText" class="banner-text"></span>
         <button id="draftRestore" class="btn primary sm" type="button">Restore</button>
         <button id="draftFresh" class="btn sm" type="button">Start fresh</button>
       </div>
-      <h2 class="sec"><span class="num">01</span> Lab engine <span id="engineNow" class="now"></span></h2>
-      <div id="engines" class="engines" role="radiogroup" aria-label="Lab engine"></div>
-      <div id="enginePanel" class="panel"></div>
-      <h2 class="sec"><span class="num">02</span> Chapters <span id="coverage" class="status"></span></h2>
-      <p id="insertHint" class="hint"></p>
-      <div id="engineBanner" class="banner bad" role="alert" hidden></div>
-      <div id="chapterList" class="lab"></div>
-      <h2 class="sec" id="review"><span class="num">03</span> Review and download</h2>
-      <div id="reviewPanel" class="panel"></div>
+      <section class="part part-infra" aria-labelledby="secEngine">
+        <p class="part-head" id="partInfra">Infrastructure, built by rodeo up</p>
+        <h2 class="sec" id="secEngine"><span class="num">01</span> Lab engine <span id="engineNow" class="now"></span></h2>
+        <div id="engines" class="engines" role="radiogroup" aria-label="Lab engine"></div>
+        <div id="enginePanel" class="panel"></div>
+      </section>
+      <section class="part part-instr" aria-labelledby="secChapters">
+        <p class="part-head" id="partInstructions">Instructions, updated by rodeo content apply</p>
+        <h2 class="sec" id="secChapters"><span class="num">02</span> Chapters <span id="coverage" class="status"></span></h2>
+        <p id="insertHint" class="hint"></p>
+        <div id="engineBanner" class="banner bad" role="alert" hidden></div>
+        <div id="chapterList" class="lab"></div>
+      </section>
+      <section class="part part-review" aria-labelledby="review">
+        <p class="part-head">Everything above, as files</p>
+        <h2 class="sec" id="review"><span class="num">03</span> Review and download</h2>
+        <div id="reviewPanel" class="panel"></div>
+      </section>
     </section>
+    <div id="resizeRight" class="resizer" role="separator" aria-orientation="vertical" aria-label="Resize the settings column" tabindex="0"></div>
 
     <aside class="col right" aria-label="Rodeo settings and files">
       <div class="tabs" role="tablist">
@@ -69,12 +110,26 @@
         <label class="label" for="lang">Language</label>
         <select id="lang" class="select"></select>
         <label class="label" for="target">Deployment target</label>
-        <select id="target" class="select">
-          <option value="baremetal">baremetal</option>
-          <option value="instruqt">instruqt</option>
-        </select>
+        <select id="target" class="select"></select>
         <span class="label">Story variant</span>
         <div id="variants" class="chips"></div>
+        <label class="label" for="contentUrl">Instructions repository</label>
+        <input id="contentUrl" class="input mono" type="url" autocomplete="off" spellcheck="false"
+          placeholder="https://github.com/owner/repo/tree/main/story">
+        <label class="sr-only" for="contentFormat">Instructions format</label>
+        <select id="contentFormat" class="select"></select>
+        <p id="contentNote" class="note muted"></p>
+        <div id="newStory" class="nc-draft" hidden>
+          <label class="label" for="nsTheme">New story</label>
+          <input id="nsTheme" class="input" maxlength="500" autocomplete="off" placeholder="What the new story is about, e.g. a heist on a space station">
+          <div class="addon-add">
+            <label class="sr-only" for="nsEngine">rmstory engine</label>
+            <select id="nsEngine" class="select"></select>
+            <button id="nsBtn" class="btn sm" type="button">Retell</button>
+          </div>
+          <p id="nsParts" class="note"></p>
+          <p class="note muted">You say what is story: spans with a story variant get a new narrative. Exercise spans (translatable, no story variant), fixed spans (invariant or no-lang) and text outside spans stay word for word. The original chapters stay in the library.</p>
+        </div>
         <div id="estimate" class="est"></div>
       </div>
       <div id="tab-plan" class="tabpane" role="tabpanel" aria-labelledby="t-plan" hidden>
@@ -115,8 +170,23 @@
       <div id="ncWorkshops" class="chips"></div>
       <label class="label" for="ncMins">Minutes</label>
       <input id="ncMins" class="input mono" type="number" min="1" max="240" value="10">
-      <span class="label">Requires from the lab</span>
-      <div id="ncNeeds" class="chips"></div>
+      <label class="label" for="ncNeedInput">Requires from the lab</label>
+      <div id="ncNeeds" class="chips need-picked"></div>
+      <div class="need-field">
+        <input id="ncNeedInput" class="input mono" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false"
+               aria-controls="ncNeedList" autocomplete="off" placeholder="Type to search, Enter to add">
+        <ul id="ncNeedList" class="need-list" role="listbox" aria-label="Needs" hidden></ul>
+      </div>
+      <div id="ncDraft" class="nc-draft" hidden>
+        <label class="label" for="ncBrief">Draft with an engine</label>
+        <textarea id="ncBrief" class="textarea brief" placeholder="What the student does in this chapter and what they should learn"></textarea>
+        <div class="addon-add">
+          <label class="sr-only" for="ncEngine">rmstory engine</label>
+          <select id="ncEngine" class="select"></select>
+          <button id="ncDraftBtn" class="btn sm" type="button">Draft</button>
+        </div>
+        <p class="note muted">rmstory writes a tagged draft into the body below, using this rodeo's lab and chapters. Review it before you create the chapter.</p>
+      </div>
       <label class="label" for="ncBody">Markdown (rmstory spans)</label>
       <textarea id="ncBody" class="textarea" spellcheck="false"></textarea>
       <div class="modal-foot">
@@ -127,6 +197,91 @@
         <div>
           <button id="ncCancel" class="btn" type="button">Cancel</button>
           <button class="btn primary" type="submit">Create</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div id="deployModal" class="backdrop" hidden>
+    <form id="deployForm" class="modal" role="dialog" aria-modal="true" aria-labelledby="deployTitle">
+      <h2 id="deployTitle">Deploy this rodeo</h2>
+      <p class="alert warn-row unsaved"><strong>This rodeo is not saved.</strong> Deploying does not save it to your
+        profiles: your changes stay only on this page and in this browser's draft.</p>
+      <p id="dpWhere" class="note"></p>
+      <div id="dpSecrets" hidden>
+        <span class="label">Secrets only you have (saved to ~/.rodeo/secrets.yaml, never shown again)</span>
+        <div id="dpSecretFields"></div>
+      </div>
+      <p id="dpResult" class="note"></p>
+      <div class="modal-foot">
+        <span></span>
+        <div>
+          <button id="dpCancel" class="btn" type="button">Cancel</button>
+          <button id="dpSaveDeploy" class="btn outline" type="button">Save to profiles and deploy</button>
+          <button id="dpSubmit" class="btn primary" type="submit">Deploy without saving</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div id="publishModal" class="backdrop" hidden>
+    <form id="publishForm" class="modal" role="dialog" aria-modal="true" aria-labelledby="publishTitle">
+      <h2 id="publishTitle">Publish to GitHub</h2>
+      <p id="pubAccount" class="note"></p>
+      <div id="pubLogin" class="nc-draft" hidden>
+        <button id="pubLoginBtn" class="btn sm" type="button">Log in to GitHub</button>
+        <p id="pubDevice" class="note"></p>
+      </div>
+      <div id="pubStatic" hidden>
+        <label class="label" for="pubUser">Your GitHub account</label>
+        <input id="pubUser" class="input mono" autocomplete="username" spellcheck="false" placeholder="octocat">
+        <ol id="pubSteps" class="pub-steps"></ol>
+      </div>
+      <div id="pubLive" hidden>
+        <label class="label" for="pubName">Repository (the rodeo name)</label>
+        <input id="pubName" class="input mono" autocomplete="off" spellcheck="false">
+        <div class="checks"><label><input id="pubUpdate" type="checkbox"> Update my existing repository (no new catalog pull request)</label></div>
+        <p class="note muted">Creates a public repository under your account with this rodeo's files and opens a pull request on <span id="pubCatalog"></span> that adds it to the rodeo catalog.</p>
+      </div>
+      <div id="pubResult" class="note"></div>
+      <div class="modal-foot">
+        <span></span>
+        <div>
+          <button id="pubCancel" class="btn" type="button">Close</button>
+          <button id="pubSubmit" class="btn primary" type="submit" hidden>Publish</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div id="vaultPrompt" class="backdrop over" hidden>
+    <form id="vpForm" class="modal narrow" role="dialog" aria-modal="true" aria-labelledby="vpTitle" autocomplete="off">
+      <h2 id="vpTitle">Password</h2>
+      <label class="sr-only" for="vpPass">Password</label>
+      <input id="vpPass" class="input" type="password" autocomplete="off">
+      <p id="vpError" class="note bad-text" role="alert"></p>
+      <div class="modal-foot">
+        <span></span>
+        <div>
+          <button id="vpCancel" class="btn" type="button">Cancel</button>
+          <button id="vpSubmit" class="btn primary" type="submit">Unlock</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div id="importModal" class="backdrop" hidden>
+    <form id="importForm" class="modal" role="dialog" aria-modal="true" aria-labelledby="importTitle">
+      <h2 id="importTitle">Import a workshop</h2>
+      <label class="label" for="imUrl">Git URL</label>
+      <input id="imUrl" class="input mono" type="url" required autocomplete="off" spellcheck="false"
+        placeholder="https://github.com/owner/repo/tree/main/docs/exercises">
+      <p id="imNote" class="note muted"></p>
+      <div class="modal-foot">
+        <span></span>
+        <div>
+          <button id="imCancel" class="btn" type="button">Cancel</button>
+          <button id="imSubmit" class="btn primary" type="submit">Import</button>
         </div>
       </div>
     </form>
@@ -149,6 +304,7 @@
       <span id="edChapter"></span>
       <span id="edPath" class="path"></span>
       <span id="edSummary" class="summary"></span>
+      <button id="edCancel" class="btn" type="button" title="Close the editor and discard its changes">Cancel</button>
       <button id="edDone" class="btn primary" type="button">Done</button>
     </div>
     <div class="ed-body">
@@ -163,10 +319,16 @@
           <button id="edRemove" type="button" class="btn sm">Remove span</button>
           <span id="edSel" class="sel-info"></span>
         </div>
-        <label class="sr-only" for="edSource">Chapter source</label>
-        <textarea id="edSource" class="textarea source" spellcheck="false"></textarea>
-        <span class="label">Tagged preview</span>
-        <div id="edPreview" class="preview"></div>
+        <div class="ed-panes">
+          <div class="ed-pane">
+            <label class="label" for="edSource">Source</label>
+            <textarea id="edSource" class="textarea source" spellcheck="false"></textarea>
+          </div>
+          <div class="ed-pane">
+            <span class="label">Tagged preview</span>
+            <div id="edPreview" class="preview"></div>
+          </div>
+        </div>
       </div>
       <div class="ed-right">
         <div class="tabs" role="tablist">

@@ -436,6 +436,86 @@ English source: the payoff screen never fails.
 
 ---
 
+## content: the lab's instructions, apart from its infrastructure
+
+A plan can name where its instructions live instead of carrying them in the
+profile. The environment (`rodeo up`) and the instructions (`rodeo content
+apply`) then deploy separately: updating the instructions never redeploys the
+lab.
+
+```yaml
+content:
+  repo: https://github.com/<owner>/<repo>   # https, public, no credentials
+  ref: main             # branch, tag or commit (default: the default branch)
+  path: story           # directory in the repository (default: the root)
+  format: rmstory       # rmstory | instruqt | markdown
+  facts:                # instruqt: values for [[ Instruqt-Var key="..." ]]
+    SMLM_URL: https://smlm.rodeo.lab
+  replace:              # literal text swaps when rendering
+    "smlm.example.com": smlm.rodeo.lab
+```
+
+`rodeo content apply` (run from the lab directory) fetches the content into
+`<lab>/content/`, records the commit in `<lab>/content.lock` and renders the
+guide into `<lab>/guide/` (owner-only files: facts can hold lab passwords):
+
+**Language branches.** A content repository keeps its source language on the
+default branch and each translation in a branch named after its language
+(`es`, `pt-br`...). Without a `ref`, a plan whose `story.language` isn't the
+source language (`en`) takes the branch named after that language. When the
+repository has no such branch, the instructions come from the default branch and
+rodeo warns. With either the language branch or `ref:` set to it, rodeo also
+warns when that branch is behind the default branch: the default branch has
+commits the language branch hasn't taken in. Changes under `rmstory/`,
+`rmstory-stories/`, `story/` and `.github/` don't count. A catalog rodeo
+(`rodeo new <name> --from <repo>@<lang>`, or a catalog `ref:`) gets the same
+warning when that ref is its plan's `story.language`.
+
+`rodeo story check [DIR]` runs that check on a clone of the content repository.
+For each language branch it lists the commits the branch misses, and it exits 1
+when a branch is behind, so it can gate CI (check out the full history, e.g.
+`fetch-depth: 0`). With no `--language`, it checks every branch named like a
+two-letter language tag. `--source` names the source branch when it isn't the
+clone's default.
+
+| format | read from `<path>` | guide |
+|---|---|---|
+| `rmstory` | `*.md`, `chapters.yaml`, `stories/`, `strings/` | `guide.md`, rendered like `rodeo story render` |
+| `instruqt` | `<challenge>/assignment.md` | one `<challenge>.md` each, `facts` and `replace` applied |
+| `markdown` | `*.md` | one file each, `replace` applied |
+
+At the repository's root, whatever `path` names, the content can also carry the
+profile layout's `checks/` and `custom/scripts/`:
+
+- `checks/` is installed into `/opt/rodeo/<plan name>/checks/`, root-owned and
+  readable and runnable by every user on the host (a student's account
+  included), replacing the previous copy. Installing needs root; without it the
+  guide is still rendered and the command says how to rerun. `rodeo clean`
+  removes it (`rodeo clean --all`: every plan's).
+- `custom/scripts/` holds setup scripts: the executable ones run in sorted order
+  on the host, from that directory, with the environment the profile's own
+  `custom/scripts/` get (`KUBECONFIG`, `RODEO_PLAN_NAME`, `RODEO_CONFIG_DIR`,
+  `RODEO_LAB_DIR`) plus `RODEO_CONTENT_DIR`, the fetched repository. They run on
+  every apply, so write them to be idempotent. Each prints its output; a failing
+  one doesn't stop the others, and `rodeo content apply` then exits 1.
+
+The scripts run as the user running rodeo (root under `rodeo up`), from whatever
+`ref` points at: pin a tag or commit when the repository isn't yours.
+
+`rodeo up` applies it after a successful deploy, after the profile's own
+`custom/scripts/`; a failure there only warns. A content script named like one of
+the profile's own `custom/scripts/` is left out there, since the profile's copy
+already ran. On `deployment_target: instruqt`,
+`rodeo up` leaves the setup scripts out for the engines that leave out their
+profile's custom scripts (they belong in the baked image); `rodeo content apply`
+runs them. `rodeo content show` prints the block, the last fetched commit, the
+setup scripts and where the checks are installed. An rmstory
+content is also what `rodeo story render` reads when the lab has no `story/`
+of its own. The `workshop:` block (Instruqt tracks for lab-in-a-box labs) and an
+in-profile `story/` keep working as before.
+
+---
+
 ## lab_in_a_box: deploying with, or exporting to, lab-in-a-box
 
 [lab-in-a-box](https://github.com/SUSE-Technical-Marketing/lab-in-a-box) builds
@@ -476,6 +556,30 @@ lab_in_a_box:
   clu_rel: stable                       # install channel, exact version pins don't carry over
   addons: [rancher]                     # override the derived kcluster install_<addon> list
   sections:                             # verbatim lab.json sections (addon config)
+    smlm: {smlm_deployment: podman, smlm_admin_pass: "??smlm_admin_password"}
+```
+
+**The lab itself:** `lab_in_a_box.lab` can instead hold a whole lab-in-a-box lab
+(`common`, `nodes` keyed by FQDN, `kclusters`, one section per add-on), as the
+lab-in-a-box lab-builder edits it. rodeo deploys it as written and sets only what
+belongs to the host: the common network keys and `lab_name`, each node's
+`BRIDGE`, `myip`, `mymac` and FQDN domain, the kclusters' `mydomain`, images
+(`ISO_URL`) and secrets. The lab's nodes are the lab's VMs: one that
+`definition.yaml` lists keeps that address, any other gets its `myip` host part
+in the lab's network when free (else the next free address); definition nodes the
+lab leaves out are not deployed. `nodes` and `sections` above, and a variant's,
+are merged into it. Reference VMs from add-on sections as `${node_fqdn:<vm>}` /
+`${node_ip:<vm>}`. `smlm-workshop` carries its lab this way.
+`rodeo new <name> --from-lab-json <file>` writes such a plan from an existing lab
+(see [Create your own rodeo](../custom-rodeos.md)).
+
+```yaml
+lab_in_a_box:
+  lab:
+    common: {config_method: cloud-init}
+    nodes:
+      smlm.rodeo.lab: {myip: "192.168.122.20", VM_MEM: "16384", VM_CPU: "8", VM_DSK: "300",
+                       ISO_IMAGE: smlm.qcow2, addons: [smlm]}
     smlm: {smlm_deployment: podman, smlm_admin_pass: "??smlm_admin_password"}
 ```
 

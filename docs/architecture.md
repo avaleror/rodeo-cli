@@ -2,7 +2,7 @@
 
 Technical reference for contributors and maintainers. For deploying a workshop, see [User guide](get-started.md).
 
-**Version:** 0.25.3 <!-- x-release-please-version -->
+**Version:** 0.26.0 <!-- x-release-please-version -->
 **License:** GPL-3.0-or-later
 
 ---
@@ -459,8 +459,8 @@ Live KVM regression is still manual (or geekohive) before touching MAC/DHCP/ISO 
 
 | Add… | Where |
 |------|-------|
-| New tech platform | New `RodeoProfile` + `definition.yaml`, then `profiles.register_profile()` (in-tree: `profiles/__init__.py`; out-of-tree: a `rodeo.plugins` entry point) |
-| New deployment_target | `host_context.register_host_context(name, overlay)`, validation, `--target`, prompt, and plan shaping all follow; add `up_cmd.py` auto-detection only if the target is probeable |
+| New tech platform | New `RodeoProfile` + `definition.yaml`, then `profiles.register_profile()` (in-tree: `profiles/__init__.py`; out-of-tree: a `rodeo.plugins` entry point). Its `builder` attribute (title, base profile, capabilities it provides, note) offers it in the Rodeo Builder |
+| New deployment_target | `host_context.register_host_context(name, overlay)`, validation, `--target`, prompt, plan shaping and the Rodeo Builder's target choice all follow; add `up_cmd.py` auto-detection only if the target is probeable |
 | Profile success screen | Override `RodeoProfile.success_extra_sections()` / `success_next_steps()`, `success.py` renders URLs/credentials, the profile owns the narrative |
 | New Python phase | `profiles.base.register_stream_phase()` + a `stream_*` generator on DeployRunner + add to `profile.phases` |
 | New host provider | `providers.registry.register_provider()` with a factory returning a `HostProvider` |
@@ -469,6 +469,26 @@ Live KVM regression is still manual (or geekohive) before touching MAC/DHCP/ISO 
 | Host OS support | `hostos.py` (which OSes host labs), `install.sh` role detection, `install_deps.py`, and kvm_host role conditionals |
 | New workshop/demo | Separate repo: `rodeo-plan.yaml` (type + deployment_target) + lab guide + host setup docs |
 | Multi-host workshop fan-out | `rodeo/fleet/` + `workshop.yaml`: see [Fleet](fleet.md); do not multi-host the phase engine |
+
+### Credential stores of other engines
+
+The builder's credentials come from rodeo's own store (`rodeo/builder/vault.py`)
+and from the stores of other engines, read-only (`rodeo/builder/engine_credentials.py`,
+today the lab-in-a-box engine's). Reusing the credentials an engine keeps in its own
+store needs, from that store:
+
+- **Engine name**: every credential listed carries `engine`, the engine whose
+  store holds it (`rodeo` for rodeo's own), shown on the Settings page.
+- **List without values**: id, name, type, created and last used; never a value
+  or anything that decrypts one.
+- **Application**: which provider or service each credential is for, shown on
+  the Settings page (lab-in-a-box: the file name's `<application>-` part).
+- **Open with a password**: values only after that credential's password, asked
+  each time; delete only after the password too.
+- **Type mapping**: from the engine's credential types to rodeo's
+  (`vault.TYPES`), so **Use stored…** offers them for the right plan secrets.
+- **Root-only access**: read and written through the root helper
+  (`rodeo-builder-helper`), never by the web server user.
 
 ---
 

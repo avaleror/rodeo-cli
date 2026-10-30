@@ -85,5 +85,8 @@ nav:
   - Troubleshooting: runbook.md
   - For contributors:
     - Architecture: architecture.md
+    - Architecture v2 (overview): design/architecture-v2-overview.md
+    - Architecture v2 (design): design/architecture-v2.md
+    - Architecture v2 (work breakdown): design/architecture-v2-work.md
     - Claim portal (design): claim-portal.md
     - Claim portal (implementation plan): claim-portal-plan.md

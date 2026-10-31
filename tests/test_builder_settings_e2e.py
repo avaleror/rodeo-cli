@@ -105,9 +105,9 @@ def browser_page(site, monkeypatch):
         pg.on("console", lambda msg: errors.append(msg.text) if msg.type == "error"
               and not msg.text.startswith("Failed to load resource") else None)
 
-        def open_with(admin):
+        def open_with(admin, query=""):
             pg.route(re.compile(r".*/rodeo-builder/admin\?.*"), admin.handle)
-            pg.goto(site)
+            pg.goto(site + query)
             return admin
 
         yield pg, open_with
@@ -189,3 +189,15 @@ def test_other_engines_credentials_are_listed_read_only(browser_page):
     sync_api.expect(row).to_contain_text("read-only here")
     sync_api.expect(row.locator("td")).to_have_text(["aws", "lab-in-a-box", "no", re.compile(r"2026"), "never", "read-only here"])
     assert row.locator("button").count() == 0
+
+
+def test_add_parameter_opens_the_form_with_that_type(browser_page):
+    page, open_with = browser_page
+    open_with(FakeAdmin(), "?add=scc")
+    sync_api.expect(page.locator("#vaultForm")).to_be_visible()
+    assert page.locator("#vaType").input_value() == "scc"
+    assert page.locator("#vaFields label").first.text_content() == "Registration code"
+    page.goto("about:blank")
+    open_with(FakeAdmin(), "?add=no-such-type")
+    sync_api.expect(page.locator("#vaultList")).to_contain_text("No stored credentials yet.")
+    assert page.locator("#vaultForm").is_hidden()

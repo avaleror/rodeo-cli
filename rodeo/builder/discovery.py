@@ -49,6 +49,9 @@ _COMMENT_RE = re.compile(r"<!--.*?(?:-->|$)", re.S)
 _NUMBER_PREFIX_RE = re.compile(r"^\d+-")
 _LEADING_NUMBER_RE = re.compile(r"^(\d+)")
 _FRONT_MATTER_RE = re.compile(r"\A---\n(.*?)\n---\n?", re.S)
+_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
+_TITLE_LINE_RE = re.compile(r"^title:[ \t]*(.*?)[ \t]*$", re.M)
+_ESCAPE_RE = re.compile(r"\\U([0-9A-Fa-f]{8})|\\u([0-9A-Fa-f]{4})")
 _TIME_RE = re.compile(r"^\*\*Time:\*\*\s*(\d+)\s*min", re.M | re.I)
 _STRINGS_LEAF_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9._:-]{0,127}/@default/content\.json$")
 STRINGS_MAX_BYTES = 256 * 1024
@@ -114,6 +117,19 @@ def engines() -> dict[str, Any]:
     capabilities = sorted({c for e in out for c in e["provides"]})
     return {"engines": out, "capabilities": capabilities, "targets": known_targets(),
             "content_formats": list(FORMATS)}
+
+
+def _front_matter_title(front: str) -> str:
+    """The ``title:`` of a front-matter block, markup removed. Front matter that is not
+    YAML (rmstory spans inside a double-quoted title) is read from its title line."""
+    try:
+        meta = yaml.safe_load(front)
+        title = str(meta.get("title") or "") if isinstance(meta, dict) else ""
+    except yaml.YAMLError:
+        match = _TITLE_LINE_RE.search(front)
+        title = match.group(1).strip("\"'") if match else ""
+        title = _ESCAPE_RE.sub(lambda m: chr(int(m.group(1) or m.group(2), 16)), title)
+    return _TAG_RE.sub("", title).strip()
 
 
 def _chapter_title(body: str, fallback: str) -> str:
@@ -194,7 +210,8 @@ def workshops(sources: dict[str, Path] | None = None) -> dict[str, Any]:
             "id": src["id"],
             "title": src["title"],
             "repo": src["repo"],
-            "source": "{}/tree/{}/{}".format(src["repo"].removesuffix(".git"), src["ref"] or "HEAD", src["path"]),
+            "source": "{}/tree/{}/{}".format(src["repo"].removesuffix(".git"), src["ref"] or "HEAD",
+                                             "" if src["path"].strip("/") == "." else src["path"]).rstrip("/"),
             "engine": src["engine"],
             "profile": src["profile"],
             "plan": _plan_text(_profile_example(src["profile"])) if src["profile"] else "",
@@ -207,7 +224,8 @@ def workshops(sources: dict[str, Path] | None = None) -> dict[str, Any]:
 
 def chapter_sources() -> list[dict[str, Any]]:
     """chapter_sources.yaml, with repo/ref/path taken from a profile's workshop:
-    block where a source names one, then one ``rmstory`` source per catalog rodeo
+    block where a source names one (engine and profile "" when not given: its chapters
+    only join the library), then one ``rmstory`` source per catalog rodeo
     (:mod:`rodeo.catalog`) whose repository the file does not list: its ``story/``,
     id ``catalog-<name>``, no base profile, the default branch when the entry has no ref,
     ``languages`` true (its translations are read too)."""
@@ -219,7 +237,9 @@ def chapter_sources() -> list[dict[str, Any]]:
             src.setdefault("repo", ws.get("repo"))
             src.setdefault("ref", ws.get("ref") or ws.get("branch") or "main")
             src.setdefault("path", "tracks/{}".format(ws.get("track")))
-        missing = [k for k in ("id", "title", "engine", "profile", "format", "repo", "ref", "path") if not src.get(k)]
+        missing = [k for k in ("id", "title", "format", "repo", "ref", "path") if not src.get(k)]
+        src.setdefault("engine", "")
+        src.setdefault("profile", "")
         if missing or src["format"] not in content.FORMATS:
             raise ValueError("chapter source {}: missing {} or unknown format".format(src.get("id"), missing))
         out.append(src)
@@ -239,22 +259,29 @@ NO_SYMLINKS = ["-c", "core.symlinks=false"]
 
 
 def source_fetch_commands(src: dict[str, Any], dest: Path) -> list[list[str]]:
-    """Shallow, sparse clone of only the files a source's chapters are read from."""
+    """Shallow, sparse clone of only the files a source's chapters are read from, at the
+    source's ref: a branch or tag, or a full 40-character commit id (fetched by id)."""
     path = src["path"].strip("/")
+    top = "/" if path in ("", ".") else "/{}/".format(path)
     if src["format"] == "instruqt":
-        patterns = ["/{}/*/assignment.md".format(path), "/{}/*/check-*".format(path)]
+        patterns = [top + "*/assignment.md", top + "*/check-*"]
     elif src["format"] == "rmstory":
-        patterns = ["/{}/*.md".format(path), "/{}/chapters.yaml".format(path), "/{}/stories/*.yaml".format(path)]
+        patterns = [top + "*.md", top + "chapters.yaml", top + "stories/*.yaml"]
         if src.get("languages"):
-            patterns.append("/{}/strings/*/*/@default/content.json".format(path))
+            patterns.append(top + "strings/*/*/@default/content.json")
     else:
-        patterns = ["/{}/*.md".format(path)]
+        patterns = [top + "*.md"]
         if src.get("checks"):
             patterns.append("/{}/*".format(str(Path(src["checks"]).parent).strip("/")))
+    clone = ["git", "clone", "-q", "--depth", "1", "--filter=blob:none", "--sparse", *NO_SYMLINKS]
+    sparse = ["git", "-C", str(dest), "sparse-checkout", "set", "--no-cone", *patterns]
+    if not _COMMIT_RE.match(src["ref"] or ""):
+        return [[*clone, *(["--branch", src["ref"]] if src["ref"] else []), "--", src["repo"], str(dest)], sparse]
     return [
-        ["git", "clone", "-q", "--depth", "1", "--filter=blob:none", "--sparse", *NO_SYMLINKS,
-         *(["--branch", src["ref"]] if src["ref"] else []), "--", src["repo"], str(dest)],
-        ["git", "-C", str(dest), "sparse-checkout", "set", "--no-cone", *patterns],
+        [*clone, "--no-checkout", "--", src["repo"], str(dest)],
+        sparse,
+        ["git", "-C", str(dest), "fetch", "-q", "--depth", "1", "--filter=blob:none", "origin", src["ref"]],
+        ["git", "-C", str(dest), "checkout", "-q", "--detach", "FETCH_HEAD"],
     ]
 
 
@@ -407,12 +434,11 @@ def source_chapters(src: dict[str, Any], checkout: Path) -> list[dict[str, Any]]
         for challenge in sorted(p for p in root.iterdir() if (p / "assignment.md").is_file()):
             text = (challenge / "assignment.md").read_text(errors="replace")
             match = _FRONT_MATTER_RE.match(text)
-            meta = yaml.safe_load(match.group(1)) if match else {}
             body = text[match.end():] if match else text
             cid = _NUMBER_PREFIX_RE.sub("", challenge.name)
             script = _check_script(challenge)
             out.append({"id": cid, "file": challenge.name + "/assignment.md",
-                        "title": (meta or {}).get("title") or _chapter_title(body, cid),
+                        "title": (_front_matter_title(match.group(1)) if match else "") or _chapter_title(body, cid),
                         "mins": INSTRUQT_MINUTES, "needs": needs, "check": bool(script), "check_script": script,
                         "spans": _span_count(body), "body": body.lstrip("\n")})
         return out

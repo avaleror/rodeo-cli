@@ -77,7 +77,10 @@ rodeo up --profile <name>     # after Save to profiles
 - **Chapters.** The library lists every workshop's chapters, to add to the rodeo: the bundled
   examples' `story/` directories, the workshops whose chapters live in their own
   repository (listed in `rodeo/builder/chapter_sources.yaml`: the SMLM workshop's
-  Instruqt track and the Virtualization workshop's exercises), the `story/` of
+  Instruqt track, the SUSE Virtualization Rodeo's Instruqt track and the Virtualization
+  workshop's exercises; each entry's `ref` is a branch, a tag or a full commit id, to pin a
+  release; an entry without `engine` and `profile`, for a repository with chapters but no
+  rodeo-cli settings, only adds its chapters to the library, and no rodeo starts from it), the `story/` of
   every published rodeo in the catalog (`rodeo/data/catalog.d/`, unless
   `chapter_sources.yaml` already names its repository; its translations come
   along, from `story/strings/` and from each language branch, so adding one of its

@@ -367,6 +367,29 @@ def test_source_fetch_commands_are_sparse_and_shallow(tmp_path):
         "/tracks/smlms/*/assignment.md", "/tracks/smlms/*/check-*"]
 
 
+def test_the_virtualization_rodeo_is_an_instruqt_track_at_its_repository_root(tmp_path):
+    rodeo_src = next(s for s in discovery.chapter_sources() if s["id"] == "virt-rodeo")
+    assert rodeo_src["repo"] == "https://github.com/SUSE-Technical-Marketing/suse-virt-rodeo"
+    assert (rodeo_src["engine"], rodeo_src["profile"], rodeo_src["format"]) == ("", "", "instruqt")
+    clone, sparse, fetch, checkout = discovery.source_fetch_commands(rodeo_src, tmp_path / "r")
+    assert "--branch" not in clone and clone[-4:] == ["--no-checkout", "--", rodeo_src["repo"], str(tmp_path / "r")]
+    assert sparse[-2:] == ["/*/assignment.md", "/*/check-*"]
+    assert fetch[-2:] == ["origin", rodeo_src["ref"]] and len(rodeo_src["ref"]) == 40
+    assert checkout[-3:] == ["-q", "--detach", "FETCH_HEAD"]
+    challenge = tmp_path / "r" / "01-the-arrival"
+    challenge.mkdir(parents=True)
+    (challenge / "assignment.md").write_text(
+        '---\nslug: the-arrival\ntitle: "<span id="a.7" lang="en" hist="bank">\\U0001F3E6 Chapter 1: The Arrival</span>"\n'
+        'type: challenge\n---\n<span id="a.1" lang="en" hist="bank">The rain</span>\n')
+    (challenge / "check-kvm-host").write_text("#!/bin/bash\n")
+    [chapter] = discovery.source_chapters(rodeo_src, tmp_path / "r")
+    assert (chapter["id"], chapter["title"], chapter["spans"], chapter["check"]) == (
+        "the-arrival", "\U0001F3E6 Chapter 1: The Arrival", 1, True)
+    shop = next(w for w in discovery.workshops({"virt-rodeo": tmp_path / "r"})["workshops"] if w["id"] == "virt-rodeo")
+    assert shop["source"] == "https://github.com/SUSE-Technical-Marketing/suse-virt-rodeo/tree/" + rodeo_src["ref"]
+    assert (shop["engine"], shop["profile"], shop["plan"]) == ("", "", "")
+
+
 def test_fetch_sources_keeps_given_checkouts_and_reports_failed_clones(tmp_path):
     calls = []
 
@@ -379,7 +402,7 @@ def test_fetch_sources_keeps_given_checkouts_and_reports_failed_clones(tmp_path)
         return Done(1, "fatal: repository not found") if "virt-workshop" in " ".join(cmd) else Done(0)
 
     checkouts, errors = discovery.fetch_sources(tmp_path, {"smlm-workshop": Path("/given")}, run=run)
-    assert checkouts == {"smlm-workshop": Path("/given")}
+    assert checkouts == {"smlm-workshop": Path("/given"), "virt-rodeo": tmp_path / "virt-rodeo"}
     assert errors == {"virt-workshop": "fatal: repository not found"}
     assert all("smlm-workshop" not in " ".join(c) for c in calls)
 
@@ -417,7 +440,7 @@ def test_catalog_rodeos_are_chapter_sources_after_the_file(monkeypatch, tmp_path
              ride={"name": "ride", "title": "Ride", "repo": "https://github.com/rider/ride", "ref": "", "engine": "rancher"},
              dup={"name": "dup", "repo": "https://github.com/avaleror/suse-virt-workshop.git", "ref": "main"})
     sources = discovery.chapter_sources()
-    assert [s["id"] for s in sources] == ["smlm-workshop", "virt-workshop", "catalog-ride"]
+    assert [s["id"] for s in sources] == ["smlm-workshop", "virt-workshop", "virt-rodeo", "catalog-ride"]
     ride = sources[-1]
     assert (ride["format"], ride["path"], ride["profile"], ride["engine"], ride["title"]) == ("rmstory", "story", "", "rancher", "Ride")
     clone, sparse = discovery.source_fetch_commands(ride, tmp_path / "r")

@@ -6,12 +6,15 @@
 #   title      library group title
 #   engine     lab engine the chapters run on (suse-virt, rancher, suse-edge, lab-in-a-box)
 #   profile    bundled profile they run on (the rodeo's base)
+#              engine and profile only for a repository that carries rodeo-cli settings;
+#              without them its chapters only join the library (no rodeo starts from it)
 #   format     instruqt: <path>/<challenge>/assignment.md (front-matter title)
 #              markdown: <path>/*.md (title from the first heading, "**Time:** N min")
 #              rmstory: <path>/*.md with <path>/chapters.yaml and <path>/stories/*.yaml
 #                       (a rodeo's story/ directory)
 #   workshop   take repo/ref/path from this bundled profile's `workshop:` block
-#   repo, ref, path   otherwise: where the chapters are
+#   repo, ref, path   otherwise: where the chapters are (path . = the repository root);
+#              ref is a branch, a tag or a full 40-character commit id
 #   checks     markdown only: check script per chapter, {n} = the file's leading number
 #   needs      capabilities every chapter of the source needs
 #
@@ -35,4 +38,12 @@ sources:
     ref: main
     path: docs/exercises
     checks: checks/check-exercise-{n}.sh
+    needs: [harvester, kubevirt, rancher]
+
+  - id: virt-rodeo
+    title: SUSE Virtualization Rodeo
+    format: instruqt
+    repo: https://github.com/SUSE-Technical-Marketing/suse-virt-rodeo
+    ref: 8d24ae9a06152352a123820555b69b289fa92d38   # main, 2026-10-14
+    path: .
     needs: [harvester, kubevirt, rancher]

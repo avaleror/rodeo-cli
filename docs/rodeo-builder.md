@@ -100,7 +100,11 @@ rodeo up --profile <name>     # after Save to profiles
   suggests, as you type, what an engine really provides: the native engines'
   capabilities and lab-in-a-box's catalogue (add-ons, infrastructure services,
   Kubernetes cluster types). If the lab-in-a-box catalogue could not be read, the
-  page says why. When nothing matches, Enter adds what you typed as a new need: a
+  page says why. The `rodeo builder` server reads the catalogue and the lab schema
+  once per checkout and again only when the checkout's files change. While the
+  page starts, a note says it is loading; if the page can't start (a script error,
+  the builder data not loading) the note says why and offers **Reload**, and after
+  30 s it names the calls still waiting for the server. When nothing matches, Enter adds what you typed as a new need: a
   placeholder for something no engine provides yet, like `missing_addon`. Such a
   need only marks the chapter as "work needed" (also listed, by name, in the
   download's README); it never blocks the rodeo and never reaches the lab.

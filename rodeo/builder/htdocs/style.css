@@ -286,6 +286,8 @@ div.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 2p
 .select.no-cred, option.no-cred { color: var(--coral); }
 .loading { position: fixed; z-index: 30; left: 50%; top: 72px; transform: translateX(-50%); padding: 10px 18px; border-radius: 6px; background: var(--panel); box-shadow: 0 0 0 1px var(--line), 0 6px 24px rgba(0,0,0,.25); font-size: 14px; }
 .loading[hidden] { display: none; }
+.loading.bad { color: var(--coral); box-shadow: 0 0 0 1px var(--coral), 0 6px 24px rgba(0,0,0,.25); }
+.loading .btn { margin-left: 8px; }
 #credBody .btn { margin-top: 4px; }
 .cred-hint { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 6px 0; font-size: 12.5px; }
 .cred-hint[hidden] { display: none; }

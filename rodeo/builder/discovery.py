@@ -15,6 +15,8 @@ on the default branch, then each language branch's ``story/strings/<lang>/``
 """
 from __future__ import annotations
 
+import contextlib
+import copy
 import json
 import os
 import re
@@ -24,6 +26,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -557,6 +560,25 @@ def labinabox_addons(checkout: Path) -> list[dict[str, Any]]:
     return items
 
 
+# labinabox()'s catalogue and schema per checkout path, with the checkout_stamp() they were read at.
+_liab_cache: dict[str, tuple[tuple[int, int], dict[str, Any]]] = {}
+_liab_lock = threading.Lock()
+
+
+def checkout_stamp(checkout: Path) -> tuple[int, int]:
+    """``(newest mtime in ns, file count)`` of the parts of a lab-in-a-box checkout its
+    lab-builder API reads (``scripts/``, ``libs/``, ``webui/lib/``): changes when they do."""
+    newest = count = 0
+    for sub in ("scripts", "libs", os.path.join("webui", "lib")):
+        for root, dirs, files in os.walk(checkout / sub):
+            dirs[:] = [d for d in dirs if d != "__pycache__"]
+            for name in files:
+                with contextlib.suppress(OSError):
+                    newest = max(newest, os.stat(os.path.join(root, name)).st_mtime_ns)
+                    count += 1
+    return newest, count
+
+
 def labinabox(checkout: Path | None = None, builder_url: str = LAB_BUILDER_URL,
               version: str = "", missing: str = "") -> dict[str, Any]:
     """The lab-builder URL, the lab-in-a-box catalogue split by kind (``addons``,
@@ -565,7 +587,8 @@ def labinabox(checkout: Path | None = None, builder_url: str = LAB_BUILDER_URL,
     ``error`` says why the catalogue is missing (*missing*, the caller's reason
     for having no checkout; or the checkout's API failed); it is empty when the
     catalogue was read. ``schema`` is the checkout's :func:`labinabox_schema`, or
-    None with ``schema_error`` saying why.
+    None with ``schema_error`` saying why. A complete answer (catalogue and schema) is kept
+    per checkout and read again only when its :func:`checkout_stamp` changes.
     """
     out: dict[str, Any] = {"builder_url": builder_url, "version": version, "error": "",
                            "imports": labinabox_imports(), **{key: [] for key in LIAB_KINDS.values()},
@@ -573,6 +596,11 @@ def labinabox(checkout: Path | None = None, builder_url: str = LAB_BUILDER_URL,
     if checkout is None:
         out["error"] = missing or "no lab-in-a-box checkout was given, so its catalogue is unknown"
         return out
+    key, stamp = str(checkout), checkout_stamp(checkout)
+    with _liab_lock:
+        kept = _liab_cache.get(key)
+    if kept and kept[0] == stamp:
+        return {**out, **copy.deepcopy(kept[1])}
     try:
         items = labinabox_addons(checkout)
     except (OSError, RuntimeError, ValueError) as exc:
@@ -584,4 +612,7 @@ def labinabox(checkout: Path | None = None, builder_url: str = LAB_BUILDER_URL,
         out["schema"] = labinabox_schema(checkout)
     except (OSError, RuntimeError, ValueError) as exc:
         out["schema_error"] = str(exc)
+        return out
+    with _liab_lock:
+        _liab_cache[key] = (stamp, copy.deepcopy({k: out[k] for k in ("schema", *LIAB_KINDS.values())}))
     return out

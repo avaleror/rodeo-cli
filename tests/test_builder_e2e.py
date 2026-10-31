@@ -1700,6 +1700,38 @@ def test_loading_message_shows_until_the_page_has_its_data(page):
     sync_api.expect(page.locator("#loading")).to_be_hidden()
 
 
+def test_loading_message_says_why_when_a_script_breaks(page):
+    page.route(re.compile(r".*/app\.js(\?.*)?$"), lambda route: route.fulfill(
+        status=200, content_type="text/javascript", body="const broken = 'oops;\n"))
+    page.goto(page.url)
+    box = page.locator("#loading")
+    sync_api.expect(box).to_contain_text("The page couldn't start")
+    sync_api.expect(box.locator("button")).to_have_text("Reload")
+    page.rb_errors[:] = [e for e in page.rb_errors if e != "Invalid or unexpected token"]
+
+
+@pytest.mark.parametrize("page", ["live"], indirect=True)
+def test_loading_message_names_the_call_it_waits_for(page):
+    held = []
+    page.add_init_script("window.RB_BOOT_WAIT = 300")
+    page.route(re.compile(r".*/api\?action=labinabox.*"), lambda route: held.append(route))
+    page.goto(page.url)
+    sync_api.expect(page.locator("#loading")).to_contain_text("Still waiting for the server: labinabox.")
+    page.unroute(re.compile(r".*/api\?action=labinabox.*"))
+    for route in held:
+        route.continue_()
+    sync_api.expect(page.locator("#loading")).to_be_hidden()
+
+
+@pytest.mark.parametrize("page", ["live"], indirect=True)
+def test_loading_message_says_when_the_data_did_not_load(page):
+    page.route(re.compile(r".*/api\?action=engines.*"), lambda route: route.fulfill(
+        status=500, content_type="application/json", body='{"error": "boom"}'))
+    page.goto(page.url)
+    sync_api.expect(page.locator("#loading")).to_contain_text("could not load the builder data (boom)")
+    page.rb_errors[:] = [e for e in page.rb_errors if not e.startswith("Failed to load resource")]
+
+
 def test_static_has_no_settings_link(page):
     assert page.locator("#settingsBtn").is_hidden()
 

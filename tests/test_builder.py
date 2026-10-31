@@ -14,6 +14,7 @@ import yaml
 
 from rodeo.builder import discovery
 from rodeo.builder.api import Api
+from tests.conftest import make_labinabox
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -138,6 +139,32 @@ def test_labinabox_without_addons_fails_loudly(tmp_path):
     with pytest.raises(RuntimeError, match="none reported"):
         discovery.labinabox_addons(checkout)
     assert "none reported" in discovery.labinabox(checkout)["error"]
+
+
+def test_labinabox_catalogue_is_read_again_only_when_the_checkout_changes(tmp_path, monkeypatch):
+    checkout = make_labinabox(tmp_path / "liab")
+    runs = []
+    run = discovery._run_liab
+    monkeypatch.setattr(discovery, "_run_liab", lambda script, path: runs.append(script) or run(script, path))
+    first = discovery.labinabox(checkout)
+    assert first["schema"] and len(runs) == 2
+    first["addons"].clear()
+    again = discovery.labinabox(checkout, "https://example/lb/", "2.0")
+    assert len(runs) == 2 and [a["name"] for a in again["addons"]] == ["smlm", "client_registration"]
+    assert again["builder_url"] == "https://example/lb/" and again["version"] == "2.0"
+    api = checkout / "webui" / "lib" / "api.py"
+    os.utime(api, ns=(api.stat().st_mtime_ns + 10**9,) * 2)
+    discovery.labinabox(checkout)
+    assert len(runs) == 4
+
+
+def test_labinabox_errors_are_not_kept(tmp_path, monkeypatch):
+    checkout = _fake_labinabox(tmp_path, "def dispatch(*a):\n    return 500, {'error': 'boom'}\n")
+    runs = []
+    run = discovery._run_liab
+    monkeypatch.setattr(discovery, "_run_liab", lambda script, path: runs.append(script) or run(script, path))
+    assert "boom" in discovery.labinabox(checkout)["error"]
+    assert "boom" in discovery.labinabox(checkout)["error"] and len(runs) == 2
 
 
 def test_labinabox_addons_fail_loudly(tmp_path):
@@ -279,7 +306,7 @@ def test_static_build_embeds_every_answer(tmp_path, labinabox_checkout):
                         "--no-fetch-sources", "--labinabox", str(labinabox_checkout)],
                        capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
-    assert sorted(p.name for p in out.iterdir()) == ["app.js", "assets", "fonts", "index.html", "logic.js", "style.css", "theme.js"]
+    assert sorted(p.name for p in out.iterdir()) == ["app.js", "assets", "boot.js", "fonts", "index.html", "logic.js", "style.css", "theme.js"]
     html = (out / "index.html").read_text()
     assert "__RODEOVERSION__" not in html
     payload = re.search(r'<script id="static-api-data" type="application/json">(.*?)</script>', html, re.S).group(1)

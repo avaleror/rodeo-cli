@@ -2868,10 +2868,16 @@ function bind() {
   bindEditor();
 }
 
+// apiGet() for a startup call: boot.js names it while it waits.
+function startupGet(action) {
+  window.RBBoot.start(action);
+  return apiGet(action).finally(() => window.RBBoot.done(action));
+}
+
 async function init() {
   bind();
   try {
-    const [engines, workshops, liab] = await Promise.all([apiGet("engines"), apiGet("workshops"), apiGet("labinabox")]);
+    const [engines, workshops, liab] = await Promise.all([startupGet("engines"), startupGet("workshops"), startupGet("labinabox")]);
     state.engines = engines.engines;
     state.capabilities = engines.capabilities;
     state.targets = engines.targets;
@@ -2879,12 +2885,12 @@ async function init() {
     state.workshops = workshops.workshops;
     state.liab = { ...state.liab, ...liab };
     if (!window.RB_STATIC) {
-      state.story = await apiGet("story").catch((err) => ({ available: false, error: err.message, engines: [] }));
-      state.server = await apiGet("server");
+      state.story = await startupGet("story").catch((err) => ({ available: false, error: err.message, engines: [] }));
+      state.server = await startupGet("server");
       $("#saveBtn").hidden = !state.server.save;
-      state.deploy = await apiGet("deploy").catch((err) => ({ available: false, reason: err.message, current: null }));
+      state.deploy = await startupGet("deploy").catch((err) => ({ available: false, reason: err.message, current: null }));
       if (state.deploy.current && state.deploy.current.status === "running") pollDeploy();
-      state.vault = await apiGet("vault").catch((err) => ({ available: false, reason: err.message, types: [], items: [] }));
+      state.vault = await startupGet("vault").catch((err) => ({ available: false, reason: err.message, types: [], items: [] }));
       $("#settingsBtn").href = "https://" + location.hostname + "/rodeo-builder/settings/";
       $("#settingsBtn").hidden = false;
       setTip($("#saveBtn"), "Writes this rodeo to " + state.server.profiles_dir + "/<name>/ on this host, "
@@ -2893,7 +2899,8 @@ async function init() {
     offerDraft();
     render();
   } catch (err) {
-    toast("Could not load the builder data: " + err.message, true);
+    window.RBBoot.fail("could not load the builder data (" + err.message + ")");
+    return;
   }
   $("#loading").hidden = true;
 }

@@ -3,7 +3,7 @@
 **[→ Open the Rodeo Builder](../builder/){ .md-button .md-button--primary }**
 
 The Rodeo Builder composes a new rodeo in the browser: pick the lab engine, put
-story chapters in order, tag their text for translation and story variants, and
+story chapters in order, tag their text for translation and with story ids, and
 download the result as a profile you install with `rodeo`.
 
 It comes in two versions of the same page:
@@ -77,7 +77,10 @@ rodeo up --profile <name>     # after Save to profiles
 - **Chapters.** The library lists every workshop's chapters, to add to the rodeo: the bundled
   examples' `story/` directories, the workshops whose chapters live in their own
   repository (listed in `rodeo/builder/chapter_sources.yaml`: the SMLM workshop's
-  Instruqt track and the Virtualization workshop's exercises), the `story/` of
+  Instruqt track, the SUSE Virtualization Rodeo's Instruqt track and the Virtualization
+  workshop's exercises; each entry's `ref` is a branch, a tag or a full commit id, to pin a
+  release; an entry without `engine` and `profile`, for a repository with chapters but no
+  rodeo-cli settings, only adds its chapters to the library, and no rodeo starts from it), the `story/` of
   every published rodeo in the catalog (`rodeo/data/catalog.d/`, unless
   `chapter_sources.yaml` already names its repository; its translations come
   along, from `story/strings/` and from each language branch, so adding one of its
@@ -100,7 +103,11 @@ rodeo up --profile <name>     # after Save to profiles
   suggests, as you type, what an engine really provides: the native engines'
   capabilities and lab-in-a-box's catalogue (add-ons, infrastructure services,
   Kubernetes cluster types). If the lab-in-a-box catalogue could not be read, the
-  page says why. When nothing matches, Enter adds what you typed as a new need: a
+  page says why. The `rodeo builder` server reads the catalogue and the lab schema
+  once per checkout and again only when the checkout's files change. While the
+  page starts, a note says it is loading; if the page can't start (a script error,
+  the builder data not loading) the note says why and offers **Reload**, and after
+  30 s it names the calls still waiting for the server. When nothing matches, Enter adds what you typed as a new need: a
   placeholder for something no engine provides yet, like `missing_addon`. Such a
   need only marks the chapter as "work needed" (also listed, by name, in the
   download's README); it never blocks the rodeo and never reaches the lab.
@@ -114,16 +121,24 @@ rodeo up --profile <name>     # after Save to profiles
   and sparse, no credentials). Imported groups are kept with the draft.
 - **Story.** **Edit** on a chapter opens the story editor (rows with span
   warnings show how many). Select text and click **Tag selection**, use the toolbar, or press
-  Alt+T / Alt+I / Alt+N to mark it Translatable, Invariant or No-lang;
-  double-click a span to change its type,
-  language, id or story variant. Ids follow rmstory's rules (`<chapter>.N`,
+  Alt+T / Alt+I / Alt+N to mark it Translatable, Don't translate or No-lang.
+  **Story** (Alt+S) marks the text students get retold: it takes the chapter's
+  story, or asks for the story's name, offering the one the other chapters tell.
+  When the chapters tell more than one story, Review warns and offers **Make all
+  the same story**. Double-click a span to change its type,
+  language, id or story id. Ids follow rmstory's rules (`<chapter>.N`,
   `<parent>.N` when nested) and the editor shows the same warnings as
   `rmstory validate`. The source and the preview sit side by side and scroll
   together; the preview renders the chapter as Markdown or HTML (only safe tags,
   images as links), with its spans marked. Ctrl+Z / Ctrl+Shift+Z undo and redo;
   **Cancel** closes the editor and discards its changes, **Done** keeps them.
 - **Translations.** The story editor's **translations** tab lists every
-  translatable span per language. Click a cell to write or review a
+  translatable span per language of the rodeo. **Add new language…** (there, or
+  at the end of the rodeo tab's Language list, which shows only the rodeo's own
+  languages) asks for its code (`es`, `pt-br`: named like the language branch
+  Publish puts it in) and starts it empty, as a draft copy of another
+  translation or, on the live page, translated with an rmstory engine; it can
+  also become the rodeo's language (`story.language`). Click a cell to write or review a
   translation; a nested span stays in it as `<span id="..."/>`. The download
   carries them in rmstory's translation store, `story/strings/`, and
   `rodeo story render --language <lang>` uses them (with `--engine` for the
@@ -154,10 +169,10 @@ When `rmstory` is installed where `rodeo builder` runs (`sudo rodeo install-deps
   `new-chapter.N`; review the draft before you create the chapter.
 - **New story** (rodeo tab): the same exercises told as a different story. You
   say what is what with the span tags (story editor):
-  - **story**: spans with a story variant (`hist`): retold;
-  - **exercise**: translatable spans without a story variant: translated, never
+  - **story**: spans tagged with a story id (`hist`): retold;
+  - **exercise**: translatable spans without a story id: translated, never
     retold;
-  - **fixed**: invariant (`no`) or no-lang spans, and text outside spans: kept
+  - **fixed**: don't-translate (`no`) or no-lang spans, and text outside spans: kept
     word for word.
 
   Say what the new story is about and pick an engine that can generate text;
@@ -165,15 +180,25 @@ When `rmstory` is installed where `rodeo builder` runs (`sudo rodeo install-deps
   spans never reach the engine. The retold chapters (ids `<chapter>-<theme>`,
   story span ids `<theme>.<id>`; exercise and fixed spans keep their ids and
   translations) become a library group and replace the rodeo's chapters;
-  **Undo** puts the originals back.
+  **Undo** puts the originals back. They live only in this browser (the page's
+  draft) until you download, save to profiles or publish.
 
-Engines read their keys from the environment `rodeo builder` runs in, never from
-the page: for example `DEEPL_AUTH_KEY`, `GEMINI_API_KEY`, `RMSTORY_OLLAMA_URL`, or a
-logged-in `claude` command for `claude-code`. The published page writes
-translations by hand only.
+Engines read their keys from the environment `rodeo builder` runs in (for example
+`DEEPL_AUTH_KEY`, `GEMINI_API_KEY`, `RMSTORY_OLLAMA_URL`, or a logged-in `claude`
+command for `claude-code`) or from a stored credential: the Settings page stores
+one per provider (*Google Gemini API key*, *DeepL API key*, …), encrypted under its
+own password. An engine that needs a key and has neither is listed in red as
+*no credential*; running it explains how to add one and links to the Settings
+form with that type chosen. With stored credentials, the page asks which one
+(when there are several) and its password; the key is decrypted on the server and
+given only to rmstory, never to the page. Stored credentials work where the
+deploy dialog's do (a builder on loopback, or behind the web server's login).
+The published page writes translations by hand only.
 
 The right-hand panel sets the name, story title, language, deployment target and
-story variant, and previews every file of the download. **plan.yaml** is an
+**Story told to students** (shown when the chapters have spans tagged with a story id: *All
+stories together* renders the chapters whole; a story renders only that story's
+spans, in order), and previews every file of the download. **plan.yaml** is an
 editor: change anything and the download keeps it; `name`, `deployment_target`
 and `story` stay in sync with the rodeo tab, and **Reset to generated** drops your
 edits. Changing the lab engine regenerates the plan, after asking.
@@ -182,14 +207,17 @@ edits. Changing the lab engine regenerates the plan, after asking.
 
 The page keeps the lab (**Infrastructure**: engine, base profile, plan,
 definition, lab-in-a-box lab) apart from what students read (**Instructions**:
-chapters, story variants, translations, checks). Step 03 downloads either the
-whole rodeo or one part: **Infrastructure only** (`<name>-infrastructure.zip`,
+chapters, stories, translations, checks). Step 03 downloads either the
+whole rodeo (**Download: All**) or one part: **Infrastructure definition only** (`<name>-infrastructure.zip`,
 installable with `rodeo new --from-zip`) or **Instructions only**
 (`<name>-instructions.zip`: `story/` and `checks/`, laid out to be pushed as a
 content repository).
 
-**Instructions repository** (rodeo tab) points the plan at instructions kept in
-their own repository: the URL (`https://<host>/<owner>/<repo>[/tree/<ref>/<path>]`)
+**Where students' instructions come from** (rodeo tab) is *This rodeo's chapters*
+(the default: the chapters in the middle column, `story/` in the download) or *A
+repository*, which points the plan at instructions kept in their own repository
+(for example the `-instructions` one Publish creates); the chapters column then
+says the deployed instructions come from there. The URL (`https://<host>/<owner>/<repo>[/tree/<ref>/<path>]`)
 and format become the plan's `content:` block. `rodeo up` renders them after
 the lab is up, installs the repository's `checks/` for every user of the host and
 runs its `custom/scripts/`, and `rodeo content apply` updates them on a running lab without
@@ -199,7 +227,7 @@ redeploying (see [the plan reference](reference/plan.md#content-the-labs-instruc
 
 The zip holds one profile directory, `<name>/`, with `rodeo-plan.yaml`, the
 chapters (`story/NN-<id>.md`), `story/chapters.yaml` (minutes, needs and check
-script per chapter), one `story/stories/<variant>.yaml` per story variant,
+script per chapter), one `story/stories/<story id>.yaml` per story,
 `checks/check-<id>.sh` stubs, a README with the exact commands and, when the
 rodeo starts from a profile (`suse-virt`, `rancher`, `suse-edge` or an imported
 lab-in-a-box rodeo), `builder.yaml` naming that base profile.

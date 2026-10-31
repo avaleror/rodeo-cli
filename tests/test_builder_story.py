@@ -9,7 +9,8 @@ import json
 
 import pytest
 
-from rodeo.builder import storywork
+from rodeo import labinabox_host
+from rodeo.builder import storywork, vault
 from rodeo.builder.api import Api
 
 CHAPTERS = [
@@ -19,9 +20,13 @@ CHAPTERS = [
 
 
 def test_info_lists_engines_and_says_when_rmstory_is_missing(fake_rmstory, monkeypatch):
+    monkeypatch.delenv("DEEPL_AUTH_KEY", raising=False)
     info = storywork.info()
-    assert info == {"available": True, "error": "", "engines": [{"name": "deepl", "generate": False},
-                                                                {"name": "ollama", "generate": True}]}
+    assert info == {"available": True, "error": "", "engines": [
+        {"name": "deepl", "generate": False, "credential": "deepl", "env": False},
+        {"name": "ollama", "generate": True, "credential": None, "env": True}]}
+    monkeypatch.setenv("DEEPL_AUTH_KEY", "from-env")
+    assert storywork.info()["engines"][0]["env"] is True
     monkeypatch.setenv("PATH", "/nonexistent")
     missing = storywork.info()
     assert not missing["available"] and "install-deps --story" in missing["error"] and missing["engines"] == []
@@ -139,3 +144,35 @@ def test_api_retells_on_the_live_server(fake_rmstory):
     status, body = _post(Api(can_save=True), "retell", {"chapters": CHAPTERS, "theme": "pirates", "engine": "ollama"})
     assert status == 200 and "pirates" in body["chapters"][0]["body"]
     assert _post(Api(can_save=True), "retell", {"chapters": CHAPTERS, "engine": "ollama"})[0] == 400
+
+
+def test_engine_env_maps_a_stored_credential_to_the_engines_variables():
+    assert storywork.engine_env("deepl", "deepl", {"auth_key": "K"}) == {"DEEPL_AUTH_KEY": "K"}
+    assert storywork.engine_env("microsoft-translator", "azure-translator", {"key": "K", "region": ""}) == {
+        "AZURE_TRANSLATOR_KEY": "K"}
+    with pytest.raises(ValueError, match="needs a deepl credential"):
+        storywork.engine_env("deepl", "gemini", {"api_key": "K"})
+    with pytest.raises(ValueError, match="takes no stored credential"):
+        storywork.engine_env("ollama", "deepl", {"auth_key": "K"})
+    assert {t for t, _, _ in storywork.ENGINE_KEYS.values()} <= {t["id"] for t in vault.types()}
+
+
+def test_api_takes_an_engines_key_from_a_stored_credential(fake_rmstory, monkeypatch):
+    monkeypatch.setattr(labinabox_host, "CREDENTIALS_DIR", fake_rmstory.parent / "engine-credentials")
+    monkeypatch.delenv("DEEPL_AUTH_KEY", raising=False)
+    item = vault.add("my deepl", "deepl", {"auth_key": "K-STORED"}, "deepl password")
+    scc = vault.add("my scc", "scc", {"regcode": "R"}, "scc password")
+    live = Api(can_save=True, can_deploy=True)
+    req = {"chapters": CHAPTERS, "to": "de", "engine": "deepl"}
+    status, body = _post(live, "translate", req)
+    assert status == 200 and body["log"].endswith("deepl key: no")
+    status, body = _post(live, "translate", {**req, "credential": {"id": item["id"], "password": "deepl password"}})
+    assert status == 200 and body["log"].endswith("deepl key: yes") and "K-STORED" not in json.dumps(body)
+    assert _post(live, "translate", {**req, "credential": {"id": item["id"], "password": "nope"}}) == (
+        403, {"error": "wrong password"})
+    assert _post(live, "translate", {**req, "credential": {"id": scc["id"], "password": "scc password"}})[0] == 400
+    assert _post(live, "translate", {**req, "credential": {"id": "0" * 16, "password": "x"}}) == (
+        404, {"error": "unknown credential"})
+    assert _post(live, "translate", {**req, "credential": {"id": "../x", "password": "x"}})[0] == 400
+    status, body = _post(Api(can_save=True), "translate", {**req, "credential": {"id": item["id"], "password": "deepl password"}})
+    assert status == 403 and "listens on this machine only" in body["error"]

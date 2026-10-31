@@ -14,6 +14,7 @@ import yaml
 
 from rodeo.builder import discovery
 from rodeo.builder.api import Api
+from tests.conftest import make_labinabox
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -138,6 +139,32 @@ def test_labinabox_without_addons_fails_loudly(tmp_path):
     with pytest.raises(RuntimeError, match="none reported"):
         discovery.labinabox_addons(checkout)
     assert "none reported" in discovery.labinabox(checkout)["error"]
+
+
+def test_labinabox_catalogue_is_read_again_only_when_the_checkout_changes(tmp_path, monkeypatch):
+    checkout = make_labinabox(tmp_path / "liab")
+    runs = []
+    run = discovery._run_liab
+    monkeypatch.setattr(discovery, "_run_liab", lambda script, path: runs.append(script) or run(script, path))
+    first = discovery.labinabox(checkout)
+    assert first["schema"] and len(runs) == 2
+    first["addons"].clear()
+    again = discovery.labinabox(checkout, "https://example/lb/", "2.0")
+    assert len(runs) == 2 and [a["name"] for a in again["addons"]] == ["smlm", "client_registration"]
+    assert again["builder_url"] == "https://example/lb/" and again["version"] == "2.0"
+    api = checkout / "webui" / "lib" / "api.py"
+    os.utime(api, ns=(api.stat().st_mtime_ns + 10**9,) * 2)
+    discovery.labinabox(checkout)
+    assert len(runs) == 4
+
+
+def test_labinabox_errors_are_not_kept(tmp_path, monkeypatch):
+    checkout = _fake_labinabox(tmp_path, "def dispatch(*a):\n    return 500, {'error': 'boom'}\n")
+    runs = []
+    run = discovery._run_liab
+    monkeypatch.setattr(discovery, "_run_liab", lambda script, path: runs.append(script) or run(script, path))
+    assert "boom" in discovery.labinabox(checkout)["error"]
+    assert "boom" in discovery.labinabox(checkout)["error"] and len(runs) == 2
 
 
 def test_labinabox_addons_fail_loudly(tmp_path):
@@ -279,7 +306,7 @@ def test_static_build_embeds_every_answer(tmp_path, labinabox_checkout):
                         "--no-fetch-sources", "--labinabox", str(labinabox_checkout)],
                        capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
-    assert sorted(p.name for p in out.iterdir()) == ["app.js", "assets", "fonts", "index.html", "logic.js", "style.css", "theme.js"]
+    assert sorted(p.name for p in out.iterdir()) == ["app.js", "assets", "boot.js", "fonts", "index.html", "logic.js", "style.css", "theme.js"]
     html = (out / "index.html").read_text()
     assert "__RODEOVERSION__" not in html
     payload = re.search(r'<script id="static-api-data" type="application/json">(.*?)</script>', html, re.S).group(1)
@@ -340,6 +367,29 @@ def test_source_fetch_commands_are_sparse_and_shallow(tmp_path):
         "/tracks/smlms/*/assignment.md", "/tracks/smlms/*/check-*"]
 
 
+def test_the_virtualization_rodeo_is_an_instruqt_track_at_its_repository_root(tmp_path):
+    rodeo_src = next(s for s in discovery.chapter_sources() if s["id"] == "virt-rodeo")
+    assert rodeo_src["repo"] == "https://github.com/SUSE-Technical-Marketing/suse-virt-rodeo"
+    assert (rodeo_src["engine"], rodeo_src["profile"], rodeo_src["format"]) == ("", "", "instruqt")
+    clone, sparse, fetch, checkout = discovery.source_fetch_commands(rodeo_src, tmp_path / "r")
+    assert "--branch" not in clone and clone[-4:] == ["--no-checkout", "--", rodeo_src["repo"], str(tmp_path / "r")]
+    assert sparse[-2:] == ["/*/assignment.md", "/*/check-*"]
+    assert fetch[-2:] == ["origin", rodeo_src["ref"]] and len(rodeo_src["ref"]) == 40
+    assert checkout[-3:] == ["-q", "--detach", "FETCH_HEAD"]
+    challenge = tmp_path / "r" / "01-the-arrival"
+    challenge.mkdir(parents=True)
+    (challenge / "assignment.md").write_text(
+        '---\nslug: the-arrival\ntitle: "<span id="a.7" lang="en" hist="bank">\\U0001F3E6 Chapter 1: The Arrival</span>"\n'
+        'type: challenge\n---\n<span id="a.1" lang="en" hist="bank">The rain</span>\n')
+    (challenge / "check-kvm-host").write_text("#!/bin/bash\n")
+    [chapter] = discovery.source_chapters(rodeo_src, tmp_path / "r")
+    assert (chapter["id"], chapter["title"], chapter["spans"], chapter["check"]) == (
+        "the-arrival", "\U0001F3E6 Chapter 1: The Arrival", 1, True)
+    shop = next(w for w in discovery.workshops({"virt-rodeo": tmp_path / "r"})["workshops"] if w["id"] == "virt-rodeo")
+    assert shop["source"] == "https://github.com/SUSE-Technical-Marketing/suse-virt-rodeo/tree/" + rodeo_src["ref"]
+    assert (shop["engine"], shop["profile"], shop["plan"]) == ("", "", "")
+
+
 def test_fetch_sources_keeps_given_checkouts_and_reports_failed_clones(tmp_path):
     calls = []
 
@@ -352,7 +402,7 @@ def test_fetch_sources_keeps_given_checkouts_and_reports_failed_clones(tmp_path)
         return Done(1, "fatal: repository not found") if "virt-workshop" in " ".join(cmd) else Done(0)
 
     checkouts, errors = discovery.fetch_sources(tmp_path, {"smlm-workshop": Path("/given")}, run=run)
-    assert checkouts == {"smlm-workshop": Path("/given")}
+    assert checkouts == {"smlm-workshop": Path("/given"), "virt-rodeo": tmp_path / "virt-rodeo"}
     assert errors == {"virt-workshop": "fatal: repository not found"}
     assert all("smlm-workshop" not in " ".join(c) for c in calls)
 
@@ -390,7 +440,7 @@ def test_catalog_rodeos_are_chapter_sources_after_the_file(monkeypatch, tmp_path
              ride={"name": "ride", "title": "Ride", "repo": "https://github.com/rider/ride", "ref": "", "engine": "rancher"},
              dup={"name": "dup", "repo": "https://github.com/avaleror/suse-virt-workshop.git", "ref": "main"})
     sources = discovery.chapter_sources()
-    assert [s["id"] for s in sources] == ["smlm-workshop", "virt-workshop", "catalog-ride"]
+    assert [s["id"] for s in sources] == ["smlm-workshop", "virt-workshop", "virt-rodeo", "catalog-ride"]
     ride = sources[-1]
     assert (ride["format"], ride["path"], ride["profile"], ride["engine"], ride["title"]) == ("rmstory", "story", "", "rancher", "Ride")
     clone, sparse = discovery.source_fetch_commands(ride, tmp_path / "r")

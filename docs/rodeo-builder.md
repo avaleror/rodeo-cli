@@ -3,7 +3,7 @@
 **[→ Open the Rodeo Builder](../builder/){ .md-button .md-button--primary }**
 
 The Rodeo Builder composes a new rodeo in the browser: pick the lab engine, put
-story chapters in order, tag their text for translation and story variants, and
+story chapters in order, tag their text for translation and with story ids, and
 download the result as a profile you install with `rodeo`.
 
 It comes in two versions of the same page:
@@ -114,9 +114,12 @@ rodeo up --profile <name>     # after Save to profiles
   and sparse, no credentials). Imported groups are kept with the draft.
 - **Story.** **Edit** on a chapter opens the story editor (rows with span
   warnings show how many). Select text and click **Tag selection**, use the toolbar, or press
-  Alt+T / Alt+I / Alt+N to mark it Translatable, Invariant or No-lang;
-  double-click a span to change its type,
-  language, id or story variant. Ids follow rmstory's rules (`<chapter>.N`,
+  Alt+T / Alt+I / Alt+N to mark it Translatable, Don't translate or No-lang.
+  **Story** (Alt+S) marks the text students get retold: it takes the chapter's
+  story, or asks for the story's name, offering the one the other chapters tell.
+  When the chapters tell more than one story, Review warns and offers **Make all
+  the same story**. Double-click a span to change its type,
+  language, id or story id. Ids follow rmstory's rules (`<chapter>.N`,
   `<parent>.N` when nested) and the editor shows the same warnings as
   `rmstory validate`. The source and the preview sit side by side and scroll
   together; the preview renders the chapter as Markdown or HTML (only safe tags,
@@ -159,10 +162,10 @@ When `rmstory` is installed where `rodeo builder` runs (`sudo rodeo install-deps
   `new-chapter.N`; review the draft before you create the chapter.
 - **New story** (rodeo tab): the same exercises told as a different story. You
   say what is what with the span tags (story editor):
-  - **story**: spans with a story variant (`hist`): retold;
-  - **exercise**: translatable spans without a story variant: translated, never
+  - **story**: spans tagged with a story id (`hist`): retold;
+  - **exercise**: translatable spans without a story id: translated, never
     retold;
-  - **fixed**: invariant (`no`) or no-lang spans, and text outside spans: kept
+  - **fixed**: don't-translate (`no`) or no-lang spans, and text outside spans: kept
     word for word.
 
   Say what the new story is about and pick an engine that can generate text;
@@ -186,8 +189,8 @@ deploy dialog's do (a builder on loopback, or behind the web server's login).
 The published page writes translations by hand only.
 
 The right-hand panel sets the name, story title, language, deployment target and
-**Story told to students** (shown when the chapters have story variants: *All
-stories together* renders the chapters whole; a variant renders only that story's
+**Story told to students** (shown when the chapters have spans tagged with a story id: *All
+stories together* renders the chapters whole; a story renders only that story's
 spans, in order), and previews every file of the download. **plan.yaml** is an
 editor: change anything and the download keeps it; `name`, `deployment_target`
 and `story` stay in sync with the rodeo tab, and **Reset to generated** drops your
@@ -197,7 +200,7 @@ edits. Changing the lab engine regenerates the plan, after asking.
 
 The page keeps the lab (**Infrastructure**: engine, base profile, plan,
 definition, lab-in-a-box lab) apart from what students read (**Instructions**:
-chapters, story variants, translations, checks). Step 03 downloads either the
+chapters, stories, translations, checks). Step 03 downloads either the
 whole rodeo (**Download: All**) or one part: **Infrastructure definition only** (`<name>-infrastructure.zip`,
 installable with `rodeo new --from-zip`) or **Instructions only**
 (`<name>-instructions.zip`: `story/` and `checks/`, laid out to be pushed as a
@@ -217,7 +220,7 @@ redeploying (see [the plan reference](reference/plan.md#content-the-labs-instruc
 
 The zip holds one profile directory, `<name>/`, with `rodeo-plan.yaml`, the
 chapters (`story/NN-<id>.md`), `story/chapters.yaml` (minutes, needs and check
-script per chapter), one `story/stories/<variant>.yaml` per story variant,
+script per chapter), one `story/stories/<story id>.yaml` per story,
 `checks/check-<id>.sh` stubs, a README with the exact commands and, when the
 rodeo starts from a profile (`suse-virt`, `rancher`, `suse-edge` or an imported
 lab-in-a-box rodeo), `builder.yaml` naming that base profile.

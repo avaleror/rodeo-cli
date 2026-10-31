@@ -540,7 +540,7 @@ function groupInfo(g) {
       g.profile ? row("Base profile", g.profile) : null,
       row("Chapters", g.chapters.length + (g.chapters.length === 1 ? " chapter, " : " chapters, ") + mins + " min"),
       needs.length ? row("Needs", el("span", { class: "chips" }, needs.map((n) => needChip(n, missing({ needs }))))) : null,
-      variants.length ? row("Story variants", variants.join(", ")) : null));
+      variants.length ? row("Stories", variants.join(", ")) : null));
 }
 
 function toggleInfo(id) {
@@ -1028,7 +1028,8 @@ function renderReview() {
   const box = $("#reviewPanel"), name = RB.slugify(state.name) || "my-rodeo", n = state.chapters.length;
   const warnings = RB.validate(state.chapters), need = neededAddons();
   const mins = state.chapters.reduce((t, c) => t + (c.mins || 0), 0);
-  renderWarnings(warnings.length);
+  const stories = Object.keys(RB.storyCounts(state.chapters)).sort();
+  renderWarnings(warnings.length + (stories.length > 1 ? 1 : 0));
   const check = (ok, text) => el("div", { class: "check " + (ok ? "ok" : "bad") },
     el("span", { class: "check-icon", "aria-hidden": "true", text: ok ? "✓" : "⚠" }), el("span", { text }));
   const files = RB.files(rodeo()).map((f) => f.path);
@@ -1053,6 +1054,7 @@ function renderReview() {
         el("span", { class: "warn-msg", text: (w.id ? w.id + ": " : "") + w.msg }),
         i >= 0 ? el("button", { class: "btn sm warn", type: "button", text: "Fix ✎", onclick: () => openEditor(i) }) : null);
     }),
+    stories.length > 1 ? severalStories(stories) : null,
     renderRmstoryCheck(),
     el("button", { class: "btn sm zip-toggle", type: "button", id: "zipFilesBtn", "aria-expanded": String(!!state.zipOpen),
       "aria-controls": "zipFiles", text: (state.zipOpen ? "▾ " : "▸ ") + plural(files.length, "file") + " in " + name + ".zip",
@@ -1070,6 +1072,25 @@ function renderReview() {
           title: "The lab: plan, definition, lab-in-a-box lab (" + name + "-infrastructure.zip)", onclick: () => download("infrastructure") }),
         el("button", { class: "btn outline sm" + (n ? "" : " dim"), type: "button", id: "dlInstructions", text: "Instructions only",
           title: "The chapters and checks, laid out as a content repository (" + name + "-instructions.zip)", onclick: () => download("instructions") }))));
+}
+
+// More than one story id in the rodeo: students read only one of them, so offer to make
+// every story span tell the same story.
+function severalStories(stories) {
+  const pick = el("select", { class: "select", id: "oneStory", "aria-label": "Story to keep" },
+    stories.map((v) => el("option", { value: v, text: v, selected: v === RB.mainStory(state.chapters) })));
+  return el("div", { class: "alert warn-row", id: "storiesWarn" }, el("strong", { text: "Several stories" }),
+    el("span", { class: "warn-msg", text: "The chapters tell " + stories.length + " stories (" + stories.join(", ") + "); students read only one, the one picked in Story told to students." }),
+    pick,
+    el("button", { class: "btn sm warn", type: "button", text: "Make all the same story", onclick: () => oneStory(pick.value) }));
+}
+
+function oneStory(story) {
+  for (const ch of state.chapters) ch.body = RB.renameStories(ch.body, story);
+  state.extraVariants = [];
+  if (state.variant) state.variant = story;
+  render();
+  toast("Every story span now tells the " + story + " story");
 }
 
 // The live builder's "Validate": rmstory's own validate on the chapters.
@@ -1099,7 +1120,7 @@ function renderNewStory() {
   const parts = RB.storyParts(state.chapters), btn = $("#nsBtn");
   const why = !state.chapters.length ? "Nothing to retell yet: add chapters to this rodeo first."
     : "Nothing to retell yet: none of this rodeo's chapters has a story span. In a chapter's editor, select the "
-      + "story's text and give it a story variant; only those spans are retold.";
+      + "story's text and tag it with a story id; only those spans are retold.";
   $("#nsParts").textContent = parts.story
     ? "Retells " + plural(parts.story, "story span") + "; keeps " + plural(parts.exercise, "exercise span") + " and "
       + plural(parts.fixed, "fixed span") + " word for word."
@@ -1161,7 +1182,7 @@ function renderSettings() {
   $("#variantRow").hidden = !allVariants().length;
   $("#variantNote").textContent = state.variant
     ? "Students read only the " + state.variant + " story: its spans, in chapter order (story/stories/" + state.variant + ".yaml). Everything else in the chapters is left out."
-    : "No story picked: students read the chapters whole, every story variant's text included.";
+    : "No story picked: students read the chapters whole, every story's text included.";
   box.replaceChildren(...options.map(([v, label]) => el("button", {
     type: "button", class: "chip" + (state.variant === v ? " on" : ""), "aria-pressed": String(state.variant === v),
     text: label, onclick: () => { state.variant = v; render(); } })));
@@ -1336,7 +1357,7 @@ const ncNeeds = new Set();
 function chapterTemplate(id) {
   return "# Chapter title\n\n" +
     '<span lang="en" id="' + id + '.1">Describe what the student does here. Keep facts that must never be ' +
-    'translated in invariant spans, such as <span no id="' + id + '.2">{{ rancher_url }}</span>.</span>\n';
+    'translated in don\'t-translate spans, such as <span no id="' + id + '.2">{{ rancher_url }}</span>.</span>\n';
 }
 
 function openNewChapter() {
@@ -1560,8 +1581,9 @@ function renderEditor() {
   sum.textContent = tagged + " tagged spans · " + warnings.length + " warnings";
   sum.classList.toggle("warn", warnings.length > 0);
   $("#edHist").replaceChildren(...allVariants().map((v) => el("button", {
-    type: "button", class: "chip", text: v, title: "Toggle hist=\"" + v + "\" on the span at the cursor", "aria-pressed": "false",
+    type: "button", class: "chip", text: v, title: "Tag the span at the cursor with story id " + v + " (click again to untag it)", "aria-pressed": "false",
     dataset: { hist: v }, onclick: () => toggleHist(v) })));
+  $("#edHistLabel").hidden = !allVariants().length;
   updateCaret();
   renderPreview(body, spans);
   renderSpanList(body, spans, warnings);
@@ -1577,7 +1599,7 @@ function renderEditor() {
 // Selection info and the variant chips' pressed state follow the caret.
 function updateCaret() {
   const ta = $("#edSource"), s = ta.selectionStart, e = ta.selectionEnd, sp = state.editing >= 0 ? spanAtCursor() : null;
-  $("#edSel").textContent = (e > s ? (e - s) + " chars selected" : "caret at " + s) + " · Alt+T / I / N tags";
+  $("#edSel").textContent = (e > s ? (e - s) + " chars selected" : "caret at " + s) + " · Alt+T / I / N / S tags";
   document.querySelectorAll("#edHist .chip").forEach((c) => {
     const on = !!sp && sp.attrs.hist === c.dataset.hist;
     c.classList.toggle("on", on);
@@ -1657,7 +1679,7 @@ function renderStories() {
   box.replaceChildren(...allVariants().map((v) => el("div", {},
     el("span", { class: "label", text: "story/stories/" + v + ".yaml" }),
     el("div", { class: "term" }, el("pre", { text: RB.storyYaml(v, RB.storyIndex(state.chapters, v)) })))));
-  if (!allVariants().length) box.append(el("p", { class: "empty", text: "No variants: add one, then tag spans with it." }));
+  if (!allVariants().length) box.append(el("p", { class: "empty", text: "No stories yet: add a story id, then tag spans with it." }));
 }
 
 function rodeoLanguages() { return RB.availableLanguages(state.strings, [state.lang]); }
@@ -1891,16 +1913,35 @@ function applyPop(s, e, x, y) {
   const p = $("#popover");
   p.className = "popover";
   fill(p, popHead("Apply span"),
-    el("div", { class: "chips" }, [["translatable", "Translatable"], ["invariant", "Invariant"], ["nolang", "No-lang"]].map(([k, label]) =>
-      el("button", { class: "btn sm", type: "button", text: label, onclick: () => applySpan(k, id) }))),
-    allVariants().length ? el("div", { class: "row2" }, el("span", { class: "muted mono", text: "hist" }), el("span", { class: "chips" },
-      allVariants().map((v) => el("button", { class: "chip", type: "button", text: v, "aria-pressed": "false",
-        onclick: () => {
-          pop.hist = pop.hist === v ? "" : v;
-          p.querySelectorAll(".chip").forEach((c) => { c.classList.toggle("on", c.textContent === pop.hist); c.setAttribute("aria-pressed", String(c.textContent === pop.hist)); });
-        } })))) : null,
+    el("div", { class: "chips" }, [["translatable", "Translatable"], ["invariant", "Don't translate"], ["nolang", "No-lang"]].map(([k, label]) =>
+      el("button", { class: "btn sm", type: "button", text: label, onclick: () => applySpan(k, id) })),
+    el("button", { class: "btn sm", type: "button", text: "Story", onclick: () => markStory(s, e, x, y) })),
+    el("div", { class: "row2" }, el("span", { class: "muted mono", text: "Story id" }), storyChips(p)),
     el("div", { class: "row2 mono muted", text: "id: " + id }));
   placePop(x, y);
+}
+
+// The apply popover's story id chips, plus an input that creates a story id and picks it.
+function storyChips(p) {
+  const mark = () => p.querySelectorAll(".chip").forEach((c) => {
+    c.classList.toggle("on", c.textContent === pop.hist);
+    c.setAttribute("aria-pressed", String(c.textContent === pop.hist));
+  });
+  const chip = (v) => el("button", { class: "chip", type: "button", text: v, "aria-pressed": "false",
+    onclick: () => { pop.hist = pop.hist === v ? "" : v; mark(); } });
+  const box = el("span", { class: "chips" }, allVariants().map(chip));
+  const input = el("input", { class: "input mono sm", placeholder: "new story id", "aria-label": "New story id", autocomplete: "off",
+    onkeydown: (ev) => {
+      if (ev.key !== "Enter") return;
+      ev.preventDefault();
+      const v = addStoryId(input.value);
+      if (!v) return;
+      if (![...box.children].some((c) => c.textContent === v)) box.append(chip(v));
+      pop.hist = v;
+      input.value = "";
+      mark();
+    } });
+  return [box, input];
 }
 
 function applySpan(type, id) {
@@ -1919,9 +1960,27 @@ function spanAtCursor() {
   return inside.length ? inside.reduce((a, b) => (b.depth > a.depth ? b : a)) : null;
 }
 
+function addStoryId(raw) {
+  const v = RB.slugify(raw);
+  if (v && !allVariants().includes(v)) state.extraVariants.push(v);
+  return v;
+}
+
+// A story id chip tags the selected text (wrapped as a translatable span when it is not one
+// yet) or, with no selection, the span at the cursor.
 function toggleHist(v) {
+  const ta = $("#edSource");
+  if (ta.selectionEnd > ta.selectionStart) {
+    const body = editing().body, target = RB.wrapTarget(body, RB.parseSpans(body).spans, ta.selectionStart, ta.selectionEnd);
+    if (!target.ok) { toast(target.reason, true); return; }
+    if (!target.same) {
+      pop = { mode: "apply", s: target.s, e: target.e, hist: v };
+      applySpan("translatable", autoId(target));
+      return;
+    }
+  }
   const sp = spanAtCursor();
-  if (!sp) { toast("Place the cursor inside a span first", true); return; }
+  if (!sp) { toast("Select the story's text first, or place the cursor inside a span", true); return; }
   const attrs = { ...sp.attrs };
   if (attrs.hist === v) delete attrs.hist; else attrs.hist = v;
   if (attrs.hist && !attrs.id) attrs.id = autoId({ parent: RB.parseSpans(editing().body).spans[sp.parent] });
@@ -1938,14 +1997,14 @@ function editPop(index, x, y) {
   const lang = RB.kind(pop.attrs) === "translatable" ? el("select", { class: "select", "aria-label": "Language" },
     RB.availableLanguages(state.strings, [state.lang, pop.attrs.lang]).map((l) => el("option", { value: l, text: l, selected: pop.attrs.lang === l })))
     : el("span", { class: "muted mono hint", text: "Language only applies to translatable spans." });
-  const hist = el("select", { class: "select", "aria-label": "Story variant" }, el("option", { value: "", text: "no variant" }),
+  const hist = el("select", { class: "select", "aria-label": "Story id" }, el("option", { value: "", text: "none (not story text)" }),
     allVariants().map((v) => el("option", { value: v, text: v, selected: pop.attrs.hist === v })));
   const known = [];
   for (const ch of state.chapters) for (const s of RB.parseSpans(ch.body).spans) {
     if (s.attrs.id && s.attrs.id !== sp.attrs.id && !known.some((k) => k.id === s.attrs.id)) known.push({ id: s.attrs.id, same: RB.inner(ch.body, s) === text });
   }
   known.sort((a, b) => (b.same - a.same) || a.id.localeCompare(b.id));
-  const kinds = [["translatable", "Translatable"], ["invariant", "Invariant"], ["nolang", "No-lang"]];
+  const kinds = [["translatable", "Translatable"], ["invariant", "Don't translate"], ["nolang", "No-lang"]];
   p.className = "popover";
   fill(p, popHead("Edit span"),
     el("div", { class: "chips" }, kinds.map(([k, label]) => el("button", {
@@ -1973,8 +2032,56 @@ function editPopSave(idInput, lang, hist, keepOpen) {
 }
 
 // Wraps the source selection in a span of `type` (toolbar buttons and Alt+T / I / N).
+// Story: the selection becomes story text, tagged with the chapter's story; a chapter without
+// one asks for its name, offering the story the other chapters tell.
+function markStory(s, e, x, y) {
+  const body = editing().body, target = RB.wrapTarget(body, RB.parseSpans(body).spans, s, e);
+  if (!target.ok) { toast(target.reason, true); return; }
+  const here = RB.mainStory([editing()]);
+  if (here) { tagStory(target, here); return; }
+  const other = RB.mainStory(state.chapters.filter((c, i) => i !== state.editing));
+  pop = { mode: "story" };
+  const p = $("#popover");
+  p.className = "popover";
+  const input = el("input", { class: "input mono", value: other, placeholder: "e.g. first-ride", "aria-label": "Story name", autocomplete: "off" });
+  const ok = () => {
+    const v = RB.slugify(input.value);
+    if (!v) { toast("Type the story's name", true); input.focus(); return; }
+    tagStory(target, v);
+  };
+  input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); ok(); } });
+  fill(p, popHead("Story name"),
+    el("p", { class: "note muted", text: other ? "The other chapters tell the story " + other + ": keep it to continue that story, or type a new name."
+      : "This rodeo has no story yet: name the one students get retold." }),
+    input,
+    el("div", { class: "row2" }, el("button", { class: "btn primary sm", type: "button", text: "Tag as story", onclick: ok })));
+  placePop(x, y);
+  input.focus();
+  input.select();
+}
+
+function tagStory(target, story) {
+  const body = editing().body;
+  closePop();
+  if (target.same) {
+    const attrs = { ...(target.same.attrs.no ? RB.withKind(target.same.attrs, "translatable") : target.same.attrs), hist: story };
+    if (!attrs.id) attrs.id = autoId(target);
+    setBody(RB.retag(body, target.same, attrs), true);
+  } else {
+    pop = { mode: "apply", s: target.s, e: target.e, hist: story };
+    applySpan("translatable", autoId(target));
+  }
+  toast("Tagged as the " + story + " story");
+}
+
 function markSelection(type) {
-  const ta = $("#edSource"), { spans } = RB.parseSpans(editing().body);
+  const ta = $("#edSource");
+  if (type === "story") {
+    const r = $("[data-mark=story]").getBoundingClientRect();
+    markStory(ta.selectionStart, ta.selectionEnd, r.left, r.bottom);
+    return;
+  }
+  const { spans } = RB.parseSpans(editing().body);
   const target = RB.wrapTarget(editing().body, spans, ta.selectionStart, ta.selectionEnd);
   if (!target.ok) { toast(target.reason, true); return; }
   pop = { mode: "apply", s: target.s, e: target.e, hist: "" };
@@ -1994,7 +2101,7 @@ function bindEditor() {
   ta.addEventListener("mouseup", (ev) => { if (ta.selectionEnd > ta.selectionStart) tagChip(ta.selectionStart, ta.selectionEnd, ev.clientX, ev.clientY); });
   for (const type of ["select", "keyup", "click"]) ta.addEventListener(type, updateCaret);
   ta.addEventListener("keydown", (ev) => {
-    const type = { KeyT: "translatable", KeyI: "invariant", KeyN: "nolang" }[ev.code];
+    const type = { KeyT: "translatable", KeyI: "invariant", KeyN: "nolang", KeyS: "story" }[ev.code];
     if (!ev.altKey || !type) return;
     ev.preventDefault();
     if (ta.selectionEnd <= ta.selectionStart) { toast("Select some text first (Shift+arrows), then press the shortcut.", true); return; }
@@ -2025,11 +2132,11 @@ function bindEditor() {
   });
   document.querySelectorAll("[data-edtab]").forEach((b) => b.addEventListener("click", () => { state.edTab = b.dataset.edtab; renderEditor(); }));
   $("#addVariant").addEventListener("click", () => {
-    const v = RB.slugify($("#newVariant").value);
-    if (v && !allVariants().includes(v)) state.extraVariants.push(v);
+    addStoryId($("#newVariant").value);
     $("#newVariant").value = "";
     renderEditor();
   });
+  $("#newVariant").addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); $("#addVariant").click(); } });
   $("#edDone").addEventListener("click", closeEditor);
   $("#edCancel").addEventListener("click", cancelEditor);
   document.addEventListener("keydown", (ev) => {

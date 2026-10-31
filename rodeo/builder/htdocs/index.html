@@ -142,7 +142,7 @@
           </div>
           <div id="nsCred" class="cred-hint" hidden></div>
           <p id="nsParts" class="note"></p>
-          <p class="note muted">You say what is story: spans with a story variant get a new narrative. Exercise spans (translatable, no story variant), fixed spans (invariant or no-lang) and text outside spans stay word for word. The original chapters stay in the library.</p>
+          <p class="note muted">You say what is story: spans tagged with a story id get a new narrative. Exercise spans (translatable, no story id), fixed spans (don't translate or no-lang) and text outside spans stay word for word. The original chapters stay in the library.</p>
           <p class="note muted">The retold chapters replace this rodeo's and are kept only in this browser (its draft) until you download, save to profiles or publish. An engine marked "no credential" needs a key first.</p>
         </div>
         <div id="estimate" class="est"></div>
@@ -363,9 +363,10 @@
         <div class="toolbar">
           <span class="lbl">Mark selection as</span>
           <button type="button" class="btn sm" data-mark="translatable" title="Alt+T">Translatable</button>
-          <button type="button" class="btn sm" data-mark="invariant" title="Alt+I">Invariant</button>
+          <button type="button" class="btn sm" data-mark="invariant" title="Alt+I">Don't translate</button>
           <button type="button" class="btn sm" data-mark="nolang" title="Alt+N">No-lang</button>
-          <span class="lbl">Story variant</span>
+          <button type="button" class="btn sm" data-mark="story" title="Alt+S: the text students get retold (asks for the story's name the first time)">Story</button>
+          <span id="edHistLabel" class="lbl">Story id</span>
           <span id="edHist" class="chips"></span>
           <button id="edRemove" type="button" class="btn sm">Remove span</button>
           <span id="edSel" class="sel-info"></span>
@@ -390,8 +391,8 @@
         <div id="edtab-spans" role="tabpanel" aria-labelledby="et-spans"><ul id="spanList" class="span-list"></ul></div>
         <div id="edtab-stories" role="tabpanel" aria-labelledby="et-stories" hidden>
           <div class="addon-add">
-            <label class="sr-only" for="newVariant">New story variant</label>
-            <input id="newVariant" class="input mono" placeholder="new variant id" autocomplete="off">
+            <label class="sr-only" for="newVariant">New story id</label>
+            <input id="newVariant" class="input mono" placeholder="e.g. first-ride" autocomplete="off">
             <button id="addVariant" type="button" class="btn sm">Add</button>
           </div>
           <div id="storiesView"></div>

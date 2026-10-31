@@ -102,6 +102,18 @@ test("story indexes and variants", () => {
   assert.deepEqual([...RB.idsIn(chapters)].sort(), ["w.intro", "w.task", "w.user", "z.1", "z.2", "z.3"]);
 });
 
+test("story counts, the main story and making every story one", () => {
+  const body = '<span lang="en" id="a.1" hist="b">x<span lang="en" id="a.2" hist="c">y</span></span><span lang="en" id="a.3" hist="b">z</span>';
+  const chapters = [{ id: "a", body }, { id: "n", body: "plain" }];
+  assert.deepEqual(RB.storyCounts(chapters), { b: 2, c: 1 });
+  assert.equal(RB.mainStory(chapters), "b");
+  assert.equal(RB.mainStory([{ id: "t", body: '<span id="1" hist="z">1</span><span id="2" hist="y">2</span>' }]), "y");
+  assert.equal(RB.mainStory([chapters[1]]), "");
+  const one = RB.renameStories(body, "b");
+  assert.deepEqual(RB.storyCounts([{ id: "a", body: one }]), { b: 3 });
+  assert.equal(one, body.replace('hist="c"', 'hist="b"'));
+});
+
 test("planFromBase sets name and target and replaces the story block", () => {
   const base = "# comment\ntype: rancher\nname: rancher-lab\n\nstory:\n  id: old\n  language: de\nresources:\n  rancher: {vcpu: 4}\n";
   const plan = RB.planFromBase(base, { name: "my-rodeo", target: "instruqt", story: { language: "es", id: "first-ride" } });

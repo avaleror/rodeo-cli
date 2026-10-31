@@ -297,6 +297,8 @@ def test_story_editor_tags_a_selection(page):
     assert button.inner_text().lower() == "edit" and "spans" in button.get_attribute("title")
     button.click()
     assert not page.locator("#editor").is_hidden()
+    assert page.locator("[data-mark=invariant]").text_content() == "Don't translate"
+    assert "Story id" in page.locator("#editor .toolbar").text_content()
     source = page.locator("#edSource")
     text = source.input_value()
     start = text.index("Rancher Prime on K3s")
@@ -309,6 +311,68 @@ def test_story_editor_tags_a_selection(page):
     assert "welcome.first-task" in page.locator("#storiesView").inner_text()
     page.click("#edDone")
     assert page.locator("#editor").is_hidden()
+
+
+def _select(source, text, after=0):
+    body = source.input_value()
+    start = body.index(text, after)
+    source.evaluate("(ta, [s, e]) => { ta.focus(); ta.setSelectionRange(s, e); }", [start, start + len(text)])
+
+
+def test_story_mark_uses_the_chapters_story(page):
+    page.click(".card >> text=Welcome to the rodeo")
+    page.locator(".row").first.locator(".row-actions .btn").first.click()
+    source = page.locator("#edSource")
+    _select(source, "Rancher Prime")
+    page.click("[data-mark=story]")
+    assert 'hist="first-ride">Rancher Prime</span>' in source.input_value()
+    assert page.locator("#popover").is_hidden()
+
+
+def test_story_mark_asks_for_a_name_offering_the_other_chapters_story(page):
+    page.click("#newChapterBtn")
+    page.fill("#ncTitle", "Night shift")
+    page.click("#newForm button[type=submit]")
+    page.locator(".row").first.locator(".row-actions .btn").first.click()
+    source = page.locator("#edSource")
+    _select(source, "Describe what the student does here.")
+    page.keyboard.press("Alt+KeyS")
+    assert "no story yet" in page.locator("#popover").inner_text()
+    page.fill("#popover input[aria-label='Story name']", "Night Ride")
+    page.press("#popover input[aria-label='Story name']", "Enter")
+    assert 'hist="night-ride">Describe what the student does here.</span>' in source.input_value()
+    page.click("#edDone")
+    page.click(".card >> text=Welcome to the rodeo")
+    page.locator(".row").nth(1).locator(".row-actions .btn").first.click()
+    _select(source, "Rancher Prime")
+    page.click("[data-mark=story]")
+    assert 'hist="first-ride">Rancher Prime</span>' in source.input_value()
+    page.click("#edDone")
+    page.locator(".row").first.locator(".row-actions .btn").first.click()
+    _select(source, "Keep facts")
+    page.click("[data-mark=story]")
+    assert page.locator("#popover").is_hidden()
+    assert 'hist="night-ride">Keep facts</span>' in source.input_value()
+    page.click("#edDone")
+    warn = page.locator("#storiesWarn")
+    assert "2 stories (first-ride, night-ride)" in warn.inner_text()
+    warn.locator("select").select_option("night-ride")
+    warn.locator("text=Make all the same story").click()
+    assert page.locator("#storiesWarn").count() == 0
+    files = _zip(page)
+    assert "my-rodeo/story/stories/night-ride.yaml" in files and "my-rodeo/story/stories/first-ride.yaml" not in files
+
+
+def test_story_mark_offers_the_story_other_chapters_tell(page):
+    page.click(".card >> text=Welcome to the rodeo")
+    page.click("#newChapterBtn")
+    page.fill("#ncTitle", "Night shift")
+    page.click("#newForm button[type=submit]")
+    page.locator(".row").nth(1).locator(".row-actions .btn").first.click()
+    _select(page.locator("#edSource"), "Describe what the student does here.")
+    page.click("[data-mark=story]")
+    assert page.locator("#popover input[aria-label='Story name']").input_value() == "first-ride"
+    assert "tell the story first-ride" in page.locator("#popover").inner_text()
 
 
 def test_story_editor_undo_and_cancel(page):
@@ -417,7 +481,7 @@ def test_story_preview_selection_tags_the_source(page):
     source = _edit_body(page, "## Heading here\n\nSome **bold words** and `code`.\n")
     page.evaluate(_SELECT_IN_PREVIEW, ["strong", False])
     page.click("#popover >> text=Tag selection")
-    page.click("#popover >> text=Invariant")
+    page.click("#popover >> text=Don't translate")
     assert source.input_value() == "## Heading here\n\nSome **<span no>bold words</span>** and `code`.\n"
     assert page.locator("#edPreview strong .sp.k-invariant").inner_text() == "bold words"
     page.evaluate(_SELECT_IN_PREVIEW, ["h2", True])
@@ -441,7 +505,7 @@ def test_story_preview_selection_tags_the_source(page):
     assert re.match(r'<span lang="en" id="[^"]+">Setext title</span>\n=====\n', source.input_value())
     page.evaluate(_SELECT_IN_PREVIEW, ["blockquote", True])
     page.click("#popover >> text=Tag selection")
-    page.click("#popover >> text=Invariant")
+    page.click("#popover >> text=Don't translate")
     assert source.input_value().endswith("\n\n> [!NOTE]\n> <span no>Callout body.</span>\n")
     assert pv.locator("blockquote.callout .sp.k-invariant").inner_text() == "Callout body."
 
@@ -805,7 +869,7 @@ def test_keyboard_tagging_and_tag_chip(page):
     source.evaluate("(ta, [s, e]) => { ta.focus(); ta.setSelectionRange(s, e); }", [start, start + len("Rancher Prime")])
     page.keyboard.press("Alt+KeyN")
     assert re.search(r'<span [^>]*>Rancher Prime</span>', source.input_value())
-    assert "Alt+T / I / N tags" in page.locator("#edSel").inner_text()
+    assert "Alt+T / I / N / S tags" in page.locator("#edSel").inner_text()
     source.evaluate("(ta) => { ta.focus(); ta.setSelectionRange(0, 0); }")
     page.keyboard.press("Alt+KeyT")
     assert "Select some text first" in page.locator("#toastText").inner_text()

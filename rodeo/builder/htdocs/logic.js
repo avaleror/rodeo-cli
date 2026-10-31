@@ -200,6 +200,26 @@ const RB = (() => {
     return [...out].sort();
   }
 
+  // Story spans (hist) per story id, counted over *chapters*.
+  function storyCounts(chapters) {
+    const counts = {};
+    for (const ch of chapters) for (const sp of parseSpans(ch.body).spans) if (sp.attrs.hist) counts[sp.attrs.hist] = (counts[sp.attrs.hist] || 0) + 1;
+    return counts;
+  }
+
+  // The story id used most in *chapters* (ties: the first by name), or "".
+  function mainStory(chapters) {
+    const counts = storyCounts(chapters);
+    return Object.keys(counts).sort((x, y) => (counts[y] - counts[x]) || x.localeCompare(y))[0] || "";
+  }
+
+  // *text* with every story span's hist set to *story*.
+  function renameStories(text, story) {
+    const spans = parseSpans(text).spans.filter((sp) => sp.attrs.hist && sp.attrs.hist !== story).sort((x, y) => y.start - x.start);
+    for (const sp of spans) text = retag(text, sp, { ...sp.attrs, hist: story });
+    return text;
+  }
+
   // A story index: the ids of the variant's spans (hist without no), in chapter order.
   function storyIndex(chapters, variant) {
     const ids = [];
@@ -1649,7 +1669,7 @@ const RB = (() => {
 
   return {
     MISSING_ADDON, SOURCE_LANGUAGE, LANGUAGE_TAG, availableLanguages, newLanguageError, slugify, uniqueId, parseSpans, parseAttrs, kind, needsId, openTag, inner,
-    withKind, wrapTarget, nextId, wrap, retag, unwrap, idsIn, validate, warningsByChapter, engineNeeds, variantsIn, storyIndex,
+    withKind, wrapTarget, nextId, wrap, retag, unwrap, idsIn, validate, warningsByChapter, engineNeeds, variantsIn, storyCounts, mainStory, renameStories, storyIndex,
     setTopKey, setStoredLab, dropTopBlock, storyBlock, planFromBase, planLabinabox, chapterFile, chaptersYaml,
     storyYaml, checkScript, readme, files, labJsonAddons, labJsonProvides, labSecretRefs, labWithSecretRefs, labWithNodeRefs, addOperatorSecrets, labSummary, labDriveWarnings, labUnknownFields, crc32, zip,
     renumber, nameMissing, translatableIds, storedSource, sourceTexts, missingPlaceholders, stringsFiles, withStrings, translatedLanguages, draftPrompt, storyRole, storyParts, maskExercises, retoldChapters, contentBlock, PARTS, partOf, partFiles, CATALOG_REPO, catalogEntry, publishLinks,

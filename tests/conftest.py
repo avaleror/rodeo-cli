@@ -190,7 +190,8 @@ if cmd == "extract":
                 leaf.parent.mkdir(parents=True, exist_ok=True)
                 leaf.write_text(json.dumps({"content": value, "status": "draft", "updated_by": who}))
                 rows += lang == to
-    print("extracted spans, machine-translated {} row(s) via {}".format(rows, engine))
+    print("extracted spans, machine-translated {} row(s) via {}; deepl key: {}".format(
+        rows, engine, "yes" if os.environ.get("DEEPL_AUTH_KEY") else "no"))
     sys.exit(0)
 if cmd == "generate" and args[1] == "rewrite":
     theme, out = args[args.index("--theme") + 1], Path(args[args.index("--out") + 1])

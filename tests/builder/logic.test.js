@@ -237,6 +237,20 @@ test("the translation store ships as rmstory's filesystem layout", () => {
   assert.deepEqual(RB.translatedLanguages(strings, ["w.task"]), []);
 });
 
+test("availableLanguages lists the source first, then the rodeo's own languages, never a fixed list", () => {
+  assert.deepEqual(RB.availableLanguages({}, []), ["en"]);
+  assert.deepEqual(RB.availableLanguages({ es: {}, de: { x: {} }, en: {} }, ["fr", "", "es"]), ["en", "de", "es", "fr"]);
+});
+
+test("newLanguageError takes language-branch tags not already in the rodeo", () => {
+  assert.equal(RB.newLanguageError("pt-br", ["en", "es"]), "");
+  assert.match(RB.newLanguageError("", []), /Type a language code/);
+  assert.match(RB.newLanguageError("Spanish", []), /two lowercase letters/);
+  assert.match(RB.newLanguageError("spa", []), /two lowercase letters/);
+  assert.match(RB.newLanguageError("en", ["en"]), /source language/);
+  assert.match(RB.newLanguageError("es", ["en", "es"]), /has es already/);
+});
+
 test("labUnknownFields reports what a lab-in-a-box schema lacks, like rodeo's unknown_fields", () => {
   const old = { common: ["ISO_IMAGE"], nodes: ["myip", "addons"], kclusters: ["clu_type"],
     addons: { smlm: ["smlm_admin_pass"] } };

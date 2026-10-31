@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <div id="loading" class="loading" role="status" aria-live="polite">Loading, please wait a moment…</div>
   <header class="hdr">
     <div class="brand">
       <img id="logo" class="logo" src="assets/horseshoe-mark.svg" alt="rodeo-cli">
@@ -87,6 +88,7 @@
         <h2 class="sec" id="secChapters"><span class="num">02</span> Chapters <span id="coverage" class="status"></span></h2>
         <p id="insertHint" class="hint"></p>
         <div id="engineBanner" class="banner bad" role="alert" hidden></div>
+        <div id="contentBanner" class="banner deploy" hidden><span class="banner-text"></span></div>
         <div id="chapterList" class="lab"></div>
       </section>
       <section class="part part-review" aria-labelledby="review">
@@ -112,13 +114,23 @@
         <select id="lang" class="select"></select>
         <label class="label" for="target">Deployment target</label>
         <select id="target" class="select"></select>
-        <span class="label">Story variant</span>
-        <div id="variants" class="chips"></div>
-        <label class="label" for="contentUrl">Instructions repository</label>
-        <input id="contentUrl" class="input mono" type="url" autocomplete="off" spellcheck="false"
-          placeholder="https://github.com/owner/repo/tree/main/story">
-        <label class="sr-only" for="contentFormat">Instructions format</label>
-        <select id="contentFormat" class="select"></select>
+        <div id="variantRow" hidden>
+          <span class="label" id="variantsLabel">Story told to students</span>
+          <div id="variants" class="chips" role="group" aria-labelledby="variantsLabel"></div>
+          <p id="variantNote" class="note muted"></p>
+        </div>
+        <span class="label" id="contentFromLabel">Where students' instructions come from</span>
+        <div id="contentFrom" class="choice" role="radiogroup" aria-labelledby="contentFromLabel">
+          <label><input type="radio" name="contentFrom" value="chapters"> This rodeo's chapters</label>
+          <label><input type="radio" name="contentFrom" value="repo"> A repository</label>
+        </div>
+        <div id="contentRepo" hidden>
+          <label class="sr-only" for="contentUrl">Instructions repository</label>
+          <input id="contentUrl" class="input mono" type="url" autocomplete="off" spellcheck="false"
+            placeholder="https://github.com/owner/repo/tree/main/story">
+          <label class="sr-only" for="contentFormat">Instructions format</label>
+          <select id="contentFormat" class="select"></select>
+        </div>
         <p id="contentNote" class="note muted"></p>
         <div id="newStory" class="nc-draft" hidden>
           <label class="label" for="nsTheme">New story</label>
@@ -128,8 +140,10 @@
             <select id="nsEngine" class="select"></select>
             <button id="nsBtn" class="btn sm" type="button">Retell</button>
           </div>
+          <div id="nsCred" class="cred-hint" hidden></div>
           <p id="nsParts" class="note"></p>
           <p class="note muted">You say what is story: spans with a story variant get a new narrative. Exercise spans (translatable, no story variant), fixed spans (invariant or no-lang) and text outside spans stay word for word. The original chapters stay in the library.</p>
+          <p class="note muted">The retold chapters replace this rodeo's and are kept only in this browser (its draft) until you download, save to profiles or publish. An engine marked "no credential" needs a key first.</p>
         </div>
         <div id="estimate" class="est"></div>
       </div>
@@ -186,6 +200,7 @@
           <select id="ncEngine" class="select"></select>
           <button id="ncDraftBtn" class="btn sm" type="button">Draft</button>
         </div>
+        <div id="ncCred" class="cred-hint" hidden></div>
         <p class="note muted">rmstory writes a tagged draft into the body below, using this rodeo's lab and chapters. Review it before you create the chapter.</p>
       </div>
       <label class="label" for="ncBody">Markdown (rmstory spans)</label>
@@ -266,6 +281,41 @@
         <div>
           <button id="vpCancel" class="btn" type="button">Cancel</button>
           <button id="vpSubmit" class="btn primary" type="submit">Unlock</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div id="credModal" class="backdrop over" hidden>
+    <form id="credForm" class="modal narrow" role="dialog" aria-modal="true" aria-labelledby="credTitle" autocomplete="off">
+      <h2 id="credTitle">Credential</h2>
+      <div id="credBody"></div>
+      <div class="modal-foot">
+        <span></span>
+        <div>
+          <button id="credCancel" class="btn" type="button">Cancel</button>
+          <button id="credSubmit" class="btn primary" type="submit">Continue</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div id="langModal" class="backdrop over" hidden>
+    <form id="langForm" class="modal narrow" role="dialog" aria-modal="true" aria-labelledby="langTitle" autocomplete="off">
+      <h2 id="langTitle">Add a language</h2>
+      <label class="label" for="nlCode">Language code</label>
+      <input id="nlCode" class="input mono" list="nlSuggest" spellcheck="false" placeholder="es, pt-br…">
+      <datalist id="nlSuggest"></datalist>
+      <p id="nlName" class="note muted" aria-live="polite"></p>
+      <span class="label" id="nlFromLabel">Start from</span>
+      <div id="nlFrom" class="choice" role="radiogroup" aria-labelledby="nlFromLabel"></div>
+      <label class="choice"><span><input type="checkbox" id="nlUse"> Use it as this rodeo's language</span></label>
+      <p id="nlWhere" class="note muted"></p>
+      <div class="modal-foot">
+        <span></span>
+        <div>
+          <button id="nlCancel" class="btn" type="button">Cancel</button>
+          <button id="nlSubmit" class="btn primary" type="submit">Create</button>
         </div>
       </div>
     </form>

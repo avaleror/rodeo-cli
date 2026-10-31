@@ -223,6 +223,15 @@ function bind() {
   document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && !$("#deletePrompt").hidden) closeDelete(); });
 }
 
+// ?add=<type> (the builder's link for an engine without a key) opens the add form with that type.
+function openRequestedForm() {
+  const type = new URLSearchParams(location.search).get("add");
+  if (!type || !RB.vaultType(store, type)) return;
+  openForm();
+  $("#vaType").value = type;
+  renderFields();
+}
+
 bind();
 showTheme();
-refresh().then(resetForm);
+refresh().then(resetForm).then(openRequestedForm);

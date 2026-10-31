@@ -8,7 +8,8 @@ const RB = (() => {
   // A chapter need that marks unfinished work: something no engine provides yet. It is never
   // provided, never added to a lab and never blocks; the README lists the chapters that carry it.
   const MISSING_ADDON = "missing_addon";
-  const LANGUAGES = ["en", "de", "es", "fr"];
+  // A translation's language tag, as a language branch is named (rodeo/langbranch.py is_language_branch).
+  const LANGUAGE_TAG = /^[a-z]{2}(-[a-z0-9]{2,8})*$/;
   const LIAB_REPO = "https://github.com/SUSE-Technical-Marketing/lab-in-a-box";
   const LIAB_IMAGE = "openSUSE-Leap-15.6-Minimal-VM.x86_64-Cloud.qcow2";
   const LIAB_IMAGE_URL =
@@ -869,6 +870,24 @@ const RB = (() => {
     return Object.keys(strings || {}).filter((l) => l !== SOURCE_LANGUAGE && Object.keys(strings[l]).some((id) => keep.has(id))).sort();
   }
 
+  // The rodeo's languages: the source first, then every language with a translation store
+  // (an empty one too) and the extra ones given (e.g. the plan's story.language), sorted.
+  function availableLanguages(strings, extra) {
+    const others = new Set([...Object.keys(strings || {}), ...(extra || []).filter(Boolean)]);
+    others.delete(SOURCE_LANGUAGE);
+    return [SOURCE_LANGUAGE, ...[...others].sort()];
+  }
+
+  // Why a tag can't be a new translation's language ("" when it can): it must read as a language
+  // branch name and not be one of the rodeo's languages already.
+  function newLanguageError(tag, present) {
+    if (!tag) return "Type a language code, e.g. es or pt-br.";
+    if (!LANGUAGE_TAG.test(tag)) return "A language code is two lowercase letters, optionally with subtags: es, pt-br, zh-hans.";
+    if (tag === SOURCE_LANGUAGE) return tag + " is the source language: the chapters are written in it.";
+    if ((present || []).includes(tag)) return "This rodeo has " + tag + " already.";
+    return "";
+  }
+
   // The prompt for drafting a chapter with an engine: the author's brief, grounded in the
   // rodeo (its title, earlier chapters and what its lab provides) and rmstory's fact rule.
   function draftPrompt(brief, ctx) {
@@ -1629,7 +1648,7 @@ const RB = (() => {
   }
 
   return {
-    MISSING_ADDON, SOURCE_LANGUAGE, LANGUAGES, slugify, uniqueId, parseSpans, parseAttrs, kind, needsId, openTag, inner,
+    MISSING_ADDON, SOURCE_LANGUAGE, LANGUAGE_TAG, availableLanguages, newLanguageError, slugify, uniqueId, parseSpans, parseAttrs, kind, needsId, openTag, inner,
     withKind, wrapTarget, nextId, wrap, retag, unwrap, idsIn, validate, warningsByChapter, engineNeeds, variantsIn, storyIndex,
     setTopKey, setStoredLab, dropTopBlock, storyBlock, planFromBase, planLabinabox, chapterFile, chaptersYaml,
     storyYaml, checkScript, readme, files, labJsonAddons, labJsonProvides, labSecretRefs, labWithSecretRefs, labWithNodeRefs, addOperatorSecrets, labSummary, labDriveWarnings, labUnknownFields, crc32, zip,

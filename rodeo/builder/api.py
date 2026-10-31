@@ -9,7 +9,10 @@ embedded by the static build), ``server`` (what the live server can do) and
 ``story`` (rmstory and its engines on the server's host) and ``github`` (the GitHub
 login Publish would use, see :mod:`.publish`).
 POST ``save`` writes a rodeo to ``~/.rodeo/profiles/<name>/``; POST ``validate``,
-``translate`` and ``draft`` run rmstory (see :mod:`.storywork`); POST ``import``
+``translate``, ``retell`` and ``draft`` run rmstory (see :mod:`.storywork`); with
+``"credential": {"id", "password"}`` the engine's key comes from that stored credential,
+decrypted on the server and given only to rmstory (needs what POST ``vault-open`` needs);
+POST ``import``
 reads a workshop's chapters from a git URL (see :mod:`.imports`); POST
 ``workshop-rodeo`` fetches a catalog rodeo to start from (see
 :func:`.discovery.catalog_rodeo`); POST ``publish``
@@ -267,19 +270,56 @@ class Api:
         except (publish.PublishError, OSError) as exc:
             return 502, {"error": str(exc)}
 
-    def _story(self, action: str, body: bytes) -> tuple[int, dict[str, Any]]:
+    def _engine_credential(self, cred: Any, engine: str,
+                           auth: str) -> tuple[dict[str, str] | None, tuple[int, dict[str, Any]] | None]:
+        """``(variables for *engine*, None)`` from the stored credential ``{"id", "password"}``
+        (decrypted here, never sent back), or ``(None, refusal)``: stored credentials are used
+        as by POST ``vault-open``. Raises ValueError on a bad request or a credential of
+        another type."""
+        if not self.can_deploy:
+            return None, (403, {"error": "using stored credentials " + LOOPBACK_ONLY})
+        if vault is None or self.vault_limiter is None:
+            return None, (501, {"error": NO_CRYPTOGRAPHY})
+        if self.need_login:
+            refused = self._login(auth)
+            if refused is not None:
+                return None, refused
+        item_id = cred.get("id") if isinstance(cred, dict) else None
+        if not isinstance(item_id, str) or not vault.ID_RE.match(item_id):
+            raise ValueError("bad credential id")
+        item = next((i for i in vault.list_items() if i["id"] == item_id), None)
+        if item is None:
+            return None, (404, {"error": "unknown credential"})
+        try:
+            self.vault_limiter.check(item_id)
+            fields = vault.open_item(item_id, cred.get("password"))
+        except vault.TooManyAttempts as exc:
+            return None, (429, {"error": str(exc)})
+        except vault.WrongPassword:
+            self.vault_limiter.failed(item_id)
+            return None, (403, {"error": "wrong password"})
+        self.vault_limiter.succeeded(item_id)
+        return storywork.engine_env(engine, item["type"], fields), None
+
+    def _story(self, action: str, body: bytes, auth: str = "") -> tuple[int, dict[str, Any]]:
         try:
             req = json.loads(body.decode("utf-8"))
             if not isinstance(req, dict):
                 raise ValueError("send a JSON object")
             if action == "validate":
                 return 200, storywork.validate(req.get("chapters"))
+            engine = str(req.get("engine") or "")
+            env = None
+            if req.get("credential") is not None:
+                env, refused = self._engine_credential(req["credential"], engine, auth)
+                if refused is not None:
+                    return refused
             if action == "translate":
                 return 200, storywork.translate(req.get("chapters"), str(req.get("to") or ""),
-                                                str(req.get("engine") or ""), req.get("strings"))
+                                                engine, req.get("strings"), env)
             if action == "retell":
-                return 200, storywork.retell(req.get("chapters"), req.get("theme"), str(req.get("engine") or ""))
-            return 200, storywork.draft(req.get("prompt"), str(req.get("lang") or "en"), str(req.get("engine") or ""))
+                return 200, storywork.retell(req.get("chapters"), req.get("theme"), engine, env)
+            return 200, storywork.draft(req.get("prompt"), str(req.get("lang") or "en"), engine, env)
         except ValueError as exc:
             return 400, {"error": str(exc)}
         except (storywork.StoryError, OSError) as exc:
@@ -304,7 +344,7 @@ class Api:
             if action in VAULT_ACTIONS:
                 return self._vault(action, body, auth)
             if action in STORY_ACTIONS:
-                return self._story(action, body)
+                return self._story(action, body, auth)
             if action == "import":
                 return self._import(body)
             if action == "workshop-rodeo":

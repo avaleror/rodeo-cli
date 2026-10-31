@@ -149,8 +149,17 @@ def live_catalog(labinabox_checkout, tmp_path, monkeypatch):
 
 
 @pytest.fixture()
-def live_rmstory(fake_rmstory, live):
-    """The live server with a fake rmstory on its PATH (engines deepl and ollama)."""
+def live_rmstory(fake_rmstory, live, monkeypatch):
+    """The live server with a fake rmstory on its PATH (engines deepl and ollama), deepl's key
+    in the environment."""
+    monkeypatch.setenv("DEEPL_AUTH_KEY", "from-env")
+    return live
+
+
+@pytest.fixture()
+def live_rmstory_nokey(fake_rmstory, live, monkeypatch):
+    """As live_rmstory, without a deepl key in the environment."""
+    monkeypatch.delenv("DEEPL_AUTH_KEY", raising=False)
     return live
 
 
@@ -225,10 +234,13 @@ def test_loads_engines_library_and_previews(page):
 def test_compose_native_rodeo_and_download(page):
     page.fill("#name", "Ride On")
     page.press("#name", "Tab")
+    sync_api.expect(page.locator("#variantRow")).to_be_hidden()
     page.click(".card")                                   # Welcome to the rodeo
     assert page.locator(".row").count() == 1
     assert page.locator("#coverage").inner_text() == "lab covers every chapter"
+    sync_api.expect(page.locator("#variantNote")).to_contain_text("chapters whole")
     page.click("#variants .chip >> text=first-ride")
+    sync_api.expect(page.locator("#variantNote")).to_contain_text("only the first-ride story")
     files = _zip(page)
     assert set(files) == {"ride-on/rodeo-plan.yaml", "ride-on/story/01-welcome.md", "ride-on/story/chapters.yaml",
                           "ride-on/story/stories/first-ride.yaml", "ride-on/README.md", "ride-on/builder.yaml"}
@@ -975,8 +987,16 @@ def _open_translations(page):
 def test_static_translations_are_written_by_hand(page):
     _open_translations(page)
     view = page.locator("#translationsView")
+    sync_api.expect(view).to_contain_text("no translation yet")
+    page.click("#trAddLang")
+    page.fill("#nlCode", "Spanish")
+    sync_api.expect(page.locator("#nlName")).to_contain_text("two lowercase letters")
+    page.fill("#nlCode", "de")
+    sync_api.expect(page.locator("#nlName")).to_have_text("de → German")
+    assert page.locator("#nlFrom input").count() == 1                      # empty only: no translation, no engine
+    page.click("#nlSubmit")
     assert page.locator("#trRun").count() == 0 and "rodeo builder" in view.inner_text()
-    assert view.locator("thead th").all_inner_texts() == ["id", "de", "es", "fr"]
+    assert view.locator("thead th").all_inner_texts() == ["id", "de"]
     page.locator("tr", has_text="welcome.login").locator(".tr-cell").first.click()
     assert '<span id="welcome.rancher-url"/>' in page.locator(".tr-src").inner_text()
     page.fill("#trText", "Öffne den Browser")
@@ -995,6 +1015,27 @@ def test_static_translations_are_written_by_hand(page):
     assert row["content"] == "Aufsitzen." and row["status"] == "reviewed" and row["source_checksum"] is None
 
 
+def test_language_select_lists_the_rodeos_languages_and_adds_one(page):
+    options = page.locator("#lang option")
+    assert options.all_inner_texts() == ["en · English (source)", "Add new language…"]
+    page.select_option("#lang", "__add__")
+    sync_api.expect(page.locator("#langModal")).to_be_visible()
+    assert page.locator("#lang").input_value() == "en"
+    page.keyboard.press("Escape")
+    sync_api.expect(page.locator("#langModal")).to_be_hidden()
+    page.select_option("#lang", "__add__")
+    page.fill("#nlCode", "en")
+    sync_api.expect(page.locator("#nlName")).to_contain_text("source language")
+    page.fill("#nlCode", "pt-br")
+    sync_api.expect(page.locator("#nlWhere")).to_contain_text("story/strings/pt-br/")
+    page.check("#nlUse")
+    page.click("#nlSubmit")
+    assert page.locator("#lang").input_value() == "pt-br"
+    assert options.all_inner_texts()[:2] == ["en · English (source)", "pt-br · Brazilian Portuguese"]
+    page.click(".card >> text=Welcome to the rodeo")
+    assert yaml.safe_load(_zip(page)["my-rodeo/rodeo-plan.yaml"])["story"]["language"] == "pt-br"
+
+
 @pytest.mark.parametrize("page", ["live_catalog"], indirect=True)
 def test_a_catalog_chapter_brings_its_translations(page):
     page.click(".card >> text=Saddle the ride")
@@ -1009,13 +1050,70 @@ def test_a_catalog_chapter_brings_its_translations(page):
 @pytest.mark.parametrize("page", ["live_rmstory"], indirect=True)
 def test_live_translate_fills_the_missing_rows(page):
     _open_translations(page)
-    page.select_option("#translationsView select[aria-label='Language to fill']", "es")
-    page.click("#trRun")
+    page.click("#trAddLang")
+    page.fill("#nlCode", "es")
+    page.check("#nlFrom input[value='engine:deepl']")
+    page.click("#nlSubmit")
     sync_api.expect(page.locator("#toastText")).to_contain_text("es translations filled as draft with deepl")
     drafts = page.locator("#translationsView .tr-cell.st-draft")
     assert drafts.count() == 2
     drafts.first.click()
     assert page.locator("#trText").input_value().startswith("[es] ")
+
+
+@pytest.mark.parametrize("page", ["live_rmstory_nokey"], indirect=True)
+def test_engine_without_a_key_says_so_and_takes_a_stored_credential(page):
+    vault = FakeVault()
+    vault.install(page)
+    _open_translations(page)
+    page.click("#trAddLang")
+    page.fill("#nlCode", "es")
+    assert "no credential" in page.locator("#nlFrom label", has_text="deepl").inner_text()
+    page.click("#nlSubmit")
+    engine = page.locator("#translationsView select[aria-label='rmstory engine']")
+    assert engine.locator("option").all_inner_texts() == ["deepl (no credential)", "ollama"]
+    assert "no-cred" in engine.get_attribute("class")
+    sync_api.expect(page.locator("#trCred")).to_contain_text("deepl has no credential yet.")
+    page.click("#trCred .btn")
+    sync_api.expect(page.locator("#credTitle")).to_have_text("No credential for deepl")
+    page.click("#credCancel")
+    page.click("#trRun")
+    sync_api.expect(page.locator("#credTitle")).to_have_text("No credential for deepl")
+    assert page.locator("#credSettings").get_attribute("href") == "https://127.0.0.1/rodeo-builder/settings/?add=deepl"
+    page.click("#credCancel")
+    sync_api.expect(page.locator("#credModal")).to_be_hidden()
+
+    vault.add("work deepl", "deepl", {"auth_key": "K1"}, "pw-one")
+    vault.add("home deepl", "deepl", {"auth_key": "K2"}, "pw-two")
+    sent = []
+
+    def translate(route):
+        body = route.request.post_data_json
+        sent.append(body.get("credential"))
+        if body["credential"]["password"] != "pw-two":
+            return route.fulfill(status=403, json={"error": "wrong password"})
+        return route.fulfill(json={"strings": {"es": {"welcome.intro": {"content": "Hola", "status": "draft",
+                                                                         "updated_by": "rmstory"}}},
+                                   "chapters": [], "log": ""})
+
+    page.route(re.compile(r".*/api\?action=translate.*"), translate)
+    page.evaluate("refreshVault().then(renderTranslations)")
+    assert engine.locator("option").all_inner_texts() == ["deepl", "ollama"]
+    assert page.locator("#trCred").is_hidden()
+    page.click("#trRun")
+    sync_api.expect(page.locator("#credTitle")).to_have_text("Which DeepL API key?")
+    page.check("#credBody input[value=v2]")
+    page.click("#credSubmit")
+    sync_api.expect(page.locator("#vpTitle")).to_have_text("Password for home deepl")
+    page.fill("#vpPass", "wrong")
+    page.click("#vpSubmit")
+    sync_api.expect(page.locator("#vpError")).to_have_text("Wrong password: try again.")
+    page.fill("#vpPass", "pw-two")
+    page.click("#vpSubmit")
+    sync_api.expect(page.locator("#toastText")).to_contain_text("1 es translation filled as draft with deepl")
+    assert sent == [{"id": "v2", "password": "wrong"}, {"id": "v2", "password": "pw-two"}]
+    assert not [c for c in vault.calls if c[0] == "vault-open"]
+    page.rb_errors[:] = [e for e in page.rb_errors if not e.startswith("Failed to load resource")]
 
 
 @pytest.mark.parametrize("page", ["live_rmstory"], indirect=True)
@@ -1155,7 +1253,8 @@ def test_live_new_story_needs_story_spans(page):
     page.fill("#ncBody", '# Only steps\n<span lang="en" id="only-steps.1">Run it</span>\n')
     page.click("#newForm button[type=submit]")
     assert page.locator("#nsBtn").is_disabled()
-    assert page.locator("#nsParts").inner_text().startswith("Nothing to retell yet")
+    assert page.locator("#nsParts").inner_text().startswith("Nothing to retell yet: none of this rodeo's chapters has a story span")
+    assert page.locator("#nsTheme").is_disabled() and page.locator("#nsEngine").is_disabled()
 
 
 def test_static_has_no_new_story(page):
@@ -1314,15 +1413,24 @@ def test_infrastructure_and_instructions_download_apart(page):
                                                          "story/stories/first-ride.yaml"]
     full = _zip(page)
     assert "my-rodeo/story/01-welcome.md" in full and "my-rodeo/rodeo-plan.yaml" in full
+    name, _ = _zip_of(page, "#dlAll")
+    assert name == "my-rodeo.zip"
+    foot = page.locator(".review-foot")
+    assert page.get_by_role("group", name="Download").locator("#dlInfra").count() == 1
+    assert "Save to profiles" not in foot.inner_text()
 
 
 def test_instructions_repository_goes_into_the_plan(page):
+    assert page.locator("input[name=contentFrom][value=chapters]").is_checked()
+    sync_api.expect(page.locator("#contentUrl")).to_be_hidden()
+    page.check("input[name=contentFrom][value=repo]")
     page.fill("#contentUrl", "github.com/acme/labs")
     page.locator("#contentUrl").dispatch_event("change")
     sync_api.expect(page.locator("#contentNote")).to_contain_text("https://")
     page.fill("#contentUrl", "https://github.com/acme/labs/tree/v2/story")
     page.locator("#contentUrl").dispatch_event("change")
     sync_api.expect(page.locator("#contentNote")).to_contain_text("The plan gets content: https://github.com/acme/labs @ v2 /story")
+    sync_api.expect(page.locator("#contentBanner")).to_contain_text("not from these chapters")
     page.click(".card >> text=Welcome to the rodeo")
     _, infra = _zip_of(page, "#dlInfra")
     plan = yaml.safe_load(infra["my-rodeo-infrastructure/rodeo-plan.yaml"])
@@ -1457,6 +1565,9 @@ VAULT_TYPES = [
     {"id": "ssh-key", "label": "SSH key", "fields": [
         {"name": "private_key", "label": "Private key", "secret": True, "optional": False, "multiline": True}],
      "keys": {"ssh_private_key": "private_key"}},
+    {"id": "deepl", "label": "DeepL API key", "fields": [
+        {"name": "auth_key", "label": "Authentication key", "secret": True, "optional": False, "multiline": False}],
+     "keys": {}},
     {"id": "generic", "label": "Generic", "fields": [], "keys": {}, "freeform": True},
 ]
 
@@ -1508,6 +1619,21 @@ class FakeVault:
 
 def _values(page) -> list[str]:
     return page.evaluate("[...document.querySelectorAll('input, textarea')].map((i) => i.value)")
+
+
+@pytest.mark.parametrize("page", ["site", "live"], indirect=True)
+def test_loading_message_shows_until_the_page_has_its_data(page):
+    sync_api.expect(page.locator("#loading")).to_be_hidden()
+    held, script = [], re.compile(r".*/app\.js(\?.*)?$")
+    page.route(script, lambda route: held.append(route))
+    page.goto(page.url, wait_until="commit")
+    sync_api.expect(page.locator("#loading")).to_have_text("Loading, please wait a moment…")
+    while not held:
+        page.wait_for_timeout(50)
+    page.unroute(script)
+    for route in held:
+        route.continue_()
+    sync_api.expect(page.locator("#loading")).to_be_hidden()
 
 
 def test_static_has_no_settings_link(page):

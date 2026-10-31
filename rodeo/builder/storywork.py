@@ -13,9 +13,9 @@
 
 Chapters arrive as ``[{"id", "body"}]`` and are written to a temporary
 directory; nothing is kept on the server. Engines read their credentials from
-the environment ``rodeo builder`` runs in (for example ``DEEPL_AUTH_KEY``,
-``GEMINI_API_KEY``, ``RMSTORY_CLAUDE_MODEL``): see ``rmstory engines`` and the
-rmstory engine modules. A translation store is
+the environment: the one ``rodeo builder`` runs in (for example ``DEEPL_AUTH_KEY``,
+``GEMINI_API_KEY``, ``RMSTORY_CLAUDE_MODEL``; see the rmstory engine modules), or
+*env*, the variables :func:`engine_env` makes from a stored credential (:data:`ENGINE_KEYS`). A translation store is
 ``{lang: {span_id: {"content", "status", "updated_by"}}}``, the rows of rmstory's
 filesystem store (``<strings>/<lang>/<span_id>/@default/content.json``).
 """
@@ -47,6 +47,25 @@ _FINDING_LINE = re.compile(r"^(warning|error): (.+?):(\d+): (.*)$")
 _SOURCE_WRITER = "rmstory.extract"
 
 
+# The rmstory engines that need a key: engine → (vault credential type, {variable: field},
+# variables any one of which already configures it). Engines not listed need no key
+# (deep-translator, libretranslate, ollama) or their own login (claude-code: the claude CLI).
+ENGINE_KEYS: dict[str, tuple[str, dict[str, str], tuple[str, ...]]] = {
+    "deepl": ("deepl", {"DEEPL_AUTH_KEY": "auth_key"}, ("DEEPL_AUTH_KEY",)),
+    "deepseek": ("deepseek", {"DEEPSEEK_API_KEY": "api_key"}, ("DEEPSEEK_API_KEY",)),
+    "gemini": ("gemini", {"GEMINI_API_KEY": "api_key"}, ("GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_CLOUD_PROJECT")),
+    "kimi": ("moonshot", {"MOONSHOT_API_KEY": "api_key"}, ("MOONSHOT_API_KEY",)),
+    "mistral": ("mistral", {"MISTRAL_API_KEY": "api_key"}, ("MISTRAL_API_KEY",)),
+    "qwen": ("dashscope", {"DASHSCOPE_API_KEY": "api_key"}, ("DASHSCOPE_API_KEY",)),
+    "google-translate": ("google-translate", {"GOOGLE_TRANSLATE_API_KEY": "api_key"},
+                         ("GOOGLE_TRANSLATE_API_KEY", "GOOGLE_CLOUD_PROJECT")),
+    "microsoft-translator": ("azure-translator", {"AZURE_TRANSLATOR_KEY": "key", "AZURE_TRANSLATOR_REGION": "region",
+                                                  "AZURE_TRANSLATOR_ENDPOINT": "endpoint"}, ("AZURE_TRANSLATOR_KEY",)),
+    "baidu": ("baidu-translate", {"BAIDU_TRANSLATE_APPID": "appid", "BAIDU_TRANSLATE_SECRET_KEY": "secret_key"},
+              ("BAIDU_TRANSLATE_SECRET_KEY",)),
+}
+
+
 class StoryError(RuntimeError):
     """rmstory is missing, refused the request, or failed."""
 
@@ -69,9 +88,31 @@ def _run(args: list[str], env: dict[str, str] | None = None, check: bool = True)
     return r
 
 
+def credential_type(engine: str) -> str | None:
+    """The vault credential type *engine* takes its key from, or None when it needs none."""
+    return ENGINE_KEYS[engine][0] if engine in ENGINE_KEYS else None
+
+
+def env_configured(engine: str) -> bool:
+    """Whether the environment ``rodeo builder`` runs in already gives *engine* its key."""
+    return engine not in ENGINE_KEYS or any(os.environ.get(v) for v in ENGINE_KEYS[engine][2])
+
+
+def engine_env(engine: str, cred_type: str, fields: dict[str, str]) -> dict[str, str]:
+    """The variables a stored credential of *cred_type* gives *engine* (its non-empty fields).
+    Raises ValueError when the engine takes no key or a key of another type."""
+    if credential_type(engine) is None:
+        raise ValueError("rmstory engine {!r} takes no stored credential".format(engine))
+    if cred_type != credential_type(engine):
+        raise ValueError("rmstory engine {!r} needs a {} credential".format(engine, credential_type(engine)))
+    return {var: fields[f] for var, f in ENGINE_KEYS[engine][1].items() if fields.get(f)}
+
+
 def info() -> dict[str, Any]:
-    """``{"available", "error", "engines": [{"name", "generate"}]}``; *error* says why
-    rmstory can't be used (not installed, or ``rmstory engines`` failed)."""
+    """``{"available", "error", "engines": [{"name", "generate", "credential", "env"}]}``:
+    *credential* is the vault type the engine's key is stored as (None: it needs none),
+    *env* whether the environment already configures it. *error* says why rmstory can't be
+    used (not installed, or ``rmstory engines`` failed)."""
     try:
         out = _run(["engines"]).stdout
     except StoryError as exc:
@@ -80,7 +121,9 @@ def info() -> dict[str, Any]:
     for line in out.splitlines():
         match = _ENGINE_LINE.match(line.strip())
         if match:
-            engines.append({"name": match.group(1), "generate": match.group(2).endswith("generate")})
+            name = match.group(1)
+            engines.append({"name": name, "generate": match.group(2).endswith("generate"),
+                            "credential": credential_type(name), "env": env_configured(name)})
     return {"available": True, "error": "", "engines": engines}
 
 
@@ -189,8 +232,10 @@ def _read_store(root: Path) -> dict[str, dict[str, dict[str, str]]]:
     return store
 
 
-def translate(chapters: Any, to: str, engine: str, store: Any = None) -> dict[str, Any]:
-    """Fill the *to* translations the store lacks with *engine*. Returns
+def translate(chapters: Any, to: str, engine: str, store: Any = None,
+              env: dict[str, str] | None = None) -> dict[str, Any]:
+    """Fill the *to* translations the store lacks with *engine* (*env*: extra variables
+    for it, see :func:`engine_env`). Returns
     ``{"strings": store, "chapters": [{"id", "body"}], "log"}``; *chapters* are the
     bodies after rmstory gave every unlabelled span an id."""
     items = _chapters(chapters)
@@ -200,32 +245,33 @@ def translate(chapters: Any, to: str, engine: str, store: Any = None) -> dict[st
         src, strings = root / "story", root / "strings"
         names = _write_chapters(items, src)
         _write_store(store or {}, strings)
-        env = {**os.environ, "RMSTORY_STRINGS_PATH": str(strings), "RMSTORY_STORIES_PATH": str(root / "stories")}
-        env.pop("MULTILANG_DB_BACKEND", None)
-        env.pop("MULTILANG_DB_PATH", None)
-        r = _run(["extract", str(src), "--stories-dir", str(root / "stories"), "--engine", engine, "--to", to], env)
+        run_env = {**os.environ, **(env or {}), "RMSTORY_STRINGS_PATH": str(strings), "RMSTORY_STORIES_PATH": str(root / "stories")}
+        run_env.pop("MULTILANG_DB_BACKEND", None)
+        run_env.pop("MULTILANG_DB_PATH", None)
+        r = _run(["extract", str(src), "--stories-dir", str(root / "stories"), "--engine", engine, "--to", to], run_env)
         bodies = [{"id": items[i][0], "body": (src / name).read_text(encoding="utf-8")}
                   for name, i in names.items()]
         return {"strings": _read_store(strings), "chapters": bodies, "log": r.stdout.strip()}
 
 
-def draft(prompt: str, lang: str, engine: str) -> dict[str, str]:
-    """A tagged-span draft from *prompt*: ``{"body"}``."""
+def draft(prompt: str, lang: str, engine: str, env: dict[str, str] | None = None) -> dict[str, str]:
+    """A tagged-span draft from *prompt*: ``{"body"}`` (*env* as in :func:`translate`)."""
     if not isinstance(prompt, str) or not prompt.strip():
         raise ValueError("describe the chapter to draft")
     if len(prompt) > MAX_PROMPT:
         raise ValueError("the description is longer than {} characters".format(MAX_PROMPT))
     lang, engine = _language(lang), _engine(engine, generate=True)
-    r = _run(["generate", "new", "--engine", engine, "--prompt", prompt, "--lang", lang])
+    r = _run(["generate", "new", "--engine", engine, "--prompt", prompt, "--lang", lang],
+             {**os.environ, **env} if env else None)
     body = r.stdout.strip()
     if not body:
         raise StoryError("rmstory generate returned nothing")
     return {"body": body + "\n"}
 
 
-def retell(chapters: Any, theme: str, engine: str) -> dict[str, Any]:
+def retell(chapters: Any, theme: str, engine: str, env: dict[str, str] | None = None) -> dict[str, Any]:
     """The chapters retold as a story about *theme*: ``{"chapters": [{"id", "body"}], "log"}``.
-    Only spans with an id are rewritten (one engine call per chapter)."""
+    Only spans with an id are rewritten (one engine call per chapter); *env* as in :func:`translate`."""
     items = _chapters(chapters)
     if not isinstance(theme, str) or not theme.strip():
         raise ValueError("say what the new story is about")
@@ -236,7 +282,7 @@ def retell(chapters: Any, theme: str, engine: str) -> dict[str, Any]:
         src, out = Path(tmp) / "story", Path(tmp) / "out"
         names = _write_chapters(items, src)
         r = _run(["generate", "rewrite", str(src), "--no-recursive", "--engine", engine,
-                  "--theme", theme.strip(), "--out", str(out)])
+                  "--theme", theme.strip(), "--out", str(out)], {**os.environ, **env} if env else None)
         bodies = []
         for name, i in names.items():
             retold = out / name

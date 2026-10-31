@@ -123,7 +123,12 @@ rodeo up --profile <name>     # after Save to profiles
   images as links), with its spans marked. Ctrl+Z / Ctrl+Shift+Z undo and redo;
   **Cancel** closes the editor and discards its changes, **Done** keeps them.
 - **Translations.** The story editor's **translations** tab lists every
-  translatable span per language. Click a cell to write or review a
+  translatable span per language of the rodeo. **Add new language…** (there, or
+  at the end of the rodeo tab's Language list, which shows only the rodeo's own
+  languages) asks for its code (`es`, `pt-br`: named like the language branch
+  Publish puts it in) and starts it empty, as a draft copy of another
+  translation or, on the live page, translated with an rmstory engine; it can
+  also become the rodeo's language (`story.language`). Click a cell to write or review a
   translation; a nested span stays in it as `<span id="..."/>`. The download
   carries them in rmstory's translation store, `story/strings/`, and
   `rodeo story render --language <lang>` uses them (with `--engine` for the
@@ -165,15 +170,25 @@ When `rmstory` is installed where `rodeo builder` runs (`sudo rodeo install-deps
   spans never reach the engine. The retold chapters (ids `<chapter>-<theme>`,
   story span ids `<theme>.<id>`; exercise and fixed spans keep their ids and
   translations) become a library group and replace the rodeo's chapters;
-  **Undo** puts the originals back.
+  **Undo** puts the originals back. They live only in this browser (the page's
+  draft) until you download, save to profiles or publish.
 
-Engines read their keys from the environment `rodeo builder` runs in, never from
-the page: for example `DEEPL_AUTH_KEY`, `GEMINI_API_KEY`, `RMSTORY_OLLAMA_URL`, or a
-logged-in `claude` command for `claude-code`. The published page writes
-translations by hand only.
+Engines read their keys from the environment `rodeo builder` runs in (for example
+`DEEPL_AUTH_KEY`, `GEMINI_API_KEY`, `RMSTORY_OLLAMA_URL`, or a logged-in `claude`
+command for `claude-code`) or from a stored credential: the Settings page stores
+one per provider (*Google Gemini API key*, *DeepL API key*, …), encrypted under its
+own password. An engine that needs a key and has neither is listed in red as
+*no credential*; running it explains how to add one and links to the Settings
+form with that type chosen. With stored credentials, the page asks which one
+(when there are several) and its password; the key is decrypted on the server and
+given only to rmstory, never to the page. Stored credentials work where the
+deploy dialog's do (a builder on loopback, or behind the web server's login).
+The published page writes translations by hand only.
 
 The right-hand panel sets the name, story title, language, deployment target and
-story variant, and previews every file of the download. **plan.yaml** is an
+**Story told to students** (shown when the chapters have story variants: *All
+stories together* renders the chapters whole; a variant renders only that story's
+spans, in order), and previews every file of the download. **plan.yaml** is an
 editor: change anything and the download keeps it; `name`, `deployment_target`
 and `story` stay in sync with the rodeo tab, and **Reset to generated** drops your
 edits. Changing the lab engine regenerates the plan, after asking.
@@ -183,13 +198,16 @@ edits. Changing the lab engine regenerates the plan, after asking.
 The page keeps the lab (**Infrastructure**: engine, base profile, plan,
 definition, lab-in-a-box lab) apart from what students read (**Instructions**:
 chapters, story variants, translations, checks). Step 03 downloads either the
-whole rodeo or one part: **Infrastructure only** (`<name>-infrastructure.zip`,
+whole rodeo (**Download: All**) or one part: **Infrastructure definition only** (`<name>-infrastructure.zip`,
 installable with `rodeo new --from-zip`) or **Instructions only**
 (`<name>-instructions.zip`: `story/` and `checks/`, laid out to be pushed as a
 content repository).
 
-**Instructions repository** (rodeo tab) points the plan at instructions kept in
-their own repository: the URL (`https://<host>/<owner>/<repo>[/tree/<ref>/<path>]`)
+**Where students' instructions come from** (rodeo tab) is *This rodeo's chapters*
+(the default: the chapters in the middle column, `story/` in the download) or *A
+repository*, which points the plan at instructions kept in their own repository
+(for example the `-instructions` one Publish creates); the chapters column then
+says the deployed instructions come from there. The URL (`https://<host>/<owner>/<repo>[/tree/<ref>/<path>]`)
 and format become the plan's `content:` block. `rodeo up` renders them after
 the lab is up, installs the repository's `checks/` for every user of the host and
 runs its `custom/scripts/`, and `rodeo content apply` updates them on a running lab without

@@ -7,6 +7,7 @@ import io
 import json
 import re
 import stat
+import subprocess
 import threading
 import zipfile
 from http.server import ThreadingHTTPServer
@@ -284,3 +285,44 @@ def test_builders_started_together_fetch_lab_in_a_box_one_at_a_time(tmp_path, mo
     for t in threads:
         t.join()
     assert results == [(tmp_path / "vendor" / "1.0.0", "1.0.0", "")] * 2
+
+
+def test_own_names_are_the_host_names_and_interface_addresses(monkeypatch):
+    from rodeo.commands import builder_cmd as cmd
+
+    out = ("1: lo    inet 127.0.0.1/8 scope host lo\n"
+           "2: eth0    inet 192.168.1.5/24 brd 192.168.1.255 scope global eth0\n"
+           "2: eth0    inet6 fe80::1/64 scope link\n"
+           "3: wg0    inet6 2001:db8::7/64 scope global\n")
+    monkeypatch.setattr(cmd.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, out, ""))
+    monkeypatch.setattr(cmd.socket, "gethostname", lambda: "Box")
+    monkeypatch.setattr(cmd.socket, "getfqdn", lambda: "box.lab.example")
+    assert cmd._own_names() == ("box", "box.lab.example", "127.0.0.1", "192.168.1.5", "2001:db8::7")
+
+
+def test_builder_on_every_interface_answers_to_its_own_names_only(monkeypatch, labinabox_checkout):
+    from rodeo.commands import builder_cmd as cmd
+
+    monkeypatch.setattr(cmd, "_own_names", lambda: ("box.lab.example", "192.168.1.5"))
+    seen = {}
+    real_serve = ThreadingHTTPServer.serve_forever
+
+    def serve(self):
+        threading.Thread(target=real_serve, args=(self,), daemon=True).start()
+        port = self.server_address[1]
+        for host in ("box.lab.example", "192.168.1.5", "alias.example", "evil.example"):
+            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+            conn.request("GET", "/", headers={"Host": f"{host}:{port}"})
+            seen[host] = conn.getresponse().status
+            conn.close()
+        self.shutdown()
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(ThreadingHTTPServer, "serve_forever", serve)
+    r = CliRunner().invoke(builder_cmd, ["--host", "0.0.0.0", "--expose", "--allow-host", "alias.example",
+                                         "--port", "0", "--no-open", "--no-fetch-sources",
+                                         "--labinabox", str(labinabox_checkout)])
+    assert r.exit_code == 0, r.output
+    assert "box.lab.example" in r.output
+    assert seen["box.lab.example"] == seen["192.168.1.5"] == seen["alias.example"] == 200
+    assert seen["evil.example"] != 200

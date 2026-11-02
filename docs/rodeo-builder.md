@@ -19,6 +19,13 @@ rodeo builder                 # opens http://127.0.0.1:8678/
 rodeo up --profile <name>     # after Save to profiles
 ```
 
+On Linux with systemd the installer already runs it as `rodeo-builder.service`,
+listening on every interface, so the page is up on `http://<host>:8678/` without
+starting it; see [Install](install.md#rodeo-builder-service) (`--no-builder` turns
+it off, `--builder-host 127.0.0.1` keeps it local). With `--host 0.0.0.0` (or `::`)
+`rodeo builder` answers to the machine's own host names and interface addresses,
+read at each start, plus any `--allow-host`.
+
 ## What you compose
 
 - **Lab engine.** The engines are the rodeo types installed (a plugin's
@@ -329,8 +336,8 @@ Application Collection logins, AWS keys, SSH keys, GitHub tokens, or any
 `key: value` fields — encrypted on that host, one file per credential in
 root's `~/.rodeo/vault/`, the store the builder reads.
 
-The page is served by the host's web server (Apache, set up by `install.sh` on a
-KVM host, see [Install](install.md#settings-page)), over HTTPS only, and only to
+The page is served by the host's web server (Apache, set up by `install.sh` when
+installed as root, see [Install](install.md#settings-page)), over HTTPS only, and only to
 a user who logs in: the browser asks for a user from
 `/etc/rodeo-builder/htpasswd`, and **Cancel** shows a page with **Log in** (ask
 again) and **Close**. Its API, `/rodeo-builder/admin?action=list|add|delete`,

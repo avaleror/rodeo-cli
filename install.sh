@@ -17,9 +17,21 @@
 # Usage (production):
 #   curl -fsSL https://raw.githubusercontent.com/avaleror/rodeo-cli/main/install.sh | bash
 #   bash install.sh [--ref v0.10.5] [--dir DIR] [--mode kvm-host|control-plane]
+#                   [--no-builder | --builder-host ADDR]
 #
 #   --mode           override the automatic choice (e.g. a KVM host on another
 #                    distribution, at your own risk). Also: RODEO_MODE=<mode>.
+#   --no-builder     don't run the Rodeo Builder as a systemd service (and stop and
+#                    remove one an earlier install set up). Also: RODEO_BUILDER=0.
+#                    By default, on Linux with systemd, the installer starts
+#                    "rodeo builder" on port 8678 of every interface as
+#                    rodeo-builder.service: a system service as root, a user
+#                    service otherwise.
+#   --builder-host   address the builder service listens on (default 0.0.0.0, every
+#                    interface; 127.0.0.1 keeps it on this machine). Also:
+#                    RODEO_BUILDER_HOST. RODEO_BUILDER_ALLOW="name1 name2" adds Host
+#                    names it answers to besides this machine's own (a DNS alias, a
+#                    public IP behind NAT).
 #   RODEO_REPO=<git url>  clone/update from this repository instead of upstream
 #   RODEO_REF=<ref>       default ref when --ref is not given (main)
 #
@@ -44,6 +56,9 @@ set -euo pipefail
 RODEO_REPO="${RODEO_REPO:-https://github.com/avaleror/rodeo-cli.git}"
 RODEO_REF="${RODEO_REF:-main}"
 RODEO_MODE="${RODEO_MODE:-auto}"
+RODEO_BUILDER="${RODEO_BUILDER:-1}"
+RODEO_BUILDER_HOST="${RODEO_BUILDER_HOST:-0.0.0.0}"
+RODEO_BUILDER_ALLOW="${RODEO_BUILDER_ALLOW:-}"
 DEV=0
 RODEO_DIR=""
 
@@ -62,7 +77,9 @@ while [[ $# -gt 0 ]]; do
     --dir)  RODEO_DIR="$2"; shift 2 ;;
     --mode) RODEO_MODE="$2"; shift 2 ;;
     --dev)  DEV=1; shift ;;
-    *)      echo "Unknown option: $1" >&2; exit 1 ;;
+    --no-builder) RODEO_BUILDER=0; shift ;;
+    --builder-host) RODEO_BUILDER_HOST="$2"; shift 2 ;;
+    *)    echo "Unknown option: $1" >&2; exit 1 ;;
   esac
 done
 
@@ -298,7 +315,9 @@ ln -sf "$VENV/bin/rodeo" "$RODEO_BIN"
 # ── 5b. builder login, shared with lab-builder ────────────────────────────────
 # /etc/rodeo-builder/htpasswd is a link to lab-builder's Apache login file; an
 # existing one is kept as is, a missing one is created empty (no users yet).
-if [[ "$RODEO_MODE" == "kvm-host" ]] && [[ $IS_ROOT -eq 1 ]]; then
+# Both roles, as root on Linux: the builder service runs on a control plane too,
+# and its header links to the Settings page below.
+if [[ "$OS_NAME" == "Linux" ]] && [[ $IS_ROOT -eq 1 ]]; then
   LB_LOGIN=/etc/lab-builder/htpasswd
   if [[ ! -e "$LB_LOGIN" ]]; then
     LB_GROUP=root
@@ -308,11 +327,98 @@ if [[ "$RODEO_MODE" == "kvm-host" ]] && [[ $IS_ROOT -eq 1 ]]; then
   fi
   install -d -m 755 /etc/rodeo-builder
   ln -sfn "$LB_LOGIN" /etc/rodeo-builder/htpasswd
+  if [[ ! -s "$LB_LOGIN" ]]; then
+    HTPASSWD="$(command -v htpasswd2 || command -v htpasswd || echo htpasswd)"
+    echo "  ⚠  $LB_LOGIN has no users yet: the Settings page and the builder's Deploy"
+    echo "     can't log anyone in. Add one with: $HTPASSWD $LB_LOGIN <user>"
+  fi
 fi
 
 # ── 5c. builder Settings page (Apache, login above) ───────────────────────────
-if [[ "$RODEO_MODE" == "kvm-host" ]] && [[ $IS_ROOT -eq 1 ]]; then
+# Skipped by that script itself when this host has no Apache.
+if [[ "$OS_NAME" == "Linux" ]] && [[ $IS_ROOT -eq 1 ]]; then
   bash "$RODEO_DIR/rodeo/builder/settings/install.sh" "$VENV/bin/python"
+fi
+
+# ── 5d. Rodeo Builder service (systemd) ───────────────────────────────────────
+# "rodeo builder" on port 8678 of RODEO_BUILDER_HOST (every interface by
+# default, which needs --expose; the builder then answers to this machine's own
+# names and addresses, read at each start), restarted on every install so an
+# update runs the new code. As root a system service, otherwise a user service
+# (it runs while the user is logged in, or always after "loginctl
+# enable-linger"). --no-builder / RODEO_BUILDER=0 stops and removes it.
+BUILDER_UNIT="rodeo-builder.service"
+BUILDER_STATUS=""
+BUILDER_ARGS="builder --no-open --host $RODEO_BUILDER_HOST"
+case "$RODEO_BUILDER_HOST" in
+  127.*|localhost|::1) ;;
+  *) BUILDER_ARGS="$BUILDER_ARGS --expose" ;;
+esac
+for name in $RODEO_BUILDER_ALLOW; do
+  BUILDER_ARGS="$BUILDER_ARGS --allow-host $name"
+done
+if [[ "$OS_NAME" == "Linux" ]] && [[ -d /run/systemd/system ]] && command -v systemctl &>/dev/null; then
+  if [[ $IS_ROOT -eq 1 ]]; then
+    SYSTEMCTL=(systemctl)
+    UNIT_DIR=/etc/systemd/system
+    UNIT_TARGET=multi-user.target
+    UNIT_USER="User=root"
+  else
+    SYSTEMCTL=(systemctl --user)
+    UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+    UNIT_TARGET=default.target
+    UNIT_USER=""
+  fi
+  case "$RODEO_BUILDER" in
+    0|no|false|off)
+      if [[ -f "$UNIT_DIR/$BUILDER_UNIT" ]]; then
+        echo "==> Removing the Rodeo Builder service (--no-builder)"
+        "${SYSTEMCTL[@]}" disable --now "$BUILDER_UNIT" &>/dev/null || true
+        rm -f "$UNIT_DIR/$BUILDER_UNIT"
+        "${SYSTEMCTL[@]}" daemon-reload &>/dev/null || true
+      fi
+      ;;
+    *)
+      if ! "${SYSTEMCTL[@]}" show-environment &>/dev/null; then
+        echo "  ⚠  No systemd user manager reachable; the Rodeo Builder service was not set up."
+        echo "     Start it by hand with: rodeo builder"
+      else
+        echo "==> Setting up the Rodeo Builder service ($BUILDER_UNIT)"
+        mkdir -p "$UNIT_DIR"
+        BUILDER_HOME="$HOME"
+        [[ $IS_ROOT -eq 1 ]] && BUILDER_HOME="$(getent passwd root | cut -d: -f6)"
+        cat > "$UNIT_DIR/$BUILDER_UNIT" <<EOF
+# Written by rodeo-cli install.sh; re-running it rewrites this file.
+# Disable with: bash install.sh --no-builder (or RODEO_BUILDER=0)
+[Unit]
+Description=Rodeo Builder web UI (rodeo builder)
+Documentation=https://github.com/avaleror/rodeo-cli/blob/main/docs/rodeo-builder.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+${UNIT_USER}
+Environment=HOME=${BUILDER_HOME}
+Environment=PYTHONUNBUFFERED=1
+WorkingDirectory=${BUILDER_HOME}
+ExecStart=${RODEO_BIN} ${BUILDER_ARGS}
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=${UNIT_TARGET}
+EOF
+        "${SYSTEMCTL[@]}" daemon-reload
+        if "${SYSTEMCTL[@]}" enable "$BUILDER_UNIT" &>/dev/null \
+           && "${SYSTEMCTL[@]}" restart "$BUILDER_UNIT"; then
+          BUILDER_STATUS="running"
+        else
+          echo "  ⚠  $BUILDER_UNIT did not start; see: ${SYSTEMCTL[*]} status $BUILDER_UNIT"
+        fi
+      fi
+      ;;
+  esac
 fi
 
 # ── 6. done ───────────────────────────────────────────────────────────────────
@@ -325,6 +431,15 @@ if [[ $DEV -eq 1 ]]; then
   echo "    .venv/bin/ruff check rodeo tests"
 else
   echo "  rodeo $VERSION is ready ($RODEO_MODE)."
+fi
+if [[ "$BUILDER_STATUS" == "running" ]]; then
+  case "$RODEO_BUILDER_HOST" in
+    0.0.0.0|::) BUILDER_URL="http://$(hostname -f 2>/dev/null || hostname):8678/ (every interface)" ;;
+    *:*)        BUILDER_URL="http://[$RODEO_BUILDER_HOST]:8678/" ;;
+    *)          BUILDER_URL="http://$RODEO_BUILDER_HOST:8678/" ;;
+  esac
+  echo "  Rodeo Builder: $BUILDER_URL"
+  echo "    ${SYSTEMCTL[*]} status $BUILDER_UNIT; off: --no-builder; local only: --builder-host 127.0.0.1"
 fi
 if [[ "$RODEO_MODE" == "kvm-host" ]]; then
   echo "  Run: rodeo up"

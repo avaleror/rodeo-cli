@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import fcntl
 import ipaddress
+import socket
 import subprocess
 import tempfile
 import webbrowser
@@ -42,6 +43,43 @@ def _is_loopback(name: str) -> bool:
         return ipaddress.ip_address(name).is_loopback
     except ValueError:
         return False
+
+
+WILDCARD_BINDS = ("0.0.0.0", "::")
+
+
+def _own_names() -> tuple[str, ...]:
+    """This machine's host names and the addresses on its interfaces, read now (they may
+    change between starts): the Host names clients use for a server bound to every
+    interface. Link-local IPv6 is left out (a browser can't put its zone in Host)."""
+    names: list[str] = []
+    try:
+        full = socket.getfqdn()
+        names += [socket.gethostname(), full, full.split(".", 1)[0]]
+    except OSError:
+        pass
+    addrs: list[str] = []
+    try:
+        out = subprocess.run(["ip", "-o", "addr", "show"], capture_output=True, text=True, timeout=10).stdout
+        for line in out.splitlines():
+            fields = line.split()
+            if len(fields) > 3 and fields[2] in ("inet", "inet6"):
+                addrs.append(fields[3].split("/", 1)[0])
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    if not addrs:
+        try:
+            addrs = [info[4][0] for info in socket.getaddrinfo(socket.gethostname(), None)]
+        except OSError:
+            pass
+    for addr in addrs:
+        try:
+            ip = ipaddress.ip_address(addr.split("%", 1)[0])
+        except ValueError:
+            continue
+        if not ip.is_link_local:
+            names.append(str(ip))
+    return tuple(dict.fromkeys(n.lower() for n in names if n))
 
 
 def _labinabox_checkout(given: Path | None) -> tuple[Path | None, str, str]:
@@ -111,8 +149,13 @@ def builder_cmd(bind: str, port: int, expose: bool, allow_hosts: tuple[str, ...]
         given[sid] = Path(path).expanduser().resolve()
 
     checkout, liab_version, liab_missing = _labinabox_checkout(labinabox)
-    allowed = tuple(dict.fromkeys(LOOPBACK_HOSTS + tuple(h.lower() for h in allow_hosts)
-                                  + (() if _is_loopback(bind) or bind in ("0.0.0.0", "::") else (bind.lower(),))))
+    if _is_loopback(bind):
+        own: tuple[str, ...] = ()
+    elif bind in WILDCARD_BINDS:
+        own = _own_names()
+    else:
+        own = (bind.lower(),)
+    allowed = tuple(dict.fromkeys(LOOPBACK_HOSTS + tuple(h.lower() for h in allow_hosts) + own))
     with tempfile.TemporaryDirectory(prefix="rodeo-builder-sources-") as tmp:
         checkouts = given
         if not no_fetch_sources:
@@ -137,8 +180,11 @@ def builder_cmd(bind: str, port: int, expose: bool, allow_hosts: tuple[str, ...]
                 console.print(f"[yellow]⚠  lab-in-a-box catalogue: {liab['error']}[/yellow]")
             server = make_server(api, bind, port, __version__, allowed, lab_builder_url)
             shown = "[{}]".format(bind) if ":" in bind else bind
-            url = "http://{}:{}/".format("127.0.0.1" if bind in ("0.0.0.0", "::") else shown, server.server_address[1])
+            url = "http://{}:{}/".format("127.0.0.1" if bind in WILDCARD_BINDS else shown, server.server_address[1])
             console.print(f"\n[bold green]Rodeo Builder[/bold green] → [cyan]{url}[/cyan]  (Ctrl-C to stop)")
+            if bind in WILDCARD_BINDS:
+                console.print(f"[dim]Answers on every interface as: {', '.join(own) or '(none found)'}; "
+                              "add others with --allow-host.[/dim]")
             if local_builder:
                 console.print(f"[dim]lab-in-a-box lab-builder {liab_version} → {url.rsplit(':', 1)[0]}:{lab_builder_port}/[/dim]")
             else:

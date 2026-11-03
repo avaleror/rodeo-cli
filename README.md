@@ -187,6 +187,7 @@ Precedence: profile defaults < plan < paramfile < `-P`.
 | [Install on Linux and macOS](docs/install.md) | KVM host vs control machine installs |
 | [Fleet (multi-host)](docs/fleet.md) | A lab per attendee across many hosts, plus the claim portal |
 | [Testing and CI](docs/examples/testing.md) | Unit tests, integration tests, GitHub Actions |
+| [Agent skill](skills/rodeo/SKILL.md) | Let an AI coding agent drive rodeo for you. For Claude Code: `cp -r skills/rodeo ~/.claude/skills/` |
 
 **Reference**
 

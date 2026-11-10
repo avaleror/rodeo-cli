@@ -186,13 +186,15 @@ class TelcoPhase(RancherPhase):
     # ---------- images: downstream image (EIB) into the mgmt image cache ----------
 
     def eib_packages(self) -> dict:
-        """jq for the downstream image, from a public repo unless an SCC code is set.
+        """Downstream image packages, from a public repo unless an SCC code is set.
 
-        EIB accepts additionalRepos or sccRegistrationCode (EIB 1.3 docs,
-        installing-packages). The SCC code only means something for SUSE Linux
-        Micro, so the opensource edition never sends it.
+        jq: the rke2-preinstall unit in the student YAML needs it. open-iscsi:
+        SUSE Storage (Longhorn) on the sites, lab 07; the base images ship
+        without it. EIB accepts additionalRepos or sccRegistrationCode (EIB 1.3
+        docs, installing-packages). The SCC code only means something for SUSE
+        Linux Micro, so the opensource edition never sends it.
         """
-        packages: dict = {"packageList": ["jq"]}
+        packages: dict = {"packageList": ["jq", "open-iscsi"]}
         if self.edition == "product" and self.scc_code:
             packages["sccRegistrationCode"] = self.scc_code
         else:
@@ -220,6 +222,8 @@ class TelcoPhase(RancherPhase):
                         "fstrim",
                         "time-sync.target",
                     ],
+                    # SUSE Storage needs iscsid running on every node.
+                    "enable": ["iscsid"],
                 },
                 "users": [{
                     "username": "root",
@@ -227,7 +231,6 @@ class TelcoPhase(RancherPhase):
                     "sshKeys": [ssh_public_key],
                     "createHomeDir": True,
                 }],
-                # jq is required by the rke2-preinstall unit in the student YAML.
                 "packages": self.eib_packages(),
             },
         }
@@ -239,7 +242,7 @@ class TelcoPhase(RancherPhase):
 
     def stream_images(self) -> Iterator[DeployEvent]:
         source = "SUSE repositories (SCC code)" if "sccRegistrationCode" in self.eib_packages() else self.package_repo
-        yield LogLine(f"  {self.os_name} base image, jq from {source}")
+        yield LogLine(f"  {self.os_name} base image, jq and open-iscsi from {source}")
         if not self.base_raw.is_file():
             self.error = f"SL Micro base image {self.base_raw} not found (the vms phase unpacks it)"
             yield LogLine(f"  ✗ {self.error}")

@@ -614,7 +614,8 @@ def test_eib_definition_matches_37_docs(monkeypatch, tmp_path):
         "rebootmgr", "transactional-update.timer", "transactional-update-cleanup.timer",
         "fstrim", "time-sync.target",
     ]
-    assert os_["packages"] == {"packageList": ["jq"], "sccRegistrationCode": "SCC-TEST-CODE"}
+    assert os_["systemd"]["enable"] == ["iscsid"]
+    assert os_["packages"] == {"packageList": ["jq", "open-iscsi"], "sccRegistrationCode": "SCC-TEST-CODE"}
     assert os_["users"][0]["sshKeys"] == ["ssh-ed25519 KEY"]
 
 
@@ -707,11 +708,11 @@ def test_jq_source_per_edition(monkeypatch, tmp_path):
     bci = "https://updates.suse.com/SUSE/Products/SLE-BCI/16.0/x86_64/product/"
     leap = "https://download.opensuse.org/distribution/leap/16.0/repo/oss/"
     p = _phase_with_base(monkeypatch, tmp_path, scc="")
-    assert p.eib_packages() == {"packageList": ["jq"], "additionalRepos": [{"url": bci}]}
+    assert p.eib_packages() == {"packageList": ["jq", "open-iscsi"], "additionalRepos": [{"url": bci}]}
     p = _phase_with_base(monkeypatch, tmp_path, scc="SCC-TEST-CODE")
-    assert p.eib_packages() == {"packageList": ["jq"], "sccRegistrationCode": "SCC-TEST-CODE"}
+    assert p.eib_packages() == {"packageList": ["jq", "open-iscsi"], "sccRegistrationCode": "SCC-TEST-CODE"}
     p = _phase_with_base(monkeypatch, tmp_path, scc="SCC-TEST-CODE", edition="opensource")
-    assert p.eib_packages() == {"packageList": ["jq"], "additionalRepos": [{"url": leap}]}
+    assert p.eib_packages() == {"packageList": ["jq", "open-iscsi"], "additionalRepos": [{"url": leap}]}
 
 
 def test_images_build_without_scc(monkeypatch, tmp_path):

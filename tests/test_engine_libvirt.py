@@ -56,3 +56,20 @@ def test_load_libvirt_does_not_reimport_once_available(monkeypatch):
 
     assert lv_mod._load_libvirt() is True
     assert lv_mod._libvirt is sentinel  # unchanged, no reimport attempted
+
+
+def test_connect_turns_a_refused_connection_into_runtime_error():
+    """A user outside the libvirt group (a claim-portal student) gets a
+    libvirtError from open(); callers such as `rodeo status` catch
+    RuntimeError, so connect() must not leak the raw error as a traceback."""
+    class FakeLibvirtError(Exception):
+        pass
+
+    def refuse(uri):
+        raise FakeLibvirtError("authentication unavailable: no polkit agent available")
+
+    lv_mod._libvirt = types.SimpleNamespace(open=refuse, libvirtError=FakeLibvirtError)
+    lv_mod._AVAILABLE = True
+
+    with pytest.raises(RuntimeError, match="Run as root"):
+        lv_mod.LibvirtDriver("qemu:///system").connect()

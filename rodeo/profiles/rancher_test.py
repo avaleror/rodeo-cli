@@ -12,5 +12,6 @@ _VM_NAMES = ["rancher", "k3s", "rke2"]
 
 class RancherTestProfile(RancherProfile):
     name = "rancher-test"
+    builder = None
     vm_names = _VM_NAMES
     static_vms = {name: RancherProfile.static_vms[name] for name in _VM_NAMES}

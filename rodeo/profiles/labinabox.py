@@ -3,9 +3,10 @@
 rodeo keeps what it is good at (host prep, firewall DNAT, secrets, the plan as
 source of truth) and hands VM creation and every addon to lab-in-a-box's
 setup_lab.py, which already knows how to build labs rodeo has no native phase
-for (SMLM, Uyuni, NeuVector, ...). The topology still comes from definition.yaml;
-per-node lab-in-a-box knobs and addon sections live under lab_in_a_box: in the
-plan (see rodeo/labinabox.py for the mapping).
+for (SMLM, Uyuni, NeuVector, ...). The topology comes from definition.yaml, or
+from the plan's lab_in_a_box.lab (a lab-in-a-box lab) when it has one; per-node
+lab-in-a-box knobs and addon sections live under lab_in_a_box: in the plan (see
+rodeo/labinabox.py for the mapping).
 """
 from __future__ import annotations
 
@@ -24,6 +25,8 @@ register_stream_phase("labinabox", "stream_labinabox")
 
 class LabInABoxProfile(RodeoProfile):
     name = "lab-in-a-box"
+    builder = {"title": "lab-in-a-box", "base": None, "provides": [],
+               "note": "Any lab lab-in-a-box can build: VMs, clusters and add-ons.", "external": True}
     # kvm_host: packages, libvirt, firewall DNAT (rodeo's Ansible role).
     # labinabox_host / labinabox: see rodeo/engine/labinabox_phase.py.
     # custom_scripts: <lab>/custom/scripts/* post-steps, re-run every time.
@@ -63,15 +66,17 @@ class LabInABoxProfile(RodeoProfile):
 
     def finalize_cfg(self, cfg: dict) -> dict:
         """An `instance: N` lab: VM addresses, domains and network come from the
-        shifted topology (rodeo/instances.py), not the definition as written."""
+        shifted topology (rodeo/instances.py), not the definition as written; a
+        plan with lab_in_a_box.lab: its VMs are the lab's (labinabox.topology_from_lab)."""
         from .. import labinabox_host as host
         from ..instances import instance_number
+        from ..labinabox import stored_lab
 
         uri = host.target(cfg)["libvirt_uri"]
         if uri:
             # VMs on an existing lab-in-a-box's hypervisor: day-2 commands go there.
             cfg.setdefault("libvirt", {})["uri"] = uri
-        if not instance_number(cfg):
+        if not instance_number(cfg) and stored_lab(cfg) is None:
             return self._apply_cloud_addresses(cfg)
         from ..inventory import build_inventory
 

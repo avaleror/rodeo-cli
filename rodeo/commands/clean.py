@@ -286,6 +286,13 @@ def clean_cmd(
         profile = get_profile( (cfg or {}).get("type", "suse-virt") )
         reset_from("kvm_host", (cfg or {}).get("name", "default"), profile.phases)
 
+    # Content checks installed in /opt/rodeo/<plan>/checks (rodeo content apply).
+    from .. import content
+
+    removed = content.remove_all_checks() if all else [content.remove_checks(cfg or {})]
+    for path in filter(None, removed):
+        console.print(f"  [dim]delete[/dim]   {path}")
+
     # Secrets (global ~/.rodeo/secrets.yaml ). Only if --secrets (or --all + --secrets).
     if secrets:
         from ..paths import rodeo_secrets_path

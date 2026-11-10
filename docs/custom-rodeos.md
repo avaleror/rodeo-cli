@@ -12,6 +12,29 @@ rodeo up --profile mylab              # deploy your edited lab
 Prefer composing in the browser? The [Rodeo Builder](rodeo-builder.md) picks the lab engine,
 orders story chapters and downloads the profile.
 
+Already have a lab-in-a-box lab (a `lab.json`, or the YAML its lab-builder downloads)?
+Make it a rodeo in one step:
+
+```bash
+rodeo new mylab --from-lab-json lab.json
+rodeo up --profile mylab
+```
+
+The profile's plan carries the lab as `lab_in_a_box.lab` (see the
+[plan reference](reference/plan.md)) and rodeo deploys it as written, with the host's
+network, domain, node addresses and secrets. On the way in, credential values
+(password, token, registration code, API key and secret key fields) become `??<field>`
+placeholders listed in `operator_secrets`, so `rodeo up` asks for them once and the
+plan holds no secret; node names and addresses written literally in add-on settings
+become `${node_fqdn:<vm>}` / `${node_ip:<vm>}`. The command lists both, and what to
+check: addresses that look like the lab's but belong to no node, Harvester nodes
+(`rodeo ssh`/`status` treat them as plain VMs) and PXE-booted nodes (not reachable
+until lab-in-a-box installs them). It also lists the fields the lab-in-a-box on this machine
+doesn't know, which `rodeo up` would refuse. It checks against the installed one, else
+`RODEO_LABINABOX_PATH`, else the newest release rodeo has fetched into `~/.rodeo/vendor/`.
+With none of those, it says the lab wasn't checked; `rodeo up` checks it before
+building anyway.
+
 ---
 
 ## Two words that both sound like "profile"

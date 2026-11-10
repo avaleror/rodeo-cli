@@ -12,6 +12,9 @@ from .base import BASE_VERSIONS, RodeoProfile
 
 class SuseVirtProfile(RodeoProfile):
     name = "suse-virt"
+    builder = {"title": "SUSE Virtualization", "base": "harvester",
+               "provides": ["harvester", "kubevirt", "longhorn", "rancher", "fleet"],
+               "note": "3-node Harvester HCI cluster with Rancher Prime on nested KVM."}
     phases = ["kvm_host", "vms", "pxe_server", "cluster", "rancher", "apply", "finalise", "custom_scripts"]
     vm_names = ["harvester1", "harvester2", "harvester3", "rancher"]
     ansible_phases = frozenset(["kvm_host", "vms", "pxe_server"])

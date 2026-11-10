@@ -1,5 +1,5 @@
 #!/bin/bash
-# suse-virt-workshop custom_scripts step 2/3.
+# suse-virt-workshop custom_scripts step 2/4.
 #
 # Exports /srv/backups over NFS on the host, matching the exact endpoint
 # suse-virt-rodeo's chapter 6 (The Unthinkable Error) assignment hard-codes

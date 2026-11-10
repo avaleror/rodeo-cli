@@ -31,6 +31,8 @@ DOWNSTREAM_RESOURCES: dict = {
 
 class RancherProfile(RodeoProfile):
     name = "rancher"
+    builder = {"title": "Rancher Prime", "base": "rancher", "provides": ["rancher", "fleet"],
+               "note": "Rancher Prime on K3s plus K3s and RKE2 clusters it provisions."}
     # 'boot' starts the network + VMs (no Harvester cluster, so no pxe_server/cluster).
     phases = ["kvm_host", "vms", "boot", "rancher", "downstream", "apply", "finalise", "custom_scripts"]
     vm_names = ["rancher", "k3s", "rke2", "rke2-ha1", "rke2-ha2", "rke2-ha3"]

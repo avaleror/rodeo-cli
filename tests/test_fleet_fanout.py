@@ -169,3 +169,23 @@ def test_fleet_doctor_cli_exit_1_on_failure(monkeypatch, tmp_path):
 
     result = CliRunner().invoke(cli, ["fleet", "doctor", "-f", str(inv_path)])
     assert result.exit_code == 1
+
+
+def test_fleet_status_counts_only_cacheable_phases():
+    """A finished lab read "6/8" forever: apply and custom_scripts run on every
+    deploy and are never stored as completed (live run 2026-10-15)."""
+    from rodeo.service.status import cacheable_phase_progress
+
+    done_at = {"completed": True, "timestamp": "2026-10-15T11:30:00+00:00"}
+    phases = {
+        "kvm_host": done_at, "vms": done_at, "pxe_server": done_at, "cluster": done_at,
+        "rancher": done_at, "finalise": done_at,
+        "apply": {"completed": False, "no_cache": True},
+        "custom_scripts": {"completed": False, "no_cache": True},
+    }
+    assert cacheable_phase_progress(phases) == (6, 6)
+    phases["finalise"] = {"completed": False}
+    assert cacheable_phase_progress(phases) == (5, 6)
+    # Status JSON from before the no_cache flag: apply is still skipped.
+    assert cacheable_phase_progress({"vms": done_at, "apply": {"completed": False}}) == (1, 1)
+    assert cacheable_phase_progress(None) == (0, 0)

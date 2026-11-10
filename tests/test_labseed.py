@@ -75,6 +75,7 @@ def test_virt_workshop_aws_profile_has_custom_scripts(tmp_path):
     assert scripts == [
         "50-image-cache.sh",
         "60-nfs-backup-target.sh",
+        "65-student-kit.sh",
         "70-webserver-prod.sh",
     ]
     for name in scripts:
@@ -108,6 +109,7 @@ def test_virt_workshop_aws_2n_profile_is_2_node_and_has_custom_scripts(tmp_path)
     assert scripts == [
         "50-image-cache.sh",
         "60-nfs-backup-target.sh",
+        "65-student-kit.sh",
         "70-webserver-prod.sh",
     ]
     for name in scripts:

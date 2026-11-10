@@ -1,5 +1,5 @@
 #!/bin/bash
-# virt-workshop-aws-2n custom_scripts step 3/3.
+# virt-workshop-aws-2n custom_scripts step 4/4.
 #
 # 2-node variant of virt-workshop-aws's 70-webserver-prod.sh. Only real
 # difference: there is no 3rd node to exclude, so node labeling covers both
@@ -36,9 +36,9 @@
 # builds the same end state on top of the plain harvester+rancher deploy:
 # namespace, VM network, node labels, and both VMs.
 #
-# Runs after 50-image-cache.sh (needs the cached image already served) and
-# 60-nfs-backup-target.sh (order only, no direct dependency) as the last of
-# the three custom_scripts. Idempotent — every kubectl step checks before
+# Runs after 50-image-cache.sh (needs the cached image already served),
+# 60-nfs-backup-target.sh (order only) and 65-student-kit.sh (the lab VM key)
+# as the last of the four custom_scripts. Idempotent: every kubectl step checks before
 # creating (this is a no_cache_phase, so it reruns on every `rodeo up`).
 #
 # KNOWN RISK: the NetworkAttachmentDefinition shape below (bridge on mgmt-br,
@@ -69,6 +69,15 @@ if [ -z "${SSH_PUBKEY:-}" ]; then
   log "warn: no SSH public key found in any known location; ${VM_NAME} will come up without SSH access."
   SSH_PUBKEY=""
 fi
+# The shared lab VM key from 65-student-kit.sh, so users without root (a
+# claim-portal student) can SSH to these VMs too (Exercise 4.4).
+LAB_VM_PUBKEY=""
+[ -f /opt/suse-virt-workshop/lab-vm-key.pub ] && LAB_VM_PUBKEY="$(cat /opt/suse-virt-workshop/lab-vm-key.pub)"
+# cloud-init list items, indented for the userData block below.
+AUTHORIZED_KEYS=""
+for k in "${SSH_PUBKEY}" "${LAB_VM_PUBKEY}"; do
+  [ -n "${k}" ] && AUTHORIZED_KEYS+="${AUTHORIZED_KEYS:+$'\n'}              - ${k}"
+done
 
 log "waiting for kubeconfig / API server ..."
 for _ in $(seq 1 30); do
@@ -281,7 +290,7 @@ spec:
             #cloud-config
             hostname: ${name}
             ssh_authorized_keys:
-              - ${SSH_PUBKEY}
+${AUTHORIZED_KEYS}
 EOF
 }
 

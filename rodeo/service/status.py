@@ -21,6 +21,20 @@ def phase_is_no_cache(name: str, info: dict[str, Any]) -> bool:
     return name in _DEFAULT_NO_CACHE_PHASES
 
 
+def cacheable_phase_progress(phases: dict[str, Any] | None) -> tuple[int, int]:
+    """``(done, total)`` over the cacheable phases only.
+
+    ``apply`` and ``custom_scripts`` run on every deploy and are never stored
+    as completed, so counting them left a finished lab at "6/8" forever in
+    ``rodeo fleet status`` (live run 2026-10-15).
+    """
+    cacheable = [
+        info for name, info in (phases or {}).items()
+        if isinstance(info, dict) and not phase_is_no_cache(name, info)
+    ]
+    return sum(1 for info in cacheable if info.get("completed")), len(cacheable)
+
+
 def cacheable_phases_complete(phases: dict[str, Any] | None) -> bool:
     """Return True when every *cacheable* phase reports completed.
 

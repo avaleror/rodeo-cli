@@ -105,6 +105,10 @@ class RodeoProfile(ABC):
     # When False, the success panel shows no Harvester/Rancher URLs or logins: the
     # lab's VMs are not rodeo's own Harvester and Rancher nodes.
     native_logins: bool = True
+    # How the Rodeo Builder offers this type: ``title``, ``base`` (the bundled profile a
+    # new rodeo starts from, None for an external engine), ``provides`` (capabilities its
+    # chapters can use), ``note`` and ``external`` (optional). None: not offered.
+    builder: dict | None = None
 
     def phase_key(self, phase: str, cfg: dict) -> str | None:
         """What a cached phase's completion depends on: when it differs from the key

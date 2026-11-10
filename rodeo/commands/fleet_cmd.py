@@ -253,9 +253,9 @@ def fleet_status_cmd(
         table.add_column("detail", overflow="fold")
         for r in results:
             if r.ok and r.report:
-                phases = r.report.get("phases") or {}
-                done = sum(1 for p in phases.values() if p.get("completed"))
-                total = len(phases)
+                from ..service.status import cacheable_phase_progress
+
+                done, total = cacheable_phase_progress(r.report.get("phases"))
                 vip_ok = r.report.get("vip_reachable")
                 vip = r.report.get("vip", "")
                 vip_s = f"{vip} ({'up' if vip_ok else 'down'})" if vip else "—"
@@ -980,5 +980,7 @@ def fleet_open_access_cmd(
 
 
 from .fleet_portal_cmd import portal_group  # noqa: E402
+from .fleet_up_cmd import fleet_up_cmd  # noqa: E402
 
 fleet_cmd.add_command(portal_group)
+fleet_cmd.add_command(fleet_up_cmd)

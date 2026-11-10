@@ -23,6 +23,11 @@ def _schema(checkout: Path, *args: str) -> dict:
     return json.loads(out)
 
 
+def _installer(checkout: Path, addon: str) -> Path:
+    plain = checkout / "scripts" / f"install_{addon}"
+    return plain if plain.is_file() else plain.with_name(f"install_{addon}.py")
+
+
 def main() -> None:
     checkout = Path(sys.argv[1]).resolve()
     base = _schema(checkout, "--base", "json")["sections"]
@@ -35,8 +40,7 @@ def main() -> None:
             for section in ("common", "nodes")
         },
         "addons": {
-            addon: sorted(f["name"] for f in _schema(
-                checkout, str(checkout / "scripts" / f"install_{addon}.py"), "json")["fields"])
+            addon: sorted(f["name"] for f in _schema(checkout, str(_installer(checkout, addon)), "json")["fields"])
             for addon in ADDONS
         },
     }

@@ -99,7 +99,11 @@ def build_inventory(cfg: dict) -> dict:
     if profile_name == "lab-in-a-box":
         # Several instances of one lab on a host: see rodeo/instances.py.
         from .instances import apply_to_topology, instance_number, port_stride
+        from .labinabox import stored_lab, topology_from_lab
 
+        lab = stored_lab(cfg)
+        if lab is not None:
+            topology = topology_from_lab(topology, lab)
         topology = apply_to_topology(topology, instance_number(cfg), port_stride(cfg))
 
     raw_nodes = topology.get("nodes", [])

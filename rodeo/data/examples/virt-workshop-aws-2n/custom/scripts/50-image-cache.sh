@@ -1,5 +1,5 @@
 #!/bin/bash
-# suse-virt-workshop custom_scripts step 1/3.
+# suse-virt-workshop custom_scripts step 1/4.
 #
 # Downloads and caches a small, freely redistributable cloud image, then
 # serves it over HTTP on the libvirt NAT gateway (192.168.122.1) so

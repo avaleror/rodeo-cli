@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -13,6 +14,7 @@ import yaml
 
 from rodeo.builder import discovery
 from rodeo.builder.api import Api
+from tests.conftest import make_labinabox
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -32,6 +34,24 @@ def test_engines_have_bases_resources_and_capabilities():
     assert yaml.safe_load(liab["definition"])["definition"]["nodes"][0]["name"] == "vm1"
     provides = {c for e in engines.values() for c in e["provides"]}
     assert data["capabilities"] == sorted(provides) and "rancher" in data["capabilities"]
+    assert data["targets"] == ["aws", "baremetal", "instruqt"]
+    assert data["content_formats"] == ["rmstory", "instruqt", "markdown"]
+
+
+def test_engines_and_targets_come_from_the_registries(monkeypatch):
+    from rodeo import host_context, profiles
+    from rodeo.profiles.rancher import RancherProfile
+
+    class Plugin(RancherProfile):
+        name = "plugin-type"
+        builder = {"title": "Plugin", "base": "rancher", "provides": ["plugin-cap"], "note": "From a plugin."}
+
+    monkeypatch.setitem(profiles._REGISTRY, "plugin-type", Plugin())
+    monkeypatch.setitem(host_context._TARGETS, "plugin-target", lambda cfg, facts: None)
+    data = discovery.engines()
+    assert [e["name"] for e in data["engines"]][-1] == "plugin-type"
+    assert "rancher-test" not in [e["name"] for e in data["engines"]]
+    assert "plugin-cap" in data["capabilities"] and "plugin-target" in data["targets"]
 
 
 def test_workshops_read_chapters_and_their_metadata():
@@ -62,6 +82,9 @@ def test_labinabox_imports_list_bundled_labinabox_rodeos():
     assert set(imports) == {"smlm-workshop"}
     assert {"smlm", "client_registration"} <= set(imports["smlm-workshop"]["addons"])
     assert yaml.safe_load(imports["smlm-workshop"]["plan"])["type"] == "lab-in-a-box"
+    lab = imports["smlm-workshop"]["lab"]
+    assert lab == yaml.safe_load(imports["smlm-workshop"]["plan"])["lab_in_a_box"]["lab"]
+    assert len(lab["nodes"]) == 8 and lab["smlm"]["smlm_admin_pass"] == "??smlm_admin_password"
 
 
 def _fake_labinabox(tmp_path: Path, body: str) -> Path:
@@ -92,6 +115,56 @@ def test_labinabox_catalogue_is_split_by_kind(labinabox_checkout):
     assert [a["name"] for a in data["addons"]] == ["smlm", "client_registration"]
     assert [a["name"] for a in data["infrastructure"]] == ["pxe"]
     assert [a["name"] for a in data["kclusters"]] == ["rke2"]
+
+
+def test_labinabox_addons_run_without_their_named_interpreter(tmp_path):
+    checkout = _fake_labinabox(tmp_path, (
+        "import os, subprocess\n"
+        "def dispatch(action, method, params, body):\n"
+        "    script = os.path.join(os.environ['LABBUILDER_SCRIPTS_DIR'], 'install_smlm')\n"
+        "    r = subprocess.run([script, '--schema', 'json'], capture_output=True, text=True)\n"
+        "    names = [r.stdout.strip()] if r.returncode == 0 else []\n"
+        "    return 200, {'components': [{'name': n, 'targets': []} for n in names]}\n"))
+    script = checkout / "scripts" / "install_smlm"
+    script.parent.mkdir()
+    script.write_text("#!/usr/bin/env python3.0-rodeo-missing\nprint('install_smlm')\n")
+    script.chmod(0o755)
+    assert discovery.labinabox_addons(checkout) == [{"name": "smlm", "kind": "addon", "targets": []}]
+
+
+def test_labinabox_without_addons_fails_loudly(tmp_path):
+    checkout = _fake_labinabox(tmp_path, (
+        "def dispatch(action, method, params, body):\n"
+        "    return 200, {'components': [{'name': 'rke2', 'kind': 'kcluster', 'targets': []}]}\n"))
+    with pytest.raises(RuntimeError, match="none reported"):
+        discovery.labinabox_addons(checkout)
+    assert "none reported" in discovery.labinabox(checkout)["error"]
+
+
+def test_labinabox_catalogue_is_read_again_only_when_the_checkout_changes(tmp_path, monkeypatch):
+    checkout = make_labinabox(tmp_path / "liab")
+    runs = []
+    run = discovery._run_liab
+    monkeypatch.setattr(discovery, "_run_liab", lambda script, path: runs.append(script) or run(script, path))
+    first = discovery.labinabox(checkout)
+    assert first["schema"] and len(runs) == 2
+    first["addons"].clear()
+    again = discovery.labinabox(checkout, "https://example/lb/", "2.0")
+    assert len(runs) == 2 and [a["name"] for a in again["addons"]] == ["smlm", "client_registration"]
+    assert again["builder_url"] == "https://example/lb/" and again["version"] == "2.0"
+    api = checkout / "webui" / "lib" / "api.py"
+    os.utime(api, ns=(api.stat().st_mtime_ns + 10**9,) * 2)
+    discovery.labinabox(checkout)
+    assert len(runs) == 4
+
+
+def test_labinabox_errors_are_not_kept(tmp_path, monkeypatch):
+    checkout = _fake_labinabox(tmp_path, "def dispatch(*a):\n    return 500, {'error': 'boom'}\n")
+    runs = []
+    run = discovery._run_liab
+    monkeypatch.setattr(discovery, "_run_liab", lambda script, path: runs.append(script) or run(script, path))
+    assert "boom" in discovery.labinabox(checkout)["error"]
+    assert "boom" in discovery.labinabox(checkout)["error"] and len(runs) == 2
 
 
 def test_labinabox_addons_fail_loudly(tmp_path):
@@ -174,6 +247,41 @@ def test_generated_labinabox_plan_is_a_valid_rodeo(tmp_path):
 
 
 @needs_node
+def test_a_lab_from_the_lab_builder_is_the_workshops_lab(tmp_path, monkeypatch):
+    """The SMLM workshop with a lab sent back from the lab-builder (one VM resized, one added):
+    the plan keeps the workshop and deploys that lab."""
+    from rodeo.config import load_config
+    from rodeo.labinabox import build_lab_json
+    from rodeo.labseed import example_dir
+
+    base = next(i for i in discovery.labinabox_imports() if i["profile"] == "smlm-workshop")
+    lab = base["lab"]
+    lab["nodes"]["smlm.rodeo.lab"]["VM_MEM"] = "24576"
+    lab["nodes"]["extra.rodeo.lab"] = {"myip": "192.168.122.61", "VM_MEM": "1024", "VM_CPU": "1", "VM_DSK": "10",
+                                       "ISO_IMAGE": "ubuntu-24.04-server-cloudimg-amd64.img", "flag": "on"}
+    out = _node_plans("console.log(JSON.stringify({plan: RB.planFromBase(RB.setStoredLab(" + json.dumps(base["plan"]) +
+                      ", " + json.dumps(lab) + "), {name: 'smlm-mine', target: 'baremetal', story: {language: 'en'}})}))")
+    plan, original = yaml.safe_load(out["plan"]), yaml.safe_load(base["plan"])
+    assert plan["lab_in_a_box"]["lab"] == lab
+    for key in ("workshop", "operator_secrets", "resources"):
+        assert plan[key] == original[key], key
+    assert plan["lab_in_a_box"]["variants"] == original["lab_in_a_box"]["variants"]
+    home = tmp_path / "home"
+    (home / ".rodeo").mkdir(parents=True)
+    keys = set(re.findall(r"\?\?(\w+)", out["plan"]))
+    (home / ".rodeo" / "secrets.yaml").write_text(yaml.safe_dump({k: "x" for k in keys}))
+    monkeypatch.setenv("HOME", str(home))
+    shutil.copytree(example_dir("smlm-workshop"), tmp_path / "smlm-mine")
+    (tmp_path / "smlm-mine" / "rodeo-plan.yaml").write_text(out["plan"])
+    cfg = load_config(tmp_path / "smlm-mine" / "rodeo-plan.yaml")
+    assert cfg["vms"]["extra"]["ip"] == "192.168.122.61"
+    rendered, _ = build_lab_json(cfg)
+    assert rendered["nodes"]["smlm.rodeo.lab"]["VM_MEM"] == "24576"
+    assert rendered["nodes"]["extra.rodeo.lab"]["flag"] == "on"
+    assert rendered["client_registration"]["client_registration_server_ip"] == "192.168.122.20"
+
+
+@needs_node
 @pytest.mark.parametrize("engine", ["suse-virt", "rancher", "suse-edge"])
 def test_generated_native_plans_keep_their_base(engine, tmp_path):
     base = next(e for e in discovery.engines()["engines"] if e["name"] == engine)
@@ -198,7 +306,7 @@ def test_static_build_embeds_every_answer(tmp_path, labinabox_checkout):
                         "--no-fetch-sources", "--labinabox", str(labinabox_checkout)],
                        capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
-    assert sorted(p.name for p in out.iterdir()) == ["app.js", "assets", "index.html", "logic.js", "style.css", "theme.js"]
+    assert sorted(p.name for p in out.iterdir()) == ["app.js", "assets", "boot.js", "fonts", "index.html", "logic.js", "style.css", "theme.js"]
     html = (out / "index.html").read_text()
     assert "__RODEOVERSION__" not in html
     payload = re.search(r'<script id="static-api-data" type="application/json">(.*?)</script>', html, re.S).group(1)
@@ -251,11 +359,35 @@ def test_chapter_sources_reject_incomplete_entries(tmp_path, monkeypatch):
 def test_source_fetch_commands_are_sparse_and_shallow(tmp_path):
     virt = next(s for s in discovery.chapter_sources() if s["id"] == "virt-workshop")
     clone, sparse = discovery.source_fetch_commands(virt, tmp_path / "v")
-    assert clone[:8] == ["git", "clone", "-q", "--depth", "1", "--filter=blob:none", "--sparse", "--branch"]
+    assert clone[:10] == ["git", "clone", "-q", "--depth", "1", "--filter=blob:none", "--sparse",
+                          "-c", "core.symlinks=false", "--branch"]
     assert sparse[-2:] == ["/docs/exercises/*.md", "/checks/*"]
     smlm = next(s for s in discovery.chapter_sources() if s["id"] == "smlm-workshop")
     assert discovery.source_fetch_commands(smlm, tmp_path / "s")[1][-2:] == [
         "/tracks/smlms/*/assignment.md", "/tracks/smlms/*/check-*"]
+
+
+def test_the_virtualization_rodeo_is_an_instruqt_track_at_its_repository_root(tmp_path):
+    rodeo_src = next(s for s in discovery.chapter_sources() if s["id"] == "virt-rodeo")
+    assert rodeo_src["repo"] == "https://github.com/SUSE-Technical-Marketing/suse-virt-rodeo"
+    assert (rodeo_src["engine"], rodeo_src["profile"], rodeo_src["format"]) == ("", "", "instruqt")
+    clone, sparse, fetch, checkout = discovery.source_fetch_commands(rodeo_src, tmp_path / "r")
+    assert "--branch" not in clone and clone[-4:] == ["--no-checkout", "--", rodeo_src["repo"], str(tmp_path / "r")]
+    assert sparse[-2:] == ["/*/assignment.md", "/*/check-*"]
+    assert fetch[-2:] == ["origin", rodeo_src["ref"]] and len(rodeo_src["ref"]) == 40
+    assert checkout[-3:] == ["-q", "--detach", "FETCH_HEAD"]
+    challenge = tmp_path / "r" / "01-the-arrival"
+    challenge.mkdir(parents=True)
+    (challenge / "assignment.md").write_text(
+        '---\nslug: the-arrival\ntitle: "<span id="a.7" lang="en" hist="bank">\\U0001F3E6 Chapter 1: The Arrival</span>"\n'
+        'type: challenge\n---\n<span id="a.1" lang="en" hist="bank">The rain</span>\n')
+    (challenge / "check-kvm-host").write_text("#!/bin/bash\n")
+    [chapter] = discovery.source_chapters(rodeo_src, tmp_path / "r")
+    assert (chapter["id"], chapter["title"], chapter["spans"], chapter["check"]) == (
+        "the-arrival", "\U0001F3E6 Chapter 1: The Arrival", 1, True)
+    shop = next(w for w in discovery.workshops({"virt-rodeo": tmp_path / "r"})["workshops"] if w["id"] == "virt-rodeo")
+    assert shop["source"] == "https://github.com/SUSE-Technical-Marketing/suse-virt-rodeo/tree/" + rodeo_src["ref"]
+    assert (shop["engine"], shop["profile"], shop["plan"]) == ("", "", "")
 
 
 def test_fetch_sources_keeps_given_checkouts_and_reports_failed_clones(tmp_path):
@@ -270,7 +402,7 @@ def test_fetch_sources_keeps_given_checkouts_and_reports_failed_clones(tmp_path)
         return Done(1, "fatal: repository not found") if "virt-workshop" in " ".join(cmd) else Done(0)
 
     checkouts, errors = discovery.fetch_sources(tmp_path, {"smlm-workshop": Path("/given")}, run=run)
-    assert checkouts == {"smlm-workshop": Path("/given")}
+    assert checkouts == {"smlm-workshop": Path("/given"), "virt-rodeo": tmp_path / "virt-rodeo"}
     assert errors == {"virt-workshop": "fatal: repository not found"}
     assert all("smlm-workshop" not in " ".join(c) for c in calls)
 
@@ -297,6 +429,51 @@ def test_workshops_list_fetched_sources_after_the_bundled_ones(markdown_source):
     assert shops[0]["profile"] == "rancher" and yaml.safe_load(shops[0]["plan"])["type"] == "rancher"
 
 
+def _catalog(monkeypatch, **entries):
+    from rodeo import catalog
+
+    monkeypatch.setattr(catalog, "entries", lambda: entries)
+
+
+def test_catalog_rodeos_are_chapter_sources_after_the_file(monkeypatch, tmp_path):
+    _catalog(monkeypatch,
+             ride={"name": "ride", "title": "Ride", "repo": "https://github.com/rider/ride", "ref": "", "engine": "rancher"},
+             dup={"name": "dup", "repo": "https://github.com/avaleror/suse-virt-workshop.git", "ref": "main"})
+    sources = discovery.chapter_sources()
+    assert [s["id"] for s in sources] == ["smlm-workshop", "virt-workshop", "virt-rodeo", "catalog-ride"]
+    ride = sources[-1]
+    assert (ride["format"], ride["path"], ride["profile"], ride["engine"], ride["title"]) == ("rmstory", "story", "", "rancher", "Ride")
+    clone, sparse = discovery.source_fetch_commands(ride, tmp_path / "r")
+    assert "--branch" not in clone and clone[-3:] == ["--", "https://github.com/rider/ride", str(tmp_path / "r")]
+    assert sparse[-4:] == ["/story/*.md", "/story/chapters.yaml", "/story/stories/*.yaml",
+                           "/story/strings/*/*/@default/content.json"]
+    assert ride["languages"] is True
+
+
+def test_rmstory_sources_read_a_story_directory(monkeypatch, tmp_path):
+    _catalog(monkeypatch, ride={"name": "ride", "title": "Ride", "repo": "https://github.com/rider/ride", "ref": "v1",
+                                "engine": "rancher"})
+    story = tmp_path / "story"
+    (story / "stories").mkdir(parents=True)
+    (story / "01-hello.md").write_text('# Hello\n<span lang="en" id="hello.1" hist="short">Hi</span>\n')
+    (story / "02-bye.md").write_text("# Bye\n")
+    (story / "chapters.yaml").write_text("chapters:\n  - file: 01-hello.md\n    mins: 7\n    needs: [rancher]\n")
+    (story / "stories" / "short.yaml").write_text("- hello.1\n")
+    shops = discovery.workshops({"catalog-ride": tmp_path})["workshops"]
+    ride = next(w for w in shops if w["id"] == "catalog-ride")
+    assert [(c["id"], c["mins"], c["needs"]) for c in ride["chapters"]] == [("hello", 7, ["rancher"]), ("bye", 10, [])]
+    assert ride["variants"] == {"short": ["hello.1"]} and ride["plan"] == "" and ride["profile"] == ""
+    assert ride["source"] == "https://github.com/rider/ride/tree/v1/story"
+
+
+def test_chapter_sources_accept_the_rmstory_format_in_the_file(monkeypatch, tmp_path):
+    _catalog(monkeypatch)
+    f = tmp_path / "sources.yaml"
+    f.write_text("sources:\n  - {id: s, title: S, engine: rancher, profile: rancher, format: rmstory, repo: https://h/a/b, ref: main, path: story}\n")
+    monkeypatch.setattr(discovery, "SOURCES_FILE", f)
+    assert [s["id"] for s in discovery.chapter_sources()] == ["s"]
+
+
 def test_static_build_with_local_sources(tmp_path, instruqt_source, markdown_source):
     out = tmp_path / "builder"
     r = subprocess.run([sys.executable, str(BUILD), "--output", str(out), "--no-fetch-sources", "--no-labinabox",
@@ -308,3 +485,145 @@ def test_static_build_with_local_sources(tmp_path, instruqt_source, markdown_sou
     bad = subprocess.run([sys.executable, str(BUILD), "--output", str(tmp_path / "b2"), "--source", "nope"],
                          capture_output=True, text=True)
     assert bad.returncode != 0 and "ID=CHECKOUT" in bad.stderr
+
+
+def _row(text, **extra):
+    return json.dumps({"content": text, "status": "reviewed", "updated_by": "me", **extra})
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+def test_catalog_sources_bring_their_language_branches_translations(monkeypatch, tmp_path):
+    env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
+           "GIT_COMMITTER_EMAIL": "t@t", "GIT_CONFIG_NOSYSTEM": "1"}
+    origin = tmp_path / "origin"
+
+    def git(*args):
+        subprocess.run(["git", "-C", str(origin), *args], check=True, capture_output=True, env=env)
+
+    def put(path, text):
+        (origin / path).parent.mkdir(parents=True, exist_ok=True)
+        (origin / path).write_text(text)
+
+    origin.mkdir()
+    git("init", "-q", "-b", "main")
+    put("story/01-hello.md", '# Hello\n<span lang="en" id="hello.1">Hi</span>\n')
+    put("story/strings/de/hello.1/@default/content.json", _row("Hallo"))
+    put("story/strings/es/hello.1/@default/content.json", _row("Hola (old)"))
+    git("add", "-A")
+    git("commit", "-q", "-m", "source")
+    for branch in ("pt-br", "dev"):
+        git("branch", branch)
+    git("checkout", "-q", "-b", "es")
+    put("story/strings/es/hello.1/@default/content.json", _row("Hola"))
+    put("story/strings/es/gone.1/@default/content.json", "not json")
+    put("story/strings/es/evil.sh", "#!/bin/sh\n")
+    put("story/strings/es/x.1/@default/copy.json", _row("x", updated_by="rmstory.extract"))
+    git("add", "-A")
+    git("commit", "-q", "-m", "es")
+    git("checkout", "-q", "main")
+    _catalog(monkeypatch, ride={"name": "ride", "title": "Ride", "repo": "file://" + str(origin), "ref": "", "engine": "rancher"})
+    monkeypatch.setattr(discovery, "SOURCES_FILE", tmp_path / "none.yaml")
+    checkouts, errors = discovery.fetch_sources(tmp_path / "work")
+    assert errors == {} and list(checkouts) == ["catalog-ride"]
+    strings = checkouts["catalog-ride"] / "story" / "strings"
+    assert sorted(p.relative_to(strings).as_posix() for p in strings.rglob("*.json")) == [
+        "de/hello.1/@default/content.json", "es/gone.1/@default/content.json", "es/hello.1/@default/content.json"]
+    ride = next(w for w in discovery.workshops(checkouts)["workshops"] if w["id"] == "catalog-ride")
+    assert ride["strings"] == {"de": {"hello.1": {"content": "Hallo", "status": "reviewed", "updated_by": "me"}},
+                               "es": {"hello.1": {"content": "Hola", "status": "reviewed", "updated_by": "me"}}}
+    assert [c["id"] for c in ride["chapters"]] == ["hello"]
+
+
+def test_a_language_branch_that_fails_is_reported_and_the_source_kept(tmp_path):
+    src = {"id": "catalog-ride", "repo": "https://example.invalid/r", "path": "story"}
+
+    def run(cmd, **kw):
+        if "ls-remote" in cmd:
+            return subprocess.CompletedProcess(cmd, 0, "abc\trefs/heads/es\nabc\trefs/heads/main\n", "")
+        return subprocess.CompletedProcess(cmd, 128, b"" if kw.get("text") is None else "", "fatal: no es")
+
+    assert discovery.fetch_language_strings(src, tmp_path, run) == {"catalog-ride (es branch)": "fatal: no es"}
+    refused = discovery.fetch_language_strings(src, tmp_path, lambda cmd, **kw: subprocess.CompletedProcess(cmd, 128, "", "denied"))
+    assert refused == {"catalog-ride (language branches)": "denied"}
+
+
+def test_the_catalogue_carries_the_checkouts_schema(labinabox_checkout):
+    import json as _json
+
+    snapshot = _json.loads((Path(__file__).parent / "fixtures" / "labinabox_schema" / "schema.json").read_text())
+    out = discovery.labinabox(labinabox_checkout)
+    assert out["schema_error"] == "" and out["schema"]["nodes"] == snapshot["nodes"]
+    assert out["schema"]["addons"] == {"smlm": snapshot["addons"]["smlm"],
+                                       "client_registration": snapshot["addons"]["client_registration"]}
+    broken = labinabox_checkout.parent / "broken"
+    (broken / "webui" / "lib").mkdir(parents=True, exist_ok=True)
+    (broken / "webui" / "lib" / "api.py").write_text(
+        "def dispatch(action, method, params, body):\n"
+        "    return (500, 'no') if action == 'base' else (200, {'components': [{'name': 'install_x'}]})\n")
+    out = discovery.labinabox(broken)
+    assert out["schema"] is None and "lab-in-a-box schema from" in out["schema_error"] and out["addons"]
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+def test_a_catalog_rodeo_is_fetched_whole_to_start_from(monkeypatch, tmp_path):
+    env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
+           "GIT_COMMITTER_EMAIL": "t@t", "GIT_CONFIG_NOSYSTEM": "1"}
+    origin = tmp_path / "origin"
+
+    def git(*args):
+        subprocess.run(["git", "-C", str(origin), *args], check=True, capture_output=True, env=env)
+
+    def put(path, text):
+        (origin / path).parent.mkdir(parents=True, exist_ok=True)
+        (origin / path).write_text(text)
+
+    origin.mkdir()
+    git("init", "-q", "-b", "main")
+    put("rodeo-plan.yaml", "type: lab-in-a-box\nname: ride\nlab_in_a_box:\n  lab:\n    nodes:\n      a.lab: {myip: 10.0.0.2}\n")
+    put("builder.yaml", "base: smlm-workshop\n")
+    put("story/01-saddle.md", '# Saddle\n<span lang="en" id="saddle.1">Saddle up</span>\n')
+    put("story/chapters.yaml", "chapters:\n  - file: 01-saddle.md\n    mins: 7\n")
+    put("checks/check-saddle.sh", "#!/bin/sh\nexit 0\n")
+    git("add", "-A")
+    git("commit", "-q", "-m", "rodeo")
+    git("checkout", "-q", "-b", "es")
+    put("story/strings/es/saddle.1/@default/content.json", _row("Ensilla"))
+    git("add", "-A")
+    git("commit", "-q", "-m", "es")
+    git("checkout", "-q", "main")
+    _catalog(monkeypatch, ride={"name": "ride", "title": "Ride", "repo": "file://" + str(origin), "ref": "", "engine": "x"})
+    monkeypatch.setattr(discovery.catalog, "find", lambda name: discovery.catalog.entries().get(name))
+    rodeo = discovery.catalog_rodeo("ride")
+    assert (rodeo["id"], rodeo["title"], rodeo["engine"], rodeo["profile"]) == ("catalog-ride", "Ride", "lab-in-a-box", "smlm-workshop")
+    assert rodeo["plan"].startswith("type: lab-in-a-box") and rodeo["lab"] == {"nodes": {"a.lab": {"myip": "10.0.0.2"}}}
+    assert [(c["id"], c["mins"], c["check_script"]) for c in rodeo["chapters"]] == [("saddle", 7, "#!/bin/sh\nexit 0\n")]
+    assert rodeo["strings"] == {"es": {"saddle.1": {"content": "Ensilla", "status": "reviewed", "updated_by": "me"}}}
+    assert rodeo["warnings"] == []
+    with pytest.raises(ValueError, match="not in the rodeo catalog"):
+        discovery.catalog_rodeo("nope")
+    (origin / "rodeo-plan.yaml").write_text("type: [unclosed\n")
+    git("commit", "-q", "-am", "broken")
+    with pytest.raises(ValueError, match="not YAML"):
+        discovery.catalog_rodeo("ride")
+    git("rm", "-q", "rodeo-plan.yaml")
+    git("commit", "-q", "-m", "gone")
+    with pytest.raises(ValueError, match="has no rodeo-plan.yaml"):
+        discovery.catalog_rodeo("ride")
+
+
+def test_workshop_rodeo_is_live_only_and_takes_a_catalog_source(monkeypatch, labinabox_checkout):
+    monkeypatch.setattr(discovery, "catalog_rodeo", lambda name: {"id": "catalog-" + name})
+    live = Api(labinabox_checkout, "u", "1", {}, can_save=True)
+    assert live.dispatch("workshop-rodeo", "POST", {}, b'{"source": "catalog-ride"}') == (200, {"rodeo": {"id": "catalog-ride"}})
+    status, body = live.dispatch("workshop-rodeo", "POST", {}, b'{"source": "https://evil/x"}')
+    assert status == 400 and "catalog-<name>" in body["error"]
+    assert live.dispatch("workshop-rodeo", "POST", {}, b"not json")[0] == 400
+
+    def refuse(name):
+        raise RuntimeError("fetching: denied")
+
+    monkeypatch.setattr(discovery, "catalog_rodeo", refuse)
+    assert live.dispatch("workshop-rodeo", "POST", {}, b'{"source": "catalog-ride"}') == (502, {"error": "fetching: denied"})
+    static = Api(labinabox_checkout, "u", "1", {})
+    status, body = static.dispatch("workshop-rodeo", "POST", {}, b'{"source": "catalog-ride"}')
+    assert status == 403 and "starting from a published rodeo" in body["error"]

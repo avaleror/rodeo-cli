@@ -26,6 +26,7 @@ from .commands.restart import restart_cmd
 from .commands.ssh_cmd import ssh_cmd
 from .commands.status import status_cmd
 from .commands.story_cmd import story_cmd
+from .commands.content_cmd import content_cmd
 from .commands.stop_cmd import stop_cmd
 from .commands.start_cmd import start_cmd
 from .commands.start_if_needed_cmd import start_if_needed_cmd
@@ -91,6 +92,7 @@ cli.add_command(plan_cmd,         name="plan")
 cli.add_command(export_cmd,       name="export")
 cli.add_command(instances_cmd,    name="instances")
 cli.add_command(story_cmd,        name="story")
+cli.add_command(content_cmd,      name="content")
 cli.add_command(deploy_cmd,       name="deploy")
 cli.add_command(clean_cmd,        name="clean")
 cli.add_command(stop_cmd,              name="stop")

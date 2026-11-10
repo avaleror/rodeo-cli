@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Settings — rodeo-cli</title>
+  <link rel="icon" href="assets/horseshoe-mark.svg" type="image/svg+xml">
+  <script src="theme.js"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="hdr">
+    <div class="brand">
+      <img id="logo" class="logo" src="assets/horseshoe-mark.svg" alt="rodeo-cli">
+      <span class="wordmark">rodeo<span class="acc">-cli</span></span>
+      <span class="tag">settings</span>
+    </div>
+    <div class="hdr-right">
+      <span id="who" class="counts"></span>
+      <button id="themeBtn" class="btn" type="button">Light</button>
+    </div>
+  </header>
+
+  <main class="settings-page">
+    <h1>Settings</h1>
+    <h2 class="label">Credentials</h2>
+    <p class="note muted">Stored encrypted on this host, each under its own password: whoever uses or deletes a
+      credential needs the password it was stored with. Values are never shown here: the builder's deploy dialog
+      fills them in. Credentials of other engines are listed with their engine's name and can be used, not deleted.</p>
+    <p id="loadError" class="note bad-text" role="alert" hidden></p>
+    <div class="table-wrap">
+      <table class="cred-table">
+        <thead>
+          <tr><th scope="col">Name</th><th scope="col">Application</th><th scope="col">Engine</th>
+            <th scope="col">Encrypted</th><th scope="col">Added</th><th scope="col">Last used</th>
+            <th scope="col"><span class="sr-only">Actions</span></th></tr>
+        </thead>
+        <tbody id="vaultList"></tbody>
+      </table>
+    </div>
+    <button id="vaultAddBtn" class="btn outline sm" type="button">+ Add credential</button>
+    <form id="vaultForm" class="nc-draft" autocomplete="off" hidden>
+      <label class="label" for="vaName">Name</label>
+      <input id="vaName" class="input" autocomplete="off" maxlength="100">
+      <label class="label" for="vaType">Type</label>
+      <select id="vaType" class="select"></select>
+      <div id="vaFields"></div>
+      <label class="label" for="vaPass">Password for this credential</label>
+      <input id="vaPass" class="input" type="password" autocomplete="new-password">
+      <label class="label" for="vaPass2">Repeat password</label>
+      <input id="vaPass2" class="input" type="password" autocomplete="new-password">
+      <p id="vaResult" class="note bad-text" role="alert"></p>
+      <div class="vault-actions">
+        <button id="vaCancel" class="btn sm" type="button">Cancel</button>
+        <button class="btn primary sm" type="submit">Save credential</button>
+      </div>
+    </form>
+    <h2 class="label">In ~/.rodeo/secrets.yaml</h2>
+    <p class="note muted">Read-only, names only: rodeo up reads these directly, and the deploy dialog can use them by name.</p>
+    <ul id="fileSecretList" class="file-secret-list"></ul>
+  </main>
+
+  <div id="deletePrompt" class="backdrop over" hidden>
+    <form id="delForm" class="modal narrow" role="dialog" aria-modal="true" aria-labelledby="delTitle" autocomplete="off">
+      <h2 id="delTitle">Delete</h2>
+      <p class="note muted">Type the password this credential was stored with. Its encrypted file is removed from this host.</p>
+      <label class="sr-only" for="delPass">Password</label>
+      <input id="delPass" class="input" type="password" autocomplete="off">
+      <p id="delError" class="note bad-text" role="alert"></p>
+      <div class="modal-foot">
+        <span></span>
+        <div>
+          <button id="delCancel" class="btn" type="button">Cancel</button>
+          <button id="delSubmit" class="btn primary" type="submit">Delete</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden><span id="toastText"></span></div>
+
+  <script src="logic.js"></script>
+  <script src="settings.js"></script>
+</body>
+</html>

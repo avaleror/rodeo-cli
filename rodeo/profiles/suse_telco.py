@@ -183,9 +183,9 @@ class SuseTelcoProfile(RodeoProfile):
 #   opensource  openSUSE Leap Micro 6.2 + community Rancher. Everything is an
 #               anonymous download, so rodeo fetches the image itself.
 #
-# Neither needs an SCC code. The only package added to the downstream image is
-# jq (the student YAML's rke2-preinstall unit uses it), and EIB installs it from
-# a public repository. In product, credentials.scc_registration_code, when set,
+# Neither needs an SCC code. The packages added to the downstream image are jq
+# (the student YAML's rke2-preinstall unit uses it) and open-iscsi (SUSE
+# Storage, lab 07), and EIB installs them from a public repository. In product, credentials.scc_registration_code, when set,
 # switches that to SUSE's own repositories.
 EDITIONS: dict[str, dict] = {
     "product": {

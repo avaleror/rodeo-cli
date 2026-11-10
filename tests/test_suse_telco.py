@@ -464,6 +464,37 @@ def test_image_cache_manifest(monkeypatch, tmp_path):
     assert "listen 8080;" in conf
 
 
+def test_gitea_manifest(monkeypatch, tmp_path):
+    p = _telco_phase(monkeypatch, tmp_path)
+    docs = list(yaml.safe_load_all(p.gitea_manifest()))
+    dep = next(d for d in docs if d["kind"] == "Deployment")
+    assert dep["spec"]["strategy"]["type"] == "Recreate"
+    pod = dep["spec"]["template"]["spec"]
+    assert pod["hostNetwork"] is True
+    assert pod["securityContext"]["runAsUser"] == 1000
+    c = pod["containers"][0]
+    assert c["image"] == "docker.io/gitea/gitea:1.22-rootless"
+    env = {e["name"]: e["value"] for e in c["env"]}
+    assert env["GITEA__server__ROOT_URL"] == "http://192.168.122.10:3000/"
+    assert env["GITEA__server__HTTP_PORT"] == "3000"
+    paths = {v["hostPath"]["path"] for v in pod["volumes"]}
+    assert paths == {"/var/lib/rodeo-gitea/data", "/var/lib/rodeo-gitea/config"}
+
+
+def test_gitea_mirrors_the_site_console(monkeypatch, tmp_path):
+    p = _telco_phase(monkeypatch, tmp_path)
+    assert p.gitea_repo_url == "http://192.168.122.10:3000/gitea/telco-site-console.git"
+    # No gitea_admin_password in the plan: the generated Rancher one, not "gitea-lab".
+    assert p.gitea_password == p.rancher_password != "gitea-lab"
+    scripts, _ = _run_mgmt(p)
+    script = next(s for s in scripts if "deployment/gitea" in s)
+    assert "/repos/migrate" in script
+    assert '"clone_addr": "https://github.com/avaleror/telco-site-console.git"' in script
+    assert '"mirror": false' in script
+    assert "/branches/main" in script
+    _sp.run(["bash", "-n"], input=script, text=True, check=True)
+
+
 def _run_mgmt(p, fail_on: str | None = None):
     scripts: list[str] = []
 
@@ -501,6 +532,7 @@ def test_mgmt_phase_runs_every_step_on_rke2(monkeypatch, tmp_path):
         "edge/charts/metal3 --version 307.0.31+up0.16.0",
         "helm upgrade --install rancher-turtles-providers oci://registry.suse.com/edge/charts/rancher-turtles-providers --version 307.0.8+up0.27.0",
         "deployment/imagecache",
+        "deployment/gitea",
     ]
     positions = [next(i for i, s in enumerate(scripts) if marker in s) for marker in order]
     assert positions == sorted(positions)

@@ -14,6 +14,7 @@ Ironic's shared volume on emptyDir (the chart's default when no size is set).
 from __future__ import annotations
 
 import hashlib
+import json
 import shlex
 import subprocess
 import threading
@@ -32,6 +33,8 @@ __all__ = ["TelcoPhase"]
 _IMAGE_CACHE_IMAGE = "registry.suse.com/suse/nginx:1.21"
 # Same directory the Metal3 chart's media server uses on the node.
 _IMAGE_CACHE_DIR = "/opt/media"
+# Gitea data and app.ini on the mgmt node, so a pod restart keeps the mirror.
+_GITEA_DIR = "/var/lib/rodeo-gitea"
 _CHARTS = "oci://registry.suse.com/edge/charts"
 
 # 01-fix-growfs.sh from the 3.7 docs (50.2.2): required so the root partition
@@ -109,6 +112,11 @@ class TelcoPhase(RancherPhase):
         self.bmc_password = cred.get("bmc_password", "")
         self.sites = telco.get("sites", {})
         self.ENROLL_TIMEOUT = int(telco.get("enroll_timeout", 2400))
+        # Gitea admin: the generated Rancher password unless the plan sets its own,
+        # never the base class's fixed fallback.
+        if not cred.get("gitea_admin_password"):
+            self.gitea_password = self.rancher_password
+        self.alien_geeko_fleet_branch = cfg.get("alien_geeko", {}).get("fleet_branch", "main")
         self._site_nodes = {
             n["name"]: n for n in _inventory_nodes(cfg) if n["name"] in self.sites
         }
@@ -172,6 +180,8 @@ class TelcoPhase(RancherPhase):
             (f"Installing the Rancher Turtles providers {self.turtles_providers_version}",
              self._install_capi_providers),
             (f"Starting the image cache on :{self.image_cache_port}", self._install_image_cache),
+            (f"Mirroring {self.alien_geeko_fleet_name} into Gitea on :{self.gitea_port}",
+             self._install_gitea_mirror),
         ]
         for title, step in steps:
             yield LogLine(f"{title}...")
@@ -687,6 +697,116 @@ class TelcoPhase(RancherPhase):
             f"curl -sf -o /dev/null http://127.0.0.1:{self.image_cache_port}/\n"
         )
         return (yield from self._script_step(script, 420, "image cache did not start"))
+
+    @property
+    def gitea_repo_url(self) -> str:
+        """Clone URL Fleet uses for the site console (lab 06)."""
+        return (f"http://{self.rancher_ip}:{self.gitea_port}/"
+                f"{self.gitea_user}/{self.alien_geeko_fleet_name}.git")
+
+    def gitea_manifest(self) -> str:
+        """Gitea (rootless, SQLite) on the mgmt host network, data on the node."""
+        labels = {"app.kubernetes.io/name": "gitea"}
+        env = {
+            "GITEA__security__INSTALL_LOCK": "true",
+            "GITEA__server__ROOT_URL": f"http://{self.rancher_ip}:{self.gitea_port}/",
+            "GITEA__server__HTTP_PORT": str(self.gitea_port),
+            "GITEA__server__DISABLE_SSH": "true",
+            "GITEA__service__DISABLE_REGISTRATION": "true",
+        }
+        docs = [
+            {"apiVersion": "v1", "kind": "Namespace", "metadata": {"name": "gitea"}},
+            {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "metadata": {"name": "gitea", "namespace": "gitea", "labels": labels},
+                "spec": {
+                    "replicas": 1,
+                    # One SQLite file on a hostPath: never two pods at once.
+                    "strategy": {"type": "Recreate"},
+                    "selector": {"matchLabels": labels},
+                    "template": {
+                        "metadata": {"labels": labels},
+                        "spec": {
+                            # Host network, like the image cache: Fleet and the
+                            # students reach it as <mgmt IP>:<port>.
+                            "hostNetwork": True,
+                            "securityContext": {"runAsUser": 1000, "runAsGroup": 1000,
+                                                "runAsNonRoot": True},
+                            "containers": [{
+                                "name": "gitea",
+                                "image": f"docker.io/gitea/gitea:{self.gitea_version}-rootless",
+                                "env": [{"name": k, "value": v} for k, v in env.items()],
+                                "ports": [{"containerPort": self.gitea_port, "name": "http"}],
+                                "securityContext": {
+                                    "allowPrivilegeEscalation": False,
+                                    "capabilities": {"drop": ["ALL"]},
+                                    "seccompProfile": {"type": "RuntimeDefault"},
+                                },
+                                "readinessProbe": {
+                                    "httpGet": {"path": "/api/healthz", "port": self.gitea_port},
+                                    "periodSeconds": 5,
+                                },
+                                "volumeMounts": [
+                                    {"name": "data", "mountPath": "/var/lib/gitea"},
+                                    {"name": "config", "mountPath": "/etc/gitea"},
+                                ],
+                            }],
+                            "volumes": [
+                                {"name": "data", "hostPath": {"path": f"{_GITEA_DIR}/data",
+                                                              "type": "Directory"}},
+                                {"name": "config", "hostPath": {"path": f"{_GITEA_DIR}/config",
+                                                                "type": "Directory"}},
+                            ],
+                        },
+                    },
+                },
+            },
+        ]
+        return yaml.safe_dump_all(docs, default_flow_style=False, sort_keys=False)
+
+    def _install_gitea_mirror(self) -> Generator[DeployEvent, None, bool]:
+        """Copy the site console repo into Gitea on mgmt once, for Fleet (lab 06).
+
+        One GitHub clone at deploy time; after that Fleet reads only from mgmt.
+        A plain copy, not a pull mirror: what the students get is fixed at deploy.
+        """
+        api = f"http://127.0.0.1:{self.gitea_port}/api/v1"
+        migrate = {
+            "clone_addr": self.alien_geeko_fleet_repo,
+            "repo_name": self.alien_geeko_fleet_name,
+            "private": False,
+            "mirror": False,
+        }
+        script = (
+            "set -euo pipefail\n"
+            f"export KUBECONFIG={self.KUBECONFIG}\n"
+            f"install -d -m 750 -o 1000 -g 1000 {_GITEA_DIR}/data {_GITEA_DIR}/config\n"
+            "kubectl apply -f - <<'RODEO_GITEA_EOF'\n"
+            f"{self.gitea_manifest()}"
+            "RODEO_GITEA_EOF\n"
+            "kubectl -n gitea rollout status deployment/gitea --timeout=300s\n"
+            f"GITEA_USER={shlex.quote(self.gitea_user)}\n"
+            f"GITEA_PASS={shlex.quote(self.gitea_password)}\n"
+            # Re-runs find the user in the hostPath database: that is fine.
+            "kubectl -n gitea exec deploy/gitea -- gitea admin user create"
+            ' --username "$GITEA_USER" --password "$GITEA_PASS"'
+            " --email gitea@rodeo.local --admin --must-change-password=false"
+            ' >/dev/null 2>&1 || echo "admin user already exists"\n'
+            f"RC=$(curl -s -o /tmp/gitea-migrate.json -w '%{{http_code}}' -X POST {api}/repos/migrate"
+            ' -u "$GITEA_USER:$GITEA_PASS" -H "Content-Type: application/json"'
+            f" -d {shlex.quote(json.dumps(migrate))})\n"
+            'case "$RC" in\n'
+            f'  200|201) echo "copied {self.alien_geeko_fleet_repo}" ;;\n'
+            f'  409) echo "{self.alien_geeko_fleet_name} already in Gitea" ;;\n'
+            '  *) echo "migrate failed (HTTP $RC): $(cat /tmp/gitea-migrate.json)"; exit 1 ;;\n'
+            "esac\n"
+            # What Fleet will clone: the branch must be there.
+            f"curl -sf -o /dev/null {api}/repos/$GITEA_USER/{self.alien_geeko_fleet_name}"
+            f"/branches/{shlex.quote(self.alien_geeko_fleet_branch)}\n"
+            f'echo "Fleet repo: {self.gitea_repo_url}"\n'
+        )
+        return (yield from self._script_step(script, 600, "Gitea mirror failed"))
 
     def _wait_rollout(self, namespaces: list[str], label: str) -> Generator[DeployEvent, None, bool]:
         """Wait until every Deployment in the namespaces exists and is Available."""

@@ -1,0 +1,156 @@
+---
+# SUSE Telco Cloud lab disks. Included from images.yml only when the topology
+# has mgmt or site flavored nodes (suse-telco).
+#
+#   mgmt   SL Micro 6.2 Base raw (staged by the instructor), converted to qcow2,
+#          plus a combustion seed ISO for the first boot (SSH key, hostname,
+#          root password, root partition growth).
+#   site   blank qcow2. Metal3 writes the downstream image to it through
+#          sushy-tools virtual media, so nothing boots from it until then.
+
+# --- SL Micro base image ---
+# The GM raw image is only on the SUSE download page (login), so it cannot be
+# fetched anonymously. The plan points at a file already on the KVM host
+# (telco_base_image.path) or at a URL the instructor controls (telco_base_image.url).
+
+- name: Check for the staged SL Micro base image
+  ansible.builtin.stat:
+    path: "{{ telco_base_image.path }}"
+    get_checksum: false
+  register: _telco_base
+
+- name: Download the SL Micro base image from the plan URL
+  ansible.builtin.include_role:
+    name: common
+    tasks_from: curl_fetch
+  vars:
+    curl_fetch_url: "{{ telco_base_image.url }}"
+    curl_fetch_dest: "{{ telco_base_image.path }}"
+  when:
+    - not _telco_base.stat.exists
+    - telco_base_image.url | default('') | length > 0
+
+- name: Re-check the SL Micro base image
+  ansible.builtin.stat:
+    path: "{{ telco_base_image.path }}"
+    get_checksum: false
+  register: _telco_base
+
+- name: Require the SL Micro base image
+  ansible.builtin.assert:
+    that: _telco_base.stat.exists
+    fail_msg: >-
+      SL Micro 6.2 base image not found at {{ telco_base_image.path }}.
+      Download SL-Micro.x86_64-6.2-Base-GM.raw.xz from the SUSE Linux Micro
+      download page and copy it there, or set telco.base_image.url in
+      rodeo-plan.yaml to a URL this host can fetch.
+    quiet: true
+
+- name: Verify the SL Micro base image checksum
+  ansible.builtin.shell: |
+    set -euo pipefail
+    [ "$(sha256sum '{{ telco_base_image.path }}' | awk '{print $1}')" = '{{ telco_base_image.sha256 }}' ]
+  args:
+    executable: /bin/bash
+  changed_when: false
+  when: telco_base_image.sha256 | default('') | length > 0
+
+- name: Set the uncompressed base image path
+  ansible.builtin.set_fact:
+    _telco_base_raw: "{{ telco_base_image.path | regex_replace('\\.xz$', '') }}"
+
+- name: Decompress the SL Micro base image
+  ansible.builtin.shell: |
+    set -euo pipefail
+    xz -dc '{{ telco_base_image.path }}' > '{{ _telco_base_raw }}.partial'
+    mv '{{ _telco_base_raw }}.partial' '{{ _telco_base_raw }}'
+  args:
+    executable: /bin/bash
+    creates: "{{ _telco_base_raw }}"
+  when: telco_base_image.path is search('\\.xz$')
+
+# --- mgmt disk ---
+
+- name: Build the mgmt disk from the SL Micro base image
+  ansible.builtin.shell: |
+    set -euo pipefail
+    tmp='{{ image_dir }}/{{ item.name }}-vda.qcow2.building'
+    rm -f "$tmp"
+    qemu-img convert -f raw -O qcow2 -o preallocation=metadata '{{ _telco_base_raw }}' "$tmp"
+    qemu-img resize "$tmp" {{ libvirt_flavors[item.flavor].disk_gb }}G
+    mv "$tmp" '{{ image_dir }}/{{ item.name }}-vda.qcow2'
+  args:
+    executable: /bin/bash
+    creates: "{{ image_dir }}/{{ item.name }}-vda.qcow2"
+  loop: "{{ vm_nodes | selectattr('flavor', 'equalto', 'mgmt') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# --- mgmt combustion seed ---
+
+- name: Require the mgmt root password
+  ansible.builtin.assert:
+    that: mgmt_root_password | default('') | length > 0
+    fail_msg: >-
+      credentials.mgmt_root_password is empty. Set '??mgmt_root_password' in
+      rodeo-plan.yaml (generated into ~/.rodeo/secrets.yaml).
+    quiet: true
+  no_log: true
+
+- name: Hash the mgmt root password
+  ansible.builtin.command: openssl passwd -6 -stdin
+  args:
+    stdin: "{{ mgmt_root_password }}"
+  register: _telco_root_hash
+  changed_when: false
+  no_log: true
+
+- name: Create the combustion staging directory
+  ansible.builtin.file:
+    path: /tmp/telco-combustion/{{ item.name }}/combustion
+    state: directory
+    mode: "0700"
+  loop: "{{ vm_nodes | selectattr('flavor', 'equalto', 'mgmt') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Write the combustion script
+  ansible.builtin.template:
+    src: telco-combustion-script.j2
+    dest: /tmp/telco-combustion/{{ item.name }}/combustion/script
+    mode: "0700"
+  vars:
+    root_password_hash: "{{ _telco_root_hash.stdout }}"
+  loop: "{{ vm_nodes | selectattr('flavor', 'equalto', 'mgmt') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+
+# Combustion finds its config on a device labelled "combustion". No creates:
+# guard, the seed is always rebuilt to match the current templates.
+- name: Build the combustion seed ISO
+  ansible.builtin.command: >
+    xorriso -as mkisofs -V combustion -J -r
+    -o '{{ image_dir }}/{{ item.name }}-combustion.iso'
+    /tmp/telco-combustion/{{ item.name }}
+  loop: "{{ vm_nodes | selectattr('flavor', 'equalto', 'mgmt') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Remove the combustion staging directory
+  ansible.builtin.file:
+    path: /tmp/telco-combustion
+    state: absent
+
+# --- site disks ---
+
+- name: Create the blank site host disks
+  ansible.builtin.command: >
+    qemu-img create -f qcow2 -o preallocation=metadata
+    {{ image_dir }}/{{ item.name }}-vda.qcow2
+    {{ libvirt_flavors[item.flavor].disk_gb }}G
+  args:
+    creates: "{{ image_dir }}/{{ item.name }}-vda.qcow2"
+  loop: "{{ vm_nodes | selectattr('flavor', 'equalto', 'site') | list }}"
+  loop_control:
+    label: "{{ item.name }}"

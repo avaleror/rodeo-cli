@@ -15,6 +15,14 @@ from ..runner import DeployEvent, LogLine, ProgressUpdate
 class RemoteExecMixin:
     """Remote execution + HTTP plumbing shared by every RancherPhase concern."""
 
+    # Kubeconfig on the management VM for every remote kubectl/helm call.
+    # K3s for the Harvester and Edge profiles; suse-telco's RKE2 phase overrides it.
+    KUBECONFIG = "/etc/rancher/k3s/k3s.yaml"
+    # Helm repo for the Rancher chart: Rancher Prime. suse-telco's opensource
+    # edition switches it to the community stable repo.
+    RANCHER_REPO_NAME = "rancher-prime"
+    RANCHER_REPO_URL = "https://charts.rancher.com/server-charts/prime"
+
     # ---------- SSH helpers ----------
 
     @staticmethod

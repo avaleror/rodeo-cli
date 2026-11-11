@@ -21,7 +21,7 @@ from ..install_source import (
     default_install_url,
     resolve_install_source,
 )
-from ..paths import rodeo_state_dir
+from ..paths import rodeo_secrets_path, rodeo_state_dir
 from ..ssh_key import resolve_ssh_identity
 from .base import SINGLE_HOST_ID, ProvisionSpec, ProvisionedHost
 from .registry import get_provider
@@ -32,6 +32,11 @@ _DEFAULT_LAB_DIR = "/root/rodeo-lab"
 # What the host needs to treat the lab as existing (up_cmd's lab_ready) rather
 # than seed a fresh one from the bundled example.
 _PLAN_FILES = ("rodeo-plan.yaml", "definition.yaml")
+# The laptop's effective secrets (global ~/.rodeo/secrets.yaml + the lab's own
+# .rodeo-secrets.yaml) travel in the same tar under this name and become the
+# host's ~/.rodeo/secrets.yaml, so the host deploys with the passwords the
+# operator already has locally instead of generating its own.
+_SHIPPED_SECRETS = ".rodeo-shipped-secrets.yaml"
 
 
 def on_ec2(*, timeout: float = 0.4) -> bool:
@@ -228,11 +233,24 @@ def remote_up_script(
     can read stdin. The host then finds an existing lab and deploys the
     operator's plan, not the bundled example (where edition, versions and
     resources edited locally were silently lost).
+
+    If the tar carries the laptop's secrets they replace the host's
+    ~/.rodeo/secrets.yaml (resolved like paths.invoking_home: SUDO_USER's home
+    when set). Live-caught 2026-11-11: the host generated its own password, so
+    the one in the operator's ~/.rodeo/secrets.yaml did not log in to Rancher.
     """
     lab = shlex.quote(lab_dir)
     unpack = ""
     if ship_plan:
-        unpack = f"mkdir -p {lab}; (umask 077; base64 -d | tar -C {lab} --no-same-owner -xf -); "
+        shipped = shlex.quote(f"{lab_dir}/{_SHIPPED_SECRETS}")
+        unpack = (
+            f"mkdir -p {lab}; (umask 077; base64 -d | tar -C {lab} --no-same-owner -xf -); "
+            f"if [ -f {shipped} ]; then "
+            'rh="$HOME"; if [ -n "${SUDO_USER:-}" ]; then '
+            'rh="$(getent passwd "$SUDO_USER" | cut -d: -f6)"; rh="${rh:-$HOME}"; fi; '
+            'mkdir -p "$rh/.rodeo"; '
+            f'install -m 600 {shipped} "$rh/.rodeo/secrets.yaml"; rm -f {shipped}; fi; '
+        )
     profile_bits = ""
     if profile:
         profile_bits = f"--profile {shlex.quote(profile)} "
@@ -256,18 +274,42 @@ def remote_up_script(
     )
 
 
-def pack_plan_files(lab: Path) -> str:
-    """Base64 tar of the lab's plan files (root-owned, 0600) for the remote."""
+def local_secrets(lab: Path) -> dict[str, Any]:
+    """The secrets a local deploy of *lab* would use: global, then the lab's own."""
+    from ..config import LAB_SECRETS_FILE
+
+    merged: dict[str, Any] = {}
+    for path in (rodeo_secrets_path(), lab / LAB_SECRETS_FILE):
+        if path.is_file():
+            try:
+                merged.update(yaml.safe_load(path.read_text()) or {})
+            except yaml.YAMLError as exc:
+                raise ConfigError(f"{path}: invalid YAML: {exc}")
+    return merged
+
+
+def pack_plan_files(lab: Path, *, with_secrets: bool = False) -> str:
+    """Base64 tar of the lab's plan files (root-owned, 0600) for the remote.
+
+    *with_secrets* adds the laptop's effective secrets (see local_secrets) so
+    laptop and host share one set of passwords.
+    """
     buf = io.BytesIO()
+
+    def _add(name: str, data: bytes) -> None:
+        info = tarfile.TarInfo(name)
+        info.size, info.mode = len(data), 0o600
+        tar.addfile(info, io.BytesIO(data))
+
     with tarfile.open(fileobj=buf, mode="w") as tar:
         for name in _PLAN_FILES:
             path = lab / name
-            if not path.is_file():
-                continue
-            data = path.read_bytes()
-            info = tarfile.TarInfo(name)
-            info.size, info.mode = len(data), 0o600
-            tar.addfile(info, io.BytesIO(data))
+            if path.is_file():
+                _add(name, path.read_bytes())
+        if with_secrets:
+            secrets = local_secrets(lab)
+            if secrets:
+                _add(_SHIPPED_SECRETS, yaml.safe_dump(secrets, sort_keys=True).encode())
     return base64.b64encode(buf.getvalue()).decode("ascii")
 
 
@@ -297,7 +339,7 @@ def run_remote_up(
     )
     extra: dict[str, Any] = {}
     if plan_dir is not None:
-        extra["stdin"] = pack_plan_files(plan_dir)
+        extra["stdin"] = pack_plan_files(plan_dir, with_secrets=True)
     result = run_remote(
         inv,
         fh,

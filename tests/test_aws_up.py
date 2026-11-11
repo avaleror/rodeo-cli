@@ -561,15 +561,66 @@ def test_run_remote_up_ships_the_local_plan(monkeypatch, tmp_path):
 
     monkeypatch.setattr(mod, "run_remote", _fake_run_remote)
     monkeypatch.setattr(mod, "rodeo_state_dir", lambda: tmp_path / "state")
+    monkeypatch.setattr(mod, "rodeo_secrets_path", lambda: tmp_path / "secrets.yaml")
     monkeypatch.setattr(mod, "resolve_ssh_identity", lambda p: str(tmp_path / "id_ed25519"))
+    (tmp_path / "secrets.yaml").write_text('rancher_admin_password: "global"\nharvester_token: t\n')
     mod.run_remote_up({"name": "lab", "provider": {"type": "aws"}}, _fake_host(), plan_dir=lab)
 
     assert "base64 -d | tar" in seen["argv"][4]
     with tarfile.open(fileobj=io.BytesIO(base64.b64decode(seen["stdin"]))) as tar:
         members = {m.name: m for m in tar.getmembers()}
-        assert set(members) == {"rodeo-plan.yaml", "definition.yaml"}  # no lab secrets
+        assert set(members) == {"rodeo-plan.yaml", "definition.yaml", ".rodeo-shipped-secrets.yaml"}
         assert all(m.mode == 0o600 and m.uid == 0 for m in members.values())
         assert tar.extractfile("rodeo-plan.yaml").read() == b"name: x\nedition: opensource\n"
+        shipped = yaml.safe_load(tar.extractfile(".rodeo-shipped-secrets.yaml").read())
+    # Global and lab secrets both travel, so laptop and host share one set.
+    assert shipped == {"rancher_admin_password": "global", "harvester_token": "t",
+                       "bmc_password": "s3cret"}
+
+
+def test_local_secrets_lab_file_wins_over_global(monkeypatch, tmp_path):
+    """Same precedence as config.load_config: the lab's own file overrides."""
+    from rodeo.providers import remote_up as mod
+
+    monkeypatch.setattr(mod, "rodeo_secrets_path", lambda: tmp_path / "secrets.yaml")
+    (tmp_path / "secrets.yaml").write_text("rancher_admin_password: global\nharvester_token: t\n")
+    lab = tmp_path / "lab"
+    lab.mkdir()
+    assert mod.local_secrets(lab) == {"rancher_admin_password": "global", "harvester_token": "t"}
+    (lab / ".rodeo-secrets.yaml").write_text("rancher_admin_password: per-lab\n")
+    assert mod.local_secrets(lab)["rancher_admin_password"] == "per-lab"
+
+
+def test_shipped_secrets_become_the_hosts_secrets_file(monkeypatch, tmp_path):
+    """Live-caught 2026-11-11: the host generated its own Rancher password, so
+    the one in the laptop's ~/.rodeo/secrets.yaml did not log in. Run the
+    script's own unpack step and check the host ends up with the laptop's file."""
+    import shutil
+    import subprocess
+
+    if not all(shutil.which(c) for c in ("base64", "tar", "install")):
+        pytest.skip("base64/tar/install not available")
+    from rodeo.providers import remote_up as mod
+
+    monkeypatch.setattr(mod, "rodeo_secrets_path", lambda: tmp_path / "secrets.yaml")
+    (tmp_path / "secrets.yaml").write_text("rancher_admin_password: from-laptop\n")
+    lab = tmp_path / "lab"
+    lab.mkdir()
+    (lab / "rodeo-plan.yaml").write_text("name: x\n")
+    host_lab, host_home = tmp_path / "host-lab", tmp_path / "host-home"
+    host_home.mkdir()
+    script = mod.remote_up_script(lab_dir=str(host_lab), profile="rancher", ship_plan=True)
+    unpack = script.split(mod.bootstrap_fragment(install_url=mod._DEFAULT_INSTALL, ref=None))[0]
+    unpack = unpack.removeprefix("set -euo pipefail; ")
+    env = {"PATH": "/usr/bin:/bin", "HOME": str(host_home)}
+    subprocess.run(["bash", "-c", "set -eu; " + unpack + "true"],
+                   input=mod.pack_plan_files(lab, with_secrets=True),
+                   text=True, check=True, env=env)
+    got = host_home / ".rodeo" / "secrets.yaml"
+    assert yaml.safe_load(got.read_text()) == {"rancher_admin_password": "from-laptop"}
+    assert oct(got.stat().st_mode & 0o777) == "0o600"
+    assert not (host_lab / ".rodeo-shipped-secrets.yaml").exists()
+    assert (host_lab / "rodeo-plan.yaml").exists()
 
 
 def test_packed_plan_unpacks_with_the_scripts_own_commands(tmp_path):

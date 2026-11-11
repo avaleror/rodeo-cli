@@ -625,7 +625,8 @@ Validation rules (fail closed):
 
 - `provider.type` ∈ `{aws, gcp, vultr, hetzner}`.
 - `provider.student_access` ∈ `{operator, open}` when set (default `operator`); see [Student network access](#student-network-access-aws).
-- `provider.ttl_hours` more than 0 and at most 168 when set (default 6); it cannot be turned off. See the [dead-man switch](reference/plan.md#provider-when-deployment_target-aws).
+- `provider.ttl_hours` more than 0 and at most 168 when set (default 6); it cannot be turned off, except `off` for [kvm-hosts](guide-kvm-hosts.md) labs.
+- `provider.host_to_host: true` lets the hosts reach each other on any port (set by default for kvm-hosts). See the [dead-man switch](reference/plan.md#provider-when-deployment_target-aws).
 - `provider.count` integer 1–64 when set; if `hosts:` non-empty and count omitted, ensure exactly those ids (reuse/create by `rodeo-host-id`).
 - SSH identity is managed under `~/.rodeo/ssh/id_ed25519` (auto-created; imported to EC2 as key pair `rodeo`). `defaults.identity_file` / `provider.key_name` are optional.
 - Type-specific required keys enforced by that adapter’s `validate()` only.
@@ -645,7 +646,7 @@ Never put AWS access keys in `workshop.yaml` or `rodeo-plan.yaml`.
 
 Use **`m8id.8xlarge`** for Harvester labs (32 vCPU / 128 GiB / one local NVMe device; the catalog's `recommended` tier) and `m8id.4xlarge` for SUSE Edge and the `rancher` profile. Metal remains valid. Fleet needs `region` and `subnet_id` in `workshop.yaml`; the automatic region and subnet defaults only apply to single-host `rodeo up --target aws`.
 
-Every provisioned host, and the portal VM, gets the **dead-man switch**: it powers off and AWS terminates it `provider.ttl_hours` after launch (default 6, at most 168, cannot be turned off). Set it before `fleet provision` for workshops longer than that; `fleet provision` shows each host's expiry.
+Every provisioned host, and the portal VM, gets the **dead-man switch**: it powers off and AWS terminates it `provider.ttl_hours` after launch (default 6, at most 168, cannot be turned off except for [kvm-hosts](guide-kvm-hosts.md) labs). Set it before `fleet provision` for workshops longer than that; `fleet provision` shows each host's expiry.
 `apply_host_context` raises `resources.harvester.disk_gb` to a flat **500 GB**
 and `resources.rancher.disk_gb` to **60 GB**: never scaled by node count, so
 the rest of the NVMe device is deliberately left free, and mounts NVMe on

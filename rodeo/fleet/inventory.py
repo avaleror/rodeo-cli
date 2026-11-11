@@ -302,6 +302,13 @@ def load_inventory(path: str | Path) -> FleetInventory:
                     f"{sorted(_VALID_STUDENT_ACCESS)}, got: {provider['student_access']!r}"
                 )
             provider["student_access"] = access
+        # The dead-man switch can only be lifted here, from the lab's type.
+        from ..providers import deadman
+
+        provider.pop(deadman.ALLOW_OFF_KEY, None)
+        if lab_profile_s and profile_plan_type(lab_profile_s) in deadman.NO_DEADMAN_TYPES:
+            provider[deadman.ALLOW_OFF_KEY] = True
+        deadman.ttl_hours(provider)  # fail at load, before anything is created
 
     hosts_raw = raw.get("hosts")
     if hosts_raw is None:
@@ -427,6 +434,19 @@ def host_public_ip(host: FleetHost) -> str | None:
     if target.count(":") == 1 and not target.startswith("["):
         target = target.rsplit(":", 1)[0]
     return target or None
+
+
+def profile_plan_type(profile: str) -> str | None:
+    """The plan ``type:`` of a bundled or custom profile, None when unknown."""
+    from ..labseed import resolve_profile_source
+
+    try:
+        plan = resolve_profile_source(profile) / "rodeo-plan.yaml"
+        data = yaml.safe_load(plan.read_text()) or {}
+    except (FileNotFoundError, OSError, yaml.YAMLError):
+        return None
+    kind = data.get("type") if isinstance(data, dict) else None
+    return str(kind).strip() if kind else None
 
 
 def require_provider(inventory: FleetInventory) -> dict[str, Any]:

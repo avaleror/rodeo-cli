@@ -574,7 +574,34 @@ class AwsHostProvider:
             sg_id = self._create_managed_sg(ec2, vpc_id=vpc_id, workshop=workshop)
         caller_ip = self._caller_ip_fn()
         self._reconcile_managed_sg_ingress(ec2, sg_id, f"{caller_ip}/32")
+        if config.get("host_to_host"):
+            self._ensure_host_to_host(ec2, sg_id)
         return [sg_id]
+
+    @staticmethod
+    def _ensure_host_to_host(ec2: Any, sg_id: str) -> None:
+        """All traffic between the workshop's own hosts (``provider.host_to_host``),
+        for labs whose hosts form a cluster. A self-referencing rule: only members
+        of this SG match it, nothing from outside. The port reconcile above only
+        touches CIDR rules, so it never removes this one."""
+        resp = ec2.describe_security_groups(GroupIds=[sg_id])
+        perms = (resp.get("SecurityGroups") or [{}])[0].get("IpPermissions") or []
+        for perm in perms:
+            if perm.get("IpProtocol") == "-1" and any(
+                p.get("GroupId") == sg_id for p in perm.get("UserIdGroupPairs") or []
+            ):
+                return
+        ec2.authorize_security_group_ingress(
+            GroupId=sg_id,
+            IpPermissions=[
+                {
+                    "IpProtocol": "-1",
+                    "UserIdGroupPairs": [
+                        {"GroupId": sg_id, "Description": "rodeo host-to-host"}
+                    ],
+                }
+            ],
+        )
 
     def set_student_access(
         self,
@@ -1015,9 +1042,10 @@ class AwsHostProvider:
         # Ownership and expiry go last so no label can replace them: deprovision
         # finds instances by these tags, and a lost one would leak the instance.
         tags.update(ownership_tags(workshop, host_id))
-        # Dead-man switch (deadman.py): every instance rodeo creates expires.
+        # Dead-man switch (deadman.py): every instance rodeo creates expires,
+        # except kvm-hosts labs that turned it off (tagged "never").
         expiry = deadman.expires_at(config)
-        tags[deadman.TAG_EXPIRES_AT] = deadman.iso(expiry)
+        tags[deadman.TAG_EXPIRES_AT] = deadman.iso(expiry) if expiry else deadman.NEVER
 
         ni: dict[str, Any] = {
             "DeviceIndex": 0,
@@ -1041,7 +1069,9 @@ class AwsHostProvider:
             "DryRun": dry_run,
             # The guest's dead-man timer powers it off; AWS then terminates it
             # instead of keeping a stopped instance that still bills its disks.
-            "InstanceInitiatedShutdownBehavior": "terminate",
+            # Without a switch, a poweroff from inside only stops the host, so a
+            # week-long lab survives it; `rodeo fleet destroy` terminates it.
+            "InstanceInitiatedShutdownBehavior": "terminate" if expiry else "stop",
         }
         vol = int(config.get("volume_size_gib") or 0)
         if vol > 0:

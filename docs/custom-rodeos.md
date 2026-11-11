@@ -68,6 +68,7 @@ rodeo profiles
 | `virt-workshop-aws-2n` | bundled | suse-virt | 2-node version of the workshop lab |
 | `suse-edge` | bundled | suse-edge | Rancher + Elemental + EIB + edge nodes (SUSE Edge 3.7) |
 | `smlm-workshop` | bundled | lab-in-a-box | SUSE Multi-Linux Manager + 8 clients, built by the lab-in-a-box plugin |
+| `kvm-hosts` | bundled | kvm-hosts | Plain KVM host, no VMs; with fleet a small KVM cluster ([guide](guide-kvm-hosts.md)) |
 | *(yours)* | custom | any | whatever you scaffold and edit |
 
 ---

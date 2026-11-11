@@ -1,0 +1,15 @@
+# kvm-hosts: plain KVM hosts for a VM manager or scripts to use, no lab VMs.
+#
+# Usually deployed as a fleet of N hosts that form a cluster:
+#
+#   rodeo fleet up --profile kvm-hosts --count 3 --no-deadman
+#   rodeo fleet destroy -f workshop.yaml --yes
+#
+# Steps of your own (install the software under test, join the hosts) go in
+# custom/scripts/ next to this file.
+type: kvm-hosts
+name: kvm-hosts
+deployment_target: baremetal
+
+storage:
+  image_dir: /var/lib/libvirt/images

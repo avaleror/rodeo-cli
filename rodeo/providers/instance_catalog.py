@@ -57,6 +57,19 @@ AWS_PROFILE_TIERS: dict[str, dict[InstanceTier, InstanceOffer]] = {
             "i7i.2xlarge", "performance", "local NVMe, faster guest disks"
         ),
     },
+    # Plain KVM host, a handful of small test VMs (1 vCPU / 1 GiB each).
+    # m7i.2xlarge is the smallest m7i the too-small check accepts.
+    "kvm-hosts": {
+        "budget": InstanceOffer(
+            "m7i.2xlarge", "budget", "8 vCPU / 32 GiB, 3 to 4 small test VMs"
+        ),
+        "recommended": InstanceOffer(
+            "m7i.2xlarge", "recommended", "8 vCPU / 32 GiB, 3 to 4 small test VMs"
+        ),
+        "performance": InstanceOffer(
+            "m7i.4xlarge", "performance", "16 vCPU / 64 GiB, room for bigger VMs"
+        ),
+    },
     "test": {
         "budget": InstanceOffer(
             "m7i.4xlarge", "budget", "16 vCPU / 64 GiB — 2-node Harvester"

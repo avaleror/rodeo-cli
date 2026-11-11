@@ -70,7 +70,10 @@ ansible:
 
 # The edition picks the base image for mgmt and the downstream image. product
 # expects /var/lib/libvirt/images/SL-Micro.x86_64-6.2-Base-GM.raw.xz on the KVM
-# host. To use another file or a URL the host can fetch, uncomment:
+# host. To use another file or a URL the host can fetch, uncomment. On
+# --target aws, set url: the instance is created in the same run and its NVMe
+# is mounted over /var/lib/libvirt/images, so a file copied there beforehand
+# is hidden. A presigned link to a private S3 object in the region works.
 # telco:
 #   base_image:
 #     path: /var/lib/libvirt/images/SL-Micro.x86_64-6.2-Base-GM.raw.xz

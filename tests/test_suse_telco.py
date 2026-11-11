@@ -920,6 +920,24 @@ def test_finalize_cfg_writes_the_resolved_edition(tmp_path, monkeypatch):
     assert cfg["telco"]["sites"]["site-ran"]["namespace"] == "northline"  # profile data kept
 
 
+def test_empty_telco_block_keeps_the_built_in_defaults(tmp_path, monkeypatch):
+    """`telco:` with only comments under it is None in YAML: it must not crash or drop the sites."""
+    from rodeo.config import load_config
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    lab = seed_lab("suse-telco", tmp_path / "suse-telco")
+    plan = yaml.safe_load((lab / "rodeo-plan.yaml").read_text())
+    plan["telco"] = None
+    (lab / "rodeo-plan.yaml").write_text(yaml.safe_dump(plan))
+    (tmp_path / ".rodeo").mkdir(exist_ok=True)
+    (tmp_path / ".rodeo/secrets.yaml").write_text(yaml.safe_dump({
+        "rancher_admin_password": "x", "bmc_password": "y", "mgmt_root_password": "z",  # gitleaks:allow (fake)
+    }))
+    cfg = load_config("rodeo-plan.yaml", config_dir=str(lab))
+    assert sorted(cfg["telco"]["sites"]) == ["site-co", "site-co-2", "site-co-3", "site-ran"]
+    assert cfg["telco"]["base_image"]["path"].endswith("SL-Micro.x86_64-6.2-Base-GM.raw.xz")
+
+
 def test_opensource_installs_community_rancher(monkeypatch, tmp_path):
     p = _phase_with_base(monkeypatch, tmp_path, edition="opensource")
     assert p.base_raw.name == "openSUSE-Leap-Micro.x86_64-6.2-Base-Build12.9.raw"

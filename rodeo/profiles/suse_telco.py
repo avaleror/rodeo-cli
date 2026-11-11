@@ -17,6 +17,8 @@ components carry the chart version, because that is what `helm --version` takes.
 """
 from __future__ import annotations
 
+import copy
+
 from ..config import ConfigError
 from .base import BASE_VERSIONS, RodeoProfile
 
@@ -103,9 +105,13 @@ class SuseTelcoProfile(RodeoProfile):
 
     def finalize_cfg(self, cfg: dict) -> dict:
         """Resolve `edition` into concrete base image, Rancher repo and package repo."""
+        # A plan with `telco:` and only comments under it parses as None, and the
+        # merge lets that None replace the whole built-in block. Treat it as unset.
+        if not isinstance(cfg.get("telco"), dict):
+            cfg["telco"] = copy.deepcopy(_TELCO)
         resolved = resolve_edition(cfg)
         cfg["edition"] = resolved.pop("edition")
-        cfg.setdefault("telco", {}).update(resolved)
+        cfg["telco"].update(resolved)
         return cfg
 
     def ansible_vars(self, cfg: dict) -> dict:

@@ -50,8 +50,8 @@ def test_profile_phase_order_and_edge_unchanged():
 
 def test_definition_topology():
     inv = build_inventory({"type": "suse-telco", "name": "suse-telco-test"})
-    assert [n["name"] for n in inv["vm_nodes"]] == ["mgmt", "site-co", "site-ran"]
-    assert [n["flavor"] for n in inv["vm_nodes"]] == ["mgmt", "site", "site"]
+    assert [n["name"] for n in inv["vm_nodes"]] == ["mgmt", "site-co", "site-ran", "site-co-2", "site-co-3"]
+    assert [n["flavor"] for n in inv["vm_nodes"]] == ["mgmt", "site", "site", "site", "site"]
     net = inv["libvirt_network"]
     assert net["name"] == "default"
     assert net["bridge"] == "virbr0"
@@ -61,6 +61,8 @@ def test_definition_topology():
         "mgmt": "192.168.122.10",
         "site-co": "192.168.122.21",
         "site-ran": "192.168.122.32",
+        "site-co-2": "192.168.122.23",
+        "site-co-3": "192.168.122.24",
     }
 
 
@@ -72,6 +74,7 @@ def test_plan_renders_telco_topology(tmp_path):
     assert result.exit_code == 0, result.output
     assert "mgmt" in out
     assert "site-co" in out
+    assert "site-co-3" in out
     assert "site-ran" in out
     assert "16384 MiB / 8 vcpu" in out
     assert "8192 MiB / 4 vcpu" in out
@@ -135,13 +138,20 @@ def test_example_plan_needs_no_operator_secret(tmp_path):
     assert plan["edition"] == "product"
 
 
-def test_site_ran_vip_is_not_a_node_address():
+def test_cluster_vips_are_not_node_addresses():
     inv = build_inventory({"type": "suse-telco", "name": "suse-telco-test"})
     node_ips = {n["ip"] for n in inv["vm_nodes"]}
     sites = get_profile("suse-telco").extra_cfg()["telco"]["sites"]
-    assert sites["site-co"]["control_plane_endpoint"] == "192.168.122.21"
+    # site-co-01 runs on three hosts behind one MetalLB address.
+    for host in ("site-co", "site-co-2", "site-co-3"):
+        assert sites[host]["cluster"] == "site-co-01"
+        assert sites[host]["control_plane_endpoint"] == "192.168.122.20"
+        assert sites[host]["labels"] == {"cluster-role": "control-plane", "site": "site-co"}
     assert sites["site-ran"]["control_plane_endpoint"] == "192.168.122.22"
+    assert "192.168.122.20" not in node_ips
     assert "192.168.122.22" not in node_ips
+    # Every enrolled host is a node in the definition.
+    assert set(sites) <= {n["name"] for n in inv["vm_nodes"]}
     assert sites["site-ran"]["namespace"] == "northline"
 
 
@@ -166,6 +176,8 @@ def test_network_template_skips_empty_vip():
 _SITE_UUIDS = {
     "a1000002-0f00-4000-8000-000000000021",
     "a1000003-0f00-4000-8000-000000000032",
+    "a1000004-0f00-4000-8000-000000000023",
+    "a1000005-0f00-4000-8000-000000000024",
 }
 _MGMT_UUID = "a1000001-0f00-4000-8000-000000000010"
 
@@ -323,7 +335,8 @@ def test_vm_xml_site_has_blank_disk_and_no_cdrom(tmp_path, monkeypatch):
     import xml.etree.ElementTree as ET
 
     v = _vms_role_vars(tmp_path, monkeypatch)
-    for name, mac in (("site-co", "02:00:00:0F:62:21"), ("site-ran", "02:00:00:0F:62:32")):
+    for name, mac in (("site-co", "02:00:00:0F:62:21"), ("site-ran", "02:00:00:0F:62:32"),
+                      ("site-co-2", "02:00:00:0F:62:23"), ("site-co-3", "02:00:00:0F:62:24")):
         node = next(n for n in v["vm_nodes"] if n["name"] == name)
         dom = ET.fromstring(_render("vm.xml.j2", item=node, **v))
         assert dom.find("os").get("firmware") == "efi"
@@ -435,7 +448,7 @@ def test_telco_phase_targets_mgmt(monkeypatch, tmp_path):
     assert p.rancher_api == "https://192.168.122.10:30002"
     assert p.rancher_version == "2.15.1"
     assert p.rke2_version == "v1.36.3+rke2r1"
-    assert p.site_names == ["site-co", "site-ran"]
+    assert p.site_names == ["site-co", "site-co-2", "site-co-3", "site-ran"]
     cfg = p.rke2_config()
     assert cfg["cni"] == "cilium"
     assert "192.168.122.10" in cfg["tls-san"]
@@ -775,9 +788,11 @@ def test_baremetalhosts_match_workshop_selectors(monkeypatch, tmp_path):
     assert kinds.index(("Namespace", "northline")) < kinds.index(("BareMetalHost", "site-ran"))
     bmh = {d["metadata"]["name"]: d for d in docs if d["kind"] == "BareMetalHost"}
     co, ran = bmh["site-co"], bmh["site-ran"]
-    # manifests/downstream-single.yaml hostSelector
-    assert co["metadata"]["namespace"] == "default"
-    assert co["metadata"]["labels"] == {"cluster-role": "control-plane", "site": "site-co"}
+    # manifests/site-co.yaml hostSelector: three hosts for site-co-01
+    for name, mac in (("site-co", "21"), ("site-co-2", "23"), ("site-co-3", "24")):
+        assert bmh[name]["metadata"]["namespace"] == "default"
+        assert bmh[name]["metadata"]["labels"] == {"cluster-role": "control-plane", "site": "site-co"}
+        assert bmh[name]["spec"]["bootMACAddress"] == f"02:00:00:0F:62:{mac}"
     # manifests/site-ran.yaml hostSelector
     assert ran["metadata"]["namespace"] == "northline"
     assert ran["metadata"]["labels"] == {
@@ -799,9 +814,12 @@ def test_baremetalhosts_match_workshop_selectors(monkeypatch, tmp_path):
 def test_enroll_waits_for_available_and_reports_errors(monkeypatch, tmp_path):
     p = _phase_with_base(monkeypatch, tmp_path)
     answers = iter([
-        "site-co registering <none>\nsite-ran registering Failed to get power state\n",
-        "site-co inspecting <none>\nsite-ran inspecting <none>\n",
-        "site-co available <none>\nsite-ran available <none>\n",
+        "site-co registering <none>\nsite-ran registering Failed to get power state\n"
+        "site-co-2 registering <none>\nsite-co-3 registering <none>\n",
+        "site-co inspecting <none>\nsite-ran inspecting <none>\n"
+        "site-co-2 available <none>\nsite-co-3 inspecting <none>\n",
+        "site-co available <none>\nsite-ran available <none>\n"
+        "site-co-2 available <none>\nsite-co-3 available <none>\n",
     ])
 
     def run(cmd, timeout, input=None):
@@ -931,7 +949,7 @@ def test_preflight_sizes_telco_from_its_flavors():
 
     cfg = get_profile("suse-telco").default_cfg()
     cfg.update({"type": "suse-telco", "name": "suse-telco-test"})
-    assert _resource_needs(cfg) == (16384 + 8192 * 2, 80 + 40 * 2 + 20)
+    assert _resource_needs(cfg) == (16384 + 8192 * 4, 80 + 40 * 4 + 20)
 
 
 def test_providers_chart_never_takes_rancher_turtles_release(monkeypatch, tmp_path):

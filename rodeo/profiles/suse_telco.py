@@ -1,9 +1,9 @@
-"""SUSE Telco Cloud 3.7 profile: management cluster and two downstream hosts.
+"""SUSE Telco Cloud 3.7 profile: management cluster and four downstream hosts.
 
 The phase list is the order `rodeo plan` shows. kvm_host (host prep), vms
 (libvirt network, mgmt disk from the SL Micro base image plus a combustion
 seed, blank site disks, domain definitions) and bmc (sushy-tools, the emulated
-Redfish BMC for site-co and site-ran) run through Ansible. The rest runs
+Redfish BMC for the site hosts) run through Ansible. The rest runs
 TelcoPhase (rodeo/engine/telco.py): boot starts mgmt only (Metal3 owns the site
 hosts' power), mgmt installs the management stack, images builds the
 downstream image with EIB on the KVM host and publishes it to the mgmt image
@@ -34,7 +34,7 @@ class SuseTelcoProfile(RodeoProfile):
         "finalise",
         "custom_scripts",
     ]
-    vm_names = ["mgmt", "site-co", "site-ran"]
+    vm_names = ["mgmt", "site-co", "site-ran", "site-co-2", "site-co-3"]
     ansible_phases = frozenset(["kvm_host", "vms", "bmc"])
     guarded_phases = frozenset(["finalise", "custom_scripts"])
     no_cache_phases = frozenset(["images", "vms", "bmc", "enroll", "custom_scripts"])
@@ -43,6 +43,8 @@ class SuseTelcoProfile(RodeoProfile):
         "mgmt": {"ip": "192.168.122.10", "user": "root"},
         "site-co": {"ip": "192.168.122.21", "user": "root"},
         "site-ran": {"ip": "192.168.122.32", "user": "root"},
+        "site-co-2": {"ip": "192.168.122.23", "user": "root"},
+        "site-co-3": {"ip": "192.168.122.24", "user": "root"},
     }
 
     # Management cluster is RKE2. The inherited k3s key is unused here.
@@ -168,8 +170,8 @@ class SuseTelcoProfile(RodeoProfile):
     def success_next_steps(self, cfg: dict) -> list[str]:
         mgmt = cfg.get("vms", {}).get("mgmt", {}).get("ip", "192.168.122.10")
         return [
-            f"  ssh root@{mgmt} kubectl get bmh -A     # site-co and site-ran, state available",
-            "  In the workshop repo: kubectl apply -f manifests/downstream-single.yaml   (lab 04)",
+            f"  ssh root@{mgmt} kubectl get bmh -A     # four site hosts, state available",
+            "  In the workshop repo: kubectl apply -f manifests/site-co.yaml   (lab 04, three nodes)",
             "  Rancher imports site-co-01 through the Turtles auto-import label",
         ]
 
@@ -260,8 +262,9 @@ _RANCHER_TLS = {
 }
 
 # What the enroll and images phases build, matched to the workshop manifests.
-# Labels are the hostSelector values in manifests/downstream-single.yaml and
-# manifests/site-ran.yaml. site-ran's host lives in namespace northline because
+# Labels are the hostSelector values in manifests/site-co.yaml and the
+# ClusterClass used by manifests/site-ran.yaml. site-co-01 runs on site-co,
+# site-co-2 and site-co-3 behind the MetalLB address 192.168.122.20. site-ran's host lives in namespace northline because
 # its Metal3MachineTemplate does, so enroll creates that namespace first.
 _TELCO = {
     "bmc": {
@@ -279,7 +282,19 @@ _TELCO = {
         "site-co": {
             "namespace": "default",
             "cluster": "site-co-01",
-            "control_plane_endpoint": "192.168.122.21",
+            "control_plane_endpoint": "192.168.122.20",
+            "labels": {"cluster-role": "control-plane", "site": "site-co"},
+        },
+        "site-co-2": {
+            "namespace": "default",
+            "cluster": "site-co-01",
+            "control_plane_endpoint": "192.168.122.20",
+            "labels": {"cluster-role": "control-plane", "site": "site-co"},
+        },
+        "site-co-3": {
+            "namespace": "default",
+            "cluster": "site-co-01",
+            "control_plane_endpoint": "192.168.122.20",
             "labels": {"cluster-role": "control-plane", "site": "site-co"},
         },
         "site-ran": {

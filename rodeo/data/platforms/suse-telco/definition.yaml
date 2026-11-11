@@ -1,13 +1,21 @@
-# definition.yaml — SUSE Telco Cloud 3.7 topology.
+# definition.yaml: SUSE Telco Cloud 3.7 topology (Northline workshop).
 #
-# Three libvirt guests on libvirt's default NAT network, 192.168.122.0/24
+# Built-in suse-telco topology, the same as definition.yaml in the
+# suse-telco-workshop repo. A definition.yaml next to a lab's rodeo-plan.yaml
+# replaces this one.
+#
+# Five libvirt guests on libvirt's default NAT network, 192.168.122.0/24
 # (virbr0), the same network every other profile uses.
-# This slice declares the machines. It does not create them, build images,
-# or install Metal3.
 #
-#   mgmt      management cluster, image cache, Ironic (later)
-#   site-co   first downstream host; nested virt so KubeVirt can start (later)
-#   site-ran  second downstream host; no KubeVirt
+#   mgmt       management cluster, image cache, Ironic, Gitea
+#   site-co    \
+#   site-co-2   > the three hosts of site-co-01 (central office, lab 04).
+#   site-co-3  /  API on the MetalLB address 192.168.122.20. KubeVirt in lab 07.
+#   site-ran   the one host of site-ran-01 (far edge, lab 05). No KubeVirt.
+#
+# Every guest gets CPU mode host-passthrough, so nested virt reaches all
+# site-co hosts. rodeo-plan.yaml (telco.sites) says which guests become
+# BareMetalHosts and with which labels.
 #
 # CPU and RAM are starting sizes, not a measured pin. Disk is a placeholder
 # until the first image boot.
@@ -15,7 +23,7 @@
 apiVersion: 1.0
 definition:
   name: suse-telco
-  description: "SUSE Telco Cloud 3.7: Rancher Prime management cluster and two downstream hosts"
+  description: "SUSE Telco Cloud 3.7: Rancher Prime management cluster, a 3-host central office and a 1-host far-edge site"
 
   start_order:
     - mgmt
@@ -74,11 +82,11 @@ definition:
 
   components:
     - name: mgmt
-      description: "Management cluster VM (SL Micro, RKE2, Rancher Prime, Metal3, Turtles — later)"
+      description: "Management cluster VM (SL Micro, RKE2, Rancher Prime, Metal3, Turtles)"
       nodes: ["mgmt"]
     - name: downstream-hosts
-      description: "site-co and site-ran, enrolled later as BareMetalHosts"
-      nodes: ["site-co", "site-ran"]
+      description: "site-co, site-co-2, site-co-3 and site-ran, enrolled as BareMetalHosts"
+      nodes: ["site-co", "site-co-2", "site-co-3", "site-ran"]
 
   # Versions live in rodeo/profiles/suse_telco.py (3.7.0 release notes).
 
@@ -139,3 +147,31 @@ definition:
         - role: mgmt
           mac: "02:00:00:0F:62:32"
       mgmt_mac: "02:00:00:0F:62:32"
+
+    # site-co-2 and site-co-3 join site-co in site-co-01. .22 is site-ran-01's
+    # VIP and .20 is site-co-01's, so the hosts take .23 and .24.
+    - name: site-co-2
+      template: site
+      index: 3
+      hostname: site-co-2
+      uuid: "a1000004-0f00-4000-8000-000000000023"
+      ip: "192.168.122.23"
+      config_iso_name: ""
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          mac: "02:00:00:0F:62:23"
+      mgmt_mac: "02:00:00:0F:62:23"
+
+    - name: site-co-3
+      template: site
+      index: 4
+      hostname: site-co-3
+      uuid: "a1000005-0f00-4000-8000-000000000024"
+      ip: "192.168.122.24"
+      config_iso_name: ""
+      ssh_user: root
+      interfaces:
+        - role: mgmt
+          mac: "02:00:00:0F:62:24"
+      mgmt_mac: "02:00:00:0F:62:24"

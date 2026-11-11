@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.28.1](https://github.com/avaleror/rodeo-cli/compare/v0.28.0...v0.28.1) (2026-11-11)
+
+
+### Bug Fixes
+
+* **telco:** an empty telco: block keeps the built-in defaults ([bfe823d](https://github.com/avaleror/rodeo-cli/commit/bfe823dbaa1e9a3a597e2c4047765625657d5cf2))
+* **telco:** an empty telco: block keeps the built-in defaults ([240f2ca](https://github.com/avaleror/rodeo-cli/commit/240f2ca08392181ab672e0702aa21f0b74779bce))
+
 ## [0.28.0](https://github.com/avaleror/rodeo-cli/compare/v0.27.0...v0.28.0) (2026-11-11)
 
 

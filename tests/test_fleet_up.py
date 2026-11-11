@@ -93,7 +93,7 @@ def test_up_runs_the_instructor_flow_in_order(tmp_path, steps):
     assert r.exit_code == 0, r.output
     assert steps == ["fleet_provision_cmd", "fleet_deploy_cmd", "portal_up_cmd", "wait",
                      "fleet_open_access_cmd", "portal_publish_cmd", "portal_info_cmd"]
-    assert "fleet deprovision -f" in r.output
+    assert "fleet destroy -f" in r.output
 
 
 def test_up_without_portal_prints_the_access_sheet(tmp_path, steps):

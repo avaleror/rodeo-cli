@@ -716,10 +716,16 @@ def fleet_provision_cmd(
     console.print(table)
     if not no_write:
         console.print(f"\n  Updated: [cyan]{inventory_path}[/cyan]")
-    console.print(
-        "  Every host powers off and is terminated at its expiry (dead-man switch). "
-        "Longer workshop: set provider.ttl_hours before provisioning."
-    )
+    if any(h.labels.get("expires_at") == "never" for h in hosts):
+        console.print(
+            "  [bold yellow]⚠  No dead-man switch: these hosts bill until you run "
+            f"rodeo fleet destroy -f {inventory_path} --yes[/bold yellow]"
+        )
+    else:
+        console.print(
+            "  Every host powers off and is terminated at its expiry (dead-man switch). "
+            "Longer workshop: set provider.ttl_hours before provisioning."
+        )
     console.print("  Next: [bold]rodeo fleet deploy -f …[/bold] then [bold]doctor[/bold]\n")
     if inventory.student_access == "open":
         console.print(
@@ -984,3 +990,7 @@ from .fleet_up_cmd import fleet_up_cmd  # noqa: E402
 
 fleet_cmd.add_command(portal_group)
 fleet_cmd.add_command(fleet_up_cmd)
+
+
+# `rodeo fleet destroy`: the same command under the name people reach for first.
+fleet_cmd.add_command(fleet_deprovision_cmd, name="destroy")

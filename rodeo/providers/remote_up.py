@@ -23,6 +23,7 @@ from ..install_source import (
 )
 from ..paths import rodeo_secrets_path, rodeo_state_dir
 from ..ssh_key import resolve_ssh_identity
+from . import deadman
 from .base import SINGLE_HOST_ID, ProvisionSpec, ProvisionedHost
 from .registry import get_provider
 
@@ -143,6 +144,8 @@ def _provider_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
         raise ConfigError("deployment_target: aws requires provider:")
     out = dict(provider)
     out["type"] = str(out.get("type") or "aws").strip().lower()
+    # Only the fleet inventory loader may lift the dead-man switch.
+    out.pop(deadman.ALLOW_OFF_KEY, None)
     return out
 
 

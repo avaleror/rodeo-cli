@@ -8,6 +8,7 @@ that misses.
 from __future__ import annotations
 
 from .base import RodeoProfile
+from .kvm_hosts import KvmHostsProfile
 from .labinabox import LabInABoxProfile
 from .rancher import RancherProfile
 from .rancher_test import RancherTestProfile
@@ -22,6 +23,7 @@ _REGISTRY: dict[str, RodeoProfile] = {
     "suse-edge": SuseEdgeProfile(),
     "suse-telco": SuseTelcoProfile(),
     "lab-in-a-box": LabInABoxProfile(),
+    "kvm-hosts": KvmHostsProfile(),
 }
 
 

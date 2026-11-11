@@ -86,7 +86,7 @@ rancher_tls:
 
 credentials:
   rancher_admin_password: "??rancher_admin_password"
-  # Emulated Redfish BMC (sushy-tools) for site-co and site-ran. Generated.
+  # Emulated Redfish BMC (sushy-tools) for the four site hosts. Generated.
   bmc_password: "??bmc_password"
   # Console password for the mgmt VM. Generated. SSH is key-only.
   mgmt_root_password: "??mgmt_root_password"

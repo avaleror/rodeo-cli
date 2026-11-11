@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.28.0](https://github.com/avaleror/rodeo-cli/compare/v0.27.0...v0.28.0) (2026-11-11)
+
+
+### Features
+
+* **telco:** site-co-01 on three hosts in the built-in topology ([d18768a](https://github.com/avaleror/rodeo-cli/commit/d18768ad0f5a18aced6d94891d27ab7f66e913a7))
+* **telco:** site-co-01 on three hosts in the built-in topology ([e760851](https://github.com/avaleror/rodeo-cli/commit/e760851217a1c2f0d19b764d4404f0e059e0f81f))
+
 ## [0.27.0](https://github.com/avaleror/rodeo-cli/compare/v0.26.0...v0.27.0) (2026-11-11)
 
 

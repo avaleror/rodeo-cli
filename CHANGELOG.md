@@ -12,7 +12,6 @@
 ### Bug Fixes
 
 * **aws:** capacity probe works before a custom key pair exists ([d916a94](https://github.com/avaleror/rodeo-cli/commit/d916a94504cd1542da1b2d91ae79e3c24d628508))
-* **aws:** single-host labs use the laptop's secrets on the AWS host ([b020917](https://github.com/avaleror/rodeo-cli/commit/b02091737916841c01480c8ca325e915beea9c51))
 * **aws:** single-host labs use the laptop's secrets on the AWS host ([f2d5c7d](https://github.com/avaleror/rodeo-cli/commit/f2d5c7d03c6dad606332fd14433fea1260c331bd))
 * **rancher:** install iptables on downstream nodes ([efd5978](https://github.com/avaleror/rodeo-cli/commit/efd597808ebf4c18c6bab9f18bd66a59f17581c0))
 * **rancher:** never render fleet's gitrepo migration hook ([72ca193](https://github.com/avaleror/rodeo-cli/commit/72ca19379d8ab3bb47e638a01a8e55bea0858320))

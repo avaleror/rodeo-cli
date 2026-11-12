@@ -222,12 +222,56 @@ def test_downstream_phase_creates_clusters_and_registers_every_node(tmp_path):
     assert '"rkeConfig": {}' in applied
 
     registrations = [(ip, s) for ip, s in remote.node_scripts if "system-agent-install" in s]
-    assert [ip for ip, _ in registrations] == [
+    # Nodes register concurrently, so order is not fixed.
+    assert sorted(ip for ip, _ in registrations) == [
         "192.168.122.41", "192.168.122.42", "192.168.122.51", "192.168.122.52", "192.168.122.53",
     ]
     for _, script in registrations:
         assert "--etcd --controlplane --worker" in script
-    assert "--node-name rke2-ha3" in registrations[-1][1]
+    assert any("--node-name rke2-ha3" in s for _, s in registrations)
+
+
+def test_downstream_phase_applies_every_cluster_before_any_node_registers(tmp_path):
+    """CAPI's start-up wait is paid once for all clusters, not once per cluster."""
+    cfg = _lab_cfg("rancher-test", tmp_path)
+    events: list[str] = []
+    remote = _Remote()
+    rancher, node = remote.rancher, remote.node
+
+    def _rancher(script, timeout=120):
+        if "kubectl apply" in script:
+            events.append("apply")
+        return rancher(script, timeout)
+
+    def _node(ip, script, timeout=120):
+        if "system-agent-install" in script:
+            events.append("register")
+        return node(ip, script, timeout)
+
+    phase = _phase(cfg, remote)
+    phase._ssh_script, phase._node_ssh_script = _rancher, _node
+    assert _drain(phase.stream_downstream_clusters()) is True
+    assert events == ["apply", "apply", "register", "register"]
+
+
+def test_downstream_phase_registers_k3s_and_rke2_nodes_at_the_same_time(tmp_path):
+    """Both registrations must be in flight together: sequential code would
+    leave the barrier waiting for a second party and time out."""
+    import threading
+
+    cfg = _lab_cfg("rancher-test", tmp_path)
+    remote = _Remote()
+    node = remote.node
+    barrier = threading.Barrier(2, timeout=5)
+
+    def _node(ip, script, timeout=120):
+        if "system-agent-install" in script:
+            barrier.wait()
+        return node(ip, script, timeout)
+
+    phase = _phase(cfg, remote)
+    phase._node_ssh_script = _node
+    assert _drain(phase.stream_downstream_clusters()) is True
 
 
 def test_downstream_phase_skips_nodes_already_registered(tmp_path):

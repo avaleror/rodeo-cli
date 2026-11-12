@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import shlex
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Generator
 
 from ...ssh import ssh_opts
@@ -68,21 +69,31 @@ class DownstreamMixin:
             yield LogLine(f"  ✗ {err}")
             return False
 
+        # Every cluster at once: records first, then one shared wait for their
+        # registration commands (CAPI starts minutes after /ping and is paid
+        # once, not per cluster), then every node registers concurrently.
         for cluster in self.downstream_clusters:
             name, distro = cluster["name"], cluster["distro"]
             version = self._downstream_version(distro)
             yield LogLine(f"Creating {distro.upper()} cluster '{name}' ({version}) in Rancher...")
-            command = yield from self._create_downstream_cluster(name, version)
-            if not command:
+            if not (yield from self._apply_cluster_record(name, version)):
                 return False
-            for node in cluster["nodes"]:
-                if not (yield from self._register_downstream_node(name, node, command)):
-                    return False
+
+        commands = yield from self._wait_registration_commands(
+            [c["name"] for c in self.downstream_clusters]
+        )
+        if commands is None:
+            return False
+
+        jobs = [(c["name"], node, commands[c["name"]])
+                for c in self.downstream_clusters for node in c["nodes"]]
+        if not (yield from self._register_nodes(jobs)):
+            return False
 
         return (yield from self._wait_downstream_ready())
 
-    def _create_downstream_cluster(self, name: str, version: str) -> Generator[DeployEvent, None, str]:
-        """Apply the cluster record and return its registration command ('' on failure)."""
+    def _apply_cluster_record(self, name: str, version: str) -> Generator[DeployEvent, None, bool]:
+        """Apply one provisioning Cluster record (a custom cluster)."""
         manifest = json.dumps({
             "apiVersion": "provisioning.cattle.io/v1",
             "kind": "Cluster",
@@ -106,20 +117,26 @@ class DownstreamMixin:
         if r.returncode != 0:
             self.error = f"cluster '{name}' create failed: {r.stderr.strip()}"
             yield LogLine(f"  ✗ {self.error}")
-            return ""
+            return False
+        return True
 
-        # Rancher assigns the c-m-xxxxx ID, then creates default-token in that
-        # namespace. insecureNodeCommand skips the CA checksum: Rancher's cert
-        # is self-signed in this lab and the agent pins the CA it downloads.
-        # Two Rancher 2.15 behaviours, both found live:
-        #  - the commands carry a literal {token}; the token itself is in the
-        #    Secret named by status.tokenSecretName (key "token"). Substituted
-        #    here, on the Rancher VM, so it never reaches the log.
-        #  - CAPI (cattle-capi-system) starts minutes after Rancher answers
-        #    /ping. Until its Cluster object exists, every node registration
-        #    gets "500 machine not found by request", so wait for it first.
+    @staticmethod
+    def _registration_query(name: str) -> str:
+        """Shell that prints the cluster's node command once it is usable, else nothing.
+
+        Rancher assigns the c-m-xxxxx ID, then creates default-token in that
+        namespace. insecureNodeCommand skips the CA checksum: Rancher's cert
+        is self-signed in this lab and the agent pins the CA it downloads.
+        Two Rancher 2.15 behaviours, both found live:
+         - the commands carry a literal {token}; the token itself is in the
+           Secret named by status.tokenSecretName (key "token"). Substituted
+           here, on the Rancher VM, so it never reaches the log.
+         - CAPI (cattle-capi-system) starts minutes after Rancher answers
+           /ping. Until its Cluster object exists, every node registration
+           gets "500 machine not found by request", so wait for it first.
+        """
         name_q = shlex.quote(name)
-        query = (
+        return (
             _K3S_KUBECONFIG
             + f"id=$(kubectl get clusters.provisioning.cattle.io {name_q} -n fleet-default"
             " -o jsonpath='{.status.clusterName}' 2>/dev/null)\n"
@@ -137,61 +154,85 @@ class DownstreamMixin:
             "esac\n"
             'printf \'%s\\n\' "$cmd"\n'
         )
+
+    def _wait_registration_commands(
+        self, names: list[str],
+    ) -> Generator[DeployEvent, None, dict[str, str] | None]:
+        """Wait until every cluster has a usable registration command (None on failure)."""
+        commands: dict[str, str] = {}
         t0 = time.monotonic()
         last_log = 0.0
         while True:
-            r = self._ssh_script(query, timeout=20)
-            command = r.stdout.strip()
-            if r.returncode == 0 and command.startswith("curl"):
-                yield LogLine("  Cluster record ready.")
-                return command
+            for name in names:
+                if name in commands:
+                    continue
+                r = self._ssh_script(self._registration_query(name), timeout=20)
+                command = r.stdout.strip()
+                if r.returncode == 0 and command.startswith("curl"):
+                    commands[name] = command
+                    yield LogLine(f"  {name}: cluster record ready.")
+            if len(commands) == len(names):
+                return commands
             elapsed = time.monotonic() - t0
+            pending = ", ".join(n for n in names if n not in commands)
             if elapsed >= self.REGISTRATION_TIMEOUT:
-                self.error = f"cluster '{name}': no registration command after {self.REGISTRATION_TIMEOUT // 60} min"
+                self.error = (
+                    f"no registration command after {self.REGISTRATION_TIMEOUT // 60} min: {pending}"
+                )
                 yield LogLine(f"  ✗ {self.error}")
-                return ""
+                return None
             if elapsed - last_log >= 30:
                 m, s = divmod(int(elapsed), 60)
-                yield LogLine(f"  {m:02d}:{s:02d}  waiting for the registration command...")
+                yield LogLine(f"  {m:02d}:{s:02d}  waiting for the registration command ({pending})...")
                 last_log = elapsed
             if self._sleep(10):
-                return ""
+                return None
 
-    def _register_downstream_node(self, cluster: str, node: str, command: str) -> Generator[DeployEvent, None, bool]:
+    def _register_nodes(self, jobs: list[tuple[str, str, str]]) -> Generator[DeployEvent, None, bool]:
+        """Register every (cluster, node, command) at the same time."""
+        if len(jobs) > 1:
+            yield LogLine(f"Registering {len(jobs)} nodes in parallel...")
+        with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
+            results = list(pool.map(lambda job: self._register_node_sync(*job), jobs))
+        ok = True
+        for (cluster, node, _), (node_ok, lines) in zip(jobs, results):
+            for line in lines:
+                yield LogLine(line)
+            if not node_ok:
+                ok = False
+        return ok
+
+    def _register_node_sync(self, cluster: str, node: str, command: str) -> tuple[bool, list[str]]:
+        """Register one node; runs in a worker thread, so it returns its log lines."""
         ip = self.vm_ips[node]
-        yield LogLine(f"  {node} ({ip}): waiting for SSH...")
+        lines = [f"  {node} ({ip}): waiting for SSH..."]
         t0 = time.monotonic()
         while self._node_ssh_script(ip, "true", timeout=15).returncode != 0:
             if time.monotonic() - t0 >= self.SSH_TIMEOUT:
                 self.error = f"{node}: SSH not reachable after {self.SSH_TIMEOUT // 60} min"
-                yield LogLine(f"  ✗ {self.error}")
-                return False
+                return False, lines + [f"  ✗ {self.error}"]
             if self._sleep(self.SSH_POLL):
-                return False
+                return False, lines
 
         # Re-runs converge: a node whose agent is already running is registered.
         r = self._node_ssh_script(ip, "systemctl is-active --quiet rancher-system-agent", timeout=15)
         if r.returncode == 0:
-            yield LogLine(f"  {node}: already registered.")
-            return True
+            return True, lines + [f"  {node}: already registered."]
 
         roles = "--etcd --controlplane --worker"
         script = (
             "set -euo pipefail\n"
             f"{command} {roles} --node-name {shlex.quote(node)}\n"
         )
-        yield LogLine(f"  {node}: registering with '{cluster}' (etcd, control plane, worker)...")
+        lines.append(f"  {node}: registering with '{cluster}' (etcd, control plane, worker)...")
         # The command carries the cluster token: it travels on stdin, never argv or the log.
         r = self._node_ssh_script(ip, script, timeout=300)
         if r.returncode != 0:
             tail = (r.stderr or r.stdout).strip().splitlines()[-5:]
-            for line in tail:
-                yield LogLine(f"    {line}")
+            lines += [f"    {line}" for line in tail]
             self.error = f"{node}: registration with '{cluster}' failed"
-            yield LogLine(f"  ✗ {self.error}")
-            return False
-        yield LogLine(f"  {node}: agent installed.")
-        return True
+            return False, lines + [f"  ✗ {self.error}"]
+        return True, lines + [f"  {node}: agent installed."]
 
     def _wait_downstream_ready(self) -> Generator[DeployEvent, None, bool]:
         """Wait until every cluster is Ready with all of its nodes.

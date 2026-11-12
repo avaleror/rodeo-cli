@@ -494,3 +494,14 @@ def test_downstream_nodes_get_iptables_and_register_after_cloud_init(tmp_path):
     assert _drain(_phase(cfg, remote).stream_downstream_clusters()) is True
     for _, script in (x for x in remote.node_scripts if "system-agent-install" in x[1]):
         assert script.index("cloud-init status --wait") < script.index("system-agent-install")
+
+
+@pytest.mark.parametrize("profile", ["rancher", "rancher-test"])
+def test_rancher_starts_with_its_final_server_url(profile, tmp_path):
+    """Live 2026-11-12: setting server-url after start made Rancher upgrade the
+    fleet chart seconds after installing it; that upgrade's pre-upgrade job
+    raced fleet's start-up and cost ~2.5 min. The helm values carry it now."""
+    phase = RancherPhase(_lab_cfg(profile, tmp_path))
+    env = {e["name"]: e["value"] for e in phase._rancher_helm_values()["extraEnv"]}
+    assert env["CATTLE_SERVER_URL"] == phase.rancher_server_url
+    assert phase.rancher_server_url.endswith(f":{phase.nodeport}")

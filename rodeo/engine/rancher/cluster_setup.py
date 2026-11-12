@@ -107,6 +107,12 @@ class ClusterSetupMixin:
             "hostname": self.rancher_hostname,
             "bootstrapPassword": self.admin_password,
             "replicas": 1,
+            # The final server-url from the first start. Setting it later via
+            # the API changes the fleet chart's API server URL, so Rancher
+            # upgrades fleet seconds after installing it, and that upgrade's
+            # pre-upgrade migration job races fleet's own start-up (live
+            # 2026-11-12: 5 failed attempts, ~2.5 min lost before CAPI).
+            "extraEnv": [{"name": "CATTLE_SERVER_URL", "value": self.rancher_server_url}],
         }
         if self.tls_source == "letsEncrypt":
             values["ingress"] = {"tls": {"source": "letsEncrypt"}}
@@ -363,12 +369,16 @@ class ClusterSetupMixin:
         self._clear_first_login()
 
         try:
-            self._http(
-                "PUT",
-                "/v3/settings/server-url",
-                {"value": self.rancher_server_url},
-                token=self._api_token,
-            )
+            # Normally already right (CATTLE_SERVER_URL in the helm values);
+            # only a lab installed by an older rodeo still needs the PUT.
+            current = self._http("GET", "/v3/settings/server-url", token=self._api_token)
+            if current.get("value") != self.rancher_server_url:
+                self._http(
+                    "PUT",
+                    "/v3/settings/server-url",
+                    {"value": self.rancher_server_url},
+                    token=self._api_token,
+                )
         except Exception as exc:
             yield LogLine(f"  ⚠ server-url set: {exc}")
 

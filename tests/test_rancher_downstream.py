@@ -231,6 +231,43 @@ def test_downstream_phase_creates_clusters_and_registers_every_node(tmp_path):
     assert any("--node-name rke2-ha3" in s for _, s in registrations)
 
 
+def test_a_ready_cluster_registers_without_waiting_for_a_slower_one(tmp_path):
+    """Live 2026-11-12: RKE2's command was ready ~35 s before K3s's and RKE2 is
+    the slowest path; waiting for every command first cost that much."""
+    cfg = _lab_cfg("rancher-test", tmp_path)
+    remote = _Remote()
+    rancher, node = remote.rancher, remote.node
+    events: list[str] = []
+    k3s_polls = {"n": 0}
+
+    def _rancher(script, timeout=120):
+        if "insecureNodeCommand" in script and "k3s-single" in script:
+            k3s_polls["n"] += 1
+            if k3s_polls["n"] < 3:  # K3s's command is not ready for two polls
+                events.append("k3s not ready")
+                return subprocess.CompletedProcess([], 0, stdout="", stderr="")
+        return rancher(script, timeout)
+
+    import threading
+
+    rke2_registered = threading.Event()
+
+    def _node(ip, script, timeout=120):
+        if "system-agent-install" in script:
+            events.append(f"register {ip}")
+            if ip == "192.168.122.42":
+                rke2_registered.set()
+        return node(ip, script, timeout)
+
+    phase = _phase(cfg, remote)
+    phase._ssh_script, phase._node_ssh_script = _rancher, _node
+    # Each poll's sleep gives the RKE2 worker a chance to run (deterministic,
+    # not timing-dependent); wait-for-all code never registers it here.
+    phase._sleep = lambda s: (rke2_registered.wait(2), False)[1]
+    assert _drain(phase.stream_downstream_clusters()) is True
+    assert events.index("register 192.168.122.42") < len(events) - 1 - events[::-1].index("k3s not ready")
+
+
 def test_downstream_phase_applies_every_cluster_before_any_node_registers(tmp_path):
     """CAPI's start-up wait is paid once for all clusters, not once per cluster."""
     cfg = _lab_cfg("rancher-test", tmp_path)
@@ -370,8 +407,10 @@ def test_preload_copies_each_distros_tarball_before_any_node_registers(tmp_path)
     assert _drain(phase.stream_downstream_clusters()) is True
     copies = [e for e in events if e.startswith("copy")]
     assert sorted(copies) == ["copy k3s 192.168.122.41", "copy rke2 192.168.122.42"]
-    first_register = next(i for i, e in enumerate(events) if e.startswith("register"))
-    assert all(events.index(c) < first_register for c in copies)
+    # Each node's own tarball lands before that node registers.
+    for ip in ("192.168.122.41", "192.168.122.42"):
+        copy = next(i for i, e in enumerate(events) if e.startswith("copy") and e.endswith(ip))
+        assert copy < events.index(f"register {ip}")
 
 
 def test_preload_failure_never_fails_the_deploy(tmp_path):

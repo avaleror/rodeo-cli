@@ -40,7 +40,8 @@ class DownstreamMixin:
     """Create downstream clusters in Rancher and register their nodes."""
 
     DOWNSTREAM_TIMEOUT = 2700  # every cluster Ready (45 min; 3-node RKE2 joins one by one)
-    DOWNSTREAM_POLL = 20
+    DOWNSTREAM_POLL = 5  # one SSH round trip; at 20 s up to 20 s were lost after Ready
+    REGISTRATION_POLL = 5
     REGISTRATION_TIMEOUT = 900  # cluster ID, CAPI cluster, registration command (15 min)
     PRELOAD_GRACE = 180  # extra wait for the image pre-load once registration could start
 
@@ -86,24 +87,12 @@ class DownstreamMixin:
             yield LogLine(f"  ✗ {err}")
             return False
 
-        # Every cluster at once: records first, then one shared wait for their
-        # registration commands (CAPI starts minutes after /ping and is paid
-        # once, not per cluster), then every node registers concurrently.
-        # Meanwhile the nodes' images are pre-loaded, so K3s/RKE2 start from
-        # local tarballs instead of pulling (measured live: the wait is ~2-3
-        # min, the pre-load ~1 min; rancher-agent alone is a 678 MB pull).
-        nodes = [(c["distro"], n) for c in self.downstream_clusters for n in c["nodes"]]
-        preload_pool = ThreadPoolExecutor(max_workers=1)
-        preload = preload_pool.submit(self._preload_images, nodes)
-        try:
-            ok = yield from self._create_and_register(preload)
-        finally:
-            preload_pool.shutdown(wait=False)
-        if not ok:
-            return False
-        return (yield from self._wait_downstream_ready())
-
-    def _create_and_register(self, preload) -> Generator[DeployEvent, None, bool]:
+        # Every cluster at once, and nothing waits on a cluster it does not
+        # need: all records are applied, each distro's images are pre-loaded
+        # in parallel, and each cluster's nodes register as soon as *its*
+        # command is ready and *its* distro's images have landed. Measured
+        # live: RKE2's command came ~35 s before K3s's, and RKE2 is the
+        # slowest path, so a shared "wait for all" cost that much.
         for cluster in self.downstream_clusters:
             name, distro = cluster["name"], cluster["distro"]
             version = self._downstream_version(distro)
@@ -111,26 +100,80 @@ class DownstreamMixin:
             if not (yield from self._apply_cluster_record(name, version)):
                 return False
 
-        commands = yield from self._wait_registration_commands(
-            [c["name"] for c in self.downstream_clusters]
-        )
-        if commands is None:
-            return False
-
-        if not preload.done():
-            yield LogLine("Finishing the image pre-load before registering nodes...")
+        nodes_by_distro: dict[str, list[str]] = {}
+        for c in self.downstream_clusters:
+            nodes_by_distro.setdefault(c["distro"], []).extend(c["nodes"])
+        n_nodes = sum(len(v) for v in nodes_by_distro.values())
+        pool = ThreadPoolExecutor(max_workers=len(nodes_by_distro) + n_nodes)
         try:
-            lines = preload.result(timeout=self.PRELOAD_GRACE)
-        except FutureTimeout:
-            lines = ["  Image pre-load still running; nodes will pull their images instead."]
-        except Exception as exc:  # never fatal: nodes can always pull
-            lines = [f"  Image pre-load failed ({exc}); nodes will pull their images instead."]
-        for line in lines:
-            yield LogLine(line)
+            preloads = {d: pool.submit(self._preload_distro, d, nodes)
+                        for d, nodes in nodes_by_distro.items()}
+            ok = yield from self._register_as_ready(pool, preloads)
+            for d in sorted(preloads):
+                if preloads[d].done() and not preloads[d].cancelled():
+                    try:
+                        for line in preloads[d].result():
+                            yield LogLine(line)
+                    except Exception as exc:  # never fatal: nodes can always pull
+                        yield LogLine(f"  {d}: image pre-load failed ({exc}); nodes pulled instead.")
+        finally:
+            pool.shutdown(wait=False)
+        if not ok:
+            return False
+        return (yield from self._wait_downstream_ready())
 
-        jobs = [(c["name"], node, commands[c["name"]])
-                for c in self.downstream_clusters for node in c["nodes"]]
-        return (yield from self._register_nodes(jobs))
+    def _register_as_ready(self, pool, preloads) -> Generator[DeployEvent, None, bool]:
+        """Poll every cluster's registration command; register its nodes the moment it is ready."""
+        pending = {c["name"]: c for c in self.downstream_clusters}
+        jobs: list[tuple[str, str, object]] = []
+        t0 = time.monotonic()
+        last_log = 0.0
+        while pending:
+            for name in list(pending):
+                r = self._ssh_script(self._registration_query(name), timeout=20)
+                command = r.stdout.strip()
+                if r.returncode != 0 or not command.startswith("curl"):
+                    continue
+                cluster = pending.pop(name)
+                yield LogLine(f"  {name}: cluster record ready, registering {', '.join(cluster['nodes'])}...")
+                for node in cluster["nodes"]:
+                    jobs.append((name, node, pool.submit(
+                        self._register_after_preload, preloads[cluster["distro"]], name, node, command,
+                    )))
+            if not pending:
+                break
+            elapsed = time.monotonic() - t0
+            if elapsed >= self.REGISTRATION_TIMEOUT:
+                self.error = (f"no registration command after {self.REGISTRATION_TIMEOUT // 60} min: "
+                              f"{', '.join(pending)}")
+                yield LogLine(f"  ✗ {self.error}")
+                return False
+            if elapsed - last_log >= 30:
+                m, s = divmod(int(elapsed), 60)
+                yield LogLine(f"  {m:02d}:{s:02d}  waiting for the registration command ({', '.join(pending)})...")
+                last_log = elapsed
+            if self._sleep(self.REGISTRATION_POLL):
+                return False
+
+        ok = True
+        for _, _, fut in jobs:
+            node_ok, lines = fut.result()
+            for line in lines:
+                yield LogLine(line)
+            ok = ok and node_ok
+        return ok
+
+    def _register_after_preload(self, preload, cluster: str, node: str, command: str) -> tuple[bool, list[str]]:
+        """Worker: let this node's images land (bounded), then register it."""
+        notes: list[str] = []
+        try:
+            preload.result(timeout=self.PRELOAD_GRACE)
+        except FutureTimeout:
+            notes.append(f"  {node}: image pre-load still running; registering anyway, it will pull.")
+        except Exception:  # reported once by the caller; never fatal
+            pass
+        ok, lines = self._register_node_sync(cluster, node, command)
+        return ok, notes + lines
 
     # ---------- image pre-load ----------
 
@@ -183,31 +226,23 @@ class DownstreamMixin:
                 src.stdout.close()
             src.wait(timeout=30)
 
-    def _preload_images(self, nodes: list[tuple[str, str]]) -> list[str]:
-        """Pre-load every node's images; returns log lines and never raises."""
-        lines: list[str] = []
+    def _preload_distro(self, distro: str, nodes: list[str]) -> list[str]:
+        """Pre-load one distro's images onto its nodes; returns log lines and never raises."""
         t0 = time.monotonic()
-        tarballs: dict[str, str] = {}
-        for distro in sorted({d for d, _ in nodes}):
-            r = self._ssh_script(self._preload_script(distro, self._downstream_version(distro)), timeout=900)
-            if r.returncode != 0 or not r.stdout.strip():
-                err = (r.stderr or "").strip().splitlines()[-1:] or [f"exit {r.returncode}"]
-                lines.append(f"  {distro}: image pre-load skipped ({err[0]})")
-                continue
-            tarballs[distro] = r.stdout.strip().splitlines()[-1]
-        for distro, node in nodes:
-            if distro not in tarballs:
-                continue
+        r = self._ssh_script(self._preload_script(distro, self._downstream_version(distro)), timeout=900)
+        if r.returncode != 0 or not r.stdout.strip():
+            err = (r.stderr or "").strip().splitlines()[-1:] or [f"exit {r.returncode}"]
+            return [f"  {distro}: image pre-load skipped ({err[0]})"]
+        tarball = r.stdout.strip().splitlines()[-1]
+        lines: list[str] = []
+        for node in nodes:
             ip = self.vm_ips[node]
             # A node already running its distro imported its images long ago.
             if self._node_ssh_script(ip, f"test -d /var/lib/rancher/{distro}/server", timeout=15).returncode == 0:
                 continue
-            r = self._copy_preload(tarballs[distro], distro, ip)
-            if r.returncode != 0:
+            if self._copy_preload(tarball, distro, ip).returncode != 0:
                 lines.append(f"  {node}: image pre-load copy failed; it will pull instead")
-        if tarballs:
-            lines.insert(0, f"  Images pre-loaded for {', '.join(sorted(tarballs))} "
-                            f"in {int(time.monotonic() - t0)}s.")
+        lines.insert(0, f"  {distro}: images pre-loaded in {int(time.monotonic() - t0)}s.")
         return lines
 
     def _apply_cluster_record(self, name: str, version: str) -> Generator[DeployEvent, None, bool]:
@@ -272,53 +307,6 @@ class DownstreamMixin:
             "esac\n"
             'printf \'%s\\n\' "$cmd"\n'
         )
-
-    def _wait_registration_commands(
-        self, names: list[str],
-    ) -> Generator[DeployEvent, None, dict[str, str] | None]:
-        """Wait until every cluster has a usable registration command (None on failure)."""
-        commands: dict[str, str] = {}
-        t0 = time.monotonic()
-        last_log = 0.0
-        while True:
-            for name in names:
-                if name in commands:
-                    continue
-                r = self._ssh_script(self._registration_query(name), timeout=20)
-                command = r.stdout.strip()
-                if r.returncode == 0 and command.startswith("curl"):
-                    commands[name] = command
-                    yield LogLine(f"  {name}: cluster record ready.")
-            if len(commands) == len(names):
-                return commands
-            elapsed = time.monotonic() - t0
-            pending = ", ".join(n for n in names if n not in commands)
-            if elapsed >= self.REGISTRATION_TIMEOUT:
-                self.error = (
-                    f"no registration command after {self.REGISTRATION_TIMEOUT // 60} min: {pending}"
-                )
-                yield LogLine(f"  ✗ {self.error}")
-                return None
-            if elapsed - last_log >= 30:
-                m, s = divmod(int(elapsed), 60)
-                yield LogLine(f"  {m:02d}:{s:02d}  waiting for the registration command ({pending})...")
-                last_log = elapsed
-            if self._sleep(10):
-                return None
-
-    def _register_nodes(self, jobs: list[tuple[str, str, str]]) -> Generator[DeployEvent, None, bool]:
-        """Register every (cluster, node, command) at the same time."""
-        if len(jobs) > 1:
-            yield LogLine(f"Registering {len(jobs)} nodes in parallel...")
-        with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
-            results = list(pool.map(lambda job: self._register_node_sync(*job), jobs))
-        ok = True
-        for (cluster, node, _), (node_ok, lines) in zip(jobs, results):
-            for line in lines:
-                yield LogLine(line)
-            if not node_ok:
-                ok = False
-        return ok
 
     def _register_node_sync(self, cluster: str, node: str, command: str) -> tuple[bool, list[str]]:
         """Register one node; runs in a worker thread, so it returns its log lines."""

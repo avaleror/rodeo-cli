@@ -724,6 +724,11 @@ class AwsHostProvider:
                 min_count=count,
                 max_count=count,
             )
+            # The key pair may not exist yet: provisioning imports it after this
+            # check (ensure_ec2_key_pair), so a first deploy with a custom
+            # provider.key_name failed here with InvalidKeyPair.NotFound. The
+            # probe is about capacity; the key is checked before the real launch.
+            kwargs.pop("KeyName", None)
             ec2.run_instances(**kwargs)
         except Exception as exc:  # noqa: BLE001 — boto ClientError varies by install
             code, message = _aws_error_parts(exc)

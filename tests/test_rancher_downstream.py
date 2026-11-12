@@ -505,3 +505,11 @@ def test_rancher_starts_with_its_final_server_url(profile, tmp_path):
     env = {e["name"]: e["value"] for e in phase._rancher_helm_values()["extraEnv"]}
     assert env["CATTLE_SERVER_URL"] == phase.rancher_server_url
     assert phase.rancher_server_url.endswith(f":{phase.nodeport}")
+
+
+def test_fleet_migration_hook_is_never_rendered(tmp_path):
+    """Rancher upgrades fleet twice right after install; each upgrade ran a
+    pre-upgrade migration job that can fail while fleet starts (live: ~2.5 min
+    of retries before CAPI). The Rancher chart's `fleet` value turns it off."""
+    values = RancherPhase(_lab_cfg("rancher-test", tmp_path))._rancher_helm_values()
+    assert values["fleet"]["migrations"]["gitrepoHelmURLRegexMigration"] is False

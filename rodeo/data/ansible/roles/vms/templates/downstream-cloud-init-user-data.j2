@@ -19,3 +19,7 @@ runcmd:
   - [sh, -c, "setenforce 0 || true"]
   - [sh, -c, "sed -i 's/^SELINUX=enforcing/SELINUX=permissive/' /etc/selinux/config || true"]
   - [sh, -c, "systemctl disable --now firewalld 2>/dev/null || true"]
+  # RKE2's portmap CNI plugin (hostPort, e.g. rke2-traefik) execs iptables,
+  # which the Leap 16 cloud image does not ship; without it the pod sandbox
+  # never comes up (found live 2026-11-12). K3s bundles its own.
+  - [sh, -c, "zypper --non-interactive install --no-recommends iptables || true"]

@@ -340,6 +340,9 @@ class DownstreamMixin:
         roles = "--etcd --controlplane --worker"
         script = (
             "set -euo pipefail\n"
+            # The node's cloud-init installs what K3s/RKE2 need (iptables);
+            # registering before it finishes races it.
+            "cloud-init status --wait >/dev/null 2>&1 || true\n"
             f"{command} {roles} --node-name {shlex.quote(node)}\n"
         )
         lines.append(f"  {node}: registering with '{cluster}' (etcd, control plane, worker)...")

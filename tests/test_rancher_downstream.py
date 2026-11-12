@@ -442,3 +442,16 @@ def test_preload_script_exports_what_the_node_will_ask_for(tmp_path):
         "registry.rancher.com/rancher/rke2-runtime:v1.36.4-rke2r1",
     ]
     assert r.stdout.strip().endswith("rodeo-preload-rke2-v1.36.4+rke2r1.tar")
+
+
+def test_downstream_nodes_get_iptables_and_register_after_cloud_init(tmp_path):
+    """Live 2026-11-12: rke2-traefik stuck in ContainerCreating, portmap CNI
+    'exec: iptables: executable file not found' on the Leap 16 cloud image."""
+    tpl = Path(rodeo.__file__).parent / "data/ansible/roles/vms/templates/downstream-cloud-init-user-data.j2"
+    assert "install --no-recommends iptables" in tpl.read_text()
+
+    cfg = _lab_cfg("rancher-test", tmp_path)
+    remote = _Remote()
+    assert _drain(_phase(cfg, remote).stream_downstream_clusters()) is True
+    for _, script in (x for x in remote.node_scripts if "system-agent-install" in x[1]):
+        assert script.index("cloud-init status --wait") < script.index("system-agent-install")

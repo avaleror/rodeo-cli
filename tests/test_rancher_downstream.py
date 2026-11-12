@@ -433,7 +433,7 @@ def test_preload_script_exports_what_the_node_will_ask_for(tmp_path):
     r = subprocess.run(["bash", "-c", script], capture_output=True, text=True,
                        env={"PATH": f"{bin_dir}:/usr/bin:/bin"})
     assert r.returncode == 0, r.stderr
-    export = next(l for l in (out_dir / "k3s.log").read_text().splitlines() if " export " in l)
+    export = next(ln for ln in (out_dir / "k3s.log").read_text().splitlines() if " export " in ln)
     images = sorted(a for a in export.split() if a.startswith("registry.") or a.startswith("docker."))
     assert images == [
         "registry.rancher.com/rancher/mirrored-calico-node:v3.32.1",

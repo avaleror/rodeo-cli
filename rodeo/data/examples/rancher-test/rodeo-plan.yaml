@@ -13,10 +13,13 @@ network:
 # Rancher VM (K3s + Rancher Prime + cert-manager) and the downstream nodes.
 # k3s-node: the single-node K3s cluster. rke2-node: the single-node RKE2
 # cluster.
+# vCPU is sized for deploy wall-clock, not just fit: Rancher's chart rollout
+# and RKE2's first start are CPU-bound, and the default AWS host
+# (m8id.4xlarge, 16 vCPU) would otherwise sit mostly idle.
 resources:
   rancher:
     memory_mib: 8192
-    vcpu: 4
+    vcpu: 8
     disk_gb: 60
   k3s-node:
     memory_mib: 2048
@@ -24,7 +27,7 @@ resources:
     disk_gb: 20
   rke2-node:
     memory_mib: 4096
-    vcpu: 2
+    vcpu: 4
     disk_gb: 30
 
 # Credentials resolve from ~/.rodeo/secrets.yaml (rodeo init / up generate them).

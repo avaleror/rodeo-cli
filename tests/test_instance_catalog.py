@@ -126,6 +126,7 @@ class _CapEC2:
     def __init__(self, *, offerings=True, dry_run_code="DryRunOperation"):
         self.offerings = offerings
         self.dry_run_code = dry_run_code
+        self.run_kwargs = None
         self.images = [
             {
                 "ImageId": "ami-leap",
@@ -166,6 +167,7 @@ class _CapEC2:
 
     def run_instances(self, **kwargs):
         assert kwargs.get("DryRun") is True
+        self.run_kwargs = kwargs
         err = Exception(self.dry_run_code)
         err.response = {  # type: ignore[attr-defined]
             "Error": {"Code": self.dry_run_code, "Message": "probe"}
@@ -185,6 +187,26 @@ def test_assert_available_ok():
         },
         count=1,
     )
+
+
+def test_assert_available_does_not_need_the_key_pair_yet():
+    # A custom provider.key_name is imported only after this check, so the
+    # capacity probe must not name it (InvalidKeyPair.NotFound on first deploy).
+    ec2 = _CapEC2()
+    p = AwsHostProvider(ec2_client=ec2, sleep=lambda _s: None)
+    p.assert_available(
+        {
+            "type": "aws",
+            "region": "eu-central-1",
+            "instance_type": "i7i.8xlarge",
+            "subnet_id": "subnet-1",
+            "security_group_ids": ["sg-1"],
+            "key_name": "rodeo-other-laptop",
+        },
+        count=1,
+    )
+    assert ec2.run_kwargs is not None
+    assert "KeyName" not in ec2.run_kwargs
 
 
 def test_assert_available_not_offered():

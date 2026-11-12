@@ -107,6 +107,20 @@ class ClusterSetupMixin:
             "hostname": self.rancher_hostname,
             "bootstrapPassword": self.admin_password,
             "replicas": 1,
+            # The final server-url from the first start. Setting it later via
+            # the API changes the fleet chart's API server URL, so Rancher
+            # upgrades fleet seconds after installing it, and that upgrade's
+            # pre-upgrade migration job races fleet's own start-up (live
+            # 2026-11-12: 5 failed attempts, ~2.5 min lost before CAPI).
+            "extraEnv": [{"name": "CATTLE_SERVER_URL", "value": self.rancher_server_url}],
+            # Rancher still upgrades fleet twice on its own right after
+            # installing it (a no-op reconcile, then apiServerCA once its CA
+            # exists), and every upgrade runs fleet's pre-upgrade job
+            # fleet-migrate-gitrepo-helm-url-regex, which can fail against a
+            # fleet that is still starting. A fresh lab has no GitRepos to
+            # migrate, so the job is not rendered at all. Rancher merges these
+            # values (rancher-config, key "fleet") into every fleet deploy.
+            "fleet": {"migrations": {"gitrepoHelmURLRegexMigration": False}},
         }
         if self.tls_source == "letsEncrypt":
             values["ingress"] = {"tls": {"source": "letsEncrypt"}}
@@ -363,12 +377,16 @@ class ClusterSetupMixin:
         self._clear_first_login()
 
         try:
-            self._http(
-                "PUT",
-                "/v3/settings/server-url",
-                {"value": self.rancher_server_url},
-                token=self._api_token,
-            )
+            # Normally already right (CATTLE_SERVER_URL in the helm values);
+            # only a lab installed by an older rodeo still needs the PUT.
+            current = self._http("GET", "/v3/settings/server-url", token=self._api_token)
+            if current.get("value") != self.rancher_server_url:
+                self._http(
+                    "PUT",
+                    "/v3/settings/server-url",
+                    {"value": self.rancher_server_url},
+                    token=self._api_token,
+                )
         except Exception as exc:
             yield LogLine(f"  ⚠ server-url set: {exc}")
 

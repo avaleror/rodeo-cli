@@ -50,11 +50,13 @@ AWS_PROFILE_TIERS: dict[str, dict[InstanceTier, InstanceOffer]] = {
         "budget": InstanceOffer(
             "m7i.2xlarge", "budget", "8 vCPU / 32 GiB, Rancher plus two small clusters"
         ),
+        # Picked for wall-clock: local NVMe and 16 vCPU, so Rancher, K3s and
+        # RKE2 installing at the same time do not contend for CPU.
         "recommended": InstanceOffer(
-            "m7i.4xlarge", "recommended", "16 vCPU / 64 GiB, comfortable headroom"
+            "m8id.4xlarge", "recommended", "16 vCPU / 64 GiB / local NVMe, fastest deploy"
         ),
         "performance": InstanceOffer(
-            "i7i.2xlarge", "performance", "local NVMe, faster guest disks"
+            "m8id.8xlarge", "performance", "32 vCPU / 128 GiB / local NVMe, max headroom"
         ),
     },
     "test": {

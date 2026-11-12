@@ -20,13 +20,22 @@ _PRIVATE_NAME = "id_ed25519"
 _REMOTE_ROOT_KEY = "/root/.ssh/id_ed25519"
 
 
-def build_ec2_userdata(*, ssh_user: str = "ec2-user", expires_at: datetime | None = None) -> str:
+def build_ec2_userdata(
+    *,
+    ssh_user: str = "ec2-user",
+    expires_at: datetime | None = None,
+    boot_script: str | None = None,
+) -> str:
     """cloud-config for passwordless root + NOPASSWD sudo for the AMI login user.
 
     Injects the managed pubkey into root (and ``ssh_user``) authorized_keys, enables
     ``PermitRootLogin prohibit-password``, and installs a sudoers drop-in so remote
     ``sudo -n`` / ``rodeo up`` never prompts for a password. With ``expires_at``
     it also arms the dead-man switch timer (rodeo/providers/deadman.py).
+    ``boot_script`` (bash) is written to /usr/local/sbin/rodeo-boot.sh and
+    started in the background (transient unit ``rodeo-boot``), so it never
+    holds up cloud-init or SSH. Every login shell gets ZYPP_LOCK_TIMEOUT, so a
+    zypper started over SSH waits for it instead of failing on the lock.
     """
     import json
 
@@ -69,6 +78,7 @@ def build_ec2_userdata(*, ssh_user: str = "ec2-user", expires_at: datetime | Non
         "    content: |\n"
         "      PermitRootLogin prohibit-password\n"
         + (cloud_config_files(expires_at) if expires_at else "")
+        + (_boot_script_files(boot_script) if boot_script else "")
         + "bootcmd:\n"
         "  - [mkdir, -p, /root/.ssh]\n"
         "  - [chmod, '700', /root/.ssh]\n"
@@ -76,6 +86,26 @@ def build_ec2_userdata(*, ssh_user: str = "ec2-user", expires_at: datetime | Non
         "  - [chmod, '700', /root/.ssh]\n"
         "  - [bash, -lc, 'systemctl reload sshd 2>/dev/null || systemctl reload ssh 2>/dev/null || true']\n"
         + (cloud_config_runcmd() if expires_at else "")
+        + (
+            "  - [systemd-run, --unit=rodeo-boot, --collect, /bin/bash, /usr/local/sbin/rodeo-boot.sh]\n"
+            if boot_script else ""
+        )
+    )
+
+
+def _boot_script_files(script: str) -> str:
+    body = "".join(f"      {line}\n" for line in script.splitlines())
+    return (
+        "  - path: /usr/local/sbin/rodeo-boot.sh\n"
+        "    owner: root:root\n"
+        "    permissions: '0755'\n"
+        "    content: |\n"
+        + body
+        + "  - path: /etc/profile.d/zz-rodeo-zypp.sh\n"
+        "    owner: root:root\n"
+        "    permissions: '0644'\n"
+        "    content: |\n"
+        "      export ZYPP_LOCK_TIMEOUT=600\n"
     )
 
 

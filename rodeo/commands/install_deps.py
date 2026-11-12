@@ -8,8 +8,14 @@ import sys
 import urllib.request
 from pathlib import Path
 
+import tempfile
+from typing import IO
+
 import click
 from rich.console import Console
+
+from ..galaxy_collections import mark_collections_installed
+from ..paths import invoking_home
 
 console = Console()
 
@@ -35,6 +41,27 @@ _DNF_PACKAGES = [
     "jq", "curl", "firewalld",
 ]
 _K8S_CHANNEL = "v1.36"
+
+
+def zypper_boot_install_script() -> str:
+    """Bash for an EC2 lab host's boot script: install what install-deps (and
+    install.sh) would, while the laptop is still waiting for SSH.
+
+    Best effort. It waits for the SLES PAYG repos to register, then installs
+    the same set with the same flags, so install-deps finds it done. If it
+    fails or runs late, install-deps installs as before (ZYPP_LOCK_TIMEOUT
+    makes the two wait for each other instead of failing with exit 7).
+    Live on AWS: ~1 min of zypper that used to start only after SSH.
+    """
+    patterns = " ".join(f"pattern:{p}" for p in _ZYPPER_PATTERNS)
+    packages = " ".join(_ZYPPER_PACKAGES + ["ansible-core", "python3", "python3-pip", "git"])
+    return (
+        "#!/bin/bash\n"
+        "command -v zypper >/dev/null || exit 0\n"
+        "export ZYPP_LOCK_TIMEOUT=600\n"
+        "for _ in $(seq 1 60); do zypper -n -q lr >/dev/null 2>&1 && break; sleep 5; done\n"
+        f"zypper -n --gpg-auto-import-keys install {patterns} {packages}\n"
+    )
 
 
 def _run(cmd: list[str], check: bool = True) -> subprocess.CompletedProcess:
@@ -137,11 +164,10 @@ _ANSIBLE_DISTRO_PKG = {
 }
 
 
-def _install_ansible(distro: str) -> None:
+def _install_ansible_core(distro: str) -> None:
     """Prefer the distro package (plays nice with PEP 668); fall back to pip."""
     if shutil.which("ansible-playbook"):
         console.print("[bold]  ansible-playbook already present — skipping install.[/bold]")
-        _install_ansible_collections()
         return
 
     pkg_cmd = _ANSIBLE_DISTRO_PKG.get(distro)
@@ -155,21 +181,66 @@ def _install_ansible(distro: str) -> None:
         console.print("[bold]  Installing ansible-core via pip...[/bold]")
         _run([sys.executable, "-m", "pip", "install", "--quiet", "ansible-core>=2.16"])
 
-    _install_ansible_collections()
+
+def _install_ansible(distro: str) -> None:
+    _install_ansible_core(distro)
+    _finish_ansible_collections(_start_ansible_collections())
 
 
-def _install_ansible_collections() -> None:
-    console.print("[bold]  Installing Ansible collections...[/bold]")
-    req_file = Path(__file__).parent.parent / "data" / "ansible" / "requirements.yml"
-    if not req_file.exists():
+_REQUIREMENTS = Path(__file__).parent.parent / "data" / "ansible" / "requirements.yml"
+_GALAXY_FAILED = (
+    "[red]  ✗  ansible-galaxy collection install failed — "
+    "rodeo deploy will retry, but check network access to galaxy.ansible.com[/red]"
+)
+
+
+def _start_ansible_collections() -> tuple[subprocess.Popen, IO[bytes]] | None:
+    """Start ansible-galaxy in the background and return it, or None.
+
+    It only needs the network, so on SUSE it downloads while zypper installs
+    the KVM stack (live on AWS: ~38 s that used to run after zypper)."""
+    console.print("[bold]  Installing Ansible collections (in the background)...[/bold]")
+    if not _REQUIREMENTS.exists():
         console.print("[yellow]  ⚠  requirements.yml not found, skipping collection install[/yellow]")
-        return
-    r = _run(["ansible-galaxy", "collection", "install", "-r", str(req_file)], check=False)
-    if r.returncode != 0:
-        console.print(
-            "[red]  ✗  ansible-galaxy collection install failed — "
-            "rodeo deploy will retry, but check network access to galaxy.ansible.com[/red]"
+        return None
+    # Output to a temp file, not a pipe: nobody reads the pipe while zypper
+    # runs, and a full pipe would stall galaxy.
+    out = tempfile.TemporaryFile()
+    try:
+        proc = subprocess.Popen(
+            ["ansible-galaxy", "collection", "install", "-r", str(_REQUIREMENTS)],
+            stdout=out, stderr=subprocess.STDOUT,
         )
+    except OSError as exc:
+        out.close()
+        console.print(f"[red]  ✗  could not start ansible-galaxy: {exc}[/red]")
+        return None
+    return proc, out
+
+
+def _finish_ansible_collections(started: tuple[subprocess.Popen, IO[bytes]] | None) -> None:
+    if started is None:
+        return
+    proc, out = started
+    with out:
+        rc = proc.wait()
+        out.seek(0)
+        text = out.read().decode(errors="replace").strip()
+    if rc != 0:
+        if text:
+            console.print(text[-2000:])
+        console.print(_GALAXY_FAILED)
+        return
+    console.print("[green]  ✓  Ansible collections installed[/green]")
+    # The deploy runner reinstalls unless its marker says the requirements are
+    # installed. Write it only when galaxy installed into the same home the
+    # marker lives in (plain root, or sudo -H): under plain sudo the two can
+    # differ, and a marker there would skip a needed install.
+    if Path.home().resolve() == invoking_home().resolve():
+        try:
+            mark_collections_installed(_REQUIREMENTS)
+        except OSError:
+            pass
 
 
 _AWS_PREREQS = {
@@ -275,11 +346,21 @@ def install_deps_cmd(skip_ansible: bool, story: bool, aws: bool, link: bool, for
         console.print("[red]Must run as root: sudo rodeo install-deps[/red]")
         raise SystemExit(1)
 
+    # Wait for another zypper (an EC2 lab host installs these packages from its
+    # boot script, see build_ec2_userdata) instead of failing with exit 7.
+    os.environ.setdefault("ZYPP_LOCK_TIMEOUT", "600")
+
     distro = _detect_distro()
     console.print(f"\n[bold cyan]Installing packages for: {distro}[/bold cyan]")
 
+    galaxy = None
     try:
         if distro == "suse":
+            if not skip_ansible:
+                # ansible-core first (small), so galaxy downloads during the
+                # long KVM pattern install below.
+                _install_ansible_core(distro)
+                galaxy = _start_ansible_collections()
             _install_suse()
         elif distro == "debian":
             _install_debian()
@@ -290,7 +371,11 @@ def install_deps_cmd(skip_ansible: bool, story: bool, aws: bool, link: bool, for
             raise SystemExit(1)
 
         if not skip_ansible:
-            _install_ansible(distro)
+            if distro == "suse":
+                _finish_ansible_collections(galaxy)
+                galaxy = None
+            else:
+                _install_ansible(distro)
 
         if story:
             _install_story_deps(distro)
@@ -298,6 +383,9 @@ def install_deps_cmd(skip_ansible: bool, story: bool, aws: bool, link: bool, for
         if aws:
             install_aws_cli(distro)
     except subprocess.CalledProcessError as exc:
+        if galaxy is not None:
+            galaxy[0].kill()
+            galaxy[1].close()
         cmd = " ".join(str(c) for c in exc.cmd[:4])
         console.print(
             f"\n[red]✗  Package installation failed (exit {exc.returncode}): {cmd} ...[/red]\n"

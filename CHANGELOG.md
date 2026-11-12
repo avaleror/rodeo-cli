@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.29.0](https://github.com/avaleror/rodeo-cli/compare/v0.28.1...v0.29.0) (2026-11-12)
+
+
+### Features
+
+* **rancher:** create downstream clusters in parallel ([eba1472](https://github.com/avaleror/rodeo-cli/commit/eba1472b56ba52e5af27a6ada2c30456a6fd34ea))
+* **rancher:** pre-load downstream node images during the CAPI wait ([69dd2e9](https://github.com/avaleror/rodeo-cli/commit/69dd2e9f841a2429959a63c4c16911de7f4531aa))
+
+
+### Bug Fixes
+
+* **aws:** capacity probe works before a custom key pair exists ([d916a94](https://github.com/avaleror/rodeo-cli/commit/d916a94504cd1542da1b2d91ae79e3c24d628508))
+* **aws:** single-host labs use the laptop's secrets on the AWS host ([b020917](https://github.com/avaleror/rodeo-cli/commit/b02091737916841c01480c8ca325e915beea9c51))
+* **aws:** single-host labs use the laptop's secrets on the AWS host ([f2d5c7d](https://github.com/avaleror/rodeo-cli/commit/f2d5c7d03c6dad606332fd14433fea1260c331bd))
+* **rancher:** install iptables on downstream nodes ([efd5978](https://github.com/avaleror/rodeo-cli/commit/efd597808ebf4c18c6bab9f18bd66a59f17581c0))
+* **rancher:** never render fleet's gitrepo migration hook ([72ca193](https://github.com/avaleror/rodeo-cli/commit/72ca19379d8ab3bb47e638a01a8e55bea0858320))
+* **rancher:** start Rancher with its final server-url ([059882c](https://github.com/avaleror/rodeo-cli/commit/059882c8d32b639f1e4e716bdec772a79f3694c1))
+
+
+### Performance
+
+* **aws:** install the KVM stack at boot, galaxy alongside zypper ([def0c2c](https://github.com/avaleror/rodeo-cli/commit/def0c2c4fab5db71a8b07310fd5b243f8af5fc0d))
+* **rancher-test:** 8 vCPU for Rancher, 4 for the RKE2 node ([7fb86a7](https://github.com/avaleror/rodeo-cli/commit/7fb86a756bffb5728199896d950ee38c790bc853))
+* **rancher:** rancher-test on AWS under 12 minutes ([50aff33](https://github.com/avaleror/rodeo-cli/commit/50aff3330f93958248a9a0df8c752452c6c569cc))
+* **rancher:** register each cluster as soon as it is ready ([c9e8ef1](https://github.com/avaleror/rodeo-cli/commit/c9e8ef19ebe8fc3e0ccedb20c5813890ad050feb))
+
 ## [0.28.1](https://github.com/avaleror/rodeo-cli/compare/v0.28.0...v0.28.1) (2026-11-11)
 
 

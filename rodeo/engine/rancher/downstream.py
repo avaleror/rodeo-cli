@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import json
 import shlex
+import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 from typing import Generator
 
 from ...ssh import ssh_opts
@@ -19,6 +21,20 @@ from ..runner import DeployEvent, LogLine, ProgressUpdate
 _K3S_KUBECONFIG = "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
 _DISTROS = ("k3s", "rke2")
 
+# Image pre-load: the upstream image list for the exact version, fetched on the
+# Rancher VM. RKE2 gets core + Calico (Rancher's default CNI), minus Calico
+# add-ons a single-node cluster never runs.
+_IMAGE_LISTS = {
+    "k3s": ["https://github.com/k3s-io/k3s/releases/download/{v}/k3s-images.txt"],
+    "rke2": [
+        "https://github.com/rancher/rke2/releases/download/{v}/rke2-images-core.linux-amd64.txt",
+        "https://github.com/rancher/rke2/releases/download/{v}/rke2-images-calico.linux-amd64.txt",
+    ],
+}
+_UNUSED_IMAGES = r"calico-(ctl|apiserver|envoy|goldmane|whisker)"
+# K3s and RKE2 import every tarball in here when they first start.
+_AGENT_IMAGE_DIR = {"k3s": "/var/lib/rancher/k3s/agent/images", "rke2": "/var/lib/rancher/rke2/agent/images"}
+
 
 class DownstreamMixin:
     """Create downstream clusters in Rancher and register their nodes."""
@@ -26,6 +42,7 @@ class DownstreamMixin:
     DOWNSTREAM_TIMEOUT = 2700  # every cluster Ready (45 min; 3-node RKE2 joins one by one)
     DOWNSTREAM_POLL = 20
     REGISTRATION_TIMEOUT = 900  # cluster ID, CAPI cluster, registration command (15 min)
+    PRELOAD_GRACE = 180  # extra wait for the image pre-load once registration could start
 
     def _downstream_version(self, distro: str) -> str:
         return self.k3s_downstream_version if distro == "k3s" else self.rke2_downstream_version
@@ -72,6 +89,21 @@ class DownstreamMixin:
         # Every cluster at once: records first, then one shared wait for their
         # registration commands (CAPI starts minutes after /ping and is paid
         # once, not per cluster), then every node registers concurrently.
+        # Meanwhile the nodes' images are pre-loaded, so K3s/RKE2 start from
+        # local tarballs instead of pulling (measured live: the wait is ~2-3
+        # min, the pre-load ~1 min; rancher-agent alone is a 678 MB pull).
+        nodes = [(c["distro"], n) for c in self.downstream_clusters for n in c["nodes"]]
+        preload_pool = ThreadPoolExecutor(max_workers=1)
+        preload = preload_pool.submit(self._preload_images, nodes)
+        try:
+            ok = yield from self._create_and_register(preload)
+        finally:
+            preload_pool.shutdown(wait=False)
+        if not ok:
+            return False
+        return (yield from self._wait_downstream_ready())
+
+    def _create_and_register(self, preload) -> Generator[DeployEvent, None, bool]:
         for cluster in self.downstream_clusters:
             name, distro = cluster["name"], cluster["distro"]
             version = self._downstream_version(distro)
@@ -85,12 +117,98 @@ class DownstreamMixin:
         if commands is None:
             return False
 
+        if not preload.done():
+            yield LogLine("Finishing the image pre-load before registering nodes...")
+        try:
+            lines = preload.result(timeout=self.PRELOAD_GRACE)
+        except FutureTimeout:
+            lines = ["  Image pre-load still running; nodes will pull their images instead."]
+        except Exception as exc:  # never fatal: nodes can always pull
+            lines = [f"  Image pre-load failed ({exc}); nodes will pull their images instead."]
+        for line in lines:
+            yield LogLine(line)
+
         jobs = [(c["name"], node, commands[c["name"]])
                 for c in self.downstream_clusters for node in c["nodes"]]
-        if not (yield from self._register_nodes(jobs)):
-            return False
+        return (yield from self._register_nodes(jobs))
 
-        return (yield from self._wait_downstream_ready())
+    # ---------- image pre-load ----------
+
+    def _preload_script(self, distro: str, version: str) -> str:
+        """Pull a distro's images on the Rancher VM and export them as one tarball.
+
+        Names are rewritten to Rancher's system-default-registry, which is what
+        the downstream node asks for (registry.rancher.com on Rancher Prime);
+        a tarball under another name would be imported and then ignored.
+        """
+        urls = " ".join(shlex.quote(u.format(v=version.replace("+", "%2B"))) for u in _IMAGE_LISTS[distro])
+        out = f"/var/tmp/rodeo-preload-{distro}-{version}.tar"
+        agent = f"docker.io/rancher/rancher-agent:v{str(self.rancher_version).lstrip('v')}"
+        return (
+            "set -euo pipefail\n"
+            + _K3S_KUBECONFIG
+            + f"out={shlex.quote(out)}\n"
+            '[ -s "$out" ] && { echo "$out"; exit 0; }\n'
+            "reg=$(kubectl get settings.management.cattle.io system-default-registry"
+            " -o jsonpath='{.value}' 2>/dev/null || true)\n"
+            "imgs=$( { for u in " + urls + '; do curl -sfL "$u"; done; '
+            f"echo {shlex.quote(agent)}; }} | grep -vE {shlex.quote(_UNUSED_IMAGES)}"
+            ' | sed "s#^docker.io/#${reg:-docker.io}/#" | sort -u)\n'
+            '[ -n "$imgs" ] || { echo "no image list" >&2; exit 1; }\n'
+            'printf \'%s\\n\' $imgs | xargs -P 6 -I{} k3s ctr -n rodeo-preload images pull'
+            " --platform linux/amd64 {} >/dev/null\n"
+            'k3s ctr -n rodeo-preload images export --platform linux/amd64 "$out.part" $imgs\n'
+            'mv "$out.part" "$out"\n'
+            'echo "$out"\n'
+        )
+
+    def _copy_preload(self, tarball: str, distro: str, ip: str) -> subprocess.CompletedProcess:
+        """Stream a tarball from the Rancher VM into a node's image import dir."""
+        dest = _AGENT_IMAGE_DIR[distro]
+        key = str(self.ssh_key)
+        src = subprocess.Popen(
+            ["ssh", "-i", key, *ssh_opts(), f"root@{self.rancher_ip}", "cat", shlex.quote(tarball)],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        )
+        try:
+            # .part is not an image extension, so K3s/RKE2 never import a half-written file.
+            return subprocess.run(
+                ["ssh", "-i", key, *ssh_opts(), f"root@{ip}",
+                 f"mkdir -p {dest} && cat > {dest}/rodeo-preload.tar.part"
+                 f" && mv {dest}/rodeo-preload.tar.part {dest}/rodeo-preload.tar"],
+                stdin=src.stdout, capture_output=True, text=True, timeout=600,
+            )
+        finally:
+            if src.stdout:
+                src.stdout.close()
+            src.wait(timeout=30)
+
+    def _preload_images(self, nodes: list[tuple[str, str]]) -> list[str]:
+        """Pre-load every node's images; returns log lines and never raises."""
+        lines: list[str] = []
+        t0 = time.monotonic()
+        tarballs: dict[str, str] = {}
+        for distro in sorted({d for d, _ in nodes}):
+            r = self._ssh_script(self._preload_script(distro, self._downstream_version(distro)), timeout=900)
+            if r.returncode != 0 or not r.stdout.strip():
+                err = (r.stderr or "").strip().splitlines()[-1:] or [f"exit {r.returncode}"]
+                lines.append(f"  {distro}: image pre-load skipped ({err[0]})")
+                continue
+            tarballs[distro] = r.stdout.strip().splitlines()[-1]
+        for distro, node in nodes:
+            if distro not in tarballs:
+                continue
+            ip = self.vm_ips[node]
+            # A node already running its distro imported its images long ago.
+            if self._node_ssh_script(ip, f"test -d /var/lib/rancher/{distro}/server", timeout=15).returncode == 0:
+                continue
+            r = self._copy_preload(tarballs[distro], distro, ip)
+            if r.returncode != 0:
+                lines.append(f"  {node}: image pre-load copy failed; it will pull instead")
+        if tarballs:
+            lines.insert(0, f"  Images pre-loaded for {', '.join(sorted(tarballs))} "
+                            f"in {int(time.monotonic() - t0)}s.")
+        return lines
 
     def _apply_cluster_record(self, name: str, version: str) -> Generator[DeployEvent, None, bool]:
         """Apply one provisioning Cluster record (a custom cluster)."""

@@ -334,3 +334,111 @@ def test_registration_query_resolves_token_placeholder_and_waits_for_capi(tmp_pa
     assert "clusters.cluster.x-k8s.io" in query
     assert "tokenSecretName" in query
     assert "${cmd//\\{token\\}/$tok}" in query
+
+
+# ---------- image pre-load ----------
+
+def test_preload_copies_each_distros_tarball_before_any_node_registers(tmp_path):
+    """Measured live 2026-11-12: rancher-agent (678 MB) plus the distro images
+    were pulled on the node's critical path. The pre-load runs during the
+    registration-command wait and must land before K3s/RKE2 start."""
+    cfg = _lab_cfg("rancher-test", tmp_path)
+    remote = _Remote()
+    rancher, node = remote.rancher, remote.node
+    events: list[str] = []
+
+    def _rancher(script, timeout=120):
+        if "rodeo-preload" in script:
+            distro = "k3s" if "k3s-images.txt" in script else "rke2"
+            return subprocess.CompletedProcess([], 0, stdout=f"/var/tmp/rodeo-preload-{distro}.tar\n", stderr="")
+        return rancher(script, timeout)
+
+    def _node(ip, script, timeout=120):
+        if "system-agent-install" in script:
+            events.append(f"register {ip}")
+        if "test -d /var/lib/rancher" in script:  # fresh node: distro not installed yet
+            return subprocess.CompletedProcess([], 1, stdout="", stderr="")
+        return node(ip, script, timeout)
+
+    def _copy(tarball, distro, ip):
+        events.append(f"copy {distro} {ip}")
+        assert tarball == f"/var/tmp/rodeo-preload-{distro}.tar"
+        return subprocess.CompletedProcess([], 0, stdout="", stderr="")
+
+    phase = _phase(cfg, remote)
+    phase._ssh_script, phase._node_ssh_script, phase._copy_preload = _rancher, _node, _copy
+    assert _drain(phase.stream_downstream_clusters()) is True
+    copies = [e for e in events if e.startswith("copy")]
+    assert sorted(copies) == ["copy k3s 192.168.122.41", "copy rke2 192.168.122.42"]
+    first_register = next(i for i, e in enumerate(events) if e.startswith("register"))
+    assert all(events.index(c) < first_register for c in copies)
+
+
+def test_preload_failure_never_fails_the_deploy(tmp_path):
+    cfg = _lab_cfg("rancher-test", tmp_path)
+    remote = _Remote()
+    rancher = remote.rancher
+
+    def _rancher(script, timeout=120):
+        if "rodeo-preload" in script:
+            return subprocess.CompletedProcess([], 1, stdout="", stderr="curl: (6) Could not resolve host")
+        return rancher(script, timeout)
+
+    phase = _phase(cfg, remote)
+    phase._ssh_script = _rancher
+    phase._copy_preload = lambda *a: pytest.fail("nothing to copy after a failed pre-load")
+    gen = phase.stream_downstream_clusters()
+    logs = []
+    try:
+        while True:
+            ev = next(gen)
+            logs.append(getattr(ev, "line", "") or getattr(ev, "text", "") or str(ev))
+    except StopIteration as stop:
+        assert stop.value is True
+    assert any("pre-load skipped" in line for line in logs)
+    assert len([s for _, s in remote.node_scripts if "system-agent-install" in s]) == 2
+
+
+def test_preload_script_exports_what_the_node_will_ask_for(tmp_path):
+    """Run the real script against stub kubectl/curl/k3s: names must carry
+    Rancher's system-default-registry (a tarball under docker.io names is
+    imported and then ignored), include rancher-agent at Rancher's version,
+    and skip Calico add-ons a single node never runs."""
+    import shutil
+
+    if not shutil.which("bash"):
+        pytest.skip("bash not available")
+    cfg = _lab_cfg("rancher-test", tmp_path)
+    phase = RancherPhase(cfg)
+    script = phase._preload_script("rke2", "v1.36.4+rke2r1")
+    assert "v1.36.4%2Brke2r1/rke2-images-core.linux-amd64.txt" in script
+
+    bin_dir, out_dir = tmp_path / "bin", tmp_path / "out"
+    bin_dir.mkdir()
+    out_dir.mkdir()
+    (bin_dir / "kubectl").write_text("#!/bin/sh\necho registry.rancher.com\n")
+    (bin_dir / "curl").write_text(
+        "#!/bin/sh\ncase \"$*\" in\n"
+        "  *core*) printf 'docker.io/rancher/rke2-runtime:v1.36.4-rke2r1\\ndocker.io/rancher/mirrored-pause:3.10.2\\n' ;;\n"
+        "  *calico*) printf 'docker.io/rancher/mirrored-calico-node:v3.32.1\\ndocker.io/rancher/mirrored-calico-whisker:v3.32.1\\n' ;;\n"
+        "esac\n"
+    )
+    (bin_dir / "k3s").write_text(
+        f"#!/bin/sh\necho \"$*\" >> {out_dir}/k3s.log\n"
+        "case \"$*\" in *export*) for a; do case $a in *.part) : > \"$a\";; esac; done;; esac\n"
+    )
+    for f in bin_dir.iterdir():
+        f.chmod(0o755)
+    script = script.replace("/var/tmp/", f"{out_dir}/")
+    r = subprocess.run(["bash", "-c", script], capture_output=True, text=True,
+                       env={"PATH": f"{bin_dir}:/usr/bin:/bin"})
+    assert r.returncode == 0, r.stderr
+    export = next(l for l in (out_dir / "k3s.log").read_text().splitlines() if " export " in l)
+    images = sorted(a for a in export.split() if a.startswith("registry.") or a.startswith("docker."))
+    assert images == [
+        "registry.rancher.com/rancher/mirrored-calico-node:v3.32.1",
+        "registry.rancher.com/rancher/mirrored-pause:3.10.2",
+        f"registry.rancher.com/rancher/rancher-agent:v{phase.rancher_version}",
+        "registry.rancher.com/rancher/rke2-runtime:v1.36.4-rke2r1",
+    ]
+    assert r.stdout.strip().endswith("rodeo-preload-rke2-v1.36.4+rke2r1.tar")

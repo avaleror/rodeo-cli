@@ -30,6 +30,7 @@ PROFILE_EXAMPLE = {
     "suse-edge": "suse-edge",               # Rancher + Elemental + EIB + 4 edge nodes (SUSE Edge 3.6)
     "suse-telco": "suse-telco",             # Telco Cloud 3.7: mgmt + site-co + site-ran (topology only)
     "smlm-workshop": "smlm-workshop",       # lab-in-a-box: SUSE Multi-Linux Manager + 8 clients (instruqt-SMLM track)
+    "kvm-hosts": "kvm-hosts",               # plain KVM hosts, no VMs (fleet: a small KVM cluster, dead-man switch optional)
 }
 
 _LAB_MARKERS = ("rodeo-plan.yaml", "definition.yaml")

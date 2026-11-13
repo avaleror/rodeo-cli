@@ -26,15 +26,18 @@ POLL_SECONDS = 120
 
 # Flags that describe the workshop; with -f pointing at an existing file they are refused.
 _BUILD_FLAGS = ("profile", "count", "name", "region", "instance_type", "instance_tier",
-                "subnet_id", "ttl_hours", "title", "guide_url")
+                "subnet_id", "ttl_hours", "no_deadman", "title", "guide_url")
 
 
 def build_inventory(*, profile: str, count: int, name: str | None = None,
                     region: str | None = None, instance_type: str | None = None,
                     instance_tier: str | None = None, subnet_id: str | None = None,
-                    ttl_hours: float = 6, portal: bool = True, title: str | None = None,
+                    ttl_hours: float | str = 6, portal: bool = True, title: str | None = None,
                     guide_url: str | None = None, default_subnet: Any = None) -> dict[str, Any]:
     """The workshop.yaml mapping for *count* AWS hosts running *profile*.
+
+    A ``kvm-hosts`` profile gets what a KVM cluster needs instead of a workshop:
+    host-to-host traffic, operator-only access and no student portal.
 
     The subnet defaults to the region's default VPC public subnet
     (``default_subnet(provider, instance_type=...)``, an AWS call), so the file
@@ -43,13 +46,19 @@ def build_inventory(*, profile: str, count: int, name: str | None = None,
     from ..providers.aws import AwsHostProvider, default_region
     from ..providers.instance_catalog import resolve_instance_type
 
+    from ..fleet.inventory import profile_plan_type
+
+    kvm_cluster = profile_plan_type(profile) == "kvm-hosts"
     provider: dict[str, Any] = {
         "type": "aws",
         "count": count,
         "region": region or default_region(),
-        "student_access": "open",
+        "student_access": "operator" if kvm_cluster else "open",
         "ttl_hours": ttl_hours,
     }
+    if kvm_cluster:
+        provider["host_to_host"] = True
+        portal = False
     if instance_type:
         provider["instance_type"] = instance_type
     else:
@@ -129,6 +138,8 @@ def wait_for_labs(inventory: FleetInventory, inventory_path: Path, *, minutes: f
 @click.option("--subnet-id", default=None, help="Subnet (default: the region's default VPC public subnet).")
 @click.option("--ttl-hours", default=None, type=float,
               help="Dead-man switch: every host is terminated after this many hours (default: 6).")
+@click.option("--no-deadman", is_flag=True, default=False,
+              help="No dead-man switch: hosts live until `rodeo fleet destroy`. kvm-hosts profiles only.")
 @click.option("--portal/--no-portal", default=True, show_default=True,
               help="Student claim portal (students claim a lab with a workshop code).")
 @click.option("--title", default=None, help="Portal title (default: '<profile> workshop').")
@@ -142,14 +153,14 @@ def wait_for_labs(inventory: FleetInventory, inventory_path: Path, *, minutes: f
 def fleet_up_cmd(ctx: click.Context, inventory_path: Path, profile: str | None, count: int | None,
                  name: str | None, region: str | None, instance_type: str | None,
                  instance_tier: str | None, subnet_id: str | None, ttl_hours: float | None,
-                 portal: bool, title: str | None, guide_url: str | None,
+                 no_deadman: bool, portal: bool, title: str | None, guide_url: str | None,
                  concurrency: int | None, wait_minutes: int, ref: str | None) -> None:
     """Provision, deploy and open a whole workshop: one command, start to finish."""
     from .fleet_cmd import (console, fleet_access_cmd, fleet_deploy_cmd, fleet_open_access_cmd,
                             fleet_provision_cmd)
     from .fleet_portal_cmd import portal_info_cmd, portal_publish_cmd, portal_up_cmd
 
-    given = {k: v for k, v in ctx.params.items() if k in _BUILD_FLAGS and v is not None}
+    given = {k: v for k, v in ctx.params.items() if k in _BUILD_FLAGS and v not in (None, False)}
     if inventory_path.exists():
         if given:
             raise click.UsageError(
@@ -160,10 +171,21 @@ def fleet_up_cmd(ctx: click.Context, inventory_path: Path, profile: str | None, 
         if not profile or not count:
             raise click.UsageError(f"{inventory_path} does not exist: give --profile and --count "
                                    "to write it, or -f <existing workshop.yaml>")
+        if no_deadman:
+            from ..fleet.inventory import profile_plan_type
+            from ..providers.deadman import NO_DEADMAN_TYPES
+
+            if ttl_hours is not None:
+                raise click.UsageError("--no-deadman and --ttl-hours exclude each other")
+            if profile_plan_type(profile) not in NO_DEADMAN_TYPES:
+                raise click.UsageError(
+                    f"--no-deadman is only for {', '.join(sorted(NO_DEADMAN_TYPES))} profiles; "
+                    f"'{profile}' keeps the dead-man switch (longer run: --ttl-hours, at most 168)")
         try:
+            ttl: float | str = "off" if no_deadman else (6 if ttl_hours is None else ttl_hours)
             data = build_inventory(profile=profile, count=count, name=name, region=region,
                                    instance_type=instance_type, instance_tier=instance_tier,
-                                   subnet_id=subnet_id, ttl_hours=6 if ttl_hours is None else ttl_hours,
+                                   subnet_id=subnet_id, ttl_hours=ttl,
                                    portal=portal, title=title, guide_url=guide_url)
         except ConfigError as exc:
             console.print(f"[red]✗  {exc}[/red]")
@@ -217,4 +239,4 @@ def fleet_up_cmd(ctx: click.Context, inventory_path: Path, profile: str | None, 
         ctx.invoke(fleet_access_cmd, inventory_path=inventory_path, labels=(), host_ids=(),
                    output_fmt="text")
     console.print(f"  [green]✓[/green]  {inventory.name} is ready.")
-    console.print(f"  Teardown: [bold]rodeo fleet deprovision -f {inventory_path} --yes[/bold]\n")
+    console.print(f"  Teardown: [bold]rodeo fleet destroy -f {inventory_path} --yes[/bold]\n")

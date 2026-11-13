@@ -71,6 +71,7 @@ nav:
     - SUSE Virtualization (Harvester): guide-harvester.md
     - Rancher Prime: guide-rancher.md
     - SUSE Edge: guide-suse-edge.md
+    - Plain KVM hosts: guide-kvm-hosts.md
   - Create your own rodeo: custom-rodeos.md
   - Rodeo Builder: rodeo-builder.md
   - Fleet (multi-host workshops): fleet.md

@@ -4,8 +4,13 @@ A forgotten lab on a pay-per-use cloud bills until someone notices, so every
 instance rodeo creates expires: ``provider.ttl_hours`` after launch (default
 6) the guest powers itself off, and the instance is created with
 InstanceInitiatedShutdownBehavior=terminate so that power-off becomes a
-terminate (no stopped instance left billing for its disks). It cannot be
-turned off, only lengthened for long workshops.
+terminate (no stopped instance left billing for its disks). It can only be
+lengthened, with one exception: lab types in :data:`NO_DEADMAN_TYPES` (plain
+KVM hosts kept for days, e.g. a hack week) may set ``ttl_hours: off``. The
+fleet inventory loader decides that from the lab's type and marks the provider
+config with :data:`ALLOW_OFF_KEY`; nothing else may set it, so every other
+path still refuses ``off``. Hosts without a switch are tagged
+``rodeo-expires-at: never`` and live until ``rodeo fleet destroy``.
 
 Two layers, because either alone is not enough: the AWS-side behaviour does
 nothing without a shutdown, and a guest timer alone would leave a stopped
@@ -24,11 +29,33 @@ DEFAULT_TTL_HOURS = 6
 MAX_TTL_HOURS = 168  # a week: longer than any workshop, still bounded
 TAG_EXPIRES_AT = "rodeo-expires-at"
 TIMER_UNIT = "rodeo-deadman.timer"
+NEVER = "never"  # TAG_EXPIRES_AT value for a host without a dead-man switch
+# Lab types allowed to run without a dead-man switch (provider.ttl_hours: off).
+NO_DEADMAN_TYPES = frozenset({"kvm-hosts"})
+# Internal provider-config key set only by the fleet inventory loader.
+ALLOW_OFF_KEY = "_deadman_off_allowed"
+_OFF_STRINGS = frozenset({"off", "never", "none", "false", "no"})
 
 
-def ttl_hours(config: dict[str, Any]) -> float:
-    """``provider.ttl_hours``, validated; the default when unset."""
+def is_off(raw: Any) -> bool:
+    """``ttl_hours: off``. YAML 1.1 reads a bare ``off``/``no``/``false`` as False."""
+    if raw is False:
+        return True
+    return isinstance(raw, str) and raw.strip().lower() in _OFF_STRINGS
+
+
+def ttl_hours(config: dict[str, Any]) -> float | None:
+    """``provider.ttl_hours``, validated; the default when unset. None means no
+    dead-man switch, only possible where the fleet loader allowed it."""
     raw = config.get("ttl_hours")
+    if is_off(raw):
+        if config.get(ALLOW_OFF_KEY) is True:
+            return None
+        raise ConfigError(
+            "provider.ttl_hours: off is only allowed for lab types "
+            f"{sorted(NO_DEADMAN_TYPES)} deployed with rodeo fleet; every other "
+            f"lab keeps the dead-man switch (at most {MAX_TTL_HOURS} hours)"
+        )
     if raw in (None, ""):
         return float(DEFAULT_TTL_HOURS)
     try:
@@ -43,10 +70,13 @@ def ttl_hours(config: dict[str, Any]) -> float:
     return hours
 
 
-def expires_at(config: dict[str, Any], now: datetime | None = None) -> datetime:
-    """UTC expiry for a host launched ``now``, to the second."""
+def expires_at(config: dict[str, Any], now: datetime | None = None) -> datetime | None:
+    """UTC expiry for a host launched ``now``, to the second; None without a switch."""
+    hours = ttl_hours(config)
+    if hours is None:
+        return None
     start = now or datetime.now(timezone.utc)
-    return (start + timedelta(hours=ttl_hours(config))).astimezone(timezone.utc).replace(microsecond=0)
+    return (start + timedelta(hours=hours)).astimezone(timezone.utc).replace(microsecond=0)
 
 
 def iso(ts: datetime) -> str:

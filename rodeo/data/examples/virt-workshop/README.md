@@ -1,4 +1,4 @@
-# virt-workshop-aws profile
+# virt-workshop profile
 
 Same 3-node Harvester HCI + Rancher Prime topology and AWS sizing as the
 base `harvester` profile on `--target aws` (`m8id.8xlarge`, 24 GiB/Harvester-node,
@@ -37,7 +37,7 @@ GiB virtual size) plus a 1 GiB buffer, floored at 5Gi — a fixed small size
 smaller than the image it's cloned from.
 
 ```bash
-rodeo up --yes --no-tmux --profile virt-workshop-aws --target aws
+rodeo up --yes --no-tmux --profile virt-workshop --target aws
 ```
 
 Tear down with `rodeo destroy --cloud --yes` — the cached image and NFS

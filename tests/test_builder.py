@@ -345,7 +345,7 @@ def test_chapter_sources_resolve_the_smlm_workshop_block():
     assert smlm["repo"] == "https://github.com/SUSE-Technical-Marketing/instruqt-SMLM"
     assert (smlm["ref"], smlm["path"], smlm["engine"], smlm["format"]) == ("main", "tracks/smlms", "lab-in-a-box", "instruqt")
     virt = sources["virt-workshop"]
-    assert (virt["engine"], virt["profile"], virt["format"]) == ("suse-virt", "virt-workshop-aws", "markdown")
+    assert (virt["engine"], virt["profile"], virt["format"]) == ("suse-virt", "virt-workshop", "markdown")
 
 
 def test_chapter_sources_reject_incomplete_entries(tmp_path, monkeypatch):
@@ -425,7 +425,7 @@ def test_workshops_list_fetched_sources_after_the_bundled_ones(markdown_source):
     assert [w["id"] for w in shops] == ["rancher-lab-config", "virt-workshop"]
     virt = shops[1]
     assert virt["source"] == "https://github.com/avaleror/suse-virt-workshop/tree/main/docs/exercises"
-    assert yaml.safe_load(virt["plan"])["name"] and virt["profile"] == "virt-workshop-aws"
+    assert yaml.safe_load(virt["plan"])["name"] and virt["profile"] == "virt-workshop"
     assert shops[0]["profile"] == "rancher" and yaml.safe_load(shops[0]["plan"])["type"] == "rancher"
 
 

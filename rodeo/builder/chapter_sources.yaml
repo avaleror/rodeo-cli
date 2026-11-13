@@ -32,7 +32,7 @@ sources:
   - id: virt-workshop
     title: Virtualization workshop
     engine: suse-virt
-    profile: virt-workshop-aws
+    profile: virt-workshop
     format: markdown
     repo: https://github.com/avaleror/suse-virt-workshop
     ref: main

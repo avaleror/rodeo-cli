@@ -14,7 +14,7 @@ This guide covers the Harvester profiles in rodeo-cli. All deploy **SUSE Virtual
 | `harvester-ha` | 3 Harvester | No | 3-member HA | ~52 GiB | Harvester workshop with full etcd HA, no Rancher |
 | `harvester-2n` | 2 Harvester + 1 Rancher | Yes | 1 leader | ~56 GiB | HCI + Rancher on a mid-size host, no etcd HA |
 | `harvester` | 3 Harvester + 1 Rancher | Yes | 3-member HA | ~72 GiB | Full lab: HCI + multi-cluster management |
-| `virt-workshop-aws` | 3 Harvester + 1 Rancher | Yes | 3-member HA | AWS `m8id.8xlarge` | The [SUSE Virtualization workshop](https://avaleror.github.io/suse-virt-workshop/): `harvester` plus image cache, NFS backup target and sample VMs |
+| `virt-workshop` | 3 Harvester + 1 Rancher | Yes | 3-member HA | AWS `m8id.8xlarge` | The [SUSE Virtualization workshop](https://avaleror.github.io/suse-virt-workshop/): `harvester` plus image cache, NFS backup target and sample VMs |
 
 Run `rodeo doctor` to see which profiles fit your host's available RAM.
 
@@ -82,7 +82,7 @@ From your laptop (macOS or any Linux, see [Install](install.md)):
 ```bash
 aws login
 rodeo up --profile harvester --target aws --yes          # full lab
-rodeo up --profile virt-workshop-aws --target aws --yes  # the workshop lab
+rodeo up --profile virt-workshop --target aws --yes  # the workshop lab
 ```
 
 rodeo picks the region, subnet and instance (`m8id.8xlarge`, 32 vCPU / 128 GiB / local NVMe), creates the EC2 host, and runs the same pipeline there. The workshop lab took about 25 minutes end to end on that instance. The host has a 6-hour dead-man switch (`provider.ttl_hours` to extend it); tear it down with `rodeo destroy --cloud --yes --config-dir ~/rodeo-labs/<profile>`.

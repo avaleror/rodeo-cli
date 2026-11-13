@@ -22,7 +22,7 @@ from rich.table import Table
 
 from ..config import ConfigError, load_config
 from ..instances import MAX_INSTANCE
-from ..labseed import resolve_profile_source, seed_lab
+from ..labseed import canonical_profile, resolve_profile_source, seed_lab
 from ..paths import invoking_home
 
 console = Console()
@@ -45,6 +45,7 @@ def instances_cmd() -> None:
 @click.option("--dir", "base", default=None, metavar="DIR", help="Where to create the labs (default: ~/rodeo-labs).")
 def new_instances(profile: str, count: int, start: int, base: str | None) -> None:
     """Seed COUNT labs of PROFILE, numbered from START."""
+    profile = canonical_profile(profile)
     plan = yaml.safe_load((resolve_profile_source(profile) / "rodeo-plan.yaml").read_text()) or {}
     if plan.get("type") != "lab-in-a-box":
         raise click.ClickException(f"'{profile}' is type {plan.get('type')!r}: only lab-in-a-box labs support instances")

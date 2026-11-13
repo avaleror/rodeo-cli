@@ -118,8 +118,8 @@ AWS_PROFILE_TIERS: dict[str, dict[InstanceTier, InstanceOffer]] = {
     # pre-created VM) do not change the EC2 footprint. No budget tier: the
     # EBS-only m7i.16xlarge cost more than recommended ($3.43 vs $2.22/hr,
     # eu-north-1, 2026-09-14) with slower Longhorn I/O. The cheaper path is
-    # the 2-node virt-workshop-aws-2n profile.
-    "virt-workshop-aws": {
+    # the 2-node virt-workshop-2n profile.
+    "virt-workshop": {
         "recommended": InstanceOffer(
             "m8id.8xlarge", "recommended",
             "32 vCPU / 128 GiB / a single ~1.9 TiB NVMe device — same as "
@@ -141,10 +141,10 @@ AWS_PROFILE_TIERS: dict[str, dict[InstanceTier, InstanceOffer]] = {
             "m7i.metal-24xl", "performance", "bare metal — max nested performance"
         ),
     },
-    # Budget-tier sibling of virt-workshop-aws: 2-node Harvester (no etcd HA,
+    # Budget-tier sibling of virt-workshop: 2-node Harvester (no etcd HA,
     # like harvester-2n). m8id.4xlarge is the actual intent of this profile's
     # "budget" tier.
-    "virt-workshop-aws-2n": {
+    "virt-workshop-2n": {
         "budget": InstanceOffer(
             "m8id.4xlarge", "budget",
             "16 vCPU / 64 GiB / a single 950 GB NVMe device — this profile's "
@@ -154,7 +154,7 @@ AWS_PROFILE_TIERS: dict[str, dict[InstanceTier, InstanceOffer]] = {
         "recommended": InstanceOffer(
             "m8id.8xlarge", "recommended",
             "32 vCPU / 128 GiB / 1.9 TiB NVMe — same instance as "
-            "virt-workshop-aws's recommended tier, more headroom than 2 "
+            "virt-workshop's recommended tier, more headroom than 2 "
             "nodes need if you want it anyway",
         ),
         "performance": InstanceOffer(
@@ -204,8 +204,10 @@ _DEFAULT_PROFILE_KEY = "harvester"
 
 
 def _canonical_profile(profile: str) -> str:
-    """Normalize a topology profile name for catalog lookup."""
-    return (profile or "").strip() or _DEFAULT_PROFILE_KEY
+    """Normalize a topology profile name for catalog lookup (old names map to new)."""
+    from ..labseed import canonical_profile
+
+    return canonical_profile((profile or "").strip(), warn=False) or _DEFAULT_PROFILE_KEY
 
 
 def normalize_tier(raw: str | None) -> InstanceTier:

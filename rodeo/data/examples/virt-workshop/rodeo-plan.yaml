@@ -1,6 +1,6 @@
 # rodeo-plan.yaml — full 3-node Harvester HCI + Rancher Prime, pre-tuned for
 # AWS, WITH the extra pre-lab state suse-virt-workshop's exercises need
-# (virt-workshop-aws profile). Same infra as `harvester` + `--target aws`, plus
+# (virt-workshop profile). Same infra as `harvester` + `--target aws`, plus
 # custom/scripts/ that: cache a VM image over HTTP, export an NFS backup
 # target, and pre-create the "webserver-prod" VM — giving the self-serve
 # workshop the same starting state suse-virt-rodeo's Instruqt image already
@@ -11,7 +11,7 @@
 #
 # Fill in provider.region and provider.subnet_id, then: rodeo up --target aws
 
-name: virt-workshop-aws-rodeo
+name: virt-workshop-rodeo
 deployment_target: aws
 
 provider:

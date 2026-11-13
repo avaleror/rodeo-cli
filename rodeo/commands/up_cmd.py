@@ -26,6 +26,7 @@ from rich.table import Table
 from ..config import ConfigError, find_ansible_root, find_lab_dir, load_config, validate_config
 from ..labseed import (
     custom_profile_dir,
+    canonical_profile,
     profile_kind,
     seed_lab,
 )
@@ -195,6 +196,7 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
 
     console.print("\n[bold]rodeo up[/bold] — let's get a lab running.\n")
 
+    profile = canonical_profile(profile)
     if profile and profile_kind(profile) is None:
         _install_from_catalog(profile)
 
@@ -494,25 +496,28 @@ def _infer_lab_profile(lab: Path) -> str | None:
 
     Picks the LONGEST matching PROFILE_EXAMPLE key, not the first found —
     live-caught 2026-09-14: a plan named "virt-workshop-aws-2n-rodeo" matched
-    "virt-workshop-aws" first (dict insertion order), since that shorter name
+    "virt-workshop-aws" (now virt-workshop) first (dict insertion order), since that shorter name
     is also a substring of the longer one, silently inferring the wrong
     profile (and provisioning the wrong, more expensive instance type) on any
     resume/rerun that doesn't pass --profile explicitly.
     """
     name = lab.name.strip()
-    from ..labseed import PROFILE_EXAMPLE
+    from ..labseed import PROFILE_ALIASES, PROFILE_EXAMPLE
 
-    if name in PROFILE_EXAMPLE:
-        return name
+    # Labs seeded before a rename keep the old name in their dir/plan name.
+    known = [*PROFILE_EXAMPLE, *PROFILE_ALIASES]
+    if name in known:
+        return PROFILE_ALIASES.get(name, name)
     plan = lab / "rodeo-plan.yaml"
     if plan.is_file():
         import yaml as _yaml
 
         data = _yaml.safe_load(plan.read_text()) or {}
         pname = str(data.get("name") or "")
-        matches = [key for key in PROFILE_EXAMPLE if key in pname]
+        matches = [key for key in known if key in pname]
         if matches:
-            return max(matches, key=len)
+            best = max(matches, key=len)
+            return PROFILE_ALIASES.get(best, best)
     return None
 
 
@@ -548,7 +553,7 @@ def _resolve_aws_instance_choice(
 
     if not explicit and not tier_cli and not assume_yes:
         catalog = catalog_for_profile(lab_profile)
-        # Not every profile offers every tier (virt-workshop-aws has no budget).
+        # Not every profile offers every tier (virt-workshop has no budget).
         tiers = [t for t in TIERS if t in catalog]
         console.print(f"\n[bold]AWS instance size[/bold] for profile [cyan]{lab_profile}[/cyan]:\n")
         for i, tier in enumerate(tiers, start=1):

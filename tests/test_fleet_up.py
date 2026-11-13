@@ -18,16 +18,16 @@ def _subnet(provider, *, instance_type=""):
 
 
 def test_build_inventory_is_a_valid_workshop(tmp_path):
-    data = up.build_inventory(profile="virt-workshop-aws", count=3, default_subnet=_subnet,
+    data = up.build_inventory(profile="virt-workshop", count=3, default_subnet=_subnet,
                               guide_url="https://example.test/guide/")
     path = tmp_path / "workshop.yaml"
     path.write_text(yaml.safe_dump(data))
     inv = load_inventory(path)
-    assert inv.name.startswith("virt-workshop-aws-") and inv.lab_profile == "virt-workshop-aws"
+    assert inv.name.startswith("virt-workshop-") and inv.lab_profile == "virt-workshop"
     assert inv.lab_dir == up.LAB_DIR and inv.deploy_concurrency == 3
     assert data["provider"] == {"type": "aws", "count": 3, "region": "eu-north-1", "student_access": "open",
                                 "ttl_hours": 6, "instance_tier": "recommended", "subnet_id": "subnet-default"}
-    assert inv.portal.enabled and inv.portal.title == "virt-workshop-aws workshop"
+    assert inv.portal.enabled and inv.portal.title == "virt-workshop workshop"
     assert data["portal"]["guide_url"] == "https://example.test/guide/"
 
 
@@ -107,7 +107,7 @@ def test_up_without_portal_prints_the_access_sheet(tmp_path, steps):
 def test_up_writes_the_inventory_from_flags(tmp_path, steps, monkeypatch):
     monkeypatch.setattr("rodeo.providers.aws.AwsHostProvider.default_subnet", lambda self, p, **k: "subnet-d")
     path = tmp_path / "virt" / "workshop.yaml"
-    r = CliRunner().invoke(fleet_cmd.fleet_cmd, ["up", "-f", str(path), "--profile", "virt-workshop-aws",
+    r = CliRunner().invoke(fleet_cmd.fleet_cmd, ["up", "-f", str(path), "--profile", "virt-workshop",
                                                  "--count", "3", "--name", "virt-3"])
     assert r.exit_code == 0, r.output
     inv = load_inventory(path)
@@ -132,5 +132,5 @@ def test_up_refuses_flags_for_an_existing_inventory(tmp_path, steps):
 
 def test_up_needs_profile_and_count_for_a_new_inventory(tmp_path, steps):
     r = CliRunner().invoke(fleet_cmd.fleet_cmd, ["up", "-f", str(tmp_path / "nope.yaml"),
-                                                 "--profile", "virt-workshop-aws"])
+                                                 "--profile", "virt-workshop"])
     assert r.exit_code == 2 and "--profile and --count" in r.output and steps == []

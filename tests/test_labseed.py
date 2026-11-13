@@ -52,14 +52,14 @@ def test_harvester_with_aws_target_applies_host_context(tmp_path):
     assert "provider" not in plan  # fill in for acquire, or use CLI
 
 
-def test_virt_workshop_aws_profile_has_custom_scripts(tmp_path):
-    """virt-workshop-aws is harvester topology plus custom/scripts/ that
+def test_virt_workshop_profile_has_custom_scripts(tmp_path):
+    """virt-workshop is harvester topology plus custom/scripts/ that
     seed the pre-lab state suse-virt-workshop's exercises need (image cache,
     NFS backup target, pre-created webserver-prod VM)."""
-    assert PROFILE_EXAMPLE["virt-workshop-aws"] == "virt-workshop-aws"
-    assert example_dir("virt-workshop-aws").is_dir()
+    assert PROFILE_EXAMPLE["virt-workshop"] == "virt-workshop"
+    assert example_dir("virt-workshop").is_dir()
 
-    lab = seed_lab("virt-workshop-aws", tmp_path / "virt-workshop-aws", deployment_target="aws")
+    lab = seed_lab("virt-workshop", tmp_path / "virt-workshop", deployment_target="aws")
 
     defn = yaml.safe_load((lab / "definition.yaml").read_text())["definition"]
     assert [n["name"] for n in defn["nodes"]] == ["harvester1", "harvester2", "harvester3", "rancher"]
@@ -82,15 +82,15 @@ def test_virt_workshop_aws_profile_has_custom_scripts(tmp_path):
         assert (scripts_dir / name).stat().st_mode & 0o111, f"{name} must be executable"
 
 
-def test_virt_workshop_aws_2n_profile_is_2_node_and_has_custom_scripts(tmp_path):
-    """virt-workshop-aws-2n is the budget tier of virt-workshop-aws: 2-node
+def test_virt_workshop_2n_profile_is_2_node_and_has_custom_scripts(tmp_path):
+    """virt-workshop-2n is the budget tier of virt-workshop: 2-node
     Harvester (like harvester-2n) instead of 3, sized for a smaller instance
     (m8id.4xlarge) via disk_floor_override_gb, same custom/scripts/ minus the
     3rd node's stage=dev label."""
-    assert PROFILE_EXAMPLE["virt-workshop-aws-2n"] == "virt-workshop-aws-2n"
-    assert example_dir("virt-workshop-aws-2n").is_dir()
+    assert PROFILE_EXAMPLE["virt-workshop-2n"] == "virt-workshop-2n"
+    assert example_dir("virt-workshop-2n").is_dir()
 
-    lab = seed_lab("virt-workshop-aws-2n", tmp_path / "virt-workshop-aws-2n", deployment_target="aws")
+    lab = seed_lab("virt-workshop-2n", tmp_path / "virt-workshop-2n", deployment_target="aws")
 
     defn = yaml.safe_load((lab / "definition.yaml").read_text())["definition"]
     assert [n["name"] for n in defn["nodes"]] == ["harvester1", "harvester2", "rancher"]
@@ -214,7 +214,7 @@ def test_seed_lab_verifies_every_bundled_profile_copies_cleanly(tmp_path):
 
 
 def test_verify_seed_copy_raises_on_missing_file(tmp_path):
-    """Regression 2026-09-18: seeding virt-workshop-aws on a fresh AWS host
+    """Regression 2026-09-18: seeding virt-workshop on a fresh AWS host
     once produced a custom/scripts/ with only a stray .gitkeep instead of its
     3 real scripts — rodeo up reported success anyway, and custom_scripts
     silently no-op'd on the missing pre-lab state. Root cause was never
@@ -261,3 +261,17 @@ def test_verify_seed_copy_ignores_items_not_freshly_copied(tmp_path):
 
     # definition.yaml was NOT in `copied` (force=False left it alone) — must not raise.
     _verify_seed_copy(src, dest, copied=[])
+
+
+def test_old_virt_workshop_names_still_resolve(tmp_path, capsys):
+    """Renamed 2026-11-13: the -aws names keep working and point to the new profiles."""
+    from rodeo.labseed import canonical_profile, example_dir, profile_kind
+
+    assert canonical_profile("virt-workshop-aws") == "virt-workshop"
+    assert canonical_profile("virt-workshop-aws-2n") == "virt-workshop-2n"
+    assert canonical_profile("harvester") == "harvester"
+    assert "renamed to 'virt-workshop'" in capsys.readouterr().err
+    assert profile_kind("virt-workshop-aws") == "bundled"
+    assert example_dir("virt-workshop-aws-2n").name == "virt-workshop-2n"
+    lab = seed_lab("virt-workshop-aws", tmp_path / "lab")
+    assert (lab / "custom" / "scripts").is_dir()

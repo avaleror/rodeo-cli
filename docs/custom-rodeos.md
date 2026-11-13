@@ -64,8 +64,8 @@ rodeo profiles
 | `harvester-ha` | bundled | suse-virt | 3-node Harvester, no Rancher (etcd HA) |
 | `harvester-2n` | bundled | suse-virt | 2-node Harvester + Rancher Prime |
 | `harvester` | bundled | suse-virt | 3-node Harvester HCI + Rancher Prime |
-| `virt-workshop-aws` | bundled | suse-virt | `harvester` + image cache, NFS and sample VMs for the SUSE Virtualization workshop |
-| `virt-workshop-aws-2n` | bundled | suse-virt | 2-node version of the workshop lab |
+| `virt-workshop` | bundled | suse-virt | `harvester` + image cache, NFS and sample VMs for the SUSE Virtualization workshop |
+| `virt-workshop-2n` | bundled | suse-virt | 2-node version of the workshop lab |
 | `suse-edge` | bundled | suse-edge | Rancher + Elemental + EIB + edge nodes (SUSE Edge 3.7) |
 | `smlm-workshop` | bundled | lab-in-a-box | SUSE Multi-Linux Manager + 8 clients, built by the lab-in-a-box plugin |
 | *(yours)* | custom | any | whatever you scaffold and edit |

@@ -25,7 +25,7 @@ import click
 from rich.console import Console
 
 from .. import catalog, labimport
-from ..labseed import PROFILE_EXAMPLE, scaffold_profile
+from ..labseed import PROFILE_EXAMPLE, canonical_profile, scaffold_profile
 from ..profile_install import install_profile, manifest_base, read_zip
 
 console = Console()
@@ -60,8 +60,7 @@ def new_cmd(name: str, from_base: str | None, from_zip: Path | None, from_lab: P
             from_base = from_base or manifest_base(files)
             dest = install_profile(name, files, base=from_base, force=force)
         else:
-            if from_base is None:
-                from_base = "harvester"
+            from_base = canonical_profile(from_base) or "harvester"
             if from_base not in PROFILE_EXAMPLE:
                 raise FileNotFoundError(
                     f"--from '{from_base}' is not a bundled base. Use one of: {', '.join(PROFILE_EXAMPLE)}")

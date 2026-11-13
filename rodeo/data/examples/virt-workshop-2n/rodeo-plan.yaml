@@ -1,4 +1,4 @@
-# rodeo-plan.yaml — budget-tier AWS variant of virt-workshop-aws: 2-node
+# rodeo-plan.yaml — budget-tier AWS variant of virt-workshop: 2-node
 # Harvester HCI + Rancher Prime (no HA) sized to fit a smaller ~64 GiB RAM
 # instance instead of the 3-node profile's 128 GiB one. Same custom/scripts/
 # pre-lab automation (image cache, NFS backup target, webserver-prod +
@@ -7,7 +7,7 @@
 #
 # Fill in provider.region and provider.subnet_id, then: rodeo up --target aws
 
-name: virt-workshop-aws-2n-rodeo
+name: virt-workshop-2n-rodeo
 deployment_target: aws
 
 provider:

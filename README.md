@@ -89,7 +89,7 @@ rodeo up --profile suse-edge      # SUSE Edge: Rancher + Elemental + EIB + edge 
 | `harvester-ha` | `suse-virt` | 3-node Harvester, no Rancher (3-member etcd HA) | ~52 GiB |
 | `harvester-2n` | `suse-virt` | 2-node Harvester + Rancher Prime | ~56 GiB |
 | `harvester` | `suse-virt` | 3-node Harvester HCI + Rancher Prime | ~72 GiB |
-| `virt-workshop-aws` | `suse-virt` | `harvester` plus image cache, NFS backup target and sample VMs for the [SUSE Virtualization workshop](https://avaleror.github.io/suse-virt-workshop/) | AWS `m8id.8xlarge` |
+| `virt-workshop` | `suse-virt` | `harvester` plus image cache, NFS backup target and sample VMs for the [SUSE Virtualization workshop](https://avaleror.github.io/suse-virt-workshop/) | AWS `m8id.8xlarge` |
 | `suse-edge` | `suse-edge` | Rancher + Elemental + EIB + edge nodes (SUSE Edge 3.7) | ~40 GiB |
 | `smlm-workshop` | `lab-in-a-box` | SUSE Multi-Linux Manager + 8 clients (instruqt-SMLM workshop), built by the lab-in-a-box plugin | ~30 GiB |
 

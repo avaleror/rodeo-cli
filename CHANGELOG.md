@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.30.0](https://github.com/avaleror/rodeo-cli/compare/v0.29.0...v0.30.0) (2026-11-13)
+
+
+### Features
+
+* **profiles:** rename virt-workshop-aws to virt-workshop ([8e236a8](https://github.com/avaleror/rodeo-cli/commit/8e236a8b094954c40987e1d8235023e6dcba18c1))
+* **profiles:** rename virt-workshop-aws to virt-workshop ([b739b38](https://github.com/avaleror/rodeo-cli/commit/b739b389ee61d54122246fa0d9d2ddbc77300e11))
+
+
+### Documentation
+
+* **changelog:** drop duplicate 0.29.0 entry ([90e0a5e](https://github.com/avaleror/rodeo-cli/commit/90e0a5eec4b131eeeb7f53a3f6ff4c665b6f333e))
+* **changelog:** drop duplicate 0.29.0 entry for [#157](https://github.com/avaleror/rodeo-cli/issues/157)'s merge commit ([af9f417](https://github.com/avaleror/rodeo-cli/commit/af9f41749335e2674feff668e0af622878430726))
+
 ## [0.29.0](https://github.com/avaleror/rodeo-cli/compare/v0.28.1...v0.29.0) (2026-11-12)
 
 

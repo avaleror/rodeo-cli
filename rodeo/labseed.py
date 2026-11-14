@@ -25,13 +25,44 @@ PROFILE_EXAMPLE = {
     "harvester-ha": "harvester-ha-config",  # 3-node Harvester, no Rancher (3-member etcd HA, lean sizing)
     "harvester-2n": "harvester-2n",         # 2-node Harvester + Rancher Prime (slim profile, ~56 GiB RAM)
     "harvester": "harvester",               # full 3-node Harvester + Rancher Prime
-    "virt-workshop-aws": "virt-workshop-aws",  # harvester topology + custom/scripts/ (image cache, NFS, pre-created VM) for suse-virt-workshop
-    "virt-workshop-aws-2n": "virt-workshop-aws-2n",  # budget tier: 2-node Harvester (like harvester-2n) + same custom/scripts/, sized for m8id.4xlarge
+    "virt-workshop": "virt-workshop",       # harvester topology + custom/scripts/ (image cache, NFS, pre-created VM) for suse-virt-workshop
+    "virt-workshop-2n": "virt-workshop-2n", # budget tier: 2-node Harvester (like harvester-2n) + same custom/scripts/, sized for m8id.4xlarge
     "suse-edge": "suse-edge",               # Rancher + Elemental + EIB + 4 edge nodes (SUSE Edge 3.6)
+    "suse-telco": "suse-telco",             # Telco Cloud 3.7: mgmt + site-co + site-ran (topology only)
     "smlm-workshop": "smlm-workshop",       # lab-in-a-box: SUSE Multi-Linux Manager + 8 clients (instruqt-SMLM track)
 }
 
+# Old profile names that still work, mapped to their current name. The
+# "-aws" suffix suggested the profile only ran on AWS; where a lab runs is
+# --target, not the profile (renamed 2026-11-13).
+PROFILE_ALIASES = {
+    "virt-workshop-aws": "virt-workshop",
+    "virt-workshop-aws-2n": "virt-workshop-2n",
+}
+
 _LAB_MARKERS = ("rodeo-plan.yaml", "definition.yaml")
+
+
+def canonical_profile(name: str | None, *, warn: bool = True) -> str | None:
+    """Map a deprecated profile name to its current one (warning once on stderr)."""
+    if not name:
+        return name
+    new = PROFILE_ALIASES.get(name.strip())
+    if new is None:
+        return name
+    if warn and name not in _warned:
+        _warned.add(name)
+        import sys
+
+        print(
+            f"⚠  Profile '{name}' was renamed to '{new}'. The old name still works "
+            f"for now; please switch to '{new}'.",
+            file=sys.stderr,
+        )
+    return new
+
+
+_warned: set[str] = set()
 
 
 def custom_profiles_root() -> Path:
@@ -51,6 +82,7 @@ def _is_lab_dir(path: Path) -> bool:
 
 def example_dir(profile: str) -> Path:
     """Resolve a bundled profile name to its example directory."""
+    profile = canonical_profile(profile)
     name = PROFILE_EXAMPLE.get(profile, profile)
     src = _EXAMPLES / name
     if not src.is_dir():
@@ -60,7 +92,7 @@ def example_dir(profile: str) -> Path:
 
 def profile_kind(name: str) -> str | None:
     """Return 'bundled', 'custom', or None for a profile name."""
-    if name in PROFILE_EXAMPLE:
+    if canonical_profile(name) in PROFILE_EXAMPLE:
         return "bundled"
     if _is_lab_dir(custom_profile_dir(name)):
         return "custom"
@@ -69,6 +101,7 @@ def profile_kind(name: str) -> str | None:
 
 def resolve_profile_source(name: str) -> Path:
     """Source config-dir for a profile name: bundled example or custom profile dir."""
+    name = canonical_profile(name)
     kind = profile_kind(name)
     if kind == "bundled":
         return example_dir(name)
@@ -101,6 +134,7 @@ def scaffold_profile(name: str, from_base: str = "harvester", force: bool = Fals
     keeps all the definition.yaml comments intact for editing. Run it later with
     ``rodeo up --profile <name>``.
     """
+    from_base = canonical_profile(from_base)
     if from_base not in PROFILE_EXAMPLE:
         raise FileNotFoundError(
             f"--from '{from_base}' is not a bundled base. Use one of: {', '.join(PROFILE_EXAMPLE)}"

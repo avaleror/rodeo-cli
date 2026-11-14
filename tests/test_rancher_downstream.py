@@ -222,12 +222,93 @@ def test_downstream_phase_creates_clusters_and_registers_every_node(tmp_path):
     assert '"rkeConfig": {}' in applied
 
     registrations = [(ip, s) for ip, s in remote.node_scripts if "system-agent-install" in s]
-    assert [ip for ip, _ in registrations] == [
+    # Nodes register concurrently, so order is not fixed.
+    assert sorted(ip for ip, _ in registrations) == [
         "192.168.122.41", "192.168.122.42", "192.168.122.51", "192.168.122.52", "192.168.122.53",
     ]
     for _, script in registrations:
         assert "--etcd --controlplane --worker" in script
-    assert "--node-name rke2-ha3" in registrations[-1][1]
+    assert any("--node-name rke2-ha3" in s for _, s in registrations)
+
+
+def test_a_ready_cluster_registers_without_waiting_for_a_slower_one(tmp_path):
+    """Live 2026-11-12: RKE2's command was ready ~35 s before K3s's and RKE2 is
+    the slowest path; waiting for every command first cost that much."""
+    cfg = _lab_cfg("rancher-test", tmp_path)
+    remote = _Remote()
+    rancher, node = remote.rancher, remote.node
+    events: list[str] = []
+    k3s_polls = {"n": 0}
+
+    def _rancher(script, timeout=120):
+        if "insecureNodeCommand" in script and "k3s-single" in script:
+            k3s_polls["n"] += 1
+            if k3s_polls["n"] < 3:  # K3s's command is not ready for two polls
+                events.append("k3s not ready")
+                return subprocess.CompletedProcess([], 0, stdout="", stderr="")
+        return rancher(script, timeout)
+
+    import threading
+
+    rke2_registered = threading.Event()
+
+    def _node(ip, script, timeout=120):
+        if "system-agent-install" in script:
+            events.append(f"register {ip}")
+            if ip == "192.168.122.42":
+                rke2_registered.set()
+        return node(ip, script, timeout)
+
+    phase = _phase(cfg, remote)
+    phase._ssh_script, phase._node_ssh_script = _rancher, _node
+    # Each poll's sleep gives the RKE2 worker a chance to run (deterministic,
+    # not timing-dependent); wait-for-all code never registers it here.
+    phase._sleep = lambda s: (rke2_registered.wait(2), False)[1]
+    assert _drain(phase.stream_downstream_clusters()) is True
+    assert events.index("register 192.168.122.42") < len(events) - 1 - events[::-1].index("k3s not ready")
+
+
+def test_downstream_phase_applies_every_cluster_before_any_node_registers(tmp_path):
+    """CAPI's start-up wait is paid once for all clusters, not once per cluster."""
+    cfg = _lab_cfg("rancher-test", tmp_path)
+    events: list[str] = []
+    remote = _Remote()
+    rancher, node = remote.rancher, remote.node
+
+    def _rancher(script, timeout=120):
+        if "kubectl apply" in script:
+            events.append("apply")
+        return rancher(script, timeout)
+
+    def _node(ip, script, timeout=120):
+        if "system-agent-install" in script:
+            events.append("register")
+        return node(ip, script, timeout)
+
+    phase = _phase(cfg, remote)
+    phase._ssh_script, phase._node_ssh_script = _rancher, _node
+    assert _drain(phase.stream_downstream_clusters()) is True
+    assert events == ["apply", "apply", "register", "register"]
+
+
+def test_downstream_phase_registers_k3s_and_rke2_nodes_at_the_same_time(tmp_path):
+    """Both registrations must be in flight together: sequential code would
+    leave the barrier waiting for a second party and time out."""
+    import threading
+
+    cfg = _lab_cfg("rancher-test", tmp_path)
+    remote = _Remote()
+    node = remote.node
+    barrier = threading.Barrier(2, timeout=5)
+
+    def _node(ip, script, timeout=120):
+        if "system-agent-install" in script:
+            barrier.wait()
+        return node(ip, script, timeout)
+
+    phase = _phase(cfg, remote)
+    phase._node_ssh_script = _node
+    assert _drain(phase.stream_downstream_clusters()) is True
 
 
 def test_downstream_phase_skips_nodes_already_registered(tmp_path):
@@ -290,3 +371,145 @@ def test_registration_query_resolves_token_placeholder_and_waits_for_capi(tmp_pa
     assert "clusters.cluster.x-k8s.io" in query
     assert "tokenSecretName" in query
     assert "${cmd//\\{token\\}/$tok}" in query
+
+
+# ---------- image pre-load ----------
+
+def test_preload_copies_each_distros_tarball_before_any_node_registers(tmp_path):
+    """Measured live 2026-11-12: rancher-agent (678 MB) plus the distro images
+    were pulled on the node's critical path. The pre-load runs during the
+    registration-command wait and must land before K3s/RKE2 start."""
+    cfg = _lab_cfg("rancher-test", tmp_path)
+    remote = _Remote()
+    rancher, node = remote.rancher, remote.node
+    events: list[str] = []
+
+    def _rancher(script, timeout=120):
+        if "rodeo-preload" in script:
+            distro = "k3s" if "k3s-images.txt" in script else "rke2"
+            return subprocess.CompletedProcess([], 0, stdout=f"/var/tmp/rodeo-preload-{distro}.tar\n", stderr="")
+        return rancher(script, timeout)
+
+    def _node(ip, script, timeout=120):
+        if "system-agent-install" in script:
+            events.append(f"register {ip}")
+        if "test -d /var/lib/rancher" in script:  # fresh node: distro not installed yet
+            return subprocess.CompletedProcess([], 1, stdout="", stderr="")
+        return node(ip, script, timeout)
+
+    def _copy(tarball, distro, ip):
+        events.append(f"copy {distro} {ip}")
+        assert tarball == f"/var/tmp/rodeo-preload-{distro}.tar"
+        return subprocess.CompletedProcess([], 0, stdout="", stderr="")
+
+    phase = _phase(cfg, remote)
+    phase._ssh_script, phase._node_ssh_script, phase._copy_preload = _rancher, _node, _copy
+    assert _drain(phase.stream_downstream_clusters()) is True
+    copies = [e for e in events if e.startswith("copy")]
+    assert sorted(copies) == ["copy k3s 192.168.122.41", "copy rke2 192.168.122.42"]
+    # Each node's own tarball lands before that node registers.
+    for ip in ("192.168.122.41", "192.168.122.42"):
+        copy = next(i for i, e in enumerate(events) if e.startswith("copy") and e.endswith(ip))
+        assert copy < events.index(f"register {ip}")
+
+
+def test_preload_failure_never_fails_the_deploy(tmp_path):
+    cfg = _lab_cfg("rancher-test", tmp_path)
+    remote = _Remote()
+    rancher = remote.rancher
+
+    def _rancher(script, timeout=120):
+        if "rodeo-preload" in script:
+            return subprocess.CompletedProcess([], 1, stdout="", stderr="curl: (6) Could not resolve host")
+        return rancher(script, timeout)
+
+    phase = _phase(cfg, remote)
+    phase._ssh_script = _rancher
+    phase._copy_preload = lambda *a: pytest.fail("nothing to copy after a failed pre-load")
+    gen = phase.stream_downstream_clusters()
+    logs = []
+    try:
+        while True:
+            ev = next(gen)
+            logs.append(getattr(ev, "line", "") or getattr(ev, "text", "") or str(ev))
+    except StopIteration as stop:
+        assert stop.value is True
+    assert any("pre-load skipped" in line for line in logs)
+    assert len([s for _, s in remote.node_scripts if "system-agent-install" in s]) == 2
+
+
+def test_preload_script_exports_what_the_node_will_ask_for(tmp_path):
+    """Run the real script against stub kubectl/curl/k3s: names must carry
+    Rancher's system-default-registry (a tarball under docker.io names is
+    imported and then ignored), include rancher-agent at Rancher's version,
+    and skip Calico add-ons a single node never runs."""
+    import shutil
+
+    if not shutil.which("bash"):
+        pytest.skip("bash not available")
+    cfg = _lab_cfg("rancher-test", tmp_path)
+    phase = RancherPhase(cfg)
+    script = phase._preload_script("rke2", "v1.36.4+rke2r1")
+    assert "v1.36.4%2Brke2r1/rke2-images-core.linux-amd64.txt" in script
+
+    bin_dir, out_dir = tmp_path / "bin", tmp_path / "out"
+    bin_dir.mkdir()
+    out_dir.mkdir()
+    (bin_dir / "kubectl").write_text("#!/bin/sh\necho registry.rancher.com\n")
+    (bin_dir / "curl").write_text(
+        "#!/bin/sh\ncase \"$*\" in\n"
+        "  *core*) printf 'docker.io/rancher/rke2-runtime:v1.36.4-rke2r1\\ndocker.io/rancher/mirrored-pause:3.10.2\\n' ;;\n"
+        "  *calico*) printf 'docker.io/rancher/mirrored-calico-node:v3.32.1\\ndocker.io/rancher/mirrored-calico-whisker:v3.32.1\\n' ;;\n"
+        "esac\n"
+    )
+    (bin_dir / "k3s").write_text(
+        f"#!/bin/sh\necho \"$*\" >> {out_dir}/k3s.log\n"
+        "case \"$*\" in *export*) for a; do case $a in *.part) : > \"$a\";; esac; done;; esac\n"
+    )
+    for f in bin_dir.iterdir():
+        f.chmod(0o755)
+    script = script.replace("/var/tmp/", f"{out_dir}/")
+    r = subprocess.run(["bash", "-c", script], capture_output=True, text=True,
+                       env={"PATH": f"{bin_dir}:/usr/bin:/bin"})
+    assert r.returncode == 0, r.stderr
+    export = next(ln for ln in (out_dir / "k3s.log").read_text().splitlines() if " export " in ln)
+    images = sorted(a for a in export.split() if a.startswith("registry.") or a.startswith("docker."))
+    assert images == [
+        "registry.rancher.com/rancher/mirrored-calico-node:v3.32.1",
+        "registry.rancher.com/rancher/mirrored-pause:3.10.2",
+        f"registry.rancher.com/rancher/rancher-agent:v{phase.rancher_version}",
+        "registry.rancher.com/rancher/rke2-runtime:v1.36.4-rke2r1",
+    ]
+    assert r.stdout.strip().endswith("rodeo-preload-rke2-v1.36.4+rke2r1.tar")
+
+
+def test_downstream_nodes_get_iptables_and_register_after_cloud_init(tmp_path):
+    """Live 2026-11-12: rke2-traefik stuck in ContainerCreating, portmap CNI
+    'exec: iptables: executable file not found' on the Leap 16 cloud image."""
+    tpl = Path(rodeo.__file__).parent / "data/ansible/roles/vms/templates/downstream-cloud-init-user-data.j2"
+    assert "install --no-recommends iptables" in tpl.read_text()
+
+    cfg = _lab_cfg("rancher-test", tmp_path)
+    remote = _Remote()
+    assert _drain(_phase(cfg, remote).stream_downstream_clusters()) is True
+    for _, script in (x for x in remote.node_scripts if "system-agent-install" in x[1]):
+        assert script.index("cloud-init status --wait") < script.index("system-agent-install")
+
+
+@pytest.mark.parametrize("profile", ["rancher", "rancher-test"])
+def test_rancher_starts_with_its_final_server_url(profile, tmp_path):
+    """Live 2026-11-12: setting server-url after start made Rancher upgrade the
+    fleet chart seconds after installing it; that upgrade's pre-upgrade job
+    raced fleet's start-up and cost ~2.5 min. The helm values carry it now."""
+    phase = RancherPhase(_lab_cfg(profile, tmp_path))
+    env = {e["name"]: e["value"] for e in phase._rancher_helm_values()["extraEnv"]}
+    assert env["CATTLE_SERVER_URL"] == phase.rancher_server_url
+    assert phase.rancher_server_url.endswith(f":{phase.nodeport}")
+
+
+def test_fleet_migration_hook_is_never_rendered(tmp_path):
+    """Rancher upgrades fleet twice right after install; each upgrade ran a
+    pre-upgrade migration job that can fail while fleet starts (live: ~2.5 min
+    of retries before CAPI). The Rancher chart's `fleet` value turns it off."""
+    values = RancherPhase(_lab_cfg("rancher-test", tmp_path))._rancher_helm_values()
+    assert values["fleet"]["migrations"]["gitrepoHelmURLRegexMigration"] is False

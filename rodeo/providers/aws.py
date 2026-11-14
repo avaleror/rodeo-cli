@@ -724,6 +724,11 @@ class AwsHostProvider:
                 min_count=count,
                 max_count=count,
             )
+            # The key pair may not exist yet: provisioning imports it after this
+            # check (ensure_ec2_key_pair), so a first deploy with a custom
+            # provider.key_name failed here with InvalidKeyPair.NotFound. The
+            # probe is about capacity; the key is checked before the real launch.
+            kwargs.pop("KeyName", None)
             ec2.run_instances(**kwargs)
         except Exception as exc:  # noqa: BLE001 — boto ClientError varies by install
             code, message = _aws_error_parts(exc)
@@ -991,6 +996,7 @@ class AwsHostProvider:
             dry_run=False,
             min_count=1,
             max_count=1,
+            lab_host=True,
         )
         resp = ec2.run_instances(**kwargs)
         return resp["Instances"][0]
@@ -1006,6 +1012,7 @@ class AwsHostProvider:
         dry_run: bool = False,
         min_count: int = 1,
         max_count: int = 1,
+        lab_host: bool = False,
     ) -> dict[str, Any]:
         tags = {"Name": f"{workshop}-{host_id}"}
         for k, v in (config.get("labels") or {}).items():
@@ -1058,7 +1065,16 @@ class AwsHostProvider:
         if nested:
             kwargs["CpuOptions"] = {"NestedVirtualization": "enabled"}
         if not dry_run:
-            kwargs["UserData"] = build_ec2_userdata(ssh_user=ssh_user, expires_at=expiry)
+            # Lab hosts start installing the KVM stack at boot, while the
+            # laptop still waits for SSH. Not the portal VM: it runs no labs.
+            boot_script = None
+            if lab_host:
+                from ..commands.install_deps import zypper_boot_install_script
+
+                boot_script = zypper_boot_install_script()
+            kwargs["UserData"] = build_ec2_userdata(
+                ssh_user=ssh_user, expires_at=expiry, boot_script=boot_script
+            )
         return kwargs
 
     def _wait_running(self, ec2: Any, instance_id: str, *, timeout: float) -> dict[str, Any]:

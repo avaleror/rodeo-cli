@@ -336,7 +336,7 @@ Answers to section 12 and deliberate deviations, all from Andrés unless noted.
 - **Open question 2 (student SSH):** yes, students need SSH to their lab host.
   `portal.student_ssh: true` implements F5.4 as designed (no sudo, no privileged
   groups, cannot read `/root`, checked on every publish). The suse-virt workshop's
-  terminal steps work from that account (2026-10-16): the `virt-workshop-aws` profiles
+  terminal steps work from that account (2026-10-16): the `virt-workshop` profiles
   install a student kit at `/opt/suse-virt-workshop/` (self-checks and a shared lab VM
   key the pre-created VMs trust), and the guide takes kubectl's kubeconfig from the
   Harvester UI instead of `sudo`.

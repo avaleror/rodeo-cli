@@ -78,7 +78,7 @@ read at each start, plus any `--allow-host`.
   a profile, every published rodeo in the catalog, and the bundled lab-in-a-box
   rodeos (also under the lab panel's **Import existing lab**). **Start from**
   replaces the rodeo's lab and chapters with the workshop's: its lab engine and
-  profile (for example `suse-virt` with the `virt-workshop-aws` profile, whose
+  profile (for example `suse-virt` with the `virt-workshop` profile, whose
   extra setup the exercises need) and all its chapters (**Undo** restores them).
   A catalog rodeo is fetched when you start from it, so it brings everything it
   was published with: its plan, its lab-in-a-box lab, its chapters with their

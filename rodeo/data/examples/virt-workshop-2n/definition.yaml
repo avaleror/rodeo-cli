@@ -1,5 +1,5 @@
-# definition.yaml — declarative definition for the virt-workshop-aws-2n
-# profile: the budget-tier AWS variant of virt-workshop-aws, for a smaller
+# definition.yaml — declarative definition for the virt-workshop-2n
+# profile: the budget-tier AWS variant of virt-workshop, for a smaller
 # ~64 GiB RAM instance (m8id.4xlarge) instead of the 3-node profile's
 # m8id.8xlarge. Identical to harvester-2n's own definition (2-node Harvester
 # HCI + Rancher, no HA — same topology, proven separately) plus
@@ -15,7 +15,7 @@
 apiVersion: 1.0
 definition:
   name: suse-virt
-  description: "virt-workshop-aws-2n: 2-node Harvester HCI + Rancher Prime on nested KVM, budget AWS tier"
+  description: "virt-workshop-2n: 2-node Harvester HCI + Rancher Prime on nested KVM, budget AWS tier"
 
   start_order:
     - harvester1

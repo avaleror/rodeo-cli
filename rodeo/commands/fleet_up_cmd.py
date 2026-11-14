@@ -1,6 +1,6 @@
 """rodeo fleet up — a whole workshop in one command.
 
-    rodeo fleet up --profile virt-workshop-aws --count 3      # writes workshop.yaml
+    rodeo fleet up --profile virt-workshop --count 3      # writes workshop.yaml
     rodeo fleet up -f workshop.yaml                            # an existing inventory
 
 Runs the instructor flow in order: provision, deploy, portal up, wait until every
@@ -119,7 +119,7 @@ def wait_for_labs(inventory: FleetInventory, inventory_path: Path, *, minutes: f
 @click.option("-f", "--file", "inventory_path", type=click.Path(dir_okay=False, path_type=Path),
               default=Path("workshop.yaml"), show_default=True,
               help="Inventory to deploy. With --profile it is written first and must not exist yet.")
-@click.option("--profile", default=None, help="Lab profile on every host (e.g. virt-workshop-aws).")
+@click.option("--profile", default=None, help="Lab profile on every host (e.g. virt-workshop).")
 @click.option("--count", default=None, type=click.IntRange(1, 200), help="Number of labs (hosts).")
 @click.option("--name", default=None, help="Workshop name, tags its AWS resources (default: <profile>-<date>).")
 @click.option("--region", default=None, help="AWS region (default: RODEO_AWS_REGION, else eu-north-1).")
@@ -160,6 +160,9 @@ def fleet_up_cmd(ctx: click.Context, inventory_path: Path, profile: str | None, 
         if not profile or not count:
             raise click.UsageError(f"{inventory_path} does not exist: give --profile and --count "
                                    "to write it, or -f <existing workshop.yaml>")
+        from ..labseed import canonical_profile
+
+        profile = canonical_profile(profile)
         try:
             data = build_inventory(profile=profile, count=count, name=name, region=region,
                                    instance_type=instance_type, instance_tier=instance_tier,

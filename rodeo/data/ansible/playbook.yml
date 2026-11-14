@@ -9,3 +9,5 @@
       tags: [vms]
     - role: pxe_server
       tags: [pxe_server]
+    - role: bmc
+      tags: [bmc]

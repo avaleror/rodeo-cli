@@ -15,3 +15,10 @@ class RancherTestProfile(RancherProfile):
     builder = None
     vm_names = _VM_NAMES
     static_vms = {name: RancherProfile.static_vms[name] for name in _VM_NAMES}
+    # More vCPU than the minimum: Rancher's chart rollout and RKE2's first
+    # start are CPU-bound, and this is the lab tuned for deploy wall-clock.
+    resources = {
+        **RancherProfile.resources,
+        "rancher": {**RancherProfile.resources["rancher"], "vcpu": 8},
+        "rke2-node": {**RancherProfile.resources["rke2-node"], "vcpu": 4},
+    }

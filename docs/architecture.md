@@ -2,7 +2,7 @@
 
 Technical reference for contributors and maintainers. For deploying a workshop, see [User guide](get-started.md).
 
-**Version:** 0.26.0 <!-- x-release-please-version -->
+**Version:** 0.29.0 <!-- x-release-please-version -->
 **License:** GPL-3.0-or-later
 
 ---
@@ -128,11 +128,11 @@ The Harvester path is the outlier: it needs `pxe_server` (iPXE/TFTP/HTTP) and a 
 | `harvester-2n` | `suse-virt` | 2-node Harvester + Rancher Prime |
 | `harvester` | `suse-virt` | 3-node Harvester HCI + Rancher Prime (AWS: same profile + `--target aws`; recommended `m8id.8xlarge`) |
 | `suse-edge` | `suse-edge` | Rancher + Elemental + EIB + 4 edge nodes (SUSE Edge 3.7; AWS: same profile + `--target aws`) |
-| `virt-workshop-aws` | `suse-virt` | Workshop overlay on harvester topology (`custom/scripts/` for image cache / NFS / sample VMs) |
-| `virt-workshop-aws-2n` | `suse-virt` | 2-node workshop overlay (budget instance tier) |
+| `virt-workshop` | `suse-virt` | Workshop overlay on harvester topology (`custom/scripts/` for image cache / NFS / sample VMs) |
+| `virt-workshop-2n` | `suse-virt` | 2-node workshop overlay (budget instance tier) |
 | `smlm-workshop` | `lab-in-a-box` | SMLM server (pre-built image) + SLES / CentOS 7 / Ubuntu clients for the instruqt-SMLM track; VMs and SMLM config by lab-in-a-box |
 
-`virt-workshop-aws` / `virt-workshop-aws-2n` are workshop-specific overlays (custom scripts for suse-virt-workshop), not AWS twins of `harvester`.
+`virt-workshop` / `virt-workshop-2n` are workshop-specific overlays (custom scripts for suse-virt-workshop), not AWS twins of `harvester`.
 
 Per-profile topology tables (VMs, IPs, RAM) live in each [deployment guide](get-started.md). The detailed suse-virt topology and iPXE boot chain are documented below as the reference implementation.
 

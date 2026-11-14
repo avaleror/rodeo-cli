@@ -1,0 +1,25 @@
+# Managed by rodeo-cli (bmc role). Podman Quadlet unit: systemd generates
+# {{ bmc_service }}.service from this file.
+[Unit]
+Description=rodeo emulated Redfish BMC (sushy-tools)
+Wants=network-online.target
+After=network-online.target libvirtd.service virtqemud.socket
+
+[Container]
+ContainerName={{ bmc_service }}
+Image={{ bmc_image }}
+Network=host
+# Needs the host libvirt socket to power guests and attach virtual media.
+PodmanArgs=--privileged
+SecurityLabelDisable=true
+Volume={{ bmc_dir }}:/etc/sushy:ro
+Volume=/var/run/libvirt:/var/run/libvirt
+Exec=/usr/local/bin/sushy-emulator --config /etc/sushy/sushy-emulator.conf
+
+[Service]
+# virbr0 can come up after boot; keep retrying until the listen IP exists.
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

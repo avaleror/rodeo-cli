@@ -62,8 +62,9 @@ INSTRUQT_MINUTES = 20
 
 
 def _profile_example(profile: str) -> Path:
-    from ..labseed import PROFILE_EXAMPLE
+    from ..labseed import PROFILE_EXAMPLE, canonical_profile
 
+    profile = canonical_profile(profile, warn=False)
     return EXAMPLES / PROFILE_EXAMPLE.get(profile, profile)
 
 

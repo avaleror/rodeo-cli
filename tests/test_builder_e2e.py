@@ -657,7 +657,7 @@ def test_workshops_to_start_from_are_apart_from_the_chapter_library(page):
     items = page.locator("#startFrom .start-item")
     names = items.locator(".start-name").all_inner_texts()
     assert "Virtualization workshop" in names and len(names) == len(set(names))
-    assert "suse-virt · virt-workshop-aws" in items.filter(has_text="Virtualization workshop").inner_text()
+    assert "suse-virt · virt-workshop" in items.filter(has_text="Virtualization workshop").inner_text()
     assert page.locator("#library .group-actions button", has_text="use").count() == 0
     assert page.locator("#library .group", has_text="Virtualization workshop").count() == 1
     page.click("#startFrom .start-head")
@@ -702,7 +702,8 @@ def test_source_group_switches_engine_and_base(page):
     group = page.locator(".group", has_text="Virtualization workshop")
     _start(page, "Virtualization workshop")
     assert page.locator("#nativeEngines .engine.on .engine-name").inner_text() == "suse-virt"
-    assert "virt-workshop-aws" in page.locator("#engineNow").inner_text()
+    assert "virt-workshop" in page.locator("#engineNow").inner_text()
+
     assert _rows(page)[0] == "Exercise 1: The Arrival" and "Welcome to the rodeo" not in _rows(page)
     assert len(_rows(page)) == group.locator(".card").count()
     page.click("#toastUndo")
@@ -711,7 +712,7 @@ def test_source_group_switches_engine_and_base(page):
     _start(page, "Virtualization workshop")
     assert page.locator("#coverage").inner_text() == "lab covers every chapter"
     files = _zip(page)
-    assert yaml.safe_load(files["my-rodeo/builder.yaml"]) == {"base": "virt-workshop-aws"}
+    assert yaml.safe_load(files["my-rodeo/builder.yaml"]) == {"base": "virt-workshop"}
     assert files["my-rodeo/checks/check-the-arrival.sh"] == "#!/bin/bash\necho ok\n"
     assert "**Time:** 30 min" in files["my-rodeo/story/01-the-arrival.md"]
 
@@ -932,7 +933,7 @@ def test_library_info_filters_and_details(page):
     virt.locator(".info-btn").click()
     info = virt.locator(".group-info")
     sync_api.expect(info).to_be_visible()
-    assert "suse-virt" in info.inner_text() and "virt-workshop-aws" in info.inner_text()
+    assert "suse-virt" in info.inner_text() and "virt-workshop" in info.inner_text()
     chip = info.locator(".chip.missing", has_text="kubevirt")
     assert chip.inner_text() == "kubevirt" and "rancher lab engine doesn't provide kubevirt" in chip.get_attribute("title")
     page.keyboard.press("Escape")

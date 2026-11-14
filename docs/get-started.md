@@ -54,7 +54,7 @@ To pick a specific profile instead of letting `rodeo up` choose:
 | `harvester-ha` | 3-node Harvester HCI, no Rancher | ~52 GiB |
 | `harvester-2n` | 2-node Harvester HCI + Rancher | ~56 GiB |
 | `harvester` | 3-node Harvester HCI + Rancher | ~72 GiB |
-| `virt-workshop-aws` | `harvester` + image cache, NFS and sample VMs for the SUSE Virtualization workshop | AWS `m8id.8xlarge` |
+| `virt-workshop` | `harvester` + image cache, NFS and sample VMs for the SUSE Virtualization workshop | AWS `m8id.8xlarge` |
 | `suse-edge` | Rancher + Elemental + EIB + edge nodes | ~40 GiB |
 | `smlm-workshop` | SUSE Multi-Linux Manager workshop (lab-in-a-box plugin) | ~30 GiB |
 

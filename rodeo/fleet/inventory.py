@@ -229,6 +229,10 @@ def load_inventory(path: str | Path) -> FleetInventory:
     lab_branch_s = str(lab_branch).strip() if lab_branch else None
     lab_profile = lab.get("profile")
     lab_profile_s = str(lab_profile).strip() if lab_profile else None
+    if lab_profile_s:
+        from ..labseed import canonical_profile
+
+        lab_profile_s = canonical_profile(lab_profile_s)
     lab_target = str(lab.get("target") or "baremetal").strip().lower()
     if lab_target not in _VALID_TARGETS:
         raise ConfigError(

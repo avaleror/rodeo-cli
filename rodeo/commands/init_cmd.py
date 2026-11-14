@@ -74,7 +74,8 @@ def init_cmd(force: bool, ask_password: bool, target_dir: str, profile: str | No
     secrets_dest = rodeo_secrets_path()
 
     if profile:
-        from ..labseed import PROFILE_EXAMPLE
+        from ..labseed import PROFILE_EXAMPLE, canonical_profile
+        profile = canonical_profile(profile)
         example = PROFILE_EXAMPLE.get(profile)
         if example is None:
             console.print(f"[red]Unknown profile '{profile}'. Use one of: {', '.join(PROFILE_EXAMPLE)}.[/red]")

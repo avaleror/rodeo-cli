@@ -39,7 +39,7 @@ class ClusterSetupMixin:
     def _wait_k3s_ready(self) -> Generator[DeployEvent, None, bool]:
         script = (
             "set -euo pipefail\n"
-            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+            f"export KUBECONFIG={self.KUBECONFIG}\n"
             "kubectl get nodes --no-headers 2>/dev/null | awk '{print $2}' | head -1\n"
         )
         t0 = time.monotonic()
@@ -82,8 +82,8 @@ class ClusterSetupMixin:
         v = self.cert_mgr_version
         script = (
             "set -euo pipefail\n"
-            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
-            "helm repo add rancher-prime https://charts.rancher.com/server-charts/prime || true\n"
+            f"export KUBECONFIG={self.KUBECONFIG}\n"
+            f"helm repo add {self.RANCHER_REPO_NAME} {self.RANCHER_REPO_URL} || true\n"
             "helm repo add jetstack https://charts.jetstack.io || true\n"
             "helm repo update\n"
             f"kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/{v}/cert-manager.crds.yaml\n"
@@ -107,6 +107,20 @@ class ClusterSetupMixin:
             "hostname": self.rancher_hostname,
             "bootstrapPassword": self.admin_password,
             "replicas": 1,
+            # The final server-url from the first start. Setting it later via
+            # the API changes the fleet chart's API server URL, so Rancher
+            # upgrades fleet seconds after installing it, and that upgrade's
+            # pre-upgrade migration job races fleet's own start-up (live
+            # 2026-11-12: 5 failed attempts, ~2.5 min lost before CAPI).
+            "extraEnv": [{"name": "CATTLE_SERVER_URL", "value": self.rancher_server_url}],
+            # Rancher still upgrades fleet twice on its own right after
+            # installing it (a no-op reconcile, then apiServerCA once its CA
+            # exists), and every upgrade runs fleet's pre-upgrade job
+            # fleet-migrate-gitrepo-helm-url-regex, which can fail against a
+            # fleet that is still starting. A fresh lab has no GitRepos to
+            # migrate, so the job is not rendered at all. Rancher merges these
+            # values (rancher-config, key "fleet") into every fleet deploy.
+            "fleet": {"migrations": {"gitrepoHelmURLRegexMigration": False}},
         }
         if self.tls_source == "letsEncrypt":
             values["ingress"] = {"tls": {"source": "letsEncrypt"}}
@@ -135,13 +149,13 @@ class ClusterSetupMixin:
         version = shlex.quote(str(self.rancher_version))
         script = (
             "set -euo pipefail\n"
-            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+            f"export KUBECONFIG={self.KUBECONFIG}\n"
             "umask 077\n"
             f"cat > {remote_values} <<'{marker}'\n"
             f"{values_yaml}"
             f"{marker}\n"
             f"chmod 600 {remote_values}\n"
-            f"helm upgrade --install rancher rancher-prime/rancher"
+            f"helm upgrade --install rancher {self.RANCHER_REPO_NAME}/rancher"
             f" --namespace cattle-system --create-namespace"
             f" --version {version}"
             f" -f {remote_values}"
@@ -167,7 +181,7 @@ class ClusterSetupMixin:
         })
         script = (
             "set -euo pipefail\n"
-            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+            f"export KUBECONFIG={self.KUBECONFIG}\n"
             f"kubectl -n cattle-system patch svc rancher --type strategic -p '{patch}'\n"
         )
         r = self._ssh_script(script, timeout=30)
@@ -211,7 +225,7 @@ class ClusterSetupMixin:
         Falls back to 'admin' when the secret is absent (older installs).
         """
         r = self._ssh_script(
-            "kubectl --kubeconfig=/etc/rancher/k3s/k3s.yaml"
+            f"kubectl --kubeconfig={self.KUBECONFIG}"
             " get secret bootstrap-secret -n cattle-system"
             " -o jsonpath='{.data.bootstrapPassword}' 2>/dev/null"
             " | base64 -d 2>/dev/null",
@@ -243,7 +257,7 @@ class ClusterSetupMixin:
         This is idempotent and safe to call on every deploy.
         """
         script = (
-            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+            f"export KUBECONFIG={self.KUBECONFIG}\n"
             "ADMIN=$(kubectl get users.management.cattle.io"
             " -o jsonpath='{.items[?(@.username==\"admin\")].metadata.name}'"
             " 2>/dev/null)\n"
@@ -266,7 +280,7 @@ class ClusterSetupMixin:
         Idempotent and safe to call on every deploy.
         """
         script = (
-            "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml\n"
+            f"export KUBECONFIG={self.KUBECONFIG}\n"
             "kubectl patch settings.management.cattle.io first-login"
             " --type=merge -p '{\"value\":\"false\"}' 2>/dev/null\n"
         )
@@ -363,12 +377,16 @@ class ClusterSetupMixin:
         self._clear_first_login()
 
         try:
-            self._http(
-                "PUT",
-                "/v3/settings/server-url",
-                {"value": self.rancher_server_url},
-                token=self._api_token,
-            )
+            # Normally already right (CATTLE_SERVER_URL in the helm values);
+            # only a lab installed by an older rodeo still needs the PUT.
+            current = self._http("GET", "/v3/settings/server-url", token=self._api_token)
+            if current.get("value") != self.rancher_server_url:
+                self._http(
+                    "PUT",
+                    "/v3/settings/server-url",
+                    {"value": self.rancher_server_url},
+                    token=self._api_token,
+                )
         except Exception as exc:
             yield LogLine(f"  ⚠ server-url set: {exc}")
 
@@ -439,7 +457,7 @@ class ClusterSetupMixin:
             f"CA=$(echo | openssl s_client -connect 127.0.0.1:{self.nodeport} -showcerts 2>/dev/null"
             " | awk '/BEGIN CERT/{c++} c==2')\n"
             'VALUE=$(python3 -c "import sys,json; print(json.dumps(sys.stdin.read().rstrip()))" <<< "$CA")\n'
-            "kubectl --kubeconfig=/etc/rancher/k3s/k3s.yaml"
+            f"kubectl --kubeconfig={self.KUBECONFIG}"
             ' patch setting cacerts'
             ' --type=merge -p "{\\"value\\": $VALUE}" 2>&1\n'
         )

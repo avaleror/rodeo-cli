@@ -52,6 +52,9 @@
 # Works with the bash 3.2 that macOS ships.
 
 set -euo pipefail
+# An EC2 lab host installs packages from its boot script while this runs:
+# wait for zypper's lock instead of failing with exit 7.
+export ZYPP_LOCK_TIMEOUT="${ZYPP_LOCK_TIMEOUT:-600}"
 
 RODEO_REPO="${RODEO_REPO:-https://github.com/avaleror/rodeo-cli.git}"
 RODEO_REF="${RODEO_REF:-main}"

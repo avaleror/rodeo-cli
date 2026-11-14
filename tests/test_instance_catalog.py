@@ -18,18 +18,18 @@ def test_catalog_harvester_recommended():
 
 
 def test_catalog_virt_workshop_aws_matches_harvester_sizing():
-    """virt-workshop-aws layers custom/scripts/ on harvester topology —
+    """virt-workshop layers custom/scripts/ on harvester topology —
     same host sizing, no extra resource needs for the image cache /
     NFS export / one pre-created VM."""
-    offer = catalog_for_profile("virt-workshop-aws")["recommended"]
+    offer = catalog_for_profile("virt-workshop")["recommended"]
     assert offer.instance_type == "m8id.8xlarge"
 
 
 def test_catalog_virt_workshop_aws_2n_budget_is_smaller_instance():
-    """virt-workshop-aws-2n's budget tier is the actual point of the profile:
+    """virt-workshop-2n's budget tier is the actual point of the profile:
     a genuinely smaller/cheaper instance than the 3-node profile's, made
     possible by dropping to 2 Harvester nodes."""
-    offer = catalog_for_profile("virt-workshop-aws-2n")["budget"]
+    offer = catalog_for_profile("virt-workshop-2n")["budget"]
     assert offer.instance_type == "m8id.4xlarge"
 
 
@@ -37,10 +37,10 @@ def test_catalog_virt_workshop_aws_has_no_budget_tier():
     """The 3-node profile's old budget pick (EBS-only m7i.16xlarge) cost more
     than recommended; it was removed so the catalog matches the workshop docs
     (recommended + performance only)."""
-    assert list(catalog_for_profile("virt-workshop-aws")) == ["recommended", "performance"]
+    assert list(catalog_for_profile("virt-workshop")) == ["recommended", "performance"]
     with pytest.raises(ConfigError, match="no 'budget' instance tier"):
-        resolve_instance_type(profile="virt-workshop-aws", instance_tier="budget")
-    itype, _ = resolve_instance_type(profile="virt-workshop-aws", instance_tier="recommended")
+        resolve_instance_type(profile="virt-workshop", instance_tier="budget")
+    itype, _ = resolve_instance_type(profile="virt-workshop", instance_tier="recommended")
     assert itype == "m8id.8xlarge"
 
 
@@ -126,6 +126,7 @@ class _CapEC2:
     def __init__(self, *, offerings=True, dry_run_code="DryRunOperation"):
         self.offerings = offerings
         self.dry_run_code = dry_run_code
+        self.run_kwargs = None
         self.images = [
             {
                 "ImageId": "ami-leap",
@@ -166,6 +167,7 @@ class _CapEC2:
 
     def run_instances(self, **kwargs):
         assert kwargs.get("DryRun") is True
+        self.run_kwargs = kwargs
         err = Exception(self.dry_run_code)
         err.response = {  # type: ignore[attr-defined]
             "Error": {"Code": self.dry_run_code, "Message": "probe"}
@@ -185,6 +187,26 @@ def test_assert_available_ok():
         },
         count=1,
     )
+
+
+def test_assert_available_does_not_need_the_key_pair_yet():
+    # A custom provider.key_name is imported only after this check, so the
+    # capacity probe must not name it (InvalidKeyPair.NotFound on first deploy).
+    ec2 = _CapEC2()
+    p = AwsHostProvider(ec2_client=ec2, sleep=lambda _s: None)
+    p.assert_available(
+        {
+            "type": "aws",
+            "region": "eu-central-1",
+            "instance_type": "i7i.8xlarge",
+            "subnet_id": "subnet-1",
+            "security_group_ids": ["sg-1"],
+            "key_name": "rodeo-other-laptop",
+        },
+        count=1,
+    )
+    assert ec2.run_kwargs is not None
+    assert "KeyName" not in ec2.run_kwargs
 
 
 def test_assert_available_not_offered():
@@ -218,3 +240,11 @@ def test_assert_available_insufficient_capacity():
             },
             count=1,
         )
+
+
+def test_old_virt_workshop_names_use_their_own_catalog():
+    """An old name must not fall back to the harvester catalog (it has a budget tier)."""
+    from rodeo.providers.instance_catalog import catalog_for_profile
+
+    assert catalog_for_profile("virt-workshop-aws") is catalog_for_profile("virt-workshop")
+    assert catalog_for_profile("virt-workshop-aws-2n")["budget"].instance_type == "m8id.4xlarge"

@@ -189,7 +189,7 @@ rodeo fleet status -f workshop.yaml --host student-01 -j 4
 
 ```bash
 # a new workshop: writes workshop.yaml, then deploys it
-rodeo fleet up --profile virt-workshop-aws --count 3 \
+rodeo fleet up --profile virt-workshop --count 3 \
   --guide-url https://avaleror.github.io/suse-virt-workshop/
 
 # an existing inventory, or resuming a run that stopped

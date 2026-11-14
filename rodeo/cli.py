@@ -18,6 +18,7 @@ from .commands.builder_cmd import builder_cmd
 from .commands.export_cmd import export_cmd
 from .commands.generate_cmd import generate_cmd
 from .commands.list_cmd import list_cmd
+from .commands.logins_cmd import logins_cmd
 from .commands.logs import logs_cmd
 from .commands.new_cmd import new_cmd
 from .commands.plan_cmd import plan_cmd
@@ -91,6 +92,7 @@ cli.add_command(init_cmd,         name="init")
 cli.add_command(plan_cmd,         name="plan")
 cli.add_command(export_cmd,       name="export")
 cli.add_command(instances_cmd,    name="instances")
+cli.add_command(logins_cmd,       name="logins")
 cli.add_command(story_cmd,        name="story")
 cli.add_command(content_cmd,      name="content")
 cli.add_command(deploy_cmd,       name="deploy")

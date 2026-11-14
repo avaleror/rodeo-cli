@@ -27,7 +27,7 @@
       <button id="publishBtn" class="btn outline" type="button" data-tip="Puts this rodeo in a public GitHub repository of yours and opens a pull request that adds it to the rodeo catalog, so anyone can install it with rodeo up --profile &lt;name&gt;. Each translation gets a branch of its own.">Publish</button>
       <button id="downloadBtn" class="btn primary" type="button" data-tip="Downloads the rodeo as a zip. Install it on any host with rodeo new &lt;name&gt; --from-zip &lt;file&gt;, then rodeo up --profile &lt;name&gt;.">Download rodeo</button>
       <a id="settingsBtn" class="btn" href="/rodeo-builder/settings/" target="_blank" rel="noopener"
-        data-tip="Stored credentials: opens the Settings page, which needs a login" hidden>Settings</a>
+        data-tip="Stored credentials: opens the Settings page; changes need a login" hidden>Settings</a>
     </div>
     <div id="hdrTip" class="hdr-tip" role="tooltip" hidden></div>
   </header>
@@ -82,6 +82,7 @@
         <p class="part-head" id="partInfra">Infrastructure, built by rodeo up</p>
         <h2 class="sec" id="secEngine"><span class="num">01</span> Lab engine <span id="engineNow" class="now"></span></h2>
         <div id="engines" class="engines" role="radiogroup" aria-label="Lab engine"></div>
+        <div id="nativeEngines" class="engines native" role="radiogroup" aria-label="Native lab engine" hidden></div>
         <div id="enginePanel" class="panel"></div>
       </section>
       <section class="part part-instr" aria-labelledby="secChapters">

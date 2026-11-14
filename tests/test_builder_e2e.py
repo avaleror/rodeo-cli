@@ -222,8 +222,9 @@ def _zip(page) -> dict[str, str]:
 
 
 def test_loads_engines_library_and_previews(page):
-    assert page.locator(".engine").count() == 4
-    assert page.locator(".engine.on .engine-name").inner_text() == "rancher"
+    assert page.locator("#engines .engine-name").all_inner_texts() == ["native", "lab-in-a-box"]
+    assert page.locator("#nativeEngines .engine-name").all_inner_texts() == ["suse-virt", "rancher", "suse-edge"]
+    assert page.locator("#nativeEngines .engine.on .engine-name").inner_text() == "rancher"
     assert "First ride" in page.locator("#library").inner_text()
     assert page.locator("#libCount").inner_text() == "3"
     assert "provides" in page.locator("#enginePanel").inner_text().lower()
@@ -614,15 +615,38 @@ def test_bundled_lab_in_a_box_rodeos_pass_the_schema_check(page):
 
 
 def test_selected_engine_is_marked(page):
-    selected = page.locator(".engine.on")
+    assert page.locator("#engines .engine.on .engine-name").inner_text() == "native"
+    selected = page.locator("#nativeEngines .engine.on")
     assert selected.count() == 1
     assert selected.locator(".engine-name").inner_text() == "rancher"
-    assert page.locator(".engine[aria-checked=true]").count() == 1
+    assert page.locator("#nativeEngines .engine[aria-checked=true]").count() == 1
     assert selected.locator(".engine-title").inner_text() == "Rancher Prime" and "VMs" not in selected.inner_text()
     assert "rancher" in page.locator("#engineNow").inner_text()
     page.click(".engine >> text=suse-virt")
-    assert page.locator(".engine.on .engine-name").inner_text() == "suse-virt"
-    assert page.locator(".engine.on").get_attribute("aria-checked") == "true"
+    assert page.locator("#nativeEngines .engine.on .engine-name").inner_text() == "suse-virt"
+    assert page.locator("#nativeEngines .engine.on").get_attribute("aria-checked") == "true"
+    page.click(".engine >> text=lab-in-a-box")
+    sync_api.expect(page.locator("#nativeEngines")).to_be_hidden()
+    page.click(".engine >> text=native")
+    assert page.locator("#nativeEngines .engine.on .engine-name").inner_text() == "suse-virt"
+
+
+def test_native_engines_offer_every_bundled_profile_of_their_type_as_base(page):
+    page.click(".engine >> text=suse-virt")
+    options = page.locator("#baseProfile option").evaluate_all("os => os.map(o => o.value)")
+    assert options[0] == "harvester" and page.locator("#baseProfile").input_value() == "harvester"
+    assert {"harvester-2n", "harvester-ha", "test", "virt-workshop-aws", "virt-workshop-aws-2n"} <= set(options)
+    assert "rancher" not in options and "rancher-test" not in options
+    page.select_option("#baseProfile", "harvester-2n")
+    sync_api.expect(page.locator("#engineNow")).to_contain_text("harvester-2n")
+    sync_api.expect(page.locator("#enginePanel")).to_contain_text("(harvester-2n profile)")
+    page.click("[data-tab=plan]")
+    assert "memory_mib: 16384" in page.locator("#planEditor").input_value()
+    page.select_option("#baseProfile", "harvester")
+    sync_api.expect(page.locator("#engineNow")).not_to_contain_text("harvester-2n")
+    assert "memory_mib: 20480" in page.locator("#planEditor").input_value()
+    page.click(".engine >> text=rancher")
+    assert page.locator("#baseProfile option").evaluate_all("os => os.map(o => o.value)") == ["rancher"]
 
 
 def _start(page, title):
@@ -663,7 +687,7 @@ def test_starting_from_a_catalog_rodeo_brings_its_plan_lab_and_translations(page
     sync_api.expect(page.locator("#toastText")).to_contain_text("Ride: its plan and 1 chapter")
     assert asked == ["ride"] and _rows(page) == ["Saddle the ride"]
     page.click("#toastUndo")
-    assert _rows(page) == ["Saddle the ride"] and page.locator(".engine.on .engine-name").inner_text() == "rancher"
+    assert _rows(page) == ["Saddle the ride"] and page.locator("#nativeEngines .engine.on .engine-name").inner_text() == "rancher"
     _start(page, "Ride")
     sync_api.expect(page.locator("#toastText")).to_contain_text("Ride: its plan and 1 chapter")
     files = _zip(page)
@@ -677,13 +701,14 @@ def test_source_group_switches_engine_and_base(page):
     page.click(".card >> text=Welcome to the rodeo")
     group = page.locator(".group", has_text="Virtualization workshop")
     _start(page, "Virtualization workshop")
-    assert page.locator(".engine.on .engine-name").inner_text() == "suse-virt"
+    assert page.locator("#nativeEngines .engine.on .engine-name").inner_text() == "suse-virt"
     assert "virt-workshop" in page.locator("#engineNow").inner_text()
+
     assert _rows(page)[0] == "Exercise 1: The Arrival" and "Welcome to the rodeo" not in _rows(page)
     assert len(_rows(page)) == group.locator(".card").count()
     page.click("#toastUndo")
     assert _rows(page) == ["Welcome to the rodeo"]
-    assert page.locator(".engine.on .engine-name").inner_text() == "rancher"
+    assert page.locator("#nativeEngines .engine.on .engine-name").inner_text() == "rancher"
     _start(page, "Virtualization workshop")
     assert page.locator("#coverage").inner_text() == "lab covers every chapter"
     files = _zip(page)
@@ -709,7 +734,7 @@ def test_plan_yaml_can_be_edited(page):
     assert plan["extra_key"] == 42 and plan["name"] == "edited-name" and plan["deployment_target"] == "instruqt"
     page.once("dialog", lambda d: d.dismiss())
     page.click(".engine >> text=suse-edge")
-    assert page.locator(".engine.on .engine-name").inner_text() == "rancher"
+    assert page.locator("#nativeEngines .engine.on .engine-name").inner_text() == "rancher"
     page.click("[data-tab=plan]")
     page.click("#planReset")
     assert "extra_key" not in page.locator("#planEditor").input_value()
@@ -976,17 +1001,17 @@ def test_engine_banner_offers_the_workshops_engine(page):
     sync_api.expect(banner).to_be_visible()
     assert "run on suse-virt, not rancher" in banner.inner_text()
     banner.locator("button").click()
-    assert page.locator(".engine.on .engine-name").inner_text() == "suse-virt"
+    assert page.locator("#nativeEngines .engine.on .engine-name").inner_text() == "suse-virt"
     assert banner.is_hidden()
 
 
 def test_engine_cards_move_with_arrow_keys(page):
-    page.locator(".engine.on").focus()
+    page.locator("#nativeEngines .engine.on").focus()
     page.keyboard.press("ArrowRight")
     focused = page.evaluate("document.activeElement.querySelector('.engine-name').textContent")
     assert focused != "rancher"
     page.keyboard.press("Enter")
-    assert page.locator(".engine.on .engine-name").inner_text() == focused
+    assert page.locator("#nativeEngines .engine.on .engine-name").inner_text() == focused
     assert page.locator("[data-tab=rodeo]").get_attribute("aria-selected") == "true"
 
 
@@ -996,7 +1021,7 @@ def test_engine_info_and_resizable_columns(page):
     info = card.locator(".engine-info")
     sync_api.expect(info).to_be_visible()
     assert "4 VMs" in info.inner_text() and "longhorn" in info.inner_text()
-    assert page.locator(".engine.on .engine-name").inner_text() == "rancher"
+    assert page.locator("#nativeEngines .engine.on .engine-name").inner_text() == "rancher"
     page.keyboard.press("Escape")
     page.mouse.move(700, 800)
     sync_api.expect(info).to_be_hidden()
@@ -1143,7 +1168,7 @@ def test_engine_without_a_key_says_so_and_takes_a_stored_credential(page):
     page.click("#credCancel")
     page.click("#trRun")
     sync_api.expect(page.locator("#credTitle")).to_have_text("No credential for deepl")
-    assert page.locator("#credSettings").get_attribute("href") == "https://127.0.0.1/rodeo-builder/settings/?add=deepl"
+    assert page.locator("#credSettings").get_attribute("href") == "/rodeo-builder/settings/?add=deepl"
     page.click("#credCancel")
     sync_api.expect(page.locator("#credModal")).to_be_hidden()
 
@@ -1740,7 +1765,7 @@ def test_static_has_no_settings_link(page):
 def test_settings_link_opens_the_settings_page(page):
     link = page.locator("#settingsBtn")
     sync_api.expect(link).to_be_visible()
-    assert link.get_attribute("href") == "https://127.0.0.1/rodeo-builder/settings/"
+    assert link.get_attribute("href") == "/rodeo-builder/settings/"
     assert link.get_attribute("target") == "_blank" and link.get_attribute("rel") == "noopener"
     assert link.inner_text().strip().lower() == "settings"
     page.set_viewport_size({"width": 390, "height": 844})

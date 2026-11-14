@@ -228,6 +228,46 @@ def test_server_saves_into_profiles(server):
     assert _save(server, {"name": "x"})[0] == 400
 
 
+def test_server_serves_the_settings_page_on_its_own_address(server):
+    for path in ("/rodeo-builder/settings/", "/rodeo-builder/settings", "/rodeo-builder/settings/index.html"):
+        status, headers, data = _req(server, "GET", path)
+        page = data.decode()
+        assert status == 200 and headers["Content-Type"].startswith("text/html")
+        assert '<meta name="rodeo-builder-token" content="t0ken">' in page
+        assert 'src="/rodeo-builder/settings/settings.js"' in page and 'href="/style.css"' in page
+    status, headers, data = _req(server, "GET", "/rodeo-builder/settings/settings.js")
+    assert status == 200 and headers["Content-Type"].startswith("text/javascript") and b'"/api"' in data
+    assert _req(server, "GET", "/rodeo-builder/settings/../../app.js")[0] == 404
+    assert _req(server, "GET", "/rodeo-builder/settings/nope.js")[0] == 404
+    assert _req(server, "GET", "/ca.pem")[0] == 404
+
+
+def test_server_speaks_https_with_the_generated_ca_and_serves_it(tmp_path, labinabox_checkout):
+    import ssl
+
+    from rodeo.builder import tls
+
+    made = tls.ensure("127.0.0.1", directory=tmp_path / "tls")
+    srv = make_server(Api(labinabox_checkout, can_save=True), "127.0.0.1", 0, "9.9.9", token="t0ken",
+                      ssl_context=tls.ssl_context(made.cert, made.key), ca_pem=made.ca.read_bytes())
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        port = srv.server_address[1]
+        ctx = ssl.create_default_context(cafile=str(made.ca))
+        conn = http.client.HTTPSConnection("127.0.0.1", port, timeout=10, context=ctx)
+        conn.request("GET", "/ca.pem", headers={"Host": "127.0.0.1:{}".format(port)})
+        res = conn.getresponse()
+        assert res.status == 200 and res.getheader("Content-Type") == "application/x-pem-file"
+        assert res.read() == made.ca.read_bytes()
+        conn.close()
+        with pytest.raises(ssl.SSLError):
+            http.client.HTTPSConnection("127.0.0.1", port, timeout=10,
+                                        context=ssl.create_default_context()).request("GET", "/")
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
 def test_host_allowed_strips_ports_and_brackets():
     assert host_allowed("127.0.0.1:8678", ("127.0.0.1",))
     assert host_allowed("[::1]:8678", ("::1",))
@@ -241,6 +281,57 @@ def test_builder_command_needs_expose_for_other_hosts():
     assert r.exit_code == 2 and "--expose" in r.output
     r = CliRunner().invoke(builder_cmd, ["--source", "nope", "--no-open"])
     assert r.exit_code == 2 and "ID=CHECKOUT" in r.output
+
+
+def test_builder_command_wants_the_tls_certificate_and_key_together(tmp_path):
+    cert = tmp_path / "c.pem"
+    cert.write_text("x")
+    r = CliRunner().invoke(builder_cmd, ["--tls-cert", str(cert), "--no-open"])
+    assert r.exit_code == 2 and "--tls-key" in r.output
+
+
+def _https_get(port, path, host, cafile, server_hostname):
+    """HTTP status of GET *path* over TLS to 127.0.0.1:*port*, trusting *cafile*, with the
+    certificate checked for *server_hostname* and *host* as the Host header."""
+    import socket
+    import ssl
+
+    ctx = ssl.create_default_context(cafile=str(cafile))
+    with socket.create_connection(("127.0.0.1", port), timeout=10) as raw, \
+            ctx.wrap_socket(raw, server_hostname=server_hostname) as tls_sock:
+        tls_sock.sendall("GET {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n".format(path, host).encode())
+        data = b""
+        while chunk := tls_sock.recv(65536):
+            data += chunk
+    return int(data.split(b" ", 2)[1])
+
+
+def test_an_exposed_builder_serves_https_with_its_own_ca(monkeypatch, labinabox_checkout, tmp_path):
+    from rodeo.builder import tls
+
+    monkeypatch.setattr(tls, "tls_dir", lambda: tmp_path / "tls")
+    monkeypatch.setattr(tls.socket, "getfqdn", lambda *a: "builder.example.test")
+    monkeypatch.setattr(tls.socket, "gethostname", lambda *a: "builder")
+    real_gai = tls.socket.getaddrinfo
+    monkeypatch.setattr(tls.socket, "getaddrinfo",
+                        lambda host, port, *a, **k: [] if port is None else real_gai(host, port, *a, **k))
+    seen = {}
+    real_serve = ThreadingHTTPServer.serve_forever
+
+    def serve(self):
+        threading.Thread(target=real_serve, args=(self,), daemon=True).start()
+        seen["status"] = _https_get(self.server_address[1], "/api?action=server", "builder.example.test",
+                                    tmp_path / "tls" / "ca.pem", "builder.example.test")
+        self.shutdown()
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(ThreadingHTTPServer, "serve_forever", serve)
+    r = CliRunner().invoke(builder_cmd, ["--host", "0.0.0.0", "--port", "0", "--expose",
+                                         "--no-open", "--no-fetch-sources", "--labinabox", str(labinabox_checkout)])
+    assert r.exit_code == 0, r.output
+    assert seen["status"] == 200
+    assert re.search(r"https://builder\.example\.test:\d+/", r.output) and "Made a CA" in r.output
+    assert (tmp_path / "tls" / "ca.pem").is_file()
 
 
 def test_builder_command_serves_until_interrupted(monkeypatch, labinabox_checkout):
@@ -300,10 +391,12 @@ def test_own_names_are_the_host_names_and_interface_addresses(monkeypatch):
     assert cmd._own_names() == ("box", "box.lab.example", "127.0.0.1", "192.168.1.5", "2001:db8::7")
 
 
-def test_builder_on_every_interface_answers_to_its_own_names_only(monkeypatch, labinabox_checkout):
+def test_builder_on_every_interface_answers_to_its_own_names_only(monkeypatch, labinabox_checkout, tmp_path):
+    from rodeo.builder import tls
     from rodeo.commands import builder_cmd as cmd
 
     monkeypatch.setattr(cmd, "_own_names", lambda: ("box.lab.example", "192.168.1.5"))
+    monkeypatch.setattr(tls, "tls_dir", lambda: tmp_path / "tls")
     seen = {}
     real_serve = ThreadingHTTPServer.serve_forever
 
@@ -311,10 +404,7 @@ def test_builder_on_every_interface_answers_to_its_own_names_only(monkeypatch, l
         threading.Thread(target=real_serve, args=(self,), daemon=True).start()
         port = self.server_address[1]
         for host in ("box.lab.example", "192.168.1.5", "alias.example", "evil.example"):
-            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
-            conn.request("GET", "/", headers={"Host": f"{host}:{port}"})
-            seen[host] = conn.getresponse().status
-            conn.close()
+            seen[host] = _https_get(port, "/", f"{host}:{port}", tmp_path / "tls" / "ca.pem", "box.lab.example")
         self.shutdown()
         raise KeyboardInterrupt
 

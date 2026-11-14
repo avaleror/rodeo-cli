@@ -636,6 +636,26 @@ function selectEngine(name) {
   render();
 }
 
+// rodeo-cli's own engines (not external like lab-in-a-box), shown under one "native" card.
+function nativeEngines() { return state.engines.filter((e) => !e.external); }
+
+function selectNative() {
+  const e = engine();
+  if (!(e && !e.external) && nativeEngines().length) selectEngine(nativeEngines()[0].name);
+}
+
+// The base profile a native engine's rodeo starts from: one of the engine's bases.
+function selectBase(profile) {
+  const e = engine(), b = (e.bases || []).find((x) => x.profile === profile);
+  if (!b || profile === baseProfile()) return;
+  if (!confirmPlanDrop()) { render(); return; }
+  state.base = profile === e.base ? null : { profile, plan: b.plan };
+  state.planEdited = null;
+  render();
+}
+
+function sizeText(r) { return r.nodes + (r.nodes === 1 ? " VM" : " VMs") + " · " + gib(r.memory_mib) + " RAM · " + r.vcpu + " vCPU"; }
+
 function engineSummary(e) {
   if (e.external) return "VMs, clusters and add-ons you choose";
   const r = e.resources;
@@ -650,26 +670,40 @@ function engineInfo(e) {
     el("dl", { class: "info-card" },
       row("Builds", e.note),
       row("Size", e.external ? "the lab you design" : r.nodes + " VMs, " + gib(r.memory_mib) + " RAM, " + r.vcpu + " vCPU"),
-      e.base ? row("Base profile", e.base) : null,
+      e.bases && e.bases.length ? row("Base profiles", e.bases.map((b) => b.profile).join(", ")) : null,
       e.provides.length ? row("Provides", chipList(e.provides, "ok")) : null));
 }
 
+function engineCard(name, title, on, onclick, info) {
+  const id = "engine:" + name;
+  return el("div", { class: "engine-card" },
+    el("button", {
+      class: "engine" + (on ? " on" : ""), type: "button", role: "radio", "aria-checked": String(on), tabindex: on ? "0" : "-1",
+      onclick, onkeydown: engineKey,
+    }, el("span", { class: "engine-top" }, el("span", { class: "radio", "aria-hidden": "true" }),
+      el("span", { class: "engine-name", text: name })),
+    el("span", { class: "engine-title", text: title })),
+    el("button", { class: "info-btn", type: "button", text: "i", title: "About " + name, "aria-label": "About " + name,
+      "aria-expanded": String(state.info === id), "aria-controls": "info-" + id, onclick: () => toggleInfo(id) }),
+    info);
+}
+
+function nativeInfo(natives) {
+  const id = "engine:native";
+  return el("div", { class: "info-pop engine-info" + (state.info === id ? " open" : ""), id: "info-" + id, role: "region", "aria-label": "About native" },
+    el("dl", { class: "info-card" }, el("dt", { text: "Builds" }),
+      el("dd", { text: "Labs with rodeo-cli's own engines: " + natives.map((e) => e.title).join(", ") + ". Pick one, then its base profile." })));
+}
+
 function renderEngines() {
-  const box = $("#engines");
-  box.replaceChildren(...state.engines.map((e) => {
-    const on = e.name === state.engine, id = "engine:" + e.name;
-    return el("div", { class: "engine-card" },
-      el("button", {
-        class: "engine" + (on ? " on" : ""), type: "button", role: "radio", "aria-checked": String(on), tabindex: on ? "0" : "-1",
-        onclick: () => selectEngine(e.name), onkeydown: engineKey,
-      }, el("span", { class: "engine-top" }, el("span", { class: "radio", "aria-hidden": "true" }),
-        el("span", { class: "engine-name", text: e.name })),
-      el("span", { class: "engine-title", text: e.title })),
-      el("button", { class: "info-btn", type: "button", text: "i", title: "About " + e.name, "aria-label": "About " + e.name,
-        "aria-expanded": String(state.info === id), "aria-controls": "info-" + id, onclick: () => toggleInfo(id) }),
-      engineInfo(e));
-  }));
-  const e = engine();
+  const natives = nativeEngines(), e = engine(), native = !!e && !e.external;
+  $("#engines").replaceChildren(
+    ...(natives.length ? [engineCard("native", "rodeo-cli's own engines", native, selectNative, nativeInfo(natives))] : []),
+    ...state.engines.filter((x) => x.external).map((x) =>
+      engineCard(x.name, x.title, x.name === state.engine, () => selectEngine(x.name), engineInfo(x))));
+  $("#nativeEngines").hidden = !native;
+  $("#nativeEngines").replaceChildren(...(native ? natives.map((x) =>
+    engineCard(x.name, x.title, x.name === state.engine, () => selectEngine(x.name), engineInfo(x))) : []));
   $("#engineNow").textContent = e ? "· " + e.name + (baseProfile() && baseProfile() !== e.name ? " · " + baseProfile() : "") : "";
   renderEnginePanel();
 }
@@ -679,7 +713,7 @@ function engineKey(ev) {
   const step = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[ev.key];
   if (!step) return;
   ev.preventDefault();
-  const cards = [...document.querySelectorAll("#engines .engine")];
+  const cards = [...ev.currentTarget.closest(".engines").querySelectorAll(".engine")];
   const j = (cards.indexOf(ev.currentTarget) + step + cards.length) % cards.length;
   cards.forEach((c, k) => c.setAttribute("tabindex", k === j ? "0" : "-1"));
   cards[j].focus();
@@ -795,19 +829,18 @@ function renderEnginePanel() {
   box.replaceChildren();
   if (!e) return;
   if (!e.external) {
-    const r = e.resources;
+    const cur = baseProfile(), bases = e.bases || [], chosen = bases.find((b) => b.profile === cur);
+    const options = bases.map((b) => el("option", { value: b.profile, text: b.profile + (b.profile === e.base ? " (default)" : "") +
+      " · " + sizeText(b.resources) }));
+    if (!chosen) options.push(el("option", { value: cur, text: cur + " (from the workshop)" }));
+    const pick = el("select", { id: "baseProfile", class: "select", onchange: (ev) => selectBase(ev.target.value) }, options);
+    pick.value = cur;
     box.append(el("h3", { text: e.title }),
-      el("p", { class: "mono muted", text: r.nodes + " VMs · " + gib(r.memory_mib) + " RAM · " + r.vcpu + " vCPU (" + e.base + " profile)" }),
-      el("p", { text: e.note }));
-    if (state.base) {
-      box.append(el("p", {}, "Base profile ", el("strong", { class: "mono", text: state.base.profile }),
-        ": the chapters of that workshop need its extra setup. ",
-        el("button", { class: "btn link", type: "button", text: "Use " + e.base + " instead",
-          onclick: () => { if (confirmPlanDrop()) { state.base = null; state.planEdited = null; render(); } } })));
-    } else {
-      box.append(el("p", {}, "Base profile ", el("strong", { class: "mono", text: e.base })));
-    }
-    box.append(el("span", { class: "label", text: "Provides" }), chipList(e.provides, "ok"));
+      el("p", { class: "mono muted", text: sizeText((chosen || {}).resources || e.resources) + " (" + cur + " profile)" }),
+      cur === e.base ? el("p", { text: e.note }) : null,
+      el("label", { class: "label", for: "baseProfile", text: "Base profile" }), pick,
+      el("p", { class: "note muted", text: "The bundled profile this rodeo's plan starts from." }),
+      el("span", { class: "label", text: "Provides" }), chipList(e.provides, "ok"));
     return;
   }
   const modes = [["embed", "Embed here"], ["import", "Import existing lab"], ["link", "Open in Lab Builder"]];

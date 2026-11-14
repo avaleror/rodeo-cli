@@ -91,9 +91,23 @@ def _resources(example: Path, engine: str) -> dict[str, int]:
     return {"nodes": len(nodes), "memory_mib": mem, "vcpu": cpu}
 
 
+def _bases(engine: str, default: str) -> list[dict[str, Any]]:
+    """Every bundled profile whose plan is of type *engine*, *default* first:
+    ``profile``, ``resources`` and ``plan`` text."""
+    from ..labseed import PROFILE_EXAMPLE
+
+    out = []
+    for profile in PROFILE_EXAMPLE:
+        example = _profile_example(profile)
+        if (_read_yaml(example / "rodeo-plan.yaml").get("type") or "suse-virt") == engine:
+            out.append({"profile": profile, "resources": _resources(example, engine), "plan": _plan_text(example)})
+    return sorted(out, key=lambda b: b["profile"] != default)
+
+
 def engines() -> dict[str, Any]:
     """Every rodeo type the builder offers (:attr:`.RodeoProfile.builder`), with its base
-    plan text (what a new rodeo starts from); ``capabilities``, the union of what they
+    plan text (what a new rodeo starts from) and ``bases``, every bundled profile of that
+    type (the base first); ``capabilities``, the union of what they
     provide; ``targets``, every registered ``deployment_target``; ``content_formats``,
     every instructions format a plan's ``content:`` takes. Plugins' are included."""
     from ..content import FORMATS
@@ -110,6 +124,7 @@ def engines() -> dict[str, Any]:
             example = _profile_example(spec["base"])
             entry["resources"] = _resources(example, name)
             entry["plan"] = (example / "rodeo-plan.yaml").read_text()
+            entry["bases"] = _bases(name, spec["base"])
         else:
             entry["resources"] = {"nodes": 1, "memory_mib": 4096, "vcpu": 2}
             entry["definition"] = (PLATFORMS / name / "definition.yaml").read_text()

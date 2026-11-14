@@ -29,8 +29,13 @@ def test_engines_have_bases_resources_and_capabilities():
         assert yaml.safe_load(engines[name]["plan"])["resources"], name
         assert engines[name]["resources"]["nodes"] > 0 and engines[name]["resources"]["memory_mib"] > 0
         assert engines[name]["provides"]
+    bases = {name: [b["profile"] for b in engines[name]["bases"]] for name in ("suse-virt", "rancher", "suse-edge")}
+    assert bases["suse-virt"][0] == "harvester" and {"harvester-2n", "harvester-ha", "test", "virt-workshop-aws"} <= set(bases["suse-virt"])
+    assert (bases["rancher"], bases["suse-edge"]) == (["rancher"], ["suse-edge"])
+    two_nodes = next(b for b in engines["suse-virt"]["bases"] if b["profile"] == "harvester-2n")
+    assert yaml.safe_load(two_nodes["plan"])["name"] == "harvester-2n-rodeo" and two_nodes["resources"]["nodes"] == 3
     liab = engines["lab-in-a-box"]
-    assert liab["external"] and liab["provides"] == [] and "plan" not in liab
+    assert liab["external"] and liab["provides"] == [] and "plan" not in liab and "bases" not in liab
     assert yaml.safe_load(liab["definition"])["definition"]["nodes"][0]["name"] == "vm1"
     provides = {c for e in engines.values() for c in e["provides"]}
     assert data["capabilities"] == sorted(provides) and "rancher" in data["capabilities"]

@@ -31,8 +31,11 @@ read at each start, plus any `--allow-host`.
 - **Lab engine.** The engines are the rodeo types installed (a plugin's
   included); the deployment targets and instructions formats offered are the
   ones rodeo knows, never a fixed list. `suse-virt`, `rancher` and `suse-edge`
-  are rodeo's own engines; the **(i)** on each shows its size and what it provides (for example
-  Harvester, KubeVirt, Longhorn, Rancher, Fleet). `lab-in-a-box` builds any lab lab-in-a-box can:
+  are rodeo's own engines, listed under the **native** card; the **(i)** on each shows its size,
+  its base profiles and what it provides (for example Harvester, KubeVirt, Longhorn, Rancher, Fleet).
+  **Base profile** lists every bundled profile of the chosen engine's type, with its size
+  (for `suse-virt`: `harvester`, the default, `harvester-2n`, `harvester-ha`, `test` and the
+  workshop profiles); the rodeo's plan starts from the one picked. `lab-in-a-box` builds any lab lab-in-a-box can:
     - **Embed here** (the default) opens the lab-builder inside the page with
       this rodeo's lab loaded; "Send this lab" there hands it back.
     - **Import existing lab** starts from a bundled lab-in-a-box rodeo

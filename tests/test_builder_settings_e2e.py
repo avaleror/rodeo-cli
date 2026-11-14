@@ -115,7 +115,7 @@ def test_add_list_and_delete_with_the_password(browser_page, tmp_path):
     sync_api.expect(row).to_contain_text("rodeo")
     stored = vault.list_items()
     assert [(i["name"], i["type"]) for i in stored] == [("my scc", "scc")]
-    assert vault.open_item(stored[0]["id"], "longpassword") == {"regcode": "REG-SECRET-1", "email": ""}
+    assert vault.open_item(stored[0]["id"], "longpassword") == {"regcode": "REG-SECRET-1"}
     assert page.locator("#vaultForm").is_hidden()
     assert not any(v in ("REG-SECRET-1", "longpassword") for v in _values(page))
 

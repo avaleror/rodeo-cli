@@ -26,7 +26,7 @@ GET ``login`` answers ``{"user"}`` for a login and ``401`` without one. GET ``va
 with POST ``vault-open`` (stored credentials: rodeo's own,
 :mod:`.vault`, and other engines', :mod:`.engine_credentials`) also need
 ``can_deploy=True``, and a login with ``need_login=True``. POST ``vault-add`` and ``vault-delete`` (rodeo's store only;
-the Settings page, :mod:`.settings`, does the same) need the live server and a
+what the Settings page calls) need the live server and a
 login (:mod:`.login`, *auth* of :meth:`Api.dispatch`), and ``vault-delete`` the
 credential's password. A login is checked once per :data:`LOGIN_TTL` seconds; failed logins and passwords wait longer from the fifth
 in a row on (:class:`.vault.OpenLimiter`);

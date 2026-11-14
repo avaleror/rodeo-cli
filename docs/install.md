@@ -56,10 +56,12 @@ anyway.
 
 On Linux with systemd, in both roles, the installer runs the
 [Rodeo Builder](rodeo-builder.md) as `rodeo-builder.service`, so
-`http://<this host>:8678/` is up after the install and after every reboot. It
+`https://<this host>:8678/` is up after the install and after every reboot. It
 runs `rodeo builder --no-open --host 0.0.0.0 --expose`, listening on every
-interface, and is restarted on every update, so it always runs the code just
-installed.
+interface over HTTPS (a certificate signed by rodeo's own CA; import
+`https://<this host>:8678/ca.pem` once in each browser, see
+[Rodeo Builder](rodeo-builder.md#the-live-builder)), and is restarted on every
+update, so it always runs the code just installed.
 
 On every interface the builder answers to this machine's host names and the
 addresses on its interfaces, read each time it starts; any other `Host` is
@@ -68,8 +70,8 @@ clients use that the machine can't see itself (a DNS alias, a public IP behind
 NAT) with `RODEO_BUILDER_ALLOW="name1 name2"`.
 
 Exposed, anyone who can reach port 8678 can save profiles as the service's user;
-**Deploy** and stored credentials ask for a login from
-`/etc/rodeo-builder/htpasswd` (unavailable without it), and **Publish** uses the
+**Deploy** and stored credentials ask for a login (`rodeo logins add <user>`,
+see [Settings page](#settings-page)), and **Publish** uses the
 github.com pages instead of this host's GitHub login (see
 [Rodeo Builder](rodeo-builder.md)). Limit who reaches the port with your firewall,
 or keep it on this machine with `--builder-host 127.0.0.1` and tunnel
@@ -90,36 +92,26 @@ and machines without systemd get no service; run `rodeo builder` by hand there.
 
 ### Settings page
 
-As root on Linux, in both roles, the installer also sets up the builder's
-Settings page (see [Rodeo Builder](rodeo-builder.md#settings-and-stored-credentials)),
-with `rodeo/builder/settings/install.sh`: the builder service runs on a control
-machine too, and its header links to that page. Every way of installing rodeo-cli
-as root runs that script, again on every update:
+The builder's Settings page (see [Rodeo Builder](rodeo-builder.md#settings-and-stored-credentials))
+is served by `rodeo builder` itself, on its own address and port. As root on Linux,
+in both roles, the installer only prepares its login:
 
 | Path | What |
 |------|------|
-| `/etc/rodeo-builder/htpasswd` | Login file: users who may open the page (created empty when missing) |
-| `/srv/www/rodeo-builder/` | The page, its CGI script and the "not logged in" page |
-| `/usr/local/sbin/rodeo-builder-helper` | Runs as root through `sudo`: lists, adds and deletes the stored credentials |
-| `/etc/sudoers.d/rodeo-builder` | Lets the web server user run only that helper |
-| `/etc/apache2/conf.d/rodeo-builder.conf` | HTTPS only, login on `/rodeo-builder/` (`/etc/httpd/conf.d/` on RHEL family) |
+| `/etc/rodeo-builder/htpasswd` | Login file: users who may add or delete credentials (a link to lab-builder's `/etc/lab-builder/htpasswd`, created empty when missing) |
 
-It only adds its own files; no other site's or user's configuration is edited:
+Add users with `rodeo logins add <user>` (`list`, `remove`). The file is in
+htpasswd format and the hashes are bcrypt, checked by rodeo itself: no Apache
+tool is needed, and `htpasswd -B` lines work too. A user made with `htpasswd -m`
+(APR1-MD5) can log in and moves to bcrypt the next time its password is set;
+any other hash (SHA-1, crypt) cannot log in until the password is set again.
+Without the system file, on a laptop or a non-root install, `rodeo builder`
+uses `~/.rodeo/builder/htpasswd`.
 
-- It stops, changing nothing, when Apache's configuration test already fails or
-  another configuration file already uses `/rodeo-builder` or `/rodeo-login`.
-- It enables only the modules the page needs that are not loaded yet (`cgid`,
-  `alias`, `auth_basic`, `authn_file`, `authz_user`). When the configuration
-  test fails with its file, it removes the file and disables those modules again.
-- The sudoers rule is checked on its own and with the whole sudo configuration;
-  when either fails it is not installed and an earlier version is put back.
-- A running Apache is reloaded gracefully (open connections finish).
-
-While the login file has no users the installer says so; add one with
-`htpasswd /etc/rodeo-builder/htpasswd <user>` (`htpasswd2` on SUSE).
-
-Without Apache it skips the page. Apache needs a TLS virtual host: over plain
-HTTP the page redirects to HTTPS.
+Earlier versions served the page through Apache; an update removes what they
+installed for it (`/srv/www/rodeo-builder/`, `/usr/local/sbin/rodeo-builder-helper`,
+`/etc/sudoers.d/rodeo-builder` and the `rodeo-builder.conf` in Apache's `conf.d`,
+reloading a running Apache). The login file stays.
 
 ### From a checkout (if you change rodeo itself)
 

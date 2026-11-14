@@ -1,10 +1,11 @@
-// rodeo-cli Settings page: the credentials stored on this host. Data comes from the CGI script at
-// ../admin (rodeo/builder/settings/cgi-bin/settings.py), which needs a user the web server logged
-// in. Passwords and values typed here go only into the request that needs them: they are not kept
-// in a variable, in storage or in the DOM once a form closes. Pure logic is in logic.js (RB).
+// rodeo-cli Settings page: the credentials stored on this host. Data comes from the builder's own
+// API (/api?action=vault|vault-add|vault-delete, rodeo/builder/api.py); writes carry the page's
+// token and need a login, which the browser asks for on the server's 401. Passwords and values
+// typed here go only into the request that needs them: they are not kept in a variable, in storage
+// or in the DOM once a form closes. Pure logic is in logic.js (RB).
 "use strict";
 
-const API = "../admin";
+const API = "/api";
 const $ = (sel) => document.querySelector(sel);
 let store = { types: [], items: [], file_secrets: [] };
 let deleting = null;
@@ -36,10 +37,17 @@ function toast(msg, bad) {
   toastTimer = setTimeout(() => { $("#toast").hidden = true; }, 7000);
 }
 
-// `{status, body}` of a call to the Settings API; a network failure is status 0.
+// The write token the server put in the page (rodeo/builder/server.py).
+function token() {
+  const meta = document.querySelector('meta[name="rodeo-builder-token"]');
+  return meta ? meta.content : "";
+}
+
+// `{status, body}` of a call to the builder's API; a network failure is status 0.
 async function call(action, payload) {
   const opts = payload === undefined ? { headers: { Accept: "application/json" } }
-    : { method: "POST", body: JSON.stringify(payload), headers: { "Content-Type": "application/json", Accept: "application/json" } };
+    : { method: "POST", body: JSON.stringify(payload),
+      headers: { "Content-Type": "application/json", Accept: "application/json", "X-Rodeo-Builder-Token": token() } };
   try {
     const res = await fetch(API + "?" + new URLSearchParams({ action }).toString(), { credentials: "same-origin", cache: "no-store", ...opts });
     const body = await res.json().catch(() => ({ error: res.statusText }));
@@ -57,15 +65,25 @@ function when(v) {
 
 function typeLabel(id) { const t = RB.vaultType(store, id); return t ? t.label : id; }
 
+// Loads the credentials. A server that lists them only to a logged-in user answers `login: true`:
+// GET login then makes the browser ask for the login, and the list is read again with it.
 async function refresh() {
-  const res = await call("list");
-  $("#loadError").hidden = res.status === 200;
-  if (res.status !== 200) {
-    $("#loadError").textContent = "Could not load the credentials: " + (res.body.error || res.status) + ".";
+  let res = await call("vault");
+  if (res.status === 200 && res.body.login) {
+    const who = await call("login");
+    if (who.status !== 200) res = who;
+    else {
+      $("#who").textContent = "logged in as " + who.body.user;
+      res = await call("vault");
+    }
+  }
+  const failed = res.status !== 200 || res.body.available === false;
+  $("#loadError").hidden = !failed;
+  if (failed) {
+    $("#loadError").textContent = "Could not load the credentials: " + (res.body.error || res.body.reason || res.status) + ".";
     return;
   }
   store = res.body;
-  $("#who").textContent = store.user ? "logged in as " + store.user : "";
   render();
 }
 
@@ -158,7 +176,7 @@ async function addCredential(ev) {
   if (errors.length) { $("#vaResult").textContent = errors.join(" "); return; }
   const btn = $("#vaultForm [type=submit]");
   btn.disabled = true;
-  const res = await call("add", { name: form.name, type: type.id, fields: RB.vaultFields(type, form), password: form.password });
+  const res = await call("vault-add", { name: form.name, type: type.id, fields: RB.vaultFields(type, form), password: form.password });
   btn.disabled = false;
   if (res.status !== 200) { $("#vaResult").textContent = "Not saved: " + (res.body.error || res.status); return; }
   resetForm();
@@ -192,7 +210,7 @@ async function deleteCredential(ev) {
   if (!password) { $("#delError").textContent = "Type the password."; return; }
   const item = deleting.item;
   $("#delSubmit").disabled = true;
-  const res = await call("delete", { id: item.id, password });
+  const res = await call("vault-delete", { id: item.id, password });
   $("#delSubmit").disabled = false;
   if (res.status === 403 || res.status === 429) {
     $("#delError").textContent = res.status === 403 ? "Wrong password: try again." : res.body.error + ".";
@@ -208,7 +226,7 @@ async function deleteCredential(ev) {
 function showTheme() {
   const dark = window.RBTheme.current() === "dark";
   $("#themeBtn").textContent = dark ? "Light" : "Dark";
-  $("#logo").src = dark ? "assets/horseshoe-mark.svg" : "assets/horseshoe-mark-light.svg";
+  $("#logo").src = dark ? "/assets/horseshoe-mark.svg" : "/assets/horseshoe-mark-light.svg";
 }
 
 function bind() {

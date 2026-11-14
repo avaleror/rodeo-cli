@@ -4,16 +4,19 @@ The same page the static build publishes, with live answers instead of
 embedded ones, plus what only a server can do (save a rodeo straight into
 ``~/.rodeo/profiles/``). Standard library only.
 
-    GET  /                   index.html (version filled in, write token in a meta tag)
-    GET  /<file>             a file from htdocs/
-    GET  /api?action=<name>  Api.dispatch(name, "GET", Authorization header)
-    POST /api?action=save    Api.dispatch("save", "POST", body, Authorization header);
-                             needs the X-Rodeo-Builder-Token header from the page's meta tag
+    GET  /                          index.html (version filled in, write token in a meta tag)
+    GET  /<file>                    a file from htdocs/
+    GET  /rodeo-builder/settings/   the Settings page (settings/htdocs/index.html, same token)
+    GET  /rodeo-builder/settings/<file>  a file from settings/htdocs/
+    GET  /ca.pem                    the CA certificate given to make_server, when there is one
+    GET  /api?action=<name>         Api.dispatch(name, "GET", Authorization header)
+    POST /api?action=save           Api.dispatch("save", "POST", body, Authorization header);
+                                    needs the X-Rodeo-Builder-Token header from the page's meta tag
 
 Every request must name an allowed Host (loopback names by default), which
 stops DNS-rebinding pages from reaching the server; the per-run token stops
 other sites from posting to it. A 401 answer carries ``WWW-Authenticate: Basic``,
-so the browser asks for the login.
+so the browser asks for the login. With an ``ssl_context`` the server speaks HTTPS.
 """
 from __future__ import annotations
 
@@ -22,6 +25,7 @@ import html
 import json
 import secrets
 import socket
+import ssl
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -30,6 +34,9 @@ from urllib.parse import parse_qs, urlparse
 from .api import Api
 
 HTDOCS = Path(__file__).resolve().parent / "htdocs"
+SETTINGS_HTDOCS = Path(__file__).resolve().parent / "settings" / "htdocs"
+SETTINGS_PATH = "/rodeo-builder/settings/"
+CA_PATH = "/ca.pem"
 TOKEN_HEADER = "X-Rodeo-Builder-Token"
 LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
 MAX_BODY = 48 * 1024 * 1024
@@ -56,9 +63,9 @@ def csp(lab_builder_url: str, host: str = "") -> str:
             "frame-src {}; frame-ancestors 'none'; base-uri 'none'; form-action 'none'".format(frame))
 
 
-def page(version: str, token: str) -> bytes:
-    """index.html with the version and the write token filled in."""
-    text = (HTDOCS / "index.html").read_text().replace("__RODEOVERSION__", html.escape(version))
+def page(version: str, token: str, index: Path = HTDOCS / "index.html") -> bytes:
+    """*index* (the builder's index.html by default) with the version and the write token filled in."""
+    text = index.read_text().replace("__RODEOVERSION__", html.escape(version))
     meta = '  <meta name="rodeo-builder-token" content="{}">\n'.format(html.escape(token))
     at = text.index("</head>")
     return (text[:at] + meta + text[at:]).encode("utf-8")
@@ -77,8 +84,9 @@ def host_allowed(header: str | None, allowed: tuple[str, ...]) -> bool:
 
 
 def make_handler(api: Api, version: str, allowed_hosts: tuple[str, ...], lab_builder_url: str,
-                 token: str) -> type[BaseHTTPRequestHandler]:
+                 token: str, ca_pem: bytes | None = None) -> type[BaseHTTPRequestHandler]:
     index = page(version, token)
+    settings_index = page(version, token, SETTINGS_HTDOCS / "index.html")
     policy = csp(lab_builder_url)
     per_host = "{host}" in lab_builder_url
 
@@ -127,8 +135,20 @@ def make_handler(api: Api, version: str, allowed_hosts: tuple[str, ...], lab_bui
             if url.path in ("/", "/index.html"):
                 self._send(200, index, MIME[".html"])
                 return
-            full = (HTDOCS / url.path.lstrip("/")).resolve()
-            if HTDOCS not in full.parents or not full.is_file():
+            if url.path in (SETTINGS_PATH, SETTINGS_PATH[:-1], SETTINGS_PATH + "index.html"):
+                self._send(200, settings_index, MIME[".html"])
+                return
+            if url.path == CA_PATH and ca_pem:
+                self._send(200, ca_pem, "application/x-pem-file")
+                return
+            if url.path.startswith(SETTINGS_PATH):
+                self._file(SETTINGS_HTDOCS, url.path[len(SETTINGS_PATH):])
+                return
+            self._file(HTDOCS, url.path.lstrip("/"))
+
+        def _file(self, root: Path, rel: str) -> None:
+            full = (root / rel).resolve()
+            if root not in full.parents or not full.is_file():
                 self._json(404, {"error": "not found"})
                 return
             self._send(200, full.read_bytes(), MIME.get(full.suffix, "application/octet-stream"))
@@ -166,13 +186,17 @@ def make_handler(api: Api, version: str, allowed_hosts: tuple[str, ...], lab_bui
 
 def make_server(api: Api, host: str = "127.0.0.1", port: int = 8678, version: str = "",
                 allowed_hosts: tuple[str, ...] = LOOPBACK_HOSTS, lab_builder_url: str = "",
-                token: str | None = None) -> ThreadingHTTPServer:
-    """A ready (not yet serving) builder server; ``server_address`` has the bound port."""
+                token: str | None = None, ssl_context: ssl.SSLContext | None = None,
+                ca_pem: bytes | None = None) -> ThreadingHTTPServer:
+    """A ready (not yet serving) builder server; ``server_address`` has the bound port.
+    With *ssl_context* it serves HTTPS; *ca_pem* is served at :data:`CA_PATH`."""
     handler = make_handler(api, version, allowed_hosts, lab_builder_url or api.lab_builder_url,
-                           token or secrets.token_urlsafe(32))
+                           token or secrets.token_urlsafe(32), ca_pem)
     cls = _Server6 if ":" in host else ThreadingHTTPServer
     server = cls((host, port), handler)
     server.daemon_threads = True
+    if ssl_context is not None:
+        server.socket = ssl_context.wrap_socket(server.socket, server_side=True)
     return server
 
 

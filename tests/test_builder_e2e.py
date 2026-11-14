@@ -1167,7 +1167,7 @@ def test_engine_without_a_key_says_so_and_takes_a_stored_credential(page):
     page.click("#credCancel")
     page.click("#trRun")
     sync_api.expect(page.locator("#credTitle")).to_have_text("No credential for deepl")
-    assert page.locator("#credSettings").get_attribute("href") == "https://127.0.0.1/rodeo-builder/settings/?add=deepl"
+    assert page.locator("#credSettings").get_attribute("href") == "/rodeo-builder/settings/?add=deepl"
     page.click("#credCancel")
     sync_api.expect(page.locator("#credModal")).to_be_hidden()
 
@@ -1764,7 +1764,7 @@ def test_static_has_no_settings_link(page):
 def test_settings_link_opens_the_settings_page(page):
     link = page.locator("#settingsBtn")
     sync_api.expect(link).to_be_visible()
-    assert link.get_attribute("href") == "https://127.0.0.1/rodeo-builder/settings/"
+    assert link.get_attribute("href") == "/rodeo-builder/settings/"
     assert link.get_attribute("target") == "_blank" and link.get_attribute("rel") == "noopener"
     assert link.inner_text().strip().lower() == "settings"
     page.set_viewport_size({"width": 390, "height": 844})

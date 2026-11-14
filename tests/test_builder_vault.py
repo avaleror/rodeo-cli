@@ -4,7 +4,6 @@ from __future__ import annotations
 import base64
 import json
 import stat
-import subprocess
 
 import pytest
 
@@ -215,8 +214,9 @@ def test_a_login_is_checked_again_after_its_ttl(logins, monkeypatch):
 
 
 def test_login_unavailable(monkeypatch, tmp_path):
-    monkeypatch.setattr(login, "LOGIN_FILE", tmp_path / "missing")
-    assert _post(_api(), "vault-add", {"name": "m"}, AUTH)[0] == 501
+    monkeypatch.setattr(login, "login_file", lambda: tmp_path / "missing")
+    status, body = _post(_api(), "vault-add", {"name": "m"}, AUTH)
+    assert status == 501 and "rodeo logins add" in body["error"]
 
 
 def test_failed_logins_wait_longer_from_the_fifth(logins):
@@ -247,23 +247,74 @@ def test_parse_basic(header, expected):
     assert login.parse_basic(header) == expected
 
 
-def test_verify_uses_htpasswd_on_stdin(monkeypatch, tmp_path):
+def test_verify_checks_bcrypt_hashes_natively(tmp_path, monkeypatch):
+    monkeypatch.setattr(login, "BCRYPT_ROUNDS", 4)
     users = tmp_path / "htpasswd"
-    users.write_text("alice:x\n")
-    monkeypatch.setattr(login, "LOGIN_FILE", users)
-    monkeypatch.setattr(login.shutil, "which", lambda name: "/usr/bin/" + name)
-    calls = []
+    login.set_user("alice", "alicepass", users)
+    assert login.verify("alice", "alicepass", users) is True
+    assert login.verify("alice", "wrong", users) is False
+    assert login.verify("nobody", "alicepass", users) is False
+    assert login.verify("-x", "alicepass", users) is False
+    assert login.verify("alice", "x" * 73, users) is False
+    with open(users, "a") as f:
+        f.write("# a comment\n\nbob:$apr1$saltsalt$dSONY5u48qptEo.I0ySla0\ncarol:{SHA}W6ph5Mm5Pz8GgiULbPgzG37mj9g=\n")
+    assert login.verify("alice", "alicepass", users) is True
+    assert login.verify("bob", "alicepass", users) is True and login.verify("bob", "wrong", users) is False
+    with pytest.raises(login.LoginUnavailable, match="cannot check"):
+        login.verify("carol", "whatever", users)
+    assert login.list_users(users) == [("alice", "bcrypt"), ("bob", "apr1-md5"), ("carol", "other")]
+    login.set_user("bob", "bobpass12", users)
+    assert login.list_users(users)[1] == ("bob", "bcrypt") and login.verify("bob", "bobpass12", users) is True
 
-    def run(cmd, input, **kw):
-        calls.append((cmd, input))
-        return subprocess.CompletedProcess(cmd, 0 if input == b"alicepass" else 3)
 
-    monkeypatch.setattr(login.subprocess, "run", run)
-    assert login.verify("alice", "alicepass") is True
-    assert login.verify("alice", "wrong") is False
-    assert login.verify("-x", "alicepass") is False
-    assert calls[0] == (["/usr/bin/htpasswd", "-i", "-v", str(users), "alice"], b"alicepass")
-    assert len(calls) == 2
+def test_apr1_md5_matches_apaches_hashes():
+    assert login.apr1_md5(b"alicepass", b"saltsalt") == "$apr1$saltsalt$dSONY5u48qptEo.I0ySla0"
+    assert login.apr1_md5("pässword-longer-than-sixteen-bytes".encode(), b"Ab3") == "$apr1$Ab3$T/eLGHwexmQuwJkdn42W91"
+
+
+def test_login_file_needs_a_user(tmp_path):
+    with pytest.raises(login.LoginUnavailable, match="rodeo logins add"):
+        login.verify("alice", "pw", tmp_path / "missing")
+    empty = tmp_path / "empty"
+    empty.write_text("# nobody\n")
+    with pytest.raises(login.LoginUnavailable, match="no users yet"):
+        login.verify("alice", "pw", empty)
+
+
+def test_login_file_is_the_system_one_when_present_else_the_users(tmp_path, monkeypatch):
+    system = tmp_path / "etc" / "htpasswd"
+    monkeypatch.setattr(login, "SYSTEM_LOGIN_FILE", system)
+    assert login.login_file() == tmp_path / ".rodeo" / "builder" / "htpasswd"
+    system.parent.mkdir()
+    system.write_text("")
+    assert login.login_file() == system
+
+
+def test_set_and_remove_user_keep_the_files_mode_and_write_through_links(tmp_path, monkeypatch):
+    monkeypatch.setattr(login, "BCRYPT_ROUNDS", 4)
+    with pytest.raises(ValueError, match="at least 8"):
+        login.set_user("alice", "short", tmp_path / "f")
+    with pytest.raises(ValueError, match="user name"):
+        login.set_user("-alice", "alicepass1", tmp_path / "f")
+    with pytest.raises(ValueError, match="72 bytes"):
+        login.set_user("alice", "x" * 73, tmp_path / "f")
+    assert not (tmp_path / "f").exists()
+    fresh = login.set_user("alice", "alicepass", tmp_path / "new" / "htpasswd")
+    assert stat.S_IMODE(fresh.stat().st_mode) == 0o600 and stat.S_IMODE(fresh.parent.stat().st_mode) == 0o700
+    real = tmp_path / "real"
+    real.write_text("")
+    real.chmod(0o640)
+    link = tmp_path / "link"
+    link.symlink_to(real)
+    assert login.set_user("alice", "alicepass", link) == real
+    assert login.set_user("bob", "bobpass12", link) == real and link.is_symlink()
+    assert stat.S_IMODE(real.stat().st_mode) == 0o640
+    assert [u for u, _ in login.list_users(link)] == ["alice", "bob"]
+    assert login.verify("bob", "bobpass12", link) is True
+    login.set_user("bob", "newpass123", link)
+    assert login.verify("bob", "bobpass12", link) is False and login.verify("bob", "newpass123", link) is True
+    assert login.remove_user("bob", link) is True and login.remove_user("bob", link) is False
+    assert login.list_users(link) == [("alice", "bcrypt")] and login.list_users(tmp_path / "none") == []
 
 
 def test_rate_limit_with_fake_clock():

@@ -328,16 +328,29 @@ if [[ "$OS_NAME" == "Linux" ]] && [[ $IS_ROOT -eq 1 ]]; then
   install -d -m 755 /etc/rodeo-builder
   ln -sfn "$LB_LOGIN" /etc/rodeo-builder/htpasswd
   if [[ ! -s "$LB_LOGIN" ]]; then
-    HTPASSWD="$(command -v htpasswd2 || command -v htpasswd || echo htpasswd)"
     echo "  ⚠  $LB_LOGIN has no users yet: the Settings page and the builder's Deploy"
-    echo "     can't log anyone in. Add one with: $HTPASSWD $LB_LOGIN <user>"
+    echo "     can't log anyone in. Add one with: rodeo logins add <user>"
   fi
 fi
 
-# ── 5c. builder Settings page (Apache, login above) ───────────────────────────
-# Skipped by that script itself when this host has no Apache.
-if [[ "$OS_NAME" == "Linux" ]] && [[ $IS_ROOT -eq 1 ]]; then
-  bash "$RODEO_DIR/rodeo/builder/settings/install.sh" "$VENV/bin/python"
+# ── 5c. former Apache Settings page: rodeo builder serves the page itself now ──
+# Removes what earlier versions installed for it (the login file above stays).
+if [[ $IS_ROOT -eq 1 ]]; then
+  OLD_CONF=""
+  for d in /etc/apache2/conf.d /etc/httpd/conf.d; do
+    [[ -f "$d/rodeo-builder.conf" ]] && OLD_CONF="$d/rodeo-builder.conf"
+  done
+  if [[ -n "$OLD_CONF" || -e /srv/www/rodeo-builder || -e /usr/local/sbin/rodeo-builder-helper || -e /etc/sudoers.d/rodeo-builder ]]; then
+    echo "==> Removing the former Apache Settings page (rodeo builder serves it)"
+    rm -f /usr/local/sbin/rodeo-builder-helper /etc/sudoers.d/rodeo-builder "$OLD_CONF"
+    rm -rf /srv/www/rodeo-builder
+    if [[ -n "$OLD_CONF" ]]; then
+      CTL="$(command -v apachectl || command -v apache2ctl || true)"
+      if [[ -n "$CTL" ]] && "$CTL" -t >/dev/null 2>&1; then
+        "$CTL" graceful >/dev/null 2>&1 || true
+      fi
+    fi
+  fi
 fi
 
 # ── 5d. Rodeo Builder service (systemd) ───────────────────────────────────────
@@ -434,11 +447,15 @@ else
 fi
 if [[ "$BUILDER_STATUS" == "running" ]]; then
   case "$RODEO_BUILDER_HOST" in
-    0.0.0.0|::) BUILDER_URL="http://$(hostname -f 2>/dev/null || hostname):8678/ (every interface)" ;;
-    *:*)        BUILDER_URL="http://[$RODEO_BUILDER_HOST]:8678/" ;;
-    *)          BUILDER_URL="http://$RODEO_BUILDER_HOST:8678/" ;;
+    0.0.0.0|::)          BUILDER_URL="https://$(hostname -f 2>/dev/null || hostname):8678/ (every interface)" ;;
+    127.*|localhost|::1) BUILDER_URL="http://$RODEO_BUILDER_HOST:8678/" ;;
+    *:*)                 BUILDER_URL="https://[$RODEO_BUILDER_HOST]:8678/" ;;
+    *)                   BUILDER_URL="https://$RODEO_BUILDER_HOST:8678/" ;;
   esac
   echo "  Rodeo Builder: $BUILDER_URL"
+  case "$BUILDER_URL" in
+    https*) echo "    HTTPS with a certificate from rodeo's own CA: import <builder url>ca.pem once in each browser" ;;
+  esac
   echo "    ${SYSTEMCTL[*]} status $BUILDER_UNIT; off: --no-builder; local only: --builder-host 127.0.0.1"
 fi
 if [[ "$RODEO_MODE" == "kvm-host" ]]; then

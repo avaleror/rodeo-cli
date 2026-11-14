@@ -20,7 +20,7 @@ rodeo up --profile <name>     # after Save to profiles
 ```
 
 On Linux with systemd the installer already runs it as `rodeo-builder.service`,
-listening on every interface, so the page is up on `http://<host>:8678/` without
+listening on every interface, so the page is up on `https://<host>:8678/` without
 starting it; see [Install](install.md#rodeo-builder-service) (`--no-builder` turns
 it off, `--builder-host 127.0.0.1` keeps it local). With `--host 0.0.0.0` (or `::`)
 `rodeo builder` answers to the machine's own host names and interface addresses,
@@ -284,11 +284,24 @@ out, with a warning) and the lab-in-a-box catalogue: `--labinabox <checkout>`,
 else `RODEO_LABINABOX_PATH`, else lab-in-a-box's latest release, fetched into
 `~/.rodeo/vendor/lab-in-a-box/` the way a deploy does.
 
+On loopback it speaks plain HTTP: nothing leaves the machine. On any other
+address it speaks HTTPS, with `--tls-cert` and `--tls-key` or, without them, a
+certificate signed by a CA of your own that it makes once in
+`~/.rodeo/builder/tls/` (`ca.pem`, key 0600). The certificate names this host's
+FQDN and short name, its addresses and every `--allow-host`, and is made again
+when a name is missing or it has less than 30 days left. Import `ca.pem` once in
+each browser, from `https://<host>:<port>/ca.pem` or the file, and every builder
+this CA signs for is trusted; until then the browser warns about the certificate.
+The CA is name-constrained to the domain of the names it was made for, so a
+later name outside them is reported at start and refused by browsers: remove
+`ca.pem` and `ca.key` to make a new CA (and import it again).
+
 | Option | Default | |
 |---|---|---|
 | `--host`, `--port` | `127.0.0.1`, `8678` | Where to listen (`--port 0` picks a free port). |
-| `--expose` | off | Required for a non-loopback `--host`: anyone who reaches it can save profiles as you. **Publish** then uses the github.com pages, never this host's GitHub login; **Deploy** and stored credentials need a login. |
-| `--allow-host NAME` | | Extra `Host` name to accept (the name or IP clients use with `--expose`). |
+| `--expose` | off | Required for a non-loopback `--host`, served over HTTPS: anyone who reaches it can save profiles as you. **Publish** then uses the github.com pages, never this host's GitHub login; **Deploy** and stored credentials need a login. |
+| `--allow-host NAME` | | Extra `Host` name to accept (the name or IP clients use with `--expose`); also put in the generated certificate. |
+| `--tls-cert FILE`, `--tls-key FILE` | rodeo's own CA | PEM certificate (with its chain) and key to serve HTTPS with: one from your CA, or certbot's `fullchain.pem` and `privkey.pem`. |
 | `--labinabox` | latest release | lab-in-a-box checkout for the catalogue and the lab-builder. |
 | `--lab-builder-url URL` (`RODEO_LAB_BUILDER_URL`) | the published lab-builder | A lab-builder you already run (for example on an automation node) for the page to link to and embed; nothing is started. |
 | `--start-lab-builder` | off | Start the checkout's own dynamic lab-builder. Loopback `--host` only. |
@@ -333,19 +346,20 @@ hover.
 ## Settings and stored credentials
 
 **Settings**, at the right of the header on the live builder, opens the
-Settings page in a new tab: `https://<builder host>/rodeo-builder/settings/`.
-It keeps the credentials you deploy with — SCC registration codes, registry and
+Settings page in a new tab: `/rodeo-builder/settings/` on the builder's own
+address and port. It keeps the credentials you deploy with — SCC registration codes, registry and
 Application Collection logins, AWS keys, SSH keys, GitHub tokens, or any
 `key: value` fields — encrypted on that host, one file per credential in
 root's `~/.rodeo/vault/`, the store the builder reads.
 
-The page is served by the host's web server (Apache, set up by `install.sh` when
-installed as root, see [Install](install.md#settings-page)), over HTTPS only, and only to
-a user who logs in: the browser asks for a user from
-`/etc/rodeo-builder/htpasswd`, and **Cancel** shows a page with **Log in** (ask
-again) and **Close**. Its API, `/rodeo-builder/admin?action=list|add|delete`,
-answers `403` without HTTPS, `401` without a logged-in user and `415` to a POST
-that is not `application/json`.
+The page is served by `rodeo builder` itself and uses its API (`GET vault`,
+`POST vault-add` and `vault-delete`, with the page's token). Adding or deleting a
+credential needs a login: the browser asks for a user from the login file
+(`rodeo logins add <user>`; bcrypt hashes in htpasswd format,
+`/etc/rodeo-builder/htpasswd` or else `~/.rodeo/builder/htpasswd`, see
+[Install](install.md#settings-page)) the first time, and an `--expose` builder
+asks before listing anything. Off loopback the builder speaks HTTPS, so the login
+and the values never cross the network in the clear.
 
 - Each credential has its own password, at least 8 characters, asked when it is
   added, every time it is used and to delete it: a delete with the wrong
@@ -361,13 +375,10 @@ that is not `application/json`.
   opens without a password; an encrypted one asks for its passphrase.
 - Failed passwords and logins wait longer from the fifth in a row on: 1 minute,
   then 2, 4, … up to 1 hour between tries. A success resets the count.
-- The builder's own API adds and deletes credentials too, for scripts:
-  `POST /api?action=vault-add` (`{name, type, fields, password}`) and
-  `vault-delete` (`{id, password}`), with the page's `X-Rodeo-Builder-Token` and
-  an `Authorization: Basic` login checked against `/etc/rodeo-builder/htpasswd`
-  (Apache's `htpasswd` tool). Without a login they answer `401`. An `--expose`
-  builder serves plain HTTP, so the login crosses the network unencrypted
-  there: prefer the Settings page.
+- The same API serves scripts: `POST /api?action=vault-add`
+  (`{name, type, fields, password}`) and `vault-delete` (`{id, password}`), with
+  the page's `X-Rodeo-Builder-Token` and an `Authorization: Basic` login checked
+  against `/etc/rodeo-builder/htpasswd`. Without a login they answer `401`.
 - In the deploy dialog, each secret the lab asks for offers **Use stored…** with
   the credentials that can fill it. After the password, the page fills that
   secret and every other one the same credential provides (an AWS credential

@@ -449,7 +449,7 @@ let credAsk = null;
 function askCredential(e, items) {
   const type = typeLabel(e.credential);
   $("#credTitle").textContent = items.length ? "Which " + type + "?" : "No credential for " + e.name;
-  const settings = vaultOn() ? $("#settingsBtn").href + "?add=" + encodeURIComponent(e.credential) : "";
+  const settings = vaultOn() ? $("#settingsBtn").getAttribute("href") + "?add=" + encodeURIComponent(e.credential) : "";
   fill($("#credBody"), items.length
     ? [el("p", { class: "note muted", text: e.name + " can use any of these stored credentials. You'll be asked for its password." }),
       el("div", { class: "choice", role: "radiogroup", "aria-label": type },
@@ -2364,8 +2364,8 @@ async function stopDeploy() {
 // ── stored credentials (live server, after a login on an exposed one; GET vault) ──
 // Each credential is encrypted under its own password, asked every time it is opened. Neither
 // passwords nor decrypted values are kept: not in state, not in storage, and not in the DOM once
-// a dialog closes. They are added and deleted on the Settings page (/rodeo-builder/settings/ over
-// HTTPS on this host, behind the web server's login), which the header's Settings link opens.
+// a dialog closes. They are added and deleted on the Settings page (/rodeo-builder/settings/ on this
+// server; writes need a login), which the header's Settings link opens.
 
 let vaultAsk = null;
 
@@ -2924,7 +2924,6 @@ async function init() {
       state.deploy = await startupGet("deploy").catch((err) => ({ available: false, reason: err.message, current: null }));
       if (state.deploy.current && state.deploy.current.status === "running") pollDeploy();
       state.vault = await startupGet("vault").catch((err) => ({ available: false, reason: err.message, types: [], items: [] }));
-      $("#settingsBtn").href = "https://" + location.hostname + "/rodeo-builder/settings/";
       $("#settingsBtn").hidden = false;
       setTip($("#saveBtn"), "Writes this rodeo to " + state.server.profiles_dir + "/<name>/ on this host, "
         + "so rodeo up --profile <name> deploys it here.");

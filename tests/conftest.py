@@ -122,8 +122,9 @@ SCHEMA_SNAPSHOT = Path(__file__).parent / "fixtures" / "labinabox_schema" / "sch
 
 
 def make_labinabox(root: Path) -> Path:
-    """A lab-in-a-box checkout whose lab-builder API answers a small catalogue, and the base
-    and add-on schemas of tests/fixtures/labinabox_schema/schema.json."""
+    """A lab-in-a-box checkout whose lab-builder API answers a small catalogue, one example lab
+    (``two-clients``: smlm plus two registered clients), and the base and add-on schemas of
+    tests/fixtures/labinabox_schema/schema.json."""
     lib = root / "webui" / "lib"
     lib.mkdir(parents=True)
     (lib / "api.py").write_text(
@@ -133,6 +134,18 @@ def make_labinabox(root: Path) -> Path:
         "def dispatch(action, method, params, body):\n"
         "    if action == 'base':\n"
         "        return 200, {{'sections': {{k: fields(SCHEMA[k]) for k in ('common', 'nodes', 'kclusters')}}}}\n"
+        "    if action == 'examples':\n"
+        "        return 200, {{'examples': [{{'name': 'two-clients.json.template', 'title': 'two clients',\n"
+        "            'description': 'SMLM and two registered clients', 'nodes': 3, 'kclusters': 0,\n"
+        "            'addons': ['client_registration', 'smlm']}}]}}\n"
+        "    if action == 'example':\n"
+        "        if params['name'][0] != 'two-clients.json.template':\n"
+        "            return 404, {{'error': 'no such example'}}\n"
+        "        return 200, {{'common': {{'mydomain': 'example.lab'}}, 'nodes': {{\n"
+        "            'smlm.example.lab': {{'addons': ['smlm']}},\n"
+        "            'c1.example.lab': {{'addons': [{{'client_registration': {{}}}}]}},\n"
+        "            'c2.example.lab': {{'addons': [{{'client_registration': {{}}}}]}}}},\n"
+        "            'client_registration': {{'client_registration_server': 'smlm.example.lab'}}}}\n"
         "    if action == 'schema':\n"
         "        name = params['name'][0].removeprefix('install_')\n"
         "        return (200, fields(SCHEMA['addons'][name])) if name in SCHEMA['addons'] else (400, {{'error': name}})\n"

@@ -224,6 +224,7 @@ def _zip(page) -> dict[str, str]:
 def test_loads_engines_library_and_previews(page):
     assert page.locator("#engines .engine-name").all_inner_texts() == ["native", "lab-in-a-box"]
     assert page.locator("#nativeEngines .engine-name").all_inner_texts() == ["suse-virt", "rancher", "suse-edge"]
+    assert page.locator("#profiles .engine-name").all_inner_texts() == ["rancher"]
     assert page.locator("#nativeEngines .engine.on .engine-name").inner_text() == "rancher"
     assert "First ride" in page.locator("#library").inner_text()
     assert page.locator("#libCount").inner_text() == "3"
@@ -277,15 +278,14 @@ def test_labinabox_engine_adds_needed_addons_and_definition(page):
     assert "lab missing: smlm" in page.locator("#coverage").inner_text()
     page.click(".chip.need >> text=+ smlm")
     assert page.locator("#coverage").inner_text() == "lab covers every chapter"
-    page.click(".seg button >> text=Open in Lab Builder")
     href = page.locator("#enginePanel a").get_attribute("href")
     assert href.endswith("/lab-builder/?addons=smlm")
     files = _zip(page)
     plan = yaml.safe_load(files["my-rodeo/rodeo-plan.yaml"])
     assert plan["type"] == "lab-in-a-box" and plan["lab_in_a_box"]["nodes"]["vm1"]["addons"] == ["smlm"]
     assert "my-rodeo/definition.yaml" in files and "my-rodeo/checks/check-manage-clients.sh" in files
-    page.click(".seg button >> text=Import existing lab")
-    page.click(".imports .engine >> text=smlm-workshop")
+    page.click("#labModes .engine >> text=examples")
+    page.click("#labs .engine >> text=smlm-workshop")
     files = _zip(page)
     assert yaml.safe_load(files["my-rodeo/rodeo-plan.yaml"])["lab_in_a_box"]["variant"] == "image"
     assert "my-rodeo/definition.yaml" not in files
@@ -533,12 +533,47 @@ def test_theme_toggle(page):
     assert page.locator("#logo").get_attribute("src").endswith("horseshoe-mark-light.svg")
 
 
+def test_example_labs_of_the_checkout_are_taken_like_an_uploaded_lab(page):
+    page.click(".card")
+    page.click(".engine >> text=lab-in-a-box")
+    assert page.locator("#labModes .engine-name").all_inner_texts() == ["create", "modify", "examples"]
+    assert page.locator("#labModes .engine[aria-disabled=true] .engine-name").inner_text() == "modify"
+    assert page.locator("#labModes .engine[aria-disabled=true]").get_attribute("title") == "no lab selected"
+    page.click("#labModes .engine >> text=examples")
+    assert page.locator("#labs .engine-name").all_inner_texts() == ["smlm-workshop", "two clients"]
+    assert page.locator("#labCount").inner_text() == "2 OF 2" and page.locator("#labsMore").is_hidden()
+    example = page.locator("#labs .engine", has_text="two clients")
+    assert example.locator(".engine-title").inner_text() == "3 nodes" and example.get_attribute("title") == "two clients"
+    version = page.locator("#labVersion").inner_text()
+    assert example.locator(".official").inner_text() == version and page.locator("#labs .official").count() == 1
+    assert page.locator("#labLegend").inner_text() == ("shipped with lab-in-a-box " + version).strip()
+    page.fill("#labFilter", "client")
+    assert page.locator("#labs .engine-name").all_inner_texts() == ["smlm-workshop", "two clients"]
+    page.fill("#labFilter", "two")
+    assert page.locator("#labs .engine-name").all_inner_texts() == ["two clients"]
+    example.click()
+    sync_api.expect(page.locator("#toast")).to_contain_text("Lab from lab-in-a-box example two-clients.json.template")
+    sync_api.expect(example).to_have_class("engine on")
+    panel = page.locator("#enginePanel")
+    sync_api.expect(panel).to_contain_text("SMLM and two registered clients")
+    assert panel.locator("h3 .official").inner_text() == ("shipped with lab-in-a-box " + version).strip()
+    assert panel.locator(".chip.ok").all_inner_texts()[:2] == ["client_registration", "smlm"]
+    assert page.locator("#labModes .engine[aria-disabled=true]").count() == 0
+    page.click("#labModes .engine >> text=modify")
+    sync_api.expect(panel).to_contain_text("two clients · 3 nodes")
+    sync_api.expect(page.locator("#enginePanel .lab-summary")).to_be_visible()
+    assert page.locator("#enginePanel .lab-unknown").count() == 0
+    files = _zip(page)
+    lab = yaml.safe_load(files["my-rodeo/rodeo-plan.yaml"])["lab_in_a_box"]["lab"]
+    assert set(lab["nodes"]) == {"smlm.example.lab", "c1.example.lab", "c2.example.lab"}
+    assert lab["client_registration"]["client_registration_server"] == "${node_fqdn:smlm}"
+
+
 def test_upload_lab_json_brings_its_addons(page, tmp_path):
     lab = tmp_path / "lab.json"
     lab.write_text('{"common": {}, "nodes": {"a.lab": {"addons": ["smlm", {"client_registration": {}}]}}}')
     page.click(".card")
     page.click(".engine >> text=lab-in-a-box")
-    page.click(".seg button >> text=Import existing lab")
     page.set_input_files("#enginePanel input[type=file]", str(lab))
     sync_api.expect(page.locator("#enginePanel")).to_contain_text("client_registration")
     files = _zip(page)
@@ -546,7 +581,14 @@ def test_upload_lab_json_brings_its_addons(page, tmp_path):
     assert "my-rodeo/lab.json" not in files
     page.set_input_files("#enginePanel input[type=file]", files=[{"name": "bad.json", "mimeType": "application/json",
                                                                   "buffer": b"{}"}])
-    sync_api.expect(page.locator("#toast")).to_contain_text("Not a lab-in-a-box lab.json")
+    sync_api.expect(page.locator("#toast")).to_contain_text("Not a lab-in-a-box lab definition")
+    yaml_lab = tmp_path / "lab.yaml"
+    yaml_lab.write_text("common:\n  mydomain: y.lab\nnodes:\n  b.lab:\n    addons:\n      - smlm\n")
+    page.click("#labModes .engine >> text=examples")
+    page.set_input_files("#enginePanel input[type=file]", str(yaml_lab))
+    sync_api.expect(page.locator("#toastText")).to_contain_text("Lab from lab.yaml: smlm")
+    files = _zip(page)
+    assert yaml.safe_load(files["my-rodeo/rodeo-plan.yaml"])["lab_in_a_box"]["lab"] == {"common": {"mydomain": "y.lab"}, "nodes": {"b.lab": {"addons": ["smlm"]}}}
 
 
 def test_uploaded_lab_keeps_no_secret_and_links_its_nodes(page, tmp_path):
@@ -558,7 +600,6 @@ def test_uploaded_lab_keeps_no_secret_and_links_its_nodes(page, tmp_path):
         "client_registration": {"client_registration_server": "smlm.rodeo.lab"}}))
     page.click(".card")
     page.click(".engine >> text=lab-in-a-box")
-    page.click(".seg button >> text=Import existing lab")
     page.set_input_files("#enginePanel input[type=file]", str(lab))
     sync_api.expect(page.locator("#toast")).to_contain_text("smlm_admin_pass")
     sync_api.expect(page.locator("#enginePanel .lab-warnings")).to_contain_text("db.rodeo.lab")
@@ -577,7 +618,6 @@ def test_lab_panel_lists_the_labs_nodes_and_what_rodeo_does_not_drive(page, tmp_
         "h1.lab": {"myip": "10.0.0.5", "VM_CPU": "8", "VM_MEM": "16384", "kcluster": "hv", "addons": ["smlm"]}}}))
     page.click(".card")
     page.click(".engine >> text=lab-in-a-box")
-    page.click(".seg button >> text=Import existing lab")
     assert page.locator("#enginePanel .lab-summary").count() == 0
     page.set_input_files("#enginePanel input[type=file]", str(lab))
     row = page.locator("#enginePanel .lab-summary tbody tr")
@@ -599,8 +639,8 @@ def test_lab_panel_lists_the_labs_nodes_and_what_rodeo_does_not_drive(page, tmp_
 def test_bundled_lab_in_a_box_rodeos_pass_the_schema_check(page):
     page.click(".card")
     page.click(".engine >> text=lab-in-a-box")
-    page.click(".seg button >> text=Import existing lab")
-    buttons = page.locator("#enginePanel .imports .engine")
+    page.click("#labModes .engine >> text=examples")
+    buttons = page.locator("#labs .engine")
     with_lab = 0
     for i in range(buttons.count()):
         name = buttons.nth(i).locator(".engine-name").inner_text()
@@ -620,33 +660,42 @@ def test_selected_engine_is_marked(page):
     assert selected.count() == 1
     assert selected.locator(".engine-name").inner_text() == "rancher"
     assert page.locator("#nativeEngines .engine[aria-checked=true]").count() == 1
-    assert selected.locator(".engine-title").inner_text() == "Rancher Prime" and "VMs" not in selected.inner_text()
+    assert selected.locator(".engine-title").inner_text() == "Rancher Prime"
+    assert selected.locator(".engine-sub").inner_text() == "6 VMs · 26 GiB RAM"
+    assert page.locator("#profiles .engine.on .engine-name").inner_text() == "rancher"
     assert "rancher" in page.locator("#engineNow").inner_text()
     page.click(".engine >> text=suse-virt")
     assert page.locator("#nativeEngines .engine.on .engine-name").inner_text() == "suse-virt"
     assert page.locator("#nativeEngines .engine.on").get_attribute("aria-checked") == "true"
+    assert page.locator("#profiles .engine.on .engine-name").inner_text() == "harvester"
+    page.click("#profiles .engine >> text=harvester-2n")
+    assert page.locator("#profiles .engine.on .engine-name").inner_text() == "harvester-2n"
     page.click(".engine >> text=lab-in-a-box")
-    sync_api.expect(page.locator("#nativeEngines")).to_be_hidden()
+    assert page.locator("#engines .engine.on .engine-name").inner_text() == "lab-in-a-box"
+    sync_api.expect(page.locator("#nativeLevel")).to_be_hidden()
+    sync_api.expect(page.locator("#profileLevel")).to_be_hidden()
     page.click(".engine >> text=native")
     assert page.locator("#nativeEngines .engine.on .engine-name").inner_text() == "suse-virt"
+    assert page.locator("#profiles .engine.on .engine-name").inner_text() == "harvester"
 
 
 def test_native_engines_offer_every_bundled_profile_of_their_type_as_base(page):
     page.click(".engine >> text=suse-virt")
-    options = page.locator("#baseProfile option").evaluate_all("os => os.map(o => o.value)")
-    assert options[0] == "harvester" and page.locator("#baseProfile").input_value() == "harvester"
+    options = page.locator("#profiles .engine-name").all_inner_texts()
+    assert options[0] == "harvester" and page.locator("#profiles .engine.on .engine-name").inner_text() == "harvester"
+    assert page.locator("#profiles .engine.on .engine-title").inner_text() == "default profile"
     assert {"harvester-2n", "harvester-ha", "test", "virt-workshop", "virt-workshop-2n"} <= set(options)
     assert "rancher" not in options and "rancher-test" not in options
-    page.select_option("#baseProfile", "harvester-2n")
+    page.click("#profiles .engine >> text=harvester-2n")
     sync_api.expect(page.locator("#engineNow")).to_contain_text("harvester-2n")
     sync_api.expect(page.locator("#enginePanel")).to_contain_text("(harvester-2n profile)")
     page.click("[data-tab=plan]")
     assert "memory_mib: 16384" in page.locator("#planEditor").input_value()
-    page.select_option("#baseProfile", "harvester")
+    page.click("#profiles .engine >> text=harvester")
     sync_api.expect(page.locator("#engineNow")).not_to_contain_text("harvester-2n")
     assert "memory_mib: 20480" in page.locator("#planEditor").input_value()
     page.click(".engine >> text=rancher")
-    assert page.locator("#baseProfile option").evaluate_all("os => os.map(o => o.value)") == ["rancher"]
+    assert page.locator("#profiles .engine-name").all_inner_texts() == ["rancher"]
 
 
 def _start(page, title):
@@ -1460,13 +1509,11 @@ def test_live_publish_without_gh_says_how_to_log_in(page, monkeypatch):
 @pytest.mark.parametrize("page", ["live_local_lab_builder"], indirect=True)
 def test_live_links_and_embeds_its_own_lab_builder_on_the_pages_host(page):
     page.click(".engine >> text=lab-in-a-box")
-    assert page.locator(".seg button").all_text_contents() == ["Embed here", "Import existing lab", "Open in Lab Builder"]
-    assert page.locator(".seg button.on").text_content() == "Embed here"
-    assert page.locator("#enginePanel input[type=file]").count() == 0
-    page.click(".seg button >> text=Open in Lab Builder")
+    assert page.locator("#labModes .engine-name").all_inner_texts() == ["create", "modify", "examples"]
+    assert page.locator("#labModes .engine.on .engine-name").inner_text() == "create"
+    assert page.locator("#enginePanel input[type=file]").count() == 1
     href = page.locator("#enginePanel a", has_text="Open lab-builder").get_attribute("href")
     assert href == "http://127.0.0.1:9/lab-builder/"
-    page.click(".seg button >> text=Embed here")
     page.click("#enginePanel button >> text=Open embedded lab-builder")
     src = page.locator("#embedFrame").get_attribute("src")
     assert src.startswith("http://127.0.0.1:9/lab-builder/?embed=1&origin=http%3A%2F%2F127.0.0.1%3A")
@@ -1478,7 +1525,6 @@ def test_live_takes_the_lab_its_own_lab_builder_hands_back(page):
                 "</script>")
     page.route("http://127.0.0.1:9/**", lambda route: route.fulfill(body=handback, content_type="text/html"))
     page.click(".engine >> text=lab-in-a-box")
-    page.click(".seg button >> text=Embed here")
     page.click("#enginePanel button >> text=Open embedded lab-builder")
     sync_api.expect(page.locator("#toastText")).to_have_text("Lab from the lab-builder: smlm")
     assert page.locator("#embedOverlay").is_hidden()
@@ -1917,9 +1963,9 @@ def test_live_embedded_lab_builder_edits_the_workshops_lab(page):
     page.route("http://127.0.0.1:9/**", lambda route: route.fulfill(body=echo, content_type="text/html"))
     page.click(".card")
     page.click(".engine >> text=lab-in-a-box")
-    page.click(".seg button >> text=Import existing lab")
-    page.click(".imports .engine >> text=smlm-workshop")
-    page.click(".seg button >> text=Embed here")
+    page.click("#labModes .engine >> text=examples")
+    page.click("#labs .engine >> text=smlm-workshop")
+    page.click("#labModes .engine >> text=modify")
     page.click("#enginePanel button >> text=Open embedded lab-builder")
     sync_api.expect(page.locator("#toastText")).to_contain_text("Lab from the lab-builder: client_registration, smlm")
     plan = yaml.safe_load(_zip(page)["my-rodeo/rodeo-plan.yaml"])
@@ -1931,8 +1977,8 @@ def test_live_embedded_lab_builder_edits_the_workshops_lab(page):
 
 def test_imported_workshop_lists_what_its_lab_provides(page):
     page.click(".engine >> text=lab-in-a-box")
-    page.click(".seg button >> text=Import existing lab")
-    page.click(".imports .engine >> text=smlm-workshop")
+    page.click("#labModes .engine >> text=examples")
+    page.click("#labs .engine >> text=smlm-workshop")
     panel = page.locator("#enginePanel")
     sync_api.expect(panel).to_contain_text("Provides")
     assert panel.get_by_text("Lab add-ons").count() == 0
@@ -1952,5 +1998,4 @@ def test_provides_offers_kubernetes_clusters_and_infrastructure_too(page):
     page.click(".card")
     plan = yaml.safe_load(_zip(page)["my-rodeo/rodeo-plan.yaml"])
     assert plan["lab_in_a_box"]["nodes"]["vm1"]["addons"] == ["smlm"]
-    page.click(".seg button >> text=Open in Lab Builder")
     assert page.locator("#enginePanel a").get_attribute("href").endswith("/lab-builder/?addons=smlm")

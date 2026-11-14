@@ -96,7 +96,7 @@ def test_add_list_and_delete_with_the_password(browser_page, tmp_path):
     assert page.locator(".cred-table thead th").all_inner_texts()[:6] == [
         "NAME", "APPLICATION", "ENGINE", "ENCRYPTED", "ADDED", "LAST USED"]
     sync_api.expect(page.locator("#fileSecretList .chip")).to_have_text(["harvester_token", "my_regcode"])
-    assert page.locator("a.btn[href='/']").inner_text() == "Builder"
+    assert page.locator("a.btn[href='/']").inner_text() == "BUILDER"
 
     page.click("#vaultAddBtn")
     page.select_option("#vaType", "scc")

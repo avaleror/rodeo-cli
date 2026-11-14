@@ -635,7 +635,7 @@ def test_native_engines_offer_every_bundled_profile_of_their_type_as_base(page):
     page.click(".engine >> text=suse-virt")
     options = page.locator("#baseProfile option").evaluate_all("os => os.map(o => o.value)")
     assert options[0] == "harvester" and page.locator("#baseProfile").input_value() == "harvester"
-    assert {"harvester-2n", "harvester-ha", "test", "virt-workshop-aws", "virt-workshop-aws-2n"} <= set(options)
+    assert {"harvester-2n", "harvester-ha", "test", "virt-workshop", "virt-workshop-2n"} <= set(options)
     assert "rancher" not in options and "rancher-test" not in options
     page.select_option("#baseProfile", "harvester-2n")
     sync_api.expect(page.locator("#engineNow")).to_contain_text("harvester-2n")

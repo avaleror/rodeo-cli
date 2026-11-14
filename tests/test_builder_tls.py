@@ -49,7 +49,7 @@ def test_the_ca_is_made_once_with_constraints_and_a_private_key(tmp_path):
     ca = x509.load_pem_x509_certificate(made.ca.read_bytes())
     assert ca.extensions.get_extension_for_class(x509.BasicConstraints).value.ca is True
     assert ca.extensions.get_extension_for_class(x509.NameConstraints).critical
-    assert "rodeo builder CA builder.example.test" in ca.subject.rfc4514_string()
+    assert ca.subject.rfc4514_string() == "CN=rodeo builder CA"
     again = tls.ensure("0.0.0.0", directory=tmp_path / "tls")
     assert not again.ca_created and again.ca.read_bytes() == made.ca.read_bytes()
     assert again.cert.read_bytes() == made.cert.read_bytes()
@@ -97,3 +97,12 @@ def test_a_server_certificate_needs_a_name(tmp_path, monkeypatch):
     monkeypatch.setattr(tls.socket, "getaddrinfo", lambda host, port: [])
     with pytest.raises(ValueError, match="at least one name"):
         tls.ensure("0.0.0.0", directory=tmp_path)
+
+
+def test_a_long_host_name_fits_the_certificates(monkeypatch, tmp_path):
+    long_name = "runner." + "x" * 70 + ".internal.example.test"
+    monkeypatch.setattr(tls.socket, "getfqdn", lambda *a: long_name)
+    made = tls.ensure("0.0.0.0", directory=tmp_path / "tls")
+    cert = x509.load_pem_x509_certificate(made.cert.read_bytes())
+    assert cert.subject.rfc4514_string() == "CN=rodeo builder"
+    assert long_name in _san(cert)[0] and made.uncovered == []

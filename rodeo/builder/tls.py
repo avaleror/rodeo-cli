@@ -139,7 +139,7 @@ def ensure_ca(directory: Path, names: list[str], ips: list[IPAddr]) -> tuple[x50
         return existing[0], existing[1], False
     key = ec.generate_private_key(ec.SECP256R1())
     now = datetime.now(timezone.utc)
-    subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "rodeo builder CA " + (names[0] if names else str(ips[0]) if ips else "local"))])
+    subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "rodeo builder CA")])
     cert = (x509.CertificateBuilder().subject_name(subject).issuer_name(subject).public_key(key.public_key())
             .serial_number(x509.random_serial_number())
             .not_valid_before(now - timedelta(minutes=5)).not_valid_after(now + timedelta(days=CA_DAYS))
@@ -184,7 +184,7 @@ def ensure_server_cert(directory: Path, ca: x509.Certificate, ca_key: ec.Ellipti
     now = datetime.now(timezone.utc)
     san: list[x509.GeneralName] = [x509.DNSName(n) for n in names] + [x509.IPAddress(ip) for ip in ips]
     cert = (x509.CertificateBuilder()
-            .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, names[0] if names else str(ips[0]))]))
+            .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "rodeo builder")]))
             .issuer_name(ca.subject).public_key(key.public_key()).serial_number(x509.random_serial_number())
             .not_valid_before(now - timedelta(minutes=5)).not_valid_after(now + timedelta(days=SERVER_DAYS))
             .add_extension(x509.SubjectAlternativeName(san), critical=False)

@@ -540,13 +540,19 @@ def test_example_labs_of_the_checkout_are_taken_like_an_uploaded_lab(page):
     assert page.locator("#labModes .engine[aria-disabled=true] .engine-name").inner_text() == "modify"
     assert page.locator("#labModes .engine[aria-disabled=true]").get_attribute("title") == "no lab selected"
     page.click("#labModes .engine >> text=examples")
-    assert page.locator("#labs .engine-name").all_inner_texts() == ["smlm-workshop", "two clients"]
-    assert page.locator("#labCount").inner_text() == "2 OF 2" and page.locator("#labsMore").is_hidden()
+    assert page.locator("#labs .engine-name").all_inner_texts() == ["house", "smlm-workshop", "two clients"]
+    assert page.locator("#labCount").inner_text() == "3 OF 3" and page.locator("#labsMore").is_hidden()
     example = page.locator("#labs .engine", has_text="two clients")
     assert example.locator(".engine-title").inner_text() == "3 nodes" and example.get_attribute("title") == "two clients"
     version = page.locator("#labVersion").inner_text()
-    assert example.locator(".official").inner_text() == version and page.locator("#labs .official").count() == 1
+    assert example.locator(".official").inner_text() == version
+    # Only what the release ships is starred: not this host's own example, not a bundled rodeo.
+    assert page.locator("#labs .official").count() == 1
+    assert page.locator("#labs .engine", has_text="house").locator(".official").count() == 0
     assert page.locator("#labLegend").inner_text() == ("shipped with lab-in-a-box " + version).strip()
+    page.click("#labs .engine >> text=house")
+    sync_api.expect(page.locator("#enginePanel")).to_contain_text("example lab of this host")
+    assert page.locator("#enginePanel h3 .official").count() == 0
     page.fill("#labFilter", "client")
     assert page.locator("#labs .engine-name").all_inner_texts() == ["smlm-workshop", "two clients"]
     page.fill("#labFilter", "two")
@@ -557,16 +563,31 @@ def test_example_labs_of_the_checkout_are_taken_like_an_uploaded_lab(page):
     panel = page.locator("#enginePanel")
     sync_api.expect(panel).to_contain_text("SMLM and two registered clients")
     assert panel.locator("h3 .official").inner_text() == ("shipped with lab-in-a-box " + version).strip()
+    sync_api.expect(panel).to_contain_text("example lab of lab-in-a-box")
     assert panel.locator(".chip.ok").all_inner_texts()[:2] == ["client_registration", "smlm"]
     assert page.locator("#labModes .engine[aria-disabled=true]").count() == 0
     page.click("#labModes .engine >> text=modify")
     sync_api.expect(panel).to_contain_text("two clients · 3 nodes")
+    page.click("#labModes .engine >> text=examples")
     sync_api.expect(page.locator("#enginePanel .lab-summary")).to_be_visible()
     assert page.locator("#enginePanel .lab-unknown").count() == 0
     files = _zip(page)
     lab = yaml.safe_load(files["my-rodeo/rodeo-plan.yaml"])["lab_in_a_box"]["lab"]
     assert set(lab["nodes"]) == {"smlm.example.lab", "c1.example.lab", "c2.example.lab"}
     assert lab["client_registration"]["client_registration_server"] == "${node_fqdn:smlm}"
+
+
+@pytest.mark.parametrize("page", ["live_local_lab_builder"], indirect=True)
+def test_an_example_opens_in_the_lab_builder_inside_the_page(page):
+    """Picking an example offers the embedded lab-builder, not a tab of its own."""
+    page.click(".engine >> text=lab-in-a-box")
+    page.click("#labModes .engine >> text=examples")
+    page.click("#labs .engine >> text=two clients")
+    panel = page.locator("#enginePanel")
+    assert panel.locator("a", has_text="Open lab-builder").count() == 0
+    panel.get_by_role("button", name="Open embedded lab-builder").click()
+    sync_api.expect(page.locator("#embedOverlay")).to_be_visible()
+    assert page.locator("#embedFrame").get_attribute("src").startswith("http://127.0.0.1:9/lab-builder/?embed=1")
 
 
 def test_upload_lab_json_brings_its_addons(page, tmp_path):

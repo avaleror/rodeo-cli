@@ -61,7 +61,10 @@ runs `rodeo builder --no-open --host 0.0.0.0 --expose`, listening on every
 interface over HTTPS (a certificate signed by rodeo's own CA; import
 `https://<this host>:8678/ca.pem` once in each browser, see
 [Rodeo Builder](rodeo-builder.md#the-live-builder)), and is restarted on every
-update, so it always runs the code just installed.
+update, by the installer and by `rodeo self-update` (`--no-restart` skips it), so
+it always runs the code just installed. A server left running on older code keeps
+serving the page it read at start-up while handing out the new scripts, and the
+page then fails to open.
 
 On every interface the builder answers to this machine's host names and the
 addresses on its interfaces, read each time it starts; any other `Host` is

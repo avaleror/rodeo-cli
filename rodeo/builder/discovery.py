@@ -540,8 +540,10 @@ for c in body.get("components", []) if status == 200 else []:
 print(json.dumps(out))
 """
 
-# The checkout's example labs: its catalogue entries (name, title, description, nodes, kclusters,
-# addons) with each one's lab definition; [] when the release has no examples API.
+# The checkout's example labs: its catalogue entries (name, title, description, source, nodes,
+# kclusters, addons) with each one's lab definition; [] when the release has no examples API.
+# `source` is "shipped" (the release's own examples/) or "operator" (its EXAMPLE_LABS_DIR, by
+# default /etc/lab_creation/examples); "" where the release does not report it.
 _LIAB_EXAMPLES = r"""
 import json, os, sys
 repo = sys.argv[1]
@@ -555,7 +557,8 @@ out = []
 for e in body.get("examples", []) if status == 200 else []:
     status, lab = api.dispatch("example", "GET", {"name": [e["name"]]}, b"")
     if status == 200 and isinstance(lab, dict) and isinstance(lab.get("nodes"), dict):
-        out.append({k: e.get(k) for k in ("name", "title", "description", "nodes", "kclusters", "addons")} | {"lab": lab})
+        out.append({k: e.get(k) for k in ("name", "title", "description", "nodes", "kclusters", "addons")}
+                   | {"source": e.get("source") or "", "lab": lab})
 print(json.dumps(out))
 """
 
@@ -592,9 +595,13 @@ def _run_liab(script: str, checkout: Path) -> tuple["subprocess.CompletedProcess
 
 
 def labinabox_examples(checkout: Path) -> list[dict[str, Any]]:
-    """The example labs a lab-in-a-box checkout ships, from its own lab-builder API: ``name``,
-    ``title``, ``description``, ``nodes`` and ``kclusters`` counts, ``addons`` and the ``lab``
-    definition itself. [] when the checkout offers none. Raises RuntimeError when it can't answer."""
+    """The example labs a lab-in-a-box checkout offers, from its own lab-builder API: ``name``,
+    ``title``, ``description``, ``source``, ``nodes`` and ``kclusters`` counts, ``addons`` and the
+    ``lab`` definition itself.
+
+    ``source`` is ``"shipped"`` for the release's own examples and ``"operator"`` for the host's
+    (``EXAMPLE_LABS_DIR``); it is ``""`` on a release that does not report it, which counts as not
+    shipped. [] when the checkout offers none. Raises RuntimeError when it can't answer."""
     r, _ = _run_liab(_LIAB_EXAMPLES, checkout)
     if r.returncode != 0:
         raise RuntimeError("lab-in-a-box examples from {}: {}".format(checkout, r.stderr.strip()[-300:]))

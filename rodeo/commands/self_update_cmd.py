@@ -90,7 +90,24 @@ def _pyproject_version() -> str:
     return "unknown"
 
 
-def run_self_update(branch: str | None = None, *, force: bool = False) -> None:
+def _restart_builder() -> None:
+    """Restart the Rodeo Builder service when this host runs it, so it serves the new code."""
+    from .. import systemd
+
+    if not systemd.unit_is_active():
+        return
+    console.print(f"Restarting {systemd.BUILDER_UNIT}...")
+    ok, why = systemd.restart_unit()
+    if ok:
+        console.print(f"[green]✓  {systemd.BUILDER_UNIT} restarted[/green] (it now serves the new page).")
+    else:
+        console.print(
+            f"[yellow]⚠  {systemd.BUILDER_UNIT} did not restart: {why}\n"
+            f"   It keeps serving the old page until you restart it yourself.[/yellow]"
+        )
+
+
+def run_self_update(branch: str | None = None, *, force: bool = False, restart: bool = True) -> None:
     """Update rodeo-cli to the latest upstream code and reinstall the CLI.
 
     Fetches the remote and hard-aligns the working tree to the tip of the
@@ -223,11 +240,13 @@ def run_self_update(branch: str | None = None, *, force: bool = False) -> None:
 
     if head_before == target_sha and version_before == version_after:
         console.print(f"\n[bold green]✓  Already up to date at {version_after}[/bold green] ({target_ref}).")
-    else:
-        console.print(
-            f"\n[bold green]✓  rodeo-cli updated to {version_after}[/bold green] "
-            f"(was {version_before}, now at {target_ref} {target_sha[:8]})."
-        )
+        return
+    console.print(
+        f"\n[bold green]✓  rodeo-cli updated to {version_after}[/bold green] "
+        f"(was {version_before}, now at {target_ref} {target_sha[:8]})."
+    )
+    if restart:
+        _restart_builder()
 
 
 @click.command("self-update")
@@ -235,11 +254,15 @@ def run_self_update(branch: str | None = None, *, force: bool = False) -> None:
               help="Align to this branch instead of the remote default (main). For testing pre-release code.")
 @click.option("--force", is_flag=True, default=False,
               help="Discard uncommitted changes and unpushed local commits instead of refusing.")
-def self_update_cmd(branch: str | None, force: bool) -> None:
+@click.option("--restart/--no-restart", default=True, show_default=True,
+              help="Restart the Rodeo Builder service (rodeo-builder.service) when this host runs it, "
+                   "so it serves the updated page.")
+def self_update_cmd(branch: str | None, force: bool, restart: bool) -> None:
     """Update rodeo-cli to the latest upstream code and reinstall the CLI.
 
     Fetches the remote and hard-aligns the working tree to the tip of the
-    default branch (origin/main), then reinstalls. Fails loudly rather than
-    leaving the host on stale code.
+    default branch (origin/main), then reinstalls and, unless --no-restart,
+    restarts the Rodeo Builder service on a host that runs it. Fails loudly
+    rather than leaving the host on stale code.
     """
-    run_self_update(branch, force=force)
+    run_self_update(branch, force=force, restart=restart)

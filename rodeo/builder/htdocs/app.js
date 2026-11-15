@@ -679,10 +679,12 @@ function engineCard({ name, title, sub, on, onclick, info, id, tip, disabled, of
       class: "engine" + (on ? " on" : ""), type: "button", role: "radio", "aria-checked": String(on), tabindex: on ? "0" : "-1",
       "aria-disabled": disabled ? "true" : null, title: tip || null, onclick: disabled ? null : onclick, onkeydown: engineKey,
     }, el("span", { class: "engine-top" }, el("span", { class: "radio", "aria-hidden": "true" }),
-      el("span", { class: "engine-name", text: name }),
-      official ? el("span", { class: "official", title: "Shipped with lab-in-a-box" + (official.version ? " " + official.version : "") },
-        officialStar(), official.version ? el("span", { text: official.version }) : null) : null),
-    el("span", { class: "engine-title", text: title }),
+      el("span", { class: "engine-name", text: name })),
+    official
+      ? el("span", { class: "lab-line" }, el("span", { class: "engine-title", text: title }),
+          el("span", { class: "official", title: "Shipped with lab-in-a-box" + (official.version ? " " + official.version : "") },
+            officialStar(), official.version ? el("span", { text: official.version }) : null))
+      : el("span", { class: "engine-title", text: title }),
     sub ? el("span", { class: "engine-sub", text: sub }) : null),
     info ? el("button", { class: "info-btn", type: "button", text: "i", title: "About " + name, "aria-label": "About " + name,
       "aria-expanded": String(state.info === id), "aria-controls": "info-" + id, onclick: () => toggleInfo(id) }) : null,
@@ -712,11 +714,14 @@ const OLD_LAB_MODES = { embed: "create", import: "examples", link: "create" };
 function labChoices() {
   const nodes = (lab) => Object.keys((lab || {}).nodes || {}).length;
   const kclusters = (lab) => Object.keys((lab || {}).kclusters || {}).length;
-  const bundled = state.liab.imports.map((i) => ({ id: "rodeo:" + i.profile, name: i.profile, official: null, nodes: nodes(i.lab),
+  const bundled = state.liab.imports.map((i) => ({ id: "rodeo:" + i.profile, name: i.profile, official: null,
+    origin: "bundled rodeo of rodeo-cli", nodes: nodes(i.lab),
     kclusters: kclusters(i.lab), addons: i.addons, description: "Bundled rodeo of rodeo-cli: plan, lab and chapters.",
     on: state.importProfile === i.profile && !state.labJson,
     pick: () => { state.importProfile = i.profile; Object.assign(state, { labJson: null, labJsonFrom: "", labSecrets: [], labWarnings: [] }); render(); } }));
-  const shipped = state.liab.examples.map((x) => ({ id: "ex:" + x.name, name: x.title, official: { version: state.liab.version || "" },
+  const shipped = state.liab.examples.map((x) => ({ id: "ex:" + x.name, name: x.title,
+    official: x.source === "shipped" ? { version: state.liab.version || "" } : null,
+    origin: x.source === "operator" ? "example lab of this host" : "example lab of lab-in-a-box",
     nodes: x.nodes, kclusters: x.kclusters, addons: x.addons, description: x.description,
     on: !!state.labJson && state.labJsonFrom === x.name,
     pick: () => { state.importProfile = ""; useLab(x.lab, "lab-in-a-box example " + x.name, x.name); } }));
@@ -954,14 +959,17 @@ function renderEnginePanel() {
     if (picked) {
       box.append(el("h3", {}, picked.name, picked.official ? el("span", { class: "official" }, officialStar(),
         el("span", { text: "shipped with lab-in-a-box" + (picked.official.version ? " " + picked.official.version : "") })) : null),
-        el("p", { class: "mono muted", text: labSize(picked) + " · " + (picked.official ? "example lab of lab-in-a-box" : "bundled rodeo of rodeo-cli") }),
+        el("p", { class: "mono muted", text: labSize(picked) + " · " + picked.origin }),
         picked.official && picked.description ? el("p", { text: picked.description }) : null,
         el("span", { class: "label", text: "Add-ons" }),
         el("div", { class: "chips" }, picked.addons.length ? picked.addons.map((a) => el("span", { class: "chip ok", text: a })) : el("span", { class: "muted mono", text: "none" })));
     } else {
       box.append(el("h3", { text: "An example lab" }), el("p", { text: "Pick one above: a bundled rodeo, or an example lab shipped with lab-in-a-box." }));
     }
-    box.append(el("div", { class: "chips" }, upload, link));
+    box.append(el("div", { class: "chips" },
+      el("button", { class: "btn outline sm", type: "button", text: "Open embedded lab-builder",
+        title: picked ? "Opens " + picked.name + " in the lab-builder inside this page" : "Opens the lab-builder inside this page",
+        onclick: () => openEmbed(currentLab()) }), upload));
   }
   if (state.labJson) box.append(el("p", { class: "mono muted", text: "Lab from the lab-builder: saved in rodeo-plan.yaml as lab_in_a_box.lab." }));
   if (state.labJson && state.labWarnings.length) {

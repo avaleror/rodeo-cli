@@ -52,7 +52,8 @@ def _aws_plan(tmp_path: Path) -> Path:
     return lab
 
 
-def test_validate_aws_requires_provider(tmp_path):
+def test_validate_aws_requires_provider(tmp_path, monkeypatch):
+    monkeypatch.setattr("rodeo.providers.remote_up.on_ec2", lambda **_k: False)
     lab = tmp_path / "lab"
     lab.mkdir()
     (lab / "rodeo-plan.yaml").write_text(

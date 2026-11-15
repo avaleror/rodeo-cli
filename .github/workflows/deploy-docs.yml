@@ -29,7 +29,9 @@ jobs:
           python-version: '3.x'
           cache: pip
 
-      - run: pip install -r requirements-docs.txt
+      # build-builder-static.py imports rodeo.builder, so the package's own
+      # dependencies have to be installed, not only the docs ones.
+      - run: pip install -r requirements-docs.txt -e .
 
       # The Rodeo Builder's add-on picker lists the add-ons of lab-in-a-box's
       # latest release (the ref rodeo deploys by default).

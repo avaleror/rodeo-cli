@@ -170,3 +170,66 @@ def test_force_discards_local_work(repo, monkeypatch):
     result = CliRunner().invoke(su.self_update_cmd, ["--force"])
     assert result.exit_code == 0
     assert git.reset_called and git.head == "newsha"
+
+
+# ── restarting the Rodeo Builder service ──────────────────────────────────────
+# A self-update that leaves rodeo-builder.service running keeps the old page in
+# memory while serving the new app.js, and the page dies on markup it cannot find.
+
+
+def _advance(monkeypatch):
+    monkeypatch.setattr(su, "_git", FakeGit(head="oldsha", target_sha="newsha", align=True))
+    versions = iter(["0.10.3", "0.11.2"])
+    monkeypatch.setattr(su, "_installed_version", lambda: next(versions))
+
+
+def test_update_restarts_the_running_builder(repo, monkeypatch):
+    from rodeo import systemd
+
+    _advance(monkeypatch)
+    calls = []
+    monkeypatch.setattr(systemd, "unit_is_active", lambda unit=systemd.BUILDER_UNIT: True)
+    monkeypatch.setattr(systemd, "restart_unit", lambda unit=systemd.BUILDER_UNIT: (calls.append(unit), (True, ""))[1])
+    result = CliRunner().invoke(su.self_update_cmd, [])
+    assert result.exit_code == 0 and calls == [systemd.BUILDER_UNIT]
+    assert "restarted" in plain_output(result.output).lower()
+
+
+def test_update_leaves_a_host_without_the_service_alone(repo, monkeypatch):
+    from rodeo import systemd
+
+    _advance(monkeypatch)
+    monkeypatch.setattr(systemd, "unit_is_active", lambda unit=systemd.BUILDER_UNIT: False)
+    monkeypatch.setattr(systemd, "restart_unit", lambda unit=systemd.BUILDER_UNIT: pytest.fail("restarted anyway"))
+    result = CliRunner().invoke(su.self_update_cmd, [])
+    assert result.exit_code == 0 and "restart" not in plain_output(result.output).lower()
+
+
+def test_no_restart_skips_it(repo, monkeypatch):
+    from rodeo import systemd
+
+    _advance(monkeypatch)
+    monkeypatch.setattr(systemd, "unit_is_active", lambda unit=systemd.BUILDER_UNIT: pytest.fail("asked anyway"))
+    result = CliRunner().invoke(su.self_update_cmd, ["--no-restart"])
+    assert result.exit_code == 0
+
+
+def test_a_failed_restart_is_reported_but_the_update_stands(repo, monkeypatch):
+    from rodeo import systemd
+
+    _advance(monkeypatch)
+    monkeypatch.setattr(systemd, "unit_is_active", lambda unit=systemd.BUILDER_UNIT: True)
+    monkeypatch.setattr(systemd, "restart_unit", lambda unit=systemd.BUILDER_UNIT: (False, "job failed"))
+    result = CliRunner().invoke(su.self_update_cmd, [])
+    out = plain_output(result.output)
+    assert result.exit_code == 0 and "job failed" in out and "updated" in out.lower()
+
+
+def test_up_to_date_does_not_restart(repo, monkeypatch):
+    from rodeo import systemd
+
+    monkeypatch.setattr(su, "_git", FakeGit(head="samesha", target_sha="samesha", align=True))
+    monkeypatch.setattr(su, "_installed_version", lambda: "0.11.2")
+    monkeypatch.setattr(systemd, "unit_is_active", lambda unit=systemd.BUILDER_UNIT: pytest.fail("asked anyway"))
+    result = CliRunner().invoke(su.self_update_cmd, [])
+    assert result.exit_code == 0 and "up to date" in result.output.lower()

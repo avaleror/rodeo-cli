@@ -714,11 +714,14 @@ const OLD_LAB_MODES = { embed: "create", import: "examples", link: "create" };
 function labChoices() {
   const nodes = (lab) => Object.keys((lab || {}).nodes || {}).length;
   const kclusters = (lab) => Object.keys((lab || {}).kclusters || {}).length;
-  const bundled = state.liab.imports.map((i) => ({ id: "rodeo:" + i.profile, name: i.profile, official: null, nodes: nodes(i.lab),
+  const bundled = state.liab.imports.map((i) => ({ id: "rodeo:" + i.profile, name: i.profile, official: null,
+    origin: "bundled rodeo of rodeo-cli", nodes: nodes(i.lab),
     kclusters: kclusters(i.lab), addons: i.addons, description: "Bundled rodeo of rodeo-cli: plan, lab and chapters.",
     on: state.importProfile === i.profile && !state.labJson,
     pick: () => { state.importProfile = i.profile; Object.assign(state, { labJson: null, labJsonFrom: "", labSecrets: [], labWarnings: [] }); render(); } }));
-  const shipped = state.liab.examples.map((x) => ({ id: "ex:" + x.name, name: x.title, official: { version: state.liab.version || "" },
+  const shipped = state.liab.examples.map((x) => ({ id: "ex:" + x.name, name: x.title,
+    official: x.source === "shipped" ? { version: state.liab.version || "" } : null,
+    origin: x.source === "operator" ? "example lab of this host" : "example lab of lab-in-a-box",
     nodes: x.nodes, kclusters: x.kclusters, addons: x.addons, description: x.description,
     on: !!state.labJson && state.labJsonFrom === x.name,
     pick: () => { state.importProfile = ""; useLab(x.lab, "lab-in-a-box example " + x.name, x.name); } }));
@@ -956,7 +959,7 @@ function renderEnginePanel() {
     if (picked) {
       box.append(el("h3", {}, picked.name, picked.official ? el("span", { class: "official" }, officialStar(),
         el("span", { text: "shipped with lab-in-a-box" + (picked.official.version ? " " + picked.official.version : "") })) : null),
-        el("p", { class: "mono muted", text: labSize(picked) + " · " + (picked.official ? "example lab of lab-in-a-box" : "bundled rodeo of rodeo-cli") }),
+        el("p", { class: "mono muted", text: labSize(picked) + " · " + picked.origin }),
         picked.official && picked.description ? el("p", { text: picked.description }) : null,
         el("span", { class: "label", text: "Add-ons" }),
         el("div", { class: "chips" }, picked.addons.length ? picked.addons.map((a) => el("span", { class: "chip ok", text: a })) : el("span", { class: "muted mono", text: "none" })));

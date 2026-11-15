@@ -274,7 +274,7 @@ def test_generated_labinabox_plan_is_a_valid_rodeo(tmp_path):
     vm = lab_json["nodes"]["vm1.rodeo.lab"]
     assert vm["addons"] == ["smlm", "client_registration"]
     assert vm["VM_MEM"] == "4096"
-    assert lab_json["common"]["ISO_URL"].endswith("openSUSE-Leap-15.6-Minimal-VM.x86_64-Cloud.qcow2")
+    assert lab_json["common"]["SOURCE_IMAGE"].endswith("openSUSE-Leap-15.6-Minimal-VM.x86_64-Cloud.qcow2")
 
 
 @needs_node
@@ -289,7 +289,7 @@ def test_a_lab_from_the_lab_builder_is_the_workshops_lab(tmp_path, monkeypatch):
     lab = base["lab"]
     lab["nodes"]["smlm.rodeo.lab"]["VM_MEM"] = "24576"
     lab["nodes"]["extra.rodeo.lab"] = {"myip": "192.168.122.61", "VM_MEM": "1024", "VM_CPU": "1", "VM_DSK": "10",
-                                       "ISO_IMAGE": "ubuntu-24.04-server-cloudimg-amd64.img", "flag": "on"}
+                                       "SOURCE_IMAGE": "ubuntu-24.04-server-cloudimg-amd64.img", "flag": "on"}
     out = _node_plans("console.log(JSON.stringify({plan: RB.planFromBase(RB.setStoredLab(" + json.dumps(base["plan"]) +
                       ", " + json.dumps(lab) + "), {name: 'smlm-mine', target: 'baremetal', story: {language: 'en'}})}))")
     plan, original = yaml.safe_load(out["plan"]), yaml.safe_load(base["plan"])

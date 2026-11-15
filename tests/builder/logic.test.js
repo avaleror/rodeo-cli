@@ -264,15 +264,16 @@ test("newLanguageError takes language-branch tags not already in the rodeo", () 
 });
 
 test("labUnknownFields reports what a lab-in-a-box schema lacks, like rodeo's unknown_fields", () => {
-  const old = { common: ["ISO_IMAGE"], nodes: ["myip", "addons"], kclusters: ["clu_type"],
+  const old = { common: ["SOURCE_IMAGE"], nodes: ["myip", "addons"], kclusters: ["clu_type"],
     addons: { smlm: ["smlm_admin_pass"] } };
-  const lab = { common: { ISO_IMAGE: "x", VM_ROOT_PASS: "p", ISO_URL: "https://x" },
-    nodes: { a: { myip: "1", ssh_pwauth: "true", ISO_SHA256_URL: "https://x/s",
+  const lab = { common: { SOURCE_IMAGE: "https://x/leap.qcow2", VM_ROOT_PASS: "p" },
+    nodes: { a: { myip: "1", ssh_pwauth: "true", SOURCE_SHA256: "https://x/s",
       addons: ["smlm", { client_registration: { x: 1 } }, { smlm: { smlm_admin_pass: "p", smlm_new: 1 } }] } },
     kclusters: { k: { clu_type: "rke2", clu_rel: "v1" } },
     smlm: { smlm_admin_pass: "p", smlm_preinstalled: "true" }, pxe: {} };
   assert.deepEqual(RB.labUnknownFields(lab, old), [
-    "common.VM_ROOT_PASS", "nodes.a.ssh_pwauth", "nodes.a.addons.client_registration", "nodes.a.addons.smlm.smlm_new",
+    "common.VM_ROOT_PASS", "nodes.a.ssh_pwauth", "nodes.a.SOURCE_SHA256",
+    "nodes.a.addons.client_registration", "nodes.a.addons.smlm.smlm_new",
     "kclusters.k.clu_rel", "smlm.smlm_preinstalled", "pxe"]);
   assert.deepEqual(RB.labUnknownFields({ nodes: {} }, { common: [], nodes: [] }), []);
 });

@@ -80,7 +80,7 @@ lab_in_a_box:
           sha256: "??sles15sp7_image_sha256"
       nodes:
         smlm:
-          ISO_IMAGE: SLES15-SP7-Minimal-VM.x86_64-Cloud-GM.qcow2
+          SOURCE_IMAGE: SLES15-SP7-Minimal-VM.x86_64-Cloud-GM.qcow2
       sections:
         smlm:
           smlm_preinstalled: null
@@ -125,19 +125,19 @@ lab_in_a_box:
           AWS_SECURITY_GROUP_ID: "??aws_security_group_id"
           CLOUD_DNS_IMAGE: "??ubuntu2404_ami"
       nodes:
-        smlm: {ISO_IMAGE: "??smlm_image_ami", config_method: cloud-init, cloud_instance_type: m7i.2xlarge}
+        smlm: {SOURCE_IMAGE: "??smlm_image_ami", config_method: cloud-init, cloud_instance_type: m7i.2xlarge}
         centos7: &el7aws
-          ISO_IMAGE: "??centos7_ami"
+          SOURCE_IMAGE: "??centos7_ami"
           config_method: cloud-init
           VM_BOOT: null
           VM_DSK_BUS: null
           VM_NET_MODEL: null
         zzcentos7: *el7aws
-        sles15: {ISO_IMAGE: "??sles15sp5_ami"}
-        zzsles15a: {ISO_IMAGE: "??sles15sp6_ami"}
-        zzsles15b: {ISO_IMAGE: "??sles15sp6_ami"}
-        zzsles15c: {ISO_IMAGE: "??sles15sp6_ami"}
-        ubuntu2404lts: {ISO_IMAGE: "??ubuntu2404_ami"}
+        sles15: {SOURCE_IMAGE: "??sles15sp5_ami"}
+        zzsles15a: {SOURCE_IMAGE: "??sles15sp6_ami"}
+        zzsles15b: {SOURCE_IMAGE: "??sles15sp6_ami"}
+        zzsles15c: {SOURCE_IMAGE: "??sles15sp6_ami"}
+        ubuntu2404lts: {SOURCE_IMAGE: "??ubuntu2404_ami"}
 
   source:
     repo: https://github.com/SUSE-Technical-Marketing/lab-in-a-box
@@ -150,7 +150,7 @@ lab_in_a_box:
   # Root password of every VM — the track's UNIVERSAL_PWD.
   root_password: "??universal_pwd"
 
-  # Base images. lab-in-a-box downloads each one (ISO_URL) into its ISO_LOC on
+  # Base images. lab-in-a-box downloads each one (SOURCE_IMAGE) into its ISO_LOC on
   # the KVM host when it isn't there yet, and only uses it once the sha256 matches.
   images:
     - name: smlm-workshop-server.qcow2
@@ -188,7 +188,7 @@ lab_in_a_box:
         VM_MEM: "16384"
         VM_CPU: "8"
         VM_DSK: "300"
-        ISO_IMAGE: smlm-workshop-server.qcow2
+        SOURCE_IMAGE: smlm-workshop-server.qcow2
         config_method: cloud-init
         addons: [smlm]
       # centos7, sles15 and ubuntu2404lts are registered by the students during
@@ -200,7 +200,7 @@ lab_in_a_box:
         VM_MEM: "1024"
         VM_CPU: "1"
         VM_DSK: "20"
-        ISO_IMAGE: CentOS-7-x86_64-GenericCloud-2211.qcow2
+        SOURCE_IMAGE: CentOS-7-x86_64-GenericCloud-2211.qcow2
         config_method: virt_customize
         VM_BOOT: uefi=off
         VM_DSK_BUS: sata
@@ -222,7 +222,7 @@ lab_in_a_box:
         VM_MEM: "2048"
         VM_CPU: "2"
         VM_DSK: "30"
-        ISO_IMAGE: SLES15-SP5-Minimal-VM.x86_64-Cloud-GM.qcow2
+        SOURCE_IMAGE: SLES15-SP5-Minimal-VM.x86_64-Cloud-GM.qcow2
         ssh_pwauth: "true"
       zzsles15a.rodeo.lab: &sp6
         myip: "192.168.122.42"
@@ -230,7 +230,7 @@ lab_in_a_box:
         VM_MEM: "2048"
         VM_CPU: "2"
         VM_DSK: "30"
-        ISO_IMAGE: SLES15-SP6-Minimal-VM.x86_64-Cloud-GM.qcow2
+        SOURCE_IMAGE: SLES15-SP6-Minimal-VM.x86_64-Cloud-GM.qcow2
         ssh_pwauth: "true"
         addons:
           - client_registration:
@@ -264,7 +264,7 @@ lab_in_a_box:
         VM_MEM: "2048"
         VM_CPU: "1"
         VM_DSK: "20"
-        ISO_IMAGE: ubuntu-24.04-server-cloudimg-amd64.img
+        SOURCE_IMAGE: ubuntu-24.04-server-cloudimg-amd64.img
         network_renderer: networkd
         ssh_pwauth: "true"
 

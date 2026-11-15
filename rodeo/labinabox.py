@@ -12,25 +12,25 @@ libs/lab_creation.py, libs/k8s.py; `setup_lab.py --schema json` prints it):
   nodes:      map keyed by VM name (an FQDN — used verbatim as the SSH and DNS
               name). Every key of a node object is exported as an env var when
               that VM is built, so per-node VM_MEM / VM_CPU / VM_DSK / BRIDGE /
-              ISO_IMAGE / config_method / VM_BOOT override the common defaults;
-              'kcluster' marks Kubernetes cluster membership; INSTALL_RKE2_TYPE
+              SOURCE_IMAGE / config_method / VM_BOOT override the common defaults;
+              'kcluster' marks Kubernetes cluster membership; KUBERNETES_NODE_TYPE
               picks the RKE2 role; 'addons' lists node-level addons (install_<addon>
               run against that VM, e.g. smlm in podman mode).
   common:     defaults exported for every VM (lab_name, mymask, mygw, mydns,
-              mynet_reverse, mydomain, ISO_IMAGE, sizing, config_method).
+              mynet_reverse, mydomain, SOURCE_IMAGE, sizing, config_method).
   kclusters:  map keyed by cluster name; clu_type (k3s | rke2), clu_rel
               (release channel), mydomain, addons[] (each run once per cluster
               via install_<addon>).
   <addon>:    optional per-addon config section (exported by _load_vars).
 
-Per-node knobs rodeo's definition has no field for (ISO_IMAGE, config_method,
+Per-node knobs rodeo's definition has no field for (SOURCE_IMAGE, config_method,
 VM_BOOT, VM_DSK_BUS, VM_NET_MODEL, addons) come from the plan's
 lab_in_a_box.nodes.<short name> block.
 
 A plan may instead hold a whole lab-in-a-box lab (the lab-builder's) under
 lab_in_a_box.lab: it is rendered as written, except for what rodeo owns — the
 common network keys and lab_name, each node's BRIDGE / myip / mymac and FQDN
-domain, the kclusters' mydomain, images (ISO_URL) and secrets. Its nodes are the
+domain, the kclusters' mydomain, images (SOURCE_IMAGE) and secrets. Its nodes are the
 lab's VMs (topology_from_lab); lab_in_a_box.nodes / sections, and a variant's,
 are merged into it (effective_overlay).
 
@@ -58,11 +58,6 @@ LIAB_ADDONS = frozenset({
     "argocd", "insecure_app", "jenkins", "longhorn", "mariadb", "neuvector",
     "nv-demo-helm", "nv_testing", "rancher", "struts_demo", "suma", "wordpress",
 })
-
-# Base image download fields (common and nodes) lab-in-a-box reads without
-# declaring them in its schema: setup_lab.py fetches ISO_URL into ISO_LOC and
-# verifies it against ISO_SHA256 or the digest at ISO_SHA256_URL.
-IMAGE_DOWNLOAD_FIELDS = frozenset({"ISO_URL", "ISO_SHA256_URL"})
 
 # Node flavors that form the management Kubernetes cluster in rodeo profiles.
 _MGMT_FLAVORS = frozenset({"rancher"})
@@ -242,11 +237,11 @@ def unknown_fields(lab: dict, schema: dict) -> list[str]:
     `schema` is {"common": [...], "nodes": [...], "kclusters": [...],
     "addons": {name: [...]}} — the installed lab-in-a-box's own, or the test
     snapshot. An addon section/override for an addon the schema lacks is
-    reported as the addon itself. IMAGE_DOWNLOAD_FIELDS are never reported.
+    reported as the addon itself.
     """
     addons = schema.get("addons", {})
-    common = set(schema["common"]) | IMAGE_DOWNLOAD_FIELDS
-    node_fields = set(schema["nodes"]) | IMAGE_DOWNLOAD_FIELDS
+    common = set(schema["common"])
+    node_fields = set(schema["nodes"])
     unknown = [f"common.{k}" for k in lab.get("common", {}) if k not in common]
     for name, node in lab.get("nodes", {}).items():
         unknown += [f"nodes.{name}.{k}" for k in node if k not in node_fields]
@@ -315,13 +310,17 @@ def _open_cloud_ports(cloudtype: str, nodes: dict[str, dict], services: list[dic
 
 
 def _image_source(images: list[dict], name: str | None) -> dict[str, str]:
-    """ISO_URL / ISO_SHA256 / ISO_SHA256_URL for base image `name`, if the plan lists it."""
+    """SOURCE_IMAGE / SOURCE_SHA256 for base image `name`, if the plan lists it.
+
+    lab-in-a-box downloads SOURCE_IMAGE when it is a URL (mirrors separated by spaces) and
+    stores it under the URL's own file name, so the plan's image name is replaced by its URL.
+    SOURCE_SHA256 takes the digest itself or a URL publishing it.
+    """
     for image in images:
         if name and image.get("name") == name:
             url = image.get("url")
-            fields = {"ISO_URL": " ".join(url) if isinstance(url, list) else url,
-                      "ISO_SHA256": image.get("sha256"),
-                      "ISO_SHA256_URL": image.get("sha256_url")}
+            fields = {"SOURCE_IMAGE": " ".join(url) if isinstance(url, list) else url,
+                      "SOURCE_SHA256": image.get("sha256") or image.get("sha256_url")}
             return {k: str(v) for k, v in fields.items() if v}
     return {}
 
@@ -427,7 +426,7 @@ def build_lab_json(cfg: dict, *, skip_unsupported: bool = False) -> tuple[dict, 
         if flavor in _MGMT_FLAVORS and not stored:
             entry["kcluster"] = cluster_name
             if clu_type == "rke2":
-                entry["INSTALL_RKE2_TYPE"] = "server"
+                entry["KUBERNETES_NODE_TYPE"] = "server"
             cluster_members.append(name)
 
         nodes[f"{name}.{domain}"] = entry
@@ -467,11 +466,11 @@ def build_lab_json(cfg: dict, *, skip_unsupported: bool = False) -> tuple[dict, 
     if "config_method" in overlay or "config_method" not in common:
         common["config_method"] = overlay.get("config_method", "cloud-init")
     if overlay.get("iso_image"):
-        common["ISO_IMAGE"] = overlay["iso_image"]
-    elif not common.get("ISO_IMAGE") and (not nodes or not all(n.get("ISO_IMAGE") for n in nodes.values())):
+        common["SOURCE_IMAGE"] = overlay["iso_image"]
+    elif not common.get("SOURCE_IMAGE") and (not nodes or not all(n.get("SOURCE_IMAGE") for n in nodes.values())):
         warnings.append(
-            "no base image set — lab-in-a-box needs common.ISO_IMAGE (a qcow2 in its "
-            "ISO_LOC); set lab_in_a_box.iso_image in rodeo-plan.yaml or pass "
+            "no base image set — lab-in-a-box needs common.SOURCE_IMAGE (a qcow2 in its "
+            "ISO_LOC, or a URL); set lab_in_a_box.iso_image in rodeo-plan.yaml or pass "
             "-P lab_in_a_box.iso_image=<name>"
         )
 
@@ -484,7 +483,7 @@ def build_lab_json(cfg: dict, *, skip_unsupported: bool = False) -> tuple[dict, 
 
     cloud_spec = _cloud(cfg)
     if cloud_spec:
-        # Cloud VMs: the provider assigns addresses and networks; ISO_IMAGE is
+        # Cloud VMs: the provider assigns addresses and networks; SOURCE_IMAGE is
         # a provider image (AMI, ...) and nothing is downloaded locally.
         for entry in nodes.values():
             for key in ("myip", "mymac", "BRIDGE"):
@@ -495,11 +494,11 @@ def build_lab_json(cfg: dict, *, skip_unsupported: bool = False) -> tuple[dict, 
         warnings += _open_cloud_ports(cloud_spec["cloudtype"], nodes,
                                       (inv.get("_raw_topology") or {}).get("exposed_services") or [])
     else:
-        # Base images lab-in-a-box downloads itself (setup_lab.py fetches ISO_URL onto
-        # each KVM host, verified by ISO_SHA256 / ISO_SHA256_URL) — attached to every
-        # node, or common, whose ISO_IMAGE is one of the plan's lab_in_a_box.images.
+        # Base images lab-in-a-box downloads itself (setup_lab.py fetches SOURCE_IMAGE onto
+        # each KVM host, verified by SOURCE_SHA256) — attached to every node, or common,
+        # whose image name is one of the plan's lab_in_a_box.images.
         for holder in [common, *nodes.values()]:
-            source = _image_source((overlay.get("images") or []), holder.get("ISO_IMAGE"))
+            source = _image_source((overlay.get("images") or []), holder.get("SOURCE_IMAGE"))
             if source:
                 holder.update(source)
 

@@ -212,7 +212,7 @@ def test_unresolved_placeholders_paths():
 def test_smlm_workshop_lab_json(tmp_path):
     cfg = _smlm_cfg(tmp_path, FULL_SECRETS)
     lab, warnings = build_lab_json(cfg)
-    assert warnings == []  # every node sets its own ISO_IMAGE
+    assert warnings == []  # every node sets its own SOURCE_IMAGE
     assert unresolved_placeholders(lab) == []
     assert len(lab["nodes"]) == 8
     smlm = lab["nodes"]["smlm.rodeo.lab"]
@@ -223,12 +223,13 @@ def test_smlm_workshop_lab_json(tmp_path):
     assert lab["nodes"]["zzcentos7.rodeo.lab"]["VM_DSK_BUS"] == "sata"  # YAML anchor survived
     assert lab["nodes"]["ubuntu2404lts.rodeo.lab"]["ssh_pwauth"] == "true"
     assert lab["common"]["VM_ROOT_PASS"] == "Universal123"
-    assert smlm["ISO_URL"] == "https://images.example/smlm.qcow2" and smlm["ISO_SHA256"] == SHA
-    assert centos["ISO_SHA256"].startswith("284aab2b")
-    assert lab["nodes"]["sles15.rodeo.lab"]["ISO_URL"] == "file:///srv/images/sp5.qcow2"
-    assert lab["nodes"]["zzsles15c.rodeo.lab"]["ISO_SHA256"] == "d" * 64
+    assert smlm["SOURCE_IMAGE"] == "https://images.example/smlm.qcow2" and smlm["SOURCE_SHA256"] == SHA
+    assert centos["SOURCE_SHA256"].startswith("284aab2b")
+    assert lab["nodes"]["sles15.rodeo.lab"]["SOURCE_IMAGE"] == "file:///srv/images/sp5.qcow2"
+    assert lab["nodes"]["zzsles15c.rodeo.lab"]["SOURCE_SHA256"] == "d" * 64
     ubuntu = lab["nodes"]["ubuntu2404lts.rodeo.lab"]
-    assert ubuntu["ISO_SHA256_URL"].endswith("/SHA256SUMS") and "ISO_SHA256" not in ubuntu
+    # A published digest is a URL in the same field, which lab-in-a-box fetches.
+    assert ubuntu["SOURCE_SHA256"].endswith("/SHA256SUMS")
     section = lab["smlm"]
     assert section["smlm_preinstalled"] == "true"
     assert section["smlm_image_admin_pass"] == "Baked123abc"
@@ -243,7 +244,8 @@ def test_smlm_workshop_lab_json(tmp_path):
         "zzcentos7": "airco-dh4a-prod", "zzsles15a": "at-ct-pro",
         "zzsles15b": "at-ft-pro", "zzsles15c": "at-ct-qa"}
     assert regs["zzcentos7"]["client_registration_activation_key"] == "1-liberty7ltss"
-    assert lab["nodes"]["zzsles15b.rodeo.lab"]["ISO_IMAGE"].startswith("SLES15-SP6")  # merge key kept the base
+    # The merge key kept the SP6 base: its image name resolved to that image's URL.
+    assert lab["nodes"]["zzsles15b.rodeo.lab"]["SOURCE_IMAGE"] == "https://mirror.example/sp6.qcow2"
     assert lab["client_registration"]["client_registration_server"] == "smlm.rodeo.lab"
     assert lab["client_registration"]["client_registration_admin_pass"] == "Admin123abc"
     groups = {g["name"]: g.get("systems", []) for g in section["smlm_system_groups"]}
@@ -256,8 +258,8 @@ def test_smlm_workshop_without_operator_secrets_stays_unresolved(tmp_path):
     lab, _ = build_lab_json(cfg)
     unresolved = unresolved_placeholders(lab)
     assert "smlm.smlm_image_admin_pass" in unresolved
-    assert "nodes.smlm.rodeo.lab.ISO_URL" in unresolved
-    assert "nodes.sles15.rodeo.lab.ISO_SHA256" in unresolved
+    assert "nodes.smlm.rodeo.lab.SOURCE_IMAGE" in unresolved
+    assert "nodes.sles15.rodeo.lab.SOURCE_SHA256" in unresolved
 
 
 def test_common_image_source_for_nodes_without_their_own(tmp_path):
@@ -268,9 +270,9 @@ def test_common_image_source_for_nodes_without_their_own(tmp_path):
         "lab_in_a_box": {"iso_image": "leap.qcow2", "images": [
             {"name": "leap.qcow2", "url": "https://x/leap.qcow2", "sha256_url": "https://x/leap.sha256"}]}}))
     lab, warnings = build_lab_json(load_config(lab_dir / "rodeo-plan.yaml"))
-    assert lab["common"]["ISO_URL"] == "https://x/leap.qcow2"
-    assert lab["common"]["ISO_SHA256_URL"] == "https://x/leap.sha256"
-    assert "ISO_URL" not in lab["nodes"]["vm1.rodeo.lab"]
+    assert lab["common"]["SOURCE_IMAGE"] == "https://x/leap.qcow2"
+    assert lab["common"]["SOURCE_SHA256"] == "https://x/leap.sha256"
+    assert "SOURCE_IMAGE" not in lab["nodes"]["vm1.rodeo.lab"]
     assert warnings == []
 
 
@@ -342,7 +344,7 @@ def test_seed_smlm_workshop_keeps_bake_kit_and_secret_refs(tmp_path):
     plan = yaml.safe_load((lab / "rodeo-plan.yaml").read_text())
     assert plan["name"] == "my-smlm"
     assert plan["lab_in_a_box"]["lab"]["smlm"]["smlm_admin_pass"] == "??smlm_admin_password"
-    assert plan["lab_in_a_box"]["lab"]["nodes"]["zzsles15c.rodeo.lab"]["ISO_IMAGE"].startswith("SLES15-SP6")
+    assert plan["lab_in_a_box"]["lab"]["nodes"]["zzsles15c.rodeo.lab"]["SOURCE_IMAGE"].startswith("SLES15-SP6")
 
 
 def test_bake_plan_loads_with_only_the_smlm_node(tmp_path):
@@ -719,7 +721,7 @@ def test_smlm_workshop_lab_json_only_uses_known_lab_in_a_box_fields(tmp_path):
 
 def test_smlm_workshop_lab_json_has_every_required_lab_in_a_box_field(tmp_path):
     lab, _ = build_lab_json(_smlm_cfg(tmp_path, FULL_SECRETS))
-    image = {"SOURCE_IMAGE", "ISO_IMAGE"}  # lab-in-a-box reads ISO_IMAGE when SOURCE_IMAGE is unset
+    image = {"SOURCE_IMAGE"}
     every_node_has_image = all(image & set(n) for n in lab["nodes"].values())
     missing = [f"common.{k}" for k in _SCHEMA["required"]["common"]
                if not (image & set(lab["common"]) if k in image else k in lab["common"])
@@ -740,9 +742,9 @@ def test_common_sizing_is_the_largest_node_value(tmp_path):
 def test_unknown_fields_reports_what_an_older_lab_in_a_box_lacks():
     from rodeo.labinabox import unknown_fields
 
-    old = {"common": ["ISO_IMAGE"], "nodes": ["myip", "addons"], "kclusters": [],
+    old = {"common": ["SOURCE_IMAGE"], "nodes": ["myip", "addons"], "kclusters": [],
            "addons": {"smlm": ["smlm_admin_pass"]}}
-    lab = {"common": {"ISO_IMAGE": "x", "VM_ROOT_PASS": "p"},
+    lab = {"common": {"SOURCE_IMAGE": "x", "VM_ROOT_PASS": "p"},
            "nodes": {"a": {"myip": "1", "ssh_pwauth": "true",
                            "addons": ["smlm", {"client_registration": {"x": 1}}]}},
            "smlm": {"smlm_admin_pass": "p", "smlm_preinstalled": "true"}}
@@ -751,12 +753,25 @@ def test_unknown_fields_reports_what_an_older_lab_in_a_box_lacks():
         "smlm.smlm_preinstalled"]
 
 
-def test_unknown_fields_accepts_the_image_download_fields():
+def test_unknown_fields_reports_a_lab_left_on_the_pre_3_0_image_fields():
+    """ISO_IMAGE and friends were removed in lab 3.0; a lab still carrying them is reported,
+    so the operator migrates it instead of deploying a lab whose image is silently ignored."""
     from rodeo.labinabox import unknown_fields
 
     lab = {"common": {"ISO_IMAGE": "leap.qcow2", "ISO_URL": "https://x/leap.qcow2", "ISO_SHA256_URL": "https://x/s"},
            "nodes": {"a": {"ISO_IMAGE": "sp7.qcow2", "ISO_URL": "https://x/sp7.qcow2", "ISO_SHA256": "0" * 64}}}
-    assert "ISO_URL" not in _SCHEMA["common"] and unknown_fields(lab, _SCHEMA) == []
+    assert "ISO_URL" not in _SCHEMA["common"] and "SOURCE_IMAGE" in _SCHEMA["common"]
+    assert unknown_fields(lab, _SCHEMA) == [
+        "common.ISO_IMAGE", "common.ISO_URL", "common.ISO_SHA256_URL",
+        "nodes.a.ISO_IMAGE", "nodes.a.ISO_URL", "nodes.a.ISO_SHA256"]
+
+
+def test_a_lab_on_the_3_0_image_fields_is_accepted():
+    from rodeo.labinabox import unknown_fields
+
+    lab = {"common": {"SOURCE_IMAGE": "https://x/leap.qcow2", "SOURCE_SHA256": "https://x/s"},
+           "nodes": {"a": {"SOURCE_IMAGE": "https://x/sp7.qcow2", "SOURCE_SHA256": "0" * 64}}}
+    assert unknown_fields(lab, _SCHEMA) == []
 
 
 
@@ -927,8 +942,8 @@ def test_scratch_variant_builds_smlm_on_sles15sp7(tmp_path):
     cfg["lab_in_a_box"]["variant"] = "scratch"
     lab, _ = build_lab_json(cfg)
     smlm = lab["nodes"]["smlm.rodeo.lab"]
-    assert smlm["ISO_IMAGE"] == "SLES15-SP7-Minimal-VM.x86_64-Cloud-GM.qcow2"
-    assert smlm["ISO_URL"] == "file:///srv/sles15sp7.qcow2" and smlm["addons"] == ["smlm"]
+    assert smlm["SOURCE_IMAGE"] == "file:///srv/sles15sp7.qcow2"
+    assert smlm["SOURCE_IMAGE"] == "file:///srv/sles15sp7.qcow2" and smlm["addons"] == ["smlm"]
     assert smlm["config_method"] == "cloud-init"
     section = lab["smlm"]
     assert "smlm_preinstalled" not in section and "smlm_image_admin_pass" not in section
@@ -936,7 +951,7 @@ def test_scratch_variant_builds_smlm_on_sles15sp7(tmp_path):
     assert section["smlm_scc_regcode"] == "REG" and section["smlm_scc_password"] == "p"
     assert "centos7-x86_64" in section["smlm_channels"]
     assert section["smlm_activation_keys"][0]["smlm_activation_key"] == "sles15sp5"   # kept from base
-    assert not any(n.get("ISO_IMAGE") == "smlm-workshop-server.qcow2" for n in lab["nodes"].values())
+    assert not any(n.get("SOURCE_IMAGE") == "smlm-workshop-server.qcow2" for n in lab["nodes"].values())
     assert unresolved_placeholders(lab) == []
     lab["common"]["ROOT_PWD_HASH"] = "$6$x"
     assert unknown_fields(lab, _SCHEMA) == []
@@ -978,7 +993,7 @@ def test_image_mirror_list(tmp_path):
     cfg = _smlm_cfg(tmp_path, FULL_SECRETS)
     cfg["lab_in_a_box"]["images"][1]["url"].append("https://mirror.example/c7.qcow2")
     lab, _ = build_lab_json(cfg)
-    assert lab["nodes"]["centos7.rodeo.lab"]["ISO_URL"] == (
+    assert lab["nodes"]["centos7.rodeo.lab"]["SOURCE_IMAGE"] == (
         "https://cloud.centos.org/centos/7/images/CentOS-7-x86_64-GenericCloud-2211.qcow2 "
         "https://mirror.example/c7.qcow2")
     cfg["lab_in_a_box"]["images"][1]["url"].append("ftp://bad")
@@ -1311,8 +1326,8 @@ def test_cloud_lab_json(tmp_path):
     node = lab["nodes"]["vm1.rodeo.lab"]
     assert not {"myip", "mymac", "BRIDGE"} & set(node)
     assert lab["common"]["cloud_account"] == "aws-lab"
-    assert lab["common"]["ISO_IMAGE"] == "ami-0123456789abcdef0"
-    assert "ISO_URL" not in lab["common"] and not {"mygw", "mydns", "mymask"} & set(lab["common"])
+    assert lab["common"]["SOURCE_IMAGE"] == "ami-0123456789abcdef0"
+    assert "SOURCE_SHA256" not in lab["common"] and not {"mygw", "mydns", "mymask"} & set(lab["common"])
     assert "s3cr3t" not in json.dumps(lab)                          # credentials never in lab.json
     assert unknown_fields(lab, _SCHEMA) == []
 
@@ -1572,13 +1587,13 @@ def test_workshop_aws_variant(tmp_path):
     lab, warnings = build_lab_json(cfg)
     assert lab["common"]["cloud_account"] == "smlm-workshop"
     smlm = lab["nodes"]["smlm.rodeo.lab"]
-    assert smlm["ISO_IMAGE"] == "ami-0smlm" and smlm["config_method"] == "cloud-init"
-    assert smlm["open_ports"] == ["443"] and "ISO_URL" not in smlm
+    assert smlm["SOURCE_IMAGE"] == "ami-0smlm" and smlm["config_method"] == "cloud-init"
+    assert smlm["open_ports"] == ["443"] and "SOURCE_SHA256" not in smlm
     c7 = lab["nodes"]["zzcentos7.rodeo.lab"]
-    assert c7["ISO_IMAGE"] == "ami-0c7" and c7["config_method"] == "cloud-init"
+    assert c7["SOURCE_IMAGE"] == "ami-0c7" and c7["config_method"] == "cloud-init"
     assert not {"VM_BOOT", "VM_DSK_BUS", "VM_NET_MODEL"} & set(c7)
     assert c7["addons"][0]["client_registration"]["client_registration_profile_name"] == "airco-dh4a-prod"
-    assert lab["nodes"]["zzsles15b.rodeo.lab"]["ISO_IMAGE"] == "ami-0sp6"
+    assert lab["nodes"]["zzsles15b.rodeo.lab"]["SOURCE_IMAGE"] == "ami-0sp6"
     assert unresolved_placeholders(lab) == []
     lab["common"]["ROOT_PWD_HASH"] = "$6$x"
     assert unknown_fields(lab, _SCHEMA) == []
@@ -1604,14 +1619,14 @@ def test_bake_starts_from_sles15sp7(tmp_path):
     plan = lab_dir / "bake" / "rodeo-plan.yaml"
     lab, _ = build_lab_json(load_config(plan))
     node = lab["nodes"]["smlm.rodeo.lab"]
-    assert node["ISO_IMAGE"] == "SLES15-SP7-Minimal-VM.x86_64-Cloud-GM.qcow2"
+    assert node["SOURCE_IMAGE"] == "file:///srv/sles15sp7.qcow2"
     assert node["config_method"] == "cloud-init" and "smlm_byos" not in lab["smlm"]
     data = yaml.safe_load(plan.read_text())
     data["lab_in_a_box"]["variant"] = "aws"
     plan.write_text(yaml.safe_dump(data))
     lab, _ = build_lab_json(load_config(plan))
     node = lab["nodes"]["smlm.rodeo.lab"]
-    assert node["ISO_IMAGE"] == "ami-0sp7" and lab["common"]["cloud_account"] == "smlm-bake"
+    assert node["SOURCE_IMAGE"] == "ami-0sp7" and lab["common"]["cloud_account"] == "smlm-bake"
     lab["common"]["ROOT_PWD_HASH"] = "$6$x"
     assert unknown_fields(lab, _SCHEMA) == []
 
@@ -1619,7 +1634,7 @@ def test_bake_starts_from_sles15sp7(tmp_path):
 def test_workshop_boots_the_baked_server_with_cloud_init(tmp_path):
     lab, _ = build_lab_json(_smlm_cfg(tmp_path, FULL_SECRETS))
     smlm = lab["nodes"]["smlm.rodeo.lab"]
-    assert smlm["ISO_IMAGE"] == "smlm-workshop-server.qcow2" and smlm["config_method"] == "cloud-init"
+    assert smlm["SOURCE_IMAGE"] == "https://images.example/smlm.qcow2" and smlm["config_method"] == "cloud-init"
 
 
 def test_bake_scripts_are_valid_bash():
@@ -1676,8 +1691,8 @@ def test_stored_lab_vms_are_the_labs(tmp_path):
         nodes = plan["lab_in_a_box"]["lab"]["nodes"]
         del nodes["ubuntu2404lts.rodeo.lab"]
         nodes["extra.example.org"] = {"myip": "10.1.2.60", "VM_MEM": "4096", "VM_CPU": "2", "VM_DSK": "40",
-                                      "ISO_IMAGE": "ubuntu-24.04-server-cloudimg-amd64.img"}
-        nodes["clash.rodeo.lab"] = {"myip": "192.168.122.20", "ISO_IMAGE": "ubuntu-24.04-server-cloudimg-amd64.img"}
+                                      "SOURCE_IMAGE": "ubuntu-24.04-server-cloudimg-amd64.img"}
+        nodes["clash.rodeo.lab"] = {"myip": "192.168.122.20", "SOURCE_IMAGE": "ubuntu-24.04-server-cloudimg-amd64.img"}
 
     cfg = _smlm_plan_cfg(tmp_path, edit)
     assert "ubuntu2404lts" not in cfg["vms"]

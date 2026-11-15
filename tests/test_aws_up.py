@@ -75,7 +75,8 @@ def test_validate_aws_requires_provider(tmp_path, monkeypatch):
         validate_config(cfg)
 
 
-def test_validate_aws_ok(tmp_path):
+def test_validate_aws_ok(tmp_path, monkeypatch):
+    monkeypatch.setattr("rodeo.providers.remote_up.on_ec2", lambda **_k: False)
     lab = _aws_plan(tmp_path)
     cfg = load_config(config_dir=str(lab))
     validate_config(cfg)

@@ -679,10 +679,12 @@ function engineCard({ name, title, sub, on, onclick, info, id, tip, disabled, of
       class: "engine" + (on ? " on" : ""), type: "button", role: "radio", "aria-checked": String(on), tabindex: on ? "0" : "-1",
       "aria-disabled": disabled ? "true" : null, title: tip || null, onclick: disabled ? null : onclick, onkeydown: engineKey,
     }, el("span", { class: "engine-top" }, el("span", { class: "radio", "aria-hidden": "true" }),
-      el("span", { class: "engine-name", text: name }),
-      official ? el("span", { class: "official", title: "Shipped with lab-in-a-box" + (official.version ? " " + official.version : "") },
-        officialStar(), official.version ? el("span", { text: official.version }) : null) : null),
-    el("span", { class: "engine-title", text: title }),
+      el("span", { class: "engine-name", text: name })),
+    official
+      ? el("span", { class: "lab-line" }, el("span", { class: "engine-title", text: title }),
+          el("span", { class: "official", title: "Shipped with lab-in-a-box" + (official.version ? " " + official.version : "") },
+            officialStar(), official.version ? el("span", { text: official.version }) : null))
+      : el("span", { class: "engine-title", text: title }),
     sub ? el("span", { class: "engine-sub", text: sub }) : null),
     info ? el("button", { class: "info-btn", type: "button", text: "i", title: "About " + name, "aria-label": "About " + name,
       "aria-expanded": String(state.info === id), "aria-controls": "info-" + id, onclick: () => toggleInfo(id) }) : null,

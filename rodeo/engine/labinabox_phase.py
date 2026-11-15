@@ -4,7 +4,7 @@ labinabox_host  prepares this KVM host to run lab-in-a-box against itself:
                 pinned checkout + install, /etc/lab_creation.cfg, root SSH to
                 self, libvirt network + DNS for the lab nodes, and the workshop
                 track (if the plan names one). Base images are downloaded by
-                lab-in-a-box itself (ISO_URL, see rodeo/labinabox.py).
+                lab-in-a-box itself (SOURCE_IMAGE, see rodeo/labinabox.py).
 labinabox       renders lab.json from the plan and runs setup_lab.py --keep,
                 which creates the VMs and runs every addon (e.g. install_smlm).
 

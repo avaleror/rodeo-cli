@@ -39,7 +39,7 @@ def test_rancher_profile_maps_to_lab_json(tmp_path):
 
     # The rancher node forms the management cluster (K3s on this profile).
     assert node["kcluster"] == "mgmt"
-    assert "INSTALL_RKE2_TYPE" not in node  # k3s role is decided by order
+    assert "KUBERNETES_NODE_TYPE" not in node  # k3s role is decided by order
     kcluster = lab["kclusters"]["mgmt"]
     assert kcluster["clu_type"] == "k3s"
     assert kcluster["clu_rel"] == "stable"
@@ -60,7 +60,7 @@ def test_rancher_profile_maps_to_lab_json(tmp_path):
     assert lab["rancher"]["cert_manager_ver"] == f"--version {cfg['versions']['cert_manager']}"
 
     # No base image configured: exported with a warning, not an error.
-    assert "ISO_IMAGE" not in common
+    assert "SOURCE_IMAGE" not in common
     assert any("iso_image" in w for w in warnings)
 
     # The result must be plain JSON (setup_lab.sh validates with jq).
@@ -103,10 +103,10 @@ def test_overlay_overrides(tmp_path):
     )
     lab, _warnings = build_lab_json(cfg)
 
-    assert lab["common"]["ISO_IMAGE"] == "openSUSE-Leap-15.6.qcow2"
+    assert lab["common"]["SOURCE_IMAGE"] == "openSUSE-Leap-15.6.qcow2"
     node = lab["nodes"]["rancher.rodeo.lab"]
     assert node["kcluster"] == "lab1"
-    assert node["INSTALL_RKE2_TYPE"] == "server"
+    assert node["KUBERNETES_NODE_TYPE"] == "server"
     kcluster = lab["kclusters"]["lab1"]
     assert kcluster["clu_type"] == "rke2"
     assert kcluster["clu_rel"] == "latest"

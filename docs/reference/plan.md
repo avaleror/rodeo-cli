@@ -541,14 +541,14 @@ lab_in_a_box:
     ref: latest                         # latest (highest version tag, default), tag, branch or SHA
   parallel: 4                           # setup_lab.py --parallel=N
   root_password: "??universal_pwd"      # root password of every VM
-  images:                               # base images: become ISO_URL/ISO_SHA256[_URL] in lab.json;
+  images:                               # base images: become SOURCE_IMAGE/SOURCE_SHA256 in lab.json;
                                         # lab-in-a-box downloads + verifies them into ISO_LOC
     - name: ubuntu-24.04-server-cloudimg-amd64.img
       url: https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img
       sha256_url: https://cloud-images.ubuntu.com/releases/24.04/release/SHA256SUMS   # or sha256: <hex>
   nodes:                                # per-node lab.json keys, by short node name
-    ubuntu2404lts: {ISO_IMAGE: ubuntu-24.04-server-cloudimg-amd64.img, ssh_pwauth: "true"}
-    smlm: {ISO_IMAGE: smlm.qcow2, addons: [smlm]}
+    ubuntu2404lts: {SOURCE_IMAGE: ubuntu-24.04-server-cloudimg-amd64.img, ssh_pwauth: "true"}
+    smlm: {SOURCE_IMAGE: smlm.qcow2, addons: [smlm]}
   iso_image: openSUSE-Leap-15.6.qcow2   # common base image for nodes without their own
   config_method: cloud-init             # cloud-init (default) | virt_customize | "" (ignition/combustion)
   cluster_name: mgmt                    # kcluster name (also its DNS record: <name>.<domain>)
@@ -564,7 +564,7 @@ lab_in_a_box:
 lab-in-a-box lab-builder edits it. rodeo deploys it as written and sets only what
 belongs to the host: the common network keys and `lab_name`, each node's
 `BRIDGE`, `myip`, `mymac` and FQDN domain, the kclusters' `mydomain`, images
-(`ISO_URL`) and secrets. The lab's nodes are the lab's VMs: one that
+(`SOURCE_IMAGE`) and secrets. The lab's nodes are the lab's VMs: one that
 `definition.yaml` lists keeps that address, any other gets its `myip` host part
 in the lab's network when free (else the next free address); definition nodes the
 lab leaves out are not deployed. `nodes` and `sections` above, and a variant's,
@@ -579,7 +579,7 @@ lab_in_a_box:
     common: {config_method: cloud-init}
     nodes:
       smlm.rodeo.lab: {myip: "192.168.122.20", VM_MEM: "16384", VM_CPU: "8", VM_DSK: "300",
-                       ISO_IMAGE: smlm.qcow2, addons: [smlm]}
+                       SOURCE_IMAGE: smlm.qcow2, addons: [smlm]}
     smlm: {smlm_deployment: podman, smlm_admin_pass: "??smlm_admin_password"}
 ```
 

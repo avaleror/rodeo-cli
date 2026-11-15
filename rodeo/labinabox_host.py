@@ -251,8 +251,8 @@ def base_images(cfg: dict) -> list[dict]:
     """Validated lab_in_a_box.images entries: {name, url, sha256, sha256_url, max_age_days}.
 
     Each is a base qcow2/ISO lab-in-a-box copies VM disks from (a node's
-    ISO_IMAGE); rodeo/labinabox.py turns it into that node's ISO_URL /
-    ISO_SHA256 / ISO_SHA256_URL and lab-in-a-box downloads it. Verification is
+    SOURCE_IMAGE); rodeo/labinabox.py turns it into that node's SOURCE_IMAGE (the
+    URL) and SOURCE_SHA256, and lab-in-a-box downloads it. Verification is
     mandatory: a pinned `sha256`, or for images republished under a fixed name,
     the `sha256_url` the publisher serves next to it.
     """

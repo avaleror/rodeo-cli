@@ -1496,10 +1496,9 @@ const RB = (() => {
   // Fields of `lab` that the lab-in-a-box `schema` ({common, nodes, kclusters, addons: {name:
   // [fields]}}) doesn't declare, as dotted paths; the same rule as rodeo/labinabox.py
   // unknown_fields (an add-on the schema lacks is reported as the add-on itself).
-  const IMAGE_DOWNLOAD_FIELDS = ["ISO_URL", "ISO_SHA256_URL"];
   function labUnknownFields(lab, schema) {
     const addons = schema.addons || {}, out = [];
-    const known = (list) => new Set([...(list || []), ...IMAGE_DOWNLOAD_FIELDS]);
+    const known = (list) => new Set(list || []);
     const common = known(schema.common), nodeFields = known(schema.nodes), clusterFields = new Set(schema.kclusters || []);
     const has = (list, key) => (list || []).includes(key);
     for (const k of Object.keys(lab.common || {})) if (!common.has(k)) out.push("common." + k);

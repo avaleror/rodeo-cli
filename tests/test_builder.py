@@ -122,13 +122,28 @@ def test_labinabox_catalogue_is_split_by_kind(labinabox_checkout):
     assert [a["name"] for a in data["kclusters"]] == ["rke2"]
 
 
-def test_labinabox_examples_come_with_their_lab(labinabox_checkout):
-    [example] = discovery.labinabox_examples(labinabox_checkout)
-    assert (example["name"], example["title"], example["nodes"], example["kclusters"]) == (
+def test_labinabox_examples_come_with_their_lab_and_say_where_they_are_from(labinabox_checkout):
+    shipped, operator = discovery.labinabox_examples(labinabox_checkout)
+    assert (shipped["name"], shipped["title"], shipped["nodes"], shipped["kclusters"]) == (
         "two-clients.json.template", "two clients", 3, 0)
-    assert example["addons"] == ["client_registration", "smlm"]
-    assert set(example["lab"]["nodes"]) == {"smlm.example.lab", "c1.example.lab", "c2.example.lab"}
-    assert discovery.labinabox(labinabox_checkout)["examples"] == [example]
+    assert shipped["addons"] == ["client_registration", "smlm"] and shipped["source"] == "shipped"
+    assert set(shipped["lab"]["nodes"]) == {"smlm.example.lab", "c1.example.lab", "c2.example.lab"}
+    assert (operator["name"], operator["source"]) == ("house.yaml", "operator")
+    assert discovery.labinabox(labinabox_checkout)["examples"] == [shipped, operator]
+
+
+def test_an_example_of_a_release_that_does_not_report_its_origin_is_not_shipped(tmp_path):
+    """Before lab-in-a-box reported `source`, no example may claim to come with the release."""
+    checkout = _fake_labinabox(tmp_path, (
+        "def dispatch(action, method, params, body):\n"
+        "    if action == 'examples':\n"
+        "        return 200, {'examples': [{'name': 'old.json', 'title': 'old', 'description': '',\n"
+        "                                   'nodes': 1, 'kclusters': 0, 'addons': []}]}\n"
+        "    if action == 'example':\n"
+        "        return 200, {'nodes': {'n1': {}}}\n"
+        "    return 200, {'components': [{'name': 'install_smlm', 'targets': []}]}\n"))
+    [example] = discovery.labinabox_examples(checkout)
+    assert example["source"] == "" and example["name"] == "old.json"
 
 
 def test_labinabox_addons_run_without_their_named_interpreter(tmp_path):
@@ -166,7 +181,7 @@ def test_labinabox_catalogue_is_read_again_only_when_the_checkout_changes(tmp_pa
     first["examples"].clear()
     again = discovery.labinabox(checkout, "https://example/lb/", "2.0")
     assert len(runs) == 3 and [a["name"] for a in again["addons"]] == ["smlm", "client_registration"]
-    assert [e["name"] for e in again["examples"]] == ["two-clients.json.template"]
+    assert [e["name"] for e in again["examples"]] == ["two-clients.json.template", "house.yaml"]
     assert again["builder_url"] == "https://example/lb/" and again["version"] == "2.0"
     api = checkout / "webui" / "lib" / "api.py"
     os.utime(api, ns=(api.stat().st_mtime_ns + 10**9,) * 2)

@@ -217,6 +217,7 @@ a.btn { display: inline-flex; align-items: center; color: var(--ink); text-decor
 .labs .engine-name { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .labs .engine-title { font: 400 12px var(--mono); color: var(--muted); }
 .labs .engine.on .engine-title { color: var(--ink); }
+.lab-line { display: flex; align-items: baseline; gap: 8px; justify-content: space-between; }
 .official { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; font: 400 11px var(--mono); color: var(--accent-ink); white-space: nowrap; }
 .official svg { width: 13px; height: 13px; }
 .more { margin-top: 8px; }

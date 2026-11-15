@@ -45,17 +45,21 @@ read at each start, plus any `--allow-host`.
     - **modify** opens the lab-builder inside the page with this rodeo's lab loaded. It is
       greyed out, "no lab selected", until the rodeo has a lab.
     - **examples** shows an **Example** row: one list of the bundled lab-in-a-box rodeos
-      (`smlm-workshop`) and the example labs the lab-in-a-box release in use ships, the
-      latter marked with a star and the release. Each card carries the name and the node
+      (`smlm-workshop`) and the example labs the lab-in-a-box checkout offers, both the ones
+      the release ships and the host's own (`EXAMPLE_LABS_DIR`, by default
+      `/etc/lab_creation/examples`). Only what the release ships carries a star and its
+      version; a release too old to say where an example comes from carries none. Each card carries the name and the node
       and cluster count only; a filter box narrows the list and it folds after eight. The
       box below the rows shows the chosen lab's description and add-ons. An example lab is
       taken like an uploaded lab file, so it lands in the plan as `lab_in_a_box.lab`; a
       bundled rodeo stays selected on every tab, so its lab is the one the lab-builder opens.
-    Every mode's box also offers **Upload lab**, a lab definition file as lab-in-a-box reads
-    them (JSON or YAML; the page parses YAML with the bundled `vendor/js-yaml.min.js`, MIT),
-    and **Open lab-builder ↗**: lab-in-a-box's lab-builder in its own tab with this rodeo's
-    lab filled in (only its add-ons when the lab is too large for a link); download the lab
-    there and upload it here to bring the lab back.
+    Every mode's box offers **Open embedded lab-builder**, which opens the lab-builder inside
+    this page on the lab that mode is about (nothing for create, the rodeo's lab for modify,
+    the example picked for examples), and **Upload lab**, a lab definition file as
+    lab-in-a-box reads them (JSON or YAML; the page parses YAML with the bundled
+    `vendor/js-yaml.min.js`, MIT). create and modify also offer **Open lab-builder ↗**, the
+    lab-builder in its own tab with this rodeo's lab filled in (only its add-ons when the lab
+    is too large for a link); download the lab there and upload it here to bring it back.
 
   **Provides** lists what the lab offers chapters, from lab-in-a-box's whole
   catalogue: add-ons, Kubernetes clusters (`rke2`, `k3s`, ...) and infrastructure

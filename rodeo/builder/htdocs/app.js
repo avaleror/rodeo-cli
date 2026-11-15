@@ -966,7 +966,10 @@ function renderEnginePanel() {
     } else {
       box.append(el("h3", { text: "An example lab" }), el("p", { text: "Pick one above: a bundled rodeo, or an example lab shipped with lab-in-a-box." }));
     }
-    box.append(el("div", { class: "chips" }, upload, link));
+    box.append(el("div", { class: "chips" },
+      el("button", { class: "btn outline sm", type: "button", text: "Open embedded lab-builder",
+        title: picked ? "Opens " + picked.name + " in the lab-builder inside this page" : "Opens the lab-builder inside this page",
+        onclick: () => openEmbed(currentLab()) }), upload));
   }
   if (state.labJson) box.append(el("p", { class: "mono muted", text: "Lab from the lab-builder: saved in rodeo-plan.yaml as lab_in_a_box.lab." }));
   if (state.labJson && state.labWarnings.length) {

@@ -122,9 +122,9 @@ SCHEMA_SNAPSHOT = Path(__file__).parent / "fixtures" / "labinabox_schema" / "sch
 
 
 def make_labinabox(root: Path) -> Path:
-    """A lab-in-a-box checkout whose lab-builder API answers a small catalogue, one example lab
-    (``two-clients``: smlm plus two registered clients), and the base and add-on schemas of
-    tests/fixtures/labinabox_schema/schema.json."""
+    """A lab-in-a-box checkout whose lab-builder API answers a small catalogue, two example labs
+    (``two-clients``, shipped with the release, and ``house``, the operator's own), and the base
+    and add-on schemas of tests/fixtures/labinabox_schema/schema.json."""
     lib = root / "webui" / "lib"
     lib.mkdir(parents=True)
     (lib / "api.py").write_text(
@@ -136,9 +136,13 @@ def make_labinabox(root: Path) -> Path:
         "        return 200, {{'sections': {{k: fields(SCHEMA[k]) for k in ('common', 'nodes', 'kclusters')}}}}\n"
         "    if action == 'examples':\n"
         "        return 200, {{'examples': [{{'name': 'two-clients.json.template', 'title': 'two clients',\n"
-        "            'description': 'SMLM and two registered clients', 'nodes': 3, 'kclusters': 0,\n"
-        "            'addons': ['client_registration', 'smlm']}}]}}\n"
+        "            'description': 'SMLM and two registered clients', 'source': 'shipped', 'nodes': 3,\n"
+        "            'kclusters': 0, 'addons': ['client_registration', 'smlm']}},\n"
+        "            {{'name': 'house.yaml', 'title': 'house', 'description': 'This operator own lab',\n"
+        "             'source': 'operator', 'nodes': 1, 'kclusters': 0, 'addons': ['smlm']}}]}}\n"
         "    if action == 'example':\n"
+        "        if params['name'][0] == 'house.yaml':\n"
+        "            return 200, {{'nodes': {{'h1.example.lab': {{'addons': ['smlm']}}}}}}\n"
         "        if params['name'][0] != 'two-clients.json.template':\n"
         "            return 404, {{'error': 'no such example'}}\n"
         "        return 200, {{'common': {{'mydomain': 'example.lab'}}, 'nodes': {{\n"

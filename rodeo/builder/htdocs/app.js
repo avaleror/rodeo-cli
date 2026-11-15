@@ -51,8 +51,8 @@ function fill(node, ...children) {
 
 const state = {
   engines: [], capabilities: [], targets: [], contentFormats: [], workshops: [], server: null,
-  liab: { builder_url: "", error: "", addons: [], infrastructure: [], kclusters: [], imports: [] },
-  engine: "rancher", base: null, planEdited: null, mode: "embed", importProfile: "", labAddons: [], labJson: null, labSecrets: [], labWarnings: [],
+  liab: { builder_url: "", error: "", addons: [], infrastructure: [], kclusters: [], imports: [], examples: [] },
+  engine: "rancher", base: null, planEdited: null, mode: "create", importProfile: "", labAddons: [], labJson: null, labJsonFrom: "", labsAll: false, labSecrets: [], labWarnings: [],
   chapters: [], custom: [], name: "my-rodeo", title: "My rodeo", lang: "en", target: "baremetal",
   variant: "", extraVariants: [], query: "", open: {}, info: null, details: false, filters: { engine: false, added: false, runnable: false }, newWorkshop: "custom", fileView: "rodeo-plan.yaml",
   editing: -1, edTab: "spans", drag: null, cursor: -1, undo: null, copied: false,
@@ -78,7 +78,7 @@ function toast(msg, bad, undo) {
 // ── draft autosave (this browser only) ──────────────────────────────────
 
 const DRAFT_KEY = "rodeo-builder-draft-v1";
-const DRAFT_FIELDS = ["engine", "base", "planEdited", "mode", "importProfile", "labAddons", "labJson", "chapters",
+const DRAFT_FIELDS = ["engine", "base", "planEdited", "mode", "importProfile", "labAddons", "labJson", "labJsonFrom", "chapters",
   "custom", "name", "title", "lang", "target", "variant", "extraVariants", "strings", "imported", "contentUrl", "contentFormat"];
 let draftOn = true, draftTimer = 0;
 
@@ -134,7 +134,7 @@ function importBase() { return state.liab.imports.find((i) => i.profile === stat
 function isLiab() { return state.engine === "lab-in-a-box"; }
 function liabImported() { return isLiab() && !!importBase(); }
 
-// The lab-in-a-box lab of this rodeo: the one from the lab-builder or a lab.json, else the imported rodeo's.
+// The lab-in-a-box lab of this rodeo: the one from the lab-builder or a lab file, else the imported rodeo's.
 function currentLab() { return state.labJson || (liabImported() ? importBase().lab : null); }
 
 function provided() {
@@ -255,7 +255,7 @@ function useRodeo(d) {
   state.engine = d.engine;
   state.planEdited = d.plan;
   state.base = d.profile && d.profile !== engine().base ? { profile: d.profile, plan: d.plan } : null;
-  Object.assign(state, { mode: d.engine === "lab-in-a-box" ? "import" : state.mode, importProfile: "", labJson: d.lab || null,
+  Object.assign(state, { mode: d.engine === "lab-in-a-box" ? "examples" : state.mode, importProfile: "", labJson: d.lab || null,
     labSecrets: [], labWarnings: [], labAddons: d.lab ? RB.labJsonAddons(d.lab) : [], strings: d.strings || {} });
   render();
   toast(d.title + ": its plan" + (d.lab ? ", lab" : "") + " and " + plural(d.chapters.length, "chapter")
@@ -279,7 +279,7 @@ function useGroup(g) {
   state.planEdited = null;
   if (g.engine === "lab-in-a-box") {
     state.base = null;
-    state.mode = "import";
+    state.mode = "examples";
     state.importProfile = g.profile;
     Object.assign(state, { labJson: null, labSecrets: [], labWarnings: [] });
   } else {
@@ -342,7 +342,7 @@ function fillChoices() {
 
 function planOptions() { return { name: state.name, target: state.target, story: story(), content: contentSource() }; }
 
-// Plan text `text` with the lab from the lab-builder (or a lab.json) as its lab_in_a_box.lab and
+// Plan text `text` with the lab from the lab-builder (or a lab file) as its lab_in_a_box.lab and
 // that lab's credentials in operator_secrets.
 function withLab(text) {
   return state.labJson ? RB.addOperatorSecrets(RB.setStoredLab(text, state.labJson), state.labSecrets) : text;
@@ -636,18 +636,13 @@ function selectEngine(name) {
   render();
 }
 
-// rodeo-cli's own engines (not external like lab-in-a-box), shown under one "native" card.
+// rodeo-cli's own engines (not external like lab-in-a-box), the "native" group.
 function nativeEngines() { return state.engines.filter((e) => !e.external); }
-
-function selectNative() {
-  const e = engine();
-  if (!(e && !e.external) && nativeEngines().length) selectEngine(nativeEngines()[0].name);
-}
 
 // The base profile a native engine's rodeo starts from: one of the engine's bases.
 function selectBase(profile) {
   const e = engine(), b = (e.bases || []).find((x) => x.profile === profile);
-  if (!b || profile === baseProfile()) return;
+  if (!b || profile === baseProfile()) { render(); return; }
   if (!confirmPlanDrop()) { render(); return; }
   state.base = profile === e.base ? null : { profile, plan: b.plan };
   state.planEdited = null;
@@ -674,41 +669,127 @@ function engineInfo(e) {
       e.provides.length ? row("Provides", chipList(e.provides, "ok")) : null));
 }
 
-function engineCard(name, title, on, onclick, info) {
-  const id = "engine:" + name;
+// A radio card of one engine level: `name` and `title`, a `sub` line, whether it is `on`, what a
+// click does, and an optional (i) pop-up (`info`, with its `id`).
+// `tip` is the card's tooltip (the full name when it may be cut, or why it is `disabled`); `official`
+// marks a lab shipped with the lab-in-a-box release in use (`{version}`, the version when known).
+function engineCard({ name, title, sub, on, onclick, info, id, tip, disabled, official }) {
   return el("div", { class: "engine-card" },
     el("button", {
       class: "engine" + (on ? " on" : ""), type: "button", role: "radio", "aria-checked": String(on), tabindex: on ? "0" : "-1",
-      onclick, onkeydown: engineKey,
+      "aria-disabled": disabled ? "true" : null, title: tip || null, onclick: disabled ? null : onclick, onkeydown: engineKey,
     }, el("span", { class: "engine-top" }, el("span", { class: "radio", "aria-hidden": "true" }),
-      el("span", { class: "engine-name", text: name })),
-    el("span", { class: "engine-title", text: title })),
-    el("button", { class: "info-btn", type: "button", text: "i", title: "About " + name, "aria-label": "About " + name,
-      "aria-expanded": String(state.info === id), "aria-controls": "info-" + id, onclick: () => toggleInfo(id) }),
+      el("span", { class: "engine-name", text: name }),
+      official ? el("span", { class: "official", title: "Shipped with lab-in-a-box" + (official.version ? " " + official.version : "") },
+        officialStar(), official.version ? el("span", { text: official.version }) : null) : null),
+    el("span", { class: "engine-title", text: title }),
+    sub ? el("span", { class: "engine-sub", text: sub }) : null),
+    info ? el("button", { class: "info-btn", type: "button", text: "i", title: "About " + name, "aria-label": "About " + name,
+      "aria-expanded": String(state.info === id), "aria-controls": "info-" + id, onclick: () => toggleInfo(id) }) : null,
     info);
+}
+
+function officialStar() {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg"), path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  svg.setAttribute("viewBox", "0 0 16 16"); svg.setAttribute("aria-hidden", "true");
+  path.setAttribute("fill", "currentColor"); path.setAttribute("d", "M8 1l2 4.3 4.7.6-3.4 3.3.9 4.7L8 11.6 3.8 13.9l.9-4.7L1.3 5.9 6 5.3z");
+  svg.append(path);
+  return svg;
+}
+
+const LAB_MODES = [
+  ["create", "a new lab", "Design it in the embedded lab-builder, or upload a lab file."],
+  ["modify", "this rodeo's lab", "Open the current lab in the embedded lab-builder, or upload a lab file."],
+  ["examples", "an example lab", ""],
+];
+const LAB_FOLD = 8;
+
+// Modes an older draft stored, mapped to today's.
+const OLD_LAB_MODES = { embed: "create", import: "examples", link: "create" };
+
+// The labs a lab-in-a-box rodeo can start from, by name: the bundled rodeos and the example labs
+// the checkout ships (`official`: the lab-in-a-box version). `pick` takes one; `on` says which is in use.
+function labChoices() {
+  const nodes = (lab) => Object.keys((lab || {}).nodes || {}).length;
+  const kclusters = (lab) => Object.keys((lab || {}).kclusters || {}).length;
+  const bundled = state.liab.imports.map((i) => ({ id: "rodeo:" + i.profile, name: i.profile, official: null, nodes: nodes(i.lab),
+    kclusters: kclusters(i.lab), addons: i.addons, description: "Bundled rodeo of rodeo-cli: plan, lab and chapters.",
+    on: state.importProfile === i.profile && !state.labJson,
+    pick: () => { state.importProfile = i.profile; Object.assign(state, { labJson: null, labJsonFrom: "", labSecrets: [], labWarnings: [] }); render(); } }));
+  const shipped = state.liab.examples.map((x) => ({ id: "ex:" + x.name, name: x.title, official: { version: state.liab.version || "" },
+    nodes: x.nodes, kclusters: x.kclusters, addons: x.addons, description: x.description,
+    on: !!state.labJson && state.labJsonFrom === x.name,
+    pick: () => { state.importProfile = ""; useLab(x.lab, "lab-in-a-box example " + x.name, x.name); } }));
+  return [...bundled, ...shipped].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function labSize(l) {
+  if (!l.nodes) return "lab in the plan";
+  return l.nodes + (l.nodes === 1 ? " node" : " nodes") + (l.kclusters ? " · " + l.kclusters + (l.kclusters === 1 ? " cluster" : " clusters") : "");
+}
+
+function labMatches(l, q) {
+  return !q || (l.name + " " + l.addons.join(" ") + " " + l.nodes).toLowerCase().includes(q.toLowerCase());
+}
+
+// The lab-in-a-box levels: the Lab row (create, modify, examples) and, under examples, the lab list.
+function renderLabLevels(e) {
+  const external = !!e && e.external;
+  if (external && OLD_LAB_MODES[state.mode]) state.mode = OLD_LAB_MODES[state.mode];
+  $("#labLevel").hidden = !external;
+  const labs = external ? labChoices() : [], lab = currentLab();
+  $("#labModes").replaceChildren(...(external ? LAB_MODES.map(([m, title, sub]) => engineCard({ name: m, title,
+    sub: m === "examples" ? labs.length + (labs.length === 1 ? " lab" : " labs") + ": bundled rodeos and example labs" : sub,
+    on: state.mode === m, disabled: m === "modify" && !lab, tip: m === "modify" && !lab ? "no lab selected" : null,
+    onclick: () => { state.mode = m; render(); } })) : []));
+  const examples = external && state.mode === "examples";
+  $("#exampleLevel").hidden = !examples;
+  if (!examples) return;
+  const list = labs.filter((l) => labMatches(l, $("#labFilter").value.trim())), shown = state.labsAll ? list : list.slice(0, LAB_FOLD);
+  $("#labs").replaceChildren(...shown.map((l) => engineCard({ name: l.name, title: labSize(l), on: l.on, onclick: l.pick, tip: l.name, official: l.official })));
+  $("#labCount").textContent = shown.length + " of " + list.length;
+  $("#labsMore").hidden = list.length <= LAB_FOLD;
+  $("#labsMore").textContent = state.labsAll ? "Show fewer" : "Show all " + list.length;
+  $("#labLegend").hidden = !labs.some((l) => l.official);
+  $("#labVersion").textContent = state.liab.version || "";
+}
+
+function selectNative() {
+  const e = engine();
+  if (!(e && !e.external) && nativeEngines().length) selectEngine(nativeEngines()[0].name);
 }
 
 function nativeInfo(natives) {
   const id = "engine:native";
   return el("div", { class: "info-pop engine-info" + (state.info === id ? " open" : ""), id: "info-" + id, role: "region", "aria-label": "About native" },
     el("dl", { class: "info-card" }, el("dt", { text: "Builds" }),
-      el("dd", { text: "Labs with rodeo-cli's own engines: " + natives.map((e) => e.title).join(", ") + ". Pick one, then its base profile." })));
+      el("dd", { text: "Labs with rodeo-cli's own engines: " + natives.map((e) => e.title).join(", ") + ". Pick one, then one of its profiles." })));
 }
 
+// Three levels: the engine group (native, or an external engine such as lab-in-a-box), then
+// for native the engine, then that engine's profile (the bundled plan the rodeo starts from).
 function renderEngines() {
-  const natives = nativeEngines(), e = engine(), native = !!e && !e.external;
+  const natives = nativeEngines(), e = engine(), native = !!e && !e.external, cur = baseProfile();
   $("#engines").replaceChildren(
-    ...(natives.length ? [engineCard("native", "rodeo-cli's own engines", native, selectNative, nativeInfo(natives))] : []),
-    ...state.engines.filter((x) => x.external).map((x) =>
-      engineCard(x.name, x.title, x.name === state.engine, () => selectEngine(x.name), engineInfo(x))));
-  $("#nativeEngines").hidden = !native;
-  $("#nativeEngines").replaceChildren(...(native ? natives.map((x) =>
-    engineCard(x.name, x.title, x.name === state.engine, () => selectEngine(x.name), engineInfo(x))) : []));
+    ...(natives.length ? [engineCard({ name: "native", title: "rodeo-cli's own engines", sub: natives.length + (natives.length === 1 ? " engine" : " engines"),
+      on: native, onclick: selectNative, info: nativeInfo(natives), id: "engine:native" })] : []),
+    ...state.engines.filter((x) => x.external).map((x) => engineCard({ name: x.name, title: x.title, sub: engineSummary(x),
+      on: x.name === state.engine, onclick: () => selectEngine(x.name), info: engineInfo(x), id: "engine:" + x.name })));
+  $("#nativeLevel").hidden = !native;
+  $("#nativeEngines").replaceChildren(...(native ? natives.map((x) => engineCard({ name: x.name, title: x.title, sub: engineSummary(x),
+    on: x.name === state.engine, onclick: () => selectEngine(x.name), info: engineInfo(x), id: "engine:" + x.name })) : []));
+  const bases = native ? [...e.bases] : [];
+  if (native && !bases.some((b) => b.profile === cur)) bases.push({ profile: cur, resources: e.resources, workshop: true });
+  $("#profileLevel").hidden = !native;
+  $("#profiles").replaceChildren(...bases.map((b) => engineCard({ name: b.profile,
+    title: b.workshop ? "from the workshop" : b.profile === e.base ? "default profile" : "profile",
+    sub: sizeText(b.resources), on: b.profile === cur, onclick: () => selectBase(b.profile) })));
+  renderLabLevels(e);
   $("#engineNow").textContent = e ? "· " + e.name + (baseProfile() && baseProfile() !== e.name ? " · " + baseProfile() : "") : "";
   renderEnginePanel();
 }
 
-// Arrow keys move between the engine cards; Enter/Space selects (native button click).
+// Arrow keys move between the cards of one engine group; Enter/Space selects (native button click).
 function engineKey(ev) {
   const step = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[ev.key];
   if (!step) return;
@@ -746,7 +827,7 @@ function providedChip(name, removable) {
   const hint = KIND_LABELS[kind] ? KIND_LABELS[kind] + (inBuilder ? " · set up in the lab-builder" : "")
     : addonTargets(name).length && !addonTargets(name).some((t) => t === "vm" || t === "baremetal") ? "cluster" : "";
   return el("span", { class: "chip ok", title: inBuilder ? "rodeo's generated one-VM lab has no " + KIND_LABELS[kind] +
-      " of its own: add it in the lab-builder (Embed here), which brings the lab back with it" : null },
+      " of its own: add it in the lab-builder (modify), which brings the lab back with it" : null },
     name, hint ? el("span", { class: "muted", text: "(" + hint + ")" }) : null,
     removable ? el("button", { class: "x", type: "button", "aria-label": "Remove " + name, text: "×",
       onclick: () => { state.labAddons = state.labAddons.filter((x) => x !== name); render(); } }) : null);
@@ -790,23 +871,37 @@ function labBuilderUrl(extra, withLabParam = true) {
   return url.toString();
 }
 
-function readLabJson(file) {
+// A lab definition file as lab-in-a-box reads them: JSON, or YAML (vendor/js-yaml.min.js parses it).
+function parseLab(text) {
+  let lab;
+  try {
+    lab = JSON.parse(text);
+  } catch (jsonErr) {
+    try {
+      lab = window.jsyaml.load(text, { schema: window.jsyaml.JSON_SCHEMA });
+    } catch (yamlErr) { throw new Error("neither JSON (" + jsonErr.message + ") nor YAML (" + yamlErr.message.split("\n")[0] + ")"); }
+  }
+  if (!lab || typeof lab !== "object" || !lab.nodes || typeof lab.nodes !== "object") throw new Error("no nodes in this file");
+  return lab;
+}
+
+function readLabFile(file) {
   const reader = new FileReader();
   reader.onload = () => {
     try {
-      const lab = JSON.parse(reader.result);
-      if (!lab || typeof lab.nodes !== "object") throw new Error("no nodes in this file");
-      useLab(lab, file.name);
-    } catch (err) { toast("Not a lab-in-a-box lab.json: " + err.message, true); }
+      useLab(parseLab(reader.result), file.name);
+    } catch (err) { toast("Not a lab-in-a-box lab definition: " + err.message, true); }
   };
   reader.readAsText(file);
 }
 
-// A lab from the lab-builder or a lab.json becomes the plan's lab_in_a_box.lab; an imported rodeo stays.
+// A lab from the lab-builder or a lab file becomes the plan's lab_in_a_box.lab; an imported rodeo stays.
 // Its credentials become ??placeholders: those that replaced a value, or that the plan did not
 // reference before (typed in the lab-builder), go to operator_secrets. Literal node names and
 // addresses that differ from the stored lab become ${node_fqdn:<vm>} / ${node_ip:<vm>}.
-function useLab(lab, source) {
+// `source` says where the lab came from (a file name, the lab-builder, an example lab);
+// `example` is the example's name when it is one, so its button shows as chosen.
+function useLab(lab, source, example) {
   const planRefs = new Set([...plan().matchAll(/\?\?([A-Za-z0-9_]+)/g)].map((m) => m[1]));
   const masked = RB.labWithSecretRefs(lab, [...planRefs]);
   const linked = RB.labWithNodeRefs(masked.lab, currentLab());
@@ -814,6 +909,7 @@ function useLab(lab, source) {
   const typed = [...refs].filter((k) => !planRefs.has(k) && !masked.replaced.includes(k));
   state.labSecrets = [...new Set([...state.labSecrets.filter((k) => refs.has(k)), ...masked.replaced, ...typed])];
   state.labJson = linked.lab;
+  state.labJsonFrom = example || "";
   state.labWarnings = linked.warnings;
   state.labAddons = RB.labJsonAddons(linked.lab);
   if (state.planEdited !== null) state.planEdited = RB.addOperatorSecrets(RB.setStoredLab(state.planEdited, linked.lab), state.labSecrets);
@@ -829,40 +925,43 @@ function renderEnginePanel() {
   box.replaceChildren();
   if (!e) return;
   if (!e.external) {
-    const cur = baseProfile(), bases = e.bases || [], chosen = bases.find((b) => b.profile === cur);
-    const options = bases.map((b) => el("option", { value: b.profile, text: b.profile + (b.profile === e.base ? " (default)" : "") +
-      " · " + sizeText(b.resources) }));
-    if (!chosen) options.push(el("option", { value: cur, text: cur + " (from the workshop)" }));
-    const pick = el("select", { id: "baseProfile", class: "select", onchange: (ev) => selectBase(ev.target.value) }, options);
-    pick.value = cur;
+    const cur = baseProfile(), chosen = (e.bases || []).find((b) => b.profile === cur);
     box.append(el("h3", { text: e.title }),
       el("p", { class: "mono muted", text: sizeText((chosen || {}).resources || e.resources) + " (" + cur + " profile)" }),
       cur === e.base ? el("p", { text: e.note }) : null,
-      el("label", { class: "label", for: "baseProfile", text: "Base profile" }), pick,
-      el("p", { class: "note muted", text: "The bundled profile this rodeo's plan starts from." }),
+      el("p", { class: "note muted", text: "The plan starts from the " + cur + " profile picked above." }),
       el("span", { class: "label", text: "Provides" }), chipList(e.provides, "ok"));
     return;
   }
-  const modes = [["embed", "Embed here"], ["import", "Import existing lab"], ["link", "Open in Lab Builder"]];
-  box.append(el("h3", { text: "Lab built by lab-in-a-box" }), el("p", { text: e.note }),
-    el("div", { class: "seg", role: "tablist" }, modes.map(([m, label]) => el("button", {
-      type: "button", class: state.mode === m ? "on" : "", "aria-selected": String(state.mode === m),
-      onclick: () => { state.mode = m; render(); }, text: label }))));
-  const upload = el("label", { class: "btn sm" }, "Upload lab.json",
-    el("input", { type: "file", accept: ".json,application/json", class: "sr-only",
-      onchange: (ev) => ev.target.files[0] && readLabJson(ev.target.files[0]) }));
-  if (state.mode === "link") {
-    box.append(el("p", { text: "Design the lab in lab-in-a-box's lab-builder (this rodeo's lab, or its add-ons when the lab is too large for a link, are prefilled), download its lab.json, then upload it here to bring the lab back." }),
-      el("div", { class: "row2 chips" }, el("a", { class: "btn outline sm", href: labBuilderUrl(), target: "_blank", rel: "noopener", text: "Open lab-builder ↗" }), upload));
-  } else if (state.mode === "embed") {
-    box.append(el("p", { text: "Opens the lab-builder inside this page with this rodeo's lab; \"Send this lab\" there hands it back." }),
-      el("div", { class: "chips" }, el("button", { class: "btn outline sm", type: "button", text: "Open embedded lab-builder", onclick: openEmbed })));
+  const lab = currentLab();
+  const upload = el("label", { class: "btn sm", title: "A lab definition saved from the lab-builder or written by hand: JSON or YAML" }, "Upload lab",
+    el("input", { type: "file", accept: ".json,.yaml,.yml,application/json,application/yaml", class: "sr-only",
+      onchange: (ev) => ev.target.files[0] && readLabFile(ev.target.files[0]) }));
+  const link = el("a", { class: "btn outline sm", href: labBuilderUrl(), target: "_blank", rel: "noopener", text: "Open lab-builder ↗",
+    title: "lab-in-a-box's lab-builder in its own tab, this rodeo's lab filled in (its add-ons when the lab is too large for a link); download the lab there and upload it here" });
+  if (state.mode === "create") {
+    box.append(el("h3", { text: "A new lab" }), el("p", { text: e.note }),
+      el("p", { text: "Opens the lab-builder inside this page, empty; \"Send this lab\" there hands the lab back. A lab file (JSON or YAML) works too." }),
+      el("div", { class: "chips" }, el("button", { class: "btn outline sm", type: "button", text: "Open embedded lab-builder", onclick: () => openEmbed(null) }), upload, link));
+  } else if (state.mode === "modify") {
+    const picked = labChoices().find((l) => l.on);
+    box.append(el("h3", { text: "This rodeo's lab" }),
+      el("p", { class: "mono muted", text: (picked ? picked.name + " · " : "") + (lab ? labSize({ nodes: Object.keys(lab.nodes || {}).length, kclusters: Object.keys(lab.kclusters || {}).length }) : "no lab yet") }),
+      el("p", { text: "Opens the lab-builder inside this page with this rodeo's lab; \"Send this lab\" there hands it back. Or replace it with a lab file." }),
+      el("div", { class: "chips" }, el("button", { class: "btn outline sm", type: "button", text: "Open embedded lab-builder", onclick: () => openEmbed(lab) }), upload, link));
   } else {
-    box.append(el("p", { text: "Start from a bundled lab-in-a-box rodeo, or from a lab.json." }),
-      el("div", { class: "imports" }, state.liab.imports.map((i) => el("button", {
-        class: "engine" + (state.importProfile === i.profile ? " on" : ""), type: "button",
-        onclick: () => { state.importProfile = state.importProfile === i.profile ? "" : i.profile; Object.assign(state, { labJson: null, labSecrets: [], labWarnings: [] }); render(); },
-      }, el("span", { class: "engine-name", text: i.profile }), el("span", { class: "engine-sub", text: i.addons.join(", ") })))), upload);
+    const picked = labChoices().find((l) => l.on);
+    if (picked) {
+      box.append(el("h3", {}, picked.name, picked.official ? el("span", { class: "official" }, officialStar(),
+        el("span", { text: "shipped with lab-in-a-box" + (picked.official.version ? " " + picked.official.version : "") })) : null),
+        el("p", { class: "mono muted", text: labSize(picked) + " · " + (picked.official ? "example lab of lab-in-a-box" : "bundled rodeo of rodeo-cli") }),
+        picked.official && picked.description ? el("p", { text: picked.description }) : null,
+        el("span", { class: "label", text: "Add-ons" }),
+        el("div", { class: "chips" }, picked.addons.length ? picked.addons.map((a) => el("span", { class: "chip ok", text: a })) : el("span", { class: "muted mono", text: "none" })));
+    } else {
+      box.append(el("h3", { text: "An example lab" }), el("p", { text: "Pick one above: a bundled rodeo, or an example lab shipped with lab-in-a-box." }));
+    }
+    box.append(el("div", { class: "chips" }, upload, link));
   }
   if (state.labJson) box.append(el("p", { class: "mono muted", text: "Lab from the lab-builder: saved in rodeo-plan.yaml as lab_in_a_box.lab." }));
   if (state.labJson && state.labWarnings.length) {
@@ -878,7 +977,7 @@ function renderEnginePanel() {
   box.append(el("span", { class: "label", text: "Provides" }));
   if (currentLab()) {
     box.append(el("div", { class: "chips" }, [...provided()].sort().map((n) => providedChip(n, false))),
-      el("p", { class: "muted", text: "What this lab provides is edited in the lab-builder (Embed here or Open in Lab Builder)." }));
+      el("p", { class: "muted", text: "What this lab provides is edited in the lab-builder (modify, or Open lab-builder)." }));
   } else {
     box.append(el("div", { class: "chips" }, state.labAddons.length ? state.labAddons.map((a) => providedChip(a, true))
       : el("span", { class: "muted mono", text: "none yet" })));
@@ -936,8 +1035,9 @@ function closeEmbed() {
 }
 
 // Opens the lab-builder in the overlay and, once it has loaded, hands it this rodeo's lab.
-function openEmbed() {
-  const frame = $("#embedFrame"), lab = currentLab();
+// Opens the embedded lab-builder with `lab` loaded (empty when there is none).
+function openEmbed(lab) {
+  const frame = $("#embedFrame");
   frame.onload = lab ? () => frame.contentWindow.postMessage({ type: "labinabox:load", lab }, labBuilderBase().origin) : null;
   frame.src = labBuilderUrl({ embed: "1", origin: location.origin }, false);
   $("#embedNote").textContent = "Use this lab in the lab-builder hands the lab back here.";
@@ -2771,6 +2871,8 @@ function initResizers() {
 
 function bind() {
   initResizers();
+  $("#labFilter").addEventListener("input", () => { state.labsAll = false; renderLabLevels(engine()); });
+  $("#labsMore").addEventListener("click", () => { state.labsAll = !state.labsAll; renderLabLevels(engine()); });
   linkScroll($("#edSource"), $("#edPreview"));
   document.addEventListener("mousedown", (ev) => {
     if (state.info && !ev.target.closest(".info-pop, .info-btn")) toggleInfo(state.info);

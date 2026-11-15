@@ -112,7 +112,7 @@ def test_labinabox_addons_come_from_its_api(tmp_path):
     data = discovery.labinabox(checkout, "https://example/lb/", "1.10.0")
     assert data["builder_url"] == "https://example/lb/" and data["version"] == "1.10.0"
     assert [a["name"] for a in data["addons"]] == ["smlm", "client_registration"]
-    assert data["error"] == ""
+    assert data["error"] == "" and data["examples"] == []
 
 
 def test_labinabox_catalogue_is_split_by_kind(labinabox_checkout):
@@ -120,6 +120,15 @@ def test_labinabox_catalogue_is_split_by_kind(labinabox_checkout):
     assert [a["name"] for a in data["addons"]] == ["smlm", "client_registration"]
     assert [a["name"] for a in data["infrastructure"]] == ["pxe"]
     assert [a["name"] for a in data["kclusters"]] == ["rke2"]
+
+
+def test_labinabox_examples_come_with_their_lab(labinabox_checkout):
+    [example] = discovery.labinabox_examples(labinabox_checkout)
+    assert (example["name"], example["title"], example["nodes"], example["kclusters"]) == (
+        "two-clients.json.template", "two clients", 3, 0)
+    assert example["addons"] == ["client_registration", "smlm"]
+    assert set(example["lab"]["nodes"]) == {"smlm.example.lab", "c1.example.lab", "c2.example.lab"}
+    assert discovery.labinabox(labinabox_checkout)["examples"] == [example]
 
 
 def test_labinabox_addons_run_without_their_named_interpreter(tmp_path):
@@ -152,15 +161,17 @@ def test_labinabox_catalogue_is_read_again_only_when_the_checkout_changes(tmp_pa
     run = discovery._run_liab
     monkeypatch.setattr(discovery, "_run_liab", lambda script, path: runs.append(script) or run(script, path))
     first = discovery.labinabox(checkout)
-    assert first["schema"] and len(runs) == 2
+    assert first["schema"] and len(runs) == 3
     first["addons"].clear()
+    first["examples"].clear()
     again = discovery.labinabox(checkout, "https://example/lb/", "2.0")
-    assert len(runs) == 2 and [a["name"] for a in again["addons"]] == ["smlm", "client_registration"]
+    assert len(runs) == 3 and [a["name"] for a in again["addons"]] == ["smlm", "client_registration"]
+    assert [e["name"] for e in again["examples"]] == ["two-clients.json.template"]
     assert again["builder_url"] == "https://example/lb/" and again["version"] == "2.0"
     api = checkout / "webui" / "lib" / "api.py"
     os.utime(api, ns=(api.stat().st_mtime_ns + 10**9,) * 2)
     discovery.labinabox(checkout)
-    assert len(runs) == 4
+    assert len(runs) == 6
 
 
 def test_labinabox_errors_are_not_kept(tmp_path, monkeypatch):
@@ -311,7 +322,9 @@ def test_static_build_embeds_every_answer(tmp_path, labinabox_checkout):
                         "--no-fetch-sources", "--labinabox", str(labinabox_checkout)],
                        capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
-    assert sorted(p.name for p in out.iterdir()) == ["app.js", "assets", "boot.js", "fonts", "index.html", "logic.js", "style.css", "theme.js"]
+    assert sorted(p.name for p in out.iterdir()) == ["app.js", "assets", "boot.js", "fonts", "index.html", "logic.js",
+                                                     "style.css", "theme.js", "vendor"]
+    assert (out / "vendor" / "js-yaml.min.js").is_file() and (out / "vendor" / "LICENSE-js-yaml.txt").is_file()
     html = (out / "index.html").read_text()
     assert "__RODEOVERSION__" not in html
     payload = re.search(r'<script id="static-api-data" type="application/json">(.*?)</script>', html, re.S).group(1)

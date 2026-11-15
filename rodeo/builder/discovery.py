@@ -540,6 +540,25 @@ for c in body.get("components", []) if status == 200 else []:
 print(json.dumps(out))
 """
 
+# The checkout's example labs: its catalogue entries (name, title, description, nodes, kclusters,
+# addons) with each one's lab definition; [] when the release has no examples API.
+_LIAB_EXAMPLES = r"""
+import json, os, sys
+repo = sys.argv[1]
+os.environ["LABBUILDER_SCRIPTS_DIR"] = os.path.join(repo, "scripts")
+os.environ["LABBUILDER_LIBS_DIR"] = os.path.join(repo, "libs")
+os.environ["LABBUILDER_STATUS_FILE"] = os.devnull
+sys.path.insert(0, os.path.join(repo, "webui", "lib"))
+import api
+status, body = api.dispatch("examples", "GET", {}, b"")
+out = []
+for e in body.get("examples", []) if status == 200 else []:
+    status, lab = api.dispatch("example", "GET", {"name": [e["name"]]}, b"")
+    if status == 200 and isinstance(lab, dict) and isinstance(lab.get("nodes"), dict):
+        out.append({k: e.get(k) for k in ("name", "title", "description", "nodes", "kclusters", "addons")} | {"lab": lab})
+print(json.dumps(out))
+"""
+
 LIAB_KINDS = {"addon": "addons", "infrastructure": "infrastructure", "kcluster": "kclusters"}
 _SHEBANG_ENV = re.compile(r"^#!\s*/usr/bin/env\s+(\S+)")
 
@@ -570,6 +589,16 @@ def _run_liab(script: str, checkout: Path) -> tuple["subprocess.CompletedProcess
             env["PATH"] = shim + os.pathsep + env.get("PATH", "")
         r = subprocess.run([sys.executable, "-c", script, str(checkout)], capture_output=True, text=True, env=env)
     return r, wanted
+
+
+def labinabox_examples(checkout: Path) -> list[dict[str, Any]]:
+    """The example labs a lab-in-a-box checkout ships, from its own lab-builder API: ``name``,
+    ``title``, ``description``, ``nodes`` and ``kclusters`` counts, ``addons`` and the ``lab``
+    definition itself. [] when the checkout offers none. Raises RuntimeError when it can't answer."""
+    r, _ = _run_liab(_LIAB_EXAMPLES, checkout)
+    if r.returncode != 0:
+        raise RuntimeError("lab-in-a-box examples from {}: {}".format(checkout, r.stderr.strip()[-300:]))
+    return json.loads(r.stdout)
 
 
 def labinabox_schema(checkout: Path) -> dict[str, Any]:
@@ -609,9 +638,9 @@ _liab_lock = threading.Lock()
 
 def checkout_stamp(checkout: Path) -> tuple[int, int]:
     """``(newest mtime in ns, file count)`` of the parts of a lab-in-a-box checkout its
-    lab-builder API reads (``scripts/``, ``libs/``, ``webui/lib/``): changes when they do."""
+    lab-builder API reads (``scripts/``, ``libs/``, ``examples/``, ``webui/lib/``): changes when they do."""
     newest = count = 0
-    for sub in ("scripts", "libs", os.path.join("webui", "lib")):
+    for sub in ("scripts", "libs", "examples", os.path.join("webui", "lib")):
         for root, dirs, files in os.walk(checkout / sub):
             dirs[:] = [d for d in dirs if d != "__pycache__"]
             for name in files:
@@ -624,7 +653,8 @@ def checkout_stamp(checkout: Path) -> tuple[int, int]:
 def labinabox(checkout: Path | None = None, builder_url: str = LAB_BUILDER_URL,
               version: str = "", missing: str = "") -> dict[str, Any]:
     """The lab-builder URL, the lab-in-a-box catalogue split by kind (``addons``,
-    ``infrastructure``, ``kclusters``) and the bundled imports.
+    ``infrastructure``, ``kclusters``), the bundled imports and the checkout's ``examples``
+    (:func:`labinabox_examples`).
 
     ``error`` says why the catalogue is missing (*missing*, the caller's reason
     for having no checkout; or the checkout's API failed); it is empty when the
@@ -634,7 +664,7 @@ def labinabox(checkout: Path | None = None, builder_url: str = LAB_BUILDER_URL,
     """
     out: dict[str, Any] = {"builder_url": builder_url, "version": version, "error": "",
                            "imports": labinabox_imports(), **{key: [] for key in LIAB_KINDS.values()},
-                           "schema": None, "schema_error": ""}
+                           "examples": [], "schema": None, "schema_error": ""}
     if checkout is None:
         out["error"] = missing or "no lab-in-a-box checkout was given, so its catalogue is unknown"
         return out
@@ -651,10 +681,11 @@ def labinabox(checkout: Path | None = None, builder_url: str = LAB_BUILDER_URL,
     for item in items:
         out[LIAB_KINDS.get(item["kind"], "addons")].append(item)
     try:
+        out["examples"] = labinabox_examples(checkout)
         out["schema"] = labinabox_schema(checkout)
     except (OSError, RuntimeError, ValueError) as exc:
         out["schema_error"] = str(exc)
         return out
     with _liab_lock:
-        _liab_cache[key] = (stamp, copy.deepcopy({k: out[k] for k in ("schema", *LIAB_KINDS.values())}))
+        _liab_cache[key] = (stamp, copy.deepcopy({k: out[k] for k in ("schema", "examples", *LIAB_KINDS.values())}))
     return out

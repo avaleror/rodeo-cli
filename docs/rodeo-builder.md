@@ -31,19 +31,31 @@ read at each start, plus any `--allow-host`.
 - **Lab engine.** The engines are the rodeo types installed (a plugin's
   included); the deployment targets and instructions formats offered are the
   ones rodeo knows, never a fixed list. `suse-virt`, `rancher` and `suse-edge`
-  are rodeo's own engines, listed under the **native** card; the **(i)** on each shows its size,
-  its base profiles and what it provides (for example Harvester, KubeVirt, Longhorn, Rancher, Fleet).
-  **Base profile** lists every bundled profile of the chosen engine's type, with its size
-  (for `suse-virt`: `harvester`, the default, `harvester-2n`, `harvester-ha`, `test` and the
-  workshop profiles); the rodeo's plan starts from the one picked. `lab-in-a-box` builds any lab lab-in-a-box can:
-    - **Embed here** (the default) opens the lab-builder inside the page with
-      this rodeo's lab loaded; "Send this lab" there hands it back.
-    - **Import existing lab** starts from a bundled lab-in-a-box rodeo
-      (`smlm-workshop`) or from a lab.json. An imported rodeo stays selected on
-      every tab, so its lab is the one the lab-builder opens.
-    - **Open in Lab Builder** opens lab-in-a-box's lab-builder in its own tab
-      with this rodeo's lab filled in (only its add-ons when the lab is too large
-      for a link). Download the lab.json there and upload it here to bring the lab back.
+  are rodeo's own engines, under the **native** card; `lab-in-a-box` (and any other external
+  engine) is a card beside it. Picking native shows an **Engine** row (`suse-virt`, `rancher`,
+  `suse-edge`); picking an engine shows a **Profile** row, every bundled profile of that engine's
+  type with its size, the default first; the rodeo's plan starts from the profile picked. The
+  **(i)** on an engine shows its size, its profiles and what it provides (for example Harvester,
+  KubeVirt, Longhorn, Rancher, Fleet).
+  For `suse-virt` the profiles are `harvester` (the default), `harvester-2n`, `harvester-ha`,
+  `test` and the workshop profiles. `lab-in-a-box` builds any lab lab-in-a-box can; picking it
+  shows a **Lab** row:
+    - **create** (the default) opens the lab-builder inside the page, empty; "Send this
+      lab" there hands the lab back.
+    - **modify** opens the lab-builder inside the page with this rodeo's lab loaded. It is
+      greyed out, "no lab selected", until the rodeo has a lab.
+    - **examples** shows an **Example** row: one list of the bundled lab-in-a-box rodeos
+      (`smlm-workshop`) and the example labs the lab-in-a-box release in use ships, the
+      latter marked with a star and the release. Each card carries the name and the node
+      and cluster count only; a filter box narrows the list and it folds after eight. The
+      box below the rows shows the chosen lab's description and add-ons. An example lab is
+      taken like an uploaded lab file, so it lands in the plan as `lab_in_a_box.lab`; a
+      bundled rodeo stays selected on every tab, so its lab is the one the lab-builder opens.
+    Every mode's box also offers **Upload lab**, a lab definition file as lab-in-a-box reads
+    them (JSON or YAML; the page parses YAML with the bundled `vendor/js-yaml.min.js`, MIT),
+    and **Open lab-builder ↗**: lab-in-a-box's lab-builder in its own tab with this rodeo's
+    lab filled in (only its add-ons when the lab is too large for a link); download the lab
+    there and upload it here to bring the lab back.
 
   **Provides** lists what the lab offers chapters, from lab-in-a-box's whole
   catalogue: add-ons, Kubernetes clusters (`rke2`, `k3s`, ...) and infrastructure
@@ -52,7 +64,7 @@ read at each start, plus any `--allow-host`.
   here), whose lab brings them back. With a lab, it lists that lab's add-ons
   (on VMs and Kubernetes clusters), Kubernetes cluster types and infrastructure.
 
-  A lab brought back (sent, or uploaded as lab.json) becomes the plan's
+  A lab brought back (sent, or uploaded as a JSON or YAML lab file) becomes the plan's
   `lab_in_a_box.lab` (see the plan reference); the rest of the plan, such as an
   imported workshop's variants and `workshop:` block, is kept. Its add-ons are
   then edited in the lab-builder.
@@ -76,7 +88,7 @@ read at each start, plus any `--allow-host`.
 - **Start from a workshop.** Above the chapter library, a list of whole workshops
   to start a rodeo from: the bundled examples, the chapter sources that come with
   a profile, every published rodeo in the catalog, and the bundled lab-in-a-box
-  rodeos (also under the lab panel's **Import existing lab**). **Start from**
+  rodeos (also under the lab engine's **examples** row). **Start from**
   replaces the rodeo's lab and chapters with the workshop's: its lab engine and
   profile (for example `suse-virt` with the `virt-workshop` profile, whose
   extra setup the exercises need) and all its chapters (**Undo** restores them).

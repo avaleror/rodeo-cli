@@ -153,11 +153,11 @@ def provision_primary(
 ) -> ProvisionedHost:
     """Create or reuse the single EC2 host for this plan."""
     provider_cfg = _provider_cfg(cfg)
-    identity = resolve_ssh_identity(str(provider_cfg.get("identity_file") or "") or None)
+    plan_name = str(cfg.get("name") or "rodeo")
+    identity = resolve_ssh_identity(workshop=plan_name)
     provider_cfg = dict(provider_cfg)
     provider_cfg["identity_file"] = identity
     ssh_user = str(provider_cfg.get("ssh_user") or "ec2-user")
-    plan_name = str(cfg.get("name") or "rodeo")
     spec = ProvisionSpec(
         workshop=plan_name,
         host_ids=[SINGLE_HOST_ID],
@@ -181,9 +181,9 @@ def _fleet_inventory_for(
     host: ProvisionedHost,
 ) -> tuple[FleetInventory, FleetHost]:
     provider_cfg = _provider_cfg(cfg)
-    identity = resolve_ssh_identity(str(provider_cfg.get("identity_file") or "") or None)
-    ssh_user = str(provider_cfg.get("ssh_user") or "ec2-user")
     plan_name = str(cfg.get("name") or "rodeo")
+    identity = resolve_ssh_identity(workshop=plan_name)
+    ssh_user = str(provider_cfg.get("ssh_user") or "ec2-user")
     inv = FleetInventory(
         name=plan_name,
         lab_dir=str(provider_cfg.get("lab_dir") or _DEFAULT_LAB_DIR),
@@ -382,7 +382,7 @@ def destroy_primary(
     """Terminate the ownership-tagged single-host instance for this plan."""
     provider_cfg = _provider_cfg(cfg)
     plan_name = str(cfg.get("name") or "rodeo")
-    identity = resolve_ssh_identity(str(provider_cfg.get("identity_file") or "") or None)
+    identity = resolve_ssh_identity(workshop=plan_name)
     ssh_user = str(provider_cfg.get("ssh_user") or "ec2-user")
     spec = ProvisionSpec(
         workshop=plan_name,

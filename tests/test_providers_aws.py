@@ -44,13 +44,22 @@ class _FakeEC2:
             raise err
         return {"KeyPairs": pairs}
 
-    def import_key_pair(self, KeyName, PublicKeyMaterial):
-        from rodeo.ssh_key import local_pubkey_sha256, rodeo_ssh_public_key_path
+    def import_key_pair(self, KeyName, PublicKeyMaterial, TagSpecifications=None):
+        import base64
+        import hashlib
 
-        fp = local_pubkey_sha256(rodeo_ssh_public_key_path())
-        self.key_pairs[KeyName] = {"KeyName": KeyName, "KeyFingerprint": fp}
+        blob = base64.b64decode(PublicKeyMaterial.decode().split()[1])
+        fp = base64.b64encode(hashlib.sha256(blob).digest()).decode()  # EC2 style
+        tags = [t for spec in TagSpecifications or [] for t in spec.get("Tags") or []]
+        self.key_pairs[KeyName] = {"KeyName": KeyName, "KeyFingerprint": fp, "Tags": tags}
         self.imported.append(KeyName)
         return {"KeyName": KeyName, "KeyFingerprint": fp}
+
+    def delete_key_pair(self, KeyName):
+        self.deleted_key_pairs = getattr(self, "deleted_key_pairs", [])
+        self.deleted_key_pairs.append(KeyName)
+        self.key_pairs.pop(KeyName, None)
+        return {}
 
     def describe_images(self, Owners=None, Filters=None):
         # Prefer explicit test fixtures; default Leap-like image when filtering.
@@ -148,6 +157,7 @@ class _FakeEC2:
             "State": {"Name": "pending"},
             "PublicIpAddress": "",
             "Tags": tags,
+            "KeyName": kwargs.get("KeyName"),
         }
         self.instances[iid] = inst
         # immediately become running with IP on next describe (simulate wait loop)
@@ -295,8 +305,9 @@ def test_aws_create_enables_nested_virt_by_default_on_i7i(managed_ssh, monkeypat
         },
     )
     assert captured.get("CpuOptions") == {"NestedVirtualization": "enabled"}
-    assert captured.get("KeyName") == "rodeo"
-    assert fake.imported == ["rodeo"]
+    # Each deployment gets its own key pair, never the shared "rodeo" one.
+    assert captured.get("KeyName", "").startswith("rodeo-demo-")
+    assert fake.imported == [captured["KeyName"]]
     ud = captured.get("UserData") or ""
     assert "#cloud-config" in ud
     assert "NOPASSWD:ALL" in ud

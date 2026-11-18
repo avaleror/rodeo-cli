@@ -84,7 +84,7 @@ pip install -e '.[aws]'        # once, in your rodeo-cli checkout (see install.m
 # AWS API creds (boto3: never in YAML). Either:
 #   ~/.aws/credentials  (+ optional AWS_PROFILE / ~/.aws/config)
 #   or AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY (+ optional AWS_SESSION_TOKEN)
-# SSH: rodeo auto-manages ~/.rodeo/ssh/id_ed25519 and imports EC2 key pair "rodeo"
+# SSH: each workshop gets its own key (~/.rodeo/ssh/labs/<workshop>/), deleted with it
 rodeo fleet provision -f workshop.yaml    # create/reuse → write hosts[]
 rodeo fleet deploy -f workshop.yaml       # installs rodeo on each host, starts the lab
 rodeo fleet doctor -f workshop.yaml       # needs rodeo on the host, so after deploy
@@ -141,7 +141,7 @@ lab:
   # install_url: https://…           # fork or air-gapped mirror of install.sh
 defaults:
   ssh_user: ec2-user                 # AMI user (ec2-user / sles / root); non-root runs via sudo -n
-  # identity_file: optional; default is the managed ~/.rodeo/ssh/id_ed25519
+  # identity_file: optional; default is the workshop key (cloud) or ~/.rodeo/ssh/id_ed25519
 hosts:
   - id: student-01
     ssh: 203.0.113.11               # host or user@host
@@ -627,7 +627,7 @@ Validation rules (fail closed):
 - `provider.student_access` ∈ `{operator, open}` when set (default `operator`); see [Student network access](#student-network-access-aws).
 - `provider.ttl_hours` more than 0 and at most 168 when set (default 6); it cannot be turned off. See the [dead-man switch](reference/plan.md#provider-when-deployment_target-aws).
 - `provider.count` integer 1–64 when set; if `hosts:` non-empty and count omitted, ensure exactly those ids (reuse/create by `rodeo-host-id`).
-- SSH identity is managed under `~/.rodeo/ssh/id_ed25519` (auto-created; imported to EC2 as key pair `rodeo`). `defaults.identity_file` / `provider.key_name` are optional.
+- SSH identity on cloud hosts is a per-workshop key under `~/.rodeo/ssh/labs/<workshop>/` (see SSH below). BYO hosts use `~/.rodeo/ssh/id_ed25519` or `defaults.identity_file`. `provider.key_name` is ignored.
 - Type-specific required keys enforced by that adapter’s `validate()` only.
 
 #### AWS API credentials
@@ -653,8 +653,17 @@ the rest of the NVMe device is deliberately left free, and mounts NVMe on
 burstable types are rejected at validate. Nested virt defaults **on** for
 non-metal types.
 
-SSH: rodeo generates `~/.rodeo/ssh/id_ed25519` if missing, imports it as EC2 key pair
-**`rodeo`**, and plants the same private key on the KVM host so nested VMs share it.
+SSH: every deployment gets its own key. When a workshop has no live instances,
+`provision` generates a new ed25519 pair in `~/.rodeo/ssh/labs/<workshop>/` and imports
+it as EC2 key pair **`rodeo-<workshop>-<random>`** (tagged `ManagedBy=rodeo`). Hosts
+added later to the same live workshop, and the portal VM, reuse that key. rodeo plants
+it on each KVM host so nested VMs share it, and `rodeo ssh` / `fleet` pick it up on
+their own. When the last instance of the workshop goes (`fleet deprovision`,
+`rodeo destroy --cloud`), rodeo deletes the key pair in EC2 and the local key. Keys of
+labs that ended some other way (dead-man switch, console) are swept on the next
+`provision` in the same region. If the workshop name already has live instances
+launched with a key that is not on this machine (another user in a shared account),
+`provision` stops with an error instead of adopting them: pick another name.
 New instances also get cloud-init UserData: root authorized_keys + `NOPASSWD` sudo
 for `ssh_user` so remote `rodeo up` never asks for a password.
 Use `rodeo ssh student-01` or `rodeo ssh student-01/rancher`.
@@ -670,7 +679,6 @@ provider:
   # ami: ami-0123456789abcdef0      # optional pin
   subnet_id: subnet-0abc…           # required
   # security_group_ids: [sg-0abc…]  # omit → rodeo manages one scoped to your IP
-  # key_name: rodeo                 # default; ImportKeyPair managed by rodeo
   # associate_public_ip: true       # default true
   # nested_virtualization: true     # default on for non-metal
   # volume_size_gib: 100            # root EBS; lab disks use NVMe via host_context

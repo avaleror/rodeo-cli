@@ -95,7 +95,7 @@ def test_provision_plants_rodeo_key_once_per_host_when_waiting_for_ssh(
 ):
     planted: list[str] = []
     monkeypatch.setattr(
-        "rodeo.providers.aws.plant_rodeo_ssh_key", lambda inv, fh: planted.append(fh.id)
+        "rodeo.providers.aws.plant_rodeo_ssh_key", lambda inv, fh, **k: planted.append(fh.id)
     )
     fake = _FakeEC2WithSG()
     p = AwsHostProvider(ec2_client=fake, sleep=lambda s: None, caller_ip_fn=lambda: "203.0.113.9")
@@ -107,7 +107,7 @@ def test_provision_plants_rodeo_key_once_per_host_when_waiting_for_ssh(
 def test_provision_without_ssh_wait_plants_no_key(managed_ssh, no_wait, monkeypatch):  # noqa: F811
     planted: list[str] = []
     monkeypatch.setattr(
-        "rodeo.providers.aws.plant_rodeo_ssh_key", lambda inv, fh: planted.append(fh.id)
+        "rodeo.providers.aws.plant_rodeo_ssh_key", lambda inv, fh, **k: planted.append(fh.id)
     )
     fake = _FakeEC2WithSG()
     p = AwsHostProvider(ec2_client=fake, sleep=lambda s: None, caller_ip_fn=lambda: "203.0.113.9")
@@ -134,7 +134,7 @@ def test_deprovision_never_touches_another_workshops_instances(managed_ssh, no_w
     }
     results = p.deprovision(mk("demo"), _provider())
     assert not other_ids & set(fake.terminated)
-    assert [r.id for r in results if r.id != "security-group"] == ["s1"]
+    assert [r.id for r in results if r.id not in ("security-group", "key-pair")] == ["s1"]
 
 
 # -- inventory loader accepts every documented example --------------------------

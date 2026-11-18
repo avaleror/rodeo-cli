@@ -82,7 +82,12 @@ def test_lab_deprovision_never_terminates_portal_and_still_deletes_lab_sg(manage
     assert any(r.id == "security-group" and r.detail == "deleted" for r in results)
     out = p.deprovision_portal(_provider(), workshop="demo")
     assert portal.provider_id in fake.terminated
-    assert [r.detail for r in out] == ["terminating", "deleted"]
+    # The lab key stays while the portal lives (it was launched with it) and
+    # goes with it: portal SG deleted, then the lab key pair.
+    assert not any(r.id == "key-pair" for r in results)
+    assert [(r.id, r.detail) for r in out] == [
+        ("portal", "terminating"), ("portal-security-group", "deleted"), ("key-pair", "deleted"),
+    ]
 
 
 def test_student_access_never_opens_port_22(managed_ssh, no_wait):  # noqa: F811

@@ -152,7 +152,7 @@ still being valid: re-run the command.
 | `[aws]` extra | Installed on control machines | Installed |
 | Local labs (`rodeo up` without `--target aws`) | Yes, on a KVM host | No |
 | SSH | OpenSSH | Built-in OpenSSH; nothing extra needed |
-| rodeo's own SSH key | `~/.rodeo/ssh/id_ed25519`, created on first use | Same |
+| rodeo's own SSH key | `~/.rodeo/ssh/id_ed25519`, created on first use; AWS labs get their own key in `~/.rodeo/ssh/labs/<lab>/`, deleted with the lab | Same |
 
 **Your laptop's public IP.** A rodeo-managed AWS security group only admits the
 public IP of the machine that last ran `provision` (or `up --target aws`). Changing

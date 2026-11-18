@@ -301,7 +301,7 @@ def test_execute_aws_up_passes_the_ref_to_the_remote_script(monkeypatch, tmp_pat
 
     monkeypatch.setattr(mod, "run_remote", _fake_run_remote)
     monkeypatch.setattr(mod, "rodeo_state_dir", lambda: tmp_path / "state")
-    monkeypatch.setattr(mod, "resolve_ssh_identity", lambda p: str(tmp_path / "id_ed25519"))
+    monkeypatch.setattr(mod, "resolve_ssh_identity", lambda *a, **k: str(tmp_path / "id_ed25519"))
 
     host = ProvisionedHost(
         id=SINGLE_HOST_ID,
@@ -564,7 +564,7 @@ def test_run_remote_up_ships_the_local_plan(monkeypatch, tmp_path):
     monkeypatch.setattr(mod, "run_remote", _fake_run_remote)
     monkeypatch.setattr(mod, "rodeo_state_dir", lambda: tmp_path / "state")
     monkeypatch.setattr(mod, "rodeo_secrets_path", lambda: tmp_path / "secrets.yaml")
-    monkeypatch.setattr(mod, "resolve_ssh_identity", lambda p: str(tmp_path / "id_ed25519"))
+    monkeypatch.setattr(mod, "resolve_ssh_identity", lambda *a, **k: str(tmp_path / "id_ed25519"))
     (tmp_path / "secrets.yaml").write_text('rancher_admin_password: "global"\nharvester_token: t\n')
     mod.run_remote_up({"name": "lab", "provider": {"type": "aws"}}, _fake_host(), plan_dir=lab)
 

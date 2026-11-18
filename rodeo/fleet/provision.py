@@ -25,7 +25,7 @@ def fleet_provision(
 ) -> list[ProvisionedHost]:
     """Ensure cloud hosts exist; optionally merge into workshop.yaml."""
     provider_cfg = require_provider(inventory)
-    identity = resolve_ssh_identity(inventory.identity_file)
+    identity = resolve_ssh_identity(workshop=inventory.name)
     ids = desired_host_ids(inventory, host_ids=host_ids)
     extra = provider_cfg.get("labels") or {}
     if extra and not isinstance(extra, dict):

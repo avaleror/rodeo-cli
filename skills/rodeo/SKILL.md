@@ -14,6 +14,8 @@ Ask which mode applies before the first deploy if it is not obvious. `rodeo doct
 
 The docs are the source of truth. Read the matching one before acting: `README.md`, `docs/guide-rancher.md`, `docs/guide-harvester.md`, `docs/guide-suse-edge.md`, `docs/examples/aws-macos.md`, `docs/runbook.md`, `docs/reference/plan.md`. Online: https://avaleror.github.io/rodeo-cli/
 
+When this skill's shell access is not available, the same operations are reachable as MCP tools: `rodeo mcp` (read-only) or `rodeo mcp --allow-write` (lifecycle too). See `docs/mcp.md`.
+
 ## Install
 
 ```bash

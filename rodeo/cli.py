@@ -20,6 +20,7 @@ from .commands.generate_cmd import generate_cmd
 from .commands.list_cmd import list_cmd
 from .commands.logins_cmd import logins_cmd
 from .commands.logs import logs_cmd
+from .commands.mcp_cmd import mcp_cmd
 from .commands.new_cmd import new_cmd
 from .commands.plan_cmd import plan_cmd
 from .commands.profiles_cmd import profiles_cmd
@@ -73,6 +74,7 @@ def cli(config_dir: str | None) -> None:
     List profiles:  rodeo profiles
     \b
     Day-2:  rodeo status · stop · start · start-if-needed · clean · ssh · logs · self-update · set-password · install-extensions
+    Agents: rodeo mcp     # serve rodeo to MCP clients over stdio
     """
     # Store for subcommands that don't get it from their own decorator
     ctx = click.get_current_context()
@@ -114,3 +116,4 @@ cli.add_command(pull_edge_image_cmd,  name="pull-edge-image")
 cli.add_command(eject_iso_cmd,        name="eject-iso")
 cli.add_command(fleet_cmd,            name="fleet")
 cli.add_command(destroy_cmd,          name="destroy")
+cli.add_command(mcp_cmd,              name="mcp")

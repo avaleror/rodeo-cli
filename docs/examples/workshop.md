@@ -59,7 +59,7 @@ hosts: []
 ```bash
 # rodeo installed on your laptop with install.sh (see ../install.md)
 # Creds: aws login, ~/.aws/credentials, or AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY
-# SSH key: auto ~/.rodeo/ssh/id_ed25519 → EC2 key pair "rodeo"
+# SSH key: a new one per workshop in ~/.rodeo/ssh/labs/<workshop>/, deleted on deprovision
 rodeo fleet provision -f workshop.yaml
 rodeo fleet deploy -f workshop.yaml     # installs rodeo on each host, starts the lab
 rodeo fleet doctor -f workshop.yaml     # needs rodeo on the host, so after deploy

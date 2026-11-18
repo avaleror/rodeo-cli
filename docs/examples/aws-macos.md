@@ -85,7 +85,7 @@ Local files it creates:
 |---|---|
 | `~/rodeo-labs/rancher/` | Lab plan with region, subnet and instance. `rodeo destroy` needs it |
 | `~/.rodeo/secrets.yaml` | Generated passwords (chmod 600) |
-| `~/.rodeo/ssh/id_ed25519` | SSH key for the host and the lab VMs |
+| `~/.rodeo/ssh/labs/rancher/` | This lab's own SSH key for the host and the lab VMs. Generated for this deployment and deleted by `rodeo destroy --cloud` |
 
 If the terminal closes during the deploy: `tmux attach -t rodeo-rancher`.
 
@@ -106,29 +106,17 @@ rodeo destroy --cloud --yes --config-dir ~/rodeo-labs/rancher
 ```
 
 
-## Key pair already exists in a shared account
+## SSH key and shared accounts
 
-rodeo imports its SSH key into EC2 as a key pair called `rodeo`. In an AWS account shared with other rodeo users, that name may already belong to someone else, and the deploy stops with:
+Each deployment generates its own SSH key in `~/.rodeo/ssh/labs/<lab>/` and imports it as an EC2 key pair named `rodeo-<lab>-<random>`. Two users in the same AWS account never share or overwrite a key pair. `rodeo destroy --cloud` deletes the key pair and the local key. If the dead-man switch ends the lab first, the next `rodeo up` cleans them up.
+
+The lab name still has to be yours. If someone else in the account has a live lab with the same plan name, `rodeo up` stops with:
 
 ```
-EC2 key pair 'rodeo' fingerprint ... does not match local ~/.rodeo/ssh key
+lab 'rancher' already has instances in AWS (...) launched with key pair ..., whose private key is not on this machine
 ```
 
-Do not delete that key pair: it is another user's, and deleting it locks them out of their lab. Use your own key pair name instead. Import your key once under that name (the availability check runs before rodeo imports the key, so the pair has to exist first):
-
-```bash
-aws ec2 import-key-pair --region eu-north-1 --key-name rodeo-yourname --public-key-material fileb://$HOME/.rodeo/ssh/id_ed25519.pub
-```
-
-Then add `key_name` to the `provider` block of `~/rodeo-labs/rancher/rodeo-plan.yaml`:
-
-```yaml
-provider:
-  key_name: rodeo-yourname
-  type: aws
-```
-
-Run `rodeo up` again from `~/rodeo-labs/rancher`.
+Do not destroy that lab: it is another user's. Change `name:` in `~/rodeo-labs/rancher/rodeo-plan.yaml` (for example `rancher-yourname`) and run `rodeo up` again.
 
 ## Common problems
 
@@ -139,8 +127,7 @@ Run `rodeo up` again from `~/rodeo-labs/rancher`.
 | `MissingDependencyException` | The `[aws]` extra is missing: run the installer again |
 | `no default VPC in <region>` | `export RODEO_AWS_REGION=<region with a default VPC>` and run `rodeo up` again |
 | Rancher UI or SSH times out | Your public IP changed (new Wi-Fi, VPN). Re-run the `rodeo up` command: it moves the rule to your new IP and skips finished phases |
-| `EC2 key pair 'rodeo' fingerprint ... does not match` | Another user owns the `rodeo` key pair. See the key pair section above |
-| `InvalidKeyPair.NotFound` | `provider.key_name` points to a key pair that does not exist yet. Import it first (see the key pair section) |
+| `already has instances in AWS ... not on this machine` | Another user has a live lab with your plan name. See the SSH key section above |
 | `rodeo: command not found` | Add `~/.local/bin` to the PATH (step 4) |
 
 More in the [runbook](../runbook.md).

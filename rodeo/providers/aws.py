@@ -10,10 +10,15 @@ from ..fleet.inventory import STUDENT_SSH_PORT, FleetHost, FleetInventory
 from ..fleet.ssh_exec import forget_host_key, run_remote
 from ..ssh_key import (
     DEFAULT_EC2_KEY_NAME,
+    LabKey,
     build_ec2_userdata,
+    delete_ec2_key_pair,
+    delete_lab_ssh_key,
     ensure_ec2_key_pair,
+    list_lab_ssh_keys,
+    load_lab_ssh_key,
+    new_lab_ssh_key,
     plant_rodeo_ssh_key,
-    resolve_ssh_identity,
 )
 from . import deadman
 from .base import (
@@ -794,10 +799,9 @@ class AwsHostProvider:
         ec2 = self._client(cfg)
         cfg = dict(cfg)
         cfg["ami"] = self.resolve_ami(ec2, cfg)
-        key_name = str(cfg.get("key_name") or DEFAULT_EC2_KEY_NAME).strip() or DEFAULT_EC2_KEY_NAME
-        ensure_ec2_key_pair(ec2, key_name=key_name)
-        identity = resolve_ssh_identity(spec.identity_file)
-        # Use managed identity for SSH wait even if ProvisionSpec omitted it.
+        lab_key = self._lab_key(ec2, cfg, spec.workshop)
+        identity = str(lab_key.private)
+        # The lab's own key for the SSH wait, whatever ProvisionSpec carried.
         wait_spec = ProvisionSpec(
             workshop=spec.workshop,
             host_ids=spec.host_ids,
@@ -807,7 +811,8 @@ class AwsHostProvider:
             wait_ssh=spec.wait_ssh,
             ssh_timeout=spec.ssh_timeout,
         )
-        cfg["key_name"] = key_name
+        cfg["key_name"] = lab_key.key_name
+        cfg["public_key"] = lab_key.public.read_text()
         out: list[ProvisionedHost] = []
         to_create: list[str] = []
         existing_map: dict[str, dict[str, Any]] = {}
@@ -872,7 +877,7 @@ class AwsHostProvider:
                     hosts=[],
                 )
                 fh = FleetHost(id=host.id, ssh=host.ssh, public_ip=host.public_ip)
-                plant_rodeo_ssh_key(inv, fh)
+                plant_rodeo_ssh_key(inv, fh, key=lab_key)
             host = ProvisionedHost(
                 id=host.id,
                 ssh=host.ssh,
@@ -961,7 +966,94 @@ class AwsHostProvider:
                 cleanup = self._cleanup_managed_sg(ec2, config, workshop=spec.workshop)
                 if cleanup:
                     results.append(cleanup)
+        # The lab key lives exactly as long as the lab: gone with its last
+        # instance. The portal counts here (it was launched with this key).
+        if not self._owned_instances(ec2, spec.workshop, exclude={iid for _, iid in targets}):
+            key_result = self._delete_lab_key(ec2, spec.workshop)
+            if key_result:
+                results.append(key_result)
         return results
+
+    def _owned_instances(
+        self, ec2: Any, workshop: str, *, exclude: set[str] | None = None
+    ) -> list[dict[str, Any]]:
+        """Live (not terminated) rodeo instances of ``workshop``, portal included."""
+        resp = ec2.describe_instances(Filters=[
+            {"Name": f"tag:{TAG_MANAGED_BY}", "Values": [TAG_MANAGED_BY_VALUE]},
+            {"Name": f"tag:{TAG_WORKSHOP}", "Values": [workshop]},
+            {"Name": "instance-state-name",
+             "Values": ["pending", "running", "stopping", "stopped"]},
+        ])
+        skip = exclude or set()
+        return [
+            inst
+            for res in resp.get("Reservations") or []
+            for inst in res.get("Instances") or []
+            if inst["InstanceId"] not in skip
+        ]
+
+    def _lab_key(self, ec2: Any, cfg: dict[str, Any], workshop: str) -> LabKey:
+        """The SSH key this deployment of ``workshop`` uses.
+
+        A lab with live instances keeps the key it was created with; a new
+        deployment gets a freshly generated one (imported under a unique
+        name), after the previous one is deleted locally and in EC2.
+        """
+        region = str(cfg.get("region") or "")
+        self._sweep_stale_lab_keys(ec2, region, skip=workshop)
+        alive = self._owned_instances(ec2, workshop)
+        key = load_lab_ssh_key(workshop)
+        if alive:
+            names = {str(i.get("KeyName") or "") for i in alive}
+            if key is None or key.key_name not in names:
+                ids = ", ".join(sorted(i["InstanceId"] for i in alive))
+                raise ConfigError(
+                    f"lab {workshop!r} already has instances in AWS ({ids}) launched "
+                    f"with key pair {', '.join(sorted(n for n in names if n)) or '(none)'}, "
+                    "whose private key is not on this machine. They were created "
+                    "from another machine or by another user of this account. "
+                    "Give your plan a different name, or destroy that lab from "
+                    "where it was deployed."
+                )
+        else:
+            if key is not None:
+                delete_ec2_key_pair(ec2, key.key_name)
+            key = new_lab_ssh_key(workshop, region=region)
+        ensure_ec2_key_pair(
+            ec2,
+            key_name=key.key_name,
+            public_key=key.public,
+            tags={TAG_MANAGED_BY: TAG_MANAGED_BY_VALUE, TAG_WORKSHOP: workshop},
+        )
+        return key
+
+    def _delete_lab_key(self, ec2: Any, workshop: str) -> DeprovisionResult | None:
+        key = load_lab_ssh_key(workshop)
+        if key is None:
+            return None
+        if not delete_ec2_key_pair(ec2, key.key_name):
+            return DeprovisionResult(
+                id="key-pair", ok=True, provider_id=key.key_name,
+                detail="delete failed - re-run destroy to retry",
+            )
+        delete_lab_ssh_key(workshop)
+        return DeprovisionResult(id="key-pair", ok=True, provider_id=key.key_name,
+                                 detail="deleted")
+
+    def _sweep_stale_lab_keys(self, ec2: Any, region: str, *, skip: str) -> None:
+        """Delete this machine's lab keys whose lab is gone (dead-man switch,
+        console termination): the key pair in EC2 and the private key here.
+        Only keys recorded for ``region``; never fails the caller."""
+        try:
+            for key in list_lab_ssh_keys():
+                if key.workshop == skip or not key.region or key.region != region:
+                    continue
+                if self._owned_instances(ec2, key.workshop):
+                    continue
+                if delete_ec2_key_pair(ec2, key.key_name):
+                    delete_lab_ssh_key(key.workshop)
+        except Exception:  # noqa: BLE001 — housekeeping only
+            pass
 
     def _find_owned(self, ec2: Any, workshop: str, host_id: str) -> dict[str, Any] | None:
         resp = ec2.describe_instances(
@@ -1073,7 +1165,8 @@ class AwsHostProvider:
 
                 boot_script = zypper_boot_install_script()
             kwargs["UserData"] = build_ec2_userdata(
-                ssh_user=ssh_user, expires_at=expiry, boot_script=boot_script
+                ssh_user=ssh_user, expires_at=expiry, boot_script=boot_script,
+                public_key=config.get("public_key"),
             )
         return kwargs
 
@@ -1212,9 +1305,8 @@ class AwsHostProvider:
         ec2 = self._client(config)
         cfg = dict(config)
         cfg["ami"] = self.resolve_ami(ec2, cfg)
-        key_name = str(cfg.get("key_name") or DEFAULT_EC2_KEY_NAME).strip() or DEFAULT_EC2_KEY_NAME
-        ensure_ec2_key_pair(ec2, key_name=key_name)
-        identity = resolve_ssh_identity(None)
+        lab_key = self._lab_key(ec2, cfg, workshop)
+        identity = str(lab_key.private)
         vpc_id = self._vpc_id_for_subnet(ec2, str(cfg["subnet_id"]))
         sg_id = self._ensure_portal_sg(ec2, vpc_id=vpc_id, workshop=workshop)
         inst = self._find_portal(ec2, workshop)
@@ -1222,7 +1314,8 @@ class AwsHostProvider:
         if inst is None:
             portal_cfg = {
                 **cfg,
-                "key_name": key_name,
+                "key_name": lab_key.key_name,
+                "public_key": lab_key.public.read_text(),
                 "instance_type": instance_type or DEFAULT_PORTAL_INSTANCE_TYPE,
                 "nested_virtualization": False,
                 "volume_size_gib": int(cfg.get("portal_volume_size_gib") or 20),
@@ -1287,4 +1380,9 @@ class AwsHostProvider:
                         self._sleep(10)
             results.append(DeprovisionResult(id="portal-security-group", ok=True,
                                              provider_id=sg_id, detail=detail))
+        exclude = {inst["InstanceId"]} if inst is not None else set()
+        if not self._owned_instances(ec2, workshop, exclude=exclude):
+            key_result = self._delete_lab_key(ec2, workshop)
+            if key_result:
+                results.append(key_result)
         return results

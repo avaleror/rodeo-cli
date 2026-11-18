@@ -37,7 +37,8 @@ def _target(host: FleetHost, inventory: FleetInventory) -> str:
 
 
 def _identity(inventory: FleetInventory) -> str | None:
-    """``defaults.identity_file`` if set, else rodeo's managed key when it exists.
+    """``defaults.identity_file`` if set, else the workshop's own lab key (cloud
+    hosts rodeo provisioned), else rodeo's managed key when it exists.
 
     Provisioned hosts only trust the managed key (cloud-init userdata), so without
     this fallback every fleet command against them fails with "Permission denied"
@@ -46,8 +47,12 @@ def _identity(inventory: FleetInventory) -> str | None:
     """
     if inventory.identity_file:
         return inventory.identity_file
-    from ..ssh_key import rodeo_ssh_private_key_path  # lazy: ssh_key imports this module
+    # lazy: ssh_key imports this module
+    from ..ssh_key import load_lab_ssh_key, rodeo_ssh_private_key_path
 
+    lab_key = load_lab_ssh_key(inventory.name) if inventory.name else None
+    if lab_key is not None:
+        return str(lab_key.private)
     managed = rodeo_ssh_private_key_path()
     return str(managed) if managed.is_file() else None
 

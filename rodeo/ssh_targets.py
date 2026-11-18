@@ -115,11 +115,14 @@ def resolve_kvm_host(
     cfg: dict[str, Any] | None = None,
     workshop_path: Path | None = None,
 ) -> tuple[str, str, str]:
-    """Return ``(ssh_user, ssh_host, identity)`` for a KVM/EC2 host id."""
-    identity = resolve_ssh_identity()
+    """Return ``(ssh_user, ssh_host, identity)`` for a KVM/EC2 host id.
+
+    Cloud hosts rodeo provisioned trust only their lab's own key, so the
+    identity follows the workshop / plan the host belongs to."""
     ws = workshop_path or find_workshop_path()
     if ws is not None:
         inv = load_inventory(ws)
+        identity = resolve_ssh_identity(workshop=inv.name)
         for h in inv.hosts:
             if h.id == host_id:
                 user = h.ssh_user or inv.ssh_user
@@ -132,6 +135,7 @@ def resolve_kvm_host(
 
     plan_name = str((cfg or {}).get("name") or "")
     if plan_name:
+        identity = resolve_ssh_identity(workshop=plan_name)
         state = load_aws_host_state(plan_name)
         if state and str(state.get("host_id") or "") == host_id:
             provider = (cfg or {}).get("provider") or {}
@@ -151,6 +155,7 @@ def resolve_kvm_host(
                 continue
             if str(raw.get("host_id") or "") != host_id:
                 continue
+            identity = resolve_ssh_identity(workshop=str(raw.get("plan") or "") or None)
             host = str(raw.get("public_ip") or raw.get("ssh") or "")
             if not host:
                 continue

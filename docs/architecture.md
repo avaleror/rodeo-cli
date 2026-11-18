@@ -222,6 +222,7 @@ rodeo/
 │   ├── rancher_test.py    Rancher Prime on K3s + single-node K3s and RKE2
 │   ├── suse_virt.py       Harvester HCI + Rancher (default workshop profile)
 │   └── suse_edge.py       SUSE Edge 3.7 (Rancher + Elemental + EIB + edge nodes)
+├── mcp/                   MCP server over stdio (tool table, exec, JSON-RPC)
 ├── commands/              Thin CLI wrappers
 ├── service/               JSON report helpers (doctor, status) for CLI + fleet
 ├── fleet/                 Laptop→host workshop fan-out (OpenSSH; see docs/fleet.md)
@@ -466,6 +467,7 @@ Live KVM regression is still manual (or geekohive) before touching MAC/DHCP/ISO 
 | New host provider | `providers.registry.register_provider()` with a factory returning a `HostProvider` |
 | Third-party plugin | A package with a `rodeo.plugins` entry point calling the register_* APIs, discovered lazily on the first lookup miss (see `rodeo/plugins.py`) |
 | New CLI command | `commands/*.py` + register in `cli.py` |
+| New MCP tool | One row in `mcp/tools.py` (`READ_TOOLS` or `WRITE_TOOLS`): subcommand, typed `Arg`s, fixed flags. Schema, dispatch and the `--allow-write` gate follow; see [MCP server](mcp.md) |
 | Host OS support | `hostos.py` (which OSes host labs), `install.sh` role detection, `install_deps.py`, and kvm_host role conditionals |
 | New workshop/demo | Separate repo: `rodeo-plan.yaml` (type + deployment_target) + lab guide + host setup docs |
 | Multi-host workshop fan-out | `rodeo/fleet/` + `workshop.yaml`: see [Fleet](fleet.md); do not multi-host the phase engine |
@@ -508,5 +510,6 @@ Bare Metal, Hetzner Cloud (planned stubs today). See [Fleet](fleet.md#roadmap).
 |----------|----------|
 | [User guide](get-started.md) | Workshop operators deploying labs |
 | [Fleet](fleet.md) | Multi-host workshops, AWS provisioning and the claim portal ([roadmap](fleet.md#roadmap)) |
+| [MCP server](mcp.md) | Driving rodeo from an agent or editor over MCP |
 | [ROADMAP.md](https://github.com/avaleror/rodeo-cli/blob/main/ROADMAP.md) | Planned declarative-deployment features |
 | [CONTEXT.md](https://github.com/avaleror/rodeo-cli/blob/main/CONTEXT.md) | Full project context for AI/developers |

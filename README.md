@@ -142,6 +142,7 @@ rodeo picks the region (`eu-north-1`, or `$RODEO_AWS_REGION`), the default VPC s
 | `clean` | Destroy lab VMs, disks, state. `--all --yes --secrets` for a full host reset |
 | `destroy` | Terminate the cloud host of a lab (`--cloud`) and its security group |
 | `fleet` | Multi-host workshops: `provision`, `deploy`, `status`, `doctor`, `retry`, `diagnose`, `access`, `open-access`, `portal` (student claim portal), `deprovision` |
+| `mcp` | Serve rodeo to MCP clients (agents, editors) over stdio. Read-only unless `--allow-write`; covers native and external engines. See [MCP server](docs/mcp.md) |
 | `watch` | Split-panel TUI: phase progress + VM serial logs |
 | `ssh` | SSH into a lab VM: `rodeo ssh harvester1` |
 | `logs` | Tail VM serial log. `--bundle` packages a support tarball |
@@ -188,6 +189,7 @@ Precedence: profile defaults < plan < paramfile < `-P`.
 | [Fleet (multi-host)](docs/fleet.md) | A lab per attendee across many hosts, plus the claim portal |
 | [Testing and CI](docs/examples/testing.md) | Unit tests, integration tests, GitHub Actions |
 | [Agent skill](skills/rodeo/SKILL.md) | Let an AI coding agent drive rodeo for you. For Claude Code: `cp -r skills/rodeo ~/.claude/skills/` |
+| [MCP server](docs/mcp.md) | Expose rodeo as MCP tools over stdio: `rodeo mcp`, the tool surface, client registration |
 
 **Reference**
 

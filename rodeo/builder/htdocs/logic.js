@@ -1666,7 +1666,23 @@ const RB = (() => {
     return [...keys.filter(near), ...keys.filter((k) => !near(k))];
   }
 
+  // Deploy log history kept in the page: at most DEPLOY_LOG_LINES lines, oldest dropped.
+  const DEPLOY_LOG_LINES = 100000;
+
+  // The log history after one GET deploy answer. `held` is {text, at} (`at` the byte offset asked
+  // for), `cur` its `current`. A `log_from` of 0 replaces the history (a new or restarted log),
+  // any other appends. Returns the new {text, at} to hold and to ask from next.
+  function deployLog(held, cur, maxLines = DEPLOY_LOG_LINES) {
+    const prev = held || { text: "", at: 0 };
+    if (!cur) return { text: "", at: 0 };
+    const text = (cur.log_from ? prev.text : "") + (cur.log || "");
+    const lines = text.split("\n");
+    return { text: lines.length > maxLines ? lines.slice(lines.length - maxLines).join("\n") : text,
+             at: Number(cur.log_next) || 0 };
+  }
+
   return {
+    DEPLOY_LOG_LINES, deployLog,
     MISSING_ADDON, SOURCE_LANGUAGE, LANGUAGE_TAG, availableLanguages, newLanguageError, slugify, uniqueId, parseSpans, parseAttrs, kind, needsId, openTag, inner,
     withKind, wrapTarget, nextId, wrap, retag, unwrap, idsIn, validate, warningsByChapter, engineNeeds, variantsIn, storyCounts, mainStory, renameStories, storyIndex,
     setTopKey, setStoredLab, dropTopBlock, storyBlock, planFromBase, planLabinabox, chapterFile, chaptersYaml,

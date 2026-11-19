@@ -637,3 +637,17 @@ test("labSummary and labDriveWarnings describe a lab", () => {
   assert.ok(w[0].startsWith("Harvester nodes (h1.lab)") && w[1].startsWith("pxe:"));
   assert.deepEqual(RB.labDriveWarnings({ nodes: { "a.lab": {} } }), []);
 });
+
+test("deployLog appends new chunks, replaces a restarted log and caps history", () => {
+  const first = RB.deployLog(null, { log: "a\nb\n", log_from: 0, log_next: 4 });
+  assert.deepEqual(first, { text: "a\nb\n", at: 4 });
+  const more = RB.deployLog(first, { log: "c\n", log_from: 4, log_next: 6 });
+  assert.deepEqual(more, { text: "a\nb\nc\n", at: 6 });
+  // log_from 0 means the log restarted: what the page holds is replaced, not appended.
+  assert.deepEqual(RB.deployLog(more, { log: "x\n", log_from: 0, log_next: 2 }), { text: "x\n", at: 2 });
+  assert.deepEqual(RB.deployLog(more, null), { text: "", at: 0 });
+  assert.equal(RB.DEPLOY_LOG_LINES, 100000);
+  const long = { text: "", at: 0 };
+  const capped = RB.deployLog(long, { log: "1\n2\n3\n4\n", log_from: 0, log_next: 8 }, 2);
+  assert.deepEqual(capped, { text: "4\n", at: 8 });
+});

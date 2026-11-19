@@ -354,6 +354,10 @@ hover.
   rodeo can generate go to the lab's `.rodeo-secrets.yaml`; ones only you have
   (`operator_secrets`) are asked for in the dialog and written to
   `~/.rodeo/secrets.yaml`, never shown again.
+- **Log** in the banner keeps the deploy's whole output as it runs, up to 100000
+  lines, and follows the tail unless you scroll up. The page asks only for the
+  bytes it has not seen yet, so a long deploy does not resend its log every poll;
+  the full output is always in `<lab>/.builder-deploy.log`.
 - A banner stays while it runs and after it ends, with the lab directory, the
   log, **Stop** (interrupts `rodeo up` like Ctrl-C) and **Save to profiles**,
   and keeps saying the rodeo is not saved until you save it. One deploy runs at

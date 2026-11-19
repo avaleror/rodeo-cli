@@ -79,6 +79,32 @@ def test_start_deploys_a_copy_and_reports_progress(fake_rodeo):
     assert "phase 2" in done["log"]
 
 
+def test_status_sends_only_the_new_log_bytes(fake_rodeo):
+    deployer = deploywork.Deployer()
+    state = deployer.start({"name": "ride", "files": FILES})
+    assert state["log_from"] == 0 and state["log_next"] == len(state["log"].encode())
+    done = _wait(deployer)
+    whole = done["log"]
+    mid = len(whole.encode()) // 2
+    part = deployer.status(mid)
+    assert part["log_from"] == mid and part["log"] == whole.encode()[mid:].decode()
+    assert part["log_next"] == len(whole.encode())
+    assert deployer.status(part["log_next"])["log"] == ""
+    # An offset past the end (a new or truncated log) restarts from the beginning.
+    restarted = deployer.status(len(whole.encode()) + 10)
+    assert restarted["log_from"] == 0 and restarted["log"] == whole
+
+
+def test_read_log_chunks_without_splitting_characters(tmp_path, monkeypatch):
+    log = tmp_path / "log"
+    log.write_text("héllo wörld\n")
+    monkeypatch.setattr(deploywork, "LOG_CHUNK", 3)
+    begin, text, nxt = deploywork._read_log(log)
+    assert begin == 0 and text == "hé" and nxt == 3
+    assert deploywork._read_log(log, nxt)[1] == "llo"
+    assert deploywork._read_log(tmp_path / "missing") == (0, "", 0)
+
+
 def test_stop_failure_and_one_at_a_time(fake_rodeo):
     deployer = deploywork.Deployer()
     deployer.start({"name": "slow", "files": FILES})
@@ -142,6 +168,20 @@ def test_api_deploys_on_an_exposed_server_after_a_login(fake_rodeo, monkeypatch)
     status, answer = api.dispatch("deploy", "POST", body=body, auth=auth)
     assert status == 200 and answer["current"]["status"] == "running"
     _wait(api.deployer)
+
+
+def test_api_get_deploy_takes_a_log_offset(fake_rodeo):
+    api = Api(can_save=True, can_deploy=True)
+    api.dispatch("deploy", "POST", body=json.dumps({"name": "ride", "files": FILES}).encode())
+    done = _wait(api.deployer)
+    whole = done["log"]
+    first = api.dispatch("deploy", params={"log_from": ["0"]})[1]["current"]
+    assert first["log"] == whole
+    rest = api.dispatch("deploy", params={"log_from": [str(first["log_next"])]})[1]["current"]
+    assert rest["log"] == "" and rest["log_from"] == first["log_next"]
+    # A missing or unusable offset reads the whole log.
+    assert api.dispatch("deploy", params={"log_from": ["nope"]})[1]["current"]["log"] == whole
+    assert api.dispatch("deploy")[1]["current"]["log"] == whole
 
 
 def test_api_deploys_only_on_a_loopback_live_server(fake_rodeo):

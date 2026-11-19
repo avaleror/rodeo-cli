@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.30.0](https://github.com/avaleror/rodeo-cli/compare/v0.29.0...v0.30.0) (2026-11-18)
+
+
+### Features
+
+* **aws:** generate a new SSH key per lab and delete it with the lab ([04d60ab](https://github.com/avaleror/rodeo-cli/commit/04d60ab6cc6bb63975cadeff826baf1af8371a01))
+* **aws:** new SSH key per lab, deleted with the lab ([2329e21](https://github.com/avaleror/rodeo-cli/commit/2329e218662d0717551b32c52b8bbd09f8bfa897))
+* **builder:** lab engine in levels, and lab-in-a-box with create, mo… ([03c46a3](https://github.com/avaleror/rodeo-cli/commit/03c46a3b4af1ac4746980ead81e43e6186a59062))
+* **builder:** lab engine in levels, and lab-in-a-box with create, modify and example labs ([a1c4d1d](https://github.com/avaleror/rodeo-cli/commit/a1c4d1db6ce2e2cf823c4ec209f92eaafc4f022a))
+* **builder:** rodeo-cli's own engines under one native card, with a Base profile choice listing every bundled profile of the engine's type and its size; the engines API answers bases ([e01862a](https://github.com/avaleror/rodeo-cli/commit/e01862ab11664de946e55ec05cbc1caf63cbfa5c))
+* **builder:** the builder serves the Settings page itself on its own address and port, over HTTPS off loopback with a certificate signed by its own CA or --tls-cert/--tls-key; logins are checked by rodeo itself (bcrypt, APR1-MD5 accepted and moved to bcrypt on a password change) and managed with rodeo logins add|remove|list; the Apache CGI Settings page, its helper, sudoers rule and the htpasswd tool dependency go, install.sh removes the former page ([2803f5f](https://github.com/avaleror/rodeo-cli/commit/2803f5f9a01ddf56b27343c8e25bc04f5c2d1e9f))
+* Dev ([4f36643](https://github.com/avaleror/rodeo-cli/commit/4f366431a7b6ec954141bbaa9f110a6eeadf9994))
+* **lab-in-a-box:** speak the lab 3.0 image fields instead of the one… ([80324a8](https://github.com/avaleror/rodeo-cli/commit/80324a86809d5a0ffb814009a65a3621112ea75c))
+* **lab-in-a-box:** speak the lab 3.0 image fields instead of the ones it migrates away ([9cb9324](https://github.com/avaleror/rodeo-cli/commit/9cb9324ee5e4d5a3f89e6f9b53ee2aaf02d4df2f))
+* **mcp:** serve rodeo to MCP clients over stdio ([fe30a38](https://github.com/avaleror/rodeo-cli/commit/fe30a38989240d3e2ffb4d78f104604016f74b84))
+* **mcp:** serve rodeo to MCP clients over stdio ([82247ea](https://github.com/avaleror/rodeo-cli/commit/82247ea139bd693d3c33716b594729c644894cf9))
+* **profiles:** rename virt-workshop-aws to virt-workshop ([8e236a8](https://github.com/avaleror/rodeo-cli/commit/8e236a8b094954c40987e1d8235023e6dcba18c1))
+* **profiles:** rename virt-workshop-aws to virt-workshop ([b739b38](https://github.com/avaleror/rodeo-cli/commit/b739b389ee61d54122246fa0d9d2ddbc77300e11))
+
+
+### Bug Fixes
+
+* /aws validate test env ([4453d4e](https://github.com/avaleror/rodeo-cli/commit/4453d4e8ef311c2cd0d7875d3abfa4b985846a55))
+* **builder:** an example opens in the embedded lab-builder, and the fixture that says where an example comes from ([39fdf54](https://github.com/avaleror/rodeo-cli/commit/39fdf54320de9a99ac3768758256a839e5b0cdca))
+* **builder:** fixed Common Names in the builder's CA and server certificate ([250d1d5](https://github.com/avaleror/rodeo-cli/commit/250d1d5e36de12128b8007dae106cff5da12be26))
+* **builder:** star only the example labs a lab-in-a-box release ships, and restart the builder on self-update ([0c38754](https://github.com/avaleror/rodeo-cli/commit/0c38754c2dd3f703c2cee353dcc33deb6d55d16a))
+* **self-update:** restart the Rodeo Builder service, and build the docs page with the package installed ([10fef9b](https://github.com/avaleror/rodeo-cli/commit/10fef9bb404fef2e83c126a8870a4cda38bef2db))
+* **tests:** pin the EC2 probe in the aws provider happy-path test ([adc6a40](https://github.com/avaleror/rodeo-cli/commit/adc6a4003b206a7004c1b5bc34d8ffb92c5a10c2))
+* **tests:** pin the EC2 probe in the aws provider happy-path test ([794d0ea](https://github.com/avaleror/rodeo-cli/commit/794d0ead03b8739d0d51ed6c77f89a5ca10d3b60))
+* **tests:** pin the EC2 probe in the aws provider validation test ([799569b](https://github.com/avaleror/rodeo-cli/commit/799569b867c49d7708c4032d34de625276754539))
+
+
+### Documentation
+
+* **changelog:** drop duplicate 0.29.0 entry ([90e0a5e](https://github.com/avaleror/rodeo-cli/commit/90e0a5eec4b131eeeb7f53a3f6ff4c665b6f333e))
+* **changelog:** drop duplicate 0.29.0 entry for [#157](https://github.com/avaleror/rodeo-cli/issues/157)'s merge commit ([af9f417](https://github.com/avaleror/rodeo-cli/commit/af9f41749335e2674feff668e0af622878430726))
+
 ## [0.29.0](https://github.com/avaleror/rodeo-cli/compare/v0.28.1...v0.29.0) (2026-11-12)
 
 

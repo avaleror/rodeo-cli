@@ -58,7 +58,7 @@ const state = {
   editing: -1, edTab: "spans", drag: null, cursor: -1, undo: null, copied: false,
   strings: {}, story: null, trLang: "", trEngine: "", trEdit: null, busy: "", rmCheck: null, imported: [],
   contentUrl: "", contentFormat: "rmstory", contentPick: "", contentStash: "",
-  deploy: null, deployLogOpen: false, savedAs: "", vault: null,
+  deploy: null, deployLogOpen: false, deployLog: { text: "", at: 0 }, savedAs: "", vault: null,
 };
 
 let toastTimer = 0;
@@ -2377,7 +2377,25 @@ function renderDeploy() {
   $("#deployStop").hidden = cur.status !== "running";
   $("#deployLogBtn").setAttribute("aria-expanded", String(state.deployLogOpen));
   $("#deployLog").hidden = !state.deployLogOpen;
-  $("#deployLog").textContent = cur.log || "(no output yet)";
+  renderDeployLog();
+}
+
+// The log keeps RB.DEPLOY_LOG_LINES lines of history, written whole only when it changed so a
+// selection survives a poll; it follows the tail unless the reader has scrolled up.
+function renderDeployLog() {
+  const box = $("#deployLog"), text = state.deployLog.text || "(no output yet)";
+  if (box.textContent === text) return;
+  const bottom = box.scrollHeight - box.scrollTop - box.clientHeight < 4;
+  box.textContent = text;
+  if (bottom) box.scrollTop = box.scrollHeight;
+}
+
+// Every deploy state the page takes in goes through here: the log arrives in pieces
+// (GET deploy carries only what is new) and is kept whole in state.deployLog.
+function takeDeploy(next) {
+  if (!next) return;
+  state.deploy = next;
+  state.deployLog = RB.deployLog(state.deployLog, next && next.current);
 }
 
 // On an exposed builder deploying needs a login: GET login makes the browser ask for it, and
@@ -2390,7 +2408,7 @@ async function deployLogin() {
     toast("Deploying needs a login: " + err.message, true);
     return false;
   }
-  state.deploy = await apiGet("deploy").catch(() => state.deploy);
+  takeDeploy(await apiGet("deploy", { log_from: state.deployLog.at }).catch(() => null));
   await refreshVault();
   return !state.deploy.login;
 }
@@ -2443,7 +2461,7 @@ async function startDeploy(saveFirst) {
   }
   if (res.status !== 200) { $("#dpResult").textContent = "Deploy failed to start: " + (res.body.error || res.status); return; }
   if (!saveFirst) state.savedAs = "";
-  state.deploy = { ...state.deploy, current: res.body.current };
+  takeDeploy({ ...state.deploy, current: res.body.current });
   closeDeploy();
   renderDeploy();
   pollDeploy();
@@ -2452,7 +2470,7 @@ async function startDeploy(saveFirst) {
 function pollDeploy() {
   clearTimeout(deployPoll);
   deployPoll = setTimeout(async () => {
-    state.deploy = await apiGet("deploy").catch(() => state.deploy);
+    takeDeploy(await apiGet("deploy", { log_from: state.deployLog.at }).catch(() => null));
     renderDeploy();
     const cur = state.deploy.current;
     if (cur && (cur.status === "running" || cur.status === "stopping")) pollDeploy();
@@ -2464,7 +2482,7 @@ async function stopDeploy() {
   if (!window.confirm("Stop the running deploy? rodeo up is interrupted like Ctrl-C; the lab may be half built.")) return;
   const res = await apiPost("deploy-stop", {}).catch((err) => ({ status: 0, body: { error: err.message } }));
   if (res.status !== 200) { toast("Stop failed: " + (res.body.error || res.status), true); return; }
-  state.deploy = { ...state.deploy, current: res.body.current };
+  takeDeploy({ ...state.deploy, current: res.body.current });
   renderDeploy();
   pollDeploy();
 }
@@ -3031,7 +3049,7 @@ async function init() {
       state.story = await startupGet("story").catch((err) => ({ available: false, error: err.message, engines: [] }));
       state.server = await startupGet("server");
       $("#saveBtn").hidden = !state.server.save;
-      state.deploy = await startupGet("deploy").catch((err) => ({ available: false, reason: err.message, current: null }));
+      takeDeploy(await startupGet("deploy").catch((err) => ({ available: false, reason: err.message, current: null })));
       if (state.deploy.current && state.deploy.current.status === "running") pollDeploy();
       state.vault = await startupGet("vault").catch((err) => ({ available: false, reason: err.message, types: [], items: [] }));
       $("#settingsBtn").hidden = false;

@@ -32,7 +32,9 @@ credential's password. A login is checked once per :data:`LOGIN_TTL` seconds; fa
 in a row on (:class:`.vault.OpenLimiter`);
 GET ``vault`` answers ``available: false`` without it or without the
 ``cryptography`` package, and ``login: true`` with nothing listed while a login is
-needed; GET ``deploy`` answers ``login: true`` then too. Its ``file_secrets`` lists the keys of
+needed; GET ``deploy`` answers ``login: true`` then too. GET ``deploy`` takes a
+``log_from`` byte offset and its ``current`` carries only the log from there on, so a page
+polling it appends instead of refetching the whole log (see :meth:`.deploywork.Deployer.status`). Its ``file_secrets`` lists the keys of
 ``~/.rodeo/secrets.yaml`` (never their values) that POST ``deploy`` can name in
 ``secret_refs``; ``[]`` without ``can_deploy=True``.
 """
@@ -63,6 +65,12 @@ LOGIN_TTL = 300.0
 NO_CRYPTOGRAPHY = "stored credentials need the Python package cryptography (pip install cryptography)"
 
 
+def _log_from(params: dict | None) -> int:
+    """The ``log_from`` byte offset of a GET deploy query; 0 when it is absent or not a number."""
+    value = ((params or {}).get("log_from") or ["0"])[0]
+    return int(value) if str(value).isdigit() else 0
+
+
 class Api:
     def __init__(self, labinabox_checkout: Path | None = None,
                  lab_builder_url: str = discovery.LAB_BUILDER_URL, labinabox_version: str = "",
@@ -83,7 +91,7 @@ class Api:
         self.vault_limiter = vault.OpenLimiter() if vault is not None else None
         self.login_limiter = vault.OpenLimiter() if vault is not None else None
 
-    def _get(self, action: str, auth: str = "") -> dict[str, Any]:
+    def _get(self, action: str, auth: str = "", params: dict | None = None) -> dict[str, Any]:
         if action == "engines":
             return discovery.engines()
         if action == "workshops":
@@ -100,7 +108,7 @@ class Api:
                 return {"available": False, "reason": "deploying " + LOOPBACK_ONLY, "as": "", "current": None}
             if self.need_login and self._login(auth) is not None:
                 return {"available": True, "reason": "", "as": "", "current": None, "login": True}
-            return {**deploywork.capability(), "current": self.deployer.status()}
+            return {**deploywork.capability(), "current": self.deployer.status(_log_from(params))}
         if action == "github":
             return {**publish.status(), "available": True} if self.can_publish else {"available": False}
         if action == "vault":
@@ -359,7 +367,7 @@ class Api:
             refused = self._login(auth)
             return refused or (200, {"user": login.parse_basic(auth)[0]})
         try:
-            return 200, self._get(action, auth)
+            return 200, self._get(action, auth, params)
         except KeyError:
             return 404, {"error": "unknown action: {}".format(action)}
         except (OSError, RuntimeError, ValueError) as exc:

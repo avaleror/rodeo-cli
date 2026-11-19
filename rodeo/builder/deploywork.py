@@ -37,7 +37,7 @@ from ..profile_install import ProfileFile, check_files, check_name, write_rodeo
 from ..secretgen import _read_secrets, append_secret, ensure_plan_secrets, secrets_path
 
 LOG = ".builder-deploy.log"
-LOG_TAIL = 80
+LOG_CHUNK = 256 * 1024
 NEEDS_ROOT = ("rodeo up needs root: start rodeo builder as root (sudo rodeo builder ...) or allow this user "
               "passwordless sudo")
 
@@ -101,11 +101,27 @@ def _resolve_refs(refs: Any, secrets: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def _tail(path: Path, lines: int = LOG_TAIL) -> str:
+def _read_log(path: Path, start: int = 0) -> tuple[int, str, int]:
+    """``(first byte read, that text, byte offset to read from next)`` of *path* from byte *start*,
+    at most LOG_CHUNK bytes. Reading starts at 0 when *start* is past the end of the file (a new or
+    truncated log), so a caller holding an older offset is told to replace what it has rather than
+    append. Bytes of a UTF-8 character split by the chunk boundary are left for the next read."""
     try:
-        return "\n".join(path.read_text(errors="replace").splitlines()[-lines:])
+        size = path.stat().st_size
+        begin = start if 0 <= start <= size else 0
+        with path.open("rb") as fh:
+            fh.seek(begin)
+            data = fh.read(LOG_CHUNK)
     except OSError:
-        return ""
+        return 0, "", 0
+    if begin + len(data) < size:
+        for cut in range(4):
+            held = data[:len(data) - cut] if cut else data
+            try:
+                return begin, held.decode("utf-8"), begin + len(held)
+            except UnicodeDecodeError:
+                continue
+    return begin, data.decode("utf-8", "replace"), begin + len(data)
 
 
 class Deployer:
@@ -115,9 +131,12 @@ class Deployer:
         self._lock = threading.Lock()
         self._current: dict[str, Any] | None = None
 
-    def status(self) -> dict[str, Any] | None:
-        """``{"name", "lab", "started", "status", "rc", "log"}`` of the last deploy, or None.
-        *status* is running, succeeded, failed or stopped."""
+    def status(self, log_from: int = 0) -> dict[str, Any] | None:
+        """``{"name", "lab", "started", "status", "rc", "log", "log_from", "log_next"}`` of the last
+        deploy, or None. *status* is running, succeeded, failed or stopped. *log* is the log from byte
+        *log_from* on (the whole log by default), *log_from* the byte it actually starts at and
+        *log_next* the offset to ask for next; a *log_from* below the one asked for means the log
+        restarted and *log* replaces what the caller holds."""
         with self._lock:
             cur = self._current
             if cur is None:
@@ -126,8 +145,9 @@ class Deployer:
             if rc is not None and cur["status"] in ("running", "stopping"):
                 cur["status"] = "stopped" if cur["status"] == "stopping" else ("succeeded" if rc == 0 else "failed")
                 cur["rc"] = rc
+            begin, text, nxt = _read_log(cur["lab"] / LOG, log_from)
             return {"name": cur["name"], "lab": str(cur["lab"]), "started": cur["started"], "status": cur["status"],
-                    "rc": cur["rc"], "log": _tail(cur["lab"] / LOG)}
+                    "rc": cur["rc"], "log": text, "log_from": begin, "log_next": nxt}
 
     def start(self, req: Any, popen: Callable[..., Any] = subprocess.Popen, run: Run = subprocess.run) -> dict[str, Any]:
         """Deploy ``{"name", "base", "files", "secrets", "secret_refs"}``. ValueError for a bad request, PermissionError

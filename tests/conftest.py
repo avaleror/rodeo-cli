@@ -24,6 +24,12 @@ def isolated_env(tmp_path, monkeypatch):
     return tmp_path
 
 
+@pytest.fixture
+def trusted_labs(monkeypatch):
+    """Treat every lab as trusted: for tests about something other than lab trust."""
+    monkeypatch.setattr("rodeo.config.is_lab_trusted", lambda *a, **k: True)
+
+
 class FakeProfile(RodeoProfile):
     """Three-phase profile with scriptable per-phase results."""
 

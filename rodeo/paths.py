@@ -31,7 +31,12 @@ def rodeo_secrets_path() -> Path:
 
 
 def rodeo_trusted_sources_path() -> Path:
+    """Obsolete per-string trust file from PR #178; only checked to warn about it."""
     return rodeo_dir() / "trusted-sources.yaml"
+
+
+def rodeo_trusted_labs_path() -> Path:
+    return rodeo_dir() / "trusted-labs.yaml"
 
 
 def rodeo_state_dir() -> Path:

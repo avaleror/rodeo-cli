@@ -57,7 +57,7 @@ def story_render_cmd(
         if ctx.obj:
             config_dir = ctx.obj.get("config_dir")
 
-    cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir)
+    cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir, secrets="keys")
     text = render_story(cfg, language=language, story_id=story_id, engine=engine)
 
     if output == "-":

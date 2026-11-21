@@ -278,9 +278,16 @@ def _render_facts(text: str, cfg: dict) -> str:
         return text
     import jinja2
 
-    env = jinja2.Environment(undefined=jinja2.StrictUndefined)
+    from .config import sandboxed_jinja_env
+
+    # Story text comes from a lab or workshop repo: sandboxed, like plan templates.
+    env = sandboxed_jinja_env()
     try:
         return env.from_string(text).render(**story_facts(cfg))
+    except jinja2.exceptions.SecurityError as exc:
+        raise ConfigError(f"story template blocked by the sandbox: {exc}")
+    except OverflowError as exc:
+        raise ConfigError(f"story template range too large: {exc}")
     except jinja2.UndefinedError as exc:
         raise ConfigError(
             f"story references an unknown deployment fact: {exc.message}\n"

@@ -17,6 +17,9 @@ from rodeo.commands.content_cmd import content_cmd
 from rodeo.config import ConfigError
 from rodeo.story import story_dir
 
+# Write paths need a trusted lab; trust itself is tested in test_config.py.
+pytestmark = pytest.mark.usefixtures("trusted_labs")
+
 needs_git = pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
 
 

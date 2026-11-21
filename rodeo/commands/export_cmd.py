@@ -60,7 +60,8 @@ def export_cmd(
         if ctx.obj:
             config_dir = ctx.obj.get("config_dir")
 
-    cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir)
+    # Write path: build_lab_json puts SCC and addon secrets into the lab JSON.
+    cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir, secrets="all")
     lab, warnings = build_lab_json(cfg, skip_unsupported=skip_unsupported)
 
     for warning in warnings:

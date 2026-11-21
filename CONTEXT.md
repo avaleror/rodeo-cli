@@ -166,7 +166,7 @@ All plan keys are wired: network and resources/versions reach Ansible through a 
 | `??file:/path` | file contents |
 | `??cmd:command` | command stdout (pass, op, vault CLI) |
 
-`??file:` and `??cmd:` resolve only after the operator approves that exact string once with `rodeo trust` (interactive TTY only, stored in `~/.rodeo/trusted-sources.yaml`). Untrusted ones stay literal, so a plan from a cloned repo or an MCP client can't run commands. Plan templates render in a Jinja `SandboxedEnvironment`.
+Secrets resolve only in a trusted lab. `rodeo trust` approves the whole lab directory (sha256 over every file except the state rodeo writes there, stored in `~/.rodeo/trusted-labs.yaml`); any change makes it untrusted again. Labs rodeo seeds into an empty directory from a bundled profile are trusted at seed time; catalog, cloned, imported (`--from-zip`, `--from-lab-json`) and hand-made labs need `rodeo trust` (TTY) or `rodeo trust --yes` (automation). Content repos are trusted by URL and ref, not commit. Read commands resolve nothing, `deploy --check` and `story render` resolve `??key` only, and write commands refuse an untrusted lab. `-P`/`--paramfile` values may not contain `??`, `{{`, `{%` or a newline, nor set code-bearing keys (`config.PARAM_DENYLIST`). The trust file is ordinary user data: a process running as the same user can edit it. Plan and story templates render in a Jinja `SandboxedEnvironment`.
 
 Ansible tasks that render password-bearing files run with `no_log: true` and mode 0600.
 

@@ -23,7 +23,14 @@ from rich.console import Console
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
-from ..config import ConfigError, find_ansible_root, find_lab_dir, load_config, validate_config
+from ..config import (
+    ConfigError,
+    find_ansible_root,
+    find_lab_dir,
+    keep_trust,
+    load_config,
+    validate_config,
+)
 from ..labseed import (
     custom_profile_dir,
     canonical_profile,
@@ -280,7 +287,8 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
             _plan_data = _yaml.safe_load(_plan_path.read_text()) or {}
             if _plan_data.get("deployment_target") != deployment_target:
                 _plan_data["deployment_target"] = deployment_target
-                _plan_path.write_text(_yaml.dump(_plan_data, default_flow_style=False))
+                with keep_trust(lab):
+                    _plan_path.write_text(_yaml.dump(_plan_data, default_flow_style=False))
 
     # 3. Secrets — silent, file-based.
     _, _, created = ensure_secrets_file()
@@ -321,7 +329,8 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
             # Keep aws in the plan for destroy --cloud; phases use baremetal below.
             if _plan_data.get("deployment_target") != "aws":
                 _plan_data["deployment_target"] = "aws"
-                _plan_path.write_text(_yaml.dump(_plan_data, default_flow_style=False))
+                with keep_trust(lab):
+                    _plan_path.write_text(_yaml.dump(_plan_data, default_flow_style=False))
 
     if not is_root():
         console.print("\n[bold]Switching to root for the install[/bold] (sudo)…")
@@ -355,7 +364,7 @@ def _aws_control_plane_deploy(
 ) -> None:
     """Provision EC2 + remote ``rodeo up --target baremetal`` from the laptop."""
     try:
-        cfg = load_config("rodeo-plan.yaml", config_dir=str(lab))
+        cfg = load_config("rodeo-plan.yaml", config_dir=str(lab), secrets="all")
     except ValueError as exc:
         console.print(f"[red]✗  {exc}[/red]")
         raise SystemExit(1)
@@ -454,6 +463,8 @@ def _install_from_catalog(profile: str) -> None:
     except (FileExistsError, FileNotFoundError, ValueError, RuntimeError) as exc:
         console.print(f"[red]✗  {exc}[/red]")
         raise SystemExit(1)
+    console.print("[dim]A catalog rodeo is a third-party repository: review it, then run "
+                  "rodeo trust in it before deploying.[/dim]")
     warning = catalog.language_warning(dest, entry["repo"], entry["ref"])
     if warning:
         console.print(f"[yellow]⚠  {warning}[/yellow]", highlight=False)
@@ -632,7 +643,8 @@ def _persist_plan_overlays(lab: Path, cfg: dict) -> None:
             for key in ("disk_cache", "disk_io"):
                 if key in cfg["libvirt"]:
                     libvirt[key] = cfg["libvirt"][key]
-    plan_path.write_text(_yaml.safe_dump(data, sort_keys=False, default_flow_style=False))
+    with keep_trust(lab):
+        plan_path.write_text(_yaml.safe_dump(data, sort_keys=False, default_flow_style=False))
 
 
 # --------------------------------------------------------------------------- #
@@ -759,7 +771,7 @@ def _choose_profile(host: dict, assume_yes: bool) -> str:
 def _deploy(lab: Path, assume_yes: bool, reconcile: bool = True) -> None:
     """Load the lab, preflight, and run the pipeline (called as root)."""
     try:
-        cfg = load_config("rodeo-plan.yaml", config_dir=str(lab))
+        cfg = load_config("rodeo-plan.yaml", config_dir=str(lab), secrets="all")
         validate_config(cfg)
     except ValueError as exc:
         console.print(f"[red]✗  {exc}[/red]")

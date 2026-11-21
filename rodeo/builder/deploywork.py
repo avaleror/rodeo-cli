@@ -29,7 +29,7 @@ from typing import Any, Callable
 
 import yaml
 
-from ..config import LAB_SECRETS_FILE
+from ..config import LAB_SECRETS_FILE, trust_lab
 from ..labseed import resolve_profile_source
 from ..paths import invoking_home
 from ..privilege import find_rodeo_bin
@@ -182,6 +182,9 @@ class Deployer:
             n += 1
         try:
             write_rodeo(lab, name, files, src)
+            # The operator submitted these files and pressed deploy in the Builder:
+            # that is the approval, recorded before anything else touches the lab.
+            trust_lab(lab)
             plan = yaml.safe_load((lab / "rodeo-plan.yaml").read_text()) or {}
             _, missing = ensure_plan_secrets(plan, lab_path=lab / LAB_SECRETS_FILE)
             lacking = [k for k in missing if not str(secrets.get(k) or "")]

@@ -51,6 +51,6 @@ def test_seed_and_load_rancher_lab(tmp_path):
     assert "harvester" not in plan.get("resources", {})
 
     secretgen.ensure_secrets_file(tmp_path / ".rodeo" / "secrets.yaml")
-    cfg = config.load_config("rodeo-plan.yaml", config_dir=str(lab))
+    cfg = config.load_config("rodeo-plan.yaml", config_dir=str(lab), secrets="all")
     config.validate_config(cfg)
     assert list(cfg["vms"]) == ["rancher", "k3s", "rke2", "rke2-ha1", "rke2-ha2", "rke2-ha3"]

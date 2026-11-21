@@ -221,3 +221,69 @@ def test_story_render_cli_writes_file(tmp_path, monkeypatch):
     result = CliRunner().invoke(cli, ["story", "render", "-o", "handout.md"])
     assert result.exit_code == 0, result.output
     assert "Hello, wrangler." in (tmp_path / "handout.md").read_text()
+
+
+def test_story_render_cli_gets_key_passwords_but_runs_nothing(tmp_path, monkeypatch):
+    """story render loads with secrets="keys": ??key passwords reach the hand-out,
+    a trusted ??cmd: does not run."""
+    from click.testing import CliRunner
+
+    from rodeo import config
+    from rodeo.commands.story_cmd import story_cmd
+
+    marker = tmp_path / "ran"
+    spec = f"??cmd:touch {marker} && echo ok"
+    _lab(tmp_path,
+         "credentials:\n  rancher_admin_password: ??rancher_admin_password\n"
+         f'registry:\n  token: "{spec}"\n')
+    (tmp_path / "story" / "03-creds.md").write_text(
+        "Password: <span no>{{ credentials.rancher_admin_password }}</span>\n"
+    )
+    secrets = tmp_path / ".rodeo" / "secrets.yaml"
+    secrets.parent.mkdir(parents=True, exist_ok=True)
+    secrets.write_text("rancher_admin_password: StoryPass123\n")
+    config.trust_lab(tmp_path)
+
+    result = CliRunner().invoke(
+        story_cmd, ["render", "--config", str(tmp_path / "rodeo-plan.yaml")]
+    )
+    assert result.exit_code == 0, result.output
+    assert "StoryPass123" in result.output
+    assert not marker.exists()
+
+
+def test_story_template_is_sandboxed(tmp_path):
+    """SSTI: story text from a workshop repo must not reach Python internals."""
+    cfg = _lab(tmp_path)
+    (tmp_path / "story" / "04-evil.md").write_text(
+        "{{ ''.__class__.__mro__[1].__subclasses__() }}\n"
+    )
+    with pytest.raises(ConfigError, match="sandbox"):
+        render_story(cfg)
+
+
+def test_story_template_range_is_capped(tmp_path):
+    cfg = _lab(tmp_path)
+    (tmp_path / "story" / "04-loop.md").write_text("{% for i in range(10**9) %}x{% endfor %}\n")
+    with pytest.raises(ConfigError, match="range"):
+        render_story(cfg)
+
+
+def test_story_render_untrusted_lab_cannot_read_global_secrets(tmp_path):
+    """Attack: a cloned lab asks for a global secret in credentials; story render
+    (keys mode) must not put it into the hand-out."""
+    from click.testing import CliRunner
+
+    from rodeo.commands.story_cmd import story_cmd
+
+    _lab(tmp_path, "credentials:\n  rancher_admin_password: ??aws_secret_access_key\n")
+    (tmp_path / "story" / "03-creds.md").write_text(
+        "Password: <span no>{{ credentials.rancher_admin_password }}</span>\n"
+    )
+    secrets = tmp_path / ".rodeo" / "secrets.yaml"
+    secrets.parent.mkdir(parents=True, exist_ok=True)
+    secrets.write_text("aws_secret_access_key: global-value-marker\n")
+    result = CliRunner().invoke(
+        story_cmd, ["render", "--config", str(tmp_path / "rodeo-plan.yaml")]
+    )
+    assert "global-value-marker" not in result.output

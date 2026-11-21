@@ -253,3 +253,13 @@ def test_secret_refs_do_not_cover_other_secrets(fake_rodeo):
     with pytest.raises(deploywork.NeedSecrets) as err:
         deploywork.Deployer().start({"name": "ride", "files": REFS_PLAN, "secret_refs": {}})
     assert err.value.keys == ["scc_regcode"]
+
+
+def test_builder_deploy_records_trust_for_the_lab_it_wrote(fake_rodeo):
+    """The Builder writes the lab itself and the operator pressed deploy: trusted."""
+    from rodeo.config import is_lab_trusted
+
+    deployer = deploywork.Deployer()
+    state = deployer.start({"name": "ride", "files": FILES})
+    assert is_lab_trusted(Path(state["lab"]))
+    _wait(deployer)

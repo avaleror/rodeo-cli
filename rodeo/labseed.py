@@ -184,6 +184,13 @@ def seed_lab(
     dest = dest.expanduser().resolve()
     dest.mkdir(parents=True, exist_ok=True)
     src = resolve_profile_source(profile)
+    # Auto-trust only when rodeo writes every file trust covers in this call
+    # (an empty target) from a bundled profile or a custom one already trusted.
+    # A clone or a hand-made dir passed as the target needs `rodeo trust`.
+    from .config import has_hashed_files, is_lab_trusted, trust_lab
+
+    fresh = not has_hashed_files(dest)
+    source_trusted = profile_kind(profile) == "bundled" or is_lab_trusted(src)
 
     copied: list[Path] = []
     for item in src.iterdir():
@@ -203,6 +210,8 @@ def seed_lab(
     _verify_seed_copy(src, dest, copied)
 
     normalize_plan(dest / "rodeo-plan.yaml", name=dest.name, deployment_target=deployment_target)
+    if fresh and source_trusted:
+        trust_lab(dest)
     return dest
 
 

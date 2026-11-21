@@ -14,15 +14,20 @@ Value precedence: base defaults < profile defaults < plan file
 """
 from __future__ import annotations
 
+import contextlib
+import copy
+import fcntl
+import hashlib
 import os
 import re
 import subprocess
+import warnings
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 
-from .paths import rodeo_last_lab_file, rodeo_secrets_path, rodeo_trusted_sources_path
+from .paths import rodeo_last_lab_file, rodeo_secrets_path, rodeo_trusted_labs_path
 
 
 class ConfigError(ValueError):
@@ -159,16 +164,27 @@ def _extract_parameters_block(text: str) -> dict:
     return block
 
 
+def sandboxed_jinja_env():
+    """The one Jinja environment for text from a lab, plan or workshop repo.
+
+    Sandboxed, so a template can't reach Python internals
+    ({{ ''.__class__.__mro__ ... }}); the sandbox's range() also raises
+    OverflowError above jinja2.sandbox.MAX_RANGE. tests/test_config.py fails
+    if a plain jinja2.Environment comes back anywhere in rodeo/.
+    """
+    import jinja2
+    from jinja2.sandbox import SandboxedEnvironment
+
+    return SandboxedEnvironment(undefined=jinja2.StrictUndefined)
+
+
 def _render_plan(text: str, source: str, context: dict) -> dict:
     """Jinja-render plan text (when templated) and YAML-parse it."""
     if "{{" in text or "{%" in text:
         try:
             import jinja2
-            from jinja2.sandbox import SandboxedEnvironment
-            # Sandboxed: a plan from an untrusted repo must not reach Python
-            # internals through the template ({{ ''.__class__.__mro__ ... }}).
-            env = SandboxedEnvironment(undefined=jinja2.StrictUndefined)
-            text = env.from_string(text).render(**context)
+
+            text = sandboxed_jinja_env().from_string(text).render(**context)
         except jinja2.UndefinedError as exc:
             raise ConfigError(
                 f"{source}: undefined template parameter: {exc.message}\n"
@@ -178,6 +194,8 @@ def _render_plan(text: str, source: str, context: dict) -> dict:
             raise ConfigError(f"{source}: template blocked by the sandbox: {exc}")
         except jinja2.TemplateSyntaxError as exc:
             raise ConfigError(f"{source} line {exc.lineno}: template syntax error: {exc.message}")
+        except OverflowError as exc:
+            raise ConfigError(f"{source}: template range too large: {exc}")
     try:
         data = yaml.safe_load(text) or {}
     except yaml.YAMLError as exc:
@@ -188,99 +206,314 @@ def _render_plan(text: str, source: str, context: dict) -> dict:
     return data
 
 
-# ??cmd: runs a shell command and ??file: reads any local file. A plan can come
-# from a cloned repo, a Builder import or an MCP client, so neither runs until a
-# human approves that exact string once with `rodeo trust` (kept in
-# ~/.rodeo/trusted-sources.yaml). Untrusted ones stay literal and fail closed.
-_GATED_PREFIXES = ("??cmd:", "??file:")
+# --- Secrets and lab trust ------------------------------------------------------
+#
+# load_config(secrets=MODE) picks which ??placeholders resolve:
+#   "off"  : nothing (the default; read commands and day-2 power commands).
+#   "keys" : ??key only, from the lab's .rodeo-secrets.yaml, plus the global
+#            ~/.rodeo/secrets.yaml when the lab is trusted (deploy --check,
+#            story render).
+#   "all"  : every form (??key, ??env:, ??file:, ??cmd:), and only in a trusted
+#            lab; an untrusted lab is a ConfigError (write commands).
+#
+# Trust is per lab, not per string: a lab already runs its own code as root on
+# deploy (custom/scripts, content repo scripts), so approving one ??cmd: string
+# protects little. `rodeo trust` records a sha256 over the lab's plan,
+# definition.yaml and custom/ tree; any change to them makes the lab untrusted
+# again. Labs rodeo seeds itself from a bundled or catalog profile are trusted
+# at seed time. -P and --paramfile values may not carry `??`, `{{`, `{%` or a
+# newline, so an agent passing parameters can't add a secret source.
+SecretsMode = Literal["off", "keys", "all"]
+_SECRETS_MODES = ("off", "keys", "all")
+_SOURCE_PREFIXES = ("??env:", "??cmd:", "??file:")
+# Set by load_config after -P/--paramfile are merged (so it can't be forged).
+LAB_TRUSTED_KEY = "_lab_trusted"
+UNTRUSTED_LAB = (
+    "This lab is not trusted: review it and run rodeo trust\n"
+    "(the lab directory is new, or a file in it changed since the last approval)."
+)
 
 
-def is_gated_source(value: Any) -> bool:
-    return isinstance(value, str) and value.startswith(_GATED_PREFIXES)
+def is_secret_source(value: Any) -> bool:
+    """??env:, ??cmd: and ??file: (everything but a plain ??key)."""
+    return isinstance(value, str) and value.startswith(_SOURCE_PREFIXES)
 
 
-def load_trusted_sources() -> set[str]:
-    path = rodeo_trusted_sources_path()
-    if not path.exists():
-        return set()
-    try:
-        data = yaml.safe_load(path.read_text()) or []
-    except (OSError, yaml.YAMLError):
-        return set()
-    return {v for v in data if isinstance(v, str)} if isinstance(data, list) else set()
-
-
-def save_trusted_sources(sources: set[str]) -> Path:
-    path = rodeo_trusted_sources_path()
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as fh:
-        yaml.safe_dump(sorted(sources), fh, default_flow_style=False)
-    return path
-
-
-def collect_gated_sources(cfg: Any) -> set[str]:
-    """Every ??cmd: and ??file: string anywhere in the config."""
-    if is_gated_source(cfg):
-        return {cfg}
+def collect_placeholders(cfg: Any) -> set[str]:
+    """Every string starting with ?? anywhere in the config."""
+    if isinstance(cfg, str):
+        return {cfg} if cfg.startswith("??") else set()
     if isinstance(cfg, dict):
-        return set().union(*(collect_gated_sources(v) for v in cfg.values()))
+        return set().union(*(collect_placeholders(v) for v in cfg.values()))
     if isinstance(cfg, list):
-        return set().union(*(collect_gated_sources(v) for v in cfg))
+        return set().union(*(collect_placeholders(v) for v in cfg))
     return set()
 
 
-def _resolve_secret_value(value: str, secrets: dict, trusted: set[str]) -> str:
-    """Resolve one ??placeholder. On failure the literal is kept so
-    validate_config() fails closed with a clear message.
+_INJECTION_MARKERS = ("??", "{{", "{%", "\n", "\r")
+
+
+def _reject_injected(value: Any, where: str) -> None:
+    """-P / --paramfile values may not carry placeholders, templates or newlines.
+
+    They come from the command line or an MCP client; secret sources and Jinja
+    belong in rodeo-plan.yaml, which `rodeo trust` covers.
+    """
+    if isinstance(value, str):
+        if any(m in value for m in _INJECTION_MARKERS):
+            raise ConfigError(
+                f"{where}: values passed with -P or --paramfile may not contain "
+                "'??', '{{', '{%' or a newline.\n"
+                "Put secret placeholders and templates in rodeo-plan.yaml itself."
+            )
+    elif isinstance(value, dict):
+        for k, v in value.items():
+            _reject_injected(k, where)
+            _reject_injected(v, f"{where}.{k}")
+    elif isinstance(value, list):
+        for i, v in enumerate(value):
+            _reject_injected(v, f"{where}[{i}]")
+
+
+# Written by rodeo itself into a lab directory, so not part of what is trusted.
+# A name here is skipped at the top level of the lab; .git and __pycache__
+# are skipped at any depth.
+_UNHASHED_TOP = frozenset({
+    ".rodeo", ".labinabox", LAB_SECRETS_FILE, ".rodeo-shipped-secrets.yaml",
+    "rodeo-secrets.env", "logs", "events", "content", "content.lock", "guide",
+    "workshop-guide", "workshop-guide.pdf", ".builder-deploy.log",
+})
+_UNHASHED_ANY = frozenset({".git", "__pycache__"})
+
+
+def _hashed_files(lab: Path) -> list[Path]:
+    """Every file (or symlink) in the lab that trust covers, sorted."""
+    out: list[Path] = []
+    for root, dirs, files in os.walk(lab):
+        here = Path(root)
+        top = here == lab
+        keep = []
+        for d in dirs:
+            if d in _UNHASHED_ANY or (top and d in _UNHASHED_TOP):
+                continue
+            if (here / d).is_symlink():
+                out.append(here / d)  # hashed as a link, never followed
+            else:
+                keep.append(d)
+        dirs[:] = sorted(keep)
+        for f in files:
+            if top and (f in _UNHASHED_TOP or f.endswith(".log")):
+                continue
+            out.append(here / f)
+    return sorted(out)
+
+
+# -P / --paramfile may not set these: each picks code, a script source or a key
+# that a deploy then uses (find_ansible_root, the host bootstrap, content and
+# workshop repos, lab-in-a-box source, the SSH key, the lab directories).
+PARAM_DENYLIST = (
+    "ansible",
+    "provider.install_url",
+    "provider.ref",
+    "content.repo",
+    "content.ref",
+    "content.path",
+    "workshop.repo",
+    "workshop.branch",
+    "workshop.track",
+    "lab_in_a_box.source",
+    "ssh.identity_file",
+    "config_dir",
+    "plan_dir",
+    LAB_TRUSTED_KEY,
+)
+
+
+def _override_paths(key: str, value: Any) -> list[str]:
+    paths = [key]
+    if isinstance(value, dict):
+        for k, v in value.items():
+            paths += _override_paths(f"{key}.{k}", v)
+    return paths
+
+
+def _reject_denied_keys(overrides: list[tuple[str, Any]], where: str) -> None:
+    for key, value in overrides:
+        for path in _override_paths(key, value):
+            for denied in PARAM_DENYLIST:
+                if path == denied or path.startswith(denied + ".") or denied.startswith(path + "."):
+                    raise ConfigError(
+                        f"{where} {path}: -P and --paramfile may not set {denied}.\n"
+                        "It picks code or keys a deploy uses: set it in rodeo-plan.yaml."
+                    )
+
+
+def lab_fingerprint(lab_dir: str | Path) -> str:
+    """sha256 over the lab directory: rodeo-plan.yaml, definition.yaml, custom/,
+    manifests/, helm/, certs/, story/, per-host manifests... everything except
+    the state rodeo writes itself (_UNHASHED_TOP).
+
+    Paths are sorted and hashed with their contents. Symlinks are hashed by
+    their target string, never followed. Content repos fetched by URL are
+    covered only through the URL (and ref) written in the plan.
+    """
+    lab = Path(lab_dir)
+    h = hashlib.sha256()
+    for path in _hashed_files(lab):
+        h.update(str(path.relative_to(lab)).encode() + b"\0")
+        if path.is_symlink():
+            h.update(b"link\0" + os.readlink(path).encode())
+        else:
+            h.update(b"file\0" + path.read_bytes())
+        h.update(b"\0")
+    return h.hexdigest()
+
+
+def has_hashed_files(lab_dir: str | Path) -> bool:
+    """True when the directory already holds anything trust would cover."""
+    lab = Path(lab_dir)
+    return lab.is_dir() and bool(_hashed_files(lab))
+
+
+def _nofollow() -> int:
+    return getattr(os, "O_NOFOLLOW", 0)
+
+
+def _parse_trusted_labs(raw: bytes, path: Path) -> dict[str, str]:
+    try:
+        data = yaml.safe_load(raw.decode()) if raw.strip() else {}
+    except (UnicodeDecodeError, yaml.YAMLError) as exc:
+        raise ConfigError(f"{path}: corrupt trust file: {exc}")
+    if not isinstance(data, dict) or not all(
+        isinstance(k, str) and isinstance(v, str) for k, v in data.items()
+    ):
+        raise ConfigError(
+            f"{path}: corrupt trust file (expected lab directory: sha256 entries).\n"
+            "Delete it and run rodeo trust in each lab you use."
+        )
+    return data
+
+
+def load_trusted_labs() -> dict[str, str]:
+    """{lab realpath: sha256}. Missing file: empty. Corrupt file: ConfigError."""
+    path = rodeo_trusted_labs_path()
+    try:
+        fd = os.open(path, os.O_RDONLY | _nofollow())
+    except FileNotFoundError:
+        return {}
+    except OSError as exc:
+        raise ConfigError(f"{path}: cannot read trust file: {exc}")
+    with os.fdopen(fd, "rb") as fh:
+        fcntl.flock(fh, fcntl.LOCK_SH)
+        raw = fh.read()
+    return _parse_trusted_labs(raw, path)
+
+
+def _update_trusted_labs(lab_dir: str | Path, digest: str | None) -> Path:
+    """Set (or with None remove) one lab's entry: read-modify-write under flock."""
+    path = rodeo_trusted_labs_path()
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        fd = os.open(path, os.O_RDWR | os.O_CREAT | _nofollow(), 0o600)
+    except OSError as exc:
+        raise ConfigError(f"{path}: cannot open trust file: {exc}")
+    with os.fdopen(fd, "r+b") as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        os.fchmod(fh.fileno(), 0o600)
+        data = _parse_trusted_labs(fh.read(), path)
+        key = os.path.realpath(lab_dir)
+        if digest is None:
+            data.pop(key, None)
+        else:
+            data[key] = digest
+        fh.seek(0)
+        fh.truncate()
+        fh.write(yaml.safe_dump(dict(sorted(data.items())), default_flow_style=False).encode())
+        fh.flush()
+        os.fsync(fh.fileno())
+    # Written as root after a sudo re-exec: hand it back to the invoking user.
+    from .paths import fix_invoking_ownership
+
+    fix_invoking_ownership()
+    return path
+
+
+def trust_lab(lab_dir: str | Path) -> Path:
+    """Record the lab's current fingerprint as trusted."""
+    return _update_trusted_labs(lab_dir, lab_fingerprint(lab_dir))
+
+
+def revoke_lab(lab_dir: str | Path) -> bool:
+    """Forget the lab's trust. True when it had an entry."""
+    had = os.path.realpath(lab_dir) in load_trusted_labs()
+    if had:
+        _update_trusted_labs(lab_dir, None)
+    return had
+
+
+def is_lab_trusted(lab_dir: str | Path | None) -> bool:
+    if lab_dir is None:
+        return False
+    recorded = load_trusted_labs().get(os.path.realpath(lab_dir))
+    return recorded is not None and recorded == lab_fingerprint(lab_dir)
+
+
+@contextlib.contextmanager
+def keep_trust(lab_dir: str | Path | None):
+    """Wrap rodeo's own edits of a lab's plan: a trusted lab stays trusted."""
+    trusted = False
+    try:
+        trusted = lab_dir is not None and is_lab_trusted(lab_dir)
+    except ConfigError:
+        pass
+    yield
+    if trusted:
+        trust_lab(lab_dir)
+
+
+def lab_dir_of(cfg: dict) -> str | None:
+    """The lab directory trust is recorded against (resolved realpath)."""
+    lab = cfg.get("plan_dir") or cfg.get("config_dir")
+    return os.path.realpath(lab) if lab else None
+
+
+def _resolve_secret_value(value: str, secrets: dict, mode: SecretsMode) -> Any:
+    """Resolve one ??placeholder as far as ``mode`` allows. On failure the
+    literal is kept so validate_config() fails closed with a clear message.
 
     Supported forms:
-      ??key                  -> ~/.rodeo/secrets.yaml lookup
-      ??env:NAME             -> environment variable
-      ??file:/path           -> first line of a file (only once trusted)
-      ??cmd:some command     -> stdout of a shell command (only once trusted)
+      ??key                  -> secrets files ("keys" and "all")
+      ??env:NAME             -> environment variable ("all")
+      ??file:/path           -> file contents ("all")
+      ??cmd:some command     -> stdout of a shell command ("all")
     """
     spec = value[2:]
+    if not is_secret_source(value):
+        return secrets.get(spec, value) if mode in ("keys", "all") else value
+    if mode != "all":
+        return value
     if spec.startswith("env:"):
         return os.environ.get(spec[4:]) or value
-    if is_gated_source(value) and value not in trusted:
-        return value
     if spec.startswith("file:"):
         try:
-            content = Path(spec[5:]).read_text().strip()
-            return content or value
+            return Path(spec[5:]).read_text().strip() or value
         except OSError:
             return value
-    if spec.startswith("cmd:"):
-        try:
-            # shell=True is deliberate: the operator approved this exact string.
-            r = subprocess.run(
-                spec[4:], shell=True, capture_output=True, text=True, timeout=30
-            )
-            if r.returncode == 0 and r.stdout.strip():
-                return r.stdout.strip()
-        except (OSError, subprocess.TimeoutExpired):
-            pass
-        return value
-    return secrets.get(spec, value)
+    try:
+        # shell=True is deliberate: the lab, plan included, is trusted.
+        r = subprocess.run(spec[4:], shell=True, capture_output=True, text=True, timeout=30)
+        if r.returncode == 0 and r.stdout.strip():
+            return r.stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return value
 
 
-def _resolve_secrets(cfg: dict, secrets: dict) -> dict:
+def _resolve_secrets(cfg: dict, secrets: dict, mode: SecretsMode) -> dict:
     """Replace ??placeholders throughout the config."""
-    untrusted = collect_gated_sources(cfg)
-    trusted = load_trusted_sources() if untrusted else set()
-    untrusted -= trusted
-    if untrusted:
-        import sys
-        print(
-            f"rodeo: skipped {len(untrusted)} untrusted ??cmd:/??file: secret source(s) "
-            "in this plan. Review them and run: rodeo trust",
-            file=sys.stderr,
-        )
-
     def _walk(obj: Any) -> Any:
         if isinstance(obj, str) and obj.startswith("??"):
-            return _resolve_secret_value(obj, secrets, trusted)
+            return _resolve_secret_value(obj, secrets, mode)
         if isinstance(obj, dict):
             return {k: _walk(v) for k, v in obj.items()}
         if isinstance(obj, list):
@@ -289,18 +522,54 @@ def _resolve_secrets(cfg: dict, secrets: dict) -> dict:
     return _walk(cfg)
 
 
+def _load_secrets(lab_dir: Path | None, *, include_global: bool) -> dict:
+    """The lab's own secrets file, over ~/.rodeo/secrets.yaml when allowed."""
+    secrets: dict = {}
+    secrets_path = _resolve_secrets_path()
+    if include_global and secrets_path.exists():
+        try:
+            secrets = yaml.safe_load(secrets_path.read_text()) or {}
+        except yaml.YAMLError as exc:
+            raise ConfigError(f"{secrets_path}: invalid YAML: {exc}")
+    # A lab's own secrets (e.g. one set of generated passwords per lab instance)
+    # win over the global file; see secretgen.ensure_plan_secrets.
+    if lab_dir is not None:
+        lab_secrets = lab_dir / LAB_SECRETS_FILE
+        if lab_secrets.exists():
+            try:
+                secrets = {**secrets, **(yaml.safe_load(lab_secrets.read_text()) or {})}
+            except yaml.YAMLError as exc:
+                raise ConfigError(f"{lab_secrets}: invalid YAML: {exc}")
+    return secrets
+
+
 def load_config(
     plan_path: str | Path = "rodeo-plan.yaml",
     params: tuple[str, ...] = (),
     paramfile: str | Path | None = None,
     config_dir: str | Path | None = None,
-    resolve_secrets: bool = True,
+    secrets: SecretsMode = "off",
+    resolve_secrets: bool | None = None,
 ) -> dict:
     """Load config, with optional --config-dir for definition + artifacts (EIB model).
+
+    ``secrets`` picks which ??placeholders resolve (see SecretsMode above). The
+    default "off" resolves nothing, so a caller that forgets cannot run a shell
+    or read the environment. "all" also requires a trusted lab.
+    ``resolve_secrets`` is the deprecated bool form (False -> "off", True -> "all").
 
     If config_dir provided and contains rodeo-plan.yaml, and plan_path is default,
     the dir's plan is used. definition.yaml in dir (if present) is preferred by inventory.
     """
+    if resolve_secrets is not None:
+        warnings.warn(
+            "load_config(resolve_secrets=...) is deprecated: use secrets='off'|'keys'|'all'",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        secrets = "all" if resolve_secrets else "off"
+    if secrets not in _SECRETS_MODES:
+        raise ValueError(f"secrets must be one of {_SECRETS_MODES}, got {secrets!r}")
     plan_path = Path(plan_path)
 
     # Auto-detect the lab dir when neither an explicit plan nor --config-dir was
@@ -329,7 +598,12 @@ def load_config(
         if not isinstance(paramfile_data, dict):
             raise ConfigError(f"{pf}: top level must be a mapping")
 
+    for entry in params:  # raw text too: YAML folds "a\nb" into "a b"
+        _reject_injected(entry, f"-P {entry.partition('=')[0]}")
     cli_params = [_parse_param(p) for p in params]
+    _reject_injected(paramfile_data, f"--paramfile {paramfile}")
+    _reject_denied_keys(cli_params, "-P")
+    _reject_denied_keys(list(paramfile_data.items()), "--paramfile")
 
     plan: dict = {}
     if plan_path.exists():
@@ -359,33 +633,37 @@ def load_config(
     except (ImportError, ValueError):
         profile_defaults = {}
 
-    cfg = _deep_merge(_BASE_DEFAULTS, profile_defaults)
+    # Deep copy: _deep_merge shares nested dicts it doesn't override, and
+    # finalize_cfg mutates cfg["network"] in place. The old always-on secret
+    # walk rebuilt every dict and hid that; with secrets="off" one lab's
+    # network would leak into _BASE_DEFAULTS for the rest of the process.
+    cfg = _deep_merge(copy.deepcopy(_BASE_DEFAULTS), profile_defaults)
     cfg = _deep_merge(cfg, plan)
     cfg = _deep_merge(cfg, paramfile_data)
     for key, value in cli_params:
         _set_path(cfg, key, value)
 
-    secrets: dict = {}
-    secrets_path = _resolve_secrets_path()
-    if secrets_path.exists():
-        try:
-            secrets = yaml.safe_load(secrets_path.read_text()) or {}
-        except yaml.YAMLError as exc:
-            raise ConfigError(f"{secrets_path}: invalid YAML: {exc}")
-
-    # A lab's own secrets (e.g. one set of generated passwords per lab instance)
-    # win over the global file; see secretgen.ensure_plan_secrets.
     lab_dir = Path(config_dir) if config_dir is not None else (plan_path.parent if plan_path.exists() else None)
-    if lab_dir is not None:
-        lab_secrets = lab_dir / LAB_SECRETS_FILE
-        if lab_secrets.exists():
-            try:
-                secrets = {**secrets, **(yaml.safe_load(lab_secrets.read_text()) or {})}
-            except yaml.YAMLError as exc:
-                raise ConfigError(f"{lab_secrets}: invalid YAML: {exc}")
-
-    if resolve_secrets:
-        cfg = _resolve_secrets(cfg, secrets)
+    # Trust is recorded against the plan's own directory (or --config-dir).
+    trust_dir = plan_path.resolve().parent if plan_path.exists() else lab_dir
+    split = (
+        config_dir is not None and plan_path.exists()
+        and os.path.realpath(config_dir) != os.path.realpath(plan_path.parent)
+    )
+    # None: not computed ("off" hashes nothing); validate_config(check=True) does it.
+    trusted: bool | None = None
+    if secrets != "off":
+        trusted = trust_dir is not None and not split and is_lab_trusted(trust_dir)
+        if secrets == "all" and trust_dir is not None and not trusted:
+            if split:
+                raise ConfigError(
+                    "--config outside --config-dir: write commands need the plan inside the "
+                    "lab directory, so one rodeo trust covers both."
+                )
+            raise ConfigError(f"{UNTRUSTED_LAB}\nLab: {os.path.realpath(trust_dir)}")
+        cfg = _resolve_secrets(cfg, _load_secrets(lab_dir, include_global=trusted), secrets)
+    cfg[LAB_TRUSTED_KEY] = trusted
+    cfg["_lab_split"] = split
 
     env_path = os.environ.get("RODEO_ANSIBLE_PATH")
     if env_path:
@@ -406,18 +684,72 @@ def load_config(
     return cfg
 
 
-def validate_config(cfg: dict) -> None:
-    """Raise ConfigError on unresolved secrets, empty credentials, or bad values."""
-    creds = cfg.get("credentials", {})
-    unresolved = [k for k, v in creds.items() if isinstance(v, str) and v.startswith("??")]
-    if unresolved:
+def _placeholder_paths(obj: Any, path: str = "") -> list[tuple[str, str]]:
+    """(dotted path, value) for every string still starting with ?? in the config."""
+    if isinstance(obj, str):
+        return [(path, obj)] if obj.startswith("??") else []
+    out: list[tuple[str, str]] = []
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            out += _placeholder_paths(v, f"{path}.{k}" if path else str(k))
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            out += _placeholder_paths(v, f"{path}[{i}]")
+    return out
+
+
+def _generatable_keys(cfg: dict) -> set[str]:
+    """??keys `rodeo up` would generate (not operator secrets): deferred in check mode."""
+    from .secretgen import plan_secret_keys
+
+    operator = {str(k) for k in cfg.get("operator_secrets") or []}
+    try:
+        from .labinabox_host import cloud_secret_keys
+
+        operator |= cloud_secret_keys(cfg)
+    except Exception:
+        pass
+    return plan_secret_keys(cfg) - operator
+
+
+def _validate_placeholders(cfg: dict, *, check: bool) -> None:
+    lab = lab_dir_of(cfg)
+    if check and lab is not None:
+        trusted = cfg.get(LAB_TRUSTED_KEY)
+        if trusted is None:  # loaded with secrets="off": hash the lab now
+            trusted = not cfg.get("_lab_split") and is_lab_trusted(cfg.get("plan_dir") or lab)
+        if not trusted:
+            raise ConfigError(f"{UNTRUSTED_LAB}\nLab: {lab}")
+    leftover = _placeholder_paths(cfg)
+    if check and leftover:
+        sdir = cfg.get("config_dir") or cfg.get("plan_dir")
+        have = _load_secrets(Path(sdir) if sdir else None, include_global=True)
+        generatable = _generatable_keys(cfg)
+        # In a trusted lab a ??env:/??cmd:/??file: resolves at deploy time.
+        leftover = [
+            (p, v) for p, v in leftover
+            if not is_secret_source(v) and v[2:] not in have and v[2:] not in generatable
+        ]
+    if leftover:
         raise ConfigError(
-            f"Secrets not resolved: {', '.join(unresolved)}\n"
+            f"Secrets not resolved: {', '.join(p for p, _ in leftover)}\n"
             "For ??key: edit ~/.rodeo/secrets.yaml or run: rodeo init\n"
-            "For ??env:/??file:/??cmd:: the source returned nothing — "
+            "For ??env:/??file:/??cmd:: the source returned nothing, "
             "check the variable, file, or command.\n"
-            "??file: and ??cmd: also need one approval first: rodeo trust"
+            "Under sudo the environment is not passed on: use ??key there."
         )
+
+
+def validate_config(cfg: dict, *, check: bool = False) -> None:
+    """Raise ConfigError on unresolved secrets, empty credentials, or bad values.
+
+    The whole config is checked for leftover ??placeholders, not only
+    ``credentials``. ``check=True`` (rodeo plan, deploy --check) needs a trusted
+    lab and accepts placeholders that would resolve at deploy time: a ??key in
+    the secrets files or one `rodeo up` generates, and ??env:/??cmd:/??file:.
+    """
+    _validate_placeholders(cfg, check=check)
+    creds = cfg.get("credentials", {})
     empty = [
         k for k, v in creds.items()
         if v is None or (isinstance(v, str) and (not v.strip() or v == "CHANGE_ME"))
@@ -471,7 +803,9 @@ def validate_config(cfg: dict) -> None:
     tls = cfg.get("rancher_tls", {})
     if tls.get("source") == "letsEncrypt":
         email = tls.get("email", "")
-        if (
+        if check and str(email).startswith("??"):
+            pass  # a deferred placeholder, already checked above
+        elif (
             not email
             or email.startswith("??")
             or "example.com" in email
@@ -522,6 +856,11 @@ def validate_config(cfg: dict) -> None:
 
 
 _BUNDLED_DATA = Path(__file__).parent / "data"
+
+
+def validate_aws_provider(cfg: dict) -> None:
+    """The provider: block check alone (rodeo destroy --cloud needs no secrets)."""
+    _validate_aws_provider(cfg)
 
 
 def _validate_aws_provider(cfg: dict) -> None:

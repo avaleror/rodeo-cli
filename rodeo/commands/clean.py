@@ -128,7 +128,7 @@ def clean_cmd(
     cfg = None
     if not all or config_path or config_dir or params or paramfile:
         try:
-            cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir)
+            cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir, secrets="all")
         except Exception:
             if not all:
                 raise

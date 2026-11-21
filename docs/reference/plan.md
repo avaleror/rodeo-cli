@@ -48,8 +48,18 @@ resources:
 #   ??file:/path     → contents of a file
 #   ??cmd:command    → stdout of a shell command (trimmed)
 #
-# ??file: and ??cmd: run only after you approve that exact string once with
-# `rodeo trust` (interactive terminal only). Until then they stay unresolved.
+# Secrets resolve only in a trusted lab. rodeo trust approves the whole lab
+# directory (a sha256 over every file in it except the state rodeo writes, such
+# as .rodeo-secrets.yaml, content/ and logs); any change makes it untrusted
+# again. Labs rodeo seeds into an empty directory from a bundled profile are
+# trusted already; cloned, imported, catalog and hand-made labs need
+# `rodeo trust` (or `rodeo trust --yes` in automation). Content repositories
+# fetched by URL are trusted by URL and ref, not by commit. Write commands (deploy, up, clean, export, ...) resolve
+# secrets; read commands (plan, status, logs, ...) never do. -P and --paramfile
+# values may not contain ??, {{, {% or a newline, and may not set code-bearing
+# keys (ansible.*, provider.install_url/ref, content and workshop repos,
+# lab_in_a_box.source, ssh.identity_file). Under sudo the environment is
+# not passed on, so ??key is the form that works there.
 #
 # rodeo up and rodeo init generate ~/.rodeo/secrets.yaml automatically.
 # Deploy fails immediately if any ?? placeholder cannot be resolved.

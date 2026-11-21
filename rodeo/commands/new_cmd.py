@@ -65,6 +65,9 @@ def new_cmd(name: str, from_base: str | None, from_zip: Path | None, from_lab: P
                 raise FileNotFoundError(
                     f"--from '{from_base}' is not a bundled base. Use one of: {', '.join(PROFILE_EXAMPLE)}")
             dest = scaffold_profile(name, from_base=from_base, force=force)
+            from ..config import trust_lab
+
+            trust_lab(dest)  # a bundled base, written by rodeo itself
     except (FileExistsError, FileNotFoundError, ValueError, RuntimeError, zipfile.BadZipFile) as exc:
         console.print(f"[red]✗  {exc}[/red]")
         raise SystemExit(1)

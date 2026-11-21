@@ -151,6 +151,6 @@ def test_destroy_cmd_cleans_only_after_success(tmp_path, monkeypatch, ok):
     }))
     res = DeprovisionResult(id="primary", ok=ok, provider_id="i-1", detail="terminating", error=None if ok else "boom")
     monkeypatch.setattr(destroy_cmd, "destroy_primary", lambda cfg: [res])
-    monkeypatch.setattr(destroy_cmd, "validate_config", lambda cfg: None)
+    monkeypatch.setattr(destroy_cmd, "validate_aws_provider", lambda cfg: None)
     result = CliRunner().invoke(destroy_cmd.destroy_cmd, ["--cloud", "--yes", "--config-dir", str(lab)])
     assert kh.parent.exists() is (not ok), result.output

@@ -82,7 +82,7 @@ def install_extensions_cmd(
         if ctx.obj:
             config_dir = ctx.obj.get("config_dir")
 
-    cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir)
+    cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir, secrets="all")
 
     if not _has_rancher(cfg):
         console.print("[red]✗  This profile has no Rancher Prime component — nothing to reconcile.[/red]")

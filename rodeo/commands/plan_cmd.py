@@ -25,12 +25,20 @@ def plan_cmd(config_path: str, config_dir: str | None, params: tuple[str, ...], 
         ctx = click.get_current_context()
         if ctx.obj:
             config_dir = ctx.obj.get("config_dir")
-    cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir)
-    # Preview is read-only: validation problems are warnings here so the
-    # diff is still visible. `rodeo deploy` enforces them strictly.
+    # Read-only: no secret placeholder is resolved, so nothing printed below
+    # (versions, storage paths, ...) can carry a secret or run a command.
     try:
-        validate_config(cfg)
+        cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir)
     except ConfigError as exc:
+        console.print(f"[red]✗  {exc}[/red]")
+        raise SystemExit(2)
+    # The diff is still shown when the config would fail at deploy; the exit
+    # code (2) tells scripts and MCP clients that deploy would refuse it.
+    config_error: ConfigError | None = None
+    try:
+        validate_config(cfg, check=True)
+    except ConfigError as exc:
+        config_error = exc
         console.print(f"\n[yellow]⚠  Config issue (deploy will refuse): {exc}[/yellow]")
     profile = get_profile(cfg.get("type", "suse-virt"))
 
@@ -62,6 +70,8 @@ def plan_cmd(config_path: str, config_dir: str | None, params: tuple[str, ...], 
         console.print("  Run [bold]rodeo deploy[/bold] to apply.\n")
     else:
         console.print("  [bold green]Nothing to do — deployment matches the plan.[/bold green]\n")
+    if config_error is not None:
+        raise SystemExit(2)
 
 
 def _print_foreign_vms(cfg: dict) -> None:

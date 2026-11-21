@@ -96,7 +96,7 @@ def set_password_cmd(
         if ctx.obj:
             config_dir = ctx.obj.get("config_dir")
 
-    cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir)
+    cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir, secrets="all")
     do_rancher = _has_rancher(cfg) and target in ("both", "rancher")
     do_harvester = _has_harvester(cfg) and target in ("both", "harvester")
 
@@ -137,7 +137,7 @@ def set_password_cmd(
     console.print(f"[dim]New password written to {secrets_path}.[/dim]\n")
 
     # Re-load so the phase below picks up the password just written.
-    cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir)
+    cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir, secrets="all")
 
     from ..engine.rancher import RancherPhase
     phase = RancherPhase(cfg)

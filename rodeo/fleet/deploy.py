@@ -39,8 +39,13 @@ def start_up_script(inventory: FleetInventory, session: str) -> str:
     profile_bits = ""
     if inventory.lab_profile and not inventory.lab_source:
         profile_bits = f"--profile {shlex.quote(inventory.lab_profile)} "
+    # A git lab.source is named in the operator's workshop.yaml: that is the
+    # approval (by URL and branch, not commit). Profile seeds are trusted already.
+    trust_bits = ""
+    if inventory.lab_source:
+        trust_bits = f"{{ rodeo trust --yes --config-dir {lab} >/dev/null 2>&1 || true; }} && "
     inner = (
-        f"cd {lab} && rodeo up --yes --no-tmux {profile_bits}"
+        f"cd {lab} && {trust_bits}rodeo up --yes --no-tmux {profile_bits}"
         f"--dir {lab} --target {target} "
         f"2>&1 | tee -a \"$HOME/.rodeo/logs/fleet-up.log\"; "
         f'echo FLEET_UP_EXIT:$?'

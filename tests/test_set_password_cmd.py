@@ -1,12 +1,16 @@
 """rodeo set-password — rotate Harvester/Rancher admin passwords post-deploy."""
 from __future__ import annotations
 
+import pytest
 import yaml
 from click.testing import CliRunner
 
 from rodeo import secretgen
 from rodeo.commands import set_password_cmd as spc_mod
 from rodeo.engine import rancher as rancher_mod
+
+# Write paths need a trusted lab; trust itself is tested in test_config.py.
+pytestmark = pytest.mark.usefixtures("trusted_labs")
 
 
 def _write_plan(tmp_path, vms):

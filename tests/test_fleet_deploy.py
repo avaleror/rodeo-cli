@@ -523,3 +523,12 @@ def test_access_sheet_ui_ports(tmp_path):
     assert access_payload("demo", rows)["hosts"][0]["other_urls"] == {"smlm": "https://203.0.113.1:443"}
     with pytest.raises(ConfigError, match="ui_ports"):
         load_inventory(_workshop(tmp_path, extra_lab="ui_ports: {smlm: 99999}"))
+
+
+def test_git_lab_source_is_trusted_before_up(tmp_path):
+    """A git lab.source is named in workshop.yaml: the fleet host trusts it, then deploys."""
+    inv = load_inventory(_workshop(tmp_path))
+    assert inv.lab_source
+    script = deploy_remote_script(inv, tmux_session_name(inv.name, "h1"))
+    assert "rodeo trust --yes --config-dir" in script
+    assert script.index("rodeo trust --yes") < script.index("rodeo up --yes")

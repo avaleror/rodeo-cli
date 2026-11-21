@@ -5,19 +5,27 @@ import json
 import shutil
 import stat
 import subprocess
+from functools import partial
 from pathlib import Path
 
 import pytest
 import yaml
 
 from rodeo import labinabox_host as host
-from rodeo.config import ConfigError, load_config
+from rodeo.config import ConfigError
+from rodeo.config import load_config as _load_config
 from rodeo.engine import labinabox_phase as phase
 from rodeo.engine.runner import DeployRunner, LogLine
 from rodeo.labinabox import available_addons, build_lab_json, unresolved_placeholders
 from rodeo.labseed import PROFILE_EXAMPLE, example_dir, seed_lab
 from rodeo.preflight import _resource_needs
 from rodeo.profiles import get_profile
+
+# Write paths need a trusted lab; trust itself is tested in test_config.py.
+pytestmark = pytest.mark.usefixtures("trusted_labs")
+
+# These tests model write paths (deploy, up), which resolve secrets.
+load_config = partial(_load_config, secrets="all")
 
 SMLM = example_dir("smlm-workshop")
 SHA = "a" * 64

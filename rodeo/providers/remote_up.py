@@ -279,6 +279,9 @@ def remote_up_script(
         ' started by an earlier session. Follow it with:'
         ' sudo tail -f $log" >&2; '
         'exit 75; fi; '
+        # The laptop only ships a lab it trusts (load_config secrets="all"), so
+        # the host trusts that same copy; an older rodeo without --yes ignores it.
+        f"rodeo trust --yes --config-dir {lab} </dev/null >/dev/null 2>&1 || true; "
         'off=$(( $(stat -c %s "$log" 2>/dev/null || echo 0) + 1 )); '
         "set +e; "
         # rodeo writes to the log, not to the SSH channel, and the laptop gets

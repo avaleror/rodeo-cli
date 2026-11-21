@@ -176,6 +176,12 @@ systemd-inhibit --what=sleep rodeo fleet portal publish --watch -f workshop.yaml
 If the watch stops anyway, just start it again: labs that are already published stay
 published, and the instructor page warns when updates stop arriving.
 
+The same goes for a single-host `rodeo up --target aws`: if the laptop loses the
+session (sleep, Wi-Fi, Ctrl-C), the deploy keeps running on the host. Its log is
+`/root/.rodeo/logs/aws-up.log` there (`rodeo ssh`, then `sudo tail -f` it). Running
+`rodeo up` again while that deploy is still going stops with exit 75 instead of
+starting a second one.
+
 **Which rodeo runs where.** Your local checkout only drives the control side. KVM
 hosts install rodeo from GitHub (`main`, or the ref you pass with `--ref` /
 `lab.ref`), so a local change reaches the hosts only after it is pushed. The one

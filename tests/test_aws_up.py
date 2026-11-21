@@ -1,6 +1,8 @@
 """Tests for deployment_target: aws and single-host remote_up orchestration."""
 from __future__ import annotations
 
+import subprocess
+import sys
 import textwrap
 from pathlib import Path
 
@@ -11,7 +13,12 @@ from click.testing import CliRunner
 from rodeo.config import ConfigError, load_config, validate_config
 from rodeo.providers.aws import AwsHostProvider
 from rodeo.providers.base import SINGLE_HOST_ID, ProvisionedHost
-from rodeo.install_source import install_url_for_ref, resolve_install_source
+from rodeo.install_source import (
+    DEFAULT_INSTALL_URL as _DEFAULT_INSTALL,
+    bootstrap_fragment,
+    install_url_for_ref,
+    resolve_install_source,
+)
 from rodeo.providers.remote_up import (
     destroy_primary,
     execute_aws_up,
@@ -122,6 +129,66 @@ def test_remote_up_script_does_not_hand_the_ssh_channel_to_rodeo():
     assert "| tee" not in script
     assert '</dev/null >>"$log" 2>&1 & rp=$!' in script
     assert 'tail -c "+$off" --pid="$rp" -f "$log"' in script
+
+
+def _run_script_with_fake_rodeo(tmp_path, body: str) -> subprocess.CompletedProcess:
+    """Run the real remote script under bash, with a fake rodeo on PATH and the
+    bootstrap stubbed out (it would curl install.sh)."""
+    import os
+
+    bindir = tmp_path / "bin"
+    bindir.mkdir(exist_ok=True)
+    fake = bindir / "rodeo"
+    fake.write_text(f"#!/bin/bash\n{body}\n")
+    fake.chmod(0o755)
+    script = remote_up_script(lab_dir=str(tmp_path / "lab"), profile="test")
+    script = script.replace(bootstrap_fragment(install_url=_DEFAULT_INSTALL, ref=None), "true")
+    env = {**os.environ, "HOME": str(tmp_path), "PATH": f"{bindir}:{os.environ['PATH']}"}
+    return subprocess.run(
+        ["bash", "-c", script], env=env, capture_output=True, text=True, timeout=30
+    )
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="GNU tail/stat, as on the lab host")
+def test_remote_up_script_returns_when_rodeo_ends_despite_a_leftover_child(tmp_path):
+    """The 2026-11-18 hang: a child of the deploy keeps stdout open. The session
+    must still end when rodeo ends, with rodeo's exit code and only this run's log."""
+    (tmp_path / ".rodeo" / "logs").mkdir(parents=True)
+    (tmp_path / ".rodeo" / "logs" / "aws-up.log").write_text("old run\n")
+    proc = _run_script_with_fake_rodeo(
+        tmp_path, "echo deploying; (sleep 60 &) ; sleep 1; echo done; exit 3"
+    )
+    assert proc.returncode == 3
+    assert "deploying" in proc.stdout and "done" in proc.stdout
+    assert "old run" not in proc.stdout
+    assert "AWS_UP_EXIT:3" in proc.stdout
+    assert not (tmp_path / ".rodeo" / "logs" / "aws-up.pid").exists()
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="GNU tail/stat, as on the lab host")
+def test_remote_up_script_refuses_a_second_deploy_while_one_runs(tmp_path):
+    """rodeo outlives a lost session now, so a re-run must not race it."""
+    logs = tmp_path / ".rodeo" / "logs"
+    logs.mkdir(parents=True)
+    running = subprocess.Popen(["bash", "-c", "exec -a rodeo-up sleep 30"])
+    try:
+        (logs / "aws-up.pid").write_text(f"{running.pid}\n")
+        proc = _run_script_with_fake_rodeo(tmp_path, "echo SHOULD-NOT-RUN; exit 0")
+    finally:
+        running.kill()
+    assert proc.returncode == 75
+    assert "SHOULD-NOT-RUN" not in proc.stdout
+    assert "already running" in proc.stderr
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="GNU tail/stat, as on the lab host")
+def test_remote_up_script_ignores_a_stale_pid_file(tmp_path):
+    logs = tmp_path / ".rodeo" / "logs"
+    logs.mkdir(parents=True)
+    (logs / "aws-up.pid").write_text("999999999\n")
+    proc = _run_script_with_fake_rodeo(tmp_path, "echo ran; exit 0")
+    assert proc.returncode == 0
+    assert "ran" in proc.stdout
 
 
 def test_remote_up_script_without_a_ref_leaves_an_existing_install_alone():

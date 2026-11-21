@@ -265,6 +265,17 @@ def remote_up_script(
         # (sudo -n bash -lc).
         'mkdir -p "$HOME/.rodeo/logs"; '
         'log="$HOME/.rodeo/logs/aws-up.log"; '
+        'pidf="$HOME/.rodeo/logs/aws-up.pid"; '
+        # rodeo outlives the SSH session (laptop asleep, Ctrl-C, run_remote
+        # timeout), so a re-run must not start a second deploy racing the first
+        # one on the same lab. A pid file, not flock: a lock fd would be
+        # inherited by whatever the deploy leaves running, like the tee pipe.
+        'if [ -s "$pidf" ] && kill -0 "$(cat "$pidf")" 2>/dev/null '
+        '&& grep -qa rodeo "/proc/$(cat "$pidf")/cmdline" 2>/dev/null; then '
+        'echo "rodeo up is already running on this host (pid $(cat "$pidf")),'
+        ' started by an earlier session. Follow it with:'
+        ' sudo tail -f $log" >&2; '
+        'exit 75; fi; '
         'off=$(( $(stat -c %s "$log" 2>/dev/null || echo 0) + 1 )); '
         "set +e; "
         # rodeo writes to the log, not to the SSH channel, and the laptop gets
@@ -276,8 +287,9 @@ def remote_up_script(
         f"rodeo up --yes --no-tmux {profile_bits}"
         f"--dir {lab} --target aws "
         '</dev/null >>"$log" 2>&1 & rp=$!; '
+        'echo "$rp" >"$pidf"; '
         'tail -c "+$off" --pid="$rp" -f "$log"; '
-        'wait "$rp"; ec=$?; set -e; '
+        'wait "$rp"; ec=$?; rm -f "$pidf"; set -e; '
         'echo AWS_UP_EXIT:$ec; '
         "exit \"$ec\""
     )
@@ -357,12 +369,21 @@ def run_remote_up(
         **extra,
     )
     if not result.ok:
-        # Prefer stdout: the remote tees rodeo's own output there, while stderr
+        # Prefer stdout: the remote streams rodeo's own log there, while stderr
         # often holds only ssh noise ("Permanently added … to known hosts"),
         # which would otherwise be reported as the failure.
         parts = [p.strip() for p in (result.stdout, result.stderr) if (p or "").strip()]
         msg = "\n".join(parts) if parts else f"exit {result.rc}"
         msg = msg[-1500:]
+        if result.rc in (124, 255):
+            # Timeout or a dropped connection: rodeo does not die with the
+            # session, so the deploy may well still be running on the host.
+            raise ConfigError(
+                f"lost the session to {host.public_ip} (exit {result.rc}): {msg}\n"
+                "If the deploy had started, it keeps running on the host. Follow it with "
+                "`sudo tail -f /root/.rodeo/logs/aws-up.log` there; re-running "
+                "rodeo up refuses to start a second deploy while it runs."
+            )
         raise ConfigError(
             f"remote rodeo up failed on {host.public_ip} "
             f"(exit {result.rc}): {msg}\n"

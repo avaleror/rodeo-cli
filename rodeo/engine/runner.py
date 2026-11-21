@@ -158,6 +158,7 @@ class DeployRunner:
         profile = get_profile(self.cfg.get("type", "suse-virt"))
 
         if self.from_phase:
+            profile.check_phase(self.from_phase)
             reset_from(self.from_phase, self._plan_name, profile.phases)
 
         start_idx = (

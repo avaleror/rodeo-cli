@@ -22,7 +22,7 @@ from typing import Any
 
 import yaml
 
-from .paths import rodeo_last_lab_file, rodeo_secrets_path
+from .paths import rodeo_last_lab_file, rodeo_secrets_path, rodeo_trusted_sources_path
 
 
 class ConfigError(ValueError):
@@ -164,13 +164,18 @@ def _render_plan(text: str, source: str, context: dict) -> dict:
     if "{{" in text or "{%" in text:
         try:
             import jinja2
-            env = jinja2.Environment(undefined=jinja2.StrictUndefined)
+            from jinja2.sandbox import SandboxedEnvironment
+            # Sandboxed: a plan from an untrusted repo must not reach Python
+            # internals through the template ({{ ''.__class__.__mro__ ... }}).
+            env = SandboxedEnvironment(undefined=jinja2.StrictUndefined)
             text = env.from_string(text).render(**context)
         except jinja2.UndefinedError as exc:
             raise ConfigError(
                 f"{source}: undefined template parameter: {exc.message}\n"
                 "Define it in the parameters block, --paramfile, or -P key=value."
             )
+        except jinja2.exceptions.SecurityError as exc:
+            raise ConfigError(f"{source}: template blocked by the sandbox: {exc}")
         except jinja2.TemplateSyntaxError as exc:
             raise ConfigError(f"{source} line {exc.lineno}: template syntax error: {exc.message}")
     try:
@@ -183,19 +188,63 @@ def _render_plan(text: str, source: str, context: dict) -> dict:
     return data
 
 
-def _resolve_secret_value(value: str, secrets: dict) -> str:
+# ??cmd: runs a shell command and ??file: reads any local file. A plan can come
+# from a cloned repo, a Builder import or an MCP client, so neither runs until a
+# human approves that exact string once with `rodeo trust` (kept in
+# ~/.rodeo/trusted-sources.yaml). Untrusted ones stay literal and fail closed.
+_GATED_PREFIXES = ("??cmd:", "??file:")
+
+
+def is_gated_source(value: Any) -> bool:
+    return isinstance(value, str) and value.startswith(_GATED_PREFIXES)
+
+
+def load_trusted_sources() -> set[str]:
+    path = rodeo_trusted_sources_path()
+    if not path.exists():
+        return set()
+    try:
+        data = yaml.safe_load(path.read_text()) or []
+    except (OSError, yaml.YAMLError):
+        return set()
+    return {v for v in data if isinstance(v, str)} if isinstance(data, list) else set()
+
+
+def save_trusted_sources(sources: set[str]) -> Path:
+    path = rodeo_trusted_sources_path()
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        yaml.safe_dump(sorted(sources), fh, default_flow_style=False)
+    return path
+
+
+def collect_gated_sources(cfg: Any) -> set[str]:
+    """Every ??cmd: and ??file: string anywhere in the config."""
+    if is_gated_source(cfg):
+        return {cfg}
+    if isinstance(cfg, dict):
+        return set().union(*(collect_gated_sources(v) for v in cfg.values()))
+    if isinstance(cfg, list):
+        return set().union(*(collect_gated_sources(v) for v in cfg))
+    return set()
+
+
+def _resolve_secret_value(value: str, secrets: dict, trusted: set[str]) -> str:
     """Resolve one ??placeholder. On failure the literal is kept so
     validate_config() fails closed with a clear message.
 
     Supported forms:
       ??key                  -> ~/.rodeo/secrets.yaml lookup
       ??env:NAME             -> environment variable
-      ??file:/path           -> first line of a file (e.g. a mounted secret)
-      ??cmd:some command     -> stdout of a shell command (pass, op, vault...)
+      ??file:/path           -> first line of a file (only once trusted)
+      ??cmd:some command     -> stdout of a shell command (only once trusted)
     """
     spec = value[2:]
     if spec.startswith("env:"):
         return os.environ.get(spec[4:]) or value
+    if is_gated_source(value) and value not in trusted:
+        return value
     if spec.startswith("file:"):
         try:
             content = Path(spec[5:]).read_text().strip()
@@ -204,6 +253,7 @@ def _resolve_secret_value(value: str, secrets: dict) -> str:
             return value
     if spec.startswith("cmd:"):
         try:
+            # shell=True is deliberate: the operator approved this exact string.
             r = subprocess.run(
                 spec[4:], shell=True, capture_output=True, text=True, timeout=30
             )
@@ -217,9 +267,20 @@ def _resolve_secret_value(value: str, secrets: dict) -> str:
 
 def _resolve_secrets(cfg: dict, secrets: dict) -> dict:
     """Replace ??placeholders throughout the config."""
+    untrusted = collect_gated_sources(cfg)
+    trusted = load_trusted_sources() if untrusted else set()
+    untrusted -= trusted
+    if untrusted:
+        import sys
+        print(
+            f"rodeo: skipped {len(untrusted)} untrusted ??cmd:/??file: secret source(s) "
+            "in this plan. Review them and run: rodeo trust",
+            file=sys.stderr,
+        )
+
     def _walk(obj: Any) -> Any:
         if isinstance(obj, str) and obj.startswith("??"):
-            return _resolve_secret_value(obj, secrets)
+            return _resolve_secret_value(obj, secrets, trusted)
         if isinstance(obj, dict):
             return {k: _walk(v) for k, v in obj.items()}
         if isinstance(obj, list):
@@ -233,6 +294,7 @@ def load_config(
     params: tuple[str, ...] = (),
     paramfile: str | Path | None = None,
     config_dir: str | Path | None = None,
+    resolve_secrets: bool = True,
 ) -> dict:
     """Load config, with optional --config-dir for definition + artifacts (EIB model).
 
@@ -322,7 +384,8 @@ def load_config(
             except yaml.YAMLError as exc:
                 raise ConfigError(f"{lab_secrets}: invalid YAML: {exc}")
 
-    cfg = _resolve_secrets(cfg, secrets)
+    if resolve_secrets:
+        cfg = _resolve_secrets(cfg, secrets)
 
     env_path = os.environ.get("RODEO_ANSIBLE_PATH")
     if env_path:
@@ -352,7 +415,8 @@ def validate_config(cfg: dict) -> None:
             f"Secrets not resolved: {', '.join(unresolved)}\n"
             "For ??key: edit ~/.rodeo/secrets.yaml or run: rodeo init\n"
             "For ??env:/??file:/??cmd:: the source returned nothing — "
-            "check the variable, file, or command."
+            "check the variable, file, or command.\n"
+            "??file: and ??cmd: also need one approval first: rodeo trust"
         )
     empty = [
         k for k, v in creds.items()

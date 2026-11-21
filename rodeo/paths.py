@@ -30,6 +30,10 @@ def rodeo_secrets_path() -> Path:
     return rodeo_dir() / "secrets.yaml"
 
 
+def rodeo_trusted_sources_path() -> Path:
+    return rodeo_dir() / "trusted-sources.yaml"
+
+
 def rodeo_state_dir() -> Path:
     return rodeo_dir() / "state"
 

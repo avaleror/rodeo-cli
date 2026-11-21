@@ -291,7 +291,7 @@ resources:
 
 ### Secrets (`??` placeholders)
 
-Resolved at load time from `~/.rodeo/secrets.yaml`, `??env:`, `??file:`, or `??cmd:`. `validate_config()` fails closed on unresolved or empty credentials. (Note: `rodeo generate` now guards the global secrets file with exists check + warning to avoid silent clobber.)
+Resolved at load time from `~/.rodeo/secrets.yaml`, `??env:`, `??file:`, or `??cmd:` (the last two only after `rodeo trust` approves that exact string). `validate_config()` fails closed on unresolved or empty credentials. (Note: `rodeo generate` now guards the global secrets file with exists check + warning to avoid silent clobber.)
 
 Passwords go to Ansible via a **mode-600 vars file** (`-e @file`), never on argv. Password-bearing Ansible template tasks use `no_log: true`.
 

@@ -26,6 +26,61 @@ logger = logging.getLogger(__name__)
 DOWNSTREAM_FLAVORS = ("k3s-node", "rke2-node")
 
 
+# ---------- Ansible extra-vars (unsafe strings) ----------
+#
+# Ansible templates variable values when it uses them, as root on the
+# controller. A plan string such as "{{ lookup('pipe', 'id') }}" (kept literal
+# through rodeo's own render with {% raw %}) would run there with no trust
+# prompt. Every string in the vars file is therefore tagged `!unsafe`, which
+# tells Ansible to use the value as data and never template it. No key is
+# exempt: no rodeo-built value relies on Ansible templating it.
+
+class _AnsibleUnsafe(str):
+    """A str that dumps as Ansible's `!unsafe` scalar."""
+
+
+class _UnsafeVarsDumper(yaml.Dumper):
+    pass
+
+
+_UnsafeVarsDumper.add_representer(
+    _AnsibleUnsafe,
+    lambda dumper, data: dumper.represent_scalar("!unsafe", str(data)),
+)
+
+
+def _mark_unsafe(obj):
+    """Return a copy of obj with every non-empty string tagged `!unsafe` (keys stay plain)."""
+    if isinstance(obj, dict):
+        return {k: _mark_unsafe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_mark_unsafe(v) for v in obj]
+    # Empty strings stay plain: nothing to template, and Ansible reads an
+    # empty `!unsafe ''` scalar back as null instead of "".
+    if isinstance(obj, str) and obj:
+        return _AnsibleUnsafe(obj)
+    return obj
+
+
+def dump_ansible_vars(data: dict, stream) -> None:
+    """Write data as an Ansible extra-vars YAML file with every string `!unsafe`."""
+    yaml.dump(_mark_unsafe(data), stream, Dumper=_UnsafeVarsDumper, default_flow_style=False)
+
+
+class _UnsafeVarsLoader(yaml.SafeLoader):
+    pass
+
+
+_UnsafeVarsLoader.add_constructor(
+    "!unsafe", lambda loader, node: loader.construct_scalar(node)
+)
+
+
+def load_vars_file(path: Path | str) -> dict:
+    """Read a vars file written by dump_ansible_vars back into plain Python values."""
+    return yaml.load(Path(path).read_text(), Loader=_UnsafeVarsLoader)
+
+
 # ---------- Networking helpers ----------
 
 def _detect_ext_iface() -> str:
@@ -990,7 +1045,7 @@ class DeployRunner:
         os.chmod(path_str, 0o600)
         os.close(fd)
         with open(path_str, "w") as f:
-            yaml.dump(vars_data, f, default_flow_style=False)
+            dump_ansible_vars(vars_data, f)
 
         path = Path(path_str)
         atexit.register(lambda p=path: p.unlink(missing_ok=True))

@@ -16,7 +16,7 @@ import pytest
 import yaml
 
 import rodeo
-from rodeo.engine.runner import DeployRunner
+from rodeo.engine.runner import DeployRunner, load_vars_file
 
 _ANSIBLE = Path(rodeo.__file__).parent / "data" / "ansible"
 
@@ -41,7 +41,7 @@ def _vars_keys(tmp_path) -> dict:
         "network": {"vip": "192.168.122.10"},
     }
     vars_file = DeployRunner(cfg, tmp_path)._write_vars_file()
-    return yaml.safe_load(vars_file.read_text())
+    return load_vars_file(vars_file)
 
 
 def test_every_vars_key_is_consumed_by_ansible(tmp_path, ansible_text):

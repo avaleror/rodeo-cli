@@ -207,10 +207,10 @@ def test_bmc_vars_expose_only_site_hosts():
 
 
 def test_runner_vars_file_carries_bmc_vars(tmp_path, monkeypatch):
-    from rodeo.engine.runner import DeployRunner
+    from rodeo.engine.runner import DeployRunner, load_vars_file
 
     monkeypatch.setenv("HOME", str(tmp_path))
-    data = yaml.safe_load(DeployRunner(_telco_cfg(), tmp_path)._write_vars_file().read_text())
+    data = load_vars_file(DeployRunner(_telco_cfg(), tmp_path)._write_vars_file())
     assert data["bmc_password"] == "Bmc-Secret-123"
     assert set(data["bmc_allowed_instances"]) == _SITE_UUIDS
     assert data["rancher_ip"] == "192.168.122.10"
@@ -282,7 +282,7 @@ def _vms_role_vars(tmp_path, monkeypatch) -> dict:
     from pathlib import Path
 
     import rodeo
-    from rodeo.engine.runner import DeployRunner
+    from rodeo.engine.runner import DeployRunner, load_vars_file
 
     monkeypatch.setenv("HOME", str(tmp_path))
     ansible = Path(rodeo.__file__).parent / "data/ansible"
@@ -291,7 +291,7 @@ def _vms_role_vars(tmp_path, monkeypatch) -> dict:
     data: dict = {}
     data.update(yaml.safe_load((ansible / "roles/vms/defaults/main.yml").read_text()))
     data.update(yaml.safe_load((ansible / "group_vars/all.yml").read_text()))
-    data.update(yaml.safe_load(DeployRunner(cfg, tmp_path)._write_vars_file().read_text()))
+    data.update(load_vars_file(DeployRunner(cfg, tmp_path)._write_vars_file()))
     data["ssh_public_key"] = "ssh-ed25519 AAAAtest rodeo"
     return data
 

@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.31.0](https://github.com/avaleror/rodeo-cli/compare/v0.30.0...v0.31.0) (2026-11-21)
+
+
+### Features
+
+* **builder:** keep the whole deploy log in the UI ([d97b992](https://github.com/avaleror/rodeo-cli/commit/d97b992933e10d91b11de6582ef7c8bdaf869250))
+* **builder:** keep the whole deploy log in the UI ([154fb14](https://github.com/avaleror/rodeo-cli/commit/154fb146784e4c673b7a8b421d2dcd78b3939b87))
+* **fleet:** kvm-hosts lab type, plain KVM hosts with optional dead-man switch ([30b9e8d](https://github.com/avaleror/rodeo-cli/commit/30b9e8d075f1dea600a8c90fa493d47b3c9977c5))
+* **fleet:** kvm-hosts lab type, plain KVM hosts with optional dead-man switch ([8781a7d](https://github.com/avaleror/rodeo-cli/commit/8781a7da6684a95325c7184b77608d937ead4a6d))
+
+
+### Bug Fixes
+
+* **aws:** refuse a second remote rodeo up while one still runs ([52d2807](https://github.com/avaleror/rodeo-cli/commit/52d28078b395002977740d7b8c67ec8fe368afc5))
+* **aws:** stop the remote rodeo up session from hanging after the host finishes ([90a87d1](https://github.com/avaleror/rodeo-cli/commit/90a87d1051c89649fa8129f4be3510098b8f82d3))
+* **aws:** stop the remote rodeo up session from hanging after the host finishes ([2acc569](https://github.com/avaleror/rodeo-cli/commit/2acc569b4a351d8d6dd8486bb1544a1cb2c3f923))
+
+
+### Documentation
+
+* **skill:** cover workshop authoring in the rodeo skill ([f6672d0](https://github.com/avaleror/rodeo-cli/commit/f6672d021f12b57505492358c47a5f97336c3302))
+* **skill:** cover workshop authoring in the rodeo skill ([be9976c](https://github.com/avaleror/rodeo-cli/commit/be9976cd8b34c8baa0e1c9fe98936266a20fed2d))
+
 ## [0.30.0](https://github.com/avaleror/rodeo-cli/compare/v0.29.0...v0.30.0) (2026-11-18)
 
 

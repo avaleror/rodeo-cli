@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import replace
 from pathlib import Path
 
@@ -279,6 +280,24 @@ def fleet_status_cmd(
         raise SystemExit(1)
 
 
+def _approve_source(inventory: FleetInventory, flag: bool) -> None:
+    """Record approval of a git lab.source: --trust-source, or a yes on a terminal."""
+    from ..config import is_source_trusted, trust_source
+
+    url, branch = inventory.lab_source, inventory.lab_branch
+    if not url or is_source_trusted(url, branch):
+        return
+    if not flag:
+        if not sys.stdin.isatty():
+            return  # fleet_deploy refuses with the actionable message
+        console.print(f"[yellow]Every host will clone {url}"
+                      + (f" (branch {branch})" if branch else "")
+                      + " and run its scripts as root. Trusted by URL and branch, not commit.[/yellow]")
+        if not click.confirm("Trust this lab source?", default=False):
+            return
+    trust_source(url, branch)
+
+
 @fleet_cmd.command("deploy")
 @_output_opt
 @_concurrency_opt(None)
@@ -298,6 +317,14 @@ def fleet_status_cmd(
          "a just-pushed commit reaches hosts that were bootstrapped earlier. "
          "Default: leave each host on the code it already has.",
 )
+@click.option(
+    "--trust-source",
+    "trust_source_flag",
+    is_flag=True,
+    default=False,
+    help="Approve the workshop's git lab.source (URL and branch) on this machine: "
+         "hosts clone it and run its scripts as root. Asked on a terminal otherwise.",
+)
 @_file_label_host
 def fleet_deploy_cmd(
     inventory_path: Path,
@@ -307,6 +334,7 @@ def fleet_deploy_cmd(
     output_fmt: str,
     force: bool,
     ref: str | None,
+    trust_source_flag: bool = False,
 ) -> None:
     """Bootstrap, sync lab, and start ``rodeo up`` in tmux on each host.
 
@@ -321,6 +349,7 @@ def fleet_deploy_cmd(
         raise SystemExit(1)
 
     inventory = _with_ref(inventory, ref)
+    _approve_source(inventory, trust_source_flag)
 
     results, _job, job_path = fleet_deploy(
         inventory,

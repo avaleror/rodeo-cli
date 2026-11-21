@@ -149,15 +149,18 @@ def wait_for_labs(inventory: FleetInventory, inventory_path: Path, *, minutes: f
 @click.option("--wait-minutes", default=90, show_default=True, type=click.IntRange(1, 1440),
               help="Give up waiting for the labs after this long.")
 @click.option("--ref", default=None, metavar="GIT_REF", help="rodeo-cli ref the hosts run (as fleet deploy --ref).")
+@click.option("--trust-source", "trust_source_flag", is_flag=True, default=False,
+              help="Approve the workshop's git lab.source (as fleet deploy --trust-source).")
 @click.pass_context
 def fleet_up_cmd(ctx: click.Context, inventory_path: Path, profile: str | None, count: int | None,
                  name: str | None, region: str | None, instance_type: str | None,
                  instance_tier: str | None, subnet_id: str | None, ttl_hours: float | None,
                  no_deadman: bool, portal: bool, title: str | None, guide_url: str | None,
-                 concurrency: int | None, wait_minutes: int, ref: str | None) -> None:
+                 concurrency: int | None, wait_minutes: int, ref: str | None,
+                 trust_source_flag: bool = False) -> None:
     """Provision, deploy and open a whole workshop: one command, start to finish."""
-    from .fleet_cmd import (console, fleet_access_cmd, fleet_deploy_cmd, fleet_open_access_cmd,
-                            fleet_provision_cmd)
+    from .fleet_cmd import (_approve_source, console, fleet_access_cmd, fleet_deploy_cmd,
+                            fleet_open_access_cmd, fleet_provision_cmd)
     from .fleet_portal_cmd import portal_info_cmd, portal_publish_cmd, portal_up_cmd
 
     given = {k: v for k, v in ctx.params.items() if k in _BUILD_FLAGS and v not in (None, False)}
@@ -203,6 +206,15 @@ def fleet_up_cmd(ctx: click.Context, inventory_path: Path, profile: str | None, 
 
     try:
         inventory = load_inventory(inventory_path)
+    except ConfigError as exc:
+        console.print(f"[red]✗  {exc}[/red]")
+        raise SystemExit(1)
+    # Before provisioning: an unapproved git lab.source would only be refused at deploy.
+    from ..fleet.deploy import require_trusted_source
+
+    _approve_source(inventory, trust_source_flag)
+    try:
+        require_trusted_source(inventory)
     except ConfigError as exc:
         console.print(f"[red]✗  {exc}[/red]")
         raise SystemExit(1)

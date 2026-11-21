@@ -16,6 +16,7 @@ from rich.console import Console
 from rich.markup import escape
 
 from ..config import (
+    SOURCE_PREFIX,
     ConfigError,
     is_lab_trusted,
     is_secret_source,
@@ -117,6 +118,9 @@ def trust_cmd(
             if not labs:
                 console.print("No trusted labs.")
             for lab, digest in sorted(labs.items()):
+                if lab.startswith(SOURCE_PREFIX):
+                    console.print(f"{escape(lab[len(SOURCE_PREFIX):])}  [dim]fleet lab.source (URL@branch)[/dim]")
+                    continue
                 state = "" if is_lab_trusted(lab) else "  [yellow](changed since approval)[/yellow]"
                 console.print(f"{escape(lab)}  [dim]{digest[:12]}[/dim]{state}")
             return

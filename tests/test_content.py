@@ -340,3 +340,20 @@ def test_up_leaves_out_content_scripts_the_profile_ran(tmp_path, monkeypatch, ca
     up_cmd._apply_content(cfg, lab)
     assert ran == ["80-new.sh"]
     assert "skip  50-cache.sh (the profile's own copy ran)" in capsys.readouterr().out
+
+
+@needs_git
+def test_content_apply_keeps_the_lab_trusted(tmp_path):
+    """content/, guide/, content.lock and the .content.* checkout are rodeo's own writes."""
+    from rodeo.config import is_lab_trusted, trust_lab
+
+    repo = _repo(tmp_path, {"docs/01-a.md": "# A\n"})
+    lab = tmp_path / "lab"
+    lab.mkdir()
+    (lab / "rodeo-plan.yaml").write_text("name: ride\n")
+    trust_lab(lab)
+    spec = _spec(repo, "markdown", "docs")
+    content.fetch(spec, lab)
+    content.render(spec, lab, {})
+    assert (lab / "guide").is_dir() and (lab / content.LOCK).exists()
+    assert is_lab_trusted(lab)

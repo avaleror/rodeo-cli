@@ -274,39 +274,88 @@ def test_check_mode_fails_missing_operator_secret(tmp_path):
 
 def test_lab_trusted_flag_cannot_be_forged(tmp_path):
     plan = _lab(tmp_path, "clone", _pw("Secret123"))
-    with pytest.raises(config.ConfigError, match="may not set"):
+    with pytest.raises(config.ConfigError, match="can only set"):
         config.load_config(plan, params=(f"{config.LAB_TRUSTED_KEY}=true",))
     cfg = config.load_config(plan, secrets="keys")
     assert cfg[config.LAB_TRUSTED_KEY] is False
 
 
-@pytest.mark.parametrize("denied", config.PARAM_DENYLIST)
-def test_param_denylist_every_entry(tmp_path, denied):
-    """Code-bearing keys can't be set from -P or --paramfile (agent input via MCP)."""
+@pytest.mark.parametrize("entry", [
+    "config_dir=/tmp/x",
+    "plan_dir=/tmp/x",
+    "lab_in_a_box.source.repo=https://evil.example/x",
+    "workshop.pdf=true",
+    "story.engine=evil",
+    "story.engine_env.LD_PRELOAD=/tmp/x.so",
+    "ansible.path=/tmp/x",
+    "ansible={path: /tmp/x}",
+    "provider={install_url: 'https://evil.example/x.sh'}",
+    "provider.install_url=https://evil.example/x.sh",
+    "content.repo=https://evil.example/x",
+    "ssh.identity_file=/tmp/k",
+    "credentials.harvester_os_password=x",
+    "_lab_trusted=true",
+])
+def test_param_outside_allowlist_rejected(tmp_path, entry):
+    """Only data keys can come from -P (an MCP client passes them)."""
     plan = _lab(tmp_path, "lab", _pw("Secret123"), trusted=True)
-    with pytest.raises(config.ConfigError, match="may not set"):
-        config.load_config(plan, params=(f"{denied}=x",))
-    pf = tmp_path / "pf.yaml"
-    node: dict = "x"
-    for part in reversed(denied.split(".")):
-        node = {part: node}
-    pf.write_text(yaml.dump(node))
-    with pytest.raises(config.ConfigError, match="may not set"):
-        config.load_config(plan, paramfile=pf)
-
-
-@pytest.mark.parametrize("entry", ["ansible.path=/tmp/x", "ansible={path: /tmp/x}",
-                                   "provider={install_url: 'https://evil/x.sh'}"])
-def test_param_denylist_parent_and_nested_forms(tmp_path, entry):
-    plan = _lab(tmp_path, "lab", _pw("Secret123"), trusted=True)
-    with pytest.raises(config.ConfigError, match="may not set"):
+    with pytest.raises(config.ConfigError, match="can only set"):
         config.load_config(plan, params=(entry,))
 
 
-def test_param_denylist_leaves_ordinary_keys(tmp_path):
+def test_paramfile_outside_allowlist_rejected(tmp_path):
     plan = _lab(tmp_path, "lab", _pw("Secret123"), trusted=True)
-    cfg = config.load_config(plan, params=("provider.region=eu-north-1", "content.facts.x=1"))
-    assert cfg["provider"]["region"] == "eu-north-1"
+    pf = tmp_path / "pf.yaml"
+    pf.write_text(yaml.dump({"resources": {"harvester": {"vcpu": 4}}, "story": {"engine": "x"}}))
+    with pytest.raises(config.ConfigError, match="story.engine"):
+        config.load_config(plan, paramfile=pf)
+
+
+@pytest.mark.parametrize("entry", [
+    # every -P example in docs/
+    "resources.harvester.memory_mib=20480",
+    "resources.harvester.vcpu=10",
+    "resources.harvester.disk_gb=400",
+    "resources.rancher.memory_mib=12288",
+    "resources.rke2-node.memory_mib=6144",
+    "versions.harvester=1.5.0",
+    "rancher_tls.email=me@rodeo.test",
+    "elemental.registrations=2",
+    "libvirt.disk_cache=writeback",
+    "libvirt.disk_io=threads",
+    "lab_in_a_box.variant=aws",
+    "lab_in_a_box.iso_image=openSUSE-Leap-15.6.qcow2",
+    "deployment_target=instruqt",
+    # and the ones tests rely on
+    "network.vip=10.9.9.9",
+    "name=demo-1",
+    "type=rancher",
+    "provider.region=eu-north-1",
+    "content.facts.x=1",
+])
+def test_documented_params_still_work(tmp_path, entry):
+    plan = _lab(tmp_path, "lab", _pw("Secret123"), trusted=True)
+    config.load_config(plan, params=(entry,))
+
+
+def test_plan_parameters_block_names_are_allowed(tmp_path):
+    plan = tmp_path / "rodeo-plan.yaml"
+    plan.write_text("parameters:\n  memory: 16384\nresources:\n  harvester:\n    memory_mib: {{ memory }}\n")
+    cfg = config.load_config(plan, params=("memory=8192",))
+    assert cfg["resources"]["harvester"]["memory_mib"] == 8192
+    with pytest.raises(config.ConfigError, match="can only set"):
+        config.load_config(plan, params=("undeclared=1",))
+
+
+def test_plan_cannot_point_config_dir_elsewhere(tmp_path):
+    """A plan value for config_dir or plan_dir is ignored: the loader derives them."""
+    evil = tmp_path / "evil"
+    (evil / "custom" / "scripts").mkdir(parents=True)
+    plan = _lab(tmp_path, "lab", {**_pw("Secret123"), "config_dir": str(evil), "plan_dir": str(evil)},
+                trusted=True)
+    cfg = config.load_config(plan, secrets="all")
+    assert cfg.get("config_dir") != str(evil)
+    assert cfg["plan_dir"] == str(plan.parent.resolve())
 
 
 def test_config_outside_config_dir_refused_on_write(tmp_path):
@@ -320,6 +369,8 @@ def test_config_outside_config_dir_refused_on_write(tmp_path):
 
 
 @pytest.mark.parametrize("path", ["content/scripts/x.sh", "guide/index.html", ".labinabox/lab.json",
+                                  "content.lock", ".content.ab12cd/content/x.md", "workshop/tracks/t/a.md",
+                                  "workshop-guide/01.md", "workshop-guide.pdf",
                                   "logs/x", ".builder-deploy.log", "rodeo-secrets.env",
                                   ".git/HEAD", "custom/__pycache__/a.pyc"])
 def test_rodeo_written_state_does_not_untrust(tmp_path, path):

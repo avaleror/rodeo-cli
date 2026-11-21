@@ -193,6 +193,20 @@ def _maybe_skip_complete(
     return None
 
 
+def require_trusted_source(inventory: FleetInventory) -> None:
+    """A git lab.source must be approved on this machine before hosts clone and run it."""
+    from ..config import is_source_trusted
+
+    if inventory.lab_source and not is_source_trusted(inventory.lab_source, inventory.lab_branch):
+        branch = f" (branch {inventory.lab_branch})" if inventory.lab_branch else ""
+        raise ConfigError(
+            f"lab.source {inventory.lab_source}{branch} is not trusted on this machine. "
+            "Every host clones it and runs its scripts as root.\n"
+            "Review the repository, then run: rodeo fleet deploy --trust-source -f <workshop.yaml>\n"
+            "(trusted by URL and branch, not commit)."
+        )
+
+
 def fleet_deploy(
     inventory: FleetInventory,
     hosts: list[FleetHost],
@@ -205,6 +219,7 @@ def fleet_deploy(
 ) -> tuple[list[HostDeployResult], FleetJob, Path]:
     """Fan-out deploy starts; write/update job file beside the inventory."""
     require_deploy_config(inventory)
+    require_trusted_source(inventory)
     workers = concurrency if concurrency is not None else inventory.deploy_concurrency
     path = job_path_for(inventory_path)
 

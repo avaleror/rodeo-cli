@@ -398,3 +398,18 @@ def test_disk_driver_plan_override(fake_profile, fake_cfg, tmp_path):
     data = yaml.safe_load(DeployRunner(fake_cfg, tmp_path)._write_vars_file().read_text())
     assert data["libvirt_disk_cache"] == "none"
     assert data["libvirt_disk_io"] == "native"
+
+
+def test_deploy_keeps_the_lab_trusted(fake_profile, fake_cfg, tmp_path):
+    """A deploy run in a trusted lab writes only state rodeo excludes from the hash."""
+    from rodeo.config import is_lab_trusted, trust_lab
+
+    lab = tmp_path / "lab"
+    lab.mkdir()
+    (lab / "rodeo-plan.yaml").write_text("type: fake\nname: test-plan\n")
+    trust_lab(lab)
+    cfg = {**fake_cfg, "plan_dir": str(lab), "config_dir": str(lab)}
+    runner = DeployRunner(cfg, tmp_path)
+    events = _events(runner)
+    assert isinstance(events[-1], DeployComplete)
+    assert is_lab_trusted(lab)

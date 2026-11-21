@@ -29,8 +29,8 @@ from typing import Any, Callable
 
 import yaml
 
-from ..config import LAB_SECRETS_FILE, trust_lab
-from ..labseed import resolve_profile_source
+from ..config import LAB_SECRETS_FILE, is_lab_trusted, trust_lab
+from ..labseed import profile_kind, resolve_profile_source
 from ..paths import invoking_home
 from ..privilege import find_rodeo_bin
 from ..profile_install import ProfileFile, check_files, check_name, write_rodeo
@@ -173,6 +173,11 @@ class Deployer:
         if "secret_refs" in req:
             secrets = _resolve_refs(req["secret_refs"], secrets)
         src = resolve_profile_source(str(req["base"])) if req.get("base") else None
+        # The token-authenticated deploy approves the files sent with it, not a base
+        # profile fetched from elsewhere (catalog, zip, lab-json): that one needs rodeo trust.
+        if src is not None and profile_kind(str(req["base"])) != "bundled" and not is_lab_trusted(src):
+            raise ValueError(f"base profile '{req['base']}' is not trusted: review {src}, "
+                             f"then run: rodeo trust --config-dir {src}")
         stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
         labs_root().mkdir(parents=True, exist_ok=True)
         lab = labs_root() / f"{name}-unsaved-{stamp}"

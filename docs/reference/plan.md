@@ -56,9 +56,11 @@ resources:
 # `rodeo trust` (or `rodeo trust --yes` in automation). Content repositories
 # fetched by URL are trusted by URL and ref, not by commit. Write commands (deploy, up, clean, export, ...) resolve
 # secrets; read commands (plan, status, logs, ...) never do. -P and --paramfile
-# values may not contain ??, {{, {% or a newline, and may not set code-bearing
-# keys (ansible.*, provider.install_url/ref, content and workshop repos,
-# lab_in_a_box.source, ssh.identity_file). Under sudo the environment is
+# values may not contain ??, {{, {% or a newline, and may only set data keys:
+# resources, versions, network, name, type, deployment_target, instance,
+# libvirt.disk_cache/disk_io, rancher_tls.email, elemental.registrations,
+# lab_in_a_box.variant/iso_image, provider.region/instance_type/ttl_hours,
+# story.language/id, content.facts, and the names in parameters: below. Under sudo the environment is
 # not passed on, so ??key is the form that works there.
 #
 # rodeo up and rodeo init generate ~/.rodeo/secrets.yaml automatically.

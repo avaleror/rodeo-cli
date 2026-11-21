@@ -275,15 +275,24 @@ def _reject_injected(value: Any, where: str) -> None:
             _reject_injected(v, f"{where}[{i}]")
 
 
-# Written by rodeo itself into a lab directory, so not part of what is trusted.
-# A name here is skipped at the top level of the lab; .git and __pycache__
-# are skipped at any depth.
+# Written by rodeo itself into a lab directory, so not part of what is trusted
+# (one list; tests/test_config.py and tests/test_content.py check it holds
+# across a deploy and a content apply). A name here is skipped at the top level
+# of the lab, a prefix in _UNHASHED_TOP_PREFIXES too; .git and __pycache__ are
+# skipped at any depth.
 _UNHASHED_TOP = frozenset({
     ".rodeo", ".labinabox", LAB_SECRETS_FILE, ".rodeo-shipped-secrets.yaml",
-    "rodeo-secrets.env", "logs", "events", "content", "content.lock", "guide",
-    "workshop-guide", "workshop-guide.pdf", ".builder-deploy.log",
+    "rodeo-secrets.env", "logs", "events",
+    "content", "content.lock", "guide",                         # content.py
+    "workshop", "workshop-guide", "workshop-guide.pdf",         # labinabox_phase.py
+    ".builder-deploy.log",                                      # builder/deploywork.py
 })
+_UNHASHED_TOP_PREFIXES = (".content.",)  # content.fetch's temporary checkout
 _UNHASHED_ANY = frozenset({".git", "__pycache__"})
+
+
+def _unhashed_top(name: str) -> bool:
+    return name in _UNHASHED_TOP or name.startswith(_UNHASHED_TOP_PREFIXES)
 
 
 def _hashed_files(lab: Path) -> list[Path]:
@@ -294,7 +303,7 @@ def _hashed_files(lab: Path) -> list[Path]:
         top = here == lab
         keep = []
         for d in dirs:
-            if d in _UNHASHED_ANY or (top and d in _UNHASHED_TOP):
+            if d in _UNHASHED_ANY or (top and _unhashed_top(d)):
                 continue
             if (here / d).is_symlink():
                 out.append(here / d)  # hashed as a link, never followed
@@ -302,50 +311,70 @@ def _hashed_files(lab: Path) -> list[Path]:
                 keep.append(d)
         dirs[:] = sorted(keep)
         for f in files:
-            if top and (f in _UNHASHED_TOP or f.endswith(".log")):
+            if top and (_unhashed_top(f) or f.endswith(".log")):
                 continue
             out.append(here / f)
     return sorted(out)
 
 
-# -P / --paramfile may not set these: each picks code, a script source or a key
-# that a deploy then uses (find_ansible_root, the host bootstrap, content and
-# workshop repos, lab-in-a-box source, the SSH key, the lab directories).
-PARAM_DENYLIST = (
-    "ansible",
-    "provider.install_url",
-    "provider.ref",
-    "content.repo",
-    "content.ref",
-    "content.path",
-    "workshop.repo",
-    "workshop.branch",
-    "workshop.track",
-    "lab_in_a_box.source",
-    "ssh.identity_file",
-    "config_dir",
-    "plan_dir",
-    LAB_TRUSTED_KEY,
+# The only keys -P and --paramfile may set (an MCP client passes them): data
+# such as sizes, versions, names, counts and TTLs, from the documented and
+# tested uses. Anything else (ansible paths, repos, refs, scripts, story
+# engines, SSH keys, lab directories...) belongs in rodeo-plan.yaml, which
+# `rodeo trust` covers. Plain names declared in the plan's parameters: block
+# are allowed too: the plan author chose to expose them.
+PARAM_ALLOWLIST = (
+    "name",
+    "type",
+    "deployment_target",
+    "instance",
+    "resources",
+    "versions",
+    "network",
+    "libvirt.disk_cache",
+    "libvirt.disk_io",
+    "rancher_tls.email",
+    "elemental.registrations",
+    "lab_in_a_box.variant",
+    "lab_in_a_box.iso_image",
+    "provider.region",
+    "provider.instance_type",
+    "provider.ttl_hours",
+    "story.language",
+    "story.id",
+    "content.facts",
 )
 
 
 def _override_paths(key: str, value: Any) -> list[str]:
-    paths = [key]
-    if isinstance(value, dict):
+    """Leaf paths an override sets (a dict value sets each of its leaves)."""
+    if isinstance(value, dict) and value:
+        out: list[str] = []
         for k, v in value.items():
-            paths += _override_paths(f"{key}.{k}", v)
-    return paths
+            out += _override_paths(f"{key}.{k}", v)
+        return out
+    return [key]
 
 
-def _reject_denied_keys(overrides: list[tuple[str, Any]], where: str) -> None:
+def _param_allowed(path: str, template_params: set[str]) -> bool:
+    if path in template_params:
+        return True
+    return any(path == a or path.startswith(a + ".") for a in PARAM_ALLOWLIST)
+
+
+def _reject_disallowed_keys(
+    overrides: list[tuple[str, Any]], where: str, template_params: set[str]
+) -> None:
     for key, value in overrides:
-        for path in _override_paths(key, value):
-            for denied in PARAM_DENYLIST:
-                if path == denied or path.startswith(denied + ".") or denied.startswith(path + "."):
-                    raise ConfigError(
-                        f"{where} {path}: -P and --paramfile may not set {denied}.\n"
-                        "It picks code or keys a deploy uses: set it in rodeo-plan.yaml."
-                    )
+        for path in _override_paths(str(key), value):
+            if not _param_allowed(path, template_params):
+                params = f" and this plan's parameters ({', '.join(sorted(template_params))})" \
+                    if template_params else ""
+                raise ConfigError(
+                    f"{where} {path}: -P and --paramfile can only set "
+                    f"{', '.join(PARAM_ALLOWLIST)}{params}.\n"
+                    "Set anything else in rodeo-plan.yaml (rodeo trust covers it)."
+                )
 
 
 def lab_fingerprint(lab_dir: str | Path) -> str:
@@ -410,7 +439,12 @@ def load_trusted_labs() -> dict[str, str]:
 
 
 def _update_trusted_labs(lab_dir: str | Path, digest: str | None) -> Path:
-    """Set (or with None remove) one lab's entry: read-modify-write under flock."""
+    """Set (or with None remove) one lab's entry."""
+    return _update_trust_entry(os.path.realpath(lab_dir), digest)
+
+
+def _update_trust_entry(key: str, value: str | None) -> Path:
+    """Set (or with None remove) one entry: read-modify-write under flock."""
     path = rodeo_trusted_labs_path()
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     try:
@@ -421,11 +455,10 @@ def _update_trusted_labs(lab_dir: str | Path, digest: str | None) -> Path:
         fcntl.flock(fh, fcntl.LOCK_EX)
         os.fchmod(fh.fileno(), 0o600)
         data = _parse_trusted_labs(fh.read(), path)
-        key = os.path.realpath(lab_dir)
-        if digest is None:
+        if value is None:
             data.pop(key, None)
         else:
-            data[key] = digest
+            data[key] = value
         fh.seek(0)
         fh.truncate()
         fh.write(yaml.safe_dump(dict(sorted(data.items())), default_flow_style=False).encode())
@@ -436,6 +469,24 @@ def _update_trusted_labs(lab_dir: str | Path, digest: str | None) -> Path:
 
     fix_invoking_ownership()
     return path
+
+
+# A fleet lab.source is a git URL each host clones: there is no local lab to
+# hash, so the operator approves the URL and branch once on the laptop.
+SOURCE_PREFIX = "source:"
+
+
+def source_key(url: str, ref: str | None) -> str:
+    return f"{SOURCE_PREFIX}{url}@{ref or ''}"
+
+
+def trust_source(url: str, ref: str | None) -> Path:
+    """Approve a git lab source (by URL and branch, not commit)."""
+    return _update_trust_entry(source_key(url, ref), "approved")
+
+
+def is_source_trusted(url: str, ref: str | None) -> bool:
+    return load_trusted_labs().get(source_key(url, ref)) == "approved"
 
 
 def trust_lab(lab_dir: str | Path) -> Path:
@@ -602,12 +653,14 @@ def load_config(
         _reject_injected(entry, f"-P {entry.partition('=')[0]}")
     cli_params = [_parse_param(p) for p in params]
     _reject_injected(paramfile_data, f"--paramfile {paramfile}")
-    _reject_denied_keys(cli_params, "-P")
-    _reject_denied_keys(list(paramfile_data.items()), "--paramfile")
+    plan_text = plan_path.read_text() if plan_path.exists() else ""
+    template_params = {str(k) for k in _extract_parameters_block(plan_text)}
+    _reject_disallowed_keys(cli_params, "-P", template_params)
+    _reject_disallowed_keys(list(paramfile_data.items()), "--paramfile", template_params)
 
     plan: dict = {}
     if plan_path.exists():
-        text = plan_path.read_text()
+        text = plan_text
         # Template context: parameters block < paramfile scalars < -P entries
         context = _extract_parameters_block(text)
         context.update(
@@ -669,6 +722,10 @@ def load_config(
     if env_path:
         cfg["ansible"]["path"] = env_path
 
+    # Derived here only: a plan, -P or --paramfile value for these would point a
+    # trusted lab at another directory's scripts and manifests.
+    cfg.pop("config_dir", None)
+    cfg.pop("plan_dir", None)
     if config_dir is not None:
         cfg["config_dir"] = str(Path(config_dir).resolve())
     if plan_path.exists():

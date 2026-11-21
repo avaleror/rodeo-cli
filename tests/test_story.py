@@ -105,7 +105,11 @@ def test_missing_story_dir_says_how_to_start(tmp_path):
 # ---------- translation + assembly via the rmstory CLI ----------
 
 def test_translate_invokes_rmstory_with_store_env(tmp_path, fake_rmstory):
-    cfg = _lab(tmp_path, "story:\n  engine_env:\n    GEMINI_API_KEY: sekret\n")
+    from rodeo.config import trust_lab
+
+    _lab(tmp_path, "story:\n  engine_env:\n    GEMINI_API_KEY: sekret\n")
+    trust_lab(tmp_path)  # story.engine_env reaches rmstory only in a trusted lab
+    cfg = load_config(tmp_path / "rodeo-plan.yaml", config_dir=tmp_path, secrets="keys")
     text = render_story(cfg, language="es")
     assert "[es]" in text and "Hello, wrangler." in text
     (cmd,) = [c for c in fake_rmstory.calls if c[1] == "translate"]
@@ -287,3 +291,11 @@ def test_story_render_untrusted_lab_cannot_read_global_secrets(tmp_path):
         story_cmd, ["render", "--config", str(tmp_path / "rodeo-plan.yaml")]
     )
     assert "global-value-marker" not in result.output
+
+
+def test_untrusted_lab_story_engine_env_never_reaches_rmstory(tmp_path, fake_rmstory):
+    """Attack: story.engine_env: {LD_PRELOAD: ...} in a cloned plan would run code in rmstory."""
+    cfg = _lab(tmp_path, "story:\n  engine: evil\n  engine_env:\n    LD_PRELOAD: /tmp/evil.so\n")
+    render_story(cfg, language="es")
+    assert all("LD_PRELOAD" not in env for env in fake_rmstory.envs)
+    assert all("evil" not in " ".join(c) for c in fake_rmstory.calls)

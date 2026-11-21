@@ -160,7 +160,6 @@ READ_TOOLS: tuple[Tool, ...] = (
          ("status",), (_OUTPUT, _PARAM), lab_scoped=True),
     Tool("rodeo_list", "List rodeo VMs known to libvirt on this host.", ("list",),
          (Arg("uri", "option", "Libvirt connection URI.", "--uri"),)),
-    Tool("rodeo_logins", "Show the lab's login details.", ("logins",), lab_scoped=True),
     Tool("rodeo_logs",
          "Last lines of a VM's serial log (never follows).",
          ("logs",),

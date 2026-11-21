@@ -331,3 +331,13 @@ def test_eof_kills_calls_in_flight(stub_rodeo, tmp_path):
     thread.join(4)
     assert not thread.is_alive(), "serve() did not return promptly at EOF"
     assert _wait_dead(grandchild)
+
+
+# --- rodeo_logins ----------------------------------------------------------
+
+def test_no_tool_runs_the_builder_logins_group():
+    # 'rodeo logins' manages Builder htpasswd users; it does not show a lab's
+    # login details, and no read-only command does. The tool must not exist.
+    tools = mcp_tools.tool_map(allow_write=True)
+    assert "rodeo_logins" not in tools
+    assert all(t.command[:1] != ("logins",) for t in tools.values())

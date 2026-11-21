@@ -183,7 +183,7 @@ it boots. The expiry is on the instance tag `rodeo-expires-at`, in
 `/etc/rodeo-expires-at` on the host, and in the output of `rodeo up --target aws`
 and `rodeo fleet provision`.
 
-The switch cannot be turned off. For a longer workshop set `provider.ttl_hours`
+The switch cannot be turned off, except for [kvm-hosts](../guide-kvm-hosts.md) labs deployed with `rodeo fleet` (`ttl_hours: off`). For a longer workshop set `provider.ttl_hours`
 (more than 0, at most 168) **before** the hosts are created; re-running `up` or
 `fleet provision` on an existing host keeps its original expiry.
 

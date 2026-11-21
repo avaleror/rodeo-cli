@@ -1,0 +1,53 @@
+# definition.yaml — kvm-hosts platform: a prepared KVM host and no VMs.
+#
+# rodeo installs KVM/libvirt, the NAT network below and the firewall, then
+# stops. Whatever runs on the host creates its own VMs.
+
+apiVersion: 1.0
+definition:
+  name: kvm-hosts
+  description: "Plain KVM host, no VMs (for a VM manager or scripts to use)"
+
+  start_order: []
+  harvester_node_names: []
+  harvester_ready_count: 0
+
+  network:
+    name: default
+    bridge: virbr0
+    mode: nat
+    cidr: 192.168.122.0/24
+    gateway: 192.168.122.1
+    domain: rodeo.lab
+
+  node_templates: {}
+
+  exposed_services: []
+
+  storage:
+    device: ""
+    mount_point: /var/lib/libvirt/images
+    libvirt_pool_name: default
+    libvirt_pool_path: /var/lib/libvirt/images
+    image_dir: /var/lib/libvirt/images
+
+  components:
+    - name: host-network-prep
+      description: "libvirt network, firewalld, sysctls for nested KVM"
+      on_host: true
+
+  host_prep:
+    sysctls:
+      - net.bridge.bridge-nf-call-iptables=0
+      - net.bridge.bridge-nf-call-ip6tables=0
+    selinux_mode: permissive
+    libvirt:
+      ovmf_code: /usr/share/qemu/ovmf-x86_64-4m-code.bin
+      ovmf_vars_template: /usr/share/qemu/ovmf-x86_64-4m-vars.bin
+      use_modular_daemons: true
+    network:
+      unmanaged_interfaces:
+        - virbr0
+      rp_filter_loose: false
+
+  nodes: []

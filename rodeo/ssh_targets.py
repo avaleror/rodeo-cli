@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 import stat
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,6 +18,16 @@ from .ssh_key import ensure_rodeo_ssh_key, resolve_ssh_identity
 # The KVM host's own key, baked into every nested VM's cloud-init by
 # common/ensure_ssh_key.yml — the only identity nested VMs ever trust.
 _HOST_ROOT_SSH_KEY = Path("/root/.ssh/id_ed25519")
+# A login name, never an option: "-oProxyCommand=..." as provider.ssh_user would
+# otherwise become an ssh argument.
+_SSH_USER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9._-]{0,31}$")
+
+
+def _ssh_user(value: Any, default: str = "ec2-user") -> str:
+    user = str(value or default)
+    if not _SSH_USER_RE.match(user):
+        raise ConfigError(f"provider.ssh_user {user!r} is not a valid login name")
+    return user
 
 
 @dataclass(frozen=True)
@@ -139,7 +150,7 @@ def resolve_kvm_host(
         state = load_aws_host_state(plan_name)
         if state and str(state.get("host_id") or "") == host_id:
             provider = (cfg or {}).get("provider") or {}
-            user = str(provider.get("ssh_user") or "ec2-user")
+            user = _ssh_user(provider.get("ssh_user"))
             host = str(state.get("public_ip") or state.get("ssh") or "")
             if host:
                 return user, host, identity
@@ -161,7 +172,7 @@ def resolve_kvm_host(
                 continue
             user = "ec2-user"
             if cfg and isinstance(cfg.get("provider"), dict):
-                user = str(cfg["provider"].get("ssh_user") or user)
+                user = _ssh_user(cfg["provider"].get("ssh_user"), user)
             return user, host, identity
 
     raise ConfigError(

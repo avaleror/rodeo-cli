@@ -1,0 +1,174 @@
+---
+title: Architecture v2 — overview in five minutes
+status: companion to docs/design/architecture-v2.md (2026-10-14)
+design: docs/design/architecture-v2.md
+work: docs/design/architecture-v2-work.md
+audience: anyone touching rodeo-cli
+language: en
+last_updated: 2026-10-15
+---
+
+# Architecture v2 in five minutes
+
+## The idea in one sentence
+
+A **rodeo** is versioned instructions pinned to a versioned **systems definition**
+written for one engine; an **engine** (`native`, `lab-in-a-box`, AWX or other engines
+integrated in the future) materializes the definition on a platform; and everything
+that is not the lab itself — portal, registry of copies, catalog, authoring tools —
+lives in its own plane with its own lifecycle.
+
+## Engines are peers, not a replacement
+
+This is a **modularity** change. Today there is no engine: three product pipelines
+plus a special-cased lab-in-a-box type. The proposal merges the pipelines into one
+engine called `native` and puts lab-in-a-box behind the same contract as a second one.
+Neither replaces the other: each is one engine behind the same contract, each keeps
+its own roadmap, and more can be added the same way. A rodeo picks the engine whose capabilities it needs; what happens inside the
+engine is the engine's business.
+
+| Engine | Its definition format | What it brings today |
+|---|---|---|
+| `native` (proposed: the merge of today's three pipelines) | `definition.yaml` (nodes, network, boot method, components) | KVM labs on bare metal / Instruqt: Harvester, Rancher Prime, SUSE Edge; keeps growing (telco, more components) |
+| `lab-in-a-box` (exists: `type: lab-in-a-box`) | the lab-in-a-box lab (`lab_in_a_box:` keys today, a `lab.json` later) | its add-on catalogue, 8 cloud targets, a remote automation host — capabilities the native pipelines do not have at the moment |
+| AWX, … (future) | whatever that engine takes — an inventory plus a job template, say | whatever it automates; added as one module plus a registry entry |
+
+Because the definition is written *for* an engine, a definition for one engine can look
+nothing like a definition for another. rodeo-cli reads only the common envelope (name,
+version, engine, `tested_with`) and hands the body to the engine, which validates it.
+
+## What changes for whom
+
+| If you… | Before | After |
+|---|---|---|
+| add a product platform | write a new Python pipeline (`profiles/<x>.py` + engine code) | write a systems definition for the engine you pick (and, rarely, register one component) |
+| write a workshop | `rodeo-plan.yaml` + `definition.yaml` + `story/` in one folder, no version | a rodeo repo that pins `definition@version` and `engine_version`; tag it |
+| deploy | `rodeo up --profile x` | same command; a banner says **production** or **development** and whether the engine is older (refused) or newer (warning) than tested |
+| operate a running lab | `status/stop/start/ssh/logs` with engine-specific branches inside | same commands, through one engine contract — identical for every engine, present or future |
+| run many copies | `rodeo fleet` (per host) or `rodeo instances` (per host) | one instance registry; the claim portal, Instruqt or an access sheet show them |
+| need a helper (ssh argv, download + verify, streaming, versions) | copy the nearest one | import it from `rodeo/lib/`; one implementation, tested, used by every engine and tool |
+
+## The three artifacts and how they depend on each other
+
+```mermaid
+flowchart LR
+  subgraph R["rodeo @ version  (git tag)"]
+    R1[instructions: chapters, visuals]
+    R2[checks · setup scripts]
+    R3[facts mapping]
+    R4[pins: definition@v · engine@v · target]
+  end
+  subgraph D["systems definition @ version  (shared)"]
+    D1["body in the engine's own format"]
+    D2[engine: native · tested_with: 0.19.0]
+  end
+  subgraph E["engine @ version — peers"]
+    E1[native = rodeo-cli release]
+    E2[lab-in-a-box = release tag]
+    E3[AWX, … = added later]
+  end
+  R4 -- pins --> D
+  D2 -- tested with --> E
+  R4 -. pins .-> E
+```
+
+- Many rodeos can pin the **same** definition. Changing a definition is a new version;
+  rodeos adopt it explicitly.
+- A `latest` or branch anywhere in the chain makes the rodeo **development**; all
+  tags/digests make it **production**. The status is computed and shown by the Builder,
+  `rodeo up`, the access sheet and the portal.
+- At deploy: engine **older** than pinned → refuse; **newer** → deploy with a warning.
+
+## The planes
+
+```mermaid
+flowchart TB
+  subgraph GOV["① Rodeo definition — versioned"]
+    RODEO["rodeo repos · systems definition repos · catalog"]
+  end
+  subgraph CP["② Control plane — persistent (per org / event)"]
+    PORTAL["portal: claim portal · Instruqt · access sheet"]
+    REG["instance registry = fleet + instances"]
+    CAT["catalog · providers · secrets · artifact refs"]
+  end
+  subgraph LP["③ Lab plane — ephemeral (per instance)"]
+    ENG["engine: native · lab-in-a-box · AWX · … (peers)"]
+    SYS["the systems"]
+  end
+  subgraph CD["④ Content delivery — static"]
+    GUIDE["rendered instructions<br/>on the lab host (default) · Pages · web · PDF"]
+  end
+  subgraph CT["⑤ Creator tooling — independent lifecycles"]
+    TOOLS["Rodeo Builder · lab-builder · bake<br/>(rmstory, multilang = Builder requirements)"]
+  end
+  RODEO --> REG --> ENG --> SYS
+  SYS -- facts --> GUIDE
+  SYS -- facts --> PORTAL
+  TOOLS --> RODEO
+  TOOLS --> CAT
+```
+
+Each plane can sit on a different platform. The default is colocated: the guide is
+served from the lab host, the registry runs where the operator runs rodeo. **Facts**
+(hostnames, URLs, ports, credentials) are the only thing that crosses out of the lab
+plane — instructions template them, checks use them, the portal shows them.
+
+## One deploy, end to end
+
+```mermaid
+sequenceDiagram
+  participant Op as operator / portal
+  participant CLI as rodeo (control plane)
+  participant Eng as engine (native, lab-in-a-box, AWX, …)
+  participant Sys as systems
+  participant Guide as instructions
+  Op->>CLI: rodeo up --profile smlm-workshop
+  CLI->>CLI: resolve pins → rodeo.lock, compute status
+  CLI->>Eng: validate(definition) at engine_version
+  Eng-->>CLI: ok / refuse (schema) · warn (newer than tested_with)
+  CLI->>Eng: deploy(definition, placement, secrets)
+  Eng->>Sys: build the systems (phases stream to the TUI)
+  Sys-->>Eng: facts
+  Eng-->>CLI: facts
+  CLI->>Guide: render instructions with facts, publish (lab host by default)
+  CLI-->>Op: success screen · access sheet · portal record (status + version notes)
+```
+
+## The proposed `native` engine (the merge)
+
+```
+kvm_host → vms → [ boot  |  pxe_server → cluster ] → <components: rancher, elemental, …> → apply → finalise
+                   ▲ chosen from the definition's node boot method      ▲ from the definition's components list
+```
+
+`suse-virt`, `rancher`, `suse-edge` stop being pipelines and become bundled definitions.
+The live-validated paths (PXE chain, etcd join gap, Rancher API order) are routed, not
+rewritten, and a parity test proves every bundled example renders the same deploy
+configuration before and after. The merge is about *how* `native` grows from here —
+by definitions and components — not a step towards retiring it; it stays under active
+development alongside the other engines.
+
+## Plan keys, old and new
+
+```yaml
+# new (v2)                                  # old (still accepted as alias)
+rodeo:        {name, version}               # name:
+systems:      {definition, engine,          # type:  deployment_target:
+               engine_version, target,      # lab_in_a_box.source.ref / .target / .cloud / instance:
+               placement}                   # (engine may be omitted: the definition names it)
+instructions: {source, publish}             # workshop:
+```
+
+## Glossary
+
+| Term | Meaning |
+|---|---|
+| **rodeo** | a workshop: versioned instructions + pins to a systems definition and an engine |
+| **systems definition** | the versioned description of the systems a rodeo needs, written for one engine in that engine's format; shared, has `tested_with` |
+| **engine** | what materializes a definition on a platform: `native` (rodeo-cli's own, merged pipeline), `lab-in-a-box`, or any engine registered later through the engine contract (AWX, for example); peers — none is the default or the successor of another |
+| **target / placement** | where the engine puts the systems (baremetal, Instruqt, AWS, existing host, cloud account, instance N) |
+| **facts** | the values a deployed lab exposes (hosts, URLs, ports, credentials); the only contract out of the lab plane |
+| **instance** | one copy of a rodeo with a placement; fleet (per host) and instances (per host slot) are the two placements |
+| **status** | production (all pins resolved) or development (any `latest`/branch) — computed, never declared |
+| **lock** | `rodeo.lock`: the resolved pins of one deploy |
+| **library layer** | `rodeo/lib/`: small, typed, tested functions shared by engines, commands, fleet, portal and the Builder; it imports nothing from them |

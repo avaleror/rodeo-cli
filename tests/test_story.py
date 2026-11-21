@@ -299,3 +299,17 @@ def test_untrusted_lab_story_engine_env_never_reaches_rmstory(tmp_path, fake_rms
     render_story(cfg, language="es")
     assert all("LD_PRELOAD" not in env for env in fake_rmstory.envs)
     assert all("evil" not in " ".join(c) for c in fake_rmstory.calls)
+
+
+def test_story_render_with_translation_keeps_the_lab_trusted(tmp_path, fake_rmstory):
+    """rmstory writes its translation store under story/strings: rodeo-written state."""
+    from rodeo.config import is_lab_trusted, trust_lab
+
+    _lab(tmp_path)
+    trust_lab(tmp_path)
+    cfg = load_config(tmp_path / "rodeo-plan.yaml", config_dir=tmp_path, secrets="keys")
+    store = tmp_path / "story" / "strings"
+    store.mkdir()
+    (store / "es.json").write_text('{"intro.hello": "Hola"}')  # what rmstory leaves behind
+    render_story(cfg, language="es")
+    assert is_lab_trusted(tmp_path)

@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -23,6 +24,10 @@ from ..config import (
     collect_placeholders,
     lab_dir_of,
     load_config,
+    _hashed_files,
+    _walk_lab,
+    lab_fingerprint,
+    lab_problems,
     load_trusted_labs,
     revoke_lab,
     trust_lab,
@@ -47,8 +52,6 @@ def _warn_obsolete_file() -> None:
 
 
 def _hashed(lab: Path) -> list[str]:
-    from ..config import _hashed_files
-
     return [str(p.relative_to(lab)) for p in _hashed_files(lab)]
 
 
@@ -73,6 +76,10 @@ def _summary(cfg: dict, lab: Path) -> list[str]:
     lines.append("Content repositories, trusted by URL and ref, not by commit: a branch can change")
     lines.append("after you approve, and their scripts are not reviewed here:")
     lines += [f"  {r}" for r in repos] or ["  none"]
+    links = [str(p.relative_to(lab)) for p in _walk_lab(lab)[1]]
+    if links:
+        lines.append("Symlinks (their targets, inside the lab, are covered):")
+        lines += [f"  {link} -> {os.readlink(lab / link)}" for link in links]
     others = [p for p in _hashed(lab) if not p.startswith("custom/")]
     lines.append(f"Other files covered by this approval: {len(others)} (plan, definition, manifests, ...)")
     return lines
@@ -146,9 +153,19 @@ def trust_cmd(
                 console.print(f"{escape(lab_str)} was not trusted.")
             return
 
+        if cfg.get("_lab_split"):
+            raise click.ClickException(
+                "This lab's plan is a symlink or lives outside --config-dir: put the plan file "
+                "itself in the lab directory, then run rodeo trust."
+            )
+        problems = lab_problems(lab)
+        if problems:
+            raise click.ClickException("This lab can't be trusted as it is:\n  " + "\n  ".join(problems))
         if is_lab_trusted(lab):
             console.print(f"{escape(lab_str)} is already trusted.")
             return
+        # Hash first: the approval is for exactly the files summarised below.
+        digest = lab_fingerprint(lab)
         console.print(f"[bold]Lab {escape(lab_str)}[/bold]\n")
         for line in _summary(cfg, lab):
             console.print(escape(line), highlight=False)
@@ -162,7 +179,7 @@ def trust_cmd(
                 )
             if not click.confirm("Trust this lab?", default=False):
                 raise click.ClickException("Not trusted.")
-        path = trust_lab(lab)
+        path = trust_lab(lab, digest)
     except (ConfigError, yaml.YAMLError) as exc:
         raise click.ClickException(str(exc))
     console.print(f"Trusted {escape(lab_str)} ({path}).")

@@ -263,3 +263,17 @@ def test_builder_deploy_records_trust_for_the_lab_it_wrote(fake_rodeo):
     state = deployer.start({"name": "ride", "files": FILES})
     assert is_lab_trusted(Path(state["lab"]))
     _wait(deployer)
+
+
+def test_builder_refuses_an_untrusted_non_bundled_base(fake_rodeo, tmp_path, monkeypatch):
+    """A base profile from a catalog, zip or lab-json is not covered by the deploy request."""
+    import pytest as _pytest
+
+    base = tmp_path / "imported"
+    base.mkdir()
+    (base / "rodeo-plan.yaml").write_text("type: rancher\nname: imported\n")
+    monkeypatch.setattr(deploywork, "resolve_profile_source", lambda name: base)
+    monkeypatch.setattr(deploywork, "profile_kind", lambda name: "custom")
+    deployer = deploywork.Deployer()
+    with _pytest.raises(ValueError, match="not trusted"):
+        deployer.start({"name": "ride", "files": FILES, "base": "imported"})

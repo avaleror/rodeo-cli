@@ -370,7 +370,7 @@ def test_config_outside_config_dir_refused_on_write(tmp_path):
 
 @pytest.mark.parametrize("path", ["content/scripts/x.sh", "guide/index.html", ".labinabox/lab.json",
                                   "content.lock", ".content.ab12cd/content/x.md", "workshop/tracks/t/a.md",
-                                  "workshop-guide/01.md", "workshop-guide.pdf",
+                                  "workshop-guide/01.md", "workshop-guide.pdf", "story/strings/es.json",
                                   "logs/x", ".builder-deploy.log", "rodeo-secrets.env",
                                   ".git/HEAD", "custom/__pycache__/a.pyc"])
 def test_rodeo_written_state_does_not_untrust(tmp_path, path):
@@ -392,18 +392,163 @@ def test_any_lab_file_change_untrusts(tmp_path, path):
     assert not config.is_lab_trusted(plan.parent)
 
 
-def test_symlinked_file_is_hashed_as_a_link(tmp_path):
+def test_symlink_out_of_the_lab_blocks_trust(tmp_path):
     plan = _lab(tmp_path, "lab", _pw("Secret123"))
     outside = tmp_path / "outside.sh"
     outside.write_text("echo one\n")
     (plan.parent / "custom").mkdir()
     (plan.parent / "custom" / "run.sh").symlink_to(outside)
-    config.trust_lab(plan.parent)
-    outside.write_text("echo two\n")  # target content is not followed...
-    assert config.is_lab_trusted(plan.parent)
-    (plan.parent / "custom" / "run.sh").unlink()
-    (plan.parent / "custom" / "run.sh").symlink_to(tmp_path / "other.sh")  # ...the link is
+    with pytest.raises(config.UntrustedLab, match="outside the lab"):
+        config.trust_lab(plan.parent)
     assert not config.is_lab_trusted(plan.parent)
+    with pytest.raises(config.UntrustedLab):
+        config.load_config(plan, secrets="all")
+
+
+def test_symlink_into_unhashed_state_blocks_trust(tmp_path):
+    plan = _lab(tmp_path, "lab", _pw("Secret123"))
+    (plan.parent / "content").mkdir()
+    (plan.parent / "content" / "x.sh").write_text("echo hi\n")
+    (plan.parent / "custom").mkdir()
+    (plan.parent / "custom" / "run.sh").symlink_to(plan.parent / "content" / "x.sh")
+    with pytest.raises(config.UntrustedLab, match="does not cover"):
+        config.trust_lab(plan.parent)
+
+
+def test_symlink_inside_the_lab_hashes_its_target(tmp_path):
+    plan = _lab(tmp_path, "lab", _pw("Secret123"))
+    (plan.parent / "scripts").mkdir()
+    real = plan.parent / "scripts" / "real.sh"
+    real.write_text("echo one\n")
+    (plan.parent / "custom").mkdir()
+    (plan.parent / "custom" / "run.sh").symlink_to(real)
+    config.trust_lab(plan.parent)
+    assert config.is_lab_trusted(plan.parent)
+    real.write_text("echo two\n")
+    assert not config.is_lab_trusted(plan.parent)
+
+
+def test_symlinked_plan_does_not_borrow_trust(tmp_path):
+    """Review PoC (poc_symlink.py): L/rodeo-plan.yaml -> T/rodeo-plan.yaml, T trusted."""
+    import os
+
+    t = _lab(tmp_path, "T", _pw("Secret123"), trusted=True).parent
+    lab = tmp_path / "L"
+    (lab / "custom" / "scripts").mkdir(parents=True)
+    os.symlink(os.path.relpath(t / "rodeo-plan.yaml", lab), lab / "rodeo-plan.yaml")
+    (lab / "definition.yaml").write_text("{}\n")
+    (lab / "custom" / "scripts" / "evil.sh").write_text("touch /tmp/PWNED\n")
+    with pytest.raises(config.UntrustedLab, match="symlink"):
+        config.load_config("rodeo-plan.yaml", config_dir=str(lab), secrets="all")
+    with pytest.raises(config.UntrustedLab):
+        config.load_config(lab / "rodeo-plan.yaml", secrets="all")
+    cfg = config.load_config(lab / "rodeo-plan.yaml")
+    assert cfg["plan_dir"] == str(lab.resolve())
+    with pytest.raises(config.ConfigError):
+        config.validate_config(cfg, check=True)
+
+
+def test_trust_cmd_in_symlinked_lab_does_not_trust_target(tmp_path):
+    import os
+
+    from click.testing import CliRunner
+
+    from rodeo.cli import cli
+
+    t = _lab(tmp_path, "T", _pw("Secret123")).parent
+    lab = tmp_path / "L"
+    lab.mkdir()
+    os.symlink(t / "rodeo-plan.yaml", lab / "rodeo-plan.yaml")
+    result = CliRunner().invoke(cli, ["trust", "--yes", "--config-dir", str(lab)])
+    assert result.exit_code != 0
+    assert config.load_trusted_labs() == {}
+
+
+def test_fingerprint_framing_cannot_collide(tmp_path):
+    """Review PoC (poc_collide.py): a file whose bytes embed the next record."""
+    plan = b"type: suse-virt\nname: x\n"
+    payload = b"#!/bin/sh\ntouch /tmp/PWNED\n"
+    for d in "AB":
+        (tmp_path / d / "custom" / "scripts").mkdir(parents=True)
+        (tmp_path / d / "rodeo-plan.yaml").write_bytes(plan)
+    (tmp_path / "A" / "custom" / "README").write_bytes(b"docs\0custom/scripts/x.sh\0file\0" + payload)
+    (tmp_path / "B" / "custom" / "README").write_bytes(b"docs")
+    (tmp_path / "B" / "custom" / "scripts" / "x.sh").write_bytes(payload)
+    assert config.lab_fingerprint(tmp_path / "A") != config.lab_fingerprint(tmp_path / "B")
+
+
+@pytest.mark.parametrize("entry", [
+    "versions.harvester=1.8.2'; touch /tmp/p; '",
+    "versions.harvester=$(id)",
+    "versions.harvester_iso_checksum=sha512:abc",
+    "versions.harvester_sha256=abc",
+    "resources.harvester.memory_mib=lots",
+    "resources.harvester.vcpu=-1",
+    "network.vip=10.0.0.1;id",
+    "name=Demo Lab",
+    "provider.ttl_hours=forever",
+    "rancher_tls.email=a@b;id",
+    "story.language=en';id",
+])
+def test_allowlisted_keys_check_their_values(tmp_path, entry):
+    """Allowlisted values still reach Ansible shell tasks: each key has a value check."""
+    plan = _lab(tmp_path, "lab", _pw("Secret123"), trusted=True)
+    with pytest.raises(config.ConfigError, match="not a valid value|can only set"):
+        config.load_config(plan, params=(entry,))
+
+
+def test_template_parameter_values_must_be_plain_scalars(tmp_path):
+    plan = tmp_path / "rodeo-plan.yaml"
+    plan.write_text("parameters:\n  tag: a\nname: \"lab-{{ tag }}\"\n")
+    assert config.load_config(plan, params=("tag=b2",))["name"] == "lab-b2"
+    for bad in ("tag=$(id)", "tag={x: 1}", "tag=a b"):
+        with pytest.raises(config.ConfigError):
+            config.load_config(plan, params=(bad,))
+
+
+def test_template_parameters_only_feed_the_template(tmp_path):
+    plan = tmp_path / "rodeo-plan.yaml"
+    plan.write_text("parameters:\n  memory: 16384\nresources:\n  harvester:\n    memory_mib: {{ memory }}\n")
+    cfg = config.load_config(plan, params=("memory=8192",))
+    assert "memory" not in cfg
+    assert cfg["resources"]["harvester"]["memory_mib"] == 8192
+
+
+@pytest.mark.parametrize("uri", [
+    "qemu+ext:///system?command=/tmp/evil",
+    "qemu+ssh://root@h/system?netcat=/tmp/nc",
+    "qemu+ssh://root@h/system?keyfile=/tmp/k",
+    "qemu+unix:///system?socket=/tmp/s",
+    "qemu://host/system?command=x",
+    "test:///default",
+    "qemu:///system extra",
+])
+def test_libvirt_uri_that_can_run_code_is_refused(tmp_path, uri):
+    plan = _lab(tmp_path, "lab", {**_pw("Secret123"), "libvirt": {"uri": uri}})
+    with pytest.raises(config.ConfigError, match="libvirt"):
+        config.load_config(plan)
+
+
+@pytest.mark.parametrize("uri", ["qemu:///system", "qemu:///session", "qemu+ssh://root@kvm1/system",
+                                 "qemu+ssh://kvm1.example.lab:2222/system"])
+def test_libvirt_uri_normal_forms_accepted(uri):
+    assert config.validate_libvirt_uri(uri) == uri
+
+
+def test_rodeo_list_refuses_a_command_uri():
+    from click.testing import CliRunner
+
+    from rodeo.commands.list_cmd import list_cmd
+
+    result = CliRunner().invoke(list_cmd, ["--uri", "qemu+ext:///system?command=/tmp/evil"])
+    assert result.exit_code != 0
+    assert "not allowed" in result.output
+
+
+def test_untrusted_lab_is_its_own_error_type(tmp_path):
+    plan = _lab(tmp_path, "clone", _pw("Secret123"))
+    with pytest.raises(config.UntrustedLab):
+        config.load_config(plan, secrets="all")
 
 
 def test_trust_write_hands_file_back_to_invoking_user(tmp_path, monkeypatch):

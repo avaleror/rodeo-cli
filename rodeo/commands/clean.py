@@ -13,7 +13,7 @@ from rich.console import Console
 from ..engine.libvirt import LibvirtDriver, discover_rodeo_vm_names, domain_name, names_safe_to_clean
 
 
-from ..config import ConfigError, load_config
+from ..config import UntrustedLab, load_config
 from ..privilege import ensure_root, is_root
 from ..profiles import get_profile
 from ..state import reset_from
@@ -131,11 +131,9 @@ def clean_cmd(
             try:
                 cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir,
                                   secrets="all")
-            except ConfigError as exc:
+            except UntrustedLab:
                 # Teardown never waits for trust: an untrusted (or pre-upgrade) lab
                 # is cleaned without resolving its secrets.
-                if "not trusted" not in str(exc) and "outside --config-dir" not in str(exc):
-                    raise
                 console.print("[yellow]⚠  Lab not trusted: cleaning without resolving its secrets.[/yellow]")
                 cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir)
         except Exception:

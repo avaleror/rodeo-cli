@@ -18,8 +18,10 @@ import contextlib
 import copy
 import fcntl
 import hashlib
+import ipaddress
 import os
 import re
+import struct
 import subprocess
 import warnings
 from pathlib import Path
@@ -32,6 +34,10 @@ from .paths import rodeo_last_lab_file, rodeo_secrets_path, rodeo_trusted_labs_p
 
 class ConfigError(ValueError):
     """User-facing configuration problem (bad YAML, bad values, bad params)."""
+
+
+class UntrustedLab(ConfigError):
+    """A write command met a lab that `rodeo trust` has not approved as it is now."""
 
 
 # Base defaults that apply to every rodeo type.
@@ -218,11 +224,11 @@ def _render_plan(text: str, source: str, context: dict) -> dict:
 #
 # Trust is per lab, not per string: a lab already runs its own code as root on
 # deploy (custom/scripts, content repo scripts), so approving one ??cmd: string
-# protects little. `rodeo trust` records a sha256 over the lab's plan,
-# definition.yaml and custom/ tree; any change to them makes the lab untrusted
-# again. Labs rodeo seeds itself from a bundled or catalog profile are trusted
-# at seed time. -P and --paramfile values may not carry `??`, `{{`, `{%` or a
-# newline, so an agent passing parameters can't add a secret source.
+# protects little. `rodeo trust` records a sha256 manifest of the lab directory
+# (everything but the state rodeo writes there); any change makes the lab
+# untrusted again. A lab is trusted at creation only when rodeo wrote every file
+# in it from a bundled (or already trusted) profile. -P and --paramfile may only
+# set allowlisted data keys with checked values, never `??` or templates.
 SecretsMode = Literal["off", "keys", "all"]
 _SECRETS_MODES = ("off", "keys", "all")
 _SOURCE_PREFIXES = ("??env:", "??cmd:", "??file:")
@@ -276,9 +282,9 @@ def _reject_injected(value: Any, where: str) -> None:
 
 
 # Written by rodeo itself into a lab directory, so not part of what is trusted
-# (one list; tests/test_config.py and tests/test_content.py check it holds
-# across a deploy and a content apply). A name here is skipped at the top level
-# of the lab, a prefix in _UNHASHED_TOP_PREFIXES too; .git and __pycache__ are
+# (one list; tests/test_config.py, test_content.py, test_runner.py and
+# test_story.py check it holds across a deploy, a content apply and a story
+# render). Top-level names and prefixes, nested relative paths, and names
 # skipped at any depth.
 _UNHASHED_TOP = frozenset({
     ".rodeo", ".labinabox", LAB_SECRETS_FILE, ".rodeo-shipped-secrets.yaml",
@@ -288,113 +294,98 @@ _UNHASHED_TOP = frozenset({
     ".builder-deploy.log",                                      # builder/deploywork.py
 })
 _UNHASHED_TOP_PREFIXES = (".content.",)  # content.fetch's temporary checkout
+_UNHASHED_NESTED = frozenset({"story/strings"})  # rmstory's translation store (story.py)
 _UNHASHED_ANY = frozenset({".git", "__pycache__"})
 
 
-def _unhashed_top(name: str) -> bool:
-    return name in _UNHASHED_TOP or name.startswith(_UNHASHED_TOP_PREFIXES)
+def _unhashed(rel: str) -> bool:
+    """True for a lab-relative path (or anything under it) that trust skips."""
+    parts = rel.split("/")
+    if parts[0] in _UNHASHED_TOP or parts[0].startswith(_UNHASHED_TOP_PREFIXES):
+        return True
+    if len(parts) == 1 and parts[0].endswith(".log"):
+        return True
+    if any(p in _UNHASHED_ANY for p in parts):
+        return True
+    return any(rel == n or rel.startswith(n + "/") for n in _UNHASHED_NESTED)
+
+
+def _walk_lab(lab: Path) -> tuple[list[Path], list[Path]]:
+    """(regular files, symlinks) in the lab that trust covers, each sorted."""
+    files: list[Path] = []
+    links: list[Path] = []
+    for root, dirs, names in os.walk(lab):
+        here = Path(root)
+        keep = []
+        for d in dirs:
+            p = here / d
+            if _unhashed(str(p.relative_to(lab))):
+                continue
+            (links if p.is_symlink() else keep).append(p if p.is_symlink() else d)
+        dirs[:] = sorted(keep)
+        for f in names:
+            p = here / f
+            if _unhashed(str(p.relative_to(lab))):
+                continue
+            (links if p.is_symlink() else files).append(p)
+    return sorted(files), sorted(links)
 
 
 def _hashed_files(lab: Path) -> list[Path]:
-    """Every file (or symlink) in the lab that trust covers, sorted."""
-    out: list[Path] = []
-    for root, dirs, files in os.walk(lab):
-        here = Path(root)
-        top = here == lab
-        keep = []
-        for d in dirs:
-            if d in _UNHASHED_ANY or (top and _unhashed_top(d)):
-                continue
-            if (here / d).is_symlink():
-                out.append(here / d)  # hashed as a link, never followed
-            else:
-                keep.append(d)
-        dirs[:] = sorted(keep)
-        for f in files:
-            if top and (_unhashed_top(f) or f.endswith(".log")):
-                continue
-            out.append(here / f)
-    return sorted(out)
+    files, links = _walk_lab(lab)
+    return sorted(files + links)
 
 
-# The only keys -P and --paramfile may set (an MCP client passes them): data
-# such as sizes, versions, names, counts and TTLs, from the documented and
-# tested uses. Anything else (ansible paths, repos, refs, scripts, story
-# engines, SSH keys, lab directories...) belongs in rodeo-plan.yaml, which
-# `rodeo trust` covers. Plain names declared in the plan's parameters: block
-# are allowed too: the plan author chose to expose them.
-PARAM_ALLOWLIST = (
-    "name",
-    "type",
-    "deployment_target",
-    "instance",
-    "resources",
-    "versions",
-    "network",
-    "libvirt.disk_cache",
-    "libvirt.disk_io",
-    "rancher_tls.email",
-    "elemental.registrations",
-    "lab_in_a_box.variant",
-    "lab_in_a_box.iso_image",
-    "provider.region",
-    "provider.instance_type",
-    "provider.ttl_hours",
-    "story.language",
-    "story.id",
-    "content.facts",
-)
+def lab_problems(lab_dir: str | Path) -> list[str]:
+    """Why a lab can't be trusted as it is: symlinks that leave it or point into
+    the paths rodeo writes (their content would escape the hash)."""
+    lab = Path(os.path.realpath(lab_dir))
+    problems = []
+    for link in _walk_lab(lab)[1]:
+        rel = str(link.relative_to(lab))
+        target = Path(os.path.realpath(link))
+        try:
+            trel = str(target.relative_to(lab))
+        except ValueError:
+            problems.append(f"{rel} is a symlink to {target}, outside the lab")
+            continue
+        if _unhashed(trel):
+            problems.append(f"{rel} is a symlink into {trel}, which trust does not cover")
+    return problems
 
 
-def _override_paths(key: str, value: Any) -> list[str]:
-    """Leaf paths an override sets (a dict value sets each of its leaves)."""
-    if isinstance(value, dict) and value:
-        out: list[str] = []
-        for k, v in value.items():
-            out += _override_paths(f"{key}.{k}", v)
-        return out
-    return [key]
-
-
-def _param_allowed(path: str, template_params: set[str]) -> bool:
-    if path in template_params:
-        return True
-    return any(path == a or path.startswith(a + ".") for a in PARAM_ALLOWLIST)
-
-
-def _reject_disallowed_keys(
-    overrides: list[tuple[str, Any]], where: str, template_params: set[str]
-) -> None:
-    for key, value in overrides:
-        for path in _override_paths(str(key), value):
-            if not _param_allowed(path, template_params):
-                params = f" and this plan's parameters ({', '.join(sorted(template_params))})" \
-                    if template_params else ""
-                raise ConfigError(
-                    f"{where} {path}: -P and --paramfile can only set "
-                    f"{', '.join(PARAM_ALLOWLIST)}{params}.\n"
-                    "Set anything else in rodeo-plan.yaml (rodeo trust covers it)."
-                )
+def _record(h: Any, rel: str, kind: bytes, content: bytes) -> None:
+    """One manifest entry with explicit lengths, so no file can fake another's."""
+    path = rel.encode()
+    h.update(struct.pack(">Q", len(path)) + path + kind
+             + struct.pack(">Q", len(content)) + hashlib.sha256(content).digest())
 
 
 def lab_fingerprint(lab_dir: str | Path) -> str:
-    """sha256 over the lab directory: rodeo-plan.yaml, definition.yaml, custom/,
-    manifests/, helm/, certs/, story/, per-host manifests... everything except
-    the state rodeo writes itself (_UNHASHED_TOP).
+    """sha256 over a manifest of the lab directory: every file except the state
+    rodeo writes (rodeo-plan.yaml, definition.yaml, custom/, manifests/, helm/,
+    certs/, story/, per-host manifests...).
 
-    Paths are sorted and hashed with their contents. Symlinks are hashed by
-    their target string, never followed. Content repos fetched by URL are
-    covered only through the URL (and ref) written in the plan.
+    Each entry is (len(path), path, type, len(content), sha256(content)). A
+    symlink records its target path inside the lab, plus the target's content
+    when it is a file; lab_problems() rejects links that leave the lab. Content
+    repos fetched by URL are covered only through the URL and ref in the plan.
     """
-    lab = Path(lab_dir)
+    lab = Path(os.path.realpath(lab_dir))
     h = hashlib.sha256()
-    for path in _hashed_files(lab):
-        h.update(str(path.relative_to(lab)).encode() + b"\0")
+    files, links = _walk_lab(lab)
+    for path in sorted(files + links):
+        rel = str(path.relative_to(lab))
         if path.is_symlink():
-            h.update(b"link\0" + os.readlink(path).encode())
+            target = Path(os.path.realpath(path))
+            try:
+                trel = str(target.relative_to(lab))
+            except ValueError:
+                trel = str(target)
+            content = target.read_bytes() if target.is_file() else b""
+            _record(h, rel, b"L", trel.encode() + b"\0" + hashlib.sha256(content).digest())
         else:
-            h.update(b"file\0" + path.read_bytes())
-        h.update(b"\0")
+            _record(h, rel, b"F", path.read_bytes())
     return h.hexdigest()
 
 
@@ -402,6 +393,168 @@ def has_hashed_files(lab_dir: str | Path) -> bool:
     """True when the directory already holds anything trust would cover."""
     lab = Path(lab_dir)
     return lab.is_dir() and bool(_hashed_files(lab))
+
+
+# --- -P / --paramfile ------------------------------------------------------------
+# The only keys -P and --paramfile may set (an MCP client passes them), each with
+# a value check: allowlisted values still reach Ansible shell tasks
+# (versions.harvester ends up in a download URL and a file name). Anything else
+# (ansible paths, repos, refs, checksums, scripts, story engines, SSH keys, lab
+# directories...) belongs in rodeo-plan.yaml, which `rodeo trust` covers.
+_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+_VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+_-]*$")
+_FILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$")
+_HOSTNAME_RE = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*$")
+_LANG_RE = re.compile(r"^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$")
+_PARAM_SCALAR_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:@+-]*$")
+
+
+def _is_int(v: Any) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def _pos_int(v: Any) -> bool:
+    return _is_int(v) and v > 0
+
+
+def _number(v: Any) -> bool:
+    return (isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0) or v == "off"
+
+
+def _matches(rx: re.Pattern) -> Any:
+    return lambda v: (isinstance(v, str) or _is_int(v) or isinstance(v, float)) \
+        and not isinstance(v, bool) and bool(rx.match(str(v)))
+
+
+def _version_value(v: Any) -> bool:
+    return _matches(_VERSION_RE)(v)
+
+
+def _net_value(v: Any) -> bool:
+    if not isinstance(v, str):
+        return False
+    for parse in (ipaddress.ip_address, ipaddress.ip_network):
+        try:
+            parse(v)
+            return True
+        except ValueError:
+            pass
+    return bool(_HOSTNAME_RE.match(v))
+
+
+def _fact_value(v: Any) -> bool:
+    return isinstance(v, (str, int, float)) and not isinstance(v, bool) and len(str(v)) <= 256
+
+
+# (dotted pattern, value check); "*" is exactly one segment.
+PARAM_RULES: tuple[tuple[str, Any], ...] = (
+    ("name", _matches(_NAME_RE)),
+    ("type", _matches(_NAME_RE)),
+    ("deployment_target", _matches(_NAME_RE)),
+    ("instance", _is_int),
+    ("resources.*.*", _pos_int),
+    ("versions.*", _version_value),
+    ("network.*", _net_value),
+    ("libvirt.disk_cache", _matches(_NAME_RE)),
+    ("libvirt.disk_io", _matches(_NAME_RE)),
+    ("rancher_tls.email", _matches(_EMAIL_RE)),
+    ("elemental.registrations", _is_int),
+    ("lab_in_a_box.variant", _matches(_NAME_RE)),
+    ("lab_in_a_box.iso_image", _matches(_FILE_RE)),
+    ("provider.region", _matches(_NAME_RE)),
+    ("provider.instance_type", _matches(_FILE_RE)),
+    ("provider.ttl_hours", _number),
+    ("story.language", _matches(_LANG_RE)),
+    ("story.id", _matches(_NAME_RE)),
+    ("content.facts.*", _fact_value),
+)
+PARAM_ALLOWLIST = tuple(p for p, _ in PARAM_RULES)
+# Integrity pins and URLs are never data an override may change.
+_PARAM_NEVER = re.compile(r"(checksum|sha\d*|digest|url|repo|ref|path)", re.I)
+
+
+def _override_paths(key: str, value: Any) -> list[tuple[str, Any]]:
+    """(leaf path, value) pairs an override sets (a dict sets each of its leaves)."""
+    if isinstance(value, dict) and value:
+        out: list[tuple[str, Any]] = []
+        for k, v in value.items():
+            out += _override_paths(f"{key}.{k}", v)
+        return out
+    return [(key, value)]
+
+
+def _rule_for(path: str) -> Any:
+    parts = path.split(".")
+    for pattern, check in PARAM_RULES:
+        pp = pattern.split(".")
+        if len(pp) == len(parts) and all(a == "*" or a == b for a, b in zip(pp, parts)):
+            return check
+    return None
+
+
+def _template_param_ok(value: Any) -> bool:
+    if isinstance(value, bool) or _is_int(value) or isinstance(value, float):
+        return True
+    return isinstance(value, str) and bool(_PARAM_SCALAR_RE.match(value))
+
+
+def _reject_disallowed_keys(
+    overrides: list[tuple[str, Any]], where: str, template_params: set[str]
+) -> None:
+    for key, value in overrides:
+        for path, leaf in _override_paths(str(key), value):
+            if path in template_params:
+                if not _template_param_ok(value):
+                    raise ConfigError(
+                        f"{where} {path}: a template parameter takes a plain scalar "
+                        f"(letters, digits, . _ : @ + -), not {value!r}."
+                    )
+                continue
+            check = _rule_for(path)
+            never = path.startswith("versions.") and _PARAM_NEVER.search(path.split(".")[-1])
+            if check is None or never:
+                params = f" and this plan's parameters ({', '.join(sorted(template_params))})" \
+                    if template_params else ""
+                raise ConfigError(
+                    f"{where} {path}: -P and --paramfile can only set "
+                    f"{', '.join(PARAM_ALLOWLIST)}{params}.\n"
+                    "Set anything else in rodeo-plan.yaml (rodeo trust covers it)."
+                )
+            if not check(leaf):
+                raise ConfigError(f"{where} {path}: {leaf!r} is not a valid value for this key.")
+
+
+# --- libvirt URIs ------------------------------------------------------------------
+# A libvirt URI can run a command (qemu+ext://...?command=, ?netcat=, ?socket=),
+# and status/plan/clean connect with it, so every URI from a plan, an override or
+# the command line is checked before rodeo opens it.
+_LIBVIRT_SCHEMES = ("qemu", "qemu+ssh", "qemu+tls", "qemu+tcp")
+_LIBVIRT_BAD_PARAMS = ("command", "netcat", "socket", "keyfile", "proxy", "mode")
+
+
+def validate_libvirt_uri(uri: Any, where: str = "libvirt.uri") -> str:
+    from urllib.parse import parse_qs, urlsplit
+
+    text = str(uri or "")
+    if not text or any(c.isspace() for c in text) or "'" in text or '"' in text:
+        raise ConfigError(f"{where} {text!r} is not a libvirt URI rodeo accepts")
+    parts = urlsplit(text)
+    params = parse_qs(parts.query, keep_blank_values=True)
+    ok = (
+        parts.scheme in _LIBVIRT_SCHEMES
+        and parts.path in ("/system", "/session")
+        and not parts.fragment
+        and not any(k.lower() in _LIBVIRT_BAD_PARAMS for k in params)
+        and (parts.scheme != "qemu" or (not parts.netloc and not parts.query))
+    )
+    if not ok:
+        raise ConfigError(
+            f"{where} {text!r} is not allowed: use qemu:///system, qemu:///session or "
+            "qemu+ssh://user@host/system, with no command, netcat, socket, keyfile or "
+            "proxy parameters"
+        )
+    return text
 
 
 def _nofollow() -> int:
@@ -489,9 +642,13 @@ def is_source_trusted(url: str, ref: str | None) -> bool:
     return load_trusted_labs().get(source_key(url, ref)) == "approved"
 
 
-def trust_lab(lab_dir: str | Path) -> Path:
-    """Record the lab's current fingerprint as trusted."""
-    return _update_trusted_labs(lab_dir, lab_fingerprint(lab_dir))
+def trust_lab(lab_dir: str | Path, digest: str | None = None) -> Path:
+    """Record the lab as trusted: ``digest`` when given (the one the operator
+    reviewed), else its current fingerprint. Refuses a lab with lab_problems()."""
+    problems = lab_problems(lab_dir)
+    if problems:
+        raise UntrustedLab("This lab can't be trusted as it is:\n  " + "\n  ".join(problems))
+    return _update_trusted_labs(lab_dir, digest or lab_fingerprint(lab_dir))
 
 
 def revoke_lab(lab_dir: str | Path) -> bool:
@@ -506,7 +663,7 @@ def is_lab_trusted(lab_dir: str | Path | None) -> bool:
     if lab_dir is None:
         return False
     recorded = load_trusted_labs().get(os.path.realpath(lab_dir))
-    return recorded is not None and recorded == lab_fingerprint(lab_dir)
+    return recorded is not None and not lab_problems(lab_dir) and recorded == lab_fingerprint(lab_dir)
 
 
 @contextlib.contextmanager
@@ -522,9 +679,31 @@ def keep_trust(lab_dir: str | Path | None):
         trust_lab(lab_dir)
 
 
+def _lab_layout(plan_path: Path, config_dir: str | Path | None) -> tuple[str | None, str | None]:
+    """(lab realpath trust is recorded against, problem that blocks trust or None).
+
+    Everything is compared as realpaths, so a symlinked plan can't borrow the
+    trust of the directory it points into.
+    """
+    if config_dir is not None:
+        lab = os.path.realpath(config_dir)
+    elif plan_path.exists():
+        lab = os.path.realpath(plan_path.parent)
+    else:
+        return None, None
+    if not plan_path.exists():
+        return lab, None
+    if plan_path.is_symlink():
+        return lab, f"{plan_path} is a symlink: write commands need the plan file itself in the lab"
+    if os.path.dirname(os.path.realpath(plan_path)) != lab:
+        return lab, ("--config outside --config-dir: write commands need the plan inside the "
+                     "lab directory, so one rodeo trust covers both")
+    return lab, None
+
+
 def lab_dir_of(cfg: dict) -> str | None:
     """The lab directory trust is recorded against (resolved realpath)."""
-    lab = cfg.get("plan_dir") or cfg.get("config_dir")
+    lab = cfg.get("config_dir") or cfg.get("plan_dir")
     return os.path.realpath(lab) if lab else None
 
 
@@ -668,7 +847,7 @@ def load_config(
         )
         context.update({k: v for k, v in cli_params if "." not in k})
         plan = _render_plan(text, str(plan_path), context)
-        _record_lab_dir(plan_path.resolve().parent)
+        _record_lab_dir(Path(os.path.realpath(plan_path.parent)))
 
     # A lab dir found directly in cwd (plan_path already existed, so the
     # find_lab_dir()/config_dir auto-detect above never ran) still needs its
@@ -692,31 +871,27 @@ def load_config(
     # network would leak into _BASE_DEFAULTS for the rest of the process.
     cfg = _deep_merge(copy.deepcopy(_BASE_DEFAULTS), profile_defaults)
     cfg = _deep_merge(cfg, plan)
-    cfg = _deep_merge(cfg, paramfile_data)
+    # Names from the plan's parameters: block only feed the template above.
+    cfg = _deep_merge(cfg, {k: v for k, v in paramfile_data.items()
+                            if not (k in template_params and _rule_for(k) is None)})
     for key, value in cli_params:
+        if key in template_params and _rule_for(key) is None:
+            continue
         _set_path(cfg, key, value)
 
     lab_dir = Path(config_dir) if config_dir is not None else (plan_path.parent if plan_path.exists() else None)
-    # Trust is recorded against the plan's own directory (or --config-dir).
-    trust_dir = plan_path.resolve().parent if plan_path.exists() else lab_dir
-    split = (
-        config_dir is not None and plan_path.exists()
-        and os.path.realpath(config_dir) != os.path.realpath(plan_path.parent)
-    )
+    trust_dir, layout = _lab_layout(plan_path, config_dir)
     # None: not computed ("off" hashes nothing); validate_config(check=True) does it.
     trusted: bool | None = None
     if secrets != "off":
-        trusted = trust_dir is not None and not split and is_lab_trusted(trust_dir)
+        trusted = trust_dir is not None and layout is None and is_lab_trusted(trust_dir)
         if secrets == "all" and trust_dir is not None and not trusted:
-            if split:
-                raise ConfigError(
-                    "--config outside --config-dir: write commands need the plan inside the "
-                    "lab directory, so one rodeo trust covers both."
-                )
-            raise ConfigError(f"{UNTRUSTED_LAB}\nLab: {os.path.realpath(trust_dir)}")
+            problems = [layout] if layout else lab_problems(trust_dir)
+            detail = ("\n  " + "\n  ".join(problems)) if problems else ""
+            raise UntrustedLab(f"{UNTRUSTED_LAB}\nLab: {trust_dir}{detail}")
         cfg = _resolve_secrets(cfg, _load_secrets(lab_dir, include_global=trusted), secrets)
     cfg[LAB_TRUSTED_KEY] = trusted
-    cfg["_lab_split"] = split
+    cfg["_lab_split"] = layout is not None
 
     env_path = os.environ.get("RODEO_ANSIBLE_PATH")
     if env_path:
@@ -730,13 +905,18 @@ def load_config(
         cfg["config_dir"] = str(Path(config_dir).resolve())
     if plan_path.exists():
         # The lab's own directory even without a definition.yaml (config_dir unset).
-        cfg["plan_dir"] = str(plan_path.resolve().parent)
+        # The directory the plan entry is in, not where a symlinked plan points.
+        cfg["plan_dir"] = os.path.realpath(plan_path.parent)
 
     try:
         from .profiles import get_profile
         cfg = get_profile(cfg.get("type", _BASE_DEFAULTS["type"])).finalize_cfg(cfg)
     except (ImportError, ValueError):
         pass
+
+    libvirt = cfg.get("libvirt")
+    if isinstance(libvirt, dict) and libvirt.get("uri") is not None:
+        validate_libvirt_uri(libvirt["uri"])
 
     return cfg
 
@@ -774,7 +954,7 @@ def _validate_placeholders(cfg: dict, *, check: bool) -> None:
     if check and lab is not None:
         trusted = cfg.get(LAB_TRUSTED_KEY)
         if trusted is None:  # loaded with secrets="off": hash the lab now
-            trusted = not cfg.get("_lab_split") and is_lab_trusted(cfg.get("plan_dir") or lab)
+            trusted = not cfg.get("_lab_split") and is_lab_trusted(lab)
         if not trusted:
             raise ConfigError(f"{UNTRUSTED_LAB}\nLab: {lab}")
     leftover = _placeholder_paths(cfg)

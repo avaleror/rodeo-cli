@@ -413,8 +413,10 @@ def target(cfg: dict) -> dict:
     if not _USER_RE.match(user):
         raise ConfigError(f"lab_in_a_box.target.ssh_user '{user}' is not a valid user name")
     uri = str(spec.get("libvirt_uri") or "")
-    if uri and not re.fullmatch(r"qemu(\+ssh|\+tcp|\+tls)?://[^\s'\"]*/system(\?[^\s'\"]*)?", uri):
-        raise ConfigError(f"lab_in_a_box.target.libvirt_uri '{uri}' is not a qemu:// libvirt URI")
+    if uri:
+        from .config import validate_libvirt_uri
+
+        validate_libvirt_uri(uri, "lab_in_a_box.target.libvirt_uri")
     return {"mode": mode, "host": host or None, "ssh_user": user, "libvirt_uri": uri or None}
 
 

@@ -1190,9 +1190,14 @@ def test_target_libvirt_uri_drives_day2_commands(tmp_path):
     cfg = _smlm_cfg(tmp_path, FULL_SECRETS)
     plan = Path(cfg["config_dir"]) / "rodeo-plan.yaml"
     data = yaml.safe_load(plan.read_text())
-    data["lab_in_a_box"]["target"] = {"host": "auto1", "libvirt_uri": "qemu+ssh://root@kvm1/system?keyfile=/k"}
+    data["lab_in_a_box"]["target"] = {"host": "auto1", "libvirt_uri": "qemu+ssh://root@kvm1/system"}
     plan.write_text(yaml.safe_dump(data))
-    assert load_config(plan)["libvirt"]["uri"] == "qemu+ssh://root@kvm1/system?keyfile=/k"
+    assert load_config(plan)["libvirt"]["uri"] == "qemu+ssh://root@kvm1/system"
+    # A URI parameter that hands libvirt a file or a command is refused.
+    data["lab_in_a_box"]["target"]["libvirt_uri"] = "qemu+ssh://root@kvm1/system?keyfile=/k"
+    plan.write_text(yaml.safe_dump(data))
+    with pytest.raises(ConfigError, match="not allowed"):
+        host.target(load_config(plan))
 
 
 def test_capacity_helpers():

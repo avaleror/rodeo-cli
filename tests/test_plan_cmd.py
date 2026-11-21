@@ -126,14 +126,22 @@ def test_plan_suse_edge_drift_uses_edge_node_resources(tmp_path, monkeypatch):
 
 
 def test_plan_warns_on_invalid_config_but_still_previews(tmp_path):
-    result = CliRunner().invoke(
-        plan_cmd,
-        ["--config", str(tmp_path / "none.yaml"),
-         "-P", "resources.harvester.memory_mib=-1"],
-    )
+    plan = tmp_path / "rodeo-plan.yaml"
+    plan.write_text("resources:\n  harvester:\n    memory_mib: -1\n")
+    config.trust_lab(tmp_path)
+    result = CliRunner().invoke(plan_cmd, ["--config", str(plan)])
     assert result.exit_code == 2, result.output  # deploy would refuse it
     assert "deploy will refuse" in _flat(result.output)
     assert "harvester1" in result.output  # diff still shown
+
+
+def test_plan_refuses_an_invalid_param_value(tmp_path):
+    result = CliRunner().invoke(
+        plan_cmd,
+        ["--config", str(tmp_path / "none.yaml"), "-P", "resources.harvester.memory_mib=-1"],
+    )
+    assert result.exit_code == 2, result.output
+    assert "not a valid value" in _flat(result.output)
 
 
 # ---------- secrets: plan is a read path ----------

@@ -168,5 +168,7 @@ def test_builder_command_falls_back_to_the_published_lab_builder(monkeypatch, la
     r = CliRunner().invoke(builder_cmd, ["--port", "0", "--no-open", "--no-fetch-sources", "--labinabox",
                                          str(labinabox_checkout), "--start-lab-builder"])
     assert r.exit_code == 0, r.output
-    assert "linking to the published lab-builder" in r.output
+    # Rich wraps the message at the terminal width, and a long macOS temp path
+    # pushes the break into the middle of it: compare with whitespace collapsed.
+    assert "linking to the published lab-builder" in " ".join(r.output.split())
     assert seen["liab"]["builder_url"].startswith("https://rmahique.github.io/lab-in-a-box/lab-builder/")

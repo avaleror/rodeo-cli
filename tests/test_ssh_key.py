@@ -113,3 +113,31 @@ def test_fingerprints_match_ignores_base64_padding_and_prefix():
     assert not _fingerprints_match("", remote)
     assert not _fingerprints_match(local, "")
     assert not _fingerprints_match("SHA256:", remote)
+
+
+def test_plant_sends_private_key_on_stdin_not_argv(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from rodeo.fleet.ssh_exec import RemoteResult
+    from rodeo.ssh_key import plant_rodeo_ssh_key
+
+    private = tmp_path / "id_ed25519"
+    private.write_text("-----BEGIN OPENSSH PRIVATE KEY-----\nSECRETBODY\n-----END-----\n")
+    public = tmp_path / "id_ed25519.pub"
+    public.write_text("ssh-ed25519 AAAA rodeo\n")
+    calls = []
+
+    def fake_run_remote(inventory, host, argv, *, timeout=120.0, as_root=True, stdin=None):
+        calls.append((list(argv), stdin))
+        return RemoteResult(host_id="h1", rc=0, stdout="", stderr="")
+
+    monkeypatch.setattr("rodeo.ssh_key.run_remote", fake_run_remote)
+    plant_rodeo_ssh_key(None, SimpleNamespace(id="h1"),
+                        key=SimpleNamespace(private=private, public=public))
+
+    argv, stdin = calls[-1]
+    assert stdin == private.read_text()
+    joined = " ".join(argv)
+    assert "SECRETBODY" not in joined
+    import base64
+    assert base64.b64encode(private.read_text().encode()).decode() not in joined

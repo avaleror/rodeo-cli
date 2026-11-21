@@ -393,22 +393,24 @@ def plant_rodeo_ssh_key(
     # Write via sudo tee so ec2-user / sles can plant into /root.
     import base64
 
-    priv_b64 = base64.b64encode(priv_text.encode()).decode()
+    # The private key goes over stdin, never argv: argv is readable by any
+    # local user in /proc/*/cmdline, on the laptop and on the host.
     pub_b64 = base64.b64encode(pub_text.encode()).decode()
     script = (
         "set -euo pipefail; "
-        "sudo mkdir -p /root/.ssh; "
-        f"echo {priv_b64} | base64 -d | sudo -n tee {_REMOTE_ROOT_KEY} >/dev/null; "
+        "sudo -n mkdir -p /root/.ssh; "
+        "sudo -n chmod 700 /root/.ssh; "
+        f"sudo -n install -m 600 /dev/null {_REMOTE_ROOT_KEY}; "
+        f"sudo -n tee {_REMOTE_ROOT_KEY} >/dev/null; "
         f"echo {pub_b64} | base64 -d | sudo -n tee {_REMOTE_ROOT_KEY}.pub >/dev/null; "
-        f"sudo -n chmod 600 {_REMOTE_ROOT_KEY}; "
-        f"sudo -n chmod 644 {_REMOTE_ROOT_KEY}.pub; "
-        "sudo -n chmod 700 /root/.ssh"
+        f"sudo -n chmod 644 {_REMOTE_ROOT_KEY}.pub"
     )
     result = run_remote(
         inventory,
         host,
-        ["bash", "-lc", script],
+        ["bash", "-c", script],
         timeout=timeout,
+        stdin=priv_text,
     )
     if not result.ok:
         msg = (result.stderr or result.stdout or f"exit {result.rc}").strip()

@@ -48,6 +48,9 @@ resources:
 #   ??file:/path     → contents of a file
 #   ??cmd:command    → stdout of a shell command (trimmed)
 #
+# ??file: and ??cmd: run only after you approve that exact string once with
+# `rodeo trust` (interactive terminal only). Until then they stay unresolved.
+#
 # rodeo up and rodeo init generate ~/.rodeo/secrets.yaml automatically.
 # Deploy fails immediately if any ?? placeholder cannot be resolved.
 credentials:

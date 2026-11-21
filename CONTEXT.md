@@ -166,6 +166,8 @@ All plan keys are wired: network and resources/versions reach Ansible through a 
 | `??file:/path` | file contents |
 | `??cmd:command` | command stdout (pass, op, vault CLI) |
 
+`??file:` and `??cmd:` resolve only after the operator approves that exact string once with `rodeo trust` (interactive TTY only, stored in `~/.rodeo/trusted-sources.yaml`). Untrusted ones stay literal, so a plan from a cloned repo or an MCP client can't run commands. Plan templates render in a Jinja `SandboxedEnvironment`.
+
 Ansible tasks that render password-bearing files run with `no_log: true` and mode 0600.
 
 ### Ansible root resolution (`config.py:find_ansible_root()`)

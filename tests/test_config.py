@@ -68,9 +68,14 @@ def test_env_resolver_missing_fails_closed(tmp_path, monkeypatch):
         config.validate_config(cfg)
 
 
+def _trust(*sources):
+    config.save_trusted_sources(set(sources))
+
+
 def test_file_resolver(tmp_path):
     pw_file = tmp_path / "pw.txt"
     pw_file.write_text("FromFile12345\n")
+    _trust(f"??file:{pw_file}")
     plan = _write_plan(
         tmp_path, {"credentials": {"harvester_os_password": f"??file:{pw_file}"}}
     )
@@ -88,6 +93,7 @@ def test_file_resolver_missing_fails_closed(tmp_path):
 
 
 def test_cmd_resolver(tmp_path):
+    _trust("??cmd:echo FromCmd12345")
     plan = _write_plan(
         tmp_path, {"credentials": {"harvester_os_password": "??cmd:echo FromCmd12345"}}
     )
@@ -96,12 +102,81 @@ def test_cmd_resolver(tmp_path):
 
 
 def test_cmd_resolver_failure_fails_closed(tmp_path):
+    _trust("??cmd:false")
     plan = _write_plan(
         tmp_path, {"credentials": {"harvester_os_password": "??cmd:false"}}
     )
     cfg = config.load_config(plan)
     with pytest.raises(ValueError, match="Secrets not resolved"):
         config.validate_config(cfg)
+
+
+def test_untrusted_cmd_never_runs(tmp_path, capsys):
+    marker = tmp_path / "pwned"
+    spec = f"??cmd:touch {marker}"
+    plan = _write_plan(tmp_path, {"credentials": {"harvester_os_password": spec}})
+    cfg = config.load_config(plan)
+    assert not marker.exists()
+    assert cfg["credentials"]["harvester_os_password"] == spec
+    assert "rodeo trust" in capsys.readouterr().err
+    with pytest.raises(ValueError, match="rodeo trust"):
+        config.validate_config(cfg)
+
+
+def test_untrusted_cmd_outside_credentials_never_runs(tmp_path):
+    marker = tmp_path / "pwned"
+    plan = _write_plan(tmp_path, {"registry": {"token": f"??cmd:touch {marker}"}})
+    config.load_config(plan)
+    assert not marker.exists()
+
+
+def test_untrusted_file_not_read(tmp_path):
+    pw_file = tmp_path / "pw.txt"
+    pw_file.write_text("FromFile12345\n")
+    plan = _write_plan(
+        tmp_path, {"credentials": {"harvester_os_password": f"??file:{pw_file}"}}
+    )
+    cfg = config.load_config(plan)
+    assert cfg["credentials"]["harvester_os_password"] == f"??file:{pw_file}"
+
+
+def test_trust_is_per_exact_string(tmp_path):
+    marker = tmp_path / "pwned"
+    _trust("??cmd:echo ok")
+    plan = _write_plan(
+        tmp_path, {"credentials": {"harvester_os_password": f"??cmd:echo ok; touch {marker}"}}
+    )
+    config.load_config(plan)
+    assert not marker.exists()
+
+
+def test_trusted_sources_file_is_private(tmp_path):
+    _trust("??cmd:echo ok")
+    path = tmp_path / ".rodeo" / "trusted-sources.yaml"
+    assert path.stat().st_mode & 0o777 == 0o600
+    assert config.load_trusted_sources() == {"??cmd:echo ok"}
+
+
+def test_load_config_without_resolving(tmp_path):
+    _trust("??cmd:echo FromCmd12345")
+    plan = _write_plan(
+        tmp_path, {"credentials": {"harvester_os_password": "??cmd:echo FromCmd12345"}}
+    )
+    cfg = config.load_config(plan, resolve_secrets=False)
+    assert cfg["credentials"]["harvester_os_password"] == "??cmd:echo FromCmd12345"
+
+
+def test_template_sandbox_blocks_python_internals(tmp_path):
+    plan = tmp_path / "rodeo-plan.yaml"
+    plan.write_text("network:\n  vip: \"{{ ''.__class__.__mro__[1].__subclasses__() }}\"\n")
+    with pytest.raises(config.ConfigError, match="sandbox"):
+        config.load_config(plan)
+
+
+def test_template_parameters_still_render(tmp_path):
+    plan = tmp_path / "rodeo-plan.yaml"
+    plan.write_text("parameters:\n  vip: 10.9.9.9\nnetwork:\n  vip: \"{{ vip | upper }}\"\n")
+    assert config.load_config(plan)["network"]["vip"] == "10.9.9.9"
 
 
 def test_unresolved_secret_kept_and_rejected(tmp_path, monkeypatch):

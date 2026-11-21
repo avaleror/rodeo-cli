@@ -101,18 +101,27 @@ def test_remote_up_script_keeps_the_aws_target():
     assert "--target baremetal" not in script
     assert "--profile harvester" in script
     assert "install.sh" in script
-    assert "PIPESTATUS[0]" in script
+    assert 'wait "$rp"; ec=$?' in script
     assert "AWS_UP_EXIT:$ec" in script
 
 
-def test_remote_up_script_creates_the_log_dir_before_teeing():
-    """The pipeline tees into $HOME/.rodeo/logs, which does not exist on a fresh
-    host — rodeo creates it on first run, and that run is the one being logged.
-    Without the mkdir, tee exits immediately and rodeo dies on SIGPIPE before
-    doing any work."""
+def test_remote_up_script_creates_the_log_dir_before_logging():
+    """rodeo logs into $HOME/.rodeo/logs, which does not exist on a fresh
+    host: rodeo creates it on first run, and that run is the one being logged."""
     script = remote_up_script(lab_dir="/root/lab", profile="test")
     assert 'mkdir -p "$HOME/.rodeo/logs"' in script
-    assert script.index('mkdir -p "$HOME/.rodeo/logs"') < script.index("tee -a")
+    assert script.index('mkdir -p "$HOME/.rodeo/logs"') < script.index('>>"$log"')
+
+
+def test_remote_up_script_does_not_hand_the_ssh_channel_to_rodeo():
+    """Live-caught 2026-11-18: with rodeo piped into tee, a process the deploy
+    left behind kept the pipe, so the laptop's SSH session never closed after
+    the host finished. rodeo now writes to the log and the session follows it
+    with tail --pid, which ends when rodeo does."""
+    script = remote_up_script(lab_dir="/root/lab", profile="test")
+    assert "| tee" not in script
+    assert '</dev/null >>"$log" 2>&1 & rp=$!' in script
+    assert 'tail -c "+$off" --pid="$rp" -f "$log"' in script
 
 
 def test_remote_up_script_without_a_ref_leaves_an_existing_install_alone():

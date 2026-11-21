@@ -95,6 +95,10 @@ def ssh_argv(
         "ssh",
         "-o", "BatchMode=yes",
         "-o", "ConnectTimeout=15",
+        # A deploy can stay quiet for many minutes; without keepalives a NAT on
+        # the way drops the idle connection ("Connection reset by peer").
+        "-o", "ServerAliveInterval=30",
+        "-o", "ServerAliveCountMax=10",
         "-o", "StrictHostKeyChecking=accept-new",
         "-o", f"UserKnownHostsFile={known_hosts_path(inventory.name)}",
     ]

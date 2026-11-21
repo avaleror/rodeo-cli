@@ -259,16 +259,25 @@ def remote_up_script(
         f"{unpack}"
         f"{bootstrap_fragment(install_url=install_url, ref=ref)}; "
         f"mkdir -p {lab}; "
-        # tee's target directory does not exist on a fresh host: rodeo creates
+        # The log directory does not exist on a fresh host: rodeo creates
         # ~/.rodeo/logs on first run, but that run *is* the one being logged,
-        # so the pipeline dies before rodeo starts — tee exits immediately and
-        # rodeo takes SIGPIPE. $HOME is /root here (sudo -n bash -lc).
+        # so it must exist before rodeo starts. $HOME is /root here
+        # (sudo -n bash -lc).
         'mkdir -p "$HOME/.rodeo/logs"; '
+        'log="$HOME/.rodeo/logs/aws-up.log"; '
+        'off=$(( $(stat -c %s "$log" 2>/dev/null || echo 0) + 1 )); '
         "set +e; "
+        # rodeo writes to the log, not to the SSH channel, and the laptop gets
+        # this run's part of it through tail --pid, which ends when rodeo ends.
+        # Piping into tee kept the session open for as long as any process the
+        # deploy left behind still held that pipe: live-caught 2026-11-18, the
+        # host finished at 19:15 and the laptop hung until the connection was
+        # reset at 20:42, so a healthy lab came back as exit 1.
         f"rodeo up --yes --no-tmux {profile_bits}"
         f"--dir {lab} --target aws "
-        f"2>&1 | tee -a \"$HOME/.rodeo/logs/aws-up.log\"; "
-        'ec=${PIPESTATUS[0]}; set -e; '
+        '</dev/null >>"$log" 2>&1 & rp=$!; '
+        'tail -c "+$off" --pid="$rp" -f "$log"; '
+        'wait "$rp"; ec=$?; set -e; '
         'echo AWS_UP_EXIT:$ec; '
         "exit \"$ec\""
     )

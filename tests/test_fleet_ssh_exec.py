@@ -23,6 +23,14 @@ def test_ssh_argv_trusts_new_hosts_but_pins_known_ones(tmp_path, monkeypatch):
     assert "BatchMode=yes" in argv
 
 
+def test_ssh_argv_keeps_quiet_sessions_alive():
+    """A remote deploy goes quiet for long stretches; without keepalives a NAT
+    drops the connection and a healthy run ends in "Connection reset by peer"."""
+    argv = ssh_argv(_inv(), FleetHost(id="h1", ssh="10.0.0.1"), "rodeo up")
+    assert "ServerAliveInterval=30" in argv
+    assert "ServerAliveCountMax=10" in argv
+
+
 def test_ssh_argv_uses_user_at_host_when_ssh_has_no_at():
     argv = ssh_argv(_inv(ssh_user="admin"), FleetHost(id="h1", ssh="10.0.0.1"), "cmd")
     assert "admin@10.0.0.1" in argv

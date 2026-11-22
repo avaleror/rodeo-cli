@@ -124,6 +124,8 @@ def test_missing_required_argument_is_reported():
      ["up", "--profile", "harvester", "--yes", "--no-tmux"]),
     ("rodeo_plan", {"param": ["a=1", "b=2"]},
      ["plan", "--param", "a=1", "--param", "b=2"]),
+    ("rodeo_plan", {"output": "json", "param": ["a=1"]},
+     ["plan", "--output", "json", "--param", "a=1"]),
     ("rodeo_help", {}, ["--help"]),
     ("rodeo_help", {"command": "deploy"}, ["deploy", "--help"]),
 ])

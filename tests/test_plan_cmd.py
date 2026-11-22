@@ -213,3 +213,152 @@ def test_plan_exits_0_for_trusted_lab_without_running_anything(tmp_path):
     result = CliRunner().invoke(plan_cmd, ["--config", str(plan)])
     assert result.exit_code == 0, result.output
     assert not marker.exists()
+
+
+# ---------- --output json ----------
+
+
+def _plan_json(result) -> dict:
+    import json
+
+    return json.loads(result.output)
+
+
+def test_plan_json_is_one_object_with_the_diff(tmp_path):
+    result = CliRunner().invoke(plan_cmd, ["--config", str(tmp_path / "none.yaml"), "--output", "json"])
+    assert result.exit_code == 0, result.output
+    data = _plan_json(result)
+    assert data["schema"] == plan_cmd_mod.PLAN_JSON_SCHEMA
+    assert data["host_reachable"] is False
+    assert data["creates"] == []
+    assert any(v["name"] == "harvester1" and v["state"] == "desired" for v in data["unchanged"])
+    assert data["network"]["state"] == "desired"
+    assert any(d["artifact"] == "ipxe.efi" for d in data["storage"]["downloads"])
+    assert "pxe_server" in data["phases_pending"]
+    assert data["summary"]["phases_pending"] == len(data["phases_pending"])
+    assert data["config_error"] is None
+
+
+def test_plan_json_reports_creates_and_changes(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        plan_cmd_mod, "_inspect_host",
+        lambda cfg: {
+            "vms": {"harvester1": VMInfo(name="harvester1", state="running",
+                                         memory_mib=16384, vcpus=8)},
+            "net_active": True,
+        },
+    )
+    result = CliRunner().invoke(
+        plan_cmd,
+        ["--config", str(tmp_path / "none.yaml"), "--output", "json",
+         "-P", "resources.harvester.memory_mib=20480"],
+    )
+    assert result.exit_code == 0, result.output
+    data = _plan_json(result)
+    change = next(c for c in data["changes"] if c["name"] == "harvester1")
+    assert (change["kind"], change["from"], change["to"]) == ("memory", 16384, 20480)
+    assert data["creates"]  # the other planned VMs are missing on the host
+    assert data["network"]["state"] == "active"
+
+
+def test_plan_json_holds_no_plan_password(tmp_path):
+    password = "S3cretPlanPassw0rd"  # gitleaks:allow
+    plan = tmp_path / "rodeo-plan.yaml"
+    plan.write_text(
+        "credentials:\n"
+        f"  harvester_password: \"{password}\"\n"
+        "storage:\n"
+        f"  image_dir: /srv/{password}\n"
+        "registry:\n"
+        f"  token: {password}x\n"
+    )
+    config.trust_lab(tmp_path)
+    result = CliRunner().invoke(plan_cmd, ["--config", str(plan), "--output", "json"])
+    assert password not in result.output
+    _plan_json(result)
+
+
+def test_plan_json_masks_url_credentials(tmp_path):
+    plan = tmp_path / "rodeo-plan.yaml"
+    plan.write_text("storage:\n  image_dir: https://bob:hunter22@example.com/iso\n")
+    config.trust_lab(tmp_path)
+    result = CliRunner().invoke(plan_cmd, ["--config", str(plan), "--output", "json"])
+    assert "hunter22" not in result.output
+    assert "bob" not in result.output
+
+
+@pytest.mark.parametrize("trusted", [True, False])
+def test_plan_json_never_resolves_env_in_versions(tmp_path, monkeypatch, trusted):
+    """??env: in versions.harvester (from the plan file: -P refuses it) is never
+    read: the JSON holds the literal placeholder, not the value."""
+    import os
+
+    secret = "EnvValueNeverPrinted42"
+    spy = _EnvSpy({**os.environ, "SOME_SECRET": secret}, {"SOME_SECRET"})
+    monkeypatch.setattr("rodeo.config.os.environ", spy)
+    plan = tmp_path / "rodeo-plan.yaml"
+    plan.write_text('versions:\n  harvester: "??env:SOME_SECRET"\n')
+    if trusted:
+        config.trust_lab(tmp_path)
+    result = CliRunner().invoke(plan_cmd, ["--config", str(plan), "--output", "json"])
+    assert secret not in result.output
+    assert spy.read == []
+    _plan_json(result)
+
+
+def test_plan_json_does_not_read_secrets_files(tmp_path):
+    from rodeo.config import LAB_SECRETS_FILE
+
+    home_secret = "GlobalSecretsValue77"
+    lab_secret = "LabSecretsValue88"
+    (tmp_path / LAB_SECRETS_FILE).write_text(f"rancher_pw: {lab_secret}\n")
+    gl = config._resolve_secrets_path()
+    gl.parent.mkdir(parents=True, exist_ok=True)
+    gl.write_text(f"rancher_pw: {home_secret}\n")
+    plan = tmp_path / "rodeo-plan.yaml"
+    plan.write_text('credentials:\n  rancher_password: "??rancher_pw"\nversions:\n  harvester: "??rancher_pw"\n')
+    config.trust_lab(tmp_path)
+    result = CliRunner().invoke(plan_cmd, ["--config", str(plan), "--output", "json"])
+    assert home_secret not in result.output
+    assert lab_secret not in result.output
+    _plan_json(result)
+
+
+def test_plan_json_untrusted_lab_exits_2_without_running(tmp_path):
+    marker = tmp_path / "ran"
+    plan = _gated_plan(tmp_path, marker)
+    result = CliRunner().invoke(plan_cmd, ["--config", str(plan), "--output", "json"])
+    assert result.exit_code == 2, result.output
+    data = _plan_json(result)
+    assert "rodeo trust" in data["config_error"]
+    assert data["unchanged"]  # diff still there
+    assert not marker.exists()
+
+
+def test_plan_json_trusted_deferred_source_exits_0(tmp_path):
+    marker = tmp_path / "ran"
+    plan = _gated_plan(tmp_path, marker)
+    config.trust_lab(tmp_path)
+    result = CliRunner().invoke(plan_cmd, ["--config", str(plan), "--output", "json"])
+    assert result.exit_code == 0, result.output
+    assert _plan_json(result)["config_error"] is None
+    assert not marker.exists()
+
+
+def test_plan_json_load_error_is_json_and_exits_2(tmp_path):
+    result = CliRunner().invoke(
+        plan_cmd,
+        ["--config", str(tmp_path / "none.yaml"), "--output", "json",
+         "-P", "versions.harvester=??env:SOME_SECRET"],
+    )
+    assert result.exit_code == 2
+    assert "may not contain" in _plan_json(result)["error"]
+
+
+def test_plan_json_invalid_config_exits_2_with_json(tmp_path):
+    plan = tmp_path / "rodeo-plan.yaml"
+    plan.write_text("resources:\n  harvester:\n    memory_mib: -1\n")
+    config.trust_lab(tmp_path)
+    result = CliRunner().invoke(plan_cmd, ["--config", str(plan), "--output", "json"])
+    assert result.exit_code == 2, result.output
+    assert _plan_json(result)["config_error"]

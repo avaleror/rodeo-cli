@@ -77,6 +77,9 @@ rodeo/
 ├── inventory.py            build_inventory(): renders definition.yaml → vm_nodes (MAC/UUID gen), pxe, firewall, host_prep
 ├── labinabox.py            build_lab_json(): inventory → lab-in-a-box lab.json (rodeo export)
 ├── plugins.py              Lazy `rodeo.plugins` entry-point discovery for register_* APIs
+├── hooks.py                Plugin seams: event sinks, begin_operation (no-ops by default)
+├── redact.py               Masks known secret values in event records
+├── lab_allowlist.py        ~/.rodeo/labs.yaml: labs MCP tools may touch (rodeo lab)
 ├── storydeps.py            rmstory + multilang as distro packages (install-deps --story; never PyPI)
 ├── story.py                rodeo story render: translate + assemble via rmstory CLI, facts via Jinja
 ├── config_dir.py           --config-dir (EIB-style) loader

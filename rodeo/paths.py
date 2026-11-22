@@ -39,6 +39,11 @@ def rodeo_trusted_labs_path() -> Path:
     return rodeo_dir() / "trusted-labs.yaml"
 
 
+def rodeo_labs_allowlist_path() -> Path:
+    """Labs MCP tools may touch (`rodeo lab add`); absent means any directory."""
+    return rodeo_dir() / "labs.yaml"
+
+
 def rodeo_state_dir() -> Path:
     return rodeo_dir() / "state"
 

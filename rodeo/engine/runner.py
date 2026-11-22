@@ -208,7 +208,36 @@ class DeployRunner:
         return self.stop.wait(seconds)
 
     def run(self) -> Iterator[DeployEvent]:
-        """Yield deploy events for all phases. Stops after first failure."""
+        """Yield deploy events for all phases. Stops after first failure.
+
+        Each event also goes, redacted, to the registered event sinks
+        (:mod:`rodeo.hooks`). With no sink registered this is a plain pass-through.
+        """
+        from ..hooks import emit_event, event_record, event_sinks
+
+        sinks = event_sinks()
+        if not sinks:
+            yield from self._run_events()
+            return
+        from ..config import lab_dir_of
+        from ..redact import Redactor
+
+        redact = Redactor(self.cfg)
+        lab = lab_dir_of(self.cfg)
+        phase: str | None = None
+        for event in self._run_events():
+            if isinstance(event, PhaseStarted):
+                phase = event.phase
+            try:
+                record = event_record(event, lab=lab, phase=phase, redact=redact)
+            except Exception as exc:  # building a record never fails the deploy
+                logger.warning("event record failed: %s", exc)
+            else:
+                emit_event(record, sinks)
+            yield event
+
+    def _run_events(self) -> Iterator[DeployEvent]:
+        """The pipeline itself: every event, unredacted, for run() to yield."""
         from ..profiles import get_profile
         profile = get_profile(self.cfg.get("type", "suse-virt"))
 

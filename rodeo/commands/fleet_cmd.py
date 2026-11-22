@@ -11,6 +11,7 @@ from rich.console import Console
 from rich.table import Table
 
 from ..config import ConfigError
+from ..hooks import begin_operation
 from ..fleet.access import access_payload, fleet_access
 from ..fleet.deploy import fleet_deploy, refresh_job_from_status, results_payload
 from ..fleet.diagnose import (
@@ -350,6 +351,7 @@ def fleet_deploy_cmd(
 
     inventory = _with_ref(inventory, ref)
     _approve_source(inventory, trust_source_flag)
+    begin_operation(inventory_path, "fleet.deploy")
 
     results, _job, job_path = fleet_deploy(
         inventory,
@@ -457,6 +459,7 @@ def fleet_retry_cmd(
             raise SystemExit(0)
     else:
         hosts = selected
+    begin_operation(inventory_path, "fleet.retry")
 
     results, _job, job_path = fleet_deploy(
         inventory,
@@ -698,6 +701,7 @@ def fleet_provision_cmd(
     """
     try:
         inventory = load_inventory(inventory_path)
+        begin_operation(inventory_path, "fleet.provision")
         hosts = fleet_provision(
             inventory,
             inventory_path,
@@ -872,6 +876,7 @@ def fleet_deprovision_cmd(
                         "    Check `rodeo fleet portal status`, or add --force to terminate them anyway."
                     )
                     raise SystemExit(1)
+        begin_operation(inventory_path, "fleet.deprovision")
         results = fleet_deprovision(
             inventory,
             host_ids=list(host_ids) or None,

@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import IO
 
 from .. import __version__
-from .tools import call, tool_map
+from .tools import call, tool_map, warn_if_no_allowlist
 
 #: Protocol revisions this server implements; the newest is its preference.
 SUPPORTED_PROTOCOLS = ("2024-11-05", "2025-03-26", "2025-06-18")
@@ -180,6 +180,7 @@ def serve(
     """
     reader = stdin or sys.stdin
     writer = stdout or sys.stdout
+    warn_if_no_allowlist()
     server = RodeoMCPServer(allow_write=allow_write, lab_dir=lab_dir)
     write_lock = threading.Lock()
     workers: list[threading.Thread] = []

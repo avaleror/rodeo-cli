@@ -1,6 +1,8 @@
 """Extension seams for plugins (rodeo-ai). Each is a no-op until a plugin registers.
 
-A plugin's ``register()`` (see :mod:`rodeo.plugins`) may call:
+rodeo itself runs one built-in sink, the per-lab events file
+(:mod:`rodeo.events_log`). A plugin's ``register()`` (see :mod:`rodeo.plugins`)
+may call:
 
 - :func:`register_event_sink`: receive one record per ``DeployRunner`` event,
   after redaction. Records are plain dicts (schema in :func:`event_record`).
@@ -54,9 +56,17 @@ def unregister_event_sink(callback: EventSink) -> None:
         _sinks.remove(callback)
 
 
+def _builtin_sinks() -> list[EventSink]:
+    """Sinks rodeo always runs: the per-lab events file (rodeo/events_log.py)."""
+    from .events_log import write_event
+
+    return [write_event]
+
+
 def event_sinks() -> list[EventSink]:
+    """Built-in sinks, then the ones plugins registered."""
     load_plugins()
-    return list(_sinks)
+    return _builtin_sinks() + list(_sinks)
 
 
 def event_record(event: Any, *, lab: str | None, phase: str | None,

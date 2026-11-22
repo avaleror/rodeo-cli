@@ -36,7 +36,9 @@ def _req(method, params=None, req_id=1):
 def test_no_sink_is_a_plain_pass_through(fake_profile, fake_cfg, tmp_path):
     events = list(DeployRunner(fake_cfg, tmp_path).run())
     assert [type(e).__name__ for e in events][-1] == "DeployComplete"
-    assert hooks.event_sinks() == []
+    from rodeo.events_log import write_event
+
+    assert hooks.event_sinks() == [write_event]  # only the built-in events file
 
 
 def test_plugin_registered_sink_receives_events(fake_profile, fake_cfg, tmp_path, monkeypatch):

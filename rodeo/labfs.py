@@ -156,3 +156,54 @@ def clear_lab_path(lab: Path, rel: str | Path) -> Path:
     finally:
         os.close(dfd)
     return path
+
+
+def append_lab_file(lab: Path, rel: str | Path, data: str | bytes, mode: int = 0o600,
+                    max_bytes: int | None = None) -> Path:
+    """Append ``data`` to ``lab/rel``, relative to the checked directory's fd.
+
+    A symlink at ``rel`` is refused (``O_NOFOLLOW``), and so is a hard link or a
+    non-regular file, so a link planted in the lab can't redirect a root write.
+    The file is ``mode`` (0600) on every write. When running as root, a new file
+    is handed to the lab directory's owner. With ``max_bytes``, a file that this
+    write would push past it is first renamed to ``<name>.1`` (replacing the
+    previous one): one old file is kept.
+    """
+    import fcntl
+
+    rel = Path(rel)
+    raw = data.encode() if isinstance(data, str) else data
+    dfd = _open_dir(Path(lab), rel.parent)
+    try:
+        name = rel.name
+        if max_bytes is not None:
+            try:
+                st = os.stat(name, dir_fd=dfd, follow_symlinks=False)
+            except FileNotFoundError:
+                st = None
+            if st is not None and stat.S_ISREG(st.st_mode) and st.st_size + len(raw) > max_bytes:
+                os.replace(name, f"{name}.1", src_dir_fd=dfd, dst_dir_fd=dfd)
+        try:
+            fd = os.open(name, os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
+                         mode, dir_fd=dfd)
+        except OSError as exc:
+            raise ConfigError(f"{lab / rel}: cannot append ({exc.strerror}): rodeo does not "
+                              "write through links in a lab")
+        with os.fdopen(fd, "ab") as fh:
+            st = os.fstat(fh.fileno())
+            if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1:
+                raise ConfigError(f"{lab / rel} is a hard link or not a regular file: refusing it")
+            fcntl.flock(fh, fcntl.LOCK_EX)
+            os.fchmod(fh.fileno(), mode)
+            if os.geteuid() == 0:
+                # A root deploy in a user's lab: the user keeps reading the file.
+                owner = os.stat(os.path.realpath(lab))
+                if owner.st_uid != 0:
+                    if st.st_uid == 0:
+                        os.fchown(fh.fileno(), owner.st_uid, owner.st_gid)
+                    if rel.parent != Path(".") and os.fstat(dfd).st_uid == 0:
+                        os.fchown(dfd, owner.st_uid, owner.st_gid)
+            fh.write(raw)
+    finally:
+        os.close(dfd)
+    return Path(os.path.realpath(lab)) / rel

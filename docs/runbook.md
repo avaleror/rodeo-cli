@@ -21,6 +21,23 @@ If you are not sure what changed, force a full re-run of the failed phase:
 rodeo deploy --from kvm_host --force   # re-run everything from phase kvm_host
 ```
 
+**Look back at a run:** every deploy appends its events to
+`<lab>/.rodeo/events.jsonl` (mode 0600), one JSON object per line, with known
+secret values masked:
+
+```bash
+jq -r 'select(.kind=="PhaseFailed") | "\(.phase) rc=\(.rc) \(.text)"' .rodeo/events.jsonl
+```
+
+Schema v0: `ts` (Unix time), `lab` (lab realpath), `phase` (null before the
+first phase), `kind` (`PhaseStarted`, `PhaseSkipped`, `PhaseDone`,
+`PhaseFailed`, `LogLine`, `ProgressUpdate`, `DeployComplete`), `text` (log
+line, failure message, skip reason or progress step), `rc` (PhaseFailed only),
+`elapsed` (seconds, PhaseDone and ProgressUpdate) and `v` (0). At 10 MB the
+file moves to `events.jsonl.1`, replacing the older one. rodeo writes it
+relative to the lab's directory and refuses a symlink or hard link there; a
+write that fails is logged once and never stops the deploy.
+
 ---
 
 ## Harvester install appears stuck: stuck vs timed out

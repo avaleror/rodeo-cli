@@ -21,6 +21,7 @@ import hashlib
 import ipaddress
 import os
 import re
+import stat
 import struct
 import subprocess
 import warnings
@@ -293,7 +294,7 @@ _UNHASHED_TOP = frozenset({
     "workshop", "workshop-guide", "workshop-guide.pdf",         # labinabox_phase.py
     ".builder-deploy.log",                                      # builder/deploywork.py
 })
-_UNHASHED_TOP_PREFIXES = (".content.",)  # content.fetch's temporary checkout
+_UNHASHED_TOP_PREFIXES = (".content.", ".workshop.")  # temporary checkouts
 _UNHASHED_NESTED = frozenset({"story/strings"})  # rmstory's translation store (story.py)
 _UNHASHED_ANY = frozenset({".git", "__pycache__"})
 
@@ -341,7 +342,11 @@ def lab_problems(lab_dir: str | Path) -> list[str]:
     the paths rodeo writes (their content would escape the hash)."""
     lab = Path(os.path.realpath(lab_dir))
     problems = []
-    for link in _walk_lab(lab)[1]:
+    files, links = _walk_lab(lab)
+    for path in files:
+        if not stat.S_ISREG(path.lstat().st_mode):
+            problems.append(f"{path.relative_to(lab)} is not a regular file (FIFO, socket or device)")
+    for link in links:
         rel = str(link.relative_to(lab))
         target = Path(os.path.realpath(link))
         try:
@@ -351,6 +356,11 @@ def lab_problems(lab_dir: str | Path) -> list[str]:
             continue
         if _unhashed(trel):
             problems.append(f"{rel} is a symlink into {trel}, which trust does not cover")
+        elif not target.is_file() or not stat.S_ISREG(target.stat().st_mode):
+            # A directory link (custom/scripts -> ..) would let later, unhashed
+            # files such as *.log run as custom scripts.
+            problems.append(f"{rel} is a symlink to a directory or special file: only links "
+                            "to regular files inside the lab are allowed")
     return problems
 
 
@@ -374,6 +384,9 @@ def lab_fingerprint(lab_dir: str | Path) -> str:
     lab = Path(os.path.realpath(lab_dir))
     h = hashlib.sha256()
     files, links = _walk_lab(lab)
+    # Never open a FIFO or device (it would hang or read forever): such a lab
+    # has lab_problems() and can't be trusted anyway.
+    files = [p for p in files if stat.S_ISREG(p.lstat().st_mode)]
     for path in sorted(files + links):
         rel = str(path.relative_to(lab))
         if path.is_symlink():
@@ -382,7 +395,7 @@ def lab_fingerprint(lab_dir: str | Path) -> str:
                 trel = str(target.relative_to(lab))
             except ValueError:
                 trel = str(target)
-            content = target.read_bytes() if target.is_file() else b""
+            content = target.read_bytes() if target.is_file() and stat.S_ISREG(target.stat().st_mode) else b""
             _record(h, rel, b"L", trel.encode() + b"\0" + hashlib.sha256(content).digest())
         else:
             _record(h, rel, b"F", path.read_bytes())
@@ -404,8 +417,12 @@ def has_hashed_files(lab_dir: str | Path) -> bool:
 _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 _VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+_-]*$")
 _FILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
-_EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$")
-_HOSTNAME_RE = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*$")
+_EMAIL_RE = re.compile(r"^[A-Za-z0-9._+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$")
+_HOSTNAME_RE = re.compile(
+    r"^(?=.{1,253}$)[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+    r"(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$"
+)
+_IP_CHARS_RE = re.compile(r"^[0-9A-Fa-f:.]+(/[0-9]{1,3})?$")
 _LANG_RE = re.compile(r"^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$")
 _PARAM_SCALAR_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:@+-]*$")
 
@@ -424,7 +441,7 @@ def _number(v: Any) -> bool:
 
 def _matches(rx: re.Pattern) -> Any:
     return lambda v: (isinstance(v, str) or _is_int(v) or isinstance(v, float)) \
-        and not isinstance(v, bool) and bool(rx.match(str(v)))
+        and not isinstance(v, bool) and str(v).isascii() and bool(rx.fullmatch(str(v)))
 
 
 def _version_value(v: Any) -> bool:
@@ -432,19 +449,29 @@ def _version_value(v: Any) -> bool:
 
 
 def _net_value(v: Any) -> bool:
-    if not isinstance(v, str):
+    """An IP, a CIDR or a host name, written canonically. No IPv6 scope id:
+    ipaddress accepts "fe80::1%<anything>", which then lands in a shell script."""
+    if not isinstance(v, str) or not v.isascii():
         return False
-    for parse in (ipaddress.ip_address, ipaddress.ip_network):
+    if _IP_CHARS_RE.fullmatch(v):
         try:
-            parse(v)
-            return True
+            return str(ipaddress.ip_address(v)) == v
         except ValueError:
             pass
-    return bool(_HOSTNAME_RE.match(v))
+        try:
+            return str(ipaddress.ip_network(v, strict=False)) == v or \
+                str(ipaddress.ip_interface(v)) == v
+        except ValueError:
+            return False
+    return bool(_HOSTNAME_RE.fullmatch(v))
+
+
+_FACT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+,=-]{0,255}$")
 
 
 def _fact_value(v: Any) -> bool:
-    return isinstance(v, (str, int, float)) and not isinstance(v, bool) and len(str(v)) <= 256
+    """Guide text, but no spaces, shell or markup metacharacters."""
+    return _matches(_FACT_RE)(v)
 
 
 # (dotted pattern, value check); "*" is exactly one segment.
@@ -496,7 +523,7 @@ def _rule_for(path: str) -> Any:
 def _template_param_ok(value: Any) -> bool:
     if isinstance(value, bool) or _is_int(value) or isinstance(value, float):
         return True
-    return isinstance(value, str) and bool(_PARAM_SCALAR_RE.match(value))
+    return isinstance(value, str) and value.isascii() and bool(_PARAM_SCALAR_RE.fullmatch(value))
 
 
 def _reject_disallowed_keys(
@@ -504,7 +531,7 @@ def _reject_disallowed_keys(
 ) -> None:
     for key, value in overrides:
         for path, leaf in _override_paths(str(key), value):
-            if path in template_params:
+            if path in template_params and _rule_for(path) is None:
                 if not _template_param_ok(value):
                     raise ConfigError(
                         f"{where} {path}: a template parameter takes a plain scalar "
@@ -530,29 +557,30 @@ def _reject_disallowed_keys(
 # and status/plan/clean connect with it, so every URI from a plan, an override or
 # the command line is checked before rodeo opens it.
 _LIBVIRT_SCHEMES = ("qemu", "qemu+ssh", "qemu+tls", "qemu+tcp")
-_LIBVIRT_BAD_PARAMS = ("command", "netcat", "socket", "keyfile", "proxy", "mode")
+_LIBVIRT_NETLOC_RE = re.compile(
+    r"^([a-z_][a-z0-9_-]{0,31}@)?"
+    r"(?=.{1,253}(:|$))[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+    r"(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*"
+    r"(:[0-9]{1,5})?$"
+)
+_LIBVIRT_URI_RE = re.compile(r"^(qemu|qemu\+ssh|qemu\+tls|qemu\+tcp)://([^/?#]*)(/system|/session)$")
 
 
 def validate_libvirt_uri(uri: Any, where: str = "libvirt.uri") -> str:
-    from urllib.parse import parse_qs, urlsplit
-
+    """No query string or fragment at all (libvirt also splits parameters on ';'
+    and reads command=, netcat=, socket=, keyfile=, known_hosts=...), a plain
+    [user@]host[:port], and exactly /system or /session."""
     text = str(uri or "")
-    if not text or any(c.isspace() for c in text) or "'" in text or '"' in text:
-        raise ConfigError(f"{where} {text!r} is not a libvirt URI rodeo accepts")
-    parts = urlsplit(text)
-    params = parse_qs(parts.query, keep_blank_values=True)
-    ok = (
-        parts.scheme in _LIBVIRT_SCHEMES
-        and parts.path in ("/system", "/session")
-        and not parts.fragment
-        and not any(k.lower() in _LIBVIRT_BAD_PARAMS for k in params)
-        and (parts.scheme != "qemu" or (not parts.netloc and not parts.query))
+    m = _LIBVIRT_URI_RE.fullmatch(text) if text.isascii() else None
+    netloc = m.group(2) if m else ""
+    ok = bool(m) and (
+        (m.group(1) == "qemu" and netloc == "")
+        or (m.group(1) != "qemu" and bool(_LIBVIRT_NETLOC_RE.fullmatch(netloc)))
     )
     if not ok:
         raise ConfigError(
             f"{where} {text!r} is not allowed: use qemu:///system, qemu:///session or "
-            "qemu+ssh://user@host/system, with no command, netcat, socket, keyfile or "
-            "proxy parameters"
+            "qemu+ssh://user@host[:port]/system, with no query parameters"
         )
     return text
 

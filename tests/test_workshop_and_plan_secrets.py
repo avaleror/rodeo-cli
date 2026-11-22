@@ -262,3 +262,58 @@ def test_guide_pdf_failure_only_warns(tmp_path):
     lines = [e.line for e in phase._stream_guide_pdf(runner, track) if isinstance(e, LogLine)]
     assert any("No Chromium" in line and "needs pandoc" in line for line in lines)
     assert runner._last_rc == 0
+
+
+def test_workshop_fetch_replaces_an_existing_checkout(tmp_path):
+    """workshop/ is cloned fresh and swapped in: planted untracked files and a planted
+    .git/config (hooks, fsmonitor) in an old checkout never survive or run."""
+    import shutil as _shutil
+    import subprocess as _sp
+
+    from rodeo.engine import labinabox_phase as phase
+    from rodeo.engine.runner import LogLine
+
+    if _shutil.which("git") is None:
+        import pytest as _pytest
+        _pytest.skip("git is not installed")
+    repo = tmp_path / "repo"
+    (repo / "tracks" / "t").mkdir(parents=True)
+    (repo / "tracks" / "t" / "README.md").write_text("real\n")
+    git = ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t"]
+    _sp.run(["git", "init", "-q", "-b", "main", str(repo)], check=True)
+    _sp.run([*git, "add", "-A"], check=True)
+    _sp.run([*git, "commit", "-qm", "c"], check=True)
+
+    lab = tmp_path / "lab"
+    old = lab / "workshop"
+    (old / "tools").mkdir(parents=True)
+    (old / "tools" / "yaml.py").write_text("raise SystemExit('planted')\n")
+    marker = tmp_path / "hook-ran"
+    _sp.run(["git", "init", "-q", str(old)], check=True)
+    (old / ".git" / "hooks" / "post-checkout").write_text(f"#!/bin/sh\ntouch {marker}\n")
+    (old / ".git" / "hooks" / "post-checkout").chmod(0o755)
+
+    class Runner:
+        cfg = {"config_dir": str(lab)}
+        root = lab
+        _last_rc = 0
+
+        def _stream_subprocess(self, cmd, env=None):
+            r = _sp.run(cmd, capture_output=True, text=True)
+            self._last_rc = r.returncode
+            yield LogLine(r.stderr.strip())
+
+    spec = workshop_spec({"workshop": {"repo": "https://x/y", "track": "t", "branch": "main"}})
+    spec["repo"] = str(repo)  # a local repository stands in for the https remote
+    list(phase._stream_workshop(Runner(), spec, {"nodes": {}}))
+    assert (lab / "workshop" / "tracks" / "t" / "README.md").read_text() == "real\n"
+    assert not (lab / "workshop" / "tools" / "yaml.py").exists()
+    assert not marker.exists()
+    assert not list(lab.glob(".workshop.*"))
+
+
+def test_git_fetch_commands_disable_hooks_and_fsmonitor(tmp_path):
+    from rodeo.labinabox_host import fetch_commands
+
+    for cmd in fetch_commands("https://x/y", "main", tmp_path / "d"):
+        assert "core.hooksPath=/dev/null" in cmd and "core.fsmonitor=false" in cmd

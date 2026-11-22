@@ -151,15 +151,32 @@ def _stream_workshop(runner: "DeployRunner", spec: dict, lab: dict) -> Iterator[
     """Fetch the track into <lab>/workshop, record the commit, render the guide."""
     from .runner import LogLine
 
+    import shutil
+    import tempfile
+
     dest = workshop.checkout_path(lab_dir(runner))
     yield LogLine(f"Fetching workshop track '{spec['track']}' ({spec['ref'] or spec['branch']})...")
-    for cmd in workshop.track_fetch_commands(spec, dest):
-        yield from _run(runner, cmd)
-        if runner._last_rc != 0:
-            yield LogLine("  ⚠  workshop track fetch failed — the lab itself is unaffected")
-            return
-    head = subprocess.run(["git", "-C", str(dest), "rev-parse", "HEAD"], capture_output=True, text=True)
-    commit = head.stdout.strip()
+    # Clone into a fresh directory and swap it in, like content.fetch: an existing
+    # workshop/ could carry a planted .git/config, hooks or untracked files.
+    work = Path(tempfile.mkdtemp(prefix=".workshop.", dir=lab_dir(runner)))
+    fresh = work / "checkout"
+    try:
+        for cmd in workshop.track_fetch_commands(spec, fresh):
+            yield from _run(runner, cmd)
+            if runner._last_rc != 0:
+                yield LogLine("  ⚠  workshop track fetch failed — the lab itself is unaffected")
+                return
+        head = subprocess.run(["git", "-c", "core.fsmonitor=false", "-C", str(fresh), "rev-parse", "HEAD"],
+                              capture_output=True, text=True)
+        commit = head.stdout.strip()
+        if dest.exists() or dest.is_symlink():
+            if dest.is_dir() and not dest.is_symlink():
+                shutil.rmtree(dest)
+            else:
+                dest.unlink()
+        fresh.rename(dest)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
     lock = lab_dir(runner) / ".labinabox" / "workshop.lock"
     lock.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     lock.write_text(workshop.lock_text(spec, commit))

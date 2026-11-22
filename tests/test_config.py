@@ -986,3 +986,91 @@ def test_cwd_lab_dir_picks_up_local_definition(tmp_path, monkeypatch):
     cfg = config.load_config("rodeo-plan.yaml")
     harvester_nodes = [n for n in cfg["vms"] if n.startswith("harvester")]
     assert len(harvester_nodes) == 2
+
+
+_META = [";", "$(", "`", "'", '"', "|", "&", ">", "<", " ", "%", "\\", "\n", "\x00",
+         "\u037e", "\uff1b", "\u2019", "\u0430"]  # greek ;, fullwidth ;, quote, cyrillic a
+
+
+def _sample(pattern: str) -> tuple[str, object]:
+    """A key path for the rule and a value it accepts."""
+    path = pattern.replace("*", "harvester" if pattern.startswith(("resources", "versions")) else "x")
+    if pattern == "resources.*.*":
+        path = "resources.harvester.memory_mib"
+    good = {"name": "demo", "type": "rancher", "deployment_target": "baremetal", "instance": 1,
+            "resources.harvester.memory_mib": 8192, "versions.harvester": "1.8.2",
+            "network.x": "10.0.0.1", "libvirt.disk_cache": "none", "libvirt.disk_io": "native",
+            "rancher_tls.email": "ops@rodeo.test", "elemental.registrations": 2,
+            "lab_in_a_box.variant": "aws", "lab_in_a_box.iso_image": "leap.qcow2",
+            "provider.region": "eu-north-1", "provider.instance_type": "m8id.4xlarge",
+            "provider.ttl_hours": 6, "story.language": "es", "story.id": "arc",
+            "content.facts.x": "value"}[path]
+    return path, good
+
+
+@pytest.mark.parametrize("pattern", config.PARAM_ALLOWLIST)
+@pytest.mark.parametrize("meta", _META)
+def test_every_allowlisted_key_refuses_metacharacters(pattern, meta):
+    """Every -P key, every shell/markup metacharacter (and lookalikes): refused."""
+    path, good = _sample(pattern)
+    check = config._rule_for(path)
+    assert check is not None and check(good), (path, good)
+    for bad in (f"{good}{meta}", f"{meta}{good}", f"{good}{meta}id"):
+        assert not check(bad), (path, bad)
+
+
+@pytest.mark.parametrize("value", ["fe80::1%$(reboot)", "fe80::1%eth0", "10.0.0.1 ", "010.000.000.001",
+                                   "::ffff:10.0.0.1%x", "10.0.0.1/33", "-host", "a..b"])
+def test_network_values_are_strict(value):
+    assert not config._net_value(value)
+
+
+@pytest.mark.parametrize("value", ["10.0.0.1", "192.168.122.0/24", "fe80::1", "rodeo.lab", "kvm-1.example.lab"])
+def test_network_values_accept_canonical_forms(value):
+    assert config._net_value(value)
+
+
+@pytest.mark.parametrize("uri", [
+    "qemu+ssh://root@h/system?x=1;netcat=/tmp/nc",
+    "qemu+ssh://root@h/system?no_verify=1",
+    "qemu+ssh://root@h/system?known_hosts=/tmp/k",
+    "qemu+ssh://root@h/system?sshauth=agent",
+    "qemu+ssh://-oProxyCommand=x/system",
+    "qemu+ssh://root@-h/system",
+    "qemu+ssh://root@h%3Bid/system",
+    "QEMU:///system",
+    "qemu:///system#frag",
+    "qemu:///system/",
+    "qemu+ssh://root@h/system;netcat=x",
+])
+def test_libvirt_uri_strict_forms(uri):
+    with pytest.raises(config.ConfigError, match="not allowed"):
+        config.validate_libvirt_uri(uri)
+
+
+def test_directory_symlink_blocks_trust(tmp_path):
+    """custom/scripts -> .. would run later, unhashed root files (*.log) as scripts."""
+    plan = _lab(tmp_path, "lab", _pw("Secret123"))
+    (plan.parent / "custom").mkdir()
+    (plan.parent / "custom" / "scripts").symlink_to("..")
+    with pytest.raises(config.UntrustedLab, match="directory"):
+        config.trust_lab(plan.parent)
+    assert not config.is_lab_trusted(plan.parent)
+
+
+def test_special_file_blocks_trust_without_hanging(tmp_path):
+    import os
+
+    plan = _lab(tmp_path, "lab", _pw("Secret123"))
+    os.mkfifo(plan.parent / "pipe")
+    with pytest.raises(config.UntrustedLab, match="not a regular file"):
+        config.trust_lab(plan.parent)
+    config.lab_fingerprint(plan.parent)  # returns instead of blocking on the FIFO
+
+
+def test_template_parameter_named_like_an_allowlisted_key_gets_its_check(tmp_path):
+    plan = tmp_path / "rodeo-plan.yaml"
+    plan.write_text("parameters:\n  name: demo\nname: \"{{ name }}\"\n")
+    assert config.load_config(plan, params=("name=lab-2",))["name"] == "lab-2"
+    with pytest.raises(config.ConfigError, match="not a valid value"):
+        config.load_config(plan, params=("name=Lab_2:x",))

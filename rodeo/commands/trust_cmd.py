@@ -110,6 +110,10 @@ def trust_cmd(
     seeds into an empty directory from its bundled profiles are trusted already.
     Content repositories fetched by URL are trusted by URL and ref, not commit.
 
+    The hash is checked when a write command loads the lab; a long deploy reads
+    custom scripts and manifests later. A file changed during that window is
+    used as changed, so only edit a lab while nothing is deploying it.
+
     Read commands (plan, status, ...) never resolve secrets. -P and --paramfile
     are ignored here, and may not carry `??` anywhere.
 

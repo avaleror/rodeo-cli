@@ -134,9 +134,11 @@ def fetch_commands(repo: str, ref: str, dest: Path) -> list[list[str]]:
     Shallow fetch of the single ref, IPv4 only (Instruqt hosts have no IPv6
     route while GitHub publishes AAAA records).
     """
-    git = ["git", "-C", str(dest)]
+    # No hooks and no fsmonitor, whatever a planted .git/config says.
+    safe = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"]
+    git = ["git", *safe, "-C", str(dest)]
     return [
-        ["git", "init", "-q", str(dest)],
+        ["git", *safe, "init", "-q", str(dest)],
         git + ["fetch", "--ipv4", "-q", "--depth", "1", repo, ref],
         git + ["checkout", "-q", "--force", "FETCH_HEAD"],
     ]

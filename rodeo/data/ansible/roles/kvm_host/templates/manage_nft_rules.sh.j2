@@ -6,7 +6,7 @@
 # when any Harvester cluster node is running, and removes it when all nodes are stopped.
 # The nft table and chain are created once and never torn down.
 
-VIRTUAL_IP="{{ harvester_vip }}"
+VIRTUAL_IP={{ harvester_vip | quote }}
 VM_NAMES=({{ harvester_node_names | join(' ') }})
 NFT_TABLE="ip"
 NFT_TABLE_NAME="nat"

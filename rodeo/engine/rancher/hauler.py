@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Generator
 
+from ...shellquote import heredoc, q
 from ..runner import DeployEvent, LogLine
 
 
@@ -32,15 +33,17 @@ class HaulerMixin:
         # baseImage, so it gets decompressed after staging (see the curl/xz block
         # below). self.raw_fname (used in content.py) is the name EIB
         # definitions actually reference.
-        raw_decompress_cmd = f'xz -d -f "/home/eib-config/base-images/{raw_fname_dl}"\n'
+        raw_decompress_cmd = f"xz -d -f {q('/home/eib-config/base-images/' + raw_fname_dl)}\n"
 
+        # Written inside two nested quoted heredocs (K3S_REG, then EOF).
+        mirror_host = heredoc(heredoc(str(self.eib_ip), "K3S_REG"), "EOF")
         script = (
             "set -euo pipefail\n"
             "STORE=/var/lib/hauler\n"
             "HAULER=/usr/local/bin/hauler\n\n"
             # Mirror the EIB container image into Hauler so participants can run
             # EIB without internet access from the eib VM.
-            f'$HAULER store add image "{self.eib_image}" --store $STORE\n'
+            f"$HAULER store add image {q(self.eib_image)} --store $STORE\n"
             # Elemental register agent — EIB embeds this into the edge node image
             # so nodes can phone home to the Elemental Operator on first boot.
             # There is no standalone "elemental-register" image at registry.suse.com
@@ -49,10 +52,10 @@ class HaulerMixin:
             # (confirmed live: registry.suse.com/rancher/elemental-operator:1.9.0
             # pulls fine; this is the exact image already deployed by the elemental
             # phase's own Helm install a few steps earlier).
-            f'$HAULER store add image "registry.suse.com/rancher/elemental-operator:{self.elemental_op_version}" --store $STORE\n'
+            f"$HAULER store add image {q(f'registry.suse.com/rancher/elemental-operator:{self.elemental_op_version}')} --store $STORE\n"
             # Demo app image (Fleet-deployed to edge clusters, from cfg["alien_geeko"]["image"]);
             # edge nodes pull from Hauler via k3s registry mirror (docker.io → eib:5000).
-            f'$HAULER store add image "{self.alien_geeko_image}" --store $STORE\n'
+            f"$HAULER store add image {q(self.alien_geeko_image)} --store $STORE\n"
             # Leap Micro 6.2 SelfInstall ISO — EIB base for Elemental ISO builds (edge1/edge2).
             # Download via curl, not hauler's own HTTP client: opensuse.org's
             # redirector picks a rotating mirror, and at least one observed mirror
@@ -61,12 +64,12 @@ class HaulerMixin:
             # in this codebase for large downloads) negotiates it fine. Then add the
             # already-downloaded local file with an explicit lowercase --name.
             f'curl -4 --http1.1 -fsSL --retry 5 --retry-delay 10 --retry-all-errors '
-            f'-o "/tmp/{iso_fname}" "{self.leap_micro_iso_url}"\n'
+            f'-o "/tmp/{iso_fname}" {q(self.leap_micro_iso_url)}\n'
             f'$HAULER store add file "/tmp/{iso_fname}" --name "{iso_fname}" --store $STORE\n'
             f'rm -f "/tmp/{iso_fname}"\n'
             # Leap Micro 6.2 Default RAW (.xz) — EIB base for standalone K3s/RKE2 builds (edge3/edge4)
             f'curl -4 --http1.1 -fsSL --retry 5 --retry-delay 10 --retry-all-errors '
-            f'-o "/tmp/{raw_fname_dl}" "{self.leap_micro_raw_url}"\n'
+            f'-o "/tmp/{raw_fname_dl}" {q(self.leap_micro_raw_url)}\n'
             f'$HAULER store add file "/tmp/{raw_fname_dl}" --name "{raw_fname_dl}" --store $STORE\n'
             f'rm -f "/tmp/{raw_fname_dl}"\n'
             # elemental-register/elemental-system-agent RPMs — side-loaded into
@@ -74,11 +77,11 @@ class HaulerMixin:
             # registration code. Fixed lowercase local names, decoupled from the
             # upstream dev channel's exact (and possibly changing) filename.
             f'curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors '
-            f'-o "/tmp/elemental-register.rpm" "{self.elemental_register_rpm_url}"\n'
+            f'-o "/tmp/elemental-register.rpm" {q(self.elemental_register_rpm_url)}\n'
             f'$HAULER store add file "/tmp/elemental-register.rpm" --name "elemental-register.rpm" --store $STORE\n'
             f'rm -f "/tmp/elemental-register.rpm"\n'
             f'curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors '
-            f'-o "/tmp/elemental-system-agent.rpm" "{self.elemental_system_agent_rpm_url}"\n'
+            f'-o "/tmp/elemental-system-agent.rpm" {q(self.elemental_system_agent_rpm_url)}\n'
             f'$HAULER store add file "/tmp/elemental-system-agent.rpm" --name "elemental-system-agent.rpm" --store $STORE\n'
             f'rm -f "/tmp/elemental-system-agent.rpm"\n\n'
             # Enable and start Hauler services (service units written by cloud-init)
@@ -118,13 +121,13 @@ class HaulerMixin:
             "mirrors:\n"
             '  "docker.io":\n'
             "    endpoint:\n"
-            f'      - "http://{self.eib_ip}:5000"\n'
+            f'      - "http://{mirror_host}:5000"\n'
             '  "registry.suse.com":\n'
             "    endpoint:\n"
-            f'      - "http://{self.eib_ip}:5000"\n'
+            f'      - "http://{mirror_host}:5000"\n'
             '  "ghcr.io":\n'
             "    endpoint:\n"
-            f'      - "http://{self.eib_ip}:5000"\n'
+            f'      - "http://{mirror_host}:5000"\n'
             "EOF\n"
             "done\n"
             "K3S_REG\n"

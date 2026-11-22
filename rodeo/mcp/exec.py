@@ -15,6 +15,8 @@ DEFAULT_TIMEOUT = 7200
 #: Characters of combined output returned to the client; the tail is kept.
 MAX_OUTPUT = 100_000
 #: Seconds between SIGTERM and SIGKILL when a call's process group is stopped.
+#: A write tool's root rodeo (behind sudo) gets the SIGTERM through sudo and
+#: stops its own group within ``privilege.ROOT_STOP_GRACE``; this must outlast it.
 KILL_GRACE = 5.0
 #: Seconds between checks for a cancel while a call runs.
 POLL_INTERVAL = 0.1
@@ -64,7 +66,9 @@ def kill_group(proc: subprocess.Popen, grace: float | None = None) -> None:
     pgid = proc.pid
     try:
         os.killpg(pgid, signal.SIGTERM)
-    except ProcessLookupError:
+    except (ProcessLookupError, PermissionError):
+        # PermissionError: only root members are left (sudo already exited);
+        # the root rodeo stops those itself.
         return
     deadline = time.monotonic() + grace
     while time.monotonic() < deadline:
@@ -74,7 +78,7 @@ def kill_group(proc: subprocess.Popen, grace: float | None = None) -> None:
         time.sleep(0.05)
     try:
         os.killpg(pgid, signal.SIGKILL)
-    except ProcessLookupError:
+    except (ProcessLookupError, PermissionError):
         pass
 
 

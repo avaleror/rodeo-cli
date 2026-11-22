@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shlex
 import subprocess
 import threading
@@ -24,6 +25,8 @@ from typing import Generator, Iterator
 
 import yaml
 
+from ..config import ConfigError
+from ..shellquote import heredoc, q
 from .rancher import RancherPhase
 from .runner import DeployEvent, LogLine, ProgressUpdate
 
@@ -96,7 +99,10 @@ class TelcoPhase(RancherPhase):
         self.image_cache_port = int(cache.get("port", 8080))
         self.image_cache_hostname = cache.get("hostname", "imagecache.local")
         self.dns_domain = cfg.get("network", {}).get("dns_domain", "rodeo.lab")
-        self.image_name = cache.get("image_name", "eibimage-downstream-cluster.raw")
+        self.image_name = str(cache.get("image_name", "eibimage-downstream-cluster.raw"))
+        # A file name on mgmt, used in shell scripts and an scp destination.
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", self.image_name):
+            raise ConfigError(f"telco.image_cache.image_name {self.image_name!r} is not a plain file name")
         self.eib_image = f"registry.suse.com/edge/3.7/edge-image-builder:{ver.get('eib', '1.3.4')}"
         self.image_dir = Path(cfg.get("storage", {}).get("image_dir", "/var/lib/libvirt/images"))
         base = edition["base_image"]["path"]
@@ -340,7 +346,7 @@ class TelcoPhase(RancherPhase):
             for chunk in iter(lambda: f.read(1 << 22), b""):
                 local_sum.update(chunk)
         digest = local_sum.hexdigest()
-        have = self._ssh_run(f"cat {_IMAGE_CACHE_DIR}/{self.image_name}.sha256 2>/dev/null", timeout=15)
+        have = self._ssh_run(f"cat {q(f'{_IMAGE_CACHE_DIR}/{self.image_name}.sha256')} 2>/dev/null", timeout=15)
         if have.returncode == 0 and have.stdout.split()[:1] == [digest]:
             yield LogLine(f"  mgmt already serves this {self.image_name} (sha256 {digest[:12]}…).")
             return True
@@ -352,15 +358,16 @@ class TelcoPhase(RancherPhase):
         if r.returncode != 0:
             self.error = f"copy to mgmt failed: {r.stderr.strip()}"
             return False
+        img = self.image_name
         script = (
             "set -euo pipefail\n"
             f"cd {_IMAGE_CACHE_DIR}\n"
-            f"echo '{digest}  {self.image_name}.partial' | sha256sum -c --quiet\n"
-            f"mv {self.image_name}.partial {self.image_name}\n"
+            f"echo {q(f'{digest}  {img}.partial')} | sha256sum -c --quiet\n"
+            f"mv {q(f'{img}.partial')} {q(img)}\n"
             # The checksum file Metal3MachineTemplate.image.checksum points at.
-            f"echo '{digest}  {self.image_name}' > {self.image_name}.sha256\n"
-            f"chmod 644 {self.image_name} {self.image_name}.sha256\n"
-            f"curl -sfI http://127.0.0.1:{self.image_cache_port}/{self.image_name} >/dev/null\n"
+            f"echo {q(f'{digest}  {img}')} > {q(f'{img}.sha256')}\n"
+            f"chmod 644 {q(img)} {q(f'{img}.sha256')}\n"
+            f"curl -sfI {q(f'http://127.0.0.1:{self.image_cache_port}/{img}')} >/dev/null\n"
         )
         if not (yield from self._script_step(script, 300, "image cache publish failed")):
             return False
@@ -445,7 +452,7 @@ class TelcoPhase(RancherPhase):
             "set -euo pipefail\n"
             f"export KUBECONFIG={self.KUBECONFIG}\n"
             "kubectl apply -f - <<'RODEO_BMH_EOF'\n"
-            f"{self.baremetalhost_manifest()}"
+            f"{heredoc(self.baremetalhost_manifest(), 'RODEO_BMH_EOF')}"
             "RODEO_BMH_EOF\n"
         )
         if not (yield from self._script_step(script, 120, "BareMetalHost apply failed")):
@@ -523,7 +530,7 @@ class TelcoPhase(RancherPhase):
             "set -euo pipefail\n"
             "mkdir -p /etc/rancher/rke2\n"
             "cat > /etc/rancher/rke2/config.yaml <<'RODEO_RKE2_EOF'\n"
-            f"{config}"
+            f"{heredoc(config, 'RODEO_RKE2_EOF')}"
             "RODEO_RKE2_EOF\n"
             "if ! systemctl is-active --quiet rke2-server; then\n"
             f"  curl -sfL https://get.rke2.io | INSTALL_RKE2_VERSION={shlex.quote(self.rke2_version)} sh -\n"
@@ -541,7 +548,7 @@ class TelcoPhase(RancherPhase):
             "test -x /var/lib/rancher/rke2/bin/kubectl\n"
             "ln -sf /var/lib/rancher/rke2/bin/kubectl /usr/local/bin/kubectl\n"
             f"install -d -m 700 /root/.kube && install -m 600 {self.KUBECONFIG} /root/.kube/config\n"
-            f"kubectl --kubeconfig={self.KUBECONFIG} get node {self.mgmt_hostname} --no-headers"
+            f"kubectl --kubeconfig={self.KUBECONFIG} get node {q(self.mgmt_hostname)} --no-headers"
             " | awk '{print $2}'\n"
         )
         t0 = time.monotonic()
@@ -574,7 +581,7 @@ class TelcoPhase(RancherPhase):
             "set -euo pipefail\n"
             f"export KUBECONFIG={self.KUBECONFIG}\n"
             "cat > /root/metal3-values.yaml <<'RODEO_METAL3_EOF'\n"
-            f"{values}"
+            f"{heredoc(values, 'RODEO_METAL3_EOF')}"
             "RODEO_METAL3_EOF\n"
             f"helm upgrade --install metal3 {_CHARTS}/metal3"
             f" --version {shlex.quote(self.metal3_version)}"
@@ -691,10 +698,10 @@ class TelcoPhase(RancherPhase):
             f"export KUBECONFIG={self.KUBECONFIG}\n"
             f"install -d -m 755 {_IMAGE_CACHE_DIR}\n"
             "kubectl apply -f - <<'RODEO_IMAGECACHE_EOF'\n"
-            f"{self.image_cache_manifest()}"
+            f"{heredoc(self.image_cache_manifest(), 'RODEO_IMAGECACHE_EOF')}"
             "RODEO_IMAGECACHE_EOF\n"
             "kubectl -n imagecache rollout status deployment/imagecache --timeout=300s\n"
-            f"curl -sf -o /dev/null http://127.0.0.1:{self.image_cache_port}/\n"
+            f"curl -sf -o /dev/null http://127.0.0.1:{int(self.image_cache_port)}/\n"
         )
         return (yield from self._script_step(script, 420, "image cache did not start"))
 
@@ -783,7 +790,7 @@ class TelcoPhase(RancherPhase):
             f"export KUBECONFIG={self.KUBECONFIG}\n"
             f"install -d -m 750 -o 1000 -g 1000 {_GITEA_DIR}/data {_GITEA_DIR}/config\n"
             "kubectl apply -f - <<'RODEO_GITEA_EOF'\n"
-            f"{self.gitea_manifest()}"
+            f"{heredoc(self.gitea_manifest(), 'RODEO_GITEA_EOF')}"
             "RODEO_GITEA_EOF\n"
             "kubectl -n gitea rollout status deployment/gitea --timeout=300s\n"
             f"GITEA_USER={shlex.quote(self.gitea_user)}\n"
@@ -793,18 +800,21 @@ class TelcoPhase(RancherPhase):
             ' --username "$GITEA_USER" --password "$GITEA_PASS"'
             " --email gitea@rodeo.local --admin --must-change-password=false"
             ' >/dev/null 2>&1 || echo "admin user already exists"\n'
-            f"RC=$(curl -s -o /tmp/gitea-migrate.json -w '%{{http_code}}' -X POST {api}/repos/migrate"
+            f"API={q(api)}\n"
+            f"FLEET_REPO={q(self.alien_geeko_fleet_repo)}\n"
+            f"FLEET_NAME={q(self.alien_geeko_fleet_name)}\n"
+            "RC=$(curl -s -o /tmp/gitea-migrate.json -w '%{http_code}' -X POST \"$API/repos/migrate\""
             ' -u "$GITEA_USER:$GITEA_PASS" -H "Content-Type: application/json"'
             f" -d {shlex.quote(json.dumps(migrate))})\n"
             'case "$RC" in\n'
-            f'  200|201) echo "copied {self.alien_geeko_fleet_repo}" ;;\n'
-            f'  409) echo "{self.alien_geeko_fleet_name} already in Gitea" ;;\n'
+            '  200|201) echo "copied $FLEET_REPO" ;;\n'
+            '  409) echo "$FLEET_NAME already in Gitea" ;;\n'
             '  *) echo "migrate failed (HTTP $RC): $(cat /tmp/gitea-migrate.json)"; exit 1 ;;\n'
             "esac\n"
             # What Fleet will clone: the branch must be there.
-            f"curl -sf -o /dev/null {api}/repos/$GITEA_USER/{self.alien_geeko_fleet_name}"
-            f"/branches/{shlex.quote(self.alien_geeko_fleet_branch)}\n"
-            f'echo "Fleet repo: {self.gitea_repo_url}"\n'
+            'curl -sf -o /dev/null "$API/repos/$GITEA_USER/$FLEET_NAME"/branches/'
+            f"{shlex.quote(self.alien_geeko_fleet_branch)}\n"
+            f"echo {q('Fleet repo: ' + self.gitea_repo_url)}\n"
         )
         return (yield from self._script_step(script, 600, "Gitea mirror failed"))
 

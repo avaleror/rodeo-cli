@@ -219,13 +219,17 @@ def fleet_up_cmd(ctx: click.Context, inventory_path: Path, profile: str | None, 
         console.print(f"[red]✗  {exc}[/red]")
         raise SystemExit(1)
     with_portal = bool(inventory.portal and inventory.portal.enabled)
-    if inventory.provider is not None:
-        step("Provision")
-        ctx.invoke(fleet_provision_cmd, inventory_path=inventory_path, host_ids=(), output_fmt="text",
-                   no_wait_ssh=False, no_write=False, no_portal=False)
-    step("Deploy")
-    ctx.invoke(fleet_deploy_cmd, inventory_path=inventory_path, labels=(), host_ids=(),
-               concurrency=concurrency, output_fmt="text", force=False, ref=ref)
+    from ..hooks import operation
+
+    # One operation: the provision and deploy invoked below reuse it.
+    with operation(inventory_path, "fleet.up"):
+        if inventory.provider is not None:
+            step("Provision")
+            ctx.invoke(fleet_provision_cmd, inventory_path=inventory_path, host_ids=(), output_fmt="text",
+                       no_wait_ssh=False, no_write=False, no_portal=False)
+        step("Deploy")
+        ctx.invoke(fleet_deploy_cmd, inventory_path=inventory_path, labels=(), host_ids=(),
+                   concurrency=concurrency, output_fmt="text", force=False, ref=ref)
     if with_portal:
         step("Portal")
         ctx.invoke(portal_up_cmd, inventory_path=inventory_path, no_wait=False)

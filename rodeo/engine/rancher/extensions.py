@@ -1,9 +1,11 @@
 """Rancher UI extension repositories and declarative extension reconcile."""
 from __future__ import annotations
 
+import json
 import time
 from typing import Generator
 
+from ...shellquote import heredoc, q
 from ..runner import DeployEvent, LogLine
 
 
@@ -116,7 +118,7 @@ class UiExtensionsMixin:
         """Installed UIPlugin version, or '' if the extension is not present."""
         script = (
             f"export KUBECONFIG={self.KUBECONFIG}\n"
-            f"kubectl -n {ns} get uiplugins.catalog.cattle.io {name} "
+            f"kubectl -n {q(ns)} get uiplugins.catalog.cattle.io {q(name)} "
             "-o jsonpath='{.spec.plugin.version}' 2>/dev/null || true\n"
         )
         return self._ssh_script(script, timeout=30).stdout.strip()
@@ -126,11 +128,9 @@ class UiExtensionsMixin:
     ) -> Generator[DeployEvent, None, bool]:
         """Create the ClusterRepo if missing, then force a re-index."""
         ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        create_block = ""
+        create_script = ""
         if git_repo:
-            create_block = (
-                f"if ! kubectl get clusterrepo {repo_name} >/dev/null 2>&1; then\n"
-                "  cat <<'__EXT_REPO__' | kubectl apply -f -\n"
+            repo_yaml = (
                 "apiVersion: catalog.cattle.io/v1\n"
                 "kind: ClusterRepo\n"
                 "metadata:\n"
@@ -138,15 +138,20 @@ class UiExtensionsMixin:
                 "spec:\n"
                 f"  gitRepo: {git_repo}\n"
                 f"  gitBranch: {git_branch}\n"
+            )
+            create_script = (
+                f"if ! kubectl get clusterrepo {q(repo_name)} >/dev/null 2>&1; then\n"
+                "  cat <<'__EXT_REPO__' | kubectl apply -f -\n"
+                f"{heredoc(repo_yaml, '__EXT_REPO__')}"
                 "__EXT_REPO__\n"
                 "fi\n"
             )
         script = (
             "set -e\n"
             f"export KUBECONFIG={self.KUBECONFIG}\n"
-            f"{create_block}"
-            f"kubectl patch clusterrepo {repo_name} --type=merge "
-            f"-p '{{\"spec\":{{\"forceUpdate\":\"{ts}\"}}}}'\n"
+            f"{create_script}"
+            f"kubectl patch clusterrepo {q(repo_name)} --type=merge "
+            f"-p {q(json.dumps({'spec': {'forceUpdate': ts}}))}\n"
         )
         r = self._ssh_script(script, timeout=60)
         for line in (r.stdout + r.stderr).splitlines():
@@ -173,7 +178,7 @@ class UiExtensionsMixin:
         """True once the ClusterRepo's index has downloaded at/after `since` (UTC 'Z' timestamps sort lexicographically)."""
         script = (
             f"export KUBECONFIG={self.KUBECONFIG}\n"
-            f"kubectl get clusterrepo {repo_name} -o "
+            f"kubectl get clusterrepo {q(repo_name)} -o "
             "jsonpath='{.status.downloadTime}' 2>/dev/null || true\n"
         )
         downloaded = self._ssh_script(script, timeout=20).stdout.strip()

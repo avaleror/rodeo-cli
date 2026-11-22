@@ -5,6 +5,7 @@ import click
 from rich.console import Console
 
 from . import __version__
+from .commands.agent_setup_cmd import agent_setup_cmd
 from .commands.attach import attach_cmd
 from .commands.clean import clean_cmd
 from .commands.deploy import deploy_cmd
@@ -35,6 +36,7 @@ from .commands.start_if_needed_cmd import start_if_needed_cmd
 from .commands.self_update_cmd import self_update_cmd
 from .commands.set_password_cmd import set_password_cmd
 from .commands.trust_cmd import trust_cmd
+from .commands.lab_cmd import lab_cmd
 from .commands.up_cmd import up_cmd
 from .commands.pull_edge_image_cmd import pull_edge_image_cmd
 from .commands.eject_iso_cmd import eject_iso_cmd
@@ -93,6 +95,7 @@ cli.add_command(bootstrap_cmd,    name="bootstrap")
 cli.add_command(generate_cmd,     name="generate")
 cli.add_command(init_cmd,         name="init")
 cli.add_command(trust_cmd,        name="trust")
+cli.add_command(lab_cmd,          name="lab")
 cli.add_command(plan_cmd,         name="plan")
 cli.add_command(export_cmd,       name="export")
 cli.add_command(instances_cmd,    name="instances")
@@ -119,3 +122,4 @@ cli.add_command(eject_iso_cmd,        name="eject-iso")
 cli.add_command(fleet_cmd,            name="fleet")
 cli.add_command(destroy_cmd,          name="destroy")
 cli.add_command(mcp_cmd,              name="mcp")
+cli.add_command(agent_setup_cmd,      name="agent-setup")

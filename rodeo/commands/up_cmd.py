@@ -54,6 +54,7 @@ from ..privilege import (
     ensure_tmux_session,
     find_rodeo_bin,
     in_tmux,
+    install_root_sigterm_handler,
     is_root,
     sudo_prefix,
     tmux_available,
@@ -344,6 +345,11 @@ def _up(profile: str | None, name: str | None, lab_dir: str | None,
         console.print("Nothing deployed. Re-run [bold]rodeo up[/bold] when ready.")
         return
 
+    from ..hooks import begin_operation
+
+    # Once per `rodeo up`: the root re-exec (--resume) continues this operation.
+    begin_operation(lab, "up")
+
     if aws_control_plane:
         assert lab is not None
         _aws_control_plane_deploy(
@@ -387,6 +393,9 @@ def _up(profile: str | None, name: str | None, lab_dir: str | None,
         import atexit
 
         atexit.register(fix_invoking_ownership)
+        # The self re-exec lands here too (`up --resume` as root), so this is
+        # where it learns to stop its ansible/ssh group on a relayed SIGTERM.
+        install_root_sigterm_handler()
 
     _deploy(lab, assume_yes=assume_yes, reconcile=reconcile)
 

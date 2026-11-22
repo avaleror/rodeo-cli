@@ -26,6 +26,7 @@ from pathlib import Path
 
 from .config import ConfigError
 from .paths import rodeo_dir
+from .shellquote import q
 
 # Upstream lab-in-a-box and the ref rodeo deploys by default; LIAB_LATEST
 # resolves to the highest version tag at deploy time. Precedence:
@@ -458,22 +459,23 @@ def remote_ssh(spec: dict, identity: str) -> list[str]:
 def remote_upload_command(plan: str) -> str:
     """Store lab.json (read from stdin — never in argv) privately, plus the owner marker."""
     d = remote_lab_dir(plan)
-    return (f"umask 077 && mkdir -p {d} && cat > {d}/lab.json.tmp && mv {d}/lab.json.tmp {d}/lab.json"
-            f" && printf '%s\\n' {shlex.quote(owner_marker(plan))} > {d}/owner")
+    return (f"umask 077 && mkdir -p {q(d)} && cat > {q(d + '/lab.json.tmp')}"
+            f" && mv {q(d + '/lab.json.tmp')} {q(d + '/lab.json')}"
+            f" && printf '%s\\n' {shlex.quote(owner_marker(plan))} > {q(d + '/owner')}")
 
 
 def setup_command(lab_json: str, parallel: int | None = None) -> str:
-    cmd = f"{LIAB_BIN / 'setup_lab.py'} --keep"
+    cmd = f"{q(LIAB_BIN / 'setup_lab.py')} --keep"
     if parallel:
         cmd += f" --parallel={int(parallel)}"
-    return f"{cmd} {lab_json}"
+    return f"{cmd} {q(lab_json)}"
 
 
 def remote_destroy_command(plan: str) -> str:
     """destroy_lab.py for this lab only — refuses unless the owner marker matches."""
     d = remote_lab_dir(plan)
-    return (f"test \"$(cat {d}/owner 2>/dev/null)\" = {shlex.quote(owner_marker(plan))}"
-            f" && {LIAB_BIN / 'destroy_lab.py'} {d}/lab.json && rm -rf {d}")
+    return (f"test \"$(cat {q(d + '/owner')} 2>/dev/null)\" = {shlex.quote(owner_marker(plan))}"
+            f" && {q(LIAB_BIN / 'destroy_lab.py')} {q(d + '/lab.json')} && rm -rf {q(d)}")
 
 
 def addons_used(lab: dict) -> set[str]:
@@ -489,9 +491,9 @@ def addons_used(lab: dict) -> set[str]:
 
 def schema_commands(addons: set[str]) -> dict[str, str]:
     """Shell commands printing the installed lab-in-a-box schema (base + each addon)."""
-    cmds = {"_base": f"{LIAB_BIN / 'lab_schema'} --base json"}
+    cmds = {"_base": f"{q(LIAB_BIN / 'lab_schema')} --base json"}
     for addon in sorted(addons):
-        cmds[addon] = f"{LIAB_BIN / 'lab_schema'} {LIAB_BIN / ('install_' + addon)} json"
+        cmds[addon] = f"{q(LIAB_BIN / 'lab_schema')} {q(LIAB_BIN / ('install_' + addon))} json"
     return cmds
 
 

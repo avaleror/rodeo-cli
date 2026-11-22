@@ -5,7 +5,6 @@ import logging
 import stat
 
 import pytest
-import yaml
 
 from rodeo import state
 from rodeo.config import ConfigError
@@ -17,6 +16,7 @@ from rodeo.engine.runner import (
     PhaseDone,
     PhaseFailed,
     PhaseSkipped,
+    load_vars_file,
 )
 
 
@@ -153,7 +153,7 @@ def test_vars_file_wires_plan_and_is_private(fake_profile, fake_cfg, tmp_path):
     vars_file = runner._write_vars_file()
 
     assert stat.S_IMODE(vars_file.stat().st_mode) == 0o600
-    data = yaml.safe_load(vars_file.read_text())
+    data = load_vars_file(vars_file)
     assert data["harvester_os_password"] == "Secret123"
     # Nested structure: this is what roles/vms actually reads.
     assert data["libvirt_flavors"]["harvester"]["memory_mib"] == 4096
@@ -182,7 +182,7 @@ def test_vars_file_plan_checksum_overrides_unknown_version(fake_profile, fake_cf
         "harvester": "9.9.9",
         "harvester_iso_checksum": "sha512:" + "ab" * 64,
     }
-    data = yaml.safe_load(DeployRunner(fake_cfg, tmp_path)._write_vars_file().read_text())
+    data = load_vars_file(DeployRunner(fake_cfg, tmp_path)._write_vars_file())
     assert data["harvester_iso_checksum"] == "sha512:" + "ab" * 64
     assert data["rodeo_plan_name"] == "test-plan"
 
@@ -191,7 +191,7 @@ def test_vars_file_rancher_only_skips_iso_checksum(fake_profile, fake_cfg, tmp_p
     fake_cfg["versions"] = {"harvester": "9.9.9"}
     fake_cfg["vms"] = {"rancher": {"ip": "10.0.0.9", "user": "root"}}
     fake_cfg["harvester_node_names"] = []
-    data = yaml.safe_load(DeployRunner(fake_cfg, tmp_path)._write_vars_file().read_text())
+    data = load_vars_file(DeployRunner(fake_cfg, tmp_path)._write_vars_file())
     assert data["harvester_iso_checksum"] == ""
 
 
@@ -210,7 +210,7 @@ def test_vars_file_default_harvester_version_is_1_8_2(fake_profile, fake_cfg, tm
     default, with its checksum threaded through, not the old 1.8.1 one."""
     fake_cfg.pop("versions", None)
     vars_file = DeployRunner(fake_cfg, tmp_path)._write_vars_file()
-    data = yaml.safe_load(vars_file.read_text())
+    data = load_vars_file(vars_file)
     assert data["harvester_version"] == "1.8.2"
     assert data["harvester_iso_checksum"] == _HARVESTER_ISO_CHECKSUMS["1.8.2"]
 
@@ -219,7 +219,7 @@ def test_vars_file_passes_token_when_set(fake_profile, fake_cfg, tmp_path):
     fake_cfg["network"]["gateway"] = "10.0.0.1"
     fake_cfg["credentials"]["harvester_token"] = "tok-abc123"
     vars_file = DeployRunner(fake_cfg, tmp_path)._write_vars_file()
-    data = yaml.safe_load(vars_file.read_text())
+    data = load_vars_file(vars_file)
     assert data["harvester_token"] == "tok-abc123"
     assert data["libvirt_network_gateway"] == "10.0.0.1"
 
@@ -356,7 +356,7 @@ def test_write_vars_file_uses_rancher_vm_password_when_set_directly(fake_profile
     value must flow through, not get discarded in favor of harvester_os_password."""
     fake_cfg["vms"] = {"rancher": {"ip": "10.0.0.9", "user": "root"}, "eib": {"ip": "10.0.0.20", "user": "root"}}
     fake_cfg["credentials"] = {"rancher_vm_password": "EdgeSecret123", "rancher_admin_password": "Secret123"}
-    data = yaml.safe_load(DeployRunner(fake_cfg, tmp_path)._write_vars_file().read_text())
+    data = load_vars_file(DeployRunner(fake_cfg, tmp_path)._write_vars_file())
     assert data["rancher_vm_password"] == "EdgeSecret123"
 
 
@@ -370,20 +370,20 @@ def test_write_vars_file_warns_on_unexpected_inventory_error(
     with caplog.at_level(logging.WARNING):
         vars_file = DeployRunner(fake_cfg, tmp_path)._write_vars_file()
     assert "using role defaults" in caplog.text
-    data = yaml.safe_load(vars_file.read_text())
+    data = load_vars_file(vars_file)
     assert "vm_nodes" not in data
 
 
 def test_disk_driver_defaults_baremetal(fake_profile, fake_cfg, tmp_path):
     fake_cfg["deployment_target"] = "baremetal"
-    data = yaml.safe_load(DeployRunner(fake_cfg, tmp_path)._write_vars_file().read_text())
+    data = load_vars_file(DeployRunner(fake_cfg, tmp_path)._write_vars_file())
     assert data["libvirt_disk_cache"] == "none"
     assert data["libvirt_disk_io"] == "native"
 
 
 def test_disk_driver_defaults_instruqt(fake_profile, fake_cfg, tmp_path):
     fake_cfg["deployment_target"] = "instruqt"
-    data = yaml.safe_load(DeployRunner(fake_cfg, tmp_path)._write_vars_file().read_text())
+    data = load_vars_file(DeployRunner(fake_cfg, tmp_path)._write_vars_file())
     assert data["libvirt_disk_cache"] == "writeback"
     assert data["libvirt_disk_io"] == "threads"
 
@@ -395,6 +395,6 @@ def test_disk_driver_plan_override(fake_profile, fake_cfg, tmp_path):
         "disk_cache": "none",
         "disk_io": "native",
     }
-    data = yaml.safe_load(DeployRunner(fake_cfg, tmp_path)._write_vars_file().read_text())
+    data = load_vars_file(DeployRunner(fake_cfg, tmp_path)._write_vars_file())
     assert data["libvirt_disk_cache"] == "none"
     assert data["libvirt_disk_io"] == "native"

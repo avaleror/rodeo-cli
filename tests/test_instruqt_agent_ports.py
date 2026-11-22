@@ -10,7 +10,7 @@ from pathlib import Path
 import yaml
 
 import rodeo
-from rodeo.engine.runner import DeployRunner, LogLine
+from rodeo.engine.runner import DeployRunner, LogLine, load_vars_file
 
 _FIREWALL = (
     Path(rodeo.__file__).parent
@@ -43,7 +43,7 @@ def test_write_vars_file_passes_deployment_target(fake_cfg, tmp_path, monkeypatc
     fake_cfg["deployment_target"] = "instruqt"
     # Fake profile has no definition.yaml; stub inventory like test_runner does.
     monkeypatch.setattr("rodeo.inventory.build_inventory", lambda cfg: {})
-    data = yaml.safe_load(DeployRunner(fake_cfg, tmp_path)._write_vars_file().read_text())
+    data = load_vars_file(DeployRunner(fake_cfg, tmp_path)._write_vars_file())
     assert data["deployment_target"] == "instruqt"
 
 

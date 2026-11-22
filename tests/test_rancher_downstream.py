@@ -12,7 +12,7 @@ import rodeo
 from rodeo import inventory, preflight
 from rodeo.config import load_config
 from rodeo.engine.rancher import RancherPhase
-from rodeo.engine.runner import DeployRunner
+from rodeo.engine.runner import DeployRunner, load_vars_file
 from rodeo.labseed import PROFILE_EXAMPLE, seed_lab
 from rodeo.profiles import get_profile, list_profile_types
 from rodeo.providers.instance_catalog import catalog_for_profile
@@ -100,7 +100,7 @@ def test_harvester_names_unchanged_without_downstream_clusters():
 def test_vars_file_needs_no_harvester_token_and_sizes_downstream_flavors(profile, tmp_path):
     cfg = _lab_cfg(profile, tmp_path)
     assert "harvester_token" not in cfg.get("credentials", {})
-    data = yaml.safe_load(DeployRunner(cfg, tmp_path)._write_vars_file().read_text())
+    data = load_vars_file(DeployRunner(cfg, tmp_path)._write_vars_file())
     assert data["libvirt_flavors"]["k3s-node"]["memory_mib"] == 2048
     assert data["libvirt_flavors"]["rke2-node"]["memory_mib"] == 4096
     flavors = {n["name"]: n["flavor"] for n in data["vm_nodes"]}
@@ -127,7 +127,7 @@ def _env() -> jinja2.Environment:
 
 def test_downstream_vm_xml_attaches_its_own_cloud_init_seed(tmp_path):
     cfg = _lab_cfg("rancher", tmp_path)
-    data = yaml.safe_load(DeployRunner(cfg, tmp_path)._write_vars_file().read_text())
+    data = load_vars_file(DeployRunner(cfg, tmp_path)._write_vars_file())
     node = next(n for n in data["vm_nodes"] if n["name"] == "rke2-ha2")
     xml = _env().get_template("vm.xml.j2").render(
         item=node, serial_log_dir="/var/log", libvirt_network_name="default", **data

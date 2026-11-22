@@ -99,6 +99,17 @@ follows the text output: 2 when deploy would refuse the plan (an untrusted lab,
 an invalid value), even though the JSON was printed. A `??` source in a trusted
 lab is deferred to deploy and is not a failure.
 
+A call that times out or that the client cancels (`notifications/cancelled`)
+stops its whole process group: SIGTERM, then SIGKILL after 5 seconds. Write
+tools that need root re-exec through `sudo`, so their `rodeo` and its
+`ansible-playbook`/`ssh` children run as root, out of the server's reach. sudo
+relays the SIGTERM to that root `rodeo`, which stops the processes it started
+(its descendants, plus its process group when it leads one) with SIGKILL after
+3 seconds for anything that ignores SIGTERM, and exits. It never signals the
+rest of a group it only inherited, such as the script or `timeout` that ran
+`sudo rodeo`. Local deploys
+from MCP need NOPASSWD sudo, since there is no terminal to type a password in.
+
 ## Adding a tool
 
 Add a row to `READ_TOOLS` or `WRITE_TOOLS` in `rodeo/mcp/tools.py`: the rodeo

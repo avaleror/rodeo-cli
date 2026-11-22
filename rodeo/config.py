@@ -293,6 +293,7 @@ _UNHASHED_TOP = frozenset({
     "content", "content.lock", "guide",                         # content.py
     "workshop", "workshop-guide", "workshop-guide.pdf",         # labinabox_phase.py
     ".builder-deploy.log",                                      # builder/deploywork.py
+    ".claude",  # agent-setup and Claude Code itself; rodeo never runs anything from it
 })
 _UNHASHED_TOP_PREFIXES = (".content.", ".workshop.")  # temporary checkouts
 _UNHASHED_NESTED = frozenset({"story/strings"})  # rmstory's translation store (story.py)

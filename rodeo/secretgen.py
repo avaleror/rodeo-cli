@@ -63,6 +63,10 @@ def write_secrets_file(path: Path, password: str, token: str) -> None:
     VMs; without it here, ``??rancher_vm_password`` in that profile's plan never
     resolves and the deploy fails closed on a missing secret.
     """
+    from .redact import register_secret
+
+    register_secret(password)
+    register_secret(token)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         "# ~/.rodeo/secrets.yaml — kept out of version control\n"
@@ -91,6 +95,9 @@ def update_admin_passwords(path: Path, new_password: str, keys: set[str]) -> Non
     would silently drop fields like gitea_admin_password that it doesn't know
     about.
     """
+    from .redact import register_secret
+
+    register_secret(new_password)
     lines = path.read_text().splitlines(keepends=True)
     out = []
     for line in lines:
@@ -165,6 +172,9 @@ def append_secret(path: Path, key: str, value: str) -> None:
     """Add one key to secrets.yaml (0600), keeping every existing line and comment."""
     import json
 
+    from .redact import register_secret
+
+    register_secret(value)
     path.parent.mkdir(parents=True, exist_ok=True)
     existing = path.read_text() if path.exists() else ""
     sep = "" if not existing or existing.endswith("\n") else "\n"

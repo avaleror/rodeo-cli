@@ -145,6 +145,11 @@ def deploy_cmd(
     if not ok:
         raise SystemExit(1)
 
+    from ..config import lab_dir_of
+    from ..hooks import begin_operation
+
+    begin_operation(lab_dir_of(cfg), "deploy")  # None (no plugin) changes nothing
+
     code = execute_deploy(
         cfg, root,
         from_phase=from_phase,

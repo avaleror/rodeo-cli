@@ -26,6 +26,33 @@ rodeo mcp --allow-write --lab-dir ~/rodeo-labs/harvester
 Lab-scoped tools also take a per-call `lab_dir` argument, which overrides the
 server default — rodeo commands are lab-directory relative.
 
+## Limit the server to listed labs
+
+```bash
+rodeo lab add ~/rodeo-labs/harvester    # needs a terminal
+rodeo lab list
+rodeo lab remove ~/rodeo-labs/harvester # needs a terminal
+```
+
+`rodeo lab add` writes the lab's realpath to `~/.rodeo/labs.yaml` (mode 0600).
+Once that file exists, even with an empty list, every path an MCP tool receives
+must resolve to a listed lab or a path inside one: `lab_dir` (or the server
+default), `rodeo_up` `dir`, `rodeo_init` `target_dir`, `rodeo_instances_list`
+`dir`, `rodeo_new` `from_zip` and `from_lab_json`, and fleet `file`. Symlinks
+and `..` are resolved first, and a relative path counts from the tool's lab
+directory. `rodeo_new` `from_base` then takes bundled profile names only, no
+URL. A lab-scoped tool also needs `rodeo-plan.yaml` or `definition.yaml` in
+that directory itself, because rodeo would otherwise fall back to a parent lab
+or the last lab used (`rodeo_init`, and `rodeo_up` with `dir`, may seed an
+empty one). A refused call is a tool error and runs nothing.
+
+Without the file the server keeps today's behaviour, accepts any directory and
+prints one warning on stderr when it starts.
+
+The list is ordinary user data: it stops an MCP client or a confused model from
+pointing tools at other directories, not a process running as the same user,
+which can edit the file.
+
 ## Register it with a client
 
 Claude Code (`~/.claude.json` or project `.mcp.json`):
@@ -81,6 +108,15 @@ Lifecycle (only with `--allow-write`):
 Every tool is non-interactive: no TUI, no tmux wrap, no prompts, no colour. A
 failing command comes back as a tool error carrying rodeo's exit code and the
 tail of its output, never as a protocol error.
+
+## Plugin tools
+
+A plugin (a `rodeo.plugins` entry point) adds tools with
+`rodeo.mcp.tools.register_mcp_tool(tool, mutating=..., lab_scoped=...)`. Both
+flags are required. A built-in name, or a name another plugin took, is refused:
+plugins can't replace a built-in tool. A mutating plugin tool is offered only
+with `--allow-write`, and every plugin tool goes through the lab list above
+(`lab_dir` when lab-scoped, plus each `Arg` declared with `path="path"`).
 
 ## Adding a tool
 

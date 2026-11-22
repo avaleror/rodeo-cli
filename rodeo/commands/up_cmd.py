@@ -309,6 +309,11 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
         console.print("Nothing deployed. Re-run [bold]rodeo up[/bold] when ready.")
         return
 
+    from ..hooks import begin_operation
+
+    # Once per `rodeo up`: the root re-exec (--resume) continues this operation.
+    begin_operation(lab, "up")
+
     if aws_control_plane:
         assert lab is not None
         _aws_control_plane_deploy(

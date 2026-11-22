@@ -200,6 +200,9 @@ class Deployer:
             raise
         for key in missing:
             append_secret(secrets_path(), key, str(secrets[key]))
+        from ..hooks import begin_operation
+
+        begin_operation(lab, "builder.deploy")
         log = (lab / LOG).open("w")
         proc = popen([find_rodeo_bin(), "up", "--yes", "--no-tmux", "--dir", str(lab)], cwd=str(lab),
                      stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, text=True, start_new_session=True)

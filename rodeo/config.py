@@ -31,6 +31,7 @@ from typing import Any, Literal
 import yaml
 
 from .paths import rodeo_last_lab_file, rodeo_secrets_path, rodeo_trusted_labs_path
+from .redact import register_secret, register_secrets
 
 
 class ConfigError(ValueError):
@@ -293,6 +294,7 @@ _UNHASHED_TOP = frozenset({
     "content", "content.lock", "guide",                         # content.py
     "workshop", "workshop-guide", "workshop-guide.pdf",         # labinabox_phase.py
     ".builder-deploy.log",                                      # builder/deploywork.py
+    ".claude",  # agent-setup and Claude Code itself; rodeo never runs anything from it
 })
 _UNHASHED_TOP_PREFIXES = (".content.", ".workshop.")  # temporary checkouts
 _UNHASHED_NESTED = frozenset({"story/strings"})  # rmstory's translation store (story.py)
@@ -836,7 +838,10 @@ def _resolve_secrets(cfg: dict, secrets: dict, mode: SecretsMode) -> dict:
     """Replace ??placeholders throughout the config."""
     def _walk(obj: Any) -> Any:
         if isinstance(obj, str) and obj.startswith("??"):
-            return _resolve_secret_value(obj, secrets, mode)
+            value = _resolve_secret_value(obj, secrets, mode)
+            if value != obj:
+                register_secret(value)  # masked in event sinks from now on
+            return value
         if isinstance(obj, dict):
             return {k: _walk(v) for k, v in obj.items()}
         if isinstance(obj, list):
@@ -896,6 +901,7 @@ def _load_secrets(lab_dir: Path | None, *, include_global: bool) -> dict:
                 secrets = {**secrets, **(yaml.safe_load(text) or {})}
             except yaml.YAMLError as exc:
                 raise ConfigError(f"{lab_secrets}: invalid YAML: {exc}")
+    register_secrets(secrets)
     return secrets
 
 

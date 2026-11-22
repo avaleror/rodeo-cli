@@ -25,7 +25,7 @@ _SSH_USER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9._-]{0,31}$")
 
 def _ssh_user(value: Any, default: str = "ec2-user") -> str:
     user = str(value or default)
-    if not _SSH_USER_RE.match(user):
+    if not _SSH_USER_RE.fullmatch(user):
         raise ConfigError(f"provider.ssh_user {user!r} is not a valid login name")
     return user
 
@@ -368,7 +368,9 @@ def ssh_argv_for(target: SshTarget, *, remote_cmd: str | None = None) -> list[st
         # nested-ssh invocation directly on the jump host itself instead of on
         # the destination VM (confirmed live: `whoami; id` returned the VM's
         # user for `whoami` and the jump host's user for `id`).
-        argv.extend(inner[:-1] if remote_cmd else inner)
+        # Each element is also re-parsed by the jump host's shell: quote them all
+        # (the VM address comes from .labinabox/nodes.json, written at deploy).
+        argv.extend(shlex.quote(a) for a in (inner[:-1] if remote_cmd else inner))
         if remote_cmd:
             argv.append(shlex.quote(inner[-1]))
         return argv

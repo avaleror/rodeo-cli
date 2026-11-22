@@ -1750,3 +1750,24 @@ def test_smlm_lab_sets_required_client_registration_fields_in_its_section():
     for node in ("zzcentos7", "zzsles15a", "zzsles15b", "zzsles15c"):
         override = lab["nodes"][f"{node}.rodeo.lab"]["addons"][0]["client_registration"]
         assert override["client_registration_activation_key"].startswith("1-"), node
+
+
+def test_target_host_and_user_trailing_newline_refused():
+    for target in ({"host": "kvm1\n"}, {"ssh_user": "root\n"}):
+        with pytest.raises(ConfigError):
+            host.target({"lab_in_a_box": {"target": target}})
+
+
+def test_nodes_json_addresses_must_be_ips(tmp_path):
+    """.labinabox/nodes.json feeds ssh argv: anything but an IP is ignored."""
+    import json
+
+    from rodeo.profiles import get_profile
+
+    lab = tmp_path / "lab"
+    (lab / ".labinabox").mkdir(parents=True)
+    (lab / ".labinabox" / "nodes.json").write_text(json.dumps({"a": "10.0.0.5", "b": "-oProxyCommand=x"}))
+    cfg = {"plan_dir": str(lab), "vms": {"a": {"ip": "192.168.0.1"}, "b": {"ip": "192.168.0.2"}}}
+    out = get_profile("lab-in-a-box")._apply_cloud_addresses(cfg)
+    assert out["vms"]["a"]["ip"] == "10.0.0.5"
+    assert out["vms"]["b"]["ip"] == "192.168.0.2"

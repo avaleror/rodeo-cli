@@ -61,7 +61,11 @@ resources:
 # libvirt.disk_cache/disk_io, rancher_tls.email, elemental.registrations,
 # lab_in_a_box.variant/iso_image, provider.region/instance_type/ttl_hours,
 # story.language/id, content.facts (each value checked), and the names in
-# parameters: below (plain scalars that only feed the template). Under sudo the environment is
+# parameters: below (plain scalars that only feed the template). URL, ref,
+# checksum and path keys, such as a plan-declared versions.<x>_url or
+# versions.<x>_ref, can't be set through -P: change them in this file.
+# content.facts take plain sentences or http(s) URLs: they only fill the
+# rendered guide, never a shell. provider.ttl_hours must stay in (0, 168]. Under sudo the environment is
 # not passed on, so ??key is the form that works there.
 #
 # rodeo up and rodeo init generate ~/.rodeo/secrets.yaml automatically.
@@ -360,7 +364,7 @@ Most network topology (CIDR, gateway, DNS domain, per-node IPs) is in `definitio
 
 | Field | Default | Notes |
 |-------|---------|-------|
-| `uri` | `qemu:///system` | libvirt connection URI. |
+| `uri` | `qemu:///system` | libvirt connection URI: `qemu:///system`, `qemu:///session` or `qemu+ssh`/`qemu+tls`/`qemu+tcp` to `[user@]host[:port]` (a bracketed IPv6 literal works) and `/system` or `/session`. No query string: `?keyfile=`, `?known_hosts=`, `?no_verify=` and the like are refused (some run a command); put SSH options in `~/.ssh/config` instead. |
 | `disk_cache` | target-dependent | Guest qcow2 `cache=` mode. Default `none` on baremetal, `writeback` when `deployment_target: instruqt` (better nested cloud I/O). Allowed: `none`, `writethrough`, `writeback`, `unsafe`, `directsync`. |
 | `disk_io` | target-dependent | Guest qcow2 `io=` mode. Default `native` on baremetal, `threads` on Instruqt. Allowed: `native`, `threads`, `io_uring`. |
 

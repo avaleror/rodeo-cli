@@ -49,6 +49,7 @@ import yaml
 
 from . import langbranch
 from .config import ConfigError
+from .labfs import clear_lab_path, lab_subdir, write_lab_file
 from .labinabox_host import fetch_commands
 from .workshop import render_text
 
@@ -116,14 +117,12 @@ def fetch(spec: dict[str, Any], lab: Path, run: Run = subprocess.run) -> str:
         shutil.rmtree(dest / ".git", ignore_errors=True)
         if not content_root(work, spec).is_dir():
             raise ConfigError(f"{spec['repo']} has no directory '{spec['path']}'")
-        target = lab / CHECKOUT
-        if target.exists():
-            shutil.rmtree(target)
+        target = clear_lab_path(lab, CHECKOUT)
         dest.rename(target)
     finally:
         shutil.rmtree(work, ignore_errors=True)
-    (lab / LOCK).write_text(yaml.safe_dump({"repo": spec["repo"], "ref": spec["ref"] or None, "path": spec["path"],
-                                            "format": spec["format"], "commit": commit}, sort_keys=False))
+    write_lab_file(lab, LOCK, yaml.safe_dump({"repo": spec["repo"], "ref": spec["ref"] or None, "path": spec["path"],
+                                              "format": spec["format"], "commit": commit}, sort_keys=False), 0o644)
     return commit
 
 
@@ -143,10 +142,8 @@ def _replace(text: str, spec: dict[str, Any]) -> str:
 def render(spec: dict[str, Any], lab: Path, cfg: dict) -> list[Path]:
     """Write the guide into ``<lab>/guide/`` (owner-only: facts can hold lab passwords)."""
     root = content_root(lab, spec)
-    out = lab / GUIDE
-    if out.exists():
-        shutil.rmtree(out)
-    out.mkdir(mode=0o700, parents=True)
+    clear_lab_path(lab, GUIDE)
+    out = lab_subdir(lab, GUIDE)
     written: list[Path] = []
     if spec["format"] == "instruqt":
         for challenge in sorted(p for p in root.iterdir() if (p / "assignment.md").is_file()):

@@ -530,7 +530,9 @@ def test_libvirt_uri_that_can_run_code_is_refused(tmp_path, uri):
 
 
 @pytest.mark.parametrize("uri", ["qemu:///system", "qemu:///session", "qemu+ssh://root@kvm1/system",
-                                 "qemu+ssh://kvm1.example.lab:2222/system"])
+                                 "qemu+ssh://kvm1.example.lab:2222/system", "qemu+ssh://root@[::1]/system",
+                                 "qemu+ssh://first.last@kvm1/system", "qemu+ssh://Root@kvm1:22/system",
+                                 "qemu+ssh://10.0.0.1/system", "qemu+tcp://h/session"])
 def test_libvirt_uri_normal_forms_accepted(uri):
     assert config.validate_libvirt_uri(uri) == uri
 
@@ -1015,7 +1017,10 @@ def test_every_allowlisted_key_refuses_metacharacters(pattern, meta):
     path, good = _sample(pattern)
     check = config._rule_for(path)
     assert check is not None and check(good), (path, good)
-    for bad in (f"{good}{meta}", f"{meta}{good}", f"{good}{meta}id"):
+    bads = [f"{good}{meta}", f"{meta}{good}", f"{good}{meta}id"]
+    if pattern == "content.facts.*" and meta == " ":
+        bads = bads[:2]  # facts take plain sentences: they only fill guide text, never a shell
+    for bad in bads:
         assert not check(bad), (path, bad)
 
 
@@ -1025,9 +1030,41 @@ def test_network_values_are_strict(value):
     assert not config._net_value(value)
 
 
-@pytest.mark.parametrize("value", ["10.0.0.1", "192.168.122.0/24", "fe80::1", "rodeo.lab", "kvm-1.example.lab"])
+@pytest.mark.parametrize("value", ["10.0.0.1", "192.168.122.0/24", "fe80::1", "rodeo.lab", "kvm-1.example.lab",
+                                   "db", "dc1", "cafe", "dead.beef", "2001:DB8::1"])
 def test_network_values_accept_canonical_forms(value):
     assert config._net_value(value)
+
+
+def test_ipv6_override_is_stored_canonically(tmp_path):
+    plan = _lab(tmp_path, "lab", _pw("Secret123"), trusted=True)
+    cfg = config.load_config(plan, params=("network.vip=2001:DB8::1",))
+    assert cfg["network"]["vip"] == "2001:db8::1"
+
+
+@pytest.mark.parametrize("ttl", [".inf", "-.inf", ".nan", "0", "-1", "169", "off", "1e9"])
+def test_ttl_hours_override_never_disables_the_deadman(tmp_path, ttl):
+    plan = _lab(tmp_path, "lab", _pw("Secret123"), trusted=True)
+    with pytest.raises(config.ConfigError, match="not a valid value"):
+        config.load_config(plan, params=(f"provider.ttl_hours={ttl}",))
+
+
+@pytest.mark.parametrize("ttl", ["6", "0.5", "168"])
+def test_ttl_hours_override_in_range(tmp_path, ttl):
+    plan = _lab(tmp_path, "lab", _pw("Secret123"), trusted=True)
+    config.load_config(plan, params=(f"provider.ttl_hours={ttl}",))
+
+
+@pytest.mark.parametrize("value", ["Open the dashboard at the top right.", "https://smlm.rodeo.lab",
+                                   "https://smlm.rodeo.lab:8443/rhn/manager?x=1", "admin", "3 nodes, 2 sites"])
+def test_content_facts_accept_sentences_and_urls(value):
+    assert config._fact_value(value)
+
+
+@pytest.mark.parametrize("value", ["javascript:alert(1)", "https://h/x;id", "ftp://h/x", "https://h/$(id)",
+                                   "it's", 'say "hi"', "a `b`", "50% off", "x\\y", "https://h/x y"])
+def test_content_facts_refuse_metacharacters(value):
+    assert not config._fact_value(value)
 
 
 @pytest.mark.parametrize("uri", [
@@ -1042,6 +1079,11 @@ def test_network_values_accept_canonical_forms(value):
     "qemu:///system#frag",
     "qemu:///system/",
     "qemu+ssh://root@h/system;netcat=x",
+    "qemu+ssh://root@[fe80::1%eth0]/system",
+    "qemu+ssh://root@[10.0.0.1]/system",
+    "qemu+ssh://root@h:99999/system",
+    "qemu+ssh://-user@h/system",
+    "qemu+ssh://h/system\n",
 ])
 def test_libvirt_uri_strict_forms(uri):
     with pytest.raises(config.ConfigError, match="not allowed"):
@@ -1074,3 +1116,99 @@ def test_template_parameter_named_like_an_allowlisted_key_gets_its_check(tmp_pat
     assert config.load_config(plan, params=("name=lab-2",))["name"] == "lab-2"
     with pytest.raises(config.ConfigError, match="not a valid value"):
         config.load_config(plan, params=("name=Lab_2:x",))
+
+
+@pytest.mark.parametrize("link", ["content.lock", ".labinabox", "logs", config.LAB_SECRETS_FILE,
+                                  "guide", "workshop-guide.pdf", "story/strings"])
+def test_symlink_in_a_rodeo_written_path_blocks_trust(tmp_path, link):
+    """Review PoC (poc7/unhashed_links.py): the hash skips these paths, so a link there
+    was invisible, and content.fetch wrote content.lock through it as root."""
+    import os
+
+    plan = _lab(tmp_path, "lab", _pw("Secret123"))
+    victim = tmp_path / "victim"
+    victim.mkdir()
+    (plan.parent / "story").mkdir()
+    os.symlink(victim, plan.parent / link)
+    assert config.lab_problems(plan.parent)
+    with pytest.raises(config.UntrustedLab):
+        config.trust_lab(plan.parent)
+
+
+def test_symlink_planted_after_trust_untrusts_the_lab(tmp_path):
+    import os
+
+    plan = _lab(tmp_path, "lab", _pw("Secret123"), trusted=True)
+    os.symlink(tmp_path / "elsewhere", plan.parent / "content.lock")
+    assert not config.is_lab_trusted(plan.parent)
+
+
+def test_lab_secrets_symlink_is_refused(tmp_path, monkeypatch):
+    """Review PoC (poc7/secrets_link.py): .rodeo-secrets.yaml -> ~/.rodeo/secrets.yaml
+    handed global secrets to an untrusted lab in keys mode."""
+    import os
+
+    secrets = _write_secrets(tmp_path, monkeypatch, {"scc_regcode": "global-marker"})
+    plan = _lab(tmp_path, "clone", _pw("??scc_regcode"))
+    os.symlink(secrets, plan.parent / config.LAB_SECRETS_FILE)
+    with pytest.raises(config.ConfigError, match="symlink"):
+        config.load_config(plan, secrets="keys")
+
+
+def test_executable_bit_is_part_of_the_hash(tmp_path):
+    plan = _lab(tmp_path, "lab", _pw("Secret123"))
+    script = plan.parent / "custom" / "scripts" / "10-a.sh"
+    script.parent.mkdir(parents=True)
+    script.write_text("echo hi\n")
+    config.trust_lab(plan.parent)
+    script.chmod(0o755)
+    assert not config.is_lab_trusted(plan.parent)
+
+
+def test_lab_write_helper_never_writes_through_a_symlink(tmp_path):
+    import os
+
+    from rodeo.labfs import clear_lab_path, lab_subdir, write_lab_file
+
+    lab = tmp_path / "lab"
+    lab.mkdir()
+    victim = tmp_path / "victim.txt"
+    victim.write_text("IMPORTANT\n")
+    os.symlink(victim, lab / "content.lock")
+    write_lab_file(lab, "content.lock", "lock\n")
+    assert victim.read_text() == "IMPORTANT\n"  # the link was replaced, not followed
+    assert not (lab / "content.lock").is_symlink()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    os.symlink(outside, lab / ".labinabox")
+    with pytest.raises(config.ConfigError, match="symlink"):
+        write_lab_file(lab, ".labinabox/lab.json", "{}")
+    with pytest.raises(config.ConfigError, match="symlink"):
+        lab_subdir(lab, ".labinabox/pdf-build")
+    os.symlink(outside, lab / "guide")
+    clear_lab_path(lab, "guide")
+    assert outside.is_dir() and not (lab / "guide").exists()
+
+
+def test_content_fetch_does_not_write_through_a_planted_lock_link(tmp_path):
+    """The PoC's second half: content.fetch's lock write replaces the link."""
+    import os
+    import subprocess
+
+    from rodeo import content
+
+    lab = tmp_path / "lab"
+    lab.mkdir()
+    victim = tmp_path / "victim.txt"
+    victim.write_text("IMPORTANT\n")
+    os.symlink(victim, lab / "content.lock")
+
+    def fake(cmd, **kw):
+        if "init" in cmd:
+            os.makedirs(cmd[-1], exist_ok=True)
+        return subprocess.CompletedProcess(cmd, 0, "abc\n", "")
+
+    spec = {"repo": "https://github.com/a/b", "ref": "", "path": "", "format": "markdown",
+            "facts": {}, "replace": {}}
+    content.fetch(spec, lab, run=fake)
+    assert victim.read_text() == "IMPORTANT\n"

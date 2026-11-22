@@ -407,12 +407,12 @@ def target(cfg: dict) -> dict:
     user = str(spec.get("ssh_user") or "root")
     if mode not in ("auto", "managed", "existing"):
         raise ConfigError(f"lab_in_a_box.target.mode '{mode}': use auto, managed or existing")
-    if host and not _HOST_RE.match(host):
+    if host and not _HOST_RE.fullmatch(host):
         raise ConfigError(f"lab_in_a_box.target.host '{host}' is not a plain host name or IP")
     if host and mode == "managed":
         raise ConfigError("lab_in_a_box.target.host needs mode existing (or auto): rodeo only "
                           "installs lab-in-a-box on the host it runs on")
-    if not _USER_RE.match(user):
+    if not _USER_RE.fullmatch(user):
         raise ConfigError(f"lab_in_a_box.target.ssh_user '{user}' is not a valid user name")
     uri = str(spec.get("libvirt_uri") or "")
     if uri:

@@ -361,6 +361,16 @@ def lab_problems(lab_dir: str | Path) -> list[str]:
             # files such as *.log run as custom scripts.
             problems.append(f"{rel} is a symlink to a directory or special file: only links "
                             "to regular files inside the lab are allowed")
+    # The paths rodeo writes are left out of the hash, so a symlink there (say
+    # content.lock -> /etc/something) is invisible to it but redirects a root
+    # write. No symlink at all is allowed in them.
+    for root, dirs, names in os.walk(lab):
+        here = Path(root)
+        for name in dirs + names:
+            p = here / name
+            rel = str(p.relative_to(lab))
+            if p.is_symlink() and _unhashed(rel) and not rel.startswith(".git/") and "/.git/" not in rel:
+                problems.append(f"{rel} is a symlink in a path rodeo writes: remove it")
     return problems
 
 
@@ -398,7 +408,8 @@ def lab_fingerprint(lab_dir: str | Path) -> str:
             content = target.read_bytes() if target.is_file() and stat.S_ISREG(target.stat().st_mode) else b""
             _record(h, rel, b"L", trel.encode() + b"\0" + hashlib.sha256(content).digest())
         else:
-            _record(h, rel, b"F", path.read_bytes())
+            kind = b"X" if path.lstat().st_mode & 0o111 else b"F"  # chmod +x untrusts
+            _record(h, rel, kind, path.read_bytes())
     return h.hexdigest()
 
 
@@ -435,8 +446,16 @@ def _pos_int(v: Any) -> bool:
     return _is_int(v) and v > 0
 
 
-def _number(v: Any) -> bool:
-    return (isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0) or v == "off"
+_MAX_TTL_HOURS = 168  # the dead-man switch cap (providers/deadman.py)
+
+
+def _ttl_hours(v: Any) -> bool:
+    """A finite TTL in (0, 168]. Not "off" and not .inf: an override must never
+    disable the dead-man switch."""
+    import math
+
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) \
+        and 0 < v <= _MAX_TTL_HOURS
 
 
 def _matches(rx: re.Pattern) -> Any:
@@ -451,27 +470,55 @@ def _version_value(v: Any) -> bool:
 def _net_value(v: Any) -> bool:
     """An IP, a CIDR or a host name, written canonically. No IPv6 scope id:
     ipaddress accepts "fe80::1%<anything>", which then lands in a shell script."""
+    return _canonical_net(v) is not None
+
+
+def _canonical_net(v: Any) -> str | None:
+    """The canonical form of an IP, CIDR or host name, or None when it is not one.
+    IPv6 compares case-insensitively; an all-hex word (db, cafe) is a host name."""
     if not isinstance(v, str) or not v.isascii():
-        return False
+        return None
     if _IP_CHARS_RE.fullmatch(v):
+        low = v.lower()
+        for parse in (ipaddress.ip_address, ipaddress.ip_interface):
+            try:
+                canon = str(parse(v))
+            except ValueError:
+                continue
+            if canon == low:
+                return canon
         try:
-            return str(ipaddress.ip_address(v)) == v
+            canon = str(ipaddress.ip_network(v, strict=False))
+            if canon == low:
+                return canon
         except ValueError:
             pass
-        try:
-            return str(ipaddress.ip_network(v, strict=False)) == v or \
-                str(ipaddress.ip_interface(v)) == v
-        except ValueError:
-            return False
-    return bool(_HOSTNAME_RE.fullmatch(v))
+    if re.fullmatch(r"[0-9.]+", v):
+        return None  # looks like an IPv4 address but isn't a canonical one
+    return v if _HOSTNAME_RE.fullmatch(v) else None
 
 
-_FACT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+,=-]{0,255}$")
+_FACT_RE = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9 .,:!?()/@+=_-]{0,254}[A-Za-z0-9.!?)])?$")
+_FACT_URL_RE = re.compile(r"^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9._~/%+-]*)?(\?[A-Za-z0-9._~=%+-]*)?$")
 
 
 def _fact_value(v: Any) -> bool:
-    """Guide text, but no spaces, shell or markup metacharacters."""
-    return _matches(_FACT_RE)(v)
+    """content.facts only fill [[ Instruqt-Var ]] tags in the rendered guide
+    (content.render_text): never a shell. Plain sentences or http(s) URLs; no
+    quotes, `$`, backticks, `;`, `|`, `&`, `<`, `>`, `%` (outside a URL) or `\\`."""
+    if isinstance(v, bool) or not isinstance(v, (str, int, float)):
+        return False
+    text = str(v)
+    if not text.isascii() or len(text) > 256:
+        return False
+    if text.startswith(("http://", "https://")):
+        from urllib.parse import urlsplit
+
+        parts = urlsplit(text)
+        return bool(_FACT_URL_RE.fullmatch(text)) and parts.scheme in ("http", "https") and bool(parts.netloc)
+    if re.match(r"[A-Za-z][A-Za-z0-9+.-]*:[^ ]", text):
+        return False  # another URL scheme (javascript:, ftp://, file:)
+    return bool(_FACT_RE.fullmatch(text))
 
 
 # (dotted pattern, value check); "*" is exactly one segment.
@@ -491,7 +538,7 @@ PARAM_RULES: tuple[tuple[str, Any], ...] = (
     ("lab_in_a_box.iso_image", _matches(_FILE_RE)),
     ("provider.region", _matches(_NAME_RE)),
     ("provider.instance_type", _matches(_FILE_RE)),
-    ("provider.ttl_hours", _number),
+    ("provider.ttl_hours", _ttl_hours),
     ("story.language", _matches(_LANG_RE)),
     ("story.id", _matches(_NAME_RE)),
     ("content.facts.*", _fact_value),
@@ -509,6 +556,15 @@ def _override_paths(key: str, value: Any) -> list[tuple[str, Any]]:
             out += _override_paths(f"{key}.{k}", v)
         return out
     return [(key, value)]
+
+
+def _canonical_override(key: str, value: Any) -> Any:
+    """Store network values canonically (2001:DB8::1 -> 2001:db8::1)."""
+    if isinstance(value, dict):
+        return {k: _canonical_override(f"{key}.{k}", v) for k, v in value.items()}
+    if _rule_for(key) is _net_value and isinstance(value, str):
+        return _canonical_net(value) or value
+    return value
 
 
 def _rule_for(path: str) -> Any:
@@ -558,10 +614,11 @@ def _reject_disallowed_keys(
 # the command line is checked before rodeo opens it.
 _LIBVIRT_SCHEMES = ("qemu", "qemu+ssh", "qemu+tls", "qemu+tcp")
 _LIBVIRT_NETLOC_RE = re.compile(
-    r"^([a-z_][a-z0-9_-]{0,31}@)?"
-    r"(?=.{1,253}(:|$))[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
-    r"(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*"
-    r"(:[0-9]{1,5})?$"
+    r"^(?P<user>[A-Za-z_][A-Za-z0-9._-]{0,31}@)?"
+    r"(?P<host>\[[0-9A-Fa-f:.]+\]"
+    r"|(?=[^:]{1,253}(:|$))[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+    r"(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*)"
+    r"(?P<port>:[0-9]{1,5})?$"
 )
 _LIBVIRT_URI_RE = re.compile(r"^(qemu|qemu\+ssh|qemu\+tls|qemu\+tcp)://([^/?#]*)(/system|/session)$")
 
@@ -573,10 +630,18 @@ def validate_libvirt_uri(uri: Any, where: str = "libvirt.uri") -> str:
     text = str(uri or "")
     m = _LIBVIRT_URI_RE.fullmatch(text) if text.isascii() else None
     netloc = m.group(2) if m else ""
-    ok = bool(m) and (
-        (m.group(1) == "qemu" and netloc == "")
-        or (m.group(1) != "qemu" and bool(_LIBVIRT_NETLOC_RE.fullmatch(netloc)))
-    )
+    n = _LIBVIRT_NETLOC_RE.fullmatch(netloc) if m and m.group(1) != "qemu" else None
+    ok = bool(m) and ((m.group(1) == "qemu" and netloc == "") or bool(n))
+    if ok and n:
+        host = n.group("host")
+        if host.startswith("["):
+            try:
+                ok = ipaddress.ip_address(host[1:-1]).version == 6
+            except ValueError:
+                ok = False
+        port = n.group("port")
+        if port and not 0 < int(port[1:]) <= 65535:
+            ok = False
     if not ok:
         raise ConfigError(
             f"{where} {text!r} is not allowed: use qemu:///system, qemu:///session or "
@@ -793,6 +858,13 @@ def _load_secrets(lab_dir: Path | None, *, include_global: bool) -> dict:
     # win over the global file; see secretgen.ensure_plan_secrets.
     if lab_dir is not None:
         lab_secrets = lab_dir / LAB_SECRETS_FILE
+        if lab_secrets.is_symlink() or (
+            lab_secrets.exists()
+            and os.path.dirname(os.path.realpath(lab_secrets)) != os.path.realpath(lab_dir)
+        ):
+            # A link to ~/.rodeo/secrets.yaml would hand global secrets to an
+            # untrusted lab in "keys" mode.
+            raise ConfigError(f"{lab_secrets} is a symlink or points outside the lab: refusing it")
         if lab_secrets.exists():
             try:
                 secrets = {**secrets, **(yaml.safe_load(lab_secrets.read_text()) or {})}
@@ -864,6 +936,8 @@ def load_config(
     template_params = {str(k) for k in _extract_parameters_block(plan_text)}
     _reject_disallowed_keys(cli_params, "-P", template_params)
     _reject_disallowed_keys(list(paramfile_data.items()), "--paramfile", template_params)
+    cli_params = [(k, _canonical_override(k, v)) for k, v in cli_params]
+    paramfile_data = {k: _canonical_override(str(k), v) for k, v in paramfile_data.items()}
 
     plan: dict = {}
     if plan_path.exists():

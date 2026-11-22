@@ -319,3 +319,10 @@ def test_provider_ssh_user_accepts_normal_names(good):
     from rodeo.ssh_targets import _ssh_user
 
     assert _ssh_user(good) == good
+
+
+def test_provider_ssh_user_trailing_newline_is_refused():
+    from rodeo.ssh_targets import _ssh_user
+
+    with pytest.raises(ConfigError):
+        _ssh_user("ec2-user\n")

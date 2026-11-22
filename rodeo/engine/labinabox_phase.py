@@ -22,6 +22,8 @@ import shutil
 import subprocess
 from collections import deque
 from pathlib import Path
+
+from ..labfs import clear_lab_path, write_lab_file
 from typing import TYPE_CHECKING, Iterator
 
 from .. import labinabox_host as host
@@ -177,12 +179,11 @@ def _stream_workshop(runner: "DeployRunner", spec: dict, lab: dict) -> Iterator[
         fresh.rename(dest)
     finally:
         shutil.rmtree(work, ignore_errors=True)
-    lock = lab_dir(runner) / ".labinabox" / "workshop.lock"
-    lock.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    lock.write_text(workshop.lock_text(spec, commit))
     track_dir = dest / "tracks" / spec["track"]
     try:
+        write_lab_file(lab_dir(runner), ".labinabox/workshop.lock", workshop.lock_text(spec, commit))
         track = workshop.parse_track(track_dir)
+        clear_lab_path(lab_dir(runner), "workshop-guide")
         guide = workshop.render_guide(track_dir, spec, lab_dir(runner) / "workshop-guide")
     except (ConfigError, OSError) as exc:
         yield LogLine(f"  ⚠  workshop track: {exc}")
@@ -215,6 +216,12 @@ def _stream_guide_pdf(runner: "DeployRunner", track_dir: Path) -> Iterator["Depl
     from .runner import LogLine
 
     base = lab_dir(runner)
+    try:
+        clear_lab_path(base, ".labinabox/pdf-build")
+        clear_lab_path(base, "workshop-guide.pdf")
+    except ConfigError as exc:
+        yield LogLine(f"  ⚠  workshop.pdf: {exc}")
+        return
     tool = workshop.prepare_pdf_build(track_dir, base / "workshop-guide", base / ".labinabox" / "pdf-build")
     if tool is None:
         yield LogLine("  ⚠  workshop.pdf: the track has no tools/build_pdf.py")
@@ -337,9 +344,8 @@ def _stream_managed_host(runner: "DeployRunner", lab: dict) -> Iterator["DeployE
     ).returncode == 0
     if not exists:
         yield LogLine(f"Defining libvirt network '{net_name}'...")
-        xml = lab_dir(runner) / ".labinabox" / "network.xml"
-        xml.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        xml.write_text(host.render_network_xml(net, lab, aliases))
+        xml = write_lab_file(lab_dir(runner), ".labinabox/network.xml",
+                             host.render_network_xml(net, lab, aliases), 0o644)
         yield from _run(runner, ["virsh", "-c", uri, "net-define", str(xml)])
         if runner._last_rc != 0:
             return
@@ -527,12 +533,7 @@ def stream_labinabox(runner: "DeployRunner") -> Iterator["DeployEvent"]:
         lab["common"]["ROOT_PWD_HASH"] = r.stdout.strip()
 
     # lab.json carries resolved secrets: owner-only, inside the lab dir, never in git.
-    path = lab_json_path(runner)
-    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as fh:
-        json.dump(lab, fh, indent=2)
-        fh.write("\n")
+    path = write_lab_file(lab_dir(runner), LAB_JSON_RELPATH, json.dumps(lab, indent=2) + "\n", 0o600)
 
     parallel = effective_overlay(cfg).get("parallel")
     tgt = host.target(cfg)
@@ -548,7 +549,7 @@ def stream_labinabox(runner: "DeployRunner") -> Iterator["DeployEvent"]:
         # Cloud VMs got their addresses at creation; lab-in-a-box wrote them into
         # LAB_HOSTS_FILE. Keep them for rodeo ssh / the success screen.
         ips = host.hosts_file_ips(ETC_HOSTS.read_text() if ETC_HOSTS.exists() else "", list(lab["nodes"]))
-        (lab_dir(runner) / NODES_RELPATH).write_text(json.dumps(ips, indent=1) + "\n")
+        write_lab_file(lab_dir(runner), NODES_RELPATH, json.dumps(ips, indent=1) + "\n", 0o644)
         missing = sorted({f.split(".")[0] for f in lab["nodes"]} - set(ips))
         yield LogLine(f"  ✓  cloud VM addresses: {', '.join(f'{k} {v}' for k, v in sorted(ips.items())) or 'none'}")
         if missing:

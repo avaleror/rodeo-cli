@@ -224,6 +224,13 @@ class RodeoProfile(ABC):
         return default_success_next_steps(cfg)
 
     # --- Phase dispatch ---
+    def check_phase(self, phase: str) -> None:
+        """Raise ConfigError when *phase* is not one of this profile's phases."""
+        if phase not in self.phases:
+            raise ConfigError(
+                f"Unknown phase '{phase}'. Valid phases: {', '.join(self.phases)}"
+            )
+
     def run_phase(
         self,
         phase: str,
@@ -237,8 +244,11 @@ class RodeoProfile(ABC):
 
         spec = _STREAM_PHASES.get(phase)
         if spec is None:
-            runner._last_rc = 0
-            return
+            self.check_phase(phase)
+            raise ConfigError(
+                f"Phase '{phase}' has no handler (not an Ansible phase or a "
+                f"registered stream phase). Valid phases: {', '.join(self.phases)}"
+            )
 
         method, needs_rancher = spec
         if needs_rancher and "rancher" not in runner.cfg.get("vms", {}):

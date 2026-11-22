@@ -109,10 +109,12 @@ that one workshop's labs, which are ephemeral anyway.
 
 ### 4.2 Software on the portal
 
-- `rodeo` itself, installed with the existing `install.sh` at the fleet's `lab.ref`, so
-  the portal runs the same version as the CLI that talks to it.
-- `rodeo portal serve`: new command, stdlib `http.server.ThreadingHTTPServer` +
-  `jinja2` (already a dependency) + `sqlite3`. Binds `127.0.0.1:8080`. Runs as a
+- Not rodeo itself. `rodeo fleet portal up` copies only the `rodeo/portal` package
+  (its Python files and `static/` assets) from the operator's checkout to
+  `/opt/rodeo-portal/rodeo_portal`, so the portal runs the same code as the CLI that
+  talks to it. The host only needs `python3` (installed with zypper if missing).
+- `python3 -m rodeo_portal serve`: standard library only, `http.server.ThreadingHTTPServer`
+  + `sqlite3`. Binds `127.0.0.1:8080`. Runs as a
   dedicated `rodeo-portal` system user under a systemd unit with the usual hardening
   (`ProtectSystem=strict`, `NoNewPrivileges`, `PrivateTmp`, state in `StateDirectory=`).
 - **Caddy** in front for TLS with automatic Let's Encrypt on
@@ -269,7 +271,7 @@ roster file, or `portal.enabled: true` on a provider fleet whose
 |---------|-----------|------|
 | `rodeo fleet provision` | laptop | Also provisions the portal VM when `portal.enabled` (`--no-portal` to skip). |
 | `rodeo fleet open-access [--close]` | laptop | Opens the lab UI ports to `0.0.0.0/0` once every lab is complete with strong passwords (F5.0). |
-| `rodeo fleet portal up` | laptop to portal | Install rodeo + Caddy, write systemd units, start. Idempotent. |
+| `rodeo fleet portal up` | laptop to portal | Copy the portal package (not rodeo) and install Caddy, write systemd units, start. Idempotent. |
 | `rodeo fleet portal publish` | laptop to hosts, then portal | For each host: check readiness (`rodeo status --output json`), read `secrets.yaml`, ensure student user/key if enabled, upsert the lab record. Labs not ready are published as `building`. Safe to run repeatedly; run it again after `fleet retry`. |
 | `rodeo fleet portal invite` | laptop | Roster tokens, writes `portal-invites.csv`. Re-running keeps existing tokens unless `--rotate`. |
 | `rodeo fleet portal info` | laptop | Portal URL, workshop code, open/closed. |

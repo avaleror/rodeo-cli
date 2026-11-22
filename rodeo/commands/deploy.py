@@ -173,6 +173,9 @@ def execute_deploy(
     from ..host_context import apply_host_context, persist_host_context_notes
     from ..preflight import detect_host
 
+    if from_phase is not None:
+        get_profile(cfg.get("type", "suse-virt")).check_phase(from_phase)
+
     host = detect_host()
     cfg, hc_notes = apply_host_context(
         cfg,

@@ -55,7 +55,7 @@ Read-only (always offered):
 | `rodeo_doctor` | `rodeo doctor` |
 | `rodeo_profiles` | `rodeo profiles` |
 | `rodeo_plan` | `rodeo plan` |
-| `rodeo_status` | `rodeo status` |
+| `rodeo_status` | `rodeo status`; `cloud: true` runs `rodeo status --cloud` (the AWS host's deploy) |
 | `rodeo_list` | `rodeo list` |
 | `rodeo_logs` | `rodeo logs --no-follow` |
 | `rodeo_instances_list` | `rodeo instances list` |
@@ -67,7 +67,7 @@ Lifecycle (only with `--allow-write`):
 
 | Tool | rodeo command |
 |---|---|
-| `rodeo_up` | `rodeo up --yes --no-tmux` |
+| `rodeo_up` | `rodeo up --yes --no-tmux`; for target `aws` it adds `--detach` (see below) |
 | `rodeo_deploy` | `rodeo deploy --no-tui` (`from_phase` resumes a phase) |
 | `rodeo_init` | `rodeo init` |
 | `rodeo_new` | `rodeo new` |
@@ -81,6 +81,21 @@ Lifecycle (only with `--allow-write`):
 Every tool is non-interactive: no TUI, no tmux wrap, no prompts, no colour. A
 failing command comes back as a tool error carrying rodeo's exit code and the
 tail of its output, never as a protocol error.
+
+### `rodeo_up` on AWS returns a pid
+
+An AWS deploy takes one to two hours. When the target is `aws` (the `target`
+parameter, else the plan's `deployment_target`), `rodeo_up` passes `--detach`:
+rodeo provisions the EC2 host, starts `rodeo up` there and returns one JSON
+object, `{"state": "started", "pid", "start", "log", "host"}`. The deploy keeps
+running on the host. Follow it with `rodeo_status` and `cloud: true`, which
+reports `running`, `exited` with the exit code, `gone` (killed or the host
+rebooted) or `none`, plus the tail of the log. A deploy that is already running
+there comes back as a tool error carrying
+`{"state": "already_running", "pid", "log", "host"}` (rodeo exit 75).
+
+Local deploys have no detach yet: `rodeo_up` for any other target blocks until
+the deploy ends, within the server's timeout.
 
 ## Adding a tool
 

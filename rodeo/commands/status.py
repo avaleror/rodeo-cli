@@ -42,12 +42,22 @@ def _colored(label: str, default: str = "white") -> Text:
     show_default=True,
     help="Output format.",
 )
+@click.option(
+    "--cloud",
+    is_flag=True,
+    help="Instead: the state of the last rodeo up --target aws on this lab's AWS host "
+         "(running, exited with its code, gone, none) and the tail of its log.",
+)
+@click.option("--lines", type=int, default=40, show_default=True,
+              help="With --cloud: log lines to show (at most 500).")
 def status_cmd(
     config_path: str,
     config_dir: str | None,
     params: tuple[str, ...],
     paramfile: str | None,
     output_fmt: str,
+    cloud: bool,
+    lines: int,
 ) -> None:
     """Show VM states and cluster reachability at a glance."""
     if config_dir is None:
@@ -55,6 +65,9 @@ def status_cmd(
         if ctx.obj:
             config_dir = ctx.obj.get("config_dir")
     cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir)
+    if cloud:
+        _cloud_status(cfg, lines, output_fmt)
+        return
     report = status_report(cfg)
 
     if output_fmt == "json":
@@ -104,3 +117,31 @@ def status_cmd(
             else:
                 console.print(f"    [dim]○[/dim]  {phase}")
         console.print()
+
+
+def _cloud_status(cfg: dict, lines: int, output_fmt: str) -> None:
+    """``rodeo status --cloud``: one SSH round trip, no job system."""
+    from ..config import ConfigError
+    from ..providers.remote_up import remote_up_status
+
+    try:
+        report = remote_up_status(cfg, lines=lines)
+    except ConfigError as exc:
+        if output_fmt == "json":
+            click.echo(json.dumps({"state": "unknown", "error": str(exc)}, sort_keys=True))
+        else:
+            console.print(f"[red]✗  {exc}[/red]")
+        raise SystemExit(1)
+    if output_fmt == "json":
+        click.echo(json.dumps(report, indent=2, sort_keys=True))
+        return
+    state = report["state"]
+    detail = {
+        "running": f"running (pid {report['pid']})",
+        "exited": f"finished, exit {report['exit']}",
+        "gone": f"not running and no exit code (pid {report['pid']} is gone: killed or host rebooted)",
+        "none": "no deploy recorded",
+    }.get(state, state)
+    console.print(f"rodeo up on [cyan]{report['ip']}[/cyan]: [bold]{detail}[/bold]  ({report['log']})")
+    for line in report["lines"]:
+        console.print(line, markup=False, highlight=False)

@@ -33,8 +33,9 @@ _DEFAULT_LAB_DIR = "/root/rodeo-lab"
 # What the host needs to treat the lab as existing (up_cmd's lab_ready) rather
 # than seed a fresh one from the bundled example.
 _PLAN_FILES = ("rodeo-plan.yaml", "definition.yaml")
-# The laptop's effective secrets (global ~/.rodeo/secrets.yaml + the lab's own
-# .rodeo-secrets.yaml) travel in the same tar under this name and become the
+# The laptop's values (global ~/.rodeo/secrets.yaml + the lab's own
+# .rodeo-secrets.yaml) for the secrets the plan references travel in the
+# same tar under this name and become the
 # host's ~/.rodeo/secrets.yaml, so the host deploys with the passwords the
 # operator already has locally instead of generating its own.
 _SHIPPED_SECRETS = ".rodeo-shipped-secrets.yaml"
@@ -312,11 +313,40 @@ def local_secrets(lab: Path) -> dict[str, Any]:
     return merged
 
 
+def referenced_secret_keys(lab: Path) -> set[str]:
+    """The plain ``??key`` placeholders *lab*'s plan uses, as the host will load it.
+
+    Same walker as secretgen.ensure_plan_secrets (plan_secret_keys, with the
+    selected lab-in-a-box variant applied), run over the plan as load_config
+    renders it, so Jinja in the plan does not hide a placeholder.
+    """
+    from ..config import load_config
+    from ..labinabox import apply_variant
+    from ..secretgen import plan_secret_keys
+
+    plan = lab / "rodeo-plan.yaml"
+    if not plan.is_file():
+        return set()
+    cfg = load_config(plan, config_dir=lab, resolve_secrets=False)
+    return plan_secret_keys(apply_variant(cfg))
+
+
+def shipped_secrets(lab: Path) -> dict[str, Any]:
+    """The laptop's values for only the secrets *lab*'s plan references.
+
+    The host never sees unrelated keys from ~/.rodeo/secrets.yaml (an SCC
+    regcode, another lab's passwords, cloud keys).
+    """
+    keys = referenced_secret_keys(lab)
+    return {k: v for k, v in local_secrets(lab).items() if k in keys}
+
+
 def pack_plan_files(lab: Path, *, with_secrets: bool = False) -> str:
     """Base64 tar of the lab's plan files (root-owned, 0600) for the remote.
 
-    *with_secrets* adds the laptop's effective secrets (see local_secrets) so
-    laptop and host share one set of passwords.
+    *with_secrets* adds the laptop's values for the secrets the plan
+    references (see shipped_secrets) so laptop and host share one set of
+    passwords for them.
     """
     buf = io.BytesIO()
 
@@ -331,7 +361,7 @@ def pack_plan_files(lab: Path, *, with_secrets: bool = False) -> str:
             if path.is_file():
                 _add(name, path.read_bytes())
         if with_secrets:
-            secrets = local_secrets(lab)
+            secrets = shipped_secrets(lab)
             if secrets:
                 _add(_SHIPPED_SECRETS, yaml.safe_dump(secrets, sort_keys=True).encode())
     return base64.b64encode(buf.getvalue()).decode("ascii")

@@ -3,11 +3,17 @@ from __future__ import annotations
 
 import io
 import json
+import os
+import queue
+import signal
+import sys
+import threading
+import time
 
 import pytest
 
 from rodeo.mcp import tools as mcp_tools
-from rodeo.mcp.exec import clamp, rodeo_argv
+from rodeo.mcp.exec import clamp, rodeo_argv, run_rodeo
 from rodeo.mcp.server import SUPPORTED_PROTOCOLS, RodeoMCPServer, serve
 
 
@@ -187,3 +193,151 @@ def test_clamp_keeps_the_tail():
     clamped = clamp("x" * 50 + "TAIL", limit=10)
     assert clamped.endswith("TAIL")
     assert "omitted" in clamped
+
+
+# --- process groups: timeout, cancel, EOF ----------------------------------
+
+STUB = '''#!{python}
+"""Stub rodeo: start a grandchild that ignores SIGTERM, record its pid, then wait."""
+import os, subprocess, sys, time
+child = subprocess.Popen(
+    [sys.executable, "-c",
+     "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)"],
+    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+with open(os.environ["STUB_PIDFILE"] + ".tmp", "w") as fh:
+    fh.write(str(child.pid))
+os.rename(os.environ["STUB_PIDFILE"] + ".tmp", os.environ["STUB_PIDFILE"])
+print("stub started", flush=True)
+time.sleep(float(os.environ.get("STUB_SLEEP", "5")))
+'''
+
+
+def _alive(pid: int) -> bool:
+    """True while ``pid`` exists and is not a zombie."""
+    try:
+        with open(f"/proc/{pid}/stat") as fh:
+            return fh.read().rsplit(")", 1)[1].split()[0] != "Z"
+    except FileNotFoundError:
+        return False
+
+
+def _wait_dead(pid: int, within: float = 3.0) -> bool:
+    deadline = time.monotonic() + within
+    while time.monotonic() < deadline:
+        if not _alive(pid):
+            return True
+        time.sleep(0.05)
+    return not _alive(pid)
+
+
+def _wait_file(path, within: float = 10.0) -> int:
+    deadline = time.monotonic() + within
+    while time.monotonic() < deadline:
+        if path.exists():
+            return int(path.read_text())
+        time.sleep(0.02)
+    raise AssertionError(f"stub never wrote {path}")
+
+
+@pytest.fixture
+def stub_rodeo(monkeypatch, tmp_path):
+    """A stub rodeo binary; yields the pid file its grandchild's pid lands in."""
+    stub = tmp_path / "rodeo"
+    stub.write_text(STUB.format(python=sys.executable))
+    stub.chmod(0o755)
+    pidfile = tmp_path / "grandchild.pid"
+    monkeypatch.setattr("rodeo.mcp.exec.find_rodeo_bin", lambda: str(stub))
+    monkeypatch.setattr("rodeo.mcp.exec.KILL_GRACE", 0.5, raising=False)
+    monkeypatch.setenv("STUB_PIDFILE", str(pidfile))
+    yield pidfile
+    if pidfile.exists():  # never leak a sleeper, even when an assertion failed
+        try:
+            os.kill(int(pidfile.read_text()), signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+
+def test_timeout_kills_the_grandchild(stub_rodeo):
+    code, output = run_rodeo(["status"], timeout=2)
+    assert code == 124
+    assert output.startswith("timed out after 2s")
+    assert _wait_dead(_wait_file(stub_rodeo))
+
+
+def test_normal_exit_still_returns_output(stub_rodeo, monkeypatch):
+    monkeypatch.setenv("STUB_SLEEP", "0")
+    code, output = run_rodeo(["status"], timeout=20)
+    assert code == 0
+    assert "stub started" in output
+
+
+class _Pipe:
+    """A line stream the test writes to while serve() reads it."""
+
+    def __init__(self) -> None:
+        self.lines: queue.Queue = queue.Queue()
+
+    def send(self, message: dict) -> None:
+        self.lines.put(json.dumps(message) + "\n")
+
+    def close(self) -> None:
+        self.lines.put(None)
+
+    def __iter__(self):
+        while (line := self.lines.get()) is not None:
+            yield line
+
+
+def _serve_in_thread(pipe: _Pipe, out: io.StringIO, tmp_path) -> threading.Thread:
+    thread = threading.Thread(
+        target=serve, kwargs={"stdin": pipe, "stdout": out, "lab_dir": tmp_path}, daemon=True)
+    thread.start()
+    return thread
+
+
+def test_cancel_kills_the_process_group_and_server_keeps_answering(stub_rodeo, tmp_path):
+    pipe, out = _Pipe(), io.StringIO()
+    thread = _serve_in_thread(pipe, out, tmp_path)
+    pipe.send(_req("tools/call", {"name": "rodeo_status", "arguments": {}}, req_id=7))
+    grandchild = _wait_file(stub_rodeo)
+    started = time.monotonic()
+    pipe.send(_req("notifications/cancelled", {"requestId": 7, "reason": "user"}, req_id=None))
+    assert _wait_dead(grandchild), "cancel left the grandchild running"
+    assert time.monotonic() - started < 4, "cancel did not stop the call early"
+    pipe.send(_req("tools/list", req_id=8))
+    pipe.close()
+    thread.join(10)
+    assert not thread.is_alive()
+
+    replies = {r["id"]: r for r in map(json.loads, out.getvalue().splitlines())}
+    cancelled = replies[7]["result"]
+    assert cancelled["isError"] is True
+    assert cancelled["content"][0]["text"].startswith("cancelled")
+    assert any(t["name"] == "rodeo_status" for t in replies[8]["result"]["tools"])
+
+
+def test_cancel_for_an_unknown_id_is_ignored():
+    server = RodeoMCPServer()
+    assert server.handle(_req("notifications/cancelled", {"requestId": 99}, req_id=None)) is None
+    assert server.cancel(99) is False
+
+
+def test_eof_kills_calls_in_flight(stub_rodeo, tmp_path):
+    pipe, out = _Pipe(), io.StringIO()
+    thread = _serve_in_thread(pipe, out, tmp_path)
+    pipe.send(_req("tools/call", {"name": "rodeo_status", "arguments": {}}, req_id=3))
+    grandchild = _wait_file(stub_rodeo)
+    pipe.close()
+    thread.join(4)
+    assert not thread.is_alive(), "serve() did not return promptly at EOF"
+    assert _wait_dead(grandchild)
+
+
+# --- rodeo_logins ----------------------------------------------------------
+
+def test_no_tool_runs_the_builder_logins_group():
+    # 'rodeo logins' manages Builder htpasswd users; it does not show a lab's
+    # login details, and no read-only command does. The tool must not exist.
+    tools = mcp_tools.tool_map(allow_write=True)
+    assert "rodeo_logins" not in tools
+    assert all(t.command[:1] != ("logins",) for t in tools.values())

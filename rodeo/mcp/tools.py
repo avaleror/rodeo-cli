@@ -8,6 +8,7 @@ no protocol or dispatch code changes.
 from __future__ import annotations
 
 import json
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -159,7 +160,6 @@ READ_TOOLS: tuple[Tool, ...] = (
          ("status",), (_OUTPUT, _PARAM), lab_scoped=True),
     Tool("rodeo_list", "List rodeo VMs known to libvirt on this host.", ("list",),
          (Arg("uri", "option", "Libvirt connection URI.", "--uri"),)),
-    Tool("rodeo_logins", "Show the lab's login details.", ("logins",), lab_scoped=True),
     Tool("rodeo_logs",
          "Last lines of a VM's serial log (never follows).",
          ("logs",),
@@ -262,12 +262,23 @@ def tool_map(*, allow_write: bool) -> dict[str, Tool]:
     return {t.name: t for t in tools}
 
 
-def call(tool: Tool, params: dict, *, lab_dir: Path | None) -> tuple[bool, str]:
-    """Run ``tool`` with ``params``. Returns (ok, text) — never raises for a failed run."""
+def call(
+    tool: Tool,
+    params: dict,
+    *,
+    lab_dir: Path | None,
+    cancel: threading.Event | None = None,
+) -> tuple[bool, str]:
+    """Run ``tool`` with ``params``. Returns (ok, text); never raises for a failed run.
+
+    Setting ``cancel`` stops a running rodeo command (its whole process group).
+    """
     if tool.handler is not None:
         return True, tool.handler(params)
     cwd = params.get("lab_dir") or lab_dir
-    kwargs = {"cwd": cwd}
+    kwargs: dict = {"cwd": cwd}
+    if cancel is not None:
+        kwargs["cancel"] = cancel
     if tool.timeout is not None:
         kwargs["timeout"] = tool.timeout
     code, output = run_rodeo(tool.argv(params), **kwargs)

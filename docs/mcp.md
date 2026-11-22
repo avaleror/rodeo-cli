@@ -57,7 +57,6 @@ Read-only (always offered):
 | `rodeo_plan` | `rodeo plan` |
 | `rodeo_status` | `rodeo status` |
 | `rodeo_list` | `rodeo list` |
-| `rodeo_logins` | `rodeo logins` |
 | `rodeo_logs` | `rodeo logs --no-follow` |
 | `rodeo_instances_list` | `rodeo instances list` |
 | `rodeo_fleet_status` | `rodeo fleet status` |

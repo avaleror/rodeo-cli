@@ -14,8 +14,16 @@ from __future__ import annotations
 
 import os
 import shutil
+import signal
+import subprocess
 import sys
+import time
 from pathlib import Path
+
+#: Seconds the root rodeo waits after SIGTERM before it SIGKILLs what is left
+#: of its process group. Must stay below ``mcp.exec.KILL_GRACE``: after that the
+#: MCP server SIGKILLs sudo, and sudo cannot relay SIGKILL to a root process.
+ROOT_STOP_GRACE = 3.0
 
 
 def is_root() -> bool:
@@ -57,8 +65,122 @@ def ensure_root(argv: list[str]) -> None:
             from .paths import fix_invoking_ownership
 
             atexit.register(fix_invoking_ownership)
+            install_root_sigterm_handler()
         return
     relaunch_as_root(argv)
+
+
+def _parent_is_sudo() -> bool:
+    """True when our direct parent is a sudo process (the relay, or its pty monitor)."""
+    ppid = os.getppid()
+    try:
+        name = Path(f"/proc/{ppid}/comm").read_text().strip()
+    except OSError:
+        try:
+            name = subprocess.run(
+                ["ps", "-o", "comm=", "-p", str(ppid)],
+                capture_output=True, text=True, timeout=5, check=False,
+            ).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            return False
+    return os.path.basename(name) == "sudo"
+
+
+def _group_members(pgid: int) -> list[int] | None:
+    """Pids in process group ``pgid`` except this process and its parent (sudo).
+
+    None when ``/proc`` is not readable (not Linux): the caller then falls back
+    to a plain group signal.
+    """
+    proc = Path("/proc")
+    if not (proc / "self" / "stat").exists():
+        return None
+    skip = {os.getpid(), os.getppid()}
+    members = []
+    for entry in proc.iterdir():
+        if not entry.name.isdigit() or int(entry.name) in skip:
+            continue
+        try:
+            stat = (entry / "stat").read_text()
+        except OSError:
+            continue
+        # Fields after the ")" that closes comm: state ppid pgrp ...
+        fields = stat.rsplit(")", 1)[-1].split()
+        if len(fields) > 2 and fields[0] != "Z" and int(fields[2]) == pgid:
+            members.append(int(entry.name))
+    return members
+
+
+def _signal_all(pids: list[int], sig: int) -> None:
+    for pid in pids:
+        try:
+            os.kill(pid, sig)
+        except (ProcessLookupError, PermissionError):
+            pass
+
+
+def _reap_children() -> None:
+    while True:
+        try:
+            pid, _ = os.waitpid(-1, os.WNOHANG)
+        except ChildProcessError:
+            return
+        if pid == 0:
+            return
+
+
+def stop_own_group(grace: float | None = None) -> None:
+    """SIGTERM this process group (ansible, ssh), then SIGKILL survivors after ``grace``.
+
+    This process and its parent (sudo) are spared: sudo ignores signals its own
+    command sends, and this process still has to exit cleanly.
+    """
+    grace = ROOT_STOP_GRACE if grace is None else grace
+    pgid = os.getpgrp()
+    members = _group_members(pgid)
+    if members is None:  # no /proc: a group signal is the best available
+        try:
+            os.killpg(pgid, signal.SIGTERM)
+        except OSError:
+            pass
+        return
+    _signal_all(members, signal.SIGTERM)
+    deadline = time.monotonic() + grace
+    while members and time.monotonic() < deadline:
+        time.sleep(0.05)
+        _reap_children()
+        members = _group_members(pgid) or []
+    _signal_all(members, signal.SIGKILL)
+    _reap_children()
+
+
+def _on_sigterm(signum, frame) -> None:  # noqa: ARG001 - signal handler signature
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)  # a second TERM must not re-enter
+    stop_own_group()
+    from .paths import fix_invoking_ownership
+
+    fix_invoking_ownership()
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(128 + signal.SIGTERM)
+
+
+def install_root_sigterm_handler() -> bool:
+    """On SIGTERM, stop this root rodeo's process group and exit. True when installed.
+
+    An MCP cancel or timeout signals the group it started, but the escalated
+    rodeo and its ansible/ssh children run as uid 0 (and, with sudo's
+    ``use_pty``, in another session), so only sudo receives the signal. sudo
+    relays SIGTERM to this process (it cannot relay SIGKILL). Without this
+    handler the children would outlive the cancel.
+
+    Installed only in a root process whose direct parent is sudo, so a root
+    rodeo started by a script never signals the script's own group.
+    """
+    if not is_root() or not os.environ.get("SUDO_USER") or not _parent_is_sudo():
+        return False
+    signal.signal(signal.SIGTERM, _on_sigterm)
+    return True
 
 
 def sudo_prefix() -> list[str]:

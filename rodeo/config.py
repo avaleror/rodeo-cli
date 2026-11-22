@@ -887,8 +887,13 @@ def _load_secrets(lab_dir: Path | None, *, include_global: bool) -> dict:
     if lab_dir is not None:
         lab_secrets = checked_lab_secrets(lab_dir)
         if lab_secrets is not None:
+            from .labfs import read_lab_file
+
+            # Read with O_NOFOLLOW and a hard-link check on the same fd: no gap
+            # between checked_lab_secrets() and the read.
+            text = read_lab_file(lab_dir, LAB_SECRETS_FILE) or ""
             try:
-                secrets = {**secrets, **(yaml.safe_load(lab_secrets.read_text()) or {})}
+                secrets = {**secrets, **(yaml.safe_load(text) or {})}
             except yaml.YAMLError as exc:
                 raise ConfigError(f"{lab_secrets}: invalid YAML: {exc}")
     return secrets

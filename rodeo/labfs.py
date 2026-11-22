@@ -10,8 +10,10 @@ file descriptor (``dir_fd``), so a component swapped for a symlink between the
 check and the write is not followed. Linux and macOS support all of this.
 Residual race: ``lab_subdir`` and ``clear_lab_path`` hand back a path, and code
 that then writes many files under it by path (rendered guides, the PDF build
-copy) is only protected up to that moment. ``shutil.rmtree`` is itself
-symlink-attack resistant on these platforms.
+copy) is only protected up to that moment. ``clear_lab_path`` removes a
+directory with ``shutil.rmtree(name, dir_fd=...)`` on Python 3.11+; on older
+Python it falls back to the path, where a parent swapped for a symlink after
+the check could redirect the removal.
 """
 from __future__ import annotations
 
@@ -63,16 +65,39 @@ def lab_subdir(lab: Path, rel: str | Path, mode: int = 0o700) -> Path:
 
 def write_lab_file(lab: Path, rel: str | Path, data: str | bytes, mode: int = 0o600) -> Path:
     """Atomically write ``lab/rel``: a temp file and a rename, both relative to the
-    checked directory's fd. A symlink at ``rel`` is replaced, never followed."""
+    checked directory's fd. A symlink at ``rel`` is replaced, never followed.
+
+    Replacing an existing regular file keeps its owner (so `sudo rodeo up` does
+    not hand the user's plan to root) and never loosens its mode: the result is
+    the existing mode limited to ``mode``. New directories on the way are 0700.
+    """
     rel = Path(rel)
     dfd = _open_dir(Path(lab), rel.parent)
     tmp = f".{rel.name}.{secrets.token_hex(6)}"
     try:
+        owner = None
+        try:
+            st = os.stat(rel.name, dir_fd=dfd, follow_symlinks=False)
+            if stat.S_ISREG(st.st_mode):
+                owner = (st.st_uid, st.st_gid)
+                mode = (st.st_mode & 0o777) & mode
+        except FileNotFoundError:
+            pass
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
                      mode, dir_fd=dfd)
         try:
-            with os.fdopen(fd, "wb") as fh:
+            try:
+                fh = os.fdopen(fd, "wb")
+            except BaseException:
+                os.close(fd)
+                raise
+            with fh:
                 os.fchmod(fh.fileno(), mode)
+                if owner is not None and owner != (os.geteuid(), os.getegid()):
+                    try:
+                        os.fchown(fh.fileno(), *owner)
+                    except PermissionError:
+                        pass  # not root: the file stays ours, as before
                 fh.write(data.encode() if isinstance(data, str) else data)
             os.replace(tmp, rel.name, src_dir_fd=dfd, dst_dir_fd=dfd)
         except BaseException:
@@ -109,6 +134,7 @@ def read_lab_file(lab: Path, rel: str | Path) -> str | None:
 def clear_lab_path(lab: Path, rel: str | Path) -> Path:
     """Remove ``lab/rel`` before rodeo rebuilds it: a symlink is unlinked, never followed."""
     import shutil
+    import sys
 
     rel = Path(rel)
     dfd = _open_dir(Path(lab), rel.parent)
@@ -119,7 +145,12 @@ def clear_lab_path(lab: Path, rel: str | Path) -> Path:
         except FileNotFoundError:
             return path
         if stat.S_ISDIR(st.st_mode):
-            shutil.rmtree(path)  # fd-based, symlink-attack resistant on Linux and macOS
+            if sys.version_info >= (3, 11) and shutil.rmtree.avoids_symlink_attacks:
+                shutil.rmtree(rel.name, dir_fd=dfd)  # relative to the checked parent
+            else:
+                # Older Python: by path. A parent swapped for a link after the
+                # check could redirect this rmtree (documented residual race).
+                shutil.rmtree(path)
         else:
             os.unlink(rel.name, dir_fd=dfd)
     finally:

@@ -192,9 +192,16 @@ def seed_lab(
     fresh = not has_hashed_files(dest)
     source_trusted = profile_kind(profile) == "bundled" or is_lab_trusted(src)
 
+    from .config import ConfigError
+    from .labfs import write_lab_file
+
     copied: list[Path] = []
     for item in src.iterdir():
         target = dest / item.name
+        # Checked before exists(): a dangling link (rodeo-plan.yaml -> ~/.bash_aliases)
+        # reports False there and would be created through.
+        if target.is_symlink():
+            raise ConfigError(f"{target} is a symlink: rodeo won't seed a lab through it")
         if item.is_dir():
             if target.exists():
                 if not force:
@@ -204,7 +211,8 @@ def seed_lab(
         else:
             if target.exists() and not force:
                 continue
-            shutil.copy2(item, target)
+            write_lab_file(dest, item.name, item.read_bytes(), item.stat().st_mode & 0o777)
+            shutil.copystat(item, target)
         copied.append(item)
 
     _verify_seed_copy(src, dest, copied)
@@ -315,4 +323,7 @@ def normalize_plan(
         data.clear()
         data.update(adapted)
 
-    plan_path.write_text(yaml.safe_dump(data, sort_keys=False, default_flow_style=False))
+    from .labfs import write_lab_file
+
+    write_lab_file(plan_path.parent, plan_path.name,
+                   yaml.safe_dump(data, sort_keys=False, default_flow_style=False), 0o644)

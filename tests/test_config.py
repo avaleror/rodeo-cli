@@ -1320,3 +1320,102 @@ def test_init_env_file_never_written_through_a_link(tmp_path):
     os.symlink(victim, lab / "rodeo-secrets.env")
     CliRunner().invoke(init_cmd, [str(lab)])
     assert victim.read_text() == "keep\n"
+
+
+def test_seed_refuses_a_dangling_symlink_target(tmp_path):
+    """rodeo-plan.yaml -> ~/.bash_aliases (missing): exists() is False, so the copy
+    used to create the link's target."""
+    import os
+
+    from rodeo.labseed import seed_lab
+
+    lab = tmp_path / "lab"
+    lab.mkdir()
+    missing = tmp_path / ".bash_aliases"
+    os.symlink(missing, lab / "rodeo-plan.yaml")
+    with pytest.raises(config.ConfigError, match="symlink"):
+        seed_lab("rancher", lab)
+    assert not missing.exists()
+
+
+def test_write_lab_file_keeps_owner_and_never_loosens_mode(tmp_path, monkeypatch):
+    import os
+
+    from rodeo import labfs
+
+    lab = tmp_path / "lab"
+    lab.mkdir()
+    plan = lab / "rodeo-plan.yaml"
+    plan.write_text("old\n")
+    plan.chmod(0o600)
+    calls = []
+    monkeypatch.setattr(labfs.os, "geteuid", lambda: 0)  # as after `sudo rodeo up`
+    monkeypatch.setattr(labfs.os, "fchown", lambda fd, uid, gid: calls.append((uid, gid)))
+    labfs.write_lab_file(lab, "rodeo-plan.yaml", "new\n", 0o644)
+    st = plan.stat()
+    assert plan.read_text() == "new\n"
+    assert st.st_mode & 0o777 == 0o600
+    assert calls == [(os.getuid(), os.getgid())]
+
+
+def test_write_lab_file_closes_the_fd_when_fdopen_fails(tmp_path, monkeypatch):
+    import os
+
+    from rodeo import labfs
+
+    lab = tmp_path / "lab"
+    lab.mkdir()
+    before = len(os.listdir("/proc/self/fd")) if os.path.isdir("/proc/self/fd") else None
+
+    def boom(*a, **k):
+        raise MemoryError("fdopen")
+
+    monkeypatch.setattr(labfs.os, "fdopen", boom)
+    with pytest.raises(MemoryError):
+        labfs.write_lab_file(lab, "x.txt", "data")
+    monkeypatch.undo()
+    assert not [p for p in lab.iterdir() if p.name.startswith(".x.txt.")]
+    if before is not None:
+        assert len(os.listdir("/proc/self/fd")) == before
+
+
+def test_clear_lab_path_removes_relative_to_the_checked_parent(tmp_path, monkeypatch):
+    import shutil
+    import sys
+
+    from rodeo import labfs
+
+    lab = tmp_path / "lab"
+    (lab / "guide" / "sub").mkdir(parents=True)
+    calls = []
+    real = shutil.rmtree
+
+    def spy(path, *a, **k):
+        calls.append((path, k.get("dir_fd")))
+        return real(path, *a, **k)
+
+    spy.avoids_symlink_attacks = shutil.rmtree.avoids_symlink_attacks
+    monkeypatch.setattr(shutil, "rmtree", spy)
+    labfs.clear_lab_path(lab, "guide")
+    assert not (lab / "guide").exists()
+    if sys.version_info >= (3, 11) and spy.avoids_symlink_attacks:
+        assert calls[0][0] == "guide" and calls[0][1] is not None
+
+
+def test_remote_local_secrets_refuses_a_linked_lab_file(tmp_path, monkeypatch):
+    import os
+
+    from rodeo.providers.remote_up import local_secrets
+
+    secrets = _write_secrets(tmp_path, monkeypatch, {"a": "b"})
+    lab = tmp_path / "lab"
+    lab.mkdir()
+    victim = tmp_path / "victim.yaml"
+    victim.write_text("x: y\n")
+    os.symlink(victim, lab / config.LAB_SECRETS_FILE)
+    with pytest.raises(config.ConfigError, match="symlink"):
+        local_secrets(lab)
+    (lab / config.LAB_SECRETS_FILE).unlink()
+    (lab / config.LAB_SECRETS_FILE).write_text("c: d\n")
+    assert local_secrets(lab) == {"a": "b", "c": "d"}
+    assert secrets.exists()

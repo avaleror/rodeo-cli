@@ -214,6 +214,7 @@ def remote_up_script(
     install_url: str = _DEFAULT_INSTALL,
     ref: str | None = None,
     ship_plan: bool = False,
+    detach: bool = False,
 ) -> str:
     """Bootstrap + remote ``rodeo up --target aws`` (phases still run as baremetal).
 
@@ -242,6 +243,11 @@ def remote_up_script(
     ~/.rodeo/secrets.yaml (resolved like paths.invoking_home: SUDO_USER's home
     when set). Live-caught 2026-11-11: the host generated its own password, so
     the one in the operator's ~/.rodeo/secrets.yaml did not log in to Rancher.
+
+    *detach*: start ``rodeo up`` and return instead of following its log. The
+    detached job records itself (see _detached_job) and the script prints one
+    ``AWS_UP_DETACHED`` line with its pid. A deploy that is already running
+    prints an ``AWS_UP_RUNNING`` line before exit 75.
     """
     lab = shlex.quote(lab_dir)
     unpack = ""
@@ -258,6 +264,10 @@ def remote_up_script(
     profile_bits = ""
     if profile:
         profile_bits = f"--profile {shlex.quote(profile)} "
+    up = f"rodeo up --yes --no-tmux {profile_bits}--dir {lab} --target aws"
+    running = (
+        "printf 'AWS_UP_RUNNING pid=%s log=%s\\n' \"$rpid\" \"$log\"; " if detach else ""
+    )
     return (
         "set -euo pipefail; "
         f"{unpack}"
@@ -270,19 +280,32 @@ def remote_up_script(
         'mkdir -p "$HOME/.rodeo/logs"; '
         'log="$HOME/.rodeo/logs/aws-up.log"; '
         'pidf="$HOME/.rodeo/logs/aws-up.pid"; '
+        'exitf="$HOME/.rodeo/logs/aws-up.exit"; '
         # rodeo outlives the SSH session (laptop asleep, Ctrl-C, run_remote
         # timeout), so a re-run must not start a second deploy racing the first
         # one on the same lab. A pid file, not flock: a lock fd would be
         # inherited by whatever the deploy leaves running, like the tee pipe.
-        'if [ -s "$pidf" ] && kill -0 "$(cat "$pidf")" 2>/dev/null '
-        '&& grep -qa rodeo "/proc/$(cat "$pidf")/cmdline" 2>/dev/null; then '
-        'echo "rodeo up is already running on this host (pid $(cat "$pidf")),'
+        # Only the first field is the pid: a detached run adds its start time.
+        'rpid=""; [ -s "$pidf" ] && read -r rpid _ <"$pidf" || true; '
+        'if [ -n "$rpid" ] && kill -0 "$rpid" 2>/dev/null '
+        '&& grep -qa rodeo "/proc/$rpid/cmdline" 2>/dev/null; then '
+        'echo "rodeo up is already running on this host (pid $rpid),'
         ' started by an earlier session. Follow it with:'
         ' sudo tail -f $log" >&2; '
+        f"{running}"
         'exit 75; fi; '
         # The laptop only ships a lab it trusts (load_config secrets="all"), so
         # the host trusts that same copy; an older rodeo without --yes ignores it.
         f"rodeo trust --yes --config-dir {lab} </dev/null >/dev/null 2>&1 || true; "
+        # A previous detached run's exit code must not describe this run.
+        'rm -f "$exitf"; '
+        f"{_detached_job(up) if detach else _followed_job(up)}"
+    )
+
+
+def _followed_job(up: str) -> str:
+    """Run *up* in the background and follow its log until it ends (human path)."""
+    return (
         'off=$(( $(stat -c %s "$log" 2>/dev/null || echo 0) + 1 )); '
         "set +e; "
         # rodeo writes to the log, not to the SSH channel, and the laptop gets
@@ -291,14 +314,45 @@ def remote_up_script(
         # deploy left behind still held that pipe: live-caught 2026-11-18, the
         # host finished at 19:15 and the laptop hung until the connection was
         # reset at 20:42, so a healthy lab came back as exit 1.
-        f"rodeo up --yes --no-tmux {profile_bits}"
-        f"--dir {lab} --target aws "
+        f"{up} "
         '</dev/null >>"$log" 2>&1 & rp=$!; '
         'echo "$rp" >"$pidf"; '
         'tail -c "+$off" --pid="$rp" -f "$log"; '
         'wait "$rp"; ec=$?; rm -f "$pidf"; set -e; '
         'echo AWS_UP_EXIT:$ec; '
         "exit \"$ec\""
+    )
+
+
+def _detached_job(up: str) -> str:
+    """Start *up* as a job that records its own pid and outcome, then return.
+
+    The job, not this shell, writes ``aws-up.pid`` (its pid and start time,
+    field 22 of its /proc stat) before rodeo starts, so an instant failure
+    can't race us, and writes rodeo's exit code to ``aws-up.exit`` before it
+    removes the pid file. It keeps today's redirections: nothing holds the SSH
+    channel, so the session ends as soon as this script does.
+    """
+    job = (
+        'pidf="$HOME/.rodeo/logs/aws-up.pid"; exitf="$HOME/.rodeo/logs/aws-up.exit"; '
+        # $$ is this job's shell. /proc/self would be sed's own process. Field
+        # 22 counted after the ") " that closes the command name, which may
+        # itself contain spaces: field 3 there is the first, so 22 is the 20th.
+        'st=$(sed "s/^.*) //" /proc/$$/stat | cut -d " " -f 20); '
+        'echo "$$ $st" >"$pidf"; '
+        f'{up} </dev/null >>"$HOME/.rodeo/logs/aws-up.log" 2>&1; '
+        'ec=$?; echo "$ec" >"$exitf.tmp" && mv -f "$exitf.tmp" "$exitf"; '
+        'rm -f "$pidf"; exit "$ec"'
+    )
+    return (
+        f'sh -c {shlex.quote(job)} </dev/null >>"$log" 2>&1 & rp=$!; '
+        # Wait (5 s at most) for the job's own record, or its exit file if it
+        # already finished.
+        'i=0; while [ "$i" -lt 50 ] && [ ! -s "$pidf" ] && [ ! -s "$exitf" ]; do '
+        'sleep 0.1; i=$((i + 1)); done; '
+        'st=""; [ -s "$pidf" ] && read -r _ st <"$pidf" || true; '
+        "printf 'AWS_UP_DETACHED pid=%s start=%s log=%s\\n' \"$rp\" \"$st\" \"$log\"; "
+        "exit 0"
     )
 
 
@@ -385,10 +439,14 @@ def run_remote_up(
     ref: str | None = None,
     timeout: float = 7200.0,
     plan_dir: Path | None = None,
-) -> None:
+    detach: bool = False,
+) -> dict[str, Any] | None:
     """SSH to the provisioned host and run ``rodeo up`` as baremetal.
 
     With *plan_dir* the host deploys that lab's plan (see remote_up_script).
+    With *detach* it returns once the host has started the deploy:
+    ``{"state": "started", "pid", "start", "log", "host"}``, or
+    ``{"state": "already_running", ...}`` (raised as AlreadyRunning, exit 75).
     """
     inv, fh = _fleet_inventory_for(cfg, host)
     provider_cfg = _provider_cfg(cfg)
@@ -400,6 +458,7 @@ def run_remote_up(
         install_url=install_url,
         ref=resolved_ref,
         ship_plan=plan_dir is not None,
+        detach=detach,
     )
     extra: dict[str, Any] = {}
     if plan_dir is not None:
@@ -411,6 +470,13 @@ def run_remote_up(
         timeout=timeout,
         **extra,
     )
+    if detach:
+        if result.rc == 75 and "AWS_UP_RUNNING " in (result.stdout or ""):
+            info = _marker_fields(result.stdout, "AWS_UP_RUNNING")
+            raise AlreadyRunning({"state": "already_running", **info, "host": host.id})
+        if result.ok and "AWS_UP_DETACHED " in (result.stdout or ""):
+            info = _marker_fields(result.stdout, "AWS_UP_DETACHED")
+            return {"state": "started", **info, "host": host.id}
     if not result.ok:
         # Prefer stdout: the remote streams rodeo's own log there, while stderr
         # often holds only ssh noise ("Permanently added … to known hosts"),
@@ -445,6 +511,93 @@ def run_remote_up(
                         f"(see ~/.rodeo/logs/aws-up.log on the host)"
                     )
                 break
+    if detach:
+        raise ConfigError(
+            f"remote rodeo up on {host.public_ip} did not report a pid: "
+            f"{(out or result.stderr or '').strip()[-500:]}"
+        )
+    return None
+
+
+class AlreadyRunning(ConfigError):
+    """A detached ``rodeo up`` found a deploy already running on the host (exit 75)."""
+
+    def __init__(self, info: dict[str, Any]):
+        super().__init__(f"rodeo up is already running on the host (pid {info.get('pid')})")
+        self.info = info
+
+
+def _marker_fields(stdout: str, marker: str) -> dict[str, Any]:
+    """The key=value fields of the last *marker* line; pid as an int when it is one."""
+    line = next(ln for ln in reversed(stdout.splitlines()) if ln.startswith(marker + " "))
+    fields: dict[str, Any] = {}
+    for part in line[len(marker) + 1:].split(" "):
+        key, _, value = part.partition("=")
+        if key:
+            fields[key] = value
+    if str(fields.get("pid", "")).isdigit():
+        fields["pid"] = int(fields["pid"])
+    return fields
+
+
+#: Most log lines ``remote_up_status`` returns.
+MAX_STATUS_LINES = 500
+
+_STATUS_SCRIPT = (
+    'd="$HOME/.rodeo/logs"; log="$d/aws-up.log"; pidf="$d/aws-up.pid"; exitf="$d/aws-up.exit"; '
+    'state=none; pid=""; code=""; '
+    # The exit file first: the job writes it before it removes its pid file.
+    'if [ -s "$exitf" ]; then state=exited; read -r code _ <"$exitf" || true; '
+    'elif [ -s "$pidf" ]; then read -r pid st <"$pidf" || true; state=gone; '
+    'if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then '
+    # A recorded start time must match, or the pid was reused. A followed
+    # (non-detached) run records no start time: then it must still be rodeo.
+    'if [ -n "${st:-}" ]; then '
+    '[ "$(sed "s/^.*) //" "/proc/$pid/stat" | cut -d " " -f 20)" = "$st" ] && state=running; '
+    'elif grep -qa rodeo "/proc/$pid/cmdline" 2>/dev/null; then state=running; fi; '
+    'fi; fi; '
+    'printf "AWS_UP_STATUS state=%s pid=%s exit=%s log=%s\\n" "$state" "$pid" "$code" "$log"; '
+    'echo AWS_UP_LOG; [ -f "$log" ] && tail -n "$1" "$log"; exit 0'
+)
+
+
+def remote_up_status(cfg: dict[str, Any], *, lines: int = 40, timeout: float = 60.0) -> dict[str, Any]:
+    """State of the last remote ``rodeo up`` on this plan's AWS host, plus its log tail.
+
+    ``state`` is ``running``, ``exited`` (with ``exit``), ``gone`` (a pid file
+    whose process is dead or reused: killed, or the host rebooted) or ``none``.
+    """
+    plan_name = str(cfg.get("name") or "rodeo")
+    saved = load_aws_host_state(plan_name)
+    if not saved or not saved.get("public_ip"):
+        raise ConfigError(
+            f"no AWS host recorded for plan '{plan_name}' on this machine "
+            "(rodeo up --target aws records it)"
+        )
+    host = ProvisionedHost(
+        id=str(saved.get("host_id") or SINGLE_HOST_ID),
+        ssh=str(saved.get("ssh") or saved["public_ip"]),
+        public_ip=str(saved["public_ip"]),
+        labels=dict(saved.get("labels") or {}),
+        provider_id=saved.get("provider_id"),
+    )
+    n = max(1, min(int(lines), MAX_STATUS_LINES))
+    inv, fh = _fleet_inventory_for(cfg, host)
+    result = run_remote(
+        inv, fh, ["bash", "-c", _STATUS_SCRIPT, "status", str(n)], timeout=timeout,
+    )
+    out = result.stdout or ""
+    if not result.ok or "AWS_UP_STATUS " not in out:
+        raise ConfigError(
+            f"could not read the deploy state on {host.public_ip} (exit {result.rc}): "
+            f"{(result.stderr or out).strip()[-500:]}"
+        )
+    info = _marker_fields(out, "AWS_UP_STATUS")
+    for key in ("pid", "exit"):
+        value = info.get(key, "")
+        info[key] = int(value) if str(value).lstrip("-").isdigit() else None
+    tail = out.split("AWS_UP_LOG\n", 1)[1] if "AWS_UP_LOG\n" in out else ""
+    return {**info, "host": host.id, "ip": host.public_ip, "lines": tail.splitlines()}
 
 
 def destroy_primary(
@@ -481,12 +634,52 @@ def execute_aws_up(
     plan_dir: Path | None = None,
 ) -> ProvisionedHost:
     """Provision (or reuse) primary EC2 host, then remote-run ``rodeo up``."""
+    host, _ = _provision_and_run(
+        cfg, profile=profile, ref=ref, get_provider_fn=get_provider_fn,
+        remote_timeout=remote_timeout, plan_dir=plan_dir, detach=False,
+    )
+    return host
+
+
+def execute_aws_up_detached(
+    cfg: dict[str, Any],
+    *,
+    profile: str | None = None,
+    ref: str | None = None,
+    get_provider_fn: Callable[[str], Any] | None = None,
+    remote_timeout: float = 7200.0,
+    plan_dir: Path | None = None,
+) -> tuple[ProvisionedHost, dict[str, Any]]:
+    """Like execute_aws_up, but return once the host has started ``rodeo up``.
+
+    Returns the host and run_remote_up's record (pid, start, log, host).
+    Raises AlreadyRunning when a deploy is already running there.
+    """
+    host, info = _provision_and_run(
+        cfg, profile=profile, ref=ref, get_provider_fn=get_provider_fn,
+        remote_timeout=remote_timeout, plan_dir=plan_dir, detach=True,
+    )
+    assert info is not None
+    return host, info
+
+
+def _provision_and_run(
+    cfg: dict[str, Any],
+    *,
+    profile: str | None,
+    ref: str | None,
+    get_provider_fn: Callable[[str], Any] | None,
+    remote_timeout: float,
+    plan_dir: Path | None,
+    detach: bool,
+) -> tuple[ProvisionedHost, dict[str, Any] | None]:
     # Resolve the bootstrap source *before* provisioning: a typo'd ref must
     # cost nothing. Validating it at first use would reject it only after an
     # i7i is already running and billing.
     resolve_install_source(_provider_cfg(cfg), ref=ref)
     host = provision_primary(cfg, get_provider_fn=get_provider_fn)
-    run_remote_up(
+    info = run_remote_up(
         cfg, host, profile=profile, ref=ref, timeout=remote_timeout, plan_dir=plan_dir,
+        detach=detach,
     )
-    return host
+    return host, info

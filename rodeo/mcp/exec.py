@@ -88,6 +88,7 @@ def run_rodeo(
     cwd: Path | str | None = None,
     timeout: int | float = DEFAULT_TIMEOUT,
     cancel: threading.Event | None = None,
+    stdout_only: bool = False,
 ) -> tuple[int, str]:
     """Run ``rodeo <args...>`` and return its exit code and combined output.
 
@@ -96,6 +97,9 @@ def run_rodeo(
     non-zero exit code with the reason as output, never as an exception. On a
     timeout or when ``cancel`` is set, the whole process group is killed, not
     only the ``rodeo`` child.
+
+    ``stdout_only`` returns stdout alone when there is any (a command that
+    prints one JSON result there), else the combined output.
     """
     try:
         proc = subprocess.Popen(
@@ -132,4 +136,6 @@ def run_rodeo(
             except subprocess.TimeoutExpired:
                 proc.kill()
             return stopped
+    if stdout_only and (out or "").strip():
+        return proc.returncode, clamp(out)
     return proc.returncode, clamp((out or "") + (err or ""))

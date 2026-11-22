@@ -14,8 +14,11 @@ Design choices that remove the classic friction:
 """
 from __future__ import annotations
 
+import contextlib
+import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import click
@@ -57,7 +60,7 @@ from ..privilege import (
     tmux_available,
 )
 from ..paths import fix_invoking_ownership, invoking_home
-from ..providers.remote_up import execute_aws_up, on_ec2
+from ..providers.remote_up import AlreadyRunning, execute_aws_up, execute_aws_up_detached, on_ec2
 from ..secretgen import append_secret, ensure_plan_secrets, ensure_secrets_file, secrets_path
 from .deploy import execute_deploy
 
@@ -119,15 +122,40 @@ def _default_labs_root() -> Path:
          "the only way a just-pushed commit reaches an existing host. "
          "Default: leave whatever the host has (first bootstrap installs main).",
 )
+@click.option(
+    "--detach",
+    is_flag=True,
+    help="--target aws only: return once the AWS host has started rodeo up, printing one "
+         "JSON object (pid, log, host) on stdout; everything else goes to stderr. The deploy "
+         "keeps running on the host: follow it with rodeo status --cloud. Exit 75 (and "
+         "JSON) when a deploy is already running there.",
+)
 def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
            assume_yes: bool, no_deploy: bool, no_tmux: bool,
            deployment_target: str | None, resume: bool, reconcile: bool,
-           instance_tier: str | None, ref: str | None) -> None:
+           instance_tier: str | None, ref: str | None, detach: bool) -> None:
     """Bring up a SUSE/Rancher learning lab in one command.
 
     Runs inside a tmux session automatically so the deploy survives SSH or
     Instruqt disconnects. Re-attach any time with: tmux attach -t rodeo-<profile>
     """
+    args = dict(profile=profile, name=name, lab_dir=lab_dir, assume_yes=assume_yes,
+                no_deploy=no_deploy, no_tmux=no_tmux, deployment_target=deployment_target,
+                resume=resume, reconcile=reconcile, instance_tier=instance_tier, ref=ref)
+    if not detach:
+        _up(**args)
+        return
+    # stdout carries only the JSON result: everything rodeo prints on the way
+    # (rich consoles included, they write to sys.stdout) goes to stderr.
+    real_stdout = sys.stdout
+    with contextlib.redirect_stdout(sys.stderr):
+        _up(**{**args, "no_tmux": True}, detach_out=real_stdout)
+
+
+def _up(profile: str | None, name: str | None, lab_dir: str | None,
+        assume_yes: bool, no_deploy: bool, no_tmux: bool,
+        deployment_target: str | None, resume: bool, reconcile: bool,
+        instance_tier: str | None, ref: str | None, detach_out=None) -> None:
     # --- tmux self-wrap (first thing, before any side effects) ---
     # Skip on Instruqt — the challenge terminal is managed by Instruqt itself.
     # Skip when: already in tmux, --no-tmux, --no-deploy (short-lived), --resume (root re-exec).
@@ -215,6 +243,13 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
     aws_control_plane = (
         deployment_target == "aws" and not resume and not on_ec2()
     )
+
+    if detach_out is not None and not aws_control_plane:
+        console.print(
+            "[red]✗  --detach only applies to rodeo up --target aws from outside EC2 "
+            "(local deploys have no detach yet).[/red]"
+        )
+        raise SystemExit(2)
 
     if ref and not aws_control_plane:
         # --ref only steers the *remote* bootstrap. Ignoring it silently would
@@ -323,6 +358,7 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
             instance_tier=instance_tier,
             assume_yes=assume_yes,
             ref=ref,
+            detach_out=detach_out,
         )
         return
 
@@ -371,8 +407,13 @@ def _aws_control_plane_deploy(
     instance_tier: str | None,
     assume_yes: bool,
     ref: str | None = None,
+    detach_out=None,
 ) -> None:
-    """Provision EC2 + remote ``rodeo up --target baremetal`` from the laptop."""
+    """Provision EC2 + remote ``rodeo up --target baremetal`` from the laptop.
+
+    With *detach_out* (``--detach``) it returns once the host has started the
+    deploy and writes the record as one JSON line to that stream.
+    """
     try:
         cfg = load_config("rodeo-plan.yaml", config_dir=str(lab), secrets="all")
     except ValueError as exc:
@@ -419,9 +460,23 @@ def _aws_control_plane_deploy(
         # Hint catalog profile for AwsHostProvider.apply_instance_selection
         if isinstance(cfg.get("provider"), dict):
             cfg["provider"] = {**cfg["provider"], "lab_profile": lab_profile}
+        if detach_out is not None:
+            _, record = execute_aws_up_detached(
+                cfg, profile=profile or lab_profile, ref=ref, plan_dir=lab,
+            )
+            console.print(f"[green]✓[/green]  rodeo up started on the host (pid {record.get('pid')}). "
+                          f"Follow it with: rodeo status --cloud --config-dir {lab}")
+            detach_out.write(json.dumps(record, sort_keys=True) + "\n")
+            detach_out.flush()
+            return
         provisioned = execute_aws_up(
             cfg, profile=profile or lab_profile, ref=ref, plan_dir=lab,
         )
+    except AlreadyRunning as exc:
+        console.print(f"[yellow]⚠  {exc}. Follow it with: rodeo status --cloud --config-dir {lab}[/yellow]")
+        detach_out.write(json.dumps(exc.info, sort_keys=True) + "\n")
+        detach_out.flush()
+        raise SystemExit(75)
     except ConfigError as exc:
         console.print(f"[red]✗  {exc}[/red]")
         raise SystemExit(1)

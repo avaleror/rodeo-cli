@@ -84,6 +84,8 @@ class Tool:
     lab_scoped: bool = False
     handler: Callable[[dict], str] | None = None
     timeout: int | None = None
+    #: Extra argv decided at call time from the params and the lab directory.
+    argv_extra: Callable[[dict, Path | None], list[str]] | None = None
 
     def input_schema(self) -> dict:
         props = {a.name: a.schema() for a in self.args}
@@ -95,14 +97,15 @@ class Tool:
             schema["required"] = required
         return schema
 
-    def argv(self, params: dict) -> list[str]:
+    def argv(self, params: dict, cwd: Path | None = None) -> list[str]:
         """Full rodeo argv for ``params``: command, parameters in declaration
         order, then the fixed flags. Fixed flags come last so a positional
         (``rodeo help <command>``) still precedes them."""
         out = list(self.command)
         for arg in self.args:
             out += arg.render(params.get(arg.name))
-        return out + list(self.fixed)
+        extra = self.argv_extra(params, cwd) if self.argv_extra else []
+        return out + list(self.fixed) + extra
 
     def descriptor(self) -> dict:
         suffix = "" if not self.mutating else " CHANGES STATE."
@@ -132,6 +135,30 @@ def _engines(_params: dict) -> str:
         })
     rows.sort(key=lambda r: (r["engine"], r["type"]))
     return json.dumps(rows, indent=2)
+
+
+def _aws_detach(params: dict, cwd: Path | None) -> list[str]:
+    """``--detach`` when rodeo up will deploy to AWS from this machine.
+
+    The target is the ``target`` parameter, else the plan's
+    deployment_target (read as plain YAML, nothing resolved), as rodeo up
+    itself decides. On an EC2 host rodeo up deploys locally: no detach.
+    """
+    target = params.get("target")
+    if not target:
+        lab = Path(params.get("dir") or cwd or ".")
+        try:
+            import yaml
+
+            plan = yaml.safe_load((lab / "rodeo-plan.yaml").read_text()) or {}
+            target = plan.get("deployment_target") if isinstance(plan, dict) else None
+        except (OSError, ValueError):
+            target = None
+    if str(target or "").strip().lower() != "aws":
+        return []
+    from ..providers.remote_up import on_ec2
+
+    return [] if on_ec2() else ["--detach"]
 
 
 # --- Parameters reused by several tools ------------------------------------
@@ -164,8 +191,14 @@ READ_TOOLS: tuple[Tool, ...] = (
          "output=json returns one object with no credential values.",
          ("plan",), (_OUTPUT, _PARAM), lab_scoped=True),
     Tool("rodeo_status",
-         "VM states and cluster reachability for the lab.",
-         ("status",), (_OUTPUT, _PARAM), lab_scoped=True),
+         "VM states and cluster reachability for the lab. With cloud=true: the state "
+         "of the last AWS rodeo up on the lab's EC2 host (running, exited and its "
+         "code, gone, none) and the tail of its log.",
+         ("status",),
+         (_OUTPUT, _PARAM,
+          Arg("cloud", "flag", "Report the AWS host's rodeo up instead.", "--cloud", type="boolean"),
+          Arg("lines", "option", "With cloud: log lines (at most 500).", "--lines", type="integer")),
+         lab_scoped=True),
     Tool("rodeo_list", "List rodeo VMs known to libvirt on this host.", ("list",),
          (Arg("uri", "option", "Libvirt connection URI.", "--uri"),)),
     Tool("rodeo_logs",
@@ -198,13 +231,22 @@ READ_TOOLS: tuple[Tool, ...] = (
 WRITE_TOOLS: tuple[Tool, ...] = (
     Tool("rodeo_up",
          "Front door: set up the lab directory, secrets and deploy it. Works for "
-         "native and external (lab-in-a-box) engines. Long-running.",
+         "native and external (lab-in-a-box) engines. Target aws (the target "
+         "parameter or the plan's deployment_target): provisions the EC2 host, starts "
+         "rodeo up there and returns JSON {state, pid, start, log, host} without "
+         "waiting; follow it with rodeo_status cloud=true. An error with "
+         "state already_running means a deploy is running there. Any other target "
+         "deploys on this machine and blocks until it ends (no detach for local "
+         "deploys yet).",
          ("up",),
          (Arg("profile", "option", "Profile to deploy.", "--profile"),
           Arg("name", "option", "Lab name.", "--name"),
           Arg("dir", "option", "Lab directory to create or use.", "--dir", path="path"),
+          Arg("target", "option", "Where the lab runs: baremetal, instruqt or aws.",
+              "--target"),
           Arg("no_deploy", "flag", "Seed the lab and stop before deploying.", "--no-deploy")),
-         fixed=("--yes", "--no-tmux"), mutating=True, lab_scoped=True),
+         fixed=("--yes", "--no-tmux"), mutating=True, lab_scoped=True,
+         argv_extra=_aws_detach),
     Tool("rodeo_deploy",
          "Run the phase pipeline for the lab in place (no TUI).",
          ("deploy",),
@@ -408,8 +450,14 @@ def call(
         kwargs["cancel"] = cancel
     if tool.timeout is not None:
         kwargs["timeout"] = tool.timeout
-    code, output = run_rodeo(tool.argv(params), **kwargs)
+    argv = tool.argv(params, Path(cwd) if cwd else None)
+    if "--detach" in argv:
+        # The result is the JSON record on stdout, not the provisioning chatter.
+        kwargs["stdout_only"] = True
+    code, output = run_rodeo(argv, **kwargs)
     text = output.strip() or "(no output)"
+    if code == 75 and "--detach" in argv and text.startswith("{"):
+        return False, text
     if code != 0:
         return False, f"rodeo exited {code}\n\n{text}"
     return True, text

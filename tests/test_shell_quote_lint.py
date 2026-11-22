@@ -80,6 +80,9 @@ NOT_CONST = {"RANCHER_REPO_NAME", "RANCHER_REPO_URL"}
 
 # (module, expression) pairs that are safe without quoting, with the reason.
 ALLOWED: dict[tuple[str, str], str] = {
+    ("providers/remote_up.py", "running"): "a fixed printf fragment or empty, chosen by a bool",
+    ("providers/remote_up.py", "_detached_job(up) if detach else _followed_job(up)"):
+        "script fragments built in remote_up; up is assembled from shlex.quote'd parts",
     ("engine/rancher/cluster_setup.py", "self.nodeport"): "int() in RancherPhase.__init__",
     ("engine/rancher/cluster_setup.py", "disable_traefik"): "one of two literals",
     ("engine/rancher/cluster_setup.py", "patch"): "json.dumps of an int port, single-quoted",

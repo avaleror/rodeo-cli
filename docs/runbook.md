@@ -395,6 +395,19 @@ curl -fsSL https://raw.githubusercontent.com/avaleror/rodeo-cli/main/install.sh 
 
 ---
 
+## AWS: start a deploy and come back later
+
+`rodeo up --target aws --detach` returns as soon as the host has started `rodeo up`. It prints one JSON line (`pid`, `log`, `host`) and the deploy keeps running on the host. Check on it from the lab directory:
+
+```bash
+rodeo status --cloud            # running / exited N / gone / none, plus the last 40 log lines
+rodeo status --cloud --lines 200 --output json
+```
+
+`gone` means the recorded process is dead without an exit code (killed, or the host rebooted). A second `rodeo up --target aws` while one runs stops with exit 75. Without `--detach`, `rodeo up --target aws` waits and follows the log as before.
+
+---
+
 ## AWS: login, region and capacity errors
 
 | Message | Fix |

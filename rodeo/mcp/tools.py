@@ -160,8 +160,9 @@ READ_TOOLS: tuple[Tool, ...] = (
          ("doctor",), (_OUTPUT,)),
     Tool("rodeo_profiles", "List bundled, custom and catalog profiles.", ("profiles",)),
     Tool("rodeo_plan",
-         "Resolve the lab plan and show what a deploy would do. Read-only.",
-         ("plan",), (_PARAM,), lab_scoped=True),
+         "Resolve the lab plan and show what a deploy would do. Read-only. "
+         "output=json returns one object with no credential values.",
+         ("plan",), (_OUTPUT, _PARAM), lab_scoped=True),
     Tool("rodeo_status",
          "VM states and cluster reachability for the lab.",
          ("status",), (_OUTPUT, _PARAM), lab_scoped=True),

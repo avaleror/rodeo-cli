@@ -51,6 +51,7 @@ from ..privilege import (
     ensure_tmux_session,
     find_rodeo_bin,
     in_tmux,
+    install_root_sigterm_handler,
     is_root,
     sudo_prefix,
     tmux_available,
@@ -356,6 +357,9 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
         import atexit
 
         atexit.register(fix_invoking_ownership)
+        # The self re-exec lands here too (`up --resume` as root), so this is
+        # where it learns to stop its ansible/ssh group on a relayed SIGTERM.
+        install_root_sigterm_handler()
 
     _deploy(lab, assume_yes=assume_yes, reconcile=reconcile)
 

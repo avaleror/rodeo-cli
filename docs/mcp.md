@@ -70,6 +70,49 @@ Claude Code (`~/.claude.json` or project `.mcp.json`):
 
 Drop `--allow-write` for an agent that should only observe a lab.
 
+## Keep the agent on the MCP tools: `rodeo agent-setup`
+
+An agent with a shell can skip the MCP server and type `rodeo up` or `sudo
+virsh destroy` itself. `rodeo agent-setup` writes a Claude Code kit into the
+lab that catches this mistake:
+
+```bash
+cd ~/rodeo-labs/harvester
+rodeo agent-setup            # writes .claude/settings.json
+rodeo agent-setup --check    # exit 1 if the kit is missing
+```
+
+It merges into `<lab>/.claude/settings.json`:
+
+- `permissions.deny`: `Bash(rodeo)`, `Bash(rodeo *)`, `Bash(sudo *)`,
+  `Bash(virsh *)`, and `Bash(ssh *HOST*)` / `Bash(scp *HOST*)` for every VM
+  name, VM address, VIP and AWS host the plan names.
+- A `PreToolUse` hook on Bash (`python -I .../rodeo/agent_guard.py`) that also
+  catches the chained forms (`cd lab && rodeo up`, `bash -c '...'`,
+  `$(rodeo status)`) and tells the model to use the MCP tools instead.
+
+Your own rules and hooks are kept, odd or invalid JSON is refused rather than
+overwritten, a symlinked settings file or `.claude` directory is refused, and
+a second run changes nothing. Re-run it after the lab's hosts change (a new
+AWS host, for example): new host rules are added and rodeo's hook entry is
+updated in place. `.claude/` is not part of the lab hash, so writing the kit
+does not untrust a lab.
+
+**This is a mistake filter, not a security boundary.** It is a settings file
+the same user can edit or delete, so it stops a confused model, not a hostile
+one.
+
+MCP local deploys (`rodeo_up`, `rodeo_deploy` and the other write tools that
+need root) still need NOPASSWD sudo for the user running the MCP server. The
+kit only denies `sudo` in the agent's shell, not in the server.
+
+`rodeo doctor` shows whether the kit is installed in the current lab (and
+`rodeo doctor --output json` carries it as `agent_kit`). It can tell that the
+kit is installed, not whether an agent session is running without it (when
+doctor itself runs from a Claude Code shell without the kit, it says so). Only
+Claude Code has a kit today. When doctor finds a Gemini CLI or Codex CLI
+config, it reports "no kit for this client".
+
 ## Tools
 
 Read-only (always offered):
@@ -81,7 +124,7 @@ Read-only (always offered):
 | `rodeo_engines` | registered lab types, each tagged `native` or `external` (JSON) |
 | `rodeo_doctor` | `rodeo doctor` |
 | `rodeo_profiles` | `rodeo profiles` |
-| `rodeo_plan` | `rodeo plan` |
+| `rodeo_plan` | `rodeo plan` (`output: json` for one JSON object, see below) |
 | `rodeo_status` | `rodeo status` |
 | `rodeo_list` | `rodeo list` |
 | `rodeo_logs` | `rodeo logs --no-follow` |
@@ -108,6 +151,34 @@ Lifecycle (only with `--allow-write`):
 Every tool is non-interactive: no TUI, no tmux wrap, no prompts, no colour. A
 failing command comes back as a tool error carrying rodeo's exit code and the
 tail of its output, never as a protocol error.
+
+A call that times out or that the client cancels (`notifications/cancelled`)
+stops its whole process group: SIGTERM, then SIGKILL after 5 seconds. Write
+tools that need root re-exec through `sudo`, so their `rodeo` and its
+`ansible-playbook`/`ssh` children run as root, out of the server's reach. sudo
+relays the SIGTERM to that root `rodeo`, which stops the processes it started
+(its descendants, plus its process group when it leads one) with SIGKILL after
+3 seconds for anything that ignores SIGTERM, and exits. It never signals the
+rest of a group it only inherited, such as the script or `timeout` that ran
+`sudo rodeo`. Local deploys
+from MCP need NOPASSWD sudo, since there is no terminal to type a password in.
+
+## Plan as JSON
+
+`rodeo plan --output json` (MCP: `rodeo_plan` with `output: json`) prints one
+object: `schema` (1), `name`, `type`, `host_reachable`, `creates`, `changes`
+(`kind` is memory, vcpu or dhcp, with `from` and `to`), `unchanged`,
+`foreign_vms`, `network`, `storage` (`image_dir`, `downloads`), `phases`
+(`state` is done, drift, guarded, pending or failed), `phases_pending`,
+`summary` and `config_error`. A plan that fails to load prints only
+`{"schema": 1, "error": "..."}`.
+
+The object holds no credential values: `plan` resolves no `??` placeholder,
+never reads `secrets.yaml` or the lab secrets file, and masks the plan's own
+literal credential values and any `user:password@` in a URL. The exit code
+follows the text output: 2 when deploy would refuse the plan (an untrusted lab,
+an invalid value), even though the JSON was printed. A `??` source in a trusted
+lab is deferred to deploy and is not a failure.
 
 ## Plugin tools
 

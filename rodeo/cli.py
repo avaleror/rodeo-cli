@@ -5,6 +5,7 @@ import click
 from rich.console import Console
 
 from . import __version__
+from .commands.agent_setup_cmd import agent_setup_cmd
 from .commands.attach import attach_cmd
 from .commands.clean import clean_cmd
 from .commands.deploy import deploy_cmd
@@ -121,3 +122,4 @@ cli.add_command(eject_iso_cmd,        name="eject-iso")
 cli.add_command(fleet_cmd,            name="fleet")
 cli.add_command(destroy_cmd,          name="destroy")
 cli.add_command(mcp_cmd,              name="mcp")
+cli.add_command(agent_setup_cmd,      name="agent-setup")

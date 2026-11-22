@@ -79,6 +79,7 @@ rodeo/
 ├── plugins.py              Lazy `rodeo.plugins` entry-point discovery for register_* APIs
 ├── hooks.py                Plugin seams: event sinks, begin_operation (no-ops by default)
 ├── redact.py               Masks known secret values in event records
+├── events_log.py           Built-in sink: <lab>/.rodeo/events.jsonl (schema v0, 10 MB rotation)
 ├── lab_allowlist.py        ~/.rodeo/labs.yaml: labs MCP tools may touch (rodeo lab)
 ├── storydeps.py            rmstory + multilang as distro packages (install-deps --story; never PyPI)
 ├── story.py                rodeo story render: translate + assemble via rmstory CLI, facts via Jinja

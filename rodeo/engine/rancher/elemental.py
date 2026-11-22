@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Generator
 
+from ...shellquote import heredoc, q
 from ..runner import DeployEvent, LogLine
 
 
@@ -26,13 +27,13 @@ class ElementalMixin:
             f"export KUBECONFIG={self.KUBECONFIG}\n"
             f"helm upgrade --install elemental-operator-crds"
             f" oci://registry.suse.com/rancher/elemental-operator-crds-chart"
-            f" --version {self.elemental_crds_version}"
-            f" --namespace {namespace} --create-namespace"
+            f" --version {q(self.elemental_crds_version)}"
+            f" --namespace {q(namespace)} --create-namespace"
             f" --wait --timeout 3m\n"
             f"helm upgrade --install elemental-operator"
             f" oci://registry.suse.com/rancher/elemental-operator-chart"
-            f" --version {self.elemental_op_version}"
-            f" --namespace {namespace}"
+            f" --version {q(self.elemental_op_version)}"
+            f" --namespace {q(namespace)}"
             f" --wait --timeout 5m\n"
         )
         yield LogLine(
@@ -124,7 +125,7 @@ class ElementalMixin:
             "set -euo pipefail\n"
             f"export KUBECONFIG={self.KUBECONFIG}\n"
             f"cat <<'__ELEMENTAL_MANIFEST__' | kubectl apply -f -\n"
-            f"{combined}\n"
+            f"{heredoc(combined, '__ELEMENTAL_MANIFEST__')}\n"
             "__ELEMENTAL_MANIFEST__\n"
         )
         r = self._ssh_script(script, timeout=60)

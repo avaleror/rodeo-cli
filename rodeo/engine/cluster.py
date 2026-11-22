@@ -328,6 +328,8 @@ class ClusterPhase:
         cmd = [
             "ssh", "-i", str(self.ssh_key),
             *ssh_opts(),
+            # "--": a plan user such as "-oProxyCommand=..." must not become an option.
+            "--",
             f"{self.harvester_user}@{self.vip}",
             "sudo cat /etc/rancher/rke2/rke2.yaml",
         ]

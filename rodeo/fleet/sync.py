@@ -30,16 +30,16 @@ def sync_script(inventory: FleetInventory) -> str:
                 f"git -C {lab} pull --ff-only"
             )
             clone = (
-                f"mkdir -p $(dirname {lab}) && "
+                f"mkdir -p \"$(dirname {lab})\" && "
                 f"git clone --depth 1 --branch {br} {url} {lab}"
             )
         else:
             update = f"git -C {lab} pull --ff-only"
-            clone = f"mkdir -p $(dirname {lab}) && git clone --depth 1 {url} {lab}"
+            clone = f"mkdir -p \"$(dirname {lab})\" && git clone --depth 1 {url} {lab}"
         return (
             f"if [ -d {lab}/.git ]; then {update}; "
             f"elif [ -e {lab} ]; then "
-            f'echo "lab.dir exists but is not a git repo: {inventory.lab_dir}" >&2; exit 1; '
+            f"echo {shlex.quote('lab.dir exists but is not a git repo: ' + inventory.lab_dir)} >&2; exit 1; "
             f"else {clone}; fi"
         )
 

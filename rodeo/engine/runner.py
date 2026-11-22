@@ -621,7 +621,8 @@ class DeployRunner:
                 yield LogLine(f"  {hostname}: applying {f.name}...")
                 try:
                     r = subprocess.run(
-                        ["ssh", "-i", key, *ssh_opts(), f"{user}@{host}",
+                        # "--": a plan user such as "-oProxyCommand=..." is not an option.
+                        ["ssh", "-i", key, *ssh_opts(), "--", f"{user}@{host}",
                          remote_cmd],
                         input=f.read_text(),
                         capture_output=True, text=True, timeout=120,

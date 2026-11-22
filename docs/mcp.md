@@ -70,6 +70,49 @@ Claude Code (`~/.claude.json` or project `.mcp.json`):
 
 Drop `--allow-write` for an agent that should only observe a lab.
 
+## Keep the agent on the MCP tools: `rodeo agent-setup`
+
+An agent with a shell can skip the MCP server and type `rodeo up` or `sudo
+virsh destroy` itself. `rodeo agent-setup` writes a Claude Code kit into the
+lab that catches this mistake:
+
+```bash
+cd ~/rodeo-labs/harvester
+rodeo agent-setup            # writes .claude/settings.json
+rodeo agent-setup --check    # exit 1 if the kit is missing
+```
+
+It merges into `<lab>/.claude/settings.json`:
+
+- `permissions.deny`: `Bash(rodeo)`, `Bash(rodeo *)`, `Bash(sudo *)`,
+  `Bash(virsh *)`, and `Bash(ssh *HOST*)` / `Bash(scp *HOST*)` for every VM
+  name, VM address, VIP and AWS host the plan names.
+- A `PreToolUse` hook on Bash (`python -I .../rodeo/agent_guard.py`) that also
+  catches the chained forms (`cd lab && rodeo up`, `bash -c '...'`,
+  `$(rodeo status)`) and tells the model to use the MCP tools instead.
+
+Your own rules and hooks are kept, odd or invalid JSON is refused rather than
+overwritten, a symlinked settings file or `.claude` directory is refused, and
+a second run changes nothing. Re-run it after the lab's hosts change (a new
+AWS host, for example): new host rules are added and rodeo's hook entry is
+updated in place. `.claude/` is not part of the lab hash, so writing the kit
+does not untrust a lab.
+
+**This is a mistake filter, not a security boundary.** It is a settings file
+the same user can edit or delete, so it stops a confused model, not a hostile
+one.
+
+MCP local deploys (`rodeo_up`, `rodeo_deploy` and the other write tools that
+need root) still need NOPASSWD sudo for the user running the MCP server. The
+kit only denies `sudo` in the agent's shell, not in the server.
+
+`rodeo doctor` shows whether the kit is installed in the current lab (and
+`rodeo doctor --output json` carries it as `agent_kit`). It can tell that the
+kit is installed, not whether an agent session is running without it (when
+doctor itself runs from a Claude Code shell without the kit, it says so). Only
+Claude Code has a kit today. When doctor finds a Gemini CLI or Codex CLI
+config, it reports "no kit for this client".
+
 ## Tools
 
 Read-only (always offered):

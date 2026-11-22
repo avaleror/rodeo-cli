@@ -107,6 +107,7 @@ def doctor_cmd(output_fmt: str) -> None:
         console.print(f"  {marker} [bold]{tier['name']}[/bold]  {tier['label']}  ({ok})")
 
     _print_lab_images()
+    _print_agent_kit()
 
     console.print()
     if fits:
@@ -142,6 +143,25 @@ def _mark(ok: bool, label: str) -> str:
 
 def _warn_mark(ok: bool, label: str) -> str:
     return f"[green]✓[/green]  {label}" if ok else f"[yellow]⚠[/yellow]  {label}"
+
+
+def _print_agent_kit() -> None:
+    """Is `rodeo agent-setup`'s kit installed? Says nothing about running sessions."""
+    from ..service.doctor import agent_kit_report
+
+    kit = agent_kit_report()
+    console.print()
+    console.print("[bold]Agent kit[/bold] (a mistake filter, not a boundary)")
+    if kit["claude_code"]:
+        console.print(f"  [green]✓[/green]  Claude Code kit in {kit['settings']}")
+    else:
+        why = f" ({kit['problem']})" if kit["problem"] else ""
+        console.print(f"  [yellow]⚠[/yellow]  no Claude Code kit in {kit['lab']}{why}: "
+                      "run [bold]rodeo agent-setup[/bold]")
+        if kit["in_claude_code"]:
+            console.print("  [yellow]⚠[/yellow]  this is a Claude Code session running without the kit")
+    for client in kit["clients_without_kit"]:
+        console.print(f"  [yellow]⚠[/yellow]  {client}: no kit for this client")
 
 
 def _print_lab_images() -> None:

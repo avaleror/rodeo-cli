@@ -845,6 +845,34 @@ def _resolve_secrets(cfg: dict, secrets: dict, mode: SecretsMode) -> dict:
     return _walk(cfg)
 
 
+def checked_lab_secrets(lab_dir: str | Path) -> Path | None:
+    """The lab's own secrets file, or None when it doesn't exist.
+
+    Refused (ConfigError) when it is a symlink, a hard link, not a regular file,
+    outside the lab, or the global ~/.rodeo/secrets.yaml itself: any of those
+    would hand global secrets to an untrusted lab in "keys" mode, or let
+    `rodeo up` append to a file elsewhere (a link to ~/.bashrc).
+    """
+    path = Path(lab_dir) / LAB_SECRETS_FILE
+    if path.is_symlink():
+        raise ConfigError(f"{path} is a symlink: refusing it")
+    if not path.exists():
+        return None
+    st = path.lstat()
+    bad = (
+        not stat.S_ISREG(st.st_mode)
+        or st.st_nlink != 1
+        or os.path.dirname(os.path.realpath(path)) != os.path.realpath(lab_dir)
+    )
+    glob = _resolve_secrets_path()
+    if not bad and glob.exists():
+        gst = glob.stat()
+        bad = (gst.st_dev, gst.st_ino) == (st.st_dev, st.st_ino)
+    if bad:
+        raise ConfigError(f"{path} is a hard link, not a regular file, or the global secrets file: refusing it")
+    return path
+
+
 def _load_secrets(lab_dir: Path | None, *, include_global: bool) -> dict:
     """The lab's own secrets file, over ~/.rodeo/secrets.yaml when allowed."""
     secrets: dict = {}
@@ -857,15 +885,8 @@ def _load_secrets(lab_dir: Path | None, *, include_global: bool) -> dict:
     # A lab's own secrets (e.g. one set of generated passwords per lab instance)
     # win over the global file; see secretgen.ensure_plan_secrets.
     if lab_dir is not None:
-        lab_secrets = lab_dir / LAB_SECRETS_FILE
-        if lab_secrets.is_symlink() or (
-            lab_secrets.exists()
-            and os.path.dirname(os.path.realpath(lab_secrets)) != os.path.realpath(lab_dir)
-        ):
-            # A link to ~/.rodeo/secrets.yaml would hand global secrets to an
-            # untrusted lab in "keys" mode.
-            raise ConfigError(f"{lab_secrets} is a symlink or points outside the lab: refusing it")
-        if lab_secrets.exists():
+        lab_secrets = checked_lab_secrets(lab_dir)
+        if lab_secrets is not None:
             try:
                 secrets = {**secrets, **(yaml.safe_load(lab_secrets.read_text()) or {})}
             except yaml.YAMLError as exc:

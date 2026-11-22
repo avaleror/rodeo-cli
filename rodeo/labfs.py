@@ -1,53 +1,109 @@
 """Writes rodeo makes inside a lab directory, without following planted symlinks.
 
-The paths rodeo writes (content.lock, guide/, .labinabox/, workshop-guide/...)
-are left out of the lab hash, so a symlink planted there after `rodeo trust`
-would otherwise redirect a root write anywhere. Every directory on the way is
-checked, and files are written to a temp file and renamed over the target,
-which replaces a symlink instead of writing through it.
+The paths rodeo writes (content.lock, guide/, .labinabox/, workshop-guide/,
+.rodeo-secrets.yaml...) are left out of the lab hash, so a symlink planted there
+after `rodeo trust` would otherwise redirect a root write anywhere.
+
+Directories are walked with ``os.open(O_DIRECTORY | O_NOFOLLOW)`` one component
+at a time, and files are created and renamed relative to the final directory's
+file descriptor (``dir_fd``), so a component swapped for a symlink between the
+check and the write is not followed. Linux and macOS support all of this.
+Residual race: ``lab_subdir`` and ``clear_lab_path`` hand back a path, and code
+that then writes many files under it by path (rendered guides, the PDF build
+copy) is only protected up to that moment. ``shutil.rmtree`` is itself
+symlink-attack resistant on these platforms.
 """
 from __future__ import annotations
 
 import os
-import tempfile
+import secrets
+import stat
 from pathlib import Path
 
 from .config import ConfigError
+
+_DIR_FLAGS = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+
+
+def _open_dir(lab: Path, rel: Path, mode: int = 0o700) -> int:
+    """An fd for ``lab/rel``, created as needed, never through a symlink."""
+    for part in rel.parts:
+        if part in ("", ".", "..") or "/" in part:
+            raise ConfigError(f"{rel}: not a plain path inside the lab")
+    try:
+        fd = os.open(os.path.realpath(lab), _DIR_FLAGS)
+    except OSError as exc:
+        raise ConfigError(f"{lab}: cannot open the lab directory: {exc}")
+    try:
+        for part in rel.parts:
+            try:
+                nfd = os.open(part, _DIR_FLAGS, dir_fd=fd)
+            except FileNotFoundError:
+                os.mkdir(part, mode, dir_fd=fd)
+                nfd = os.open(part, _DIR_FLAGS, dir_fd=fd)
+            except OSError as exc:
+                raise ConfigError(
+                    f"{lab / rel}: {part} is a symlink or not a directory ({exc.strerror}): "
+                    "rodeo does not write through links in a lab"
+                )
+            os.close(fd)
+            fd = nfd
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd
 
 
 def lab_subdir(lab: Path, rel: str | Path, mode: int = 0o700) -> Path:
     """``lab/rel`` as a real directory (created if missing); refuses a symlink
     anywhere between the lab and it."""
-    cur = Path(lab)
-    for part in Path(rel).parts:
-        if part in ("", ".", ".."):
-            raise ConfigError(f"{rel}: not a plain path inside the lab")
-        cur = cur / part
-        if cur.is_symlink():
-            raise ConfigError(f"{cur} is a symlink: rodeo does not write through links in a lab")
-        if not cur.exists():
-            cur.mkdir(mode=mode)
-        elif not cur.is_dir():
-            raise ConfigError(f"{cur} is not a directory")
-    return cur
+    os.close(_open_dir(Path(lab), Path(rel), mode))
+    return Path(os.path.realpath(lab)) / rel
 
 
 def write_lab_file(lab: Path, rel: str | Path, data: str | bytes, mode: int = 0o600) -> Path:
-    """Atomically write ``lab/rel`` (temp file + rename in a checked directory)."""
+    """Atomically write ``lab/rel``: a temp file and a rename, both relative to the
+    checked directory's fd. A symlink at ``rel`` is replaced, never followed."""
     rel = Path(rel)
-    parent = lab_subdir(lab, rel.parent) if rel.parent != Path(".") else Path(lab)
-    if Path(lab).is_symlink():
-        raise ConfigError(f"{lab} is a symlink: rodeo does not write through links")
-    fd, tmp = tempfile.mkstemp(prefix=f".{rel.name}.", dir=parent)
+    dfd = _open_dir(Path(lab), rel.parent)
+    tmp = f".{rel.name}.{secrets.token_hex(6)}"
     try:
-        with os.fdopen(fd, "wb") as fh:
-            os.fchmod(fh.fileno(), mode)
-            fh.write(data.encode() if isinstance(data, str) else data)
-        os.replace(tmp, parent / rel.name)
-    except BaseException:
-        Path(tmp).unlink(missing_ok=True)
-        raise
-    return parent / rel.name
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+                     mode, dir_fd=dfd)
+        try:
+            with os.fdopen(fd, "wb") as fh:
+                os.fchmod(fh.fileno(), mode)
+                fh.write(data.encode() if isinstance(data, str) else data)
+            os.replace(tmp, rel.name, src_dir_fd=dfd, dst_dir_fd=dfd)
+        except BaseException:
+            try:
+                os.unlink(tmp, dir_fd=dfd)
+            except OSError:
+                pass
+            raise
+    finally:
+        os.close(dfd)
+    return Path(os.path.realpath(lab)) / rel
+
+
+def read_lab_file(lab: Path, rel: str | Path) -> str | None:
+    """Text of ``lab/rel``, or None if missing; refuses a symlink or a hard link."""
+    rel = Path(rel)
+    dfd = _open_dir(Path(lab), rel.parent)
+    try:
+        try:
+            fd = os.open(rel.name, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0), dir_fd=dfd)
+        except FileNotFoundError:
+            return None
+        except OSError as exc:
+            raise ConfigError(f"{lab / rel} is a symlink ({exc.strerror}): refusing it")
+        with os.fdopen(fd, "r") as fh:
+            st = os.fstat(fh.fileno())
+            if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1:
+                raise ConfigError(f"{lab / rel} is a hard link or not a regular file: refusing it")
+            return fh.read()
+    finally:
+        os.close(dfd)
 
 
 def clear_lab_path(lab: Path, rel: str | Path) -> Path:
@@ -55,10 +111,17 @@ def clear_lab_path(lab: Path, rel: str | Path) -> Path:
     import shutil
 
     rel = Path(rel)
-    parent = lab_subdir(lab, rel.parent) if rel.parent != Path(".") else Path(lab)
-    path = parent / rel.name
-    if path.is_symlink() or path.is_file():
-        path.unlink()
-    elif path.is_dir():
-        shutil.rmtree(path)
+    dfd = _open_dir(Path(lab), rel.parent)
+    path = Path(os.path.realpath(lab)) / rel
+    try:
+        try:
+            st = os.stat(rel.name, dir_fd=dfd, follow_symlinks=False)
+        except FileNotFoundError:
+            return path
+        if stat.S_ISDIR(st.st_mode):
+            shutil.rmtree(path)  # fd-based, symlink-attack resistant on Linux and macOS
+        else:
+            os.unlink(rel.name, dir_fd=dfd)
+    finally:
+        os.close(dfd)
     return path

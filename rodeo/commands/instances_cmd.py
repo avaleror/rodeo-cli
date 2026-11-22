@@ -65,7 +65,9 @@ def new_instances(profile: str, count: int, start: int, base: str | None) -> Non
         from ..config import keep_trust
 
         with keep_trust(lab):
-            plan_path.write_text(yaml.safe_dump(data, sort_keys=False, default_flow_style=False))
+            from ..labfs import write_lab_file
+
+            write_lab_file(lab, "rodeo-plan.yaml", yaml.safe_dump(data, sort_keys=False, default_flow_style=False), 0o644)
         console.print(f"  [green]✓[/green]  {lab} (instance {n})")
     console.print(f"\nDeploy each with: [bold]rodeo up --dir {root}/{profile}-<n>[/bold]")
 

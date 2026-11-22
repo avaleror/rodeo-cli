@@ -23,6 +23,7 @@ from rich.console import Console
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
+from ..labfs import write_lab_file
 from ..config import (
     ConfigError,
     find_ansible_root,
@@ -288,7 +289,7 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
             if _plan_data.get("deployment_target") != deployment_target:
                 _plan_data["deployment_target"] = deployment_target
                 with keep_trust(lab):
-                    _plan_path.write_text(_yaml.dump(_plan_data, default_flow_style=False))
+                    write_lab_file(lab, "rodeo-plan.yaml", _yaml.dump(_plan_data, default_flow_style=False), 0o644)
 
     # 3. Secrets — silent, file-based.
     _, _, created = ensure_secrets_file()
@@ -330,7 +331,7 @@ def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
             if _plan_data.get("deployment_target") != "aws":
                 _plan_data["deployment_target"] = "aws"
                 with keep_trust(lab):
-                    _plan_path.write_text(_yaml.dump(_plan_data, default_flow_style=False))
+                    write_lab_file(lab, "rodeo-plan.yaml", _yaml.dump(_plan_data, default_flow_style=False), 0o644)
 
     if not is_root():
         console.print("\n[bold]Switching to root for the install[/bold] (sudo)…")
@@ -644,7 +645,7 @@ def _persist_plan_overlays(lab: Path, cfg: dict) -> None:
                 if key in cfg["libvirt"]:
                     libvirt[key] = cfg["libvirt"][key]
     with keep_trust(lab):
-        plan_path.write_text(_yaml.safe_dump(data, sort_keys=False, default_flow_style=False))
+        write_lab_file(lab, "rodeo-plan.yaml", _yaml.safe_dump(data, sort_keys=False, default_flow_style=False), 0o644)
 
 
 # --------------------------------------------------------------------------- #

@@ -347,7 +347,9 @@ def generate_cmd(output_dir: str, name: str | None, advanced: bool):
         f'export RANCHER_ADMIN_PASSWORD="{pw}"\n'
         f'export HARVESTER_TOKEN="{token}"\n'
     )
-    env_file.write_text(env_content)
+    from ..labfs import write_lab_file
+
+    write_lab_file(env_file.parent, env_file.name, env_content, 0o600)  # holds the passwords
     console.print(f"[green]Created {env_file}[/green] (use with source + sudo -E)")
 
     from ..paths import rodeo_secrets_path

@@ -317,3 +317,14 @@ def test_git_fetch_commands_disable_hooks_and_fsmonitor(tmp_path):
 
     for cmd in fetch_commands("https://x/y", "main", tmp_path / "d"):
         assert "core.hooksPath=/dev/null" in cmd and "core.fsmonitor=false" in cmd
+
+
+def test_workshop_checkout_has_no_symlinks_but_lab_in_a_box_source_may():
+    from pathlib import Path as _P
+
+    from rodeo.labinabox_host import fetch_commands
+    from rodeo.workshop import track_fetch_commands
+
+    spec = workshop_spec({"workshop": {"repo": "https://x/y", "track": "t"}})
+    assert all("core.symlinks=false" in c for c in track_fetch_commands(spec, _P("/t/w")))
+    assert all("core.symlinks=false" not in c for c in fetch_commands("https://x/y", "main", _P("/t/l")))

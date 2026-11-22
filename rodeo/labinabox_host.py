@@ -128,7 +128,7 @@ def local_revision(checkout: Path) -> str:
     return rev + "+" + hashlib.sha256(diff.stdout).hexdigest()[:12] if diff.stdout else rev
 
 
-def fetch_commands(repo: str, ref: str, dest: Path) -> list[list[str]]:
+def fetch_commands(repo: str, ref: str, dest: Path, *, symlinks: bool = True) -> list[list[str]]:
     """git commands that check out exactly `ref` (branch, tag or SHA) into dest.
 
     Shallow fetch of the single ref, IPv4 only (Instruqt hosts have no IPv6
@@ -136,6 +136,9 @@ def fetch_commands(repo: str, ref: str, dest: Path) -> list[list[str]]:
     """
     # No hooks and no fsmonitor, whatever a planted .git/config says.
     safe = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"]
+    if not symlinks:
+        # A link would be checked out as a link (and make the lab untrusted).
+        safe += ["-c", "core.symlinks=false"]
     git = ["git", *safe, "-C", str(dest)]
     return [
         ["git", *safe, "init", "-q", str(dest)],

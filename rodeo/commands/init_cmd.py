@@ -157,7 +157,9 @@ def init_cmd(force: bool, ask_password: bool, target_dir: str, profile: str | No
         f'export RANCHER_VM_PASSWORD="{password}"\n'
         f'export HARVESTER_TOKEN="{token}"\n'
     )
-    env_file.write_text(env_content)
+    from ..labfs import write_lab_file
+
+    write_lab_file(env_file.parent, env_file.name, env_content, 0o600)  # holds the passwords
 
     console.print("\n[bold]Next:[/bold]")
     console.print(f"  rodeo up --dir {dest}     # recommended: handles sudo + preflight")

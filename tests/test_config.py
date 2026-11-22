@@ -1212,3 +1212,111 @@ def test_content_fetch_does_not_write_through_a_planted_lock_link(tmp_path):
             "facts": {}, "replace": {}}
     content.fetch(spec, lab, run=fake)
     assert victim.read_text() == "IMPORTANT\n"
+
+
+def test_up_never_writes_through_a_symlinked_lab_secrets_file(tmp_path, monkeypatch):
+    """Review PoC (poc8/up_secrets_link.py): .rodeo-secrets.yaml -> ~/.bashrc and a
+    ??$(cmd) key made `rodeo up --no-deploy` append a command line to ~/.bashrc."""
+    import os
+
+    from click.testing import CliRunner
+
+    from rodeo.cli import cli
+
+    bashrc = tmp_path / ".bashrc"
+    bashrc.write_text("# user bashrc\n")
+    lab = tmp_path / "lab"
+    lab.mkdir()
+    (lab / "rodeo-plan.yaml").write_text(
+        "name: x\ntype: harvester\ndeployment_target: baremetal\n"
+        "story:\n  facts:\n    a: '??$(touch PWNED)'\n"
+    )
+    os.symlink(bashrc, lab / config.LAB_SECRETS_FILE)
+    monkeypatch.setattr("rodeo.commands.up_cmd.is_root", lambda: True, raising=False)
+    result = CliRunner().invoke(cli, ["up", "--no-deploy", "--no-tmux", "--yes", "--dir", str(lab)])
+    assert bashrc.read_text() == "# user bashrc\n"
+    assert result.exit_code != 0
+    assert "letters, digits" in str(result.exception) + result.output or "symlink" in str(result.exception) + result.output
+
+
+def test_generated_secret_names_must_be_plain(tmp_path):
+    from rodeo.secretgen import ensure_plan_secrets
+
+    lab = tmp_path / "lab"
+    lab.mkdir()
+    with pytest.raises(config.ConfigError, match="letters, digits"):
+        ensure_plan_secrets({"x": "??$(touch PWNED)"}, lab_path=lab / config.LAB_SECRETS_FILE)
+    assert not (lab / config.LAB_SECRETS_FILE).exists()
+
+
+@pytest.mark.parametrize("kind", ["symlink", "hardlink"])
+def test_ensure_plan_secrets_refuses_a_linked_lab_file(tmp_path, kind):
+    import os
+
+    from rodeo.secretgen import ensure_plan_secrets
+
+    victim = tmp_path / "victim.yaml"
+    victim.write_text("# not yours\n")
+    lab = tmp_path / "lab"
+    lab.mkdir()
+    (os.symlink if kind == "symlink" else os.link)(victim, lab / config.LAB_SECRETS_FILE)
+    with pytest.raises(config.ConfigError):
+        ensure_plan_secrets({"x": "??fresh_key"}, lab_path=lab / config.LAB_SECRETS_FILE)
+    assert victim.read_text() == "# not yours\n"
+
+
+def test_ensure_plan_secrets_writes_a_private_lab_file(tmp_path):
+    from rodeo.secretgen import ensure_plan_secrets
+
+    lab = tmp_path / "lab"
+    lab.mkdir()
+    (lab / config.LAB_SECRETS_FILE).write_text("kept: \"x\"\n")
+    generated, _ = ensure_plan_secrets({"x": "??fresh_key", "y": "??kept"}, lab_path=lab / config.LAB_SECRETS_FILE)
+    assert generated == ["fresh_key"]
+    path = lab / config.LAB_SECRETS_FILE
+    assert path.stat().st_mode & 0o777 == 0o600
+    data = yaml.safe_load(path.read_text())
+    assert data["kept"] == "x" and data["fresh_key"]
+
+
+def test_hardlinked_lab_secrets_to_global_is_refused(tmp_path, monkeypatch):
+    import os
+
+    secrets = _write_secrets(tmp_path, monkeypatch, {"scc_regcode": "global-marker"})
+    plan = _lab(tmp_path, "clone", _pw("??scc_regcode"))
+    os.link(secrets, plan.parent / config.LAB_SECRETS_FILE)
+    with pytest.raises(config.ConfigError, match="hard link"):
+        config.load_config(plan, secrets="keys")
+
+
+def test_labfs_read_refuses_links(tmp_path):
+    import os
+
+    from rodeo.labfs import read_lab_file
+
+    lab = tmp_path / "lab"
+    lab.mkdir()
+    other = tmp_path / "other"
+    other.write_text("x")
+    os.link(other, lab / "hard")
+    os.symlink(other, lab / "soft")
+    for name in ("hard", "soft"):
+        with pytest.raises(config.ConfigError):
+            read_lab_file(lab, name)
+    assert read_lab_file(lab, "missing") is None
+
+
+def test_init_env_file_never_written_through_a_link(tmp_path):
+    import os
+
+    from click.testing import CliRunner
+
+    from rodeo.commands.init_cmd import init_cmd
+
+    victim = tmp_path / "victim"
+    victim.write_text("keep\n")
+    lab = tmp_path / "lab"
+    lab.mkdir()
+    os.symlink(victim, lab / "rodeo-secrets.env")
+    CliRunner().invoke(init_cmd, [str(lab)])
+    assert victim.read_text() == "keep\n"

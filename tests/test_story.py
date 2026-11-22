@@ -313,3 +313,16 @@ def test_story_render_with_translation_keeps_the_lab_trusted(tmp_path, fake_rmst
     (store / "es.json").write_text('{"intro.hello": "Hola"}')  # what rmstory leaves behind
     render_story(cfg, language="es")
     assert is_lab_trusted(tmp_path)
+
+
+def test_translation_refuses_a_symlinked_strings_store(tmp_path, fake_rmstory):
+    """rmstory writes story/strings, which the lab hash skips: never through a link."""
+    import os
+
+    cfg = _lab(tmp_path)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    os.symlink(elsewhere, tmp_path / "story" / "strings")
+    with pytest.raises(ConfigError, match="symlink"):
+        render_story(cfg, language="es")
+    assert not [c for c in fake_rmstory.calls if c[1] == "translate"]

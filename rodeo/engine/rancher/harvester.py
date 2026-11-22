@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Generator, Iterator
 
 from ...paths import harvester_kubeconfig_path
+from ...shellquote import heredoc, q
 from ..runner import DeployEvent, LogLine, ProgressUpdate
 
 
@@ -46,7 +47,7 @@ class HarvesterMixin:
             "set -euo pipefail\n"
             f"export KUBECONFIG={self.KUBECONFIG}\n"
             "kubectl apply -f - <<'__MANIFEST__'\n"
-            f"{cluster_manifest}\n"
+            f"{heredoc(cluster_manifest, '__MANIFEST__')}\n"
             "__MANIFEST__\n",
             timeout=30,
         )
@@ -99,7 +100,7 @@ class HarvesterMixin:
             "set -euo pipefail\n"
             f"export KUBECONFIG={self.KUBECONFIG}\n"
             "kubectl apply -f - <<'__MANIFEST__'\n"
-            f"{token_manifest}\n"
+            f"{heredoc(token_manifest, '__MANIFEST__')}\n"
             "__MANIFEST__\n",
             timeout=30,
         )
@@ -118,7 +119,7 @@ class HarvesterMixin:
             r = self._ssh_script(
                 f"export KUBECONFIG={self.KUBECONFIG}\n"
                 f"kubectl get clusterregistrationtoken.management.cattle.io/default-token "
-                f"-n {cluster_id} -o jsonpath='{{.status.manifestUrl}}' 2>/dev/null\n",
+                f"-n {q(cluster_id)} -o jsonpath='{{.status.manifestUrl}}' 2>/dev/null\n",
                 timeout=15,
             )
             value = r.stdout.strip()

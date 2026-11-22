@@ -9,6 +9,7 @@ from typing import Generator, Iterator
 
 import yaml
 
+from ...shellquote import q
 from ..runner import DeployEvent, LogLine, ProgressUpdate
 
 
@@ -22,7 +23,7 @@ class ClusterSetupMixin:
         disable_traefik = "" if self.tls_source == "letsEncrypt" else " --disable traefik"
         script = (
             "set -euo pipefail\n"
-            f'export INSTALL_K3S_VERSION="{self.k3s_version}"\n'
+            f"export INSTALL_K3S_VERSION={q(self.k3s_version)}\n"
             "curl -sfL https://get.k3s.io"
             f" | sh -s - --write-kubeconfig-mode 644{disable_traefik} --node-name rancher\n"
         )
@@ -80,14 +81,15 @@ class ClusterSetupMixin:
 
     def _install_cert_manager(self) -> Generator[DeployEvent, None, bool]:
         v = self.cert_mgr_version
+        crds = f"https://github.com/cert-manager/cert-manager/releases/download/{v}/cert-manager.crds.yaml"
         script = (
             "set -euo pipefail\n"
             f"export KUBECONFIG={self.KUBECONFIG}\n"
-            f"helm repo add {self.RANCHER_REPO_NAME} {self.RANCHER_REPO_URL} || true\n"
+            f"helm repo add {q(self.RANCHER_REPO_NAME)} {q(self.RANCHER_REPO_URL)} || true\n"
             "helm repo add jetstack https://charts.jetstack.io || true\n"
             "helm repo update\n"
-            f"kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/{v}/cert-manager.crds.yaml\n"
-            f"helm upgrade --install cert-manager jetstack/cert-manager --namespace cert-manager --create-namespace --version {v}\n"
+            f"kubectl apply -f {q(crds)}\n"
+            f"helm upgrade --install cert-manager jetstack/cert-manager --namespace cert-manager --create-namespace --version {q(v)}\n"
             "kubectl -n cert-manager rollout status deployment/cert-manager --timeout=180s\n"
             "kubectl -n cert-manager rollout status deployment/cert-manager-webhook --timeout=180s\n"
         )
@@ -155,7 +157,7 @@ class ClusterSetupMixin:
             f"{values_yaml}"
             f"{marker}\n"
             f"chmod 600 {remote_values}\n"
-            f"helm upgrade --install rancher {self.RANCHER_REPO_NAME}/rancher"
+            f"helm upgrade --install rancher {q(f'{self.RANCHER_REPO_NAME}/rancher')}"
             f" --namespace cattle-system --create-namespace"
             f" --version {version}"
             f" -f {remote_values}"

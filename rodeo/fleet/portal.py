@@ -30,6 +30,7 @@ from typing import Any
 
 from ..config import ConfigError
 from ..providers import get_provider
+from ..shellquote import heredoc
 from .access import access_for_host
 from .fanout import fanout
 from .inventory import (
@@ -235,7 +236,7 @@ if [ "$(/usr/local/bin/caddy version 2>/dev/null | cut -d' ' -f1)" != "v{CADDY_V
   tar -xzf "$WORK/caddy.tgz" -C "$WORK" caddy && install -m 755 "$WORK/caddy" /usr/local/bin/caddy
 fi
 cat > /etc/rodeo-portal/Caddyfile <<'CADDY'
-{_caddyfile(fqdn)}CADDY
+{heredoc(_caddyfile(fqdn), 'CADDY')}CADDY
 cat > /etc/systemd/system/rodeo-portal.service <<'UNIT'
 {_portal_unit()}UNIT
 cat > /etc/systemd/system/rodeo-caddy.service <<'UNIT'

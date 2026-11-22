@@ -6,8 +6,10 @@ touching the cluster orchestration code.
 """
 from __future__ import annotations
 
+import json
 from typing import Generator
 
+from ...shellquote import heredoc, q
 from ..runner import DeployEvent, LogLine
 
 
@@ -70,8 +72,8 @@ class LabContentMixin:
         script = (
             "set -euo pipefail\n"
             f"export KUBECONFIG={self.KUBECONFIG}\n"
-            f"cat <<'__GITREPO__' | kubectl apply -f -\n"
-            f"{manifest}"
+            "cat <<'__GITREPO__' | kubectl apply -f -\n"
+            f"{heredoc(manifest, '__GITREPO__')}"
             "__GITREPO__\n"
         )
         yield LogLine(f"Creating Fleet GitRepo for {self.alien_geeko_fleet_name} demo app...")
@@ -108,6 +110,12 @@ class LabContentMixin:
         iso_fname = self.iso_fname
         raw_fname = self.raw_fname
         reg_name = f"{self.elemental_reg_prefix}-reg-1"
+        migrate_body = json.dumps({
+            "clone_addr": self.alien_geeko_fleet_repo,
+            "repo_name": self.alien_geeko_fleet_name,
+            "private": False,
+            "mirror": False,
+        }, separators=(",", ":"))
 
         # NMState network-config, one file per edge node, generated from the
         # definition (name + IP + MAC + prefix + gateway + DNS). No node names,
@@ -115,8 +123,8 @@ class LabContentMixin:
         # definition.yaml and these regenerate to match.
         nmstate_blocks = ""
         for e in self.edge_nodes:
-            nmstate_blocks += (
-                f"cat > \"$EIB_REPO/network-configs/{e['name']}.yaml\" << 'NM_EOF'\n"
+            nm_path = q(f"network-configs/{e['name']}.yaml")
+            nm_yaml = (
                 "interfaces:\n  - name: eth0\n    type: ethernet\n    state: up\n"
                 # nmc (EIB's network config generator) rejects any ethernet
                 # interface with no mac-address: "Detected Ethernet interfaces
@@ -131,14 +139,21 @@ class LabContentMixin:
                 # EIB's nmc tool rejects "servers": "unknown field `servers`,
                 # expected one of `server`, `search`, `options`" (confirmed live).
                 f"dns-resolver:\n  config:\n    server:\n      - {self.dns_server}\n"
+            )
+            nmstate_blocks += (
+                f"cat > \"$EIB_REPO\"/{nm_path} << 'NM_EOF'\n"
+                f"{heredoc(nm_yaml, 'NM_EOF')}"
                 "NM_EOF\n\n"
             )
 
         script = (
             "set -euo pipefail\n"
-            f"GITEA_URL={gitea_url}\n"
-            f"GITEA_USER={self.gitea_user}\n"
-            f'GITEA_PASS="{self.gitea_password}"\n\n'
+            f"GITEA_URL={q(gitea_url)}\n"
+            f"GITEA_USER={q(self.gitea_user)}\n"
+            f"GITEA_PASS={q(self.gitea_password)}\n"
+            f"GITEA_PORT={q(self.gitea_port)}\n"
+            f"EIB_IP={q(self.eib_ip)}\n"
+            f"FLEET_NAME={q(self.alien_geeko_fleet_name)}\n\n"
             # Start Gitea container (rootless, no SSH, SQLite backend).
             # --replace: a retry after a failure further down this same script
             # (e.g. the git-push step) leaves this container running under the
@@ -148,13 +163,13 @@ class LabContentMixin:
             # creates something already-created-by-a-prior-attempt tolerates that
             # for the same reason.
             f"podman run -d --name gitea --replace --restart=always \\\n"
-            f"  -p {self.gitea_port}:{self.gitea_port} \\\n"
+            '  -p "$GITEA_PORT:$GITEA_PORT" \\\n'
             "  -v gitea-data:/data \\\n"
             f'  -e GITEA__security__INSTALL_LOCK=true \\\n'
-            f'  -e GITEA__server__ROOT_URL="http://{self.eib_ip}:{self.gitea_port}" \\\n'
-            f"  -e GITEA__server__HTTP_PORT={self.gitea_port} \\\n"
+            '  -e GITEA__server__ROOT_URL="http://$EIB_IP:$GITEA_PORT" \\\n'
+            '  -e GITEA__server__HTTP_PORT="$GITEA_PORT" \\\n'
             "  -e GITEA__server__DISABLE_SSH=true \\\n"
-            f'  "{image}"\n\n'
+            f"  {q(image)}\n\n"
             # Wait up to 60 s for the API to respond
             'echo "Waiting for Gitea..."\n'
             "for i in $(seq 1 30); do\n"
@@ -192,15 +207,14 @@ class LabContentMixin:
             '-X POST "$GITEA_URL/api/v1/repos/migrate" \\\n'
             '  -H "Authorization: token $TOKEN" \\\n'
             '  -H "Content-Type: application/json" \\\n'
-            f'  -d \'{{"clone_addr":"{self.alien_geeko_fleet_repo}",'
-            f'"repo_name":"{self.alien_geeko_fleet_name}","private":false,"mirror":false}}\')\n'
+            f"  -d {q(migrate_body)})\n"
             'if [ "$RC" = "409" ]; then\n'
-            f'  echo "  ({self.alien_geeko_fleet_name} repo already exists, continuing)"\n'
+            '  echo "  ($FLEET_NAME repo already exists, continuing)"\n'
             'elif [ "$RC" != "200" ] && [ "$RC" != "201" ]; then\n'
-            f'  echo "  {self.alien_geeko_fleet_name} migrate failed (HTTP $RC): $(cat /tmp/alien-geeko-migrate.json)"\n'
+            '  echo "  $FLEET_NAME migrate failed (HTTP $RC): $(cat /tmp/alien-geeko-migrate.json)"\n'
             "  exit 1\n"
             "fi\n\n"
-            f'echo "  {self.alien_geeko_fleet_name}: http://{self.eib_ip}:{self.gitea_port}/$GITEA_USER/{self.alien_geeko_fleet_name}.git"\n\n'
+            'echo "  $FLEET_NAME: http://$EIB_IP:$GITEA_PORT/$GITEA_USER/$FLEET_NAME.git"\n\n'
             # ---- eib-config Gitea repo with EIB definition templates ----
             # Leap Micro 6.2's transactional-update model means `zypper install
             # git` silently no-ops (exit 0, "please use transactional-update to
@@ -293,8 +307,8 @@ class LabContentMixin:
             "cat > \"$EIB_REPO/elemental/elemental_config.yaml\" << 'ELEM_EOF'\n"
             "# Filled in during Exercise 2, section 2.4.\n"
             "# On the eib VM, after cloning this repo:\n"
-            f"#   REGURL=$(ssh root@{self.rancher_ip} \\\n"
-            f"#     \"kubectl get machineregistration {reg_name} \\\n"
+            f"#   REGURL=$(ssh root@{heredoc(self.rancher_ip, 'ELEM_EOF')} \\\n"
+            f"#     \"kubectl get machineregistration {heredoc(reg_name, 'ELEM_EOF')} \\\n"
             "#      -n fleet-default -o jsonpath='{.status.registrationURL}'\")\n"
             "#   curl -k \"$REGURL\" > elemental/elemental_config.yaml\n"
             "ELEM_EOF\n\n"
@@ -325,23 +339,23 @@ class LabContentMixin:
             "cat > \"$EIB_REPO/elemental-edge1-definition.yaml\" << '__DEF1__'\n"
             "apiVersion: 1.2\n\n"
             "image:\n  imageType: iso\n  arch: x86_64\n"
-            f"  baseImage: {iso_fname}\n"
+            f"  baseImage: {heredoc(iso_fname, '__DEF1__')}\n"
             "  outputImageName: elemental-edge1.iso\n\n"
             "operatingSystem:\n"
-            f"{self._eib_elemental_packages_block()}\n"
+            f"{heredoc(self._eib_elemental_packages_block(), '__DEF1__')}\n"
             "embeddedArtifactRegistry:\n  registries:\n"
-            f"    - uri: {self.eib_ip}:5000\n"
+            f"    - uri: {heredoc(self.eib_ip, '__DEF1__')}:5000\n"
             "      authentication:\n        username: hauler\n        password: hauler\n"
             "__DEF1__\n\n"
             "cat > \"$EIB_REPO/elemental-edge2-definition.yaml\" << '__DEF2__'\n"
             "apiVersion: 1.2\n\n"
             "image:\n  imageType: iso\n  arch: x86_64\n"
-            f"  baseImage: {iso_fname}\n"
+            f"  baseImage: {heredoc(iso_fname, '__DEF2__')}\n"
             "  outputImageName: elemental-edge2.iso\n\n"
             "operatingSystem:\n"
-            f"{self._eib_elemental_packages_block()}\n"
+            f"{heredoc(self._eib_elemental_packages_block(), '__DEF2__')}\n"
             "embeddedArtifactRegistry:\n  registries:\n"
-            f"    - uri: {self.eib_ip}:5000\n"
+            f"    - uri: {heredoc(self.eib_ip, '__DEF2__')}:5000\n"
             "      authentication:\n        username: hauler\n        password: hauler\n"
             "__DEF2__\n\n"
             # EIB definition files — standalone cluster RAW path (edge3 RKE2, edge4 K3s).
@@ -357,25 +371,25 @@ class LabContentMixin:
             "cat > \"$EIB_REPO/rke2-edge3-definition.yaml\" << '__DEF3__'\n"
             "apiVersion: 1.2\n\n"
             "image:\n  imageType: raw\n  arch: x86_64\n"
-            f"  baseImage: {raw_fname}\n"
+            f"  baseImage: {heredoc(raw_fname, '__DEF3__')}\n"
             "  outputImageName: rke2-edge3.raw\n\n"
             "operatingSystem:\n"
             "  rawConfiguration:\n    diskSize: 30G\n\n"
             "kubernetes:\n  version: v1.36.3+rke2r1\n\n"
             "embeddedArtifactRegistry:\n  registries:\n"
-            f"    - uri: {self.eib_ip}:5000\n"
+            f"    - uri: {heredoc(self.eib_ip, '__DEF3__')}:5000\n"
             "      authentication:\n        username: hauler\n        password: hauler\n"
             "__DEF3__\n\n"
             "cat > \"$EIB_REPO/k3s-edge4-definition.yaml\" << '__DEF4__'\n"
             "apiVersion: 1.2\n\n"
             "image:\n  imageType: raw\n  arch: x86_64\n"
-            f"  baseImage: {raw_fname}\n"
+            f"  baseImage: {heredoc(raw_fname, '__DEF4__')}\n"
             "  outputImageName: k3s-edge4.raw\n\n"
             "operatingSystem:\n"
             "  rawConfiguration:\n    diskSize: 15G\n\n"
             "kubernetes:\n  version: v1.36.3+k3s1\n\n"
             "embeddedArtifactRegistry:\n  registries:\n"
-            f"    - uri: {self.eib_ip}:5000\n"
+            f"    - uri: {heredoc(self.eib_ip, '__DEF4__')}:5000\n"
             "      authentication:\n        username: hauler\n        password: hauler\n"
             "__DEF4__\n\n"
             # Standalone RAW nodes (edge3/edge4) get the KVM host's SSH key for
@@ -393,10 +407,10 @@ class LabContentMixin:
             "git -C \"$EIB_REPO\" config user.name \"AeroGrid Lab\"\n"
             "git -C \"$EIB_REPO\" add .\n"
             "git -C \"$EIB_REPO\" commit -m \"initial EIB config templates for AeroGrid edge nodes\"\n"
-            f"git -C \"$EIB_REPO\" remote add origin \"http://$GITEA_USER:$GITEA_PASS@localhost:{self.gitea_port}/gitea/eib-config.git\"\n"
+            "git -C \"$EIB_REPO\" remote add origin \"http://$GITEA_USER:$GITEA_PASS@localhost:$GITEA_PORT/gitea/eib-config.git\"\n"
             "git -C \"$EIB_REPO\" push -u origin HEAD:main\n"
             "rm -rf \"$EIB_REPO\"\n\n"
-            f'echo "  eib-config: http://{self.eib_ip}:{self.gitea_port}/$GITEA_USER/eib-config.git"\n'
+            'echo "  eib-config: http://$EIB_IP:$GITEA_PORT/$GITEA_USER/eib-config.git"\n'
         )
         yield LogLine(
             f"Deploying Gitea {self.gitea_version} on eib VM ({self.eib_ip}:{self.gitea_port})..."

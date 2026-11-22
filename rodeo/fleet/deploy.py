@@ -55,10 +55,10 @@ def start_up_script(inventory: FleetInventory, session: str) -> str:
         f"command -v tmux >/dev/null || {{ echo 'tmux not installed' >&2; exit 1; }}; "
         f"mkdir -p \"$HOME/.rodeo/logs\"; "
         f"if tmux has-session -t {sess} 2>/dev/null; then "
-        f'echo "ALREADY_RUNNING:{session}"; '
+        f"echo {shlex.quote('ALREADY_RUNNING:' + session)}; "
         f"else "
         f"tmux new-session -d -s {sess} {shlex.quote(inner)}; "
-        f'echo "STARTED:{session}"; '
+        f"echo {shlex.quote('STARTED:' + session)}; "
         f"fi"
     )
 

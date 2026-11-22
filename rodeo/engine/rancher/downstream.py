@@ -15,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 from typing import Generator
 
+from ...shellquote import heredoc, q
 from ...ssh import ssh_opts
 from ..runner import DeployEvent, LogLine, ProgressUpdate
 
@@ -238,7 +239,7 @@ class DownstreamMixin:
         for node in nodes:
             ip = self.vm_ips[node]
             # A node already running its distro imported its images long ago.
-            if self._node_ssh_script(ip, f"test -d /var/lib/rancher/{distro}/server", timeout=15).returncode == 0:
+            if self._node_ssh_script(ip, f"test -d {q(f'/var/lib/rancher/{distro}/server')}", timeout=15).returncode == 0:
                 continue
             if self._copy_preload(tarball, distro, ip).returncode != 0:
                 lines.append(f"  {node}: image pre-load copy failed; it will pull instead")
@@ -263,7 +264,7 @@ class DownstreamMixin:
             "set -euo pipefail\n"
             + _K3S_KUBECONFIG
             + "kubectl apply -f - <<'__MANIFEST__'\n"
-            f"{manifest}\n"
+            f"{heredoc(manifest, '__MANIFEST__')}\n"
             "__MANIFEST__\n",
             timeout=30,
         )

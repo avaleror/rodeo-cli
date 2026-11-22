@@ -54,7 +54,7 @@ Read-only (always offered):
 | `rodeo_engines` | registered lab types, each tagged `native` or `external` (JSON) |
 | `rodeo_doctor` | `rodeo doctor` |
 | `rodeo_profiles` | `rodeo profiles` |
-| `rodeo_plan` | `rodeo plan` |
+| `rodeo_plan` | `rodeo plan` (`output: json` for one JSON object, see below) |
 | `rodeo_status` | `rodeo status` |
 | `rodeo_list` | `rodeo list` |
 | `rodeo_logs` | `rodeo logs --no-follow` |
@@ -81,6 +81,23 @@ Lifecycle (only with `--allow-write`):
 Every tool is non-interactive: no TUI, no tmux wrap, no prompts, no colour. A
 failing command comes back as a tool error carrying rodeo's exit code and the
 tail of its output, never as a protocol error.
+
+## Plan as JSON
+
+`rodeo plan --output json` (MCP: `rodeo_plan` with `output: json`) prints one
+object: `schema` (1), `name`, `type`, `host_reachable`, `creates`, `changes`
+(`kind` is memory, vcpu or dhcp, with `from` and `to`), `unchanged`,
+`foreign_vms`, `network`, `storage` (`image_dir`, `downloads`), `phases`
+(`state` is done, drift, guarded, pending or failed), `phases_pending`,
+`summary` and `config_error`. A plan that fails to load prints only
+`{"schema": 1, "error": "..."}`.
+
+The object holds no credential values: `plan` resolves no `??` placeholder,
+never reads `secrets.yaml` or the lab secrets file, and masks the plan's own
+literal credential values and any `user:password@` in a URL. The exit code
+follows the text output: 2 when deploy would refuse the plan (an untrusted lab,
+an invalid value), even though the JSON was printed. A `??` source in a trusted
+lab is deferred to deploy and is not a failure.
 
 ## Adding a tool
 

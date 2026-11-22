@@ -21,7 +21,7 @@ import time
 from pathlib import Path
 
 #: Seconds the root rodeo waits after SIGTERM before it SIGKILLs what is left
-#: of its process group. Must stay below ``mcp.exec.KILL_GRACE``: after that the
+#: of the processes it started. Must stay below ``mcp.exec.KILL_GRACE``: after that the
 #: MCP server SIGKILLs sudo, and sudo cannot relay SIGKILL to a root process.
 ROOT_STOP_GRACE = 3.0
 
@@ -86,29 +86,68 @@ def _parent_is_sudo() -> bool:
     return os.path.basename(name) == "sudo"
 
 
-def _group_members(pgid: int) -> list[int] | None:
-    """Pids in process group ``pgid`` except this process and its parent (sudo).
+def _process_table() -> dict[int, tuple[int, int]] | None:
+    """``{pid: (ppid, pgid)}`` for live (non-zombie) processes, or None if unknown.
 
-    None when ``/proc`` is not readable (not Linux): the caller then falls back
-    to a plain group signal.
+    Read from ``/proc`` on Linux, else from ``ps`` (macOS, BSD).
     """
+    table: dict[int, tuple[int, int]] = {}
     proc = Path("/proc")
-    if not (proc / "self" / "stat").exists():
+    if (proc / "self" / "stat").exists():
+        for entry in proc.iterdir():
+            if not entry.name.isdigit():
+                continue
+            try:
+                stat = (entry / "stat").read_text()
+            except OSError:
+                continue
+            # Fields after the ")" that closes comm: state ppid pgrp ...
+            fields = stat.rsplit(")", 1)[-1].split()
+            if len(fields) > 2 and fields[0] != "Z":
+                table[int(entry.name)] = (int(fields[1]), int(fields[2]))
+        return table
+    try:
+        out = subprocess.run(
+            ["ps", "-A", "-o", "pid=,ppid=,pgid=,stat="],
+            capture_output=True, text=True, timeout=5, check=False,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
         return None
-    skip = {os.getpid(), os.getppid()}
-    members = []
-    for entry in proc.iterdir():
-        if not entry.name.isdigit() or int(entry.name) in skip:
-            continue
-        try:
-            stat = (entry / "stat").read_text()
-        except OSError:
-            continue
-        # Fields after the ")" that closes comm: state ppid pgrp ...
-        fields = stat.rsplit(")", 1)[-1].split()
-        if len(fields) > 2 and fields[0] != "Z" and int(fields[2]) == pgid:
-            members.append(int(entry.name))
-    return members
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) >= 4 and parts[3][:1] != "Z" and parts[0].isdigit():
+            table[int(parts[0])] = (int(parts[1]), int(parts[2]))
+    return table or None
+
+
+def _stop_targets() -> list[int] | None:
+    """Pids the root rodeo may stop: its own descendants, plus its whole process
+    group only when it leads that group (sudo's ``use_pty`` case).
+
+    Without ``use_pty`` rodeo inherits the launcher's group (a script, ``timeout``,
+    a CI step), so signalling the group would hit processes rodeo never started.
+    This process and its parent (sudo) are never included. None when the process
+    table cannot be read.
+    """
+    table = _process_table()
+    if table is None:
+        return None
+    me, parent = os.getpid(), os.getppid()
+    children: dict[int, list[int]] = {}
+    for pid, (ppid, _pgid) in table.items():
+        children.setdefault(ppid, []).append(pid)
+    found: set[int] = set()
+    todo = [me]
+    while todo:
+        for kid in children.get(todo.pop(), []):
+            if kid not in found:
+                found.add(kid)
+                todo.append(kid)
+    pgid = os.getpgrp()
+    if pgid == me:
+        found |= {pid for pid, (_ppid, g) in table.items() if g == pgid}
+    found -= {me, parent}
+    return sorted(found)
 
 
 def _signal_all(pids: list[int], sig: int) -> None:
@@ -130,27 +169,30 @@ def _reap_children() -> None:
 
 
 def stop_own_group(grace: float | None = None) -> None:
-    """SIGTERM this process group (ansible, ssh), then SIGKILL survivors after ``grace``.
+    """SIGTERM what this rodeo started (ansible, ssh), then SIGKILL survivors after ``grace``.
 
+    Targets are re-read on every poll so children started meanwhile are caught.
     This process and its parent (sudo) are spared: sudo ignores signals its own
     command sends, and this process still has to exit cleanly.
     """
     grace = ROOT_STOP_GRACE if grace is None else grace
-    pgid = os.getpgrp()
-    members = _group_members(pgid)
-    if members is None:  # no /proc: a group signal is the best available
-        try:
-            os.killpg(pgid, signal.SIGTERM)
-        except OSError:
-            pass
+    targets = _stop_targets()
+    if targets is None:  # no process table: only a group we lead is safe to signal
+        if os.getpgrp() == os.getpid():
+            try:
+                os.killpg(os.getpgrp(), signal.SIGTERM)
+            except OSError:
+                pass
         return
-    _signal_all(members, signal.SIGTERM)
+    _signal_all(targets, signal.SIGTERM)
     deadline = time.monotonic() + grace
-    while members and time.monotonic() < deadline:
+    while targets and time.monotonic() < deadline:
         time.sleep(0.05)
         _reap_children()
-        members = _group_members(pgid) or []
-    _signal_all(members, signal.SIGKILL)
+        fresh = _stop_targets() or []
+        _signal_all([p for p in fresh if p not in targets], signal.SIGTERM)
+        targets = fresh
+    _signal_all(targets, signal.SIGKILL)
     _reap_children()
 
 
@@ -166,7 +208,7 @@ def _on_sigterm(signum, frame) -> None:  # noqa: ARG001 - signal handler signatu
 
 
 def install_root_sigterm_handler() -> bool:
-    """On SIGTERM, stop this root rodeo's process group and exit. True when installed.
+    """On SIGTERM, stop what this root rodeo started and exit. True when installed.
 
     An MCP cancel or timeout signals the group it started, but the escalated
     rodeo and its ansible/ssh children run as uid 0 (and, with sudo's
@@ -174,8 +216,10 @@ def install_root_sigterm_handler() -> bool:
     relays SIGTERM to this process (it cannot relay SIGKILL). Without this
     handler the children would outlive the cancel.
 
-    Installed only in a root process whose direct parent is sudo, so a root
-    rodeo started by a script never signals the script's own group.
+    Installed only in a root process whose direct parent is sudo. Even then
+    the handler stops only rodeo's own descendants, plus its process group
+    when rodeo leads it (``use_pty``): without ``use_pty`` rodeo shares the
+    launcher's group (a script, ``timeout``, a CI step), which it must not touch.
     """
     if not is_root() or not os.environ.get("SUDO_USER") or not _parent_is_sudo():
         return False

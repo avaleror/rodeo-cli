@@ -30,11 +30,21 @@ REPO = Path(__file__).resolve().parents[1]
 
 pytestmark = pytest.mark.skipif(not Path("/proc/self/stat").exists(), reason="needs /proc")
 
-# Stand-in for sudo: runs the command in its own process group (sudo without
-# use_pty does the same), relays SIGTERM to it, ignores signals the command sends.
+# Stand-in for sudo: runs the command in sudo's own process group, as sudo
+# without use_pty does (FAKE_SUDO_LEADER=1: in a new group the command leads, as
+# with use_pty), relays SIGTERM to it, ignores signals the command sends.
+# SIBLING_PIDFILE: also start a process in sudo's group that is not the
+# command's descendant (the script or `timeout` that launched sudo).
 FAKE_SUDO = '''#!{python}
 import os, signal, subprocess, sys
-child = subprocess.Popen(sys.argv[1:])
+SLEEPER = ["{python}", "-c",
+           "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)"]
+if os.environ.get("SIBLING_PIDFILE"):
+    sib = subprocess.Popen(SLEEPER)
+    with open(os.environ["SIBLING_PIDFILE"], "w") as fh:
+        fh.write(str(sib.pid))
+leader = os.environ.get("FAKE_SUDO_LEADER") == "1"
+child = subprocess.Popen(sys.argv[1:], preexec_fn=os.setpgrp if leader else None)
 def relay(sig, frame):
     try:
         if os.waitid(os.P_PID, child.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is None:
@@ -112,6 +122,56 @@ def leader_only_killpg(monkeypatch):
     def killpg(pgid, sig):
         os.kill(pgid, sig)
     monkeypatch.setattr(mcp_exec.os, "killpg", killpg)
+
+
+def _kill_pidfile(path: Path) -> None:
+    if path.exists():
+        try:
+            os.kill(int(path.read_text()), signal.SIGKILL)
+        except (ProcessLookupError, ValueError):
+            pass
+
+
+def test_non_leader_spares_the_launchers_group(tmp_path, monkeypatch, leader_only_killpg):
+    """Without use_pty rodeo shares the launcher's group: a sibling there survives."""
+    pidfile, sibfile = tmp_path / "grandchild.pid", tmp_path / "sibling.pid"
+    fake_sudo = _write(tmp_path / "sudo", FAKE_SUDO.format(python=sys.executable))
+    root = _write(tmp_path / "root-rodeo",
+                  ROOT_RODEO.format(python=sys.executable, repo=str(REPO), install=STUB_INSTALL))
+    entry = _write(tmp_path / "rodeo", f"#!/bin/sh\nexec {fake_sudo} {root} \"$@\"\n")
+    monkeypatch.setattr(mcp_exec, "find_rodeo_bin", lambda: str(entry))
+    monkeypatch.setenv("STUB_PIDFILE", str(pidfile))
+    monkeypatch.setenv("SIBLING_PIDFILE", str(sibfile))
+    monkeypatch.setenv("STOP_GRACE", "1")
+    try:
+        code, _elapsed, grandchild = _run_cancelled(str(entry), pidfile)
+        assert code == mcp_exec.CANCELLED_EXIT
+        assert not _alive(grandchild), "rodeo's grandchild outlived the cancel"
+        sibling = int(sibfile.read_text())
+        assert _alive(sibling), "the root handler killed a process rodeo never started"
+    finally:
+        _kill_pidfile(pidfile)
+        _kill_pidfile(sibfile)
+
+
+def test_group_leader_stops_a_grandchild_ignoring_sigterm(tmp_path, monkeypatch, leader_only_killpg):
+    """use_pty case: rodeo leads its group."""
+    pidfile = tmp_path / "grandchild.pid"
+    fake_sudo = _write(tmp_path / "sudo", FAKE_SUDO.format(python=sys.executable))
+    root = _write(tmp_path / "root-rodeo",
+                  ROOT_RODEO.format(python=sys.executable, repo=str(REPO), install=STUB_INSTALL))
+    entry = _write(tmp_path / "rodeo", f"#!/bin/sh\nexec {fake_sudo} {root} \"$@\"\n")
+    monkeypatch.setattr(mcp_exec, "find_rodeo_bin", lambda: str(entry))
+    monkeypatch.setenv("STUB_PIDFILE", str(pidfile))
+    monkeypatch.setenv("FAKE_SUDO_LEADER", "1")
+    monkeypatch.setenv("STOP_GRACE", "1")
+    try:
+        code, elapsed, grandchild = _run_cancelled(str(entry), pidfile)
+        assert code == mcp_exec.CANCELLED_EXIT
+        assert not _alive(grandchild)
+        assert elapsed < mcp_exec.KILL_GRACE + 1
+    finally:
+        _kill_pidfile(pidfile)
 
 
 def test_cancel_through_sudo_stand_in_stops_the_root_group(tmp_path, monkeypatch, leader_only_killpg):
@@ -198,10 +258,40 @@ def test_handler_installed_for_root_under_sudo(monkeypatch):
         signal.signal(signal.SIGTERM, before)
 
 
-def test_group_members_skip_self_and_parent():
-    members = privilege._group_members(os.getpgrp())
-    assert members is not None
-    assert os.getpid() not in members and os.getppid() not in members
+def test_stop_targets_skip_self_and_parent():
+    targets = privilege._stop_targets()
+    assert targets is not None
+    assert os.getpid() not in targets and os.getppid() not in targets
+
+
+def _fake_table(monkeypatch, table, *, me, parent, pgrp):
+    monkeypatch.setattr(privilege, "_process_table", lambda: table)
+    monkeypatch.setattr(privilege.os, "getpid", lambda: me)
+    monkeypatch.setattr(privilege.os, "getppid", lambda: parent)
+    monkeypatch.setattr(privilege.os, "getpgrp", lambda: pgrp)
+
+
+def test_stop_targets_non_leader_takes_descendants_only(monkeypatch):
+    # 1 script (group 1) -> 2 sudo -> 3 rodeo -> 4 ansible -> 5 ssh; 6 is a sibling in group 1
+    table = {1: (0, 1), 2: (1, 1), 3: (2, 1), 4: (3, 1), 5: (4, 1), 6: (1, 1), 7: (1, 7)}
+    _fake_table(monkeypatch, table, me=3, parent=2, pgrp=1)
+    assert privilege._stop_targets() == [4, 5]
+
+
+def test_stop_targets_leader_adds_its_group(monkeypatch):
+    # rodeo 3 leads group 3; 8 is in group 3 but reparented to init (left rodeo's tree)
+    table = {2: (1, 2), 3: (2, 3), 4: (3, 3), 8: (1, 3), 9: (1, 9)}
+    _fake_table(monkeypatch, table, me=3, parent=2, pgrp=3)
+    assert privilege._stop_targets() == [4, 8]
+
+
+def test_no_process_table_and_not_leader_signals_nothing(monkeypatch):
+    monkeypatch.setattr(privilege, "_process_table", lambda: None)
+    monkeypatch.setattr(privilege.os, "getpgrp", lambda: 1)
+    calls = []
+    monkeypatch.setattr(privilege.os, "killpg", lambda *a: calls.append(a))
+    privilege.stop_own_group(grace=0.1)
+    assert calls == []
 
 
 def test_kill_group_tolerates_only_root_members_left(monkeypatch):

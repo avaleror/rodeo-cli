@@ -151,6 +151,30 @@ def test_destroy_cmd_cleans_only_after_success(tmp_path, monkeypatch, ok):
     }))
     res = DeprovisionResult(id="primary", ok=ok, provider_id="i-1", detail="terminating", error=None if ok else "boom")
     monkeypatch.setattr(destroy_cmd, "destroy_primary", lambda cfg: [res])
-    monkeypatch.setattr(destroy_cmd, "validate_config", lambda cfg: None)
+    monkeypatch.setattr(destroy_cmd, "validate_aws_provider", lambda cfg: None)
     result = CliRunner().invoke(destroy_cmd.destroy_cmd, ["--cloud", "--yes", "--config-dir", str(lab)])
     assert kh.parent.exists() is (not ok), result.output
+
+
+def test_destroy_cloud_works_on_an_untrusted_lab_with_placeholders(tmp_path, monkeypatch):
+    """destroy --cloud loads with secrets off and checks only the provider block."""
+    from click.testing import CliRunner
+
+    from rodeo.commands import destroy_cmd
+
+    marker = tmp_path / "ran"
+    lab = tmp_path / "clone"
+    lab.mkdir()
+    (lab / "rodeo-plan.yaml").write_text(yaml.safe_dump({
+        "type": "rancher", "name": "aws-lab", "deployment_target": "aws",
+        "credentials": {"harvester_os_password": "??harvester_os_password",
+                        "rancher_admin_password": f"??cmd:touch {marker}"},
+        "provider": {"type": "aws", "region": "eu-north-1", "subnet_id": "subnet-1"},
+    }))
+    called = []
+    res = DeprovisionResult(id="primary", ok=True, provider_id="i-1", detail="terminating", error=None)
+    monkeypatch.setattr(destroy_cmd, "destroy_primary", lambda cfg: called.append(cfg) or [res])
+    monkeypatch.setattr(destroy_cmd, "validate_aws_provider", lambda cfg: None)
+    result = CliRunner().invoke(destroy_cmd.destroy_cmd, ["--cloud", "--yes", "--config-dir", str(lab)])
+    assert result.exit_code == 0, result.output
+    assert called and not marker.exists()

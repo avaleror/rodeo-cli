@@ -280,6 +280,9 @@ def remote_up_script(
         ' started by an earlier session. Follow it with:'
         ' sudo tail -f $log" >&2; '
         'exit 75; fi; '
+        # The laptop only ships a lab it trusts (load_config secrets="all"), so
+        # the host trusts that same copy; an older rodeo without --yes ignores it.
+        f"rodeo trust --yes --config-dir {lab} </dev/null >/dev/null 2>&1 || true; "
         'off=$(( $(stat -c %s "$log" 2>/dev/null || echo 0) + 1 )); '
         "set +e; "
         # rodeo writes to the log, not to the SSH channel, and the laptop gets
@@ -301,15 +304,22 @@ def remote_up_script(
 
 def local_secrets(lab: Path) -> dict[str, Any]:
     """The secrets a local deploy of *lab* would use: global, then the lab's own."""
-    from ..config import LAB_SECRETS_FILE
+    from ..config import LAB_SECRETS_FILE, checked_lab_secrets
+    from ..labfs import read_lab_file
 
     merged: dict[str, Any] = {}
-    for path in (rodeo_secrets_path(), lab / LAB_SECRETS_FILE):
-        if path.is_file():
-            try:
-                merged.update(yaml.safe_load(path.read_text()) or {})
-            except yaml.YAMLError as exc:
-                raise ConfigError(f"{path}: invalid YAML: {exc}")
+    texts = []
+    if rodeo_secrets_path().is_file():
+        texts.append((rodeo_secrets_path(), rodeo_secrets_path().read_text()))
+    # The lab's file is checked here too (no symlink, no hard link), not only by
+    # an earlier load_config, and read without following links.
+    if checked_lab_secrets(lab) is not None:
+        texts.append((lab / LAB_SECRETS_FILE, read_lab_file(lab, LAB_SECRETS_FILE) or ""))
+    for path, text in texts:
+        try:
+            merged.update(yaml.safe_load(text) or {})
+        except yaml.YAMLError as exc:
+            raise ConfigError(f"{path}: invalid YAML: {exc}")
     return merged
 
 

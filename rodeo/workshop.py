@@ -72,7 +72,7 @@ def checkout_path(lab_dir: Path) -> Path:
 
 
 def track_fetch_commands(spec: dict, dest: Path) -> list[list[str]]:
-    return fetch_commands(spec["repo"], spec["ref"] or spec["branch"], dest)
+    return fetch_commands(spec["repo"], spec["ref"] or spec["branch"], dest, symlinks=False)
 
 
 def lock_text(spec: dict, commit: str) -> str:

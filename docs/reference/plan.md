@@ -48,8 +48,25 @@ resources:
 #   ??file:/path     → contents of a file
 #   ??cmd:command    → stdout of a shell command (trimmed)
 #
-# ??file: and ??cmd: run only after you approve that exact string once with
-# `rodeo trust` (interactive terminal only). Until then they stay unresolved.
+# Secrets resolve only in a trusted lab. rodeo trust approves the whole lab
+# directory (a sha256 over every file in it except the state rodeo writes, such
+# as .rodeo-secrets.yaml, content/ and logs); any change makes it untrusted
+# again. Labs rodeo seeds into an empty directory from a bundled profile are
+# trusted already; cloned, imported, catalog and hand-made labs need
+# `rodeo trust` (or `rodeo trust --yes` in automation). Content repositories
+# fetched by URL are trusted by URL and ref, not by commit. Write commands (deploy, up, clean, export, ...) resolve
+# secrets; read commands (plan, status, logs, ...) never do. -P and --paramfile
+# values may not contain ??, {{, {% or a newline, and may only set data keys:
+# resources, versions, network, name, type, deployment_target, instance,
+# libvirt.disk_cache/disk_io, rancher_tls.email, elemental.registrations,
+# lab_in_a_box.variant/iso_image, provider.region/instance_type/ttl_hours,
+# story.language/id, content.facts (each value checked), and the names in
+# parameters: below (plain scalars that only feed the template). URL, ref,
+# checksum and path keys, such as a plan-declared versions.<x>_url or
+# versions.<x>_ref, can't be set through -P: change them in this file.
+# content.facts take plain sentences or http(s) URLs: they only fill the
+# rendered guide, never a shell. provider.ttl_hours must stay in (0, 168]. Under sudo the environment is
+# not passed on, so ??key is the form that works there.
 #
 # rodeo up and rodeo init generate ~/.rodeo/secrets.yaml automatically.
 # Deploy fails immediately if any ?? placeholder cannot be resolved.
@@ -347,7 +364,7 @@ Most network topology (CIDR, gateway, DNS domain, per-node IPs) is in `definitio
 
 | Field | Default | Notes |
 |-------|---------|-------|
-| `uri` | `qemu:///system` | libvirt connection URI. |
+| `uri` | `qemu:///system` | libvirt connection URI: `qemu:///system`, `qemu:///session` or `qemu+ssh`/`qemu+tls`/`qemu+tcp` to `[user@]host[:port]` (a bracketed IPv6 literal works) and `/system` or `/session`. No query string: `?keyfile=`, `?known_hosts=`, `?no_verify=` and the like are refused (some run a command); put SSH options in `~/.ssh/config` instead. |
 | `disk_cache` | target-dependent | Guest qcow2 `cache=` mode. Default `none` on baremetal, `writeback` when `deployment_target: instruqt` (better nested cloud I/O). Allowed: `none`, `writethrough`, `writeback`, `unsafe`, `directsync`. |
 | `disk_io` | target-dependent | Guest qcow2 `io=` mode. Default `native` on baremetal, `threads` on Instruqt. Allowed: `native`, `threads`, `io_uring`. |
 

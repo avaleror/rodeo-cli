@@ -304,3 +304,25 @@ def test_unknown_target(managed_ssh, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     with pytest.raises(ConfigError, match="unknown target"):
         build_ssh_target("nope", cfg={})
+
+
+@pytest.mark.parametrize("bad", ["-oProxyCommand=touch /tmp/x", "a b", "user;id", "", "x" * 40])
+def test_provider_ssh_user_must_be_a_login_name(bad):
+    from rodeo.ssh_targets import _ssh_user
+
+    with pytest.raises(ConfigError, match="ssh_user"):
+        _ssh_user(bad if bad else "-", "ec2-user")
+
+
+@pytest.mark.parametrize("good", ["ec2-user", "sles", "ubuntu", "root", "admin_1"])
+def test_provider_ssh_user_accepts_normal_names(good):
+    from rodeo.ssh_targets import _ssh_user
+
+    assert _ssh_user(good) == good
+
+
+def test_provider_ssh_user_trailing_newline_is_refused():
+    from rodeo.ssh_targets import _ssh_user
+
+    with pytest.raises(ConfigError):
+        _ssh_user("ec2-user\n")

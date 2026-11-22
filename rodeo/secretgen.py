@@ -6,6 +6,7 @@ helpers instead of each rolling their own, so the rules stay in sync.
 """
 from __future__ import annotations
 
+import re
 import secrets
 import stat
 import string
@@ -172,6 +173,9 @@ def append_secret(path: Path, key: str, value: str) -> None:
     path.chmod(stat.S_IRUSR | stat.S_IWUSR)  # 0600
 
 
+_KEY_RE = re.compile(r"^[A-Za-z0-9_]+$")
+
+
 def ensure_plan_secrets(
     plan: dict, path: Path | None = None, lab_path: Path | None = None,
 ) -> tuple[list[str], list[str]]:
@@ -187,18 +191,46 @@ def ensure_plan_secrets(
 
     from .labinabox_host import cloud_secret_keys
 
+    import json
+
+    from .config import ConfigError, checked_lab_secrets
+    from .labfs import read_lab_file, write_lab_file
+
     plan = apply_variant(plan)  # secrets of unselected lab-in-a-box variants aren't needed
     path = path or secrets_path()
+    keys = sorted(plan_secret_keys(plan))
+    bad = [k for k in keys if not _KEY_RE.fullmatch(k)]
+    if bad:
+        # A key is written into a YAML file as is: `??$(cmd)` must never get that far.
+        raise ConfigError(f"secret names may only use letters, digits and _: {', '.join(map(repr, bad))}")
     # Cloud credentials are always the operator's: never generate a random one.
     operator = {str(k) for k in plan.get("operator_secrets") or []} | cloud_secret_keys(plan)
-    have = {**_read_secrets(path), **(_read_secrets(lab_path) if lab_path else {})}
+    lab_text = ""
+    if lab_path is not None:
+        lab_path.parent.mkdir(parents=True, exist_ok=True)
+        checked_lab_secrets(lab_path.parent)  # no symlink or hard link: refuse before any write
+        lab_text = read_lab_file(lab_path.parent, lab_path.name) or ""
+    import yaml
+
+    try:
+        lab_have = (yaml.safe_load(lab_text) or {}) if lab_text else {}
+    except yaml.YAMLError:
+        lab_have = {}
+    have = {**_read_secrets(path), **(lab_have if isinstance(lab_have, dict) else {})}
     generated, missing = [], []
-    for key in sorted(plan_secret_keys(plan)):
+    for key in keys:
         if have.get(key) not in (None, ""):
             continue
         if key in operator:
             missing.append(key)
             continue
-        append_secret(lab_path or path, key, random_password())
+        if lab_path is None:
+            append_secret(path, key, random_password())
+        else:
+            sep = "" if not lab_text or lab_text.endswith("\n") else "\n"
+            lab_text += f"{sep}{key}: {json.dumps(random_password())}\n"
         generated.append(key)
+    if lab_path is not None and generated:
+        # Through labfs: never written via a symlink, even one swapped in now.
+        write_lab_file(lab_path.parent, lab_path.name, lab_text, 0o600)
     return generated, missing

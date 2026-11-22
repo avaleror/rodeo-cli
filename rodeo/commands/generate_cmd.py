@@ -347,7 +347,9 @@ def generate_cmd(output_dir: str, name: str | None, advanced: bool):
         f'export RANCHER_ADMIN_PASSWORD="{pw}"\n'
         f'export HARVESTER_TOKEN="{token}"\n'
     )
-    env_file.write_text(env_content)
+    from ..labfs import write_lab_file
+
+    write_lab_file(env_file.parent, env_file.name, env_content, 0o600)  # holds the passwords
     console.print(f"[green]Created {env_file}[/green] (use with source + sudo -E)")
 
     from ..paths import rodeo_secrets_path
@@ -367,6 +369,14 @@ def generate_cmd(output_dir: str, name: str | None, advanced: bool):
         secrets_dest.chmod(0o600)
         console.print(f"[green]Created {secrets_dest}[/green]")
 
+    # The directory was emptied (or new) and rodeo wrote every file in it.
+    from ..config import trust_lab
+
+    try:
+        trust_lab(out)
+        console.print("[green]✓ Trusted the generated lab (rodeo wrote every file in it)[/green]")
+    except Exception as e:
+        console.print(f"[yellow]⚠ Not trusted ({e}): review it, then run rodeo trust --config-dir {out}[/yellow]")
     try:
         load_config(None, config_dir=str(out))
         console.print("[green]✓ Generated files validated (load_config OK)[/green]")

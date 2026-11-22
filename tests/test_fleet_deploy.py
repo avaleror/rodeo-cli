@@ -24,6 +24,12 @@ from rodeo.fleet.ssh_exec import RemoteResult, ssh_argv
 from rodeo.fleet.sync import normalize_git_url, sync_script
 
 
+@pytest.fixture(autouse=True)
+def _sources_trusted(monkeypatch):
+    """Most tests here are about deploy mechanics: treat the lab.source as approved."""
+    monkeypatch.setattr("rodeo.config.is_source_trusted", lambda url, ref: True)
+
+
 def _workshop(tmp_path, extra_lab: str = ""):
     path = tmp_path / "workshop.yaml"
     path.write_text(
@@ -523,3 +529,44 @@ def test_access_sheet_ui_ports(tmp_path):
     assert access_payload("demo", rows)["hosts"][0]["other_urls"] == {"smlm": "https://203.0.113.1:443"}
     with pytest.raises(ConfigError, match="ui_ports"):
         load_inventory(_workshop(tmp_path, extra_lab="ui_ports: {smlm: 99999}"))
+
+
+def test_git_lab_source_is_trusted_before_up(tmp_path):
+    """A git lab.source is named in workshop.yaml: the fleet host trusts it, then deploys."""
+    inv = load_inventory(_workshop(tmp_path))
+    assert inv.lab_source
+    script = deploy_remote_script(inv, tmux_session_name(inv.name, "h1"))
+    assert "rodeo trust --yes --config-dir" in script
+    assert script.index("rodeo trust --yes") < script.index("rodeo up --yes")
+
+
+def test_fleet_deploy_refuses_an_unapproved_git_source(tmp_path, monkeypatch):
+    """Hosts clone lab.source and run it as root: it needs approval on the laptop first."""
+    from rodeo import config
+    from rodeo.fleet.deploy import fleet_deploy
+
+    monkeypatch.setattr("rodeo.config.is_source_trusted", _real_is_source_trusted)
+    path = _workshop(tmp_path)
+    inv = load_inventory(path)
+    with pytest.raises(ConfigError, match="--trust-source"):
+        fleet_deploy(inv, list(inv.hosts), inventory_path=path)
+    config.trust_source(inv.lab_source, inv.lab_branch)
+    assert _real_is_source_trusted(inv.lab_source, inv.lab_branch)
+
+
+def _real_is_source_trusted(url, ref):
+    from rodeo import config
+
+    return config.load_trusted_labs().get(config.source_key(url, ref)) == "approved"
+
+
+def test_fleet_deploy_cmd_trust_source_flag_records_approval(tmp_path, monkeypatch):
+    from rodeo import config
+    from rodeo.commands.fleet_cmd import _approve_source
+
+    monkeypatch.setattr("rodeo.config.is_source_trusted", _real_is_source_trusted)
+    inv = load_inventory(_workshop(tmp_path))
+    _approve_source(inv, False)  # no TTY, no flag: nothing recorded
+    assert not _real_is_source_trusted(inv.lab_source, inv.lab_branch)
+    _approve_source(inv, True)
+    assert config.load_trusted_labs()[config.source_key(inv.lab_source, inv.lab_branch)] == "approved"

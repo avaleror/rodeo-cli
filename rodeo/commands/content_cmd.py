@@ -58,12 +58,18 @@ def _lab(cfg: dict) -> Path:
     return detected if detected else Path.cwd()
 
 
-def _load(config_path: str, config_dir: str | None, params: tuple[str, ...], paramfile: str | None) -> dict:
+def _load(config_path: str, config_dir: str | None, params: tuple[str, ...], paramfile: str | None,
+          secrets: str = "off") -> dict:
     if config_dir is None:
         ctx = click.get_current_context()
         if ctx.obj:
             config_dir = ctx.obj.get("config_dir")
-    return load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir)
+    try:
+        return load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir,
+                           secrets=secrets)
+    except ConfigError as exc:
+        console.print(f"[red]✗  {exc}[/red]")
+        raise SystemExit(1)
 
 
 @click.group("content")
@@ -81,7 +87,8 @@ def content_apply_cmd(config_path: str, config_dir: str | None, params: tuple[st
     Run it from the lab directory, again whenever the content repository changes.
     Installing the checks into /opt/rodeo/<plan name>/checks needs root.
     """
-    cfg = _load(config_path, config_dir, params, paramfile)
+    # Write path: renders the guide with credentials and runs scripts as root.
+    cfg = _load(config_path, config_dir, params, paramfile, secrets="all")
     lab = _lab(cfg)
     try:
         result = content.apply(cfg, lab)

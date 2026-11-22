@@ -5,19 +5,27 @@ import json
 import shutil
 import stat
 import subprocess
+from functools import partial
 from pathlib import Path
 
 import pytest
 import yaml
 
 from rodeo import labinabox_host as host
-from rodeo.config import ConfigError, load_config
+from rodeo.config import ConfigError
+from rodeo.config import load_config as _load_config
 from rodeo.engine import labinabox_phase as phase
 from rodeo.engine.runner import DeployRunner, LogLine
 from rodeo.labinabox import available_addons, build_lab_json, unresolved_placeholders
 from rodeo.labseed import PROFILE_EXAMPLE, example_dir, seed_lab
 from rodeo.preflight import _resource_needs
 from rodeo.profiles import get_profile
+
+# Write paths need a trusted lab; trust itself is tested in test_config.py.
+pytestmark = pytest.mark.usefixtures("trusted_labs")
+
+# These tests model write paths (deploy, up), which resolve secrets.
+load_config = partial(_load_config, secrets="all")
 
 SMLM = example_dir("smlm-workshop")
 SHA = "a" * 64
@@ -1182,9 +1190,14 @@ def test_target_libvirt_uri_drives_day2_commands(tmp_path):
     cfg = _smlm_cfg(tmp_path, FULL_SECRETS)
     plan = Path(cfg["config_dir"]) / "rodeo-plan.yaml"
     data = yaml.safe_load(plan.read_text())
-    data["lab_in_a_box"]["target"] = {"host": "auto1", "libvirt_uri": "qemu+ssh://root@kvm1/system?keyfile=/k"}
+    data["lab_in_a_box"]["target"] = {"host": "auto1", "libvirt_uri": "qemu+ssh://root@kvm1/system"}
     plan.write_text(yaml.safe_dump(data))
-    assert load_config(plan)["libvirt"]["uri"] == "qemu+ssh://root@kvm1/system?keyfile=/k"
+    assert load_config(plan)["libvirt"]["uri"] == "qemu+ssh://root@kvm1/system"
+    # A URI parameter that hands libvirt a file or a command is refused.
+    data["lab_in_a_box"]["target"]["libvirt_uri"] = "qemu+ssh://root@kvm1/system?keyfile=/k"
+    plan.write_text(yaml.safe_dump(data))
+    with pytest.raises(ConfigError, match="not allowed"):
+        host.target(load_config(plan))
 
 
 def test_capacity_helpers():
@@ -1737,3 +1750,24 @@ def test_smlm_lab_sets_required_client_registration_fields_in_its_section():
     for node in ("zzcentos7", "zzsles15a", "zzsles15b", "zzsles15c"):
         override = lab["nodes"][f"{node}.rodeo.lab"]["addons"][0]["client_registration"]
         assert override["client_registration_activation_key"].startswith("1-"), node
+
+
+def test_target_host_and_user_trailing_newline_refused():
+    for target in ({"host": "kvm1\n"}, {"ssh_user": "root\n"}):
+        with pytest.raises(ConfigError):
+            host.target({"lab_in_a_box": {"target": target}})
+
+
+def test_nodes_json_addresses_must_be_ips(tmp_path):
+    """.labinabox/nodes.json feeds ssh argv: anything but an IP is ignored."""
+    import json
+
+    from rodeo.profiles import get_profile
+
+    lab = tmp_path / "lab"
+    (lab / ".labinabox").mkdir(parents=True)
+    (lab / ".labinabox" / "nodes.json").write_text(json.dumps({"a": "10.0.0.5", "b": "-oProxyCommand=x"}))
+    cfg = {"plan_dir": str(lab), "vms": {"a": {"ip": "192.168.0.1"}, "b": {"ip": "192.168.0.2"}}}
+    out = get_profile("lab-in-a-box")._apply_cloud_addresses(cfg)
+    assert out["vms"]["a"]["ip"] == "10.0.0.5"
+    assert out["vms"]["b"]["ip"] == "192.168.0.2"

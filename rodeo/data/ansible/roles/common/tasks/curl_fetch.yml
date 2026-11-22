@@ -5,12 +5,12 @@
 - name: Download {{ curl_fetch_dest | basename }}
   ansible.builtin.shell: |
     set -euo pipefail
-    dest='{{ curl_fetch_dest }}'
+    dest={{ curl_fetch_dest | quote }}
     tmp="$dest.downloading"
     # curl -4: hosts with AAAA but no IPv6 route (Instruqt) — urllib prefers v6.
     # --http1.1: opensuse/rancher mirrors intermittently break HTTP/2 streams.
     curl -4 --http1.1 -fsSL --retry 5 --retry-delay 10 --retry-all-errors \
-      -C - -o "$tmp" '{{ curl_fetch_url }}'
+      -C - -o "$tmp" {{ curl_fetch_url | quote }}
     mv "$tmp" "$dest"
     chmod {{ curl_fetch_mode | default('0644') }} "$dest"
   args:

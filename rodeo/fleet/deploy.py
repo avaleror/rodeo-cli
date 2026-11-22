@@ -39,8 +39,13 @@ def start_up_script(inventory: FleetInventory, session: str) -> str:
     profile_bits = ""
     if inventory.lab_profile and not inventory.lab_source:
         profile_bits = f"--profile {shlex.quote(inventory.lab_profile)} "
+    # A git lab.source is named in the operator's workshop.yaml: that is the
+    # approval (by URL and branch, not commit). Profile seeds are trusted already.
+    trust_bits = ""
+    if inventory.lab_source:
+        trust_bits = f"{{ rodeo trust --yes --config-dir {lab} >/dev/null 2>&1 || true; }} && "
     inner = (
-        f"cd {lab} && rodeo up --yes --no-tmux {profile_bits}"
+        f"cd {lab} && {trust_bits}rodeo up --yes --no-tmux {profile_bits}"
         f"--dir {lab} --target {target} "
         f"2>&1 | tee -a \"$HOME/.rodeo/logs/fleet-up.log\"; "
         f'echo FLEET_UP_EXIT:$?'
@@ -188,6 +193,20 @@ def _maybe_skip_complete(
     return None
 
 
+def require_trusted_source(inventory: FleetInventory) -> None:
+    """A git lab.source must be approved on this machine before hosts clone and run it."""
+    from ..config import is_source_trusted
+
+    if inventory.lab_source and not is_source_trusted(inventory.lab_source, inventory.lab_branch):
+        branch = f" (branch {inventory.lab_branch})" if inventory.lab_branch else ""
+        raise ConfigError(
+            f"lab.source {inventory.lab_source}{branch} is not trusted on this machine. "
+            "Every host clones it and runs its scripts as root.\n"
+            "Review the repository, then run: rodeo fleet deploy --trust-source -f <workshop.yaml>\n"
+            "(trusted by URL and branch, not commit)."
+        )
+
+
 def fleet_deploy(
     inventory: FleetInventory,
     hosts: list[FleetHost],
@@ -200,6 +219,7 @@ def fleet_deploy(
 ) -> tuple[list[HostDeployResult], FleetJob, Path]:
     """Fan-out deploy starts; write/update job file beside the inventory."""
     require_deploy_config(inventory)
+    require_trusted_source(inventory)
     workers = concurrency if concurrency is not None else inventory.deploy_concurrency
     path = job_path_for(inventory_path)
 

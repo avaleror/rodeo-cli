@@ -1,11 +1,15 @@
 """rodeo install-extensions — reconcile Rancher UI extensions post-deploy."""
 from __future__ import annotations
 
+import pytest
 import yaml
 from click.testing import CliRunner
 
 from rodeo.commands import install_extensions_cmd as iec_mod
 from rodeo.engine import rancher as rancher_mod
+
+# Write paths need a trusted lab; trust itself is tested in test_config.py.
+pytestmark = pytest.mark.usefixtures("trusted_labs")
 
 
 def _write_plan(tmp_path, vms, extra=None):

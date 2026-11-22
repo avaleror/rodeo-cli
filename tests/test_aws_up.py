@@ -807,3 +807,26 @@ def test_up_cmd_hands_its_lab_to_the_remote():
     from rodeo.commands import up_cmd
 
     assert "plan_dir=lab" in inspect.getsource(up_cmd)
+
+
+def test_remote_up_trusts_the_shipped_lab_before_up():
+    """The laptop only ships a lab it trusts; the host trusts that copy, then runs up."""
+    from rodeo.providers.remote_up import remote_up_script
+
+    script = remote_up_script(lab_dir="/root/lab", profile="test", ship_plan=True)
+    assert "rodeo trust --yes --config-dir /root/lab" in script
+    assert script.index("rodeo trust --yes") < script.index("rodeo up --yes")
+
+
+def test_aws_laptop_path_refuses_untrusted_lab(tmp_path, monkeypatch, capsys):
+    """up --target aws on the laptop loads the lab with secrets="all" before provisioning."""
+    import pytest as _pytest
+
+    from rodeo.commands import up_cmd
+
+    lab = tmp_path / "clone"
+    lab.mkdir()
+    (lab / "rodeo-plan.yaml").write_text("deployment_target: aws\n")
+    with _pytest.raises(SystemExit):
+        up_cmd._aws_control_plane_deploy(lab, profile=None, instance_tier=None, assume_yes=True)
+    assert "not trusted" in " ".join(capsys.readouterr().out.split())

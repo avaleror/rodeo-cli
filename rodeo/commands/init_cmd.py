@@ -80,6 +80,10 @@ def init_cmd(force: bool, ask_password: bool, target_dir: str, profile: str | No
         if example is None:
             console.print(f"[red]Unknown profile '{profile}'. Use one of: {', '.join(PROFILE_EXAMPLE)}.[/red]")
             raise SystemExit(1)
+    from ..config import has_hashed_files
+
+    # Trusted at the end only if rodeo wrote every file in it (an empty target).
+    fresh = not has_hashed_files(dest)
     if example:
         src = Path(__file__).parent.parent / "data" / "examples" / example
         if not src.is_dir():
@@ -117,6 +121,10 @@ def init_cmd(force: bool, ask_password: bool, target_dir: str, profile: str | No
             shutil.copy(_TEMPLATES / "rodeo-plan.yaml", plan_dest)
         if plan_dest.exists():
             console.print(f"[green]✓[/green]  {plan_dest}")
+    if fresh and plan_dest.exists():
+        from ..config import trust_lab
+
+        trust_lab(dest)  # only bundled files in it: trusted, like a seeded lab
 
     # Secrets + env file (robust: always produce a fresh rodeo-secrets.env even on re-init without --force)
     secrets_dest.parent.mkdir(parents=True, exist_ok=True)
@@ -149,7 +157,9 @@ def init_cmd(force: bool, ask_password: bool, target_dir: str, profile: str | No
         f'export RANCHER_VM_PASSWORD="{password}"\n'
         f'export HARVESTER_TOKEN="{token}"\n'
     )
-    env_file.write_text(env_content)
+    from ..labfs import write_lab_file
+
+    write_lab_file(env_file.parent, env_file.name, env_content, 0o600)  # holds the passwords
 
     console.print("\n[bold]Next:[/bold]")
     console.print(f"  rodeo up --dir {dest}     # recommended: handles sudo + preflight")

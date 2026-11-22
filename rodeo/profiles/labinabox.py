@@ -96,10 +96,16 @@ class LabInABoxProfile(RodeoProfile):
 
         base = cfg.get("config_dir") or cfg.get("plan_dir")
         nodes = Path(base or ".") / NODES_RELPATH
-        if base and nodes.is_file():
+        if base and nodes.is_file() and not nodes.is_symlink():
+            import ipaddress
+
             for name, ip in json.loads(nodes.read_text()).items():
-                if name in cfg.get("vms", {}):
-                    cfg["vms"][name]["ip"] = ip
+                if name not in cfg.get("vms", {}):
+                    continue
+                try:  # rodeo writes this file, but it lands in ssh argv: check it
+                    cfg["vms"][name]["ip"] = str(ipaddress.ip_address(str(ip)))
+                except ValueError:
+                    continue
         return cfg
 
     def _vms_from_inventory(self, inv: dict) -> dict:

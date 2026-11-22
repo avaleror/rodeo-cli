@@ -57,7 +57,9 @@ credentials:
   #   ??env:RODEO_PASSWORD   -> environment variable
   #   ??file:/run/secrets/pw -> file contents (mounted secrets)
   #   ??cmd:pass show rodeo  -> command stdout (pass, op, vault CLI...)
-  #   ??file: and ??cmd: need one approval first: rodeo trust
+  #   Secrets resolve only in a trusted lab: rodeo trust approves the lab
+  #   directory; editing any file in it needs a new approval.
+  #   Read commands (plan, status) never resolve them; -P can't pass ??.
   # If a source returns nothing, deploy fails fast instead of using
   # an empty password.
   harvester_os_password: "??harvester_os_password"

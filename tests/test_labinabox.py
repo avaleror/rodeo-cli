@@ -15,6 +15,9 @@ from rodeo.cli import cli
 from rodeo.config import ConfigError, load_config
 from rodeo.labinabox import _reverse_zone, build_lab_json
 
+# Write paths need a trusted lab; trust itself is tested in test_config.py.
+pytestmark = pytest.mark.usefixtures("trusted_labs")
+
 
 def _rancher_cfg(tmp_path, extra_plan: str = ""):
     plan = tmp_path / "rodeo-plan.yaml"

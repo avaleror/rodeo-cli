@@ -80,8 +80,13 @@ def deploy_cmd(
         if ctx.obj:
             config_dir = ctx.obj.get("config_dir")
     try:
-        cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir)
-        validate_config(cfg)
+        # --check is a preflight (MCP rodeo_preflight is read-only): ??key only,
+        # and placeholders that would resolve at deploy time count as deferred.
+        cfg = load_config(
+            config_path, params=params, paramfile=paramfile, config_dir=config_dir,
+            secrets="keys" if preflight_only else "all",
+        )
+        validate_config(cfg, check=preflight_only)
         profile = get_profile(cfg.get("type", "suse-virt"))
     except ValueError as exc:
         console.print(f"[red]✗  {exc}[/red]")

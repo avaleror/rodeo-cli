@@ -5,7 +5,7 @@ import click
 from rich.console import Console
 from rich.prompt import Confirm
 
-from ..config import ConfigError, load_config, validate_config
+from ..config import ConfigError, load_config, validate_aws_provider
 from ..providers.remote_up import destroy_primary
 
 console = Console()
@@ -55,7 +55,7 @@ def destroy_cmd(cloud: bool, assume_yes: bool, config_dir: str | None) -> None:
             raise ConfigError(
                 "rodeo destroy --cloud requires deployment_target: aws in the plan"
             )
-        validate_config(cfg)
+        validate_aws_provider(cfg)
         results = destroy_primary(cfg)
     except ConfigError as exc:
         console.print(f"[red]✗  {exc}[/red]")

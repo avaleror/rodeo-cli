@@ -230,7 +230,7 @@ def pull_edge_image_cmd(
         if ctx.obj:
             config_dir = ctx.obj.get("config_dir")
 
-    cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir)
+    cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir, secrets="all")
     vms = cfg.get("vms", {})
     image_dir = Path(cfg.get("storage", {}).get("image_dir", "/var/lib/libvirt/images"))
 

@@ -128,15 +128,20 @@ def local_revision(checkout: Path) -> str:
     return rev + "+" + hashlib.sha256(diff.stdout).hexdigest()[:12] if diff.stdout else rev
 
 
-def fetch_commands(repo: str, ref: str, dest: Path) -> list[list[str]]:
+def fetch_commands(repo: str, ref: str, dest: Path, *, symlinks: bool = True) -> list[list[str]]:
     """git commands that check out exactly `ref` (branch, tag or SHA) into dest.
 
     Shallow fetch of the single ref, IPv4 only (Instruqt hosts have no IPv6
     route while GitHub publishes AAAA records).
     """
-    git = ["git", "-C", str(dest)]
+    # No hooks and no fsmonitor, whatever a planted .git/config says.
+    safe = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"]
+    if not symlinks:
+        # A link would be checked out as a link (and make the lab untrusted).
+        safe += ["-c", "core.symlinks=false"]
+    git = ["git", *safe, "-C", str(dest)]
     return [
-        ["git", "init", "-q", str(dest)],
+        ["git", *safe, "init", "-q", str(dest)],
         git + ["fetch", "--ipv4", "-q", "--depth", "1", repo, ref],
         git + ["checkout", "-q", "--force", "FETCH_HEAD"],
     ]
@@ -405,16 +410,18 @@ def target(cfg: dict) -> dict:
     user = str(spec.get("ssh_user") or "root")
     if mode not in ("auto", "managed", "existing"):
         raise ConfigError(f"lab_in_a_box.target.mode '{mode}': use auto, managed or existing")
-    if host and not _HOST_RE.match(host):
+    if host and not _HOST_RE.fullmatch(host):
         raise ConfigError(f"lab_in_a_box.target.host '{host}' is not a plain host name or IP")
     if host and mode == "managed":
         raise ConfigError("lab_in_a_box.target.host needs mode existing (or auto): rodeo only "
                           "installs lab-in-a-box on the host it runs on")
-    if not _USER_RE.match(user):
+    if not _USER_RE.fullmatch(user):
         raise ConfigError(f"lab_in_a_box.target.ssh_user '{user}' is not a valid user name")
     uri = str(spec.get("libvirt_uri") or "")
-    if uri and not re.fullmatch(r"qemu(\+ssh|\+tcp|\+tls)?://[^\s'\"]*/system(\?[^\s'\"]*)?", uri):
-        raise ConfigError(f"lab_in_a_box.target.libvirt_uri '{uri}' is not a qemu:// libvirt URI")
+    if uri:
+        from .config import validate_libvirt_uri
+
+        validate_libvirt_uri(uri, "lab_in_a_box.target.libvirt_uri")
     return {"mode": mode, "host": host or None, "ssh_user": user, "libvirt_uri": uri or None}
 
 

@@ -47,8 +47,8 @@
 - name: Verify Harvester {{ harvester_version }} ISO checksum
   ansible.builtin.shell: |
     set -euo pipefail
-    dest='{{ image_dir }}/harvester-v{{ harvester_version }}-amd64.iso'
-    expected='{{ harvester_iso_checksum | regex_replace("^sha512:", "") }}'
+    dest={{ (image_dir ~ '/harvester-v' ~ harvester_version ~ '-amd64.iso') | quote }}
+    expected={{ harvester_iso_checksum | regex_replace('^sha512:', '') | quote }}
     actual=$(sha512sum "$dest" | awk '{print $1}')
     [ "$actual" = "$expected" ]
   args:

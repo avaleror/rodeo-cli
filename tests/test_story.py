@@ -105,7 +105,11 @@ def test_missing_story_dir_says_how_to_start(tmp_path):
 # ---------- translation + assembly via the rmstory CLI ----------
 
 def test_translate_invokes_rmstory_with_store_env(tmp_path, fake_rmstory):
-    cfg = _lab(tmp_path, "story:\n  engine_env:\n    GEMINI_API_KEY: sekret\n")
+    from rodeo.config import trust_lab
+
+    _lab(tmp_path, "story:\n  engine_env:\n    GEMINI_API_KEY: sekret\n")
+    trust_lab(tmp_path)  # story.engine_env reaches rmstory only in a trusted lab
+    cfg = load_config(tmp_path / "rodeo-plan.yaml", config_dir=tmp_path, secrets="keys")
     text = render_story(cfg, language="es")
     assert "[es]" in text and "Hello, wrangler." in text
     (cmd,) = [c for c in fake_rmstory.calls if c[1] == "translate"]
@@ -221,3 +225,104 @@ def test_story_render_cli_writes_file(tmp_path, monkeypatch):
     result = CliRunner().invoke(cli, ["story", "render", "-o", "handout.md"])
     assert result.exit_code == 0, result.output
     assert "Hello, wrangler." in (tmp_path / "handout.md").read_text()
+
+
+def test_story_render_cli_gets_key_passwords_but_runs_nothing(tmp_path, monkeypatch):
+    """story render loads with secrets="keys": ??key passwords reach the hand-out,
+    a trusted ??cmd: does not run."""
+    from click.testing import CliRunner
+
+    from rodeo import config
+    from rodeo.commands.story_cmd import story_cmd
+
+    marker = tmp_path / "ran"
+    spec = f"??cmd:touch {marker} && echo ok"
+    _lab(tmp_path,
+         "credentials:\n  rancher_admin_password: ??rancher_admin_password\n"
+         f'registry:\n  token: "{spec}"\n')
+    (tmp_path / "story" / "03-creds.md").write_text(
+        "Password: <span no>{{ credentials.rancher_admin_password }}</span>\n"
+    )
+    secrets = tmp_path / ".rodeo" / "secrets.yaml"
+    secrets.parent.mkdir(parents=True, exist_ok=True)
+    secrets.write_text("rancher_admin_password: StoryPass123\n")
+    config.trust_lab(tmp_path)
+
+    result = CliRunner().invoke(
+        story_cmd, ["render", "--config", str(tmp_path / "rodeo-plan.yaml")]
+    )
+    assert result.exit_code == 0, result.output
+    assert "StoryPass123" in result.output
+    assert not marker.exists()
+
+
+def test_story_template_is_sandboxed(tmp_path):
+    """SSTI: story text from a workshop repo must not reach Python internals."""
+    cfg = _lab(tmp_path)
+    (tmp_path / "story" / "04-evil.md").write_text(
+        "{{ ''.__class__.__mro__[1].__subclasses__() }}\n"
+    )
+    with pytest.raises(ConfigError, match="sandbox"):
+        render_story(cfg)
+
+
+def test_story_template_range_is_capped(tmp_path):
+    cfg = _lab(tmp_path)
+    (tmp_path / "story" / "04-loop.md").write_text("{% for i in range(10**9) %}x{% endfor %}\n")
+    with pytest.raises(ConfigError, match="range"):
+        render_story(cfg)
+
+
+def test_story_render_untrusted_lab_cannot_read_global_secrets(tmp_path):
+    """Attack: a cloned lab asks for a global secret in credentials; story render
+    (keys mode) must not put it into the hand-out."""
+    from click.testing import CliRunner
+
+    from rodeo.commands.story_cmd import story_cmd
+
+    _lab(tmp_path, "credentials:\n  rancher_admin_password: ??aws_secret_access_key\n")
+    (tmp_path / "story" / "03-creds.md").write_text(
+        "Password: <span no>{{ credentials.rancher_admin_password }}</span>\n"
+    )
+    secrets = tmp_path / ".rodeo" / "secrets.yaml"
+    secrets.parent.mkdir(parents=True, exist_ok=True)
+    secrets.write_text("aws_secret_access_key: global-value-marker\n")
+    result = CliRunner().invoke(
+        story_cmd, ["render", "--config", str(tmp_path / "rodeo-plan.yaml")]
+    )
+    assert "global-value-marker" not in result.output
+
+
+def test_untrusted_lab_story_engine_env_never_reaches_rmstory(tmp_path, fake_rmstory):
+    """Attack: story.engine_env: {LD_PRELOAD: ...} in a cloned plan would run code in rmstory."""
+    cfg = _lab(tmp_path, "story:\n  engine: evil\n  engine_env:\n    LD_PRELOAD: /tmp/evil.so\n")
+    render_story(cfg, language="es")
+    assert all("LD_PRELOAD" not in env for env in fake_rmstory.envs)
+    assert all("evil" not in " ".join(c) for c in fake_rmstory.calls)
+
+
+def test_story_render_with_translation_keeps_the_lab_trusted(tmp_path, fake_rmstory):
+    """rmstory writes its translation store under story/strings: rodeo-written state."""
+    from rodeo.config import is_lab_trusted, trust_lab
+
+    _lab(tmp_path)
+    trust_lab(tmp_path)
+    cfg = load_config(tmp_path / "rodeo-plan.yaml", config_dir=tmp_path, secrets="keys")
+    store = tmp_path / "story" / "strings"
+    store.mkdir()
+    (store / "es.json").write_text('{"intro.hello": "Hola"}')  # what rmstory leaves behind
+    render_story(cfg, language="es")
+    assert is_lab_trusted(tmp_path)
+
+
+def test_translation_refuses_a_symlinked_strings_store(tmp_path, fake_rmstory):
+    """rmstory writes story/strings, which the lab hash skips: never through a link."""
+    import os
+
+    cfg = _lab(tmp_path)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    os.symlink(elsewhere, tmp_path / "story" / "strings")
+    with pytest.raises(ConfigError, match="symlink"):
+        render_story(cfg, language="es")
+    assert not [c for c in fake_rmstory.calls if c[1] == "translate"]

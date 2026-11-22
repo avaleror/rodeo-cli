@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from functools import partial
 from pathlib import Path
 
 import pytest
@@ -15,8 +16,14 @@ from click.testing import CliRunner
 
 from rodeo import labimport
 from rodeo.commands.new_cmd import new_cmd
-from rodeo.config import load_config
+from rodeo.config import load_config as _load_config
 from rodeo.labinabox import build_lab_json
+
+# Write paths need a trusted lab; trust itself is tested in test_config.py.
+pytestmark = pytest.mark.usefixtures("trusted_labs")
+
+# These tests model write paths (deploy, up), which resolve secrets.
+load_config = partial(_load_config, secrets="all")
 
 SMLM_PLAN = Path(__file__).parent.parent / "rodeo" / "data" / "examples" / "smlm-workshop" / "rodeo-plan.yaml"
 

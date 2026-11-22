@@ -13,6 +13,12 @@ console = Console()
 @click.option("--uri", default="qemu:///system", show_default=True, help="Libvirt connection URI.")
 def list_cmd(uri: str) -> None:
     """Show plans and the libvirt domains stamped for each one."""
+    from ..config import ConfigError, validate_libvirt_uri
+
+    try:
+        validate_libvirt_uri(uri, "--uri")  # a URI can run a command (qemu+ext)
+    except ConfigError as exc:
+        raise click.ClickException(str(exc))
     try:
         with LibvirtDriver(uri) as lv:
             owned = lv.ownership_map()

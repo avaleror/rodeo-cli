@@ -134,3 +134,25 @@ def test_up_needs_profile_and_count_for_a_new_inventory(tmp_path, steps):
     r = CliRunner().invoke(fleet_cmd.fleet_cmd, ["up", "-f", str(tmp_path / "nope.yaml"),
                                                  "--profile", "virt-workshop"])
     assert r.exit_code == 2 and "--profile and --count" in r.output and steps == []
+
+
+def test_fleet_up_refuses_an_unapproved_source_before_provisioning(tmp_path, monkeypatch):
+    """No EC2 host is provisioned for a workshop whose git lab.source is not approved."""
+    import yaml as _yaml
+    from click.testing import CliRunner
+
+    from rodeo.commands import fleet_cmd
+    from rodeo.commands.fleet_up_cmd import fleet_up_cmd
+
+    path = tmp_path / "workshop.yaml"
+    path.write_text(_yaml.safe_dump({
+        "name": "ws", "lab": {"source": "https://github.com/x/lab.git", "dir": "/root/lab"},
+        "hosts": [{"id": "h1", "ssh": "root@10.0.0.1"}],
+    }))
+    provisioned = []
+    monkeypatch.setattr(fleet_cmd, "fleet_provision_cmd", lambda *a, **k: provisioned.append(1))
+    monkeypatch.setattr("sys.stdin", None)
+    result = CliRunner().invoke(fleet_up_cmd, ["-f", str(path)])
+    assert result.exit_code == 1
+    assert "not trusted" in result.output
+    assert not provisioned

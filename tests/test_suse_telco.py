@@ -69,6 +69,9 @@ def test_definition_topology():
 def test_plan_renders_telco_topology(tmp_path):
     plan = tmp_path / "rodeo-plan.yaml"
     plan.write_text("type: suse-telco\nname: suse-telco-test\n")
+    from rodeo.config import trust_lab
+
+    trust_lab(tmp_path)
     result = CliRunner().invoke(plan_cmd, ["--config", str(plan)])
     out = _flat(result.output)
     assert result.exit_code == 0, result.output

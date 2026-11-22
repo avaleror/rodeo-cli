@@ -120,6 +120,27 @@ def story_facts(cfg: dict) -> dict:
     }
 
 
+def _engine_settings(cfg: dict, story_cfg: dict) -> tuple[str, dict | None]:
+    """The plan's story.engine and story.engine_env, only in a trusted lab.
+
+    engine_env goes into the rmstory process environment (LD_PRELOAD would run
+    code), so a cloned or changed lab gets neither; --engine still works.
+    """
+    from .config import LAB_TRUSTED_KEY
+
+    if cfg.get(LAB_TRUSTED_KEY) is not True:
+        return "", None
+    return str(story_cfg.get("engine") or ""), story_cfg.get("engine_env")
+
+
+def _check_store(story_root: Path) -> None:
+    """rmstory writes translations into story/strings: never through a symlink
+    (the lab hash skips that path, so a link there could point anywhere)."""
+    for p in (story_root, story_root / "strings", story_root / "stories"):
+        if p.is_symlink():
+            raise ConfigError(f"{p} is a symlink: rmstory would write through it")
+
+
 def _rmstory_bin() -> str:
     binary = shutil.which("rmstory")
     if not binary:
@@ -163,7 +184,8 @@ def render_story(
     story_cfg = cfg.get("story", {}) if isinstance(cfg.get("story"), dict) else {}
     language = (language or story_cfg.get("language") or SOURCE_LANGUAGE).strip()
     story_id = story_id or story_cfg.get("id") or ""
-    engine = engine or story_cfg.get("engine") or ""
+    plan_engine, engine_env = _engine_settings(cfg, story_cfg)
+    engine = engine or plan_engine
 
     root = root or story_dir(cfg)
     if root is None:
@@ -176,7 +198,9 @@ def render_story(
     if not sources:
         raise ConfigError(f"no story sources found: {root}/*.md is empty")
 
-    env = _rmstory_env(root, story_cfg.get("engine_env"))
+    env = _rmstory_env(root, engine_env)
+    if language != SOURCE_LANGUAGE:
+        _check_store(root)
 
     with tempfile.TemporaryDirectory(prefix="rodeo-story-") as tmp:
         tmp_path = Path(tmp)
@@ -249,14 +273,15 @@ def render_success_story(cfg: dict) -> str | None:
                 raise ConfigError(
                     "translation needs a lab story/ dir for the strings store"
                 )
-            env = _rmstory_env(root, story_cfg.get("engine_env"))
+            plan_engine, engine_env = _engine_settings(cfg, story_cfg)
+            env = _rmstory_env(root, engine_env)
             with tempfile.TemporaryDirectory(prefix="rodeo-success-") as tmp:
                 tmp_path = Path(tmp)
                 # Translate a copy so a bundled (read-only) source never gets touched.
                 work = tmp_path / source.name
                 work.write_text(text)
                 (translated,) = _translate_files(
-                    [str(work)], language, story_cfg.get("engine") or "", env, tmp_path
+                    [str(work)], language, plan_engine, env, tmp_path
                 )
                 text = Path(translated).read_text()
         except ConfigError:
@@ -278,9 +303,16 @@ def _render_facts(text: str, cfg: dict) -> str:
         return text
     import jinja2
 
-    env = jinja2.Environment(undefined=jinja2.StrictUndefined)
+    from .config import sandboxed_jinja_env
+
+    # Story text comes from a lab or workshop repo: sandboxed, like plan templates.
+    env = sandboxed_jinja_env()
     try:
         return env.from_string(text).render(**story_facts(cfg))
+    except jinja2.exceptions.SecurityError as exc:
+        raise ConfigError(f"story template blocked by the sandbox: {exc}")
+    except OverflowError as exc:
+        raise ConfigError(f"story template range too large: {exc}")
     except jinja2.UndefinedError as exc:
         raise ConfigError(
             f"story references an unknown deployment fact: {exc.message}\n"

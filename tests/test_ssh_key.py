@@ -141,3 +141,50 @@ def test_plant_sends_private_key_on_stdin_not_argv(tmp_path, monkeypatch):
     assert "SECRETBODY" not in joined
     import base64
     assert base64.b64encode(private.read_text().encode()).decode() not in joined
+
+
+def test_plant_rodeo_ssh_key_script_replay(tmp_path, monkeypatch):
+    """Run the generated plant script in a local bash, with `sudo` replaced by a
+    shell function and /root redirected to a temp dir. Checks the key lands with
+    mode 0600, the contents match, and the key is never on bash's argv.
+
+    Not covered: real sudo, including `Defaults use_pty`, which could change how
+    stdin reaches `tee`. Only the script logic and the stdin hand-off are tested.
+    """
+    import shutil
+    import subprocess
+    from types import SimpleNamespace
+
+    from rodeo.fleet.ssh_exec import RemoteResult
+    from rodeo.ssh_key import plant_rodeo_ssh_key
+
+    if shutil.which("bash") is None:
+        pytest.skip("bash not available")
+    fake_root = tmp_path / "root"
+    fake_root.mkdir()
+
+    private = tmp_path / "id_ed25519"
+    private.write_text("-----BEGIN OPENSSH PRIVATE KEY-----\nSECRETBODY\n-----END-----\n")
+    public = tmp_path / "id_ed25519.pub"
+    public.write_text("ssh-ed25519 AAAA rodeo\n")
+    argvs = []
+
+    def replay(inventory, host, argv, *, timeout=120.0, as_root=True, stdin=None):
+        argvs.append(list(argv))
+        if "-c" not in argv:  # the "is the key already there" probe
+            return RemoteResult(host_id="h1", rc=0, stdout="", stderr="")
+        script = argv[argv.index("-c") + 1].replace("/root/.ssh", f"{fake_root}/.ssh")
+        prelude = 'sudo() { [ "$1" = -n ] && shift; "$@"; }; '
+        r = subprocess.run(["bash", "-c", prelude + script], input=stdin,
+                           capture_output=True, text=True, timeout=30)
+        return RemoteResult(host_id="h1", rc=r.returncode, stdout=r.stdout, stderr=r.stderr)
+
+    monkeypatch.setattr("rodeo.ssh_key.run_remote", replay)
+    plant_rodeo_ssh_key(None, SimpleNamespace(id="h1"),
+                        key=SimpleNamespace(private=private, public=public))
+
+    key = fake_root / ".ssh" / "id_ed25519"
+    assert key.read_text() == private.read_text()
+    assert key.stat().st_mode & 0o777 == 0o600
+    assert (fake_root / ".ssh" / "id_ed25519.pub").read_text() == public.read_text()
+    assert all("SECRETBODY" not in " ".join(a) for a in argvs)

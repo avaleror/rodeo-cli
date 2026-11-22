@@ -210,8 +210,8 @@ If the definition changes node count or IPs, the entire deploy must run from scr
 # Verify all ?? placeholders resolve
 rodeo deploy --check
 
-# Test a specific resolver
-RODEO_PASSWORD=testpassword rodeo plan -P credentials.harvester_os_password=??env:RODEO_PASSWORD
+# Check placeholders without resolving anything (exit 2 if deploy would refuse)
+rodeo plan
 ```
 
-`deploy --check` runs the preflight suite (including secret validation) without starting any phase.
+`deploy --check` runs the preflight suite (including secret validation) without starting any phase. It resolves `??key` only and needs a trusted lab (`rodeo trust`). Placeholders must be written in `rodeo-plan.yaml`: `-P` and `--paramfile` values may not contain `??`.

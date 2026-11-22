@@ -153,7 +153,9 @@ def _print_lab_images() -> None:
     if lab is None or not (lab / "rodeo-plan.yaml").exists():
         return
     try:
-        cfg = load_config(lab / "rodeo-plan.yaml")
+        # "keys": the image URLs are ??key operator secrets. Only plan-file
+        # placeholders resolve, no -P is taken here, and no URL is printed.
+        cfg = load_config(lab / "rodeo-plan.yaml", secrets="keys")
         if cfg.get("type") != "lab-in-a-box":
             return
         ages = image_ages(cfg)

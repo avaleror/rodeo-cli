@@ -1,5 +1,56 @@
 # Changelog
 
+## [0.31.0](https://github.com/avaleror/rodeo-cli/compare/v0.30.0...v0.31.0) (2026-11-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* **security:** plans using ??cmd: or ??file: need `rodeo trust` once.
+
+### Features
+
+* **builder:** keep the whole deploy log in the UI ([d97b992](https://github.com/avaleror/rodeo-cli/commit/d97b992933e10d91b11de6582ef7c8bdaf869250))
+* **builder:** keep the whole deploy log in the UI ([154fb14](https://github.com/avaleror/rodeo-cli/commit/154fb146784e4c673b7a8b421d2dcd78b3939b87))
+* **fleet:** kvm-hosts lab type, plain KVM hosts with optional dead-man switch ([30b9e8d](https://github.com/avaleror/rodeo-cli/commit/30b9e8d075f1dea600a8c90fa493d47b3c9977c5))
+* **fleet:** kvm-hosts lab type, plain KVM hosts with optional dead-man switch ([8781a7d](https://github.com/avaleror/rodeo-cli/commit/8781a7da6684a95325c7184b77608d937ead4a6d))
+
+
+### Bug Fixes
+
+* **ansible:** quote download paths and checksums in shell tasks ([7c74ace](https://github.com/avaleror/rodeo-cli/commit/7c74acea0dc79efe92739ef6f0f81ad321863b59))
+* **aws:** refuse a second remote rodeo up while one still runs ([52d2807](https://github.com/avaleror/rodeo-cli/commit/52d28078b395002977740d7b8c67ec8fe368afc5))
+* **aws:** ship only the secrets the plan references ([49d79c6](https://github.com/avaleror/rodeo-cli/commit/49d79c6947bd0b9b3707ecf2726894b781c95d3c))
+* **aws:** ship only the secrets the plan references ([795442e](https://github.com/avaleror/rodeo-cli/commit/795442ec2932cf63cf36a6b858ff303bede2cb24))
+* **aws:** stop the remote rodeo up session from hanging after the host finishes ([90a87d1](https://github.com/avaleror/rodeo-cli/commit/90a87d1051c89649fa8129f4be3510098b8f82d3))
+* **aws:** stop the remote rodeo up session from hanging after the host finishes ([2acc569](https://github.com/avaleror/rodeo-cli/commit/2acc569b4a351d8d6dd8486bb1544a1cb2c3f923))
+* **aws:** use secrets="off" in remote_up ([4d8073b](https://github.com/avaleror/rodeo-cli/commit/4d8073be08568481b8d95d811b40fcbbd605b1f6))
+* **aws:** use secrets="off" when reading the plan for referenced keys ([9311759](https://github.com/avaleror/rodeo-cli/commit/93117591cae63f2de68aa4a7cbefb105daabf872))
+* **deploy:** reject unknown phase names ([2488508](https://github.com/avaleror/rodeo-cli/commit/248850817bda8dcc3e95b3e208db144f6d11d5ed))
+* **mcp:** kill the process group on timeout and cancel; remove rodeo_logins ([67b2c6c](https://github.com/avaleror/rodeo-cli/commit/67b2c6cd4097632b6940872b69cd95e963e05a9b))
+* **mcp:** kill the process group on timeout and on cancel ([836c490](https://github.com/avaleror/rodeo-cli/commit/836c49006a30ab872ff4fdc6ae8a6f0a0d170efd))
+* **mcp:** remove rodeo_logins ([a4820b0](https://github.com/avaleror/rodeo-cli/commit/a4820b0c0eeca82771c5181e9afb2ae910f8b9ae))
+* reject unknown phase names; correct portal install docs ([6947a18](https://github.com/avaleror/rodeo-cli/commit/6947a182ae0f20dcf933886831e3552f6a255000))
+* **security:** allowlist -P keys, derive lab dirs, gate fleet sources and story engines ([84d95a4](https://github.com/avaleror/rodeo-cli/commit/84d95a4319c7ff1f3eb235caf4b4d2da0c91558f))
+* **security:** close review round 5 minors ([fb18c6e](https://github.com/avaleror/rodeo-cli/commit/fb18c6efa34b96a03f629361eb0f263821a6ecfd))
+* **security:** close symlink and hash-framing gaps, check -P values and libvirt URIs ([d5db483](https://github.com/avaleror/rodeo-cli/commit/d5db483602a83a91978cfbda2c32dfc67a3c9512))
+* **security:** gate ??cmd:/??file: behind rodeo trust, sandbox plan templates, key over stdin ([7790f6f](https://github.com/avaleror/rodeo-cli/commit/7790f6f2df61a102a3d177a80b7823f198732d42))
+* **security:** gate ??cmd:/??file: behind rodeo trust, sandbox plan templates, key over stdin ([fd0f42d](https://github.com/avaleror/rodeo-cli/commit/fd0f42d0196f5e66200d845d5bab8d679019d005))
+* **security:** lab secrets file only through labfs, fd-relative lab writes, review round 4 ([51f06db](https://github.com/avaleror/rodeo-cli/commit/51f06db35c813e454504addf75415cb4e87db0a3))
+* **security:** no symlinks in rodeo-written lab paths, safe lab writes, review round 3 ([492f8c6](https://github.com/avaleror/rodeo-cli/commit/492f8c6f397135c12d3845c4ca7841d023fd5e04))
+* **security:** pass plan values to Ansible as unsafe strings ([41b1de6](https://github.com/avaleror/rodeo-cli/commit/41b1de62ebac59f78aa88e70ec6bbd69587beb0c))
+* **security:** pass plan values to Ansible as unsafe strings ([4c7e473](https://github.com/avaleror/rodeo-cli/commit/4c7e47388153270e32cc1a1e201792b5420c7fea))
+* **security:** strict -P values and libvirt URIs, no directory links, fresh workshop clone ([9303c08](https://github.com/avaleror/rodeo-cli/commit/9303c088882f6685899406243012adc79c1c5446))
+* **security:** trust labs, not strings; resolve secrets by mode ([b814399](https://github.com/avaleror/rodeo-cli/commit/b814399d130b4035230f2a4613b567938c8a250b))
+* **security:** trust labs, not strings; resolve secrets by mode ([985e8bb](https://github.com/avaleror/rodeo-cli/commit/985e8bba012c69ed276738d0548a1bfd992dc561))
+* **ssh:** refuse a provider.ssh_user that is not a login name ([2d589c2](https://github.com/avaleror/rodeo-cli/commit/2d589c2dc341439abbca80936e4f599ecac3991a))
+
+
+### Documentation
+
+* **portal:** say what the portal host really installs ([315e6f0](https://github.com/avaleror/rodeo-cli/commit/315e6f0b21899d7d27c602acc1856c60426e75b5))
+* **skill:** cover workshop authoring in the rodeo skill ([f6672d0](https://github.com/avaleror/rodeo-cli/commit/f6672d021f12b57505492358c47a5f97336c3302))
+* **skill:** cover workshop authoring in the rodeo skill ([be9976c](https://github.com/avaleror/rodeo-cli/commit/be9976cd8b34c8baa0e1c9fe98936266a20fed2d))
+
 ## [0.30.0](https://github.com/avaleror/rodeo-cli/compare/v0.29.0...v0.30.0) (2026-11-18)
 
 

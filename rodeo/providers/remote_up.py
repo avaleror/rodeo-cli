@@ -337,7 +337,7 @@ def referenced_secret_keys(lab: Path) -> set[str]:
     plan = lab / "rodeo-plan.yaml"
     if not plan.is_file():
         return set()
-    cfg = load_config(plan, config_dir=lab, resolve_secrets=False)
+    cfg = load_config(plan, config_dir=lab, secrets="off")
     return plan_secret_keys(apply_variant(cfg))
 
 

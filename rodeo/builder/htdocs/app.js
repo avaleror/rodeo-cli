@@ -75,6 +75,27 @@ function toast(msg, bad, undo) {
   toastTimer = setTimeout(() => { t.hidden = true; state.undo = null; }, 7000);
 }
 
+function hideToast() {
+  clearTimeout(toastTimer);
+  $("#toast").hidden = true;
+  state.undo = null;
+}
+
+// ── closing a warning or an error ───────────────────────────────────────
+// Every warning and error box carries a close control. What the reader closed is keyed by what
+// the message said, so it stays closed while it says the same thing and a message saying
+// something else still shows. The keys live only in this page: a reload shows every box again.
+const closedMsgs = new Set();
+
+// The close control for the message *key* says, or null when that message is already closed:
+// a caller that gets null leaves its box out, the way el() and fill() leave out any null child.
+// *after* re-renders what holds the box; the whole page by default.
+function closeBtn(key, after) {
+  if (closedMsgs.has(key)) return null;
+  return el("button", { class: "x-btn", type: "button", "aria-label": "Close this message", text: "×",
+    onclick: () => { closedMsgs.add(key); (after || render)(); } });
+}
+
 // ── draft autosave (this browser only) ──────────────────────────────────
 
 const DRAFT_KEY = "rodeo-builder-draft-v1";
@@ -986,13 +1007,19 @@ function renderEnginePanel() {
   }
   if (state.labJson) box.append(el("p", { class: "mono muted", text: "Lab from the lab-builder: saved in rodeo-plan.yaml as lab_in_a_box.lab." }));
   if (state.labJson && state.labWarnings.length) {
-    box.append(el("div", { class: "alert", role: "alert" }, el("strong", { text: "Addresses no lab node has: " }),
-      "rodeo changes node names and addresses per host and instance, these stay as written.",
-      el("ul", { class: "lab-warnings" }, state.labWarnings.map((w) => el("li", { class: "mono", text: w })))));
+    const close = closeBtn("lab-addresses:" + state.labWarnings.join("|"));
+    if (close) {
+      box.append(el("div", { class: "alert closable", role: "alert" }, el("strong", { text: "Addresses no lab node has: " }),
+        "rodeo changes node names and addresses per host and instance, these stay as written.",
+        el("ul", { class: "lab-warnings" }, state.labWarnings.map((w) => el("li", { class: "mono", text: w }))), close));
+    }
   }
   if (state.liab.error) {
-    box.append(el("div", { class: "alert", role: "alert" }, el("strong", { text: "lab-in-a-box catalogue unavailable. " }),
-      state.liab.error + ". " + catalogueHint()));
+    const close = closeBtn("liab-catalogue:" + state.liab.error);
+    if (close) {
+      box.append(el("div", { class: "alert closable", role: "alert" }, el("strong", { text: "lab-in-a-box catalogue unavailable. " }),
+        state.liab.error + ". " + catalogueHint(), close));
+    }
   }
   if (currentLab()) box.append(...labPanel(currentLab()));
   box.append(el("span", { class: "label", text: "Provides" }));
@@ -1033,13 +1060,20 @@ function labPanel(lab) {
     out.push(el("p", { class: "mono muted", text: "Kubernetes clusters: " + kclusters.map((c) => c.name + " (" + (c.type || "?") + ")").join(", ") }));
   }
   out.push(el("p", { class: "muted", text: "rodeo deploys this lab with the host's network, domain and node addresses." }));
-  if (warn.length) out.push(el("div", { class: "alert", role: "alert" }, el("ul", { class: "lab-drive" }, warn.map((w) => el("li", { text: w })))));
+  if (warn.length) {
+    const close = closeBtn("lab-drive:" + warn.join("|"));
+    if (close) out.push(el("div", { class: "alert closable", role: "alert" },
+      el("ul", { class: "lab-drive" }, warn.map((w) => el("li", { text: w }))), close));
+  }
   const liab = "lab-in-a-box" + (state.liab.version ? " " + state.liab.version : "");
   const unknown = state.liab.schema ? RB.labUnknownFields(lab, state.liab.schema) : [];
   if (unknown.length) {
-    out.push(el("div", { class: "alert", role: "alert" }, el("strong", { text: "Fields " + liab + " doesn't know: " }),
-      "rodeo up refuses to deploy them; change them in the lab-builder or deploy with a lab-in-a-box that has them.",
-      el("ul", { class: "lab-unknown" }, unknown.map((f) => el("li", { class: "mono", text: f })))));
+    const close = closeBtn("lab-unknown:" + unknown.join("|"));
+    if (close) {
+      out.push(el("div", { class: "alert closable", role: "alert" }, el("strong", { text: "Fields " + liab + " doesn't know: " }),
+        "rodeo up refuses to deploy them; change them in the lab-builder or deploy with a lab-in-a-box that has them.",
+        el("ul", { class: "lab-unknown" }, unknown.map((f) => el("li", { class: "mono", text: f }))), close));
+    }
   } else if (!state.liab.schema && !state.liab.error) {
     out.push(el("p", { class: "muted lab-unchecked", text: "Not checked against " + liab + "'s schema"
       + (state.liab.schema_error ? " (" + state.liab.schema_error + ")" : "") + ": rodeo up checks it before building." }));
@@ -1153,13 +1187,15 @@ function renderChapters() {
 function renderEngineBanner() {
   const box = $("#engineBanner"), needs = RB.engineNeeds(state.chapters, libraryGroups());
   const show = needs.length === 1 && needs[0].engine !== state.engine;
-  box.hidden = !show;
-  if (!show) { box.replaceChildren(); return; }
+  if (!show) { box.hidden = true; box.replaceChildren(); return; }
   const { engine: name, workshops } = needs[0];
   const group = libraryGroups().find((g) => g.engine === name && workshops.includes(g.title));
-  box.replaceChildren(el("span", { class: "banner-text", text: "These chapters come from " + workshops.join(", ") +
-    " and run on " + name + ", not " + state.engine + "." }),
-  el("button", { class: "btn primary sm", type: "button", text: "Switch to " + name, onclick: () => useGroup(group) }));
+  const text = "These chapters come from " + workshops.join(", ") + " and run on " + name + ", not " + state.engine + ".";
+  const close = closeBtn("engine:" + text);
+  box.hidden = !close;
+  if (!close) { box.replaceChildren(); return; }
+  box.replaceChildren(el("span", { class: "banner-text", text }),
+    el("button", { class: "btn primary sm", type: "button", text: "Switch to " + name, onclick: () => useGroup(group) }), close);
 }
 
 function scrollToReview() {
@@ -1204,9 +1240,11 @@ function renderReview() {
         : "All span ids valid")),
     warnings.map((w) => {
       const i = state.chapters.findIndex((c) => c.id === w.chapter);
-      return el("div", { class: "alert warn-row" }, el("strong", { text: i >= 0 ? state.chapters[i].title : w.chapter }),
+      const close = closeBtn("span:" + w.chapter + ":" + (w.id || "") + ":" + w.msg);
+      if (!close) return null;
+      return el("div", { class: "alert warn-row closable" }, el("strong", { text: i >= 0 ? state.chapters[i].title : w.chapter }),
         el("span", { class: "warn-msg", text: (w.id ? w.id + ": " : "") + w.msg }),
-        i >= 0 ? el("button", { class: "btn sm warn", type: "button", text: "Fix ✎", onclick: () => openEditor(i) }) : null);
+        i >= 0 ? el("button", { class: "btn sm warn", type: "button", text: "Fix ✎", onclick: () => openEditor(i) }) : null, close);
     }),
     stories.length > 1 ? severalStories(stories) : null,
     renderRmstoryCheck(),
@@ -1233,10 +1271,12 @@ function renderReview() {
 function severalStories(stories) {
   const pick = el("select", { class: "select", id: "oneStory", "aria-label": "Story to keep" },
     stories.map((v) => el("option", { value: v, text: v, selected: v === RB.mainStory(state.chapters) })));
-  return el("div", { class: "alert warn-row", id: "storiesWarn" }, el("strong", { text: "Several stories" }),
+  const close = closeBtn("stories:" + stories.join("|"));
+  if (!close) return null;
+  return el("div", { class: "alert warn-row closable", id: "storiesWarn" }, el("strong", { text: "Several stories" }),
     el("span", { class: "warn-msg", text: "The chapters tell " + stories.length + " stories (" + stories.join(", ") + "); students read only one, the one picked in Story told to students." }),
     pick,
-    el("button", { class: "btn sm warn", type: "button", text: "Make all the same story", onclick: () => oneStory(pick.value) }));
+    el("button", { class: "btn sm warn", type: "button", text: "Make all the same story", onclick: () => oneStory(pick.value) }), close);
 }
 
 function oneStory(story) {
@@ -1259,9 +1299,11 @@ function renderRmstoryCheck() {
   if (!res || stale) return head;
   return [head, res.warnings.map((w) => {
     const i = state.chapters.findIndex((c) => c.id === w.chapter);
-    return el("div", { class: "alert warn-row" }, el("strong", { text: (i >= 0 ? state.chapters[i].title : w.chapter) + " · line " + w.line }),
+    const close = closeBtn("rmstory:" + w.chapter + ":" + w.line + ":" + w.message);
+    if (!close) return null;
+    return el("div", { class: "alert warn-row closable" }, el("strong", { text: (i >= 0 ? state.chapters[i].title : w.chapter) + " · line " + w.line }),
       el("span", { class: "warn-msg", text: "rmstory " + (w.error ? "error" : "warning") + ": " + w.message }),
-      i >= 0 ? el("button", { class: "btn sm warn", type: "button", text: "Fix ✎", onclick: () => openEditor(i) }) : null);
+      i >= 0 ? el("button", { class: "btn sm warn", type: "button", text: "Fix ✎", onclick: () => openEditor(i) }) : null, close);
   })];
 }
 
@@ -2375,6 +2417,9 @@ function renderDeploy() {
   const banner = $("#deployBanner");
   banner.hidden = !cur;
   if (!cur) return;
+  // Closable only once the deploy is over: while it runs, Stop and Log are its only controls.
+  const over = cur.status === "succeeded" || cur.status === "failed" || cur.status === "stopped";
+  if (over && closedMsgs.has(deployMsgKey(cur))) { banner.hidden = true; return; }
   const saved = state.savedAs ? " This rodeo is saved as the profile " + state.savedAs + "." : " This rodeo is not saved: the lab directory is a copy, not one of your profiles.";
   const text = {
     running: "Deploying an unsaved rodeo from " + cur.lab + "…",
@@ -2388,10 +2433,14 @@ function renderDeploy() {
   banner.classList.toggle("bad", cur.status === "failed" || cur.status === "stopped");
   $("#deploySave").hidden = !!state.savedAs || !(state.server && state.server.save);
   $("#deployStop").hidden = cur.status !== "running";
+  $("#deployClose").hidden = !over;
   $("#deployLogBtn").setAttribute("aria-expanded", String(state.deployLogOpen));
   $("#deployLog").hidden = !state.deployLogOpen;
   renderDeployLog();
 }
+
+// One deploy's message: closing it closes that deploy's banner, the next deploy's shows again.
+function deployMsgKey(cur) { return "deploy:" + cur.started + ":" + cur.status; }
 
 // The log keeps RB.DEPLOY_LOG_LINES lines of history, written whole only when it changed so a
 // selection survives a poll; it follows the tail unless the reader has scrolled up.
@@ -3020,6 +3069,12 @@ function bind() {
   $("#dpSaveDeploy").addEventListener("click", () => startDeploy(true));
   $("#dpCancel").addEventListener("click", closeDeploy);
   $("#deployModal").addEventListener("mousedown", (ev) => { if (ev.target === ev.currentTarget) closeDeploy(); });
+  $("#toastClose").addEventListener("click", hideToast);
+  $("#deployClose").addEventListener("click", () => {
+    const cur = state.deploy && state.deploy.current;
+    if (cur) closedMsgs.add(deployMsgKey(cur));
+    renderDeploy();
+  });
   $("#deploySave").addEventListener("click", () => save(false));
   $("#deployStop").addEventListener("click", stopDeploy);
   $("#deployLogBtn").addEventListener("click", () => { state.deployLogOpen = !state.deployLogOpen; renderDeploy(); });
@@ -3058,6 +3113,7 @@ function bind() {
     else if (!$("#deployModal").hidden) closeDeploy();
     else if (!$("#embedOverlay").hidden) closeEmbed();
     else if (!$("#editor").hidden) closeEditor();
+    else if (!$("#toast").hidden) hideToast();
   });
   bindEditor();
 }

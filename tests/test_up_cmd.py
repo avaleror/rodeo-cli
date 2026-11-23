@@ -283,3 +283,28 @@ def test_infer_lab_profile_maps_old_plan_names(tmp_path):
     assert up_mod._infer_lab_profile(lab) == "virt-workshop-2n"
     (lab / "rodeo-plan.yaml").write_text("name: virt-workshop-aws-rodeo\n")
     assert up_mod._infer_lab_profile(lab) == "virt-workshop"
+
+
+def test_aws_host_adds_profile_extras_to_a_shipped_plan(tmp_path, monkeypatch):
+    """On the EC2 host the laptop ships only rodeo-plan.yaml: the bundled
+    profile's custom/ and checks/ must still reach the lab, and the lab must
+    stay trusted (the remote script trusts it before rodeo up)."""
+    from rodeo.config import is_lab_trusted, trust_lab
+    from rodeo.labseed import example_dir
+
+    monkeypatch.setattr(up_mod, "detect_host", _ready_host)
+    monkeypatch.setattr(up_mod, "on_ec2", lambda *a, **k: True)
+    lab = tmp_path / "rodeo-lab"
+    lab.mkdir()
+    plan = (example_dir("virt-workshop") / "rodeo-plan.yaml").read_text()
+    (lab / "rodeo-plan.yaml").write_text(plan)
+    trust_lab(lab)
+
+    result = CliRunner().invoke(
+        up_mod.up_cmd,
+        ["--no-deploy", "--yes", "--profile", "virt-workshop", "--dir", str(lab), "--target", "aws"],
+    )
+    assert result.exit_code == 0, result.output
+    assert (lab / "custom" / "scripts" / "70-webserver-prod.sh").is_file()
+    assert (lab / "checks" / "check-exercise-1.sh").is_file()
+    assert is_lab_trusted(lab)

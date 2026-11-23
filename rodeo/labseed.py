@@ -223,6 +223,40 @@ def seed_lab(
     return dest
 
 
+def fill_missing_from_profile(profile: str, dest: Path) -> list[str]:
+    """Copy the top-level items of a bundled *profile* that *dest* lacks.
+
+    For the AWS host: the laptop ships only the plan files (rodeo-plan.yaml,
+    definition.yaml), so the host finds an existing lab and never seeds it.
+    The profile's custom/scripts, checks/, manifests/ and the rest were then
+    missing, and custom_scripts ran nothing (virt-workshop came up without
+    webserver-prod, the image cache, the NFS export or the student kit).
+
+    Never overwrites and never touches the plan files. Bundled profiles only:
+    their source is trusted, so callers keep the lab's trust with keep_trust.
+    Returns the names it added.
+    """
+    from .labfs import write_lab_file
+
+    if profile_kind(profile) != "bundled":
+        return []
+    src = resolve_profile_source(profile)
+    dest = dest.expanduser().resolve()
+    added: list[str] = []
+    for item in sorted(src.iterdir()):
+        if item.name in ("rodeo-plan.yaml", "definition.yaml") or item.name.startswith("."):
+            continue
+        target = dest / item.name
+        if target.is_symlink() or target.exists():
+            continue
+        if item.is_dir():
+            shutil.copytree(item, target)
+        else:
+            write_lab_file(dest, item.name, item.read_bytes(), item.stat().st_mode & 0o777)
+        added.append(item.name)
+    return added
+
+
 def _verify_seed_copy(src: Path, dest: Path, copied: list[Path]) -> None:
     """Confirm every file actually copied this call landed in ``dest`` intact
     — defense in depth, not a fix for a root cause we could pin down.

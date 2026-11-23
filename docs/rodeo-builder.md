@@ -175,6 +175,11 @@ lab covers every chapter, the span ids are valid (each warning has a **Fix**
 button), the exact files in the zip (listed when you click **N files in
 <name>.zip**), and the commands to install it, ready to copy. Missing lab features and span warnings never block the download.
 
+Every warning and error the page shows has a **×** that closes it, and Esc
+closes the message at the bottom of the page. Closing one means "read", not
+"fixed": the counts above it still report it, a warning that says something
+else still shows, and a reload shows them all again.
+
 The page keeps a draft of your rodeo in this browser. After a reload it offers
 to restore it.
 
@@ -374,8 +379,10 @@ hover.
   the full output is always in `<lab>/.builder-deploy.log`.
 - A banner stays while it runs and after it ends, with the lab directory, the
   log, **Stop** (interrupts `rodeo up` like Ctrl-C) and **Save to profiles**,
-  and keeps saying the rodeo is not saved until you save it. One deploy runs at
-  a time; rerun or resume from the lab directory with `rodeo up`.
+  and keeps saying the rodeo is not saved until you save it. Once the deploy is
+  over, **×** closes the banner; while it runs it has none, because **Stop** and
+  **Log** are the only controls a running deploy has. One deploy runs at a time;
+  rerun or resume from the lab directory with `rodeo up`.
 
 ## Settings and stored credentials
 

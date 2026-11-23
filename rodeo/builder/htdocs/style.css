@@ -336,6 +336,8 @@ div.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 2p
 }
 .toast.bad { box-shadow: 0 0 0 1px var(--coral), 0 12px 36px rgba(0, 0, 0, .5); }
 .toast .btn { color: #e8e4d9; border-color: #3a3a4a; flex: none; }
+.toast .x-btn { color: #e8e4d9; flex: none; opacity: .7; }
+.toast .x-btn:hover { opacity: 1; }
 
 /* Header controls' notes (app.js showTip), 8px under the control; ::before fills that gap
    so the pointer can move onto the note without closing it. */
@@ -515,6 +517,12 @@ div.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 2p
 .pop-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .x-btn { border: 0; background: none; color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer; padding: 0 2px; }
 .x-btn:hover { color: var(--ink); }
+
+/* A box the reader can close (app.js closeBtn): the control sits in the box's top right corner,
+   out of the flow, so closability costs the message's own layout nothing. */
+.closable { position: relative; padding-right: 28px; }
+.closable > .x-btn { position: absolute; top: 5px; right: 6px; color: inherit; opacity: .65; }
+.closable > .x-btn:hover { opacity: 1; }
 .popover.chip-pop { width: auto; padding: 0; background: none; box-shadow: 0 8px 24px rgba(0, 0, 0, .45); }
 .popover .hint { font-size: 12px; }
 .sel-info { margin-left: auto; font: 400 12px var(--mono); color: var(--muted); }

@@ -66,11 +66,12 @@
     <div id="resizeLeft" class="resizer" role="separator" aria-orientation="vertical" aria-label="Resize the chapter library" tabindex="0"></div>
 
     <section class="col center" aria-label="Rodeo">
-      <div id="deployBanner" class="banner deploy" role="status" hidden>
+      <div id="deployBanner" class="banner deploy closable" role="status" hidden>
         <span id="deployText" class="banner-text"></span>
         <button id="deploySave" class="btn primary sm" type="button">Save to profiles</button>
         <button id="deployStop" class="btn sm" type="button">Stop</button>
         <button id="deployLogBtn" class="btn sm" type="button" aria-expanded="false">Log</button>
+        <button id="deployClose" class="x-btn" type="button" aria-label="Close this message" hidden>&times;</button>
         <pre id="deployLog" class="deploy-log" hidden></pre>
       </div>
       <div id="draftBanner" class="banner ok" hidden>
@@ -110,7 +111,7 @@
         <p class="part-head" id="partInstructions">Instructions, updated by rodeo content apply</p>
         <h2 class="sec" id="secChapters"><span class="num">02</span> Chapters <span id="coverage" class="status"></span></h2>
         <p id="insertHint" class="hint"></p>
-        <div id="engineBanner" class="banner bad" role="alert" hidden></div>
+        <div id="engineBanner" class="banner bad closable" role="alert" hidden></div>
         <div id="contentBanner" class="banner deploy" hidden><span class="banner-text"></span></div>
         <div id="chapterList" class="lab"></div>
       </section>
@@ -436,6 +437,7 @@
   <div id="toast" class="toast" role="status" aria-live="polite" hidden>
     <span id="toastText"></span>
     <button id="toastUndo" class="btn sm" type="button" hidden>Undo</button>
+    <button id="toastClose" class="x-btn" type="button" aria-label="Close this message">&times;</button>
   </div>
 
   <script src="vendor/js-yaml.min.js"></script>

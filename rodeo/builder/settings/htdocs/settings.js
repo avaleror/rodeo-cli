@@ -37,6 +37,11 @@ function toast(msg, bad) {
   toastTimer = setTimeout(() => { $("#toast").hidden = true; }, 7000);
 }
 
+function hideToast() {
+  clearTimeout(toastTimer);
+  $("#toast").hidden = true;
+}
+
 // The write token the server put in the page (rodeo/builder/server.py).
 function token() {
   const meta = document.querySelector('meta[name="rodeo-builder-token"]');
@@ -231,6 +236,7 @@ function showTheme() {
 
 function bind() {
   $("#themeBtn").addEventListener("click", () => { window.RBTheme.toggle(); showTheme(); });
+  $("#toastClose").addEventListener("click", hideToast);
   $("#vaultAddBtn").addEventListener("click", openForm);
   $("#vaType").addEventListener("change", renderFields);
   $("#vaultForm").addEventListener("submit", addCredential);

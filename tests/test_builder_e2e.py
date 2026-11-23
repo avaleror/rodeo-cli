@@ -1042,6 +1042,18 @@ def test_remove_offers_undo_and_library_cards_toggle(page):
     assert _rows(page) == ["Welcome to the rodeo"]
 
 
+def test_a_toast_closes_on_its_control_and_on_escape(page):
+    toast = page.locator("#toast")
+    page.click("#downloadBtn")
+    sync_api.expect(toast).to_be_visible()
+    page.click("#toastClose")
+    assert toast.is_hidden()
+    page.click("#downloadBtn")
+    sync_api.expect(toast).to_be_visible()
+    page.keyboard.press("Escape")
+    assert toast.is_hidden()
+
+
 def test_review_lists_the_zip_and_warnings(page):
     page.click("#downloadBtn")
     assert page.locator("#toastText").inner_text() == "Add at least one chapter first."
@@ -1065,14 +1077,44 @@ def test_review_lists_the_zip_and_warnings(page):
     assert page.locator("#edChapter").inner_text() == "Broken"
 
 
+def test_a_span_warning_closes_and_the_count_still_reports_it(page):
+    """Closing a warning row says "read", not "fixed": the checks above it still count it."""
+    page.click(".card >> text=Welcome to the rodeo")
+    _new_chapter(page, "Broken")
+    page.click(".row-actions .btn >> nth=4")
+    page.locator("#edSource").fill('# Broken\n\n<span lang="en">needs an id</span>\n')
+    page.click("#edDone")
+    review = page.locator("#reviewPanel")
+    sync_api.expect(review.locator(".warn-row")).to_have_count(1)
+    review.locator(".warn-row .x-btn").click()
+    sync_api.expect(review.locator(".warn-row")).to_have_count(0)
+    assert "1 span warning" in review.inner_text()
+    assert page.locator("#warnBtn").inner_text().lower() == "1 ⚠ warning"
+
+
 def test_engine_banner_offers_the_workshops_engine(page):
     page.locator(".group", has_text="Virtualization workshop").locator(".card").first.click()
     banner = page.locator("#engineBanner")
     sync_api.expect(banner).to_be_visible()
     assert "run on suse-virt, not rancher" in banner.inner_text()
-    banner.locator("button").click()
+    banner.locator(".btn", has_text="Switch to").click()
     assert page.locator("#nativeEngines .engine.on .engine-name").inner_text() == "suse-virt"
     assert banner.is_hidden()
+
+
+def test_a_closed_warning_stays_closed_until_it_says_something_else(page):
+    """Every warning and error box closes (issue #206). What is closed is keyed by what the
+    message said, so the same warning stays closed and one saying something else still shows."""
+    page.locator(".group", has_text="Virtualization workshop").locator(".card").first.click()
+    banner = page.locator("#engineBanner")
+    sync_api.expect(banner).to_be_visible()
+    banner.locator(".x-btn").click()
+    assert banner.is_hidden()
+    page.click("#nativeEngines .engine >> nth=2")
+    sync_api.expect(banner).to_be_visible()
+    assert "not suse-edge" in banner.inner_text()
+    page.click("#nativeEngines .engine >> nth=1")
+    assert banner.is_hidden(), "the warning that was closed came back"
 
 
 def test_engine_cards_move_with_arrow_keys(page):
@@ -1718,6 +1760,25 @@ def test_live_deploys_without_saving_and_says_so(page, monkeypatch):
     page.click("#deploySave")
     sync_api.expect(banner).to_contain_text("saved as the profile my-rodeo")
     assert page.locator("#deploySave").is_hidden()
+
+
+@pytest.mark.parametrize("page", ["live_deploy"], indirect=True)
+def test_a_finished_deploy_banner_closes_and_stays_closed(page):
+    """The banner is closable only once the deploy is over: while it runs, Stop and Log are its
+    only controls. Closing it outlasts the polling that keeps the banner up to date (issue #206)."""
+    page.click(".card >> text=Welcome to the rodeo")
+    sync_api.expect(page.locator("#deployBtn")).to_have_attribute("aria-disabled", "false")
+    page.click("#deployBtn")
+    page.click("#dpSubmit")
+    sync_api.expect(page.locator("#deployModal")).to_be_hidden()
+    assert page.locator("#deployClose").is_hidden(), "a running deploy must keep its banner"
+    sync_api.expect(page.locator("#deployText")).to_contain_text("Deployed from an unsaved rodeo", timeout=15_000)
+    sync_api.expect(page.locator("#deployClose")).to_be_visible()
+    page.click("#deployClose")
+    banner = page.locator("#deployBanner")
+    assert banner.is_hidden()
+    page.wait_for_timeout(2500)
+    assert banner.is_hidden(), "a poll brought the closed banner back"
 
 
 VAULT_TYPES = [

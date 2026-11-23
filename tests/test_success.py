@@ -5,6 +5,14 @@ from rodeo import success
 from rodeo.profiles import _REGISTRY
 from rodeo.profiles.base import RodeoProfile
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _no_imds(monkeypatch):
+    """Never reach the real EC2 metadata service from a test."""
+    monkeypatch.setattr(success, "_public_ip", lambda timeout=0.5: None)
+
 
 def _render(cfg, capsys):
     success.render_success(cfg)
@@ -147,3 +155,46 @@ def test_labinabox_cloud_lab_shows_its_nodes_not_native_logins(capsys, tmp_path)
     assert "13.50.0.9" in out and "192.168.122.20" not in out
     assert "Harvester" not in out and "Rancher Prime" not in out and "Log in" not in out
     assert "rodeo ssh smlm" in out
+
+
+def test_ec2_banner_uses_public_ip_not_vpc_address(capsys, monkeypatch):
+    monkeypatch.setattr(success, "_host_ip", lambda: "172.31.18.59")
+    monkeypatch.setattr(success, "_public_ip", lambda timeout=0.5: "13.49.73.246")
+    cfg = {
+        "deployment_target": "baremetal",
+        "network": {"rancher_ip": "192.168.122.9"},
+        "vms": {"rancher": {"ip": "192.168.122.9"}},
+    }
+    out = _render(cfg, capsys)
+    assert "external: https://13.49.73.246:30002" in out
+    assert "172.31.18.59" not in out
+
+
+def test_public_ip_none_off_ec2(monkeypatch):
+    import urllib.request
+
+    monkeypatch.undo()  # drop the autouse stub: exercise the real helper
+
+    def boom(*a, **k):
+        raise OSError("no route to 169.254.169.254")
+
+    monkeypatch.setattr(urllib.request, "urlopen", boom)
+    assert success._public_ip() is None
+
+
+def test_public_ip_rejects_non_ip_metadata(monkeypatch):
+    import io
+    import urllib.request
+
+    monkeypatch.undo()
+    replies = iter([b"token", b"<html>not found</html>"])
+
+    class R(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: R(next(replies)))
+    assert success._public_ip() is None

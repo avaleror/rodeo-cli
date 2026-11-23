@@ -6,29 +6,17 @@
 ### Features
 
 * **agents:** add rodeo agent-setup ([5314ef6](https://github.com/avaleror/rodeo-cli/commit/5314ef6e6818330e314a06010b573415cb7f375a))
-* **agents:** add rodeo agent-setup ([a3706dd](https://github.com/avaleror/rodeo-cli/commit/a3706dd731272d31431dbf678fb0a8aa7b70c017))
 * **aws:** detach remote rodeo up and print the pid ([0729ce3](https://github.com/avaleror/rodeo-cli/commit/0729ce36cd23a2641292d52a013d59f922529cd2))
-* **aws:** detach remote rodeo up and print the pid ([841ffde](https://github.com/avaleror/rodeo-cli/commit/841ffde696f5413838869361b9f0dec0cea760bd))
 * **events:** persist deploy events per lab ([97a0b99](https://github.com/avaleror/rodeo-cli/commit/97a0b992c89a17916697e02b83a54780f89e4352))
-* **events:** persist deploy events per lab ([d6c0455](https://github.com/avaleror/rodeo-cli/commit/d6c045565e413b2ba9e8d5c83dbb458705de20b1))
 * **plan:** add --output json without secrets ([b5f3eb8](https://github.com/avaleror/rodeo-cli/commit/b5f3eb883e586e86f538e130cfc908bb953f1d7b))
-* **plan:** add --output json without secrets ([6bb690b](https://github.com/avaleror/rodeo-cli/commit/6bb690b45052c7c99ac1ed7c51a134d4fc6d7fbd))
 * **plugins:** add operation, event, tool and lab-dir hooks ([88299cc](https://github.com/avaleror/rodeo-cli/commit/88299cc8b91683990e0250a2c1ad4bbf6b8dd500))
-* **plugins:** add operation, event, tool and lab-dir hooks ([6e839fa](https://github.com/avaleror/rodeo-cli/commit/6e839fa9027a968a16fd4f448c1acb056fe07b2c))
 
 
 ### Bug Fixes
 
 * **mcp:** stop only rodeo's own processes on SIGTERM ([5049286](https://github.com/avaleror/rodeo-cli/commit/50492868be84d51a07aeeaa4b76920ee1dda8b80))
-* **mcp:** stop the root rodeo's group on SIGTERM ([581a3b8](https://github.com/avaleror/rodeo-cli/commit/581a3b8f04c6e43487e9a8659ddbdf7c86986e34))
-* **mcp:** stop the root rodeo's group on SIGTERM ([322cb1d](https://github.com/avaleror/rodeo-cli/commit/322cb1d59167d3d470606a5f638ccd35bba8539e))
 * **security:** quote plan values in shell commands ([3ff6a18](https://github.com/avaleror/rodeo-cli/commit/3ff6a18530294820fa1eaacaca1505cf9319059d))
-* **security:** quote plan values in shell commands ([c44bc15](https://github.com/avaleror/rodeo-cli/commit/c44bc1562d06b5e6657297b095a7a4249575f685))
 
-
-### Documentation
-
-* **mcp:** keep the cancel paragraph with the tool list ([5e74e81](https://github.com/avaleror/rodeo-cli/commit/5e74e817b2267d5a770d2b2f8b0035667841d7aa))
 
 ## [0.31.0](https://github.com/avaleror/rodeo-cli/compare/v0.30.0...v0.31.0) (2026-11-22)
 

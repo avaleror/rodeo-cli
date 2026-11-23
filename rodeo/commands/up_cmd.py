@@ -38,6 +38,7 @@ from ..config import (
 from ..labseed import (
     custom_profile_dir,
     canonical_profile,
+    fill_missing_from_profile,
     profile_kind,
     seed_lab,
 )
@@ -324,6 +325,16 @@ def _up(profile: str | None, name: str | None, lab_dir: str | None,
             seed_lab(chosen, lab, force=False, deployment_target=deployment_target)
     else:
         console.print(f"\nUsing existing lab at [cyan]{lab}[/cyan].")
+        if profile and deployment_target == "aws" and not aws_control_plane:
+            # On the AWS host: the laptop shipped only the plan files, so add
+            # the bundled profile's custom/scripts, checks/, manifests/...
+            with keep_trust(lab):
+                added = fill_missing_from_profile(profile, lab)
+            if added:
+                console.print(
+                    f"[dim]Added from the '{canonical_profile(profile)}' profile: "
+                    f"{', '.join(added)}[/dim]"
+                )
         # Persist deployment_target back to the plan so the root re-exec sees
         # the resolved value (e.g. --target flag on a re-run of an existing lab).
         _plan_path = lab / "rodeo-plan.yaml"

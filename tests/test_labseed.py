@@ -275,3 +275,28 @@ def test_old_virt_workshop_names_still_resolve(tmp_path, capsys):
     assert example_dir("virt-workshop-aws-2n").name == "virt-workshop-2n"
     lab = seed_lab("virt-workshop-aws", tmp_path / "lab")
     assert (lab / "custom" / "scripts").is_dir()
+
+
+def test_fill_missing_from_profile_adds_extras_but_keeps_the_plan(tmp_path):
+    from rodeo.labseed import fill_missing_from_profile
+
+    lab = tmp_path / "rodeo-lab"
+    lab.mkdir()
+    shipped = "name: from-the-laptop\n"
+    (lab / "rodeo-plan.yaml").write_text(shipped)
+    (lab / "checks").mkdir()
+    (lab / "checks" / "mine.sh").write_text("echo mine\n")
+
+    added = fill_missing_from_profile("virt-workshop-aws", lab)
+
+    assert "custom" in added and "checks" not in added
+    assert (lab / "custom" / "scripts" / "70-webserver-prod.sh").is_file()
+    assert (lab / "rodeo-plan.yaml").read_text() == shipped
+    assert sorted(p.name for p in (lab / "checks").iterdir()) == ["mine.sh"]
+    assert fill_missing_from_profile("virt-workshop", lab) == []
+
+
+def test_fill_missing_from_profile_ignores_non_bundled(tmp_path):
+    from rodeo.labseed import fill_missing_from_profile
+
+    assert fill_missing_from_profile("no-such-profile", tmp_path) == []

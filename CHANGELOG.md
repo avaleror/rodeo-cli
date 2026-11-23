@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.32.0](https://github.com/avaleror/rodeo-cli/compare/v0.31.0...v0.32.0) (2026-11-22)
+
+
+### Features
+
+* **agents:** add rodeo agent-setup ([5314ef6](https://github.com/avaleror/rodeo-cli/commit/5314ef6e6818330e314a06010b573415cb7f375a))
+* **aws:** detach remote rodeo up and print the pid ([0729ce3](https://github.com/avaleror/rodeo-cli/commit/0729ce36cd23a2641292d52a013d59f922529cd2))
+* **events:** persist deploy events per lab ([97a0b99](https://github.com/avaleror/rodeo-cli/commit/97a0b992c89a17916697e02b83a54780f89e4352))
+* **plan:** add --output json without secrets ([b5f3eb8](https://github.com/avaleror/rodeo-cli/commit/b5f3eb883e586e86f538e130cfc908bb953f1d7b))
+* **plugins:** add operation, event, tool and lab-dir hooks ([88299cc](https://github.com/avaleror/rodeo-cli/commit/88299cc8b91683990e0250a2c1ad4bbf6b8dd500))
+
+
+### Bug Fixes
+
+* **mcp:** stop only rodeo's own processes on SIGTERM ([5049286](https://github.com/avaleror/rodeo-cli/commit/50492868be84d51a07aeeaa4b76920ee1dda8b80))
+* **security:** quote plan values in shell commands ([3ff6a18](https://github.com/avaleror/rodeo-cli/commit/3ff6a18530294820fa1eaacaca1505cf9319059d))
+
+
 ## [0.31.0](https://github.com/avaleror/rodeo-cli/compare/v0.30.0...v0.31.0) (2026-11-22)
 
 

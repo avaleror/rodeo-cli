@@ -587,8 +587,8 @@ def _marker_fields(stdout: str, marker: str) -> dict[str, Any]:
 #: Most log lines ``remote_up_status`` returns.
 MAX_STATUS_LINES = 500
 
-_STATUS_SCRIPT = (
-    'd="$HOME/.rodeo/logs"; log="$d/aws-up.log"; pidf="$d/aws-up.pid"; exitf="$d/aws-up.exit"; '
+_STATUS_TEMPLATE = (
+    'd="$HOME/.rodeo/logs"; log="$d/@BASE@-up.log"; pidf="$d/@BASE@-up.pid"; exitf="$d/@BASE@-up.exit"; '
     'state=none; pid=""; code=""; '
     # The exit file first: the job writes it before it removes its pid file.
     'if [ -s "$exitf" ]; then state=exited; read -r code _ <"$exitf" || true; '
@@ -605,30 +605,52 @@ _STATUS_SCRIPT = (
 )
 
 
-def remote_up_status(cfg: dict[str, Any], *, lines: int = 40, timeout: float = 60.0) -> dict[str, Any]:
-    """State of the last remote ``rodeo up`` on this plan's AWS host, plus its log tail.
+def _status_script(base: str = "aws") -> str:
+    """The remote shell that reports one target's deploy state and the tail of its log."""
+    return _STATUS_TEMPLATE.replace("@BASE@", _log_base(base))
+
+
+def remote_up_status(
+    cfg: dict[str, Any],
+    *,
+    lines: int = 40,
+    timeout: float = 60.0,
+    host: ProvisionedHost | None = None,
+    log_name: str | None = None,
+    ssh_user: str | None = None,
+    identity_file: str | None = None,
+) -> dict[str, Any]:
+    """State of the last remote ``rodeo up`` on this plan's host, plus its log tail.
 
     ``state`` is ``running``, ``exited`` (with ``exit``), ``gone`` (a pid file
     whose process is dead or reused: killed, or the host rebooted) or ``none``.
+
+    Without *host* the AWS host this plan provisioned is read from local state. A caller
+    that already knows the host passes it with *log_name*, *ssh_user* and *identity_file*
+    (``deployment_target: remote``, whose host no provider created).
     """
-    plan_name = str(cfg.get("name") or "rodeo")
-    saved = load_aws_host_state(plan_name)
-    if not saved or not saved.get("public_ip"):
-        raise ConfigError(
-            f"no AWS host recorded for plan '{plan_name}' on this machine "
-            "(rodeo up --target aws records it)"
+    if host is None:
+        plan_name = str(cfg.get("name") or "rodeo")
+        saved = load_aws_host_state(plan_name)
+        if not saved or not saved.get("public_ip"):
+            raise ConfigError(
+                f"no AWS host recorded for plan '{plan_name}' on this machine "
+                "(rodeo up --target aws records it)"
+            )
+        host = ProvisionedHost(
+            id=str(saved.get("host_id") or SINGLE_HOST_ID),
+            ssh=str(saved.get("ssh") or saved["public_ip"]),
+            public_ip=str(saved["public_ip"]),
+            labels=dict(saved.get("labels") or {}),
+            provider_id=saved.get("provider_id"),
         )
-    host = ProvisionedHost(
-        id=str(saved.get("host_id") or SINGLE_HOST_ID),
-        ssh=str(saved.get("ssh") or saved["public_ip"]),
-        public_ip=str(saved["public_ip"]),
-        labels=dict(saved.get("labels") or {}),
-        provider_id=saved.get("provider_id"),
-    )
     n = max(1, min(int(lines), MAX_STATUS_LINES))
-    inv, fh = _fleet_inventory_for(cfg, host)
+    inv, fh = _fleet_inventory_for(
+        cfg, host, ssh_user=ssh_user, identity_file=identity_file,
+    )
     result = run_remote(
-        inv, fh, ["bash", "-c", _STATUS_SCRIPT, "status", str(n)], timeout=timeout,
+        inv, fh, ["bash", "-c", _status_script(log_name or "aws"), "status", str(n)],
+        timeout=timeout,
     )
     out = result.stdout or ""
     if not result.ok or "AWS_UP_STATUS " not in out:

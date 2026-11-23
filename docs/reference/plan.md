@@ -176,6 +176,12 @@ The private key itself is never shipped: only the control plane reads it. In the
 stored **KVM host (SSH)** credential fills this block in, and writes the key into the lab
 directory as `.rodeo-remote-key` (mode 600).
 
+`--detach` returns once the host has started the deploy, printing one JSON line (pid, log,
+host); `rodeo status --cloud` then reports that run and the tail of its log. Each target keeps
+its own files on the host (`remote-up.log`, `.pid`, `.exit` beside the aws ones), so a deploy
+to a KVM host and one to an EC2 host never read or claim each other's state. A second
+`rodeo up` while one runs there exits 75 rather than racing it.
+
 On **aws**, `apply_host_context()` (seed + deploy) raises `resources.harvester.disk_gb`
 to a flat **500 GB per Harvester node** and `resources.rancher.disk_gb` to **60 GB**
 (never scaled by node count: the rest of the NVMe device is deliberately left free,

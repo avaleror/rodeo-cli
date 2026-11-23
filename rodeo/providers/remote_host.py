@@ -24,7 +24,7 @@ from typing import Any
 
 from ..config import ConfigError
 from .base import SINGLE_HOST_ID, ProvisionedHost
-from .remote_up import run_remote_up
+from .remote_up import remote_up_status, run_remote_up
 
 # The log the host writes, and the name of this target.
 TARGET = "remote"
@@ -92,10 +92,16 @@ def execute_remote_up(
     ref: str | None = None,
     remote_timeout: float = 7200.0,
     plan_dir: Path | None = None,
-) -> ProvisionedHost:
-    """Ship the lab to the plan's KVM host and run ``rodeo up`` there as baremetal."""
+    detach: bool = False,
+) -> tuple[ProvisionedHost, dict[str, Any] | None]:
+    """Ship the lab to the plan's KVM host and run ``rodeo up`` there as baremetal.
+
+    Returns the host and, with *detach*, the record of the started run
+    (``pid``, ``start``, ``log``, ``host``) once the host has begun; without it, None
+    after the deploy has ended. Raises AlreadyRunning when one is running there.
+    """
     host = host_from_cfg(cfg)
-    run_remote_up(
+    info = run_remote_up(
         cfg,
         host,
         profile=profile,
@@ -107,5 +113,23 @@ def execute_remote_up(
         ssh_user=ssh_user(cfg),
         identity_file=identity_file(cfg),
         lab_dir=host_block(cfg).get("lab_dir"),
+        detach=detach,
     )
-    return host
+    return host, info
+
+
+def status(cfg: dict[str, Any], *, lines: int = 40, timeout: float = 60.0) -> dict[str, Any]:
+    """State and log tail of the last ``rodeo up`` on the plan's KVM host.
+
+    Same report as the aws path, read from this target's own files: the host comes from the
+    plan, not from provider state, because nothing provisioned it.
+    """
+    return remote_up_status(
+        cfg,
+        lines=lines,
+        timeout=timeout,
+        host=host_from_cfg(cfg),
+        log_name=LOG_NAME,
+        ssh_user=ssh_user(cfg),
+        identity_file=identity_file(cfg),
+    )

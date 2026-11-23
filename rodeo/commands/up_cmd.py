@@ -126,10 +126,10 @@ def _default_labs_root() -> Path:
 @click.option(
     "--detach",
     is_flag=True,
-    help="--target aws only: return once the AWS host has started rodeo up, printing one "
-         "JSON object (pid, log, host) on stdout; everything else goes to stderr. The deploy "
-         "keeps running on the host: follow it with rodeo status --cloud. Exit 75 (and "
-         "JSON) when a deploy is already running there.",
+    help="--target aws or remote only: return once the host has started rodeo up, printing "
+         "one JSON object (pid, log, host) on stdout; everything else goes to stderr. The "
+         "deploy keeps running on the host: follow it with rodeo status --cloud. Exit 75 "
+         "(and JSON) when a deploy is already running there.",
 )
 def up_cmd(profile: str | None, name: str | None, lab_dir: str | None,
            assume_yes: bool, no_deploy: bool, no_tmux: bool,
@@ -250,10 +250,10 @@ def _up(profile: str | None, name: str | None, lab_dir: str | None,
     # Both control planes skip every local host check: nothing is deployed here.
     control_plane = aws_control_plane or remote_control_plane
 
-    if detach_out is not None and not aws_control_plane:
+    if detach_out is not None and not control_plane:
         console.print(
-            "[red]✗  --detach only applies to rodeo up --target aws from outside EC2 "
-            "(local deploys have no detach yet).[/red]"
+            "[red]✗  --detach only applies to a control plane: rodeo up --target aws from "
+            "outside EC2, or --target remote (local deploys have no detach yet).[/red]"
         )
         raise SystemExit(2)
 
@@ -371,7 +371,7 @@ def _up(profile: str | None, name: str | None, lab_dir: str | None,
 
     if remote_control_plane:
         assert lab is not None
-        _remote_control_plane_deploy(lab, profile=profile, ref=ref)
+        _remote_control_plane_deploy(lab, profile=profile, ref=ref, detach_out=detach_out)
         return
 
     if aws_control_plane:
@@ -429,8 +429,13 @@ def _remote_control_plane_deploy(
     *,
     profile: str | None,
     ref: str | None = None,
+    detach_out=None,
 ) -> None:
-    """Ship *lab* to the plan's KVM host and run ``rodeo up --target baremetal`` there."""
+    """Ship *lab* to the plan's KVM host and run ``rodeo up --target baremetal`` there.
+
+    With *detach_out* (``--detach``) it returns once the host has started the deploy and
+    writes that record there as one JSON line; follow it with ``rodeo status --cloud``.
+    """
     from ..providers.remote_host import execute_remote_up, host_block, ssh_user
 
     try:
@@ -453,10 +458,25 @@ def _remote_control_plane_deploy(
         f"\n[bold]Deploying to KVM host[/bold]  [cyan]{ssh_user(cfg)}@{host_name}[/cyan]…"
     )
     try:
-        host = execute_remote_up(cfg, profile=profile or _infer_lab_profile(lab), ref=ref, plan_dir=lab)
+        host, record = execute_remote_up(
+            cfg, profile=profile or _infer_lab_profile(lab), ref=ref, plan_dir=lab,
+            detach=detach_out is not None,
+        )
+    except AlreadyRunning as exc:
+        if detach_out is None:
+            console.print(f"[red]✗  {exc}[/red]")
+            raise SystemExit(75)
+        detach_out.write(json.dumps(exc.info, sort_keys=True) + "\n")
+        detach_out.flush()
+        raise SystemExit(75)
     except ConfigError as exc:
         console.print(f"[red]✗  {exc}[/red]")
         raise SystemExit(1)
+    if detach_out is not None:
+        assert record is not None
+        detach_out.write(json.dumps(record, sort_keys=True) + "\n")
+        detach_out.flush()
+        return
     console.print(_remote_done_message(cfg, host.public_ip))
 
 

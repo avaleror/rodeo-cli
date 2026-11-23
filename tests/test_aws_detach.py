@@ -21,7 +21,7 @@ from rodeo.providers import remote_up as mod
 from rodeo.providers.base import ProvisionedHost
 from rodeo.providers.remote_up import (
     _DEFAULT_INSTALL,
-    _STATUS_SCRIPT,
+    _status_script,
     AlreadyRunning,
     remote_up_script,
 )
@@ -52,7 +52,7 @@ def _run(tmp_path: Path, body: str, *, detach: bool) -> subprocess.CompletedProc
 
 
 def _status(tmp_path: Path, lines: int = 5) -> dict:
-    proc = subprocess.run(["bash", "-c", _STATUS_SCRIPT, "status", str(lines)],
+    proc = subprocess.run(["bash", "-c", _status_script(), "status", str(lines)],
                           env={**os.environ, "HOME": str(tmp_path)},
                           capture_output=True, text=True, timeout=30)
     assert proc.returncode == 0, proc.stderr

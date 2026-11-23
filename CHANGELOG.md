@@ -6,11 +6,8 @@
 ### Bug Fixes
 
 * **aws:** create the remote log before tailing it ([b5df6ea](https://github.com/avaleror/rodeo-cli/commit/b5df6eae1b4d014f367b4b377b10e146c297f386))
-* **aws:** create the remote log before tailing it ([da9ce77](https://github.com/avaleror/rodeo-cli/commit/da9ce776c150330f3643f5d44f6d6f77ec82eadb))
 * **aws:** the host adds the profile's custom/ and checks/ to a shipped plan ([838d1c8](https://github.com/avaleror/rodeo-cli/commit/838d1c87e028cee8acc7d9b1b73071bfec712bee))
-* **aws:** the host adds the profile's custom/ and checks/ to a shipped plan ([690ca39](https://github.com/avaleror/rodeo-cli/commit/690ca390bffba7b6a45eeefb0cd5a6056d1995c8))
 * **virt-workshop:** check 3 finds the image by its display name ([a866d48](https://github.com/avaleror/rodeo-cli/commit/a866d4818f88cc48ca4728faaf7e75ecd9ad3201))
-* **virt-workshop:** check 3 finds the image by its display name ([5b09d2c](https://github.com/avaleror/rodeo-cli/commit/5b09d2cf92a2e2a545a28ff5a67bf1da18fdb0d5))
 
 ## [0.32.1](https://github.com/avaleror/rodeo-cli/compare/v0.32.0...v0.32.1) (2026-11-23)
 

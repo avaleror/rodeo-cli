@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.32.1](https://github.com/avaleror/rodeo-cli/compare/v0.32.0...v0.32.1) (2026-11-23)
+
+
+### Bug Fixes
+
+* **success:** show the public IP as the external URL on EC2 ([41bb71c](https://github.com/avaleror/rodeo-cli/commit/41bb71cdfca67906f1d8a28bfa3d592a58a2d374))
+
 ## [0.32.0](https://github.com/avaleror/rodeo-cli/compare/v0.31.0...v0.32.0) (2026-11-22)
 
 

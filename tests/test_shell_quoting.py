@@ -25,6 +25,11 @@ PRELUDE = r"""
 command_not_found_handle() {
   printf '%s\n' "$*" >> "$RODEO_TEST_LOG"
   case "$1" in curl) printf 200 ;; esac
+  # A real command reads its stdin. A stub that does not leaves the writer of
+  # `a | b` with no reader, so the writer dies of SIGPIPE and -e/pipefail end
+  # the script (rc 141) before the probe runs: `read` is a builtin, so this
+  # drains the pipe without looking anything up on the empty PATH.
+  while IFS= read -r _; do :; done
   return 0
 }
 cd() { :; }

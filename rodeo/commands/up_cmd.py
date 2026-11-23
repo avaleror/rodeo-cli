@@ -92,9 +92,9 @@ def _default_labs_root() -> Path:
     "deployment_target",
     default=None,
     metavar="TARGET",
-    help="Where this lab runs: 'baremetal', 'instruqt', or 'aws' "
-         "(aws = provision EC2 then remote deploy; plugins may add targets; "
-         "default: auto-detect).",
+    help="Where this lab runs: 'baremetal' (this host), 'instruqt', 'aws' or 'remote' "
+         "(aws = provision EC2 then remote deploy; remote = deploy to the KVM host in the "
+         "plan's remote_host: block over SSH; plugins may add targets; default: auto-detect).",
 )
 @click.option("--resume", is_flag=True, hidden=True,
               help="Internal: continue after sudo re-exec.")
@@ -243,6 +243,11 @@ def _up(profile: str | None, name: str | None, lab_dir: str | None,
     aws_control_plane = (
         deployment_target == "aws" and not resume and not on_ec2()
     )
+    # remote = a KVM host the operator already owns: this machine only ships the lab and
+    # runs `rodeo up` on the host over SSH, exactly like the AWS path minus the provisioning.
+    remote_control_plane = deployment_target == "remote" and not resume
+    # Both control planes skip every local host check: nothing is deployed here.
+    control_plane = aws_control_plane or remote_control_plane
 
     if detach_out is not None and not aws_control_plane:
         console.print(
@@ -251,7 +256,7 @@ def _up(profile: str | None, name: str | None, lab_dir: str | None,
         )
         raise SystemExit(2)
 
-    if ref and not aws_control_plane:
+    if ref and not control_plane:
         # --ref only steers the *remote* bootstrap. Ignoring it silently would
         # let someone believe a local deploy is running the pinned code.
         console.print(
@@ -264,7 +269,7 @@ def _up(profile: str | None, name: str | None, lab_dir: str | None,
     # it may seed a lab (--no-deploy) but never deploys one locally, and never
     # installs KVM host packages.
     cannot_host = ""
-    if not aws_control_plane and _runs_on_this_machine(lab, profile):
+    if not control_plane and _runs_on_this_machine(lab, profile):
         from ..hostos import control_plane_hint, kvm_host_problem
 
         cannot_host = kvm_host_problem()
@@ -274,7 +279,7 @@ def _up(profile: str | None, name: str | None, lab_dir: str | None,
         if cannot_host:
             console.print(f"[dim]{cannot_host}: setting up the lab only.[/dim]\n")
 
-    if not aws_control_plane and not cannot_host:
+    if not control_plane and not cannot_host:
         _print_host(host)
         # 1. Host dependencies.
         if not _ensure_host_ready(host, assume_yes):
@@ -284,6 +289,9 @@ def _up(profile: str | None, name: str | None, lab_dir: str | None,
         console.print(
             "[dim]AWS control plane — will provision EC2 and remote-run "
             "rodeo up on the instance (phases run as baremetal there).[/dim]\n"
+            if aws_control_plane else
+            "[dim]Control plane — will ship this lab to the KVM host in remote_host: and "
+            "run rodeo up there (phases run as baremetal on the host).[/dim]\n"
         )
 
     # 2. A lab to deploy.
@@ -291,8 +299,8 @@ def _up(profile: str | None, name: str | None, lab_dir: str | None,
         (lab / "rodeo-plan.yaml").exists() or (lab / "definition.yaml").exists()
     )
     if not lab_ready:
-        if aws_control_plane:
-            # Laptop has no nested-KVM sizing; require an explicit profile.
+        if control_plane:
+            # The control plane has no nested-KVM sizing; require an explicit profile.
             chosen = profile or "harvester"
         else:
             chosen = profile or _choose_profile(host, assume_yes)
@@ -350,6 +358,11 @@ def _up(profile: str | None, name: str | None, lab_dir: str | None,
     # Once per `rodeo up`: the root re-exec (--resume) continues this operation.
     begin_operation(lab, "up")
 
+    if remote_control_plane:
+        assert lab is not None
+        _remote_control_plane_deploy(lab, profile=profile, ref=ref)
+        return
+
     if aws_control_plane:
         assert lab is not None
         _aws_control_plane_deploy(
@@ -398,6 +411,55 @@ def _up(profile: str | None, name: str | None, lab_dir: str | None,
         install_root_sigterm_handler()
 
     _deploy(lab, assume_yes=assume_yes, reconcile=reconcile)
+
+
+def _remote_control_plane_deploy(
+    lab: Path,
+    *,
+    profile: str | None,
+    ref: str | None = None,
+) -> None:
+    """Ship *lab* to the plan's KVM host and run ``rodeo up --target baremetal`` there."""
+    from ..providers.remote_host import execute_remote_up, host_block, ssh_user
+
+    try:
+        cfg = load_config("rodeo-plan.yaml", config_dir=str(lab))
+        validate_config(cfg)
+    except (ConfigError, ValueError) as exc:
+        console.print(f"[red]✗  {exc}[/red]")
+        raise SystemExit(1)
+
+    from ..host_context import apply_host_context
+
+    cfg, hc_notes = apply_host_context(cfg, host_facts={})
+    for line in hc_notes:
+        console.print(f"[dim]host-context: {line}[/dim]")
+    # The host inherits the overlays (disk_gb, caches) through the shipped plan.
+    _persist_plan_overlays(lab, cfg)
+
+    host_name = str(host_block(cfg).get("host"))
+    console.print(
+        f"\n[bold]Deploying to KVM host[/bold]  [cyan]{ssh_user(cfg)}@{host_name}[/cyan]…"
+    )
+    try:
+        host = execute_remote_up(cfg, profile=profile or _infer_lab_profile(lab), ref=ref, plan_dir=lab)
+    except ConfigError as exc:
+        console.print(f"[red]✗  {exc}[/red]")
+        raise SystemExit(1)
+    console.print(_remote_done_message(cfg, host.public_ip))
+
+
+def _remote_done_message(cfg: dict, ip: str) -> str:
+    """Closing lines of a remote deploy: the UIs this topology has, on the operator's host."""
+    from ..inventory import harvester_vm_names
+
+    lines = [f"\n[green]✓[/green]  Remote deploy finished on [cyan]{ip}[/cyan]."]
+    if harvester_vm_names(cfg):
+        lines.append(f"  Harvester UI:  https://{ip}:8443")
+    if "rancher" in cfg.get("vms", {}):
+        lines.append(f"  Rancher UI:    https://{ip}:30002")
+    lines.append(f"  Host log:      ssh {ip} 'cat ~/.rodeo/logs/remote-up.log'\n")
+    return "\n".join(lines)
 
 
 def _aws_control_plane_deploy(

@@ -331,6 +331,20 @@ rebinding, and **Save** sends a per-run token that only the served page has. The
 page runs under a Content-Security-Policy that allows only its own files (the fonts
 ship in `htdocs/fonts/`) and the lab-builder frame.
 
+## Where a rodeo deploys
+
+The **Deployment target** choice is the plan's `deployment_target`. The page names the
+built-ins for what they are: **This host (localhost)** is `baremetal`, the host the builder
+itself runs on — the plan value is unchanged, only the label says where it lands.
+
+**A KVM host of mine (SSH)** is `deployment_target: remote`: the builder ships the rodeo to a
+host you own and runs `rodeo up` there (see
+[remote_host](reference/plan.md#remote_host)). It is offered only once you have stored a
+**KVM host (SSH)** credential — host, login and private key — on the Settings page, since
+there is nowhere to deploy without one. The deploy dialog then asks which host, and for that
+credential's password; the key is written into the lab directory as `.rodeo-remote-key`
+(mode 600) and never leaves the builder's host.
+
 ## Deploy without saving
 
 **Deploy** (header) runs the rodeo on the builder's host exactly as it is on the

@@ -1666,6 +1666,19 @@ const RB = (() => {
     return [...keys.filter(near), ...keys.filter((k) => !near(k))];
   }
 
+  // The KVM host credentials (vault type kvm-host) a remote deploy can be sent to.
+  function kvmHostItems(vault) {
+    return (((vault && vault.available && vault.items) || [])
+      .filter((i) => i.type === "kvm-host" && (!i.engine || i.engine === "rodeo")));
+  }
+
+  // The deployment targets to offer. `remote` ships the lab to a KVM host over SSH, so it is
+  // offered only once a kvm-host credential exists — except on a rodeo already set to it,
+  // which must stay visible and editable.
+  function targetChoices(targets, current, vault) {
+    return (targets || []).filter((v) => v !== "remote" || current === "remote" || kvmHostItems(vault).length);
+  }
+
   // Deploy log history kept in the page: at most DEPLOY_LOG_LINES lines, oldest dropped.
   const DEPLOY_LOG_LINES = 100000;
 
@@ -1682,7 +1695,7 @@ const RB = (() => {
   }
 
   return {
-    DEPLOY_LOG_LINES, deployLog,
+    DEPLOY_LOG_LINES, deployLog, kvmHostItems, targetChoices,
     MISSING_ADDON, SOURCE_LANGUAGE, LANGUAGE_TAG, availableLanguages, newLanguageError, slugify, uniqueId, parseSpans, parseAttrs, kind, needsId, openTag, inner,
     withKind, wrapTarget, nextId, wrap, retag, unwrap, idsIn, validate, warningsByChapter, engineNeeds, variantsIn, storyCounts, mainStory, renameStories, storyIndex,
     setTopKey, setStoredLab, dropTopBlock, storyBlock, planFromBase, planLabinabox, chapterFile, chaptersYaml,

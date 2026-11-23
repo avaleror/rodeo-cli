@@ -47,7 +47,7 @@ class UntrustedLab(ConfigError):
 _BASE_DEFAULTS: dict[str, Any] = {
     "type": "suse-virt",
     "name": "suse-virt-rodeo",
-    "deployment_target": "baremetal",  # instruqt | baremetal | aws
+    "deployment_target": "baremetal",  # instruqt | baremetal | aws | remote
     "network": {
         "mode": "nat",
         "vip": "192.168.122.10",
@@ -1142,6 +1142,10 @@ def validate_config(cfg: dict, *, check: bool = False) -> None:
         )
     if target == "aws":
         _validate_aws_provider(cfg)
+    if target == "remote":
+        from .providers.remote_host import validate as _validate_remote_host
+
+        _validate_remote_host(cfg)
     if cfg.get("content"):
         from .content import content_spec
 

@@ -22,7 +22,8 @@ name: my-lab
 
 # Where this lab runs. Controls whether the finalise phase is deferred,
 # and (for aws) whether the laptop provisions an EC2 host then remote-deploys.
-# baremetal: full deploy including VM autostart on host reboot
+# baremetal: full deploy on this host, including VM autostart on host reboot
+# remote:    deploy over SSH to the KVM host in remote_host: (phases run as baremetal there)
 # instruqt:  skips finalise until you run `rodeo deploy --from finalise --finalise`
 # aws:       laptop control plane: provision EC2, then remote `rodeo up --target baremetal`
 deployment_target: baremetal
@@ -130,9 +131,11 @@ Must be unique per host. Changing `name` after deploy creates orphaned resources
 
 | Value | Behaviour |
 |-------|-----------|
-| `baremetal` | Full deploy. `finalise` enables VM autostart on host reboot. |
+| `baremetal` | Full deploy on the host rodeo runs on (this machine). `finalise` enables VM autostart on host reboot. |
 | `instruqt` | `finalise` is skipped automatically. Run it after the Instruqt snapshot: `rodeo deploy --from finalise --finalise` |
 | `aws` | Laptop control plane: require a `provider:` block, provision/reuse one EC2 KVM host, wait for SSH, remote-run `rodeo up` on that host. Tear down with `rodeo destroy --cloud --yes`. BYO: create the instance yourself, keep `deployment_target: aws` (or set `storage.backend: nvme`) and deploy on the box. |
+
+| `remote` | Control plane: deploy to a KVM host you already own. Requires a `remote_host:` block, ships the lab's plan files over SSH and runs `rodeo up --target baremetal` on the host. Nothing is provisioned and `rodeo destroy --cloud` does not apply: the host is yours. |
 
 **Required.** Defaults to `baremetal` when omitted. Plugins can add targets via
 `host_context.register_host_context()` (see the architecture doc's extension
@@ -143,6 +146,35 @@ On **instruqt**, `rodeo up` / lab seeding also applies host-aware `resources` pr
 Σ guest vCPU stays near ~70% of the builder (Harvester typically 6–8 vCPU / 20 GiB).
 Existing plans are not rewritten on re-deploy; only seeded plans get the presets.
 `rodeo doctor` / `rodeo deploy --check` warn (non-fatal) when a plan still exceeds the budget.
+
+### `remote_host`
+
+Required by `deployment_target: remote`, ignored by every other target. The host is yours:
+rodeo neither creates nor destroys it, and only needs to reach it.
+
+```yaml
+deployment_target: remote
+remote_host:
+  host: kvm-01.lab.example        # name or IP (required)
+  ssh_user: root                  # login; default root
+  identity_file: ~/.ssh/id_ed25519  # private key; default rodeo's managed key
+  lab_dir: /root/rodeo-lab        # where the lab lands on the host
+```
+
+```bash
+rodeo up --yes --profile harvester --target remote
+```
+
+The control plane ships `rodeo-plan.yaml`, `definition.yaml` and the effective secrets over
+SSH, installs or updates rodeo on the host (`--ref` pins the version it runs), then runs
+`rodeo up --target baremetal` there, streaming its output back. The host needs: SSH as
+*ssh_user* with that key, **passwordless sudo** for that user, and a distribution that can
+host labs (the same requirement as a local `baremetal` deploy). Its log stays on the host at
+`~/.rodeo/logs/remote-up.log`.
+
+The private key itself is never shipped: only the control plane reads it. In the builder, a
+stored **KVM host (SSH)** credential fills this block in, and writes the key into the lab
+directory as `.rodeo-remote-key` (mode 600).
 
 On **aws**, `apply_host_context()` (seed + deploy) raises `resources.harvester.disk_gb`
 to a flat **500 GB per Harvester node** and `resources.rancher.disk_gb` to **60 GB**

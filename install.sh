@@ -19,6 +19,13 @@
 #   bash install.sh [--ref v0.10.5] [--dir DIR] [--mode kvm-host|control-plane]
 #                   [--no-builder | --builder-host ADDR]
 #
+#   By default this installs the latest *validated* release: the tag in the
+#   STABLE file on main, which only moves after that release passed a live
+#   deploy (see docs/releasing.md). A newer tag that hasn't been validated yet
+#   is not installed unless you ask for it.
+#
+#   --ref            what to install instead: a release tag (v0.33.0), main for
+#                    the latest code, or any branch or SHA.
 #   --mode           override the automatic choice (e.g. a KVM host on another
 #                    distribution, at your own risk). Also: RODEO_MODE=<mode>.
 #   --no-builder     don't run the Rodeo Builder as a systemd service (and stop and
@@ -33,7 +40,7 @@
 #                    names it answers to besides this machine's own (a DNS alias, a
 #                    public IP behind NAT).
 #   RODEO_REPO=<git url>  clone/update from this repository instead of upstream
-#   RODEO_REF=<ref>       default ref when --ref is not given (main)
+#   RODEO_REF=<ref>       default ref when --ref is not given (stable)
 #
 # Usage (development):
 #   bash install.sh --dev [--dir /path/to/rodeo-cli]
@@ -57,7 +64,7 @@ set -euo pipefail
 export ZYPP_LOCK_TIMEOUT="${ZYPP_LOCK_TIMEOUT:-600}"
 
 RODEO_REPO="${RODEO_REPO:-https://github.com/avaleror/rodeo-cli.git}"
-RODEO_REF="${RODEO_REF:-main}"
+RODEO_REF="${RODEO_REF:-stable}"
 RODEO_MODE="${RODEO_MODE:-auto}"
 RODEO_BUILDER="${RODEO_BUILDER:-1}"
 RODEO_BUILDER_HOST="${RODEO_BUILDER_HOST:-0.0.0.0}"
@@ -201,6 +208,33 @@ else
 fi
 
 # ── 2. clone or update ────────────────────────────────────────────────────────
+# "stable" means the tag in STABLE on main: the last release that passed a live
+# deploy. Falls back to the newest vX.Y.Z tag, then to main, and says so.
+resolve_stable_ref() {
+  local dir="$1" ref=""
+  ref="$(git -C "$dir" show origin/main:STABLE 2>/dev/null | tr -d '[:space:]' || true)"
+  if [[ "$ref" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+     && git -C "$dir" rev-parse -q --verify "refs/tags/$ref" >/dev/null 2>&1; then
+    echo "$ref"
+    return
+  fi
+  ref="$(git -C "$dir" tag -l 'v[0-9]*' --sort=-v:refname 2>/dev/null | head -n 1 || true)"
+  if [[ -n "$ref" ]]; then
+    echo "==> No valid STABLE file on main: installing the newest release, $ref" >&2
+    echo "$ref"
+    return
+  fi
+  echo "==> No release tags found: installing main" >&2
+  echo main
+}
+
+pick_ref() {
+  if [[ "$RODEO_REF" == "stable" ]]; then
+    RODEO_REF="$(resolve_stable_ref "$RODEO_DIR")"
+    echo "==> Installing $RODEO_REF, the latest validated release (--ref main for the latest code)"
+  fi
+}
+
 mkdir -p "$(dirname "$RODEO_DIR")"
 if [[ $DEV -eq 1 ]]; then
   if [[ -f "$RODEO_DIR/pyproject.toml" ]]; then
@@ -208,6 +242,8 @@ if [[ $DEV -eq 1 ]]; then
   else
     echo "==> Dev mode: cloning $RODEO_REPO to $RODEO_DIR"
     git clone "$RODEO_REPO" "$RODEO_DIR"
+    # A development checkout starts on main unless a ref was asked for.
+    [[ "$RODEO_REF" == "stable" ]] && RODEO_REF=main
     if [[ "$RODEO_REF" != "main" ]]; then
       git -C "$RODEO_DIR" checkout "$RODEO_REF"
     fi
@@ -225,6 +261,7 @@ else
     # Fetch everything (all branches + tags), forcing tracking-ref updates.
     # No `|| true` — a failed update must be visible, not swallowed.
     git -C "$RODEO_DIR" fetch --tags --prune --force origin
+    pick_ref
     # Align deterministically to the requested ref. A branch is hard-reset to the
     # remote tip; a tag or SHA is checked out detached.
     if git -C "$RODEO_DIR" show-ref --verify --quiet "refs/remotes/origin/$RODEO_REF"; then
@@ -236,8 +273,9 @@ else
   else
     echo "==> Cloning rodeo-cli to $RODEO_DIR"
     git clone "$RODEO_REPO" "$RODEO_DIR"
+    pick_ref
     if [[ "$RODEO_REF" != "main" ]]; then
-      git -C "$RODEO_DIR" checkout "$RODEO_REF"
+      git -C "$RODEO_DIR" -c advice.detachedHead=false checkout "$RODEO_REF"
     fi
   fi
 fi

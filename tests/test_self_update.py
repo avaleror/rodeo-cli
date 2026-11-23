@@ -106,7 +106,7 @@ def test_fetch_forces_tags(repo, monkeypatch):
 
     monkeypatch.setattr(su, "_git", RecordingGit(head="oldsha", target_sha="newsha", align=True))
     monkeypatch.setattr(su, "_installed_version", lambda: "0.11.2")
-    result = CliRunner().invoke(su.self_update_cmd, [])
+    result = CliRunner().invoke(su.self_update_cmd, ["--branch", "main"])
     assert result.exit_code == 0
     assert len(calls) == 1
     assert "--force" in calls[0]
@@ -233,3 +233,68 @@ def test_up_to_date_does_not_restart(repo, monkeypatch):
     monkeypatch.setattr(systemd, "unit_is_active", lambda unit=systemd.BUILDER_UNIT: pytest.fail("asked anyway"))
     result = CliRunner().invoke(su.self_update_cmd, [])
     assert result.exit_code == 0 and "up to date" in result.output.lower()
+
+
+class StableGit(FakeGit):
+    """A remote whose main carries STABLE=v0.32.2, with tags v0.32.2 and v0.33.0."""
+
+    def __init__(self, *, stable: str = "v0.32.2\n", **kw):
+        super().__init__(**kw)
+        self.stable, self.calls = stable, []
+
+    def __call__(self, *args, check=True):
+        a = list(args)
+        self.calls.append(a)
+        if a[:1] == ["show"]:
+            return _cp(self.stable) if self.stable else _cp(returncode=128, stderr="fatal: path 'STABLE' does not exist")
+        if a[:1] == ["tag"]:
+            return _cp("v0.33.0\nv0.32.2\nv0.32.1\n")
+        if a[:3] == ["rev-parse", "-q", "--verify"]:
+            return _cp(returncode=0 if a[3] in ("refs/tags/v0.32.2", "refs/tags/v0.33.0") else 1)
+        if a[:1] == ["rev-parse"] and a[1].startswith("refs/tags/"):
+            self.resolved = a[1]
+            return _cp(self.target_sha + "\n")
+        return super().__call__(*args, check=check)
+
+
+def test_default_target_is_the_stable_release(repo, monkeypatch):
+    """No --branch: land on the tag in STABLE, detached, not on main's tip."""
+    git = StableGit(head="oldsha", target_sha="stablesha", align=True)
+    monkeypatch.setattr(su, "_git", git)
+    monkeypatch.setattr(su, "_installed_version", lambda: "0.32.2")
+    result = CliRunner().invoke(su.self_update_cmd, [])
+    assert result.exit_code == 0, result.output
+    assert git.resolved == "refs/tags/v0.32.2^{commit}"
+    assert ["checkout", "--force", "--detach", "stablesha"] in git.calls
+    assert "v0.32.2" in plain_output(result.output)
+    fetch = next(c for c in git.calls if c[:1] == ["fetch"])
+    assert "--tags" in fetch and "--force" in fetch
+
+
+def test_missing_stable_falls_back_to_the_newest_tag(repo, monkeypatch):
+    git = StableGit(stable="", head="oldsha", target_sha="newestsha", align=True)
+    monkeypatch.setattr(su, "_git", git)
+    monkeypatch.setattr(su, "_installed_version", lambda: "0.33.0")
+    result = CliRunner().invoke(su.self_update_cmd, [])
+    assert result.exit_code == 0, result.output
+    assert git.resolved == "refs/tags/v0.33.0^{commit}"
+    assert "no valid STABLE" in plain_output(result.output)
+
+
+def test_stable_naming_an_unknown_tag_is_not_trusted(repo, monkeypatch):
+    git = StableGit(stable="v9.9.9\n", head="oldsha", target_sha="newestsha", align=True)
+    monkeypatch.setattr(su, "_git", git)
+    monkeypatch.setattr(su, "_installed_version", lambda: "0.33.0")
+    result = CliRunner().invoke(su.self_update_cmd, [])
+    assert result.exit_code == 0, result.output
+    assert git.resolved == "refs/tags/v0.33.0^{commit}"
+
+
+def test_branch_option_still_follows_the_branch_tip(repo, monkeypatch):
+    git = StableGit(head="oldsha", target_sha="mainsha", align=True)
+    monkeypatch.setattr(su, "_git", git)
+    monkeypatch.setattr(su, "_installed_version", lambda: "0.33.0")
+    result = CliRunner().invoke(su.self_update_cmd, ["--branch", "main"])
+    assert result.exit_code == 0, result.output
+    assert not any(c[:1] == ["show"] for c in git.calls)
+    assert ["checkout", "-B", "main", "mainsha"] in git.calls

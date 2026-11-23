@@ -88,5 +88,6 @@ nav:
   - Troubleshooting: runbook.md
   - For contributors:
     - Architecture: architecture.md
+    - Releasing and validation: releasing.md
     - Claim portal (design): claim-portal.md
     - Claim portal (implementation plan): claim-portal-plan.md

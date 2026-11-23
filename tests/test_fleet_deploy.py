@@ -81,7 +81,10 @@ def test_fleet_bootstrap_without_a_ref_leaves_an_existing_install_alone(tmp_path
     inv = load_inventory(_workshop(tmp_path))
     script = deploy_remote_script(inv, tmux_session_name(inv.name, "h1"))
     assert "if ! command -v rodeo >/dev/null 2>&1; then" in script
-    assert "--ref" not in script
+    # The first install asks for main (a checkout between releases), only
+    # inside the guard: an existing install is never reset.
+    assert "bash -s -- --ref main; fi;" in script
+    assert script.count("--ref") == 1
     assert inv.ref is None
 
 

@@ -40,6 +40,38 @@ def _host_ip() -> str:
     return "<host-ip>"
 
 
+def _public_ip(timeout: float = 0.5) -> str | None:
+    """The instance's public IPv4 from EC2 metadata (IMDSv2), or None.
+
+    On EC2 the default-route address is the private VPC one, which nobody
+    outside the VPC can reach. Off EC2, or without a public IP, this returns None.
+    """
+    import ipaddress
+    import urllib.request
+
+    base = "http://169.254.169.254/latest"
+    try:
+        token_req = urllib.request.Request(
+            f"{base}/api/token", method="PUT",
+            headers={"X-aws-ec2-metadata-token-ttl-seconds": "60"},
+        )
+        with urllib.request.urlopen(token_req, timeout=timeout) as resp:
+            token = resp.read().decode("ascii", errors="replace").strip()
+        req = urllib.request.Request(
+            f"{base}/meta-data/public-ipv4", headers={"X-aws-ec2-metadata-token": token},
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            ip = resp.read().decode("ascii", errors="replace").strip()
+        return str(ipaddress.IPv4Address(ip))
+    except Exception:
+        return None
+
+
+def _external_host() -> str:
+    """Address a browser outside the host should use: public IP on EC2, else the route IP."""
+    return _public_ip() or _host_ip()
+
+
 def _read_passwords() -> tuple[str, str]:
     """Return (harvester_admin_password, rancher_admin_password) from secrets file."""
     from .paths import rodeo_secrets_path
@@ -96,7 +128,7 @@ def render_success(cfg: dict) -> None:
     # For letsEncrypt: hostname is based on the external host IP, not the VM IP.
     # rancher.py computes this at install time but doesn't persist it back to cfg,
     # so we recompute it here the same way.
-    _ext_ip = cfg.get("rancher_hostname") or _host_ip()
+    _ext_ip = cfg.get("rancher_hostname") or _external_host()
     rancher_hostname = f"rancher.{_ext_ip.replace('.', '-')}.sslip.io"
 
     lines: list[str] = []
@@ -127,7 +159,7 @@ def render_success(cfg: dict) -> None:
                     "declared as a service in the track config.[/dim]"
                 )
         else:
-            host = _host_ip()
+            host = _external_host()
             if has_harvester:
                 lines.append(f"  Harvester UI   https://{vip}")
                 lines.append(f"  [dim](external: host port {harvester_ui_port} → DNAT → VIP, i.e. https://{host}:{harvester_ui_port})[/dim]")

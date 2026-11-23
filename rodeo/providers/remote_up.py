@@ -281,6 +281,11 @@ def remote_up_script(
         'log="$HOME/.rodeo/logs/aws-up.log"; '
         'pidf="$HOME/.rodeo/logs/aws-up.pid"; '
         'exitf="$HOME/.rodeo/logs/aws-up.exit"; '
+        # The job creates the log by redirecting into it, but _followed_job's
+        # tail can open it first and exit ("no files remaining"), losing the
+        # deploy's output for the whole session. Creating it here is a no-op
+        # for an existing log, so the offset below still skips earlier runs.
+        ': >>"$log"; '
         # rodeo outlives the SSH session (laptop asleep, Ctrl-C, run_remote
         # timeout), so a re-run must not start a second deploy racing the first
         # one on the same lab. A pid file, not flock: a lock fd would be

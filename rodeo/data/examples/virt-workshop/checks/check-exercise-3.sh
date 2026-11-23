@@ -54,8 +54,14 @@ fail(){ echo "FAIL: $*"; FAIL=1; }
 warn(){ echo "WARN: $*"; }
 
 # --- 2.7's image, confirmed Active ---
-if kubectl get virtualmachineimages.harvesterhci.io -n "${IMAGE_NS}" "${IMAGE_NAME}" &>/dev/null; then
-  PROGRESS="$(kubectl get virtualmachineimages.harvesterhci.io -n "${IMAGE_NS}" "${IMAGE_NAME}" \
+# The UI's "Name" field is the image's display name: Harvester gives the object
+# itself a generated name (image-xxxxx). Match either, so a kubectl-created
+# image named sles16 passes too.
+IMAGE_OBJ="$(kubectl get virtualmachineimages.harvesterhci.io -n "${IMAGE_NS}" \
+  -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.displayName}{"\n"}{end}' 2>/dev/null \
+  | awk -v n="${IMAGE_NAME}" '$1 == n || $2 == n {print $1; exit}')"
+if [ -n "${IMAGE_OBJ}" ]; then
+  PROGRESS="$(kubectl get virtualmachineimages.harvesterhci.io -n "${IMAGE_NS}" "${IMAGE_OBJ}" \
     -o jsonpath='{.status.progress}' 2>/dev/null)"
   [ "${PROGRESS}" = "100" ] || fail "${IMAGE_NS}/${IMAGE_NAME} found but not Active yet (progress=${PROGRESS:-0})."
 else

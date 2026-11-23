@@ -50,9 +50,6 @@ operator_secrets:
   - sles15sp6_image_sha256
 
 lab_in_a_box:
-  # Needs a lab-in-a-box release with smlm_preinstalled / smlm_image_admin_pass /
-  # smlm_salt_auto_accept / smlm_bootstrap_scripts / ssh_pwauth support: bump
-  # ref to the upstream commit that adds them.
   # How the SMLM server is built:
   #   image   (default) boot the pre-built, channel-synced image (see bake/) — minutes
   #   scratch install SMLM here on SLES 15 SP7 and sync every

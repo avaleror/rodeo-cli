@@ -331,6 +331,9 @@ def persist_host_context_notes(cfg: dict[str, Any], notes: list[str]) -> None:
     cfg["_host_context_notes"] = list(notes)
 
 
+# remote = a KVM host over SSH. The control plane ships the lab and the host runs it as
+# baremetal (see providers/remote_host.py), so the host shaping is baremetal's.
+register_host_context("remote", _apply_baremetal)
 register_host_context("baremetal", _apply_baremetal)
 register_host_context("instruqt", _apply_instruqt)
 register_host_context("aws", _apply_aws)

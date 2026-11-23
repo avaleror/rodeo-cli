@@ -651,3 +651,19 @@ test("deployLog appends new chunks, replaces a restarted log and caps history", 
   const capped = RB.deployLog(long, { log: "1\n2\n3\n4\n", log_from: 0, log_next: 8 }, 2);
   assert.deepEqual(capped, { text: "4\n", at: 8 });
 });
+
+test("the remote target is offered only with a KVM host credential to deploy to", () => {
+  const targets = ["baremetal", "instruqt", "aws", "remote"];
+  const none = { available: true, items: [{ id: "1", type: "scc" }] };
+  assert.deepEqual(RB.targetChoices(targets, "baremetal", none), ["baremetal", "instruqt", "aws"]);
+  // A rodeo already set to remote keeps the option, or the author could not see or change it.
+  assert.deepEqual(RB.targetChoices(targets, "remote", none), targets);
+  const host = { available: true, items: [{ id: "2", type: "kvm-host", name: "kvm-01" }] };
+  assert.deepEqual(RB.targetChoices(targets, "baremetal", host), targets);
+  assert.deepEqual(RB.kvmHostItems(host).map((i) => i.name), ["kvm-01"]);
+  // A locked or unavailable vault offers nothing.
+  assert.deepEqual(RB.kvmHostItems({ available: false, items: host.items }), []);
+  assert.deepEqual(RB.kvmHostItems(null), []);
+  // Another engine's stored credential is not rodeo's to deploy with.
+  assert.deepEqual(RB.kvmHostItems({ available: true, items: [{ type: "kvm-host", engine: "other" }] }), []);
+});

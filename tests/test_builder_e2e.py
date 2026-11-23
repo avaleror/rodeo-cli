@@ -1659,7 +1659,18 @@ def test_exposed_live_server_does_not_deploy(page):
 
 @pytest.mark.parametrize("page", ["site", "live"], indirect=True)
 def test_targets_and_formats_are_the_registered_ones(page):
-    assert page.locator("#target option").all_inner_texts() == ["aws", "baremetal", "instruqt"]
+    """The values are the registered targets; the page labels them for what they are.
+
+    `remote` deploys to a KVM host from a stored credential, so a live builder offers it
+    only once there is one; the published page has no vault and lists every target, since
+    an author may still write a plan that targets a host.
+    """
+    labels = page.locator("#target option").all_inner_texts()
+    values = page.locator("#target").evaluate("el => [...el.options].map(o => o.value)")
+    assert labels[:3] == ["AWS (EC2)", "This host (localhost)", "Instruqt"]
+    assert values[:3] == ["aws", "baremetal", "instruqt"]
+    static = page.evaluate("Boolean(window.RB_STATIC)")
+    assert values[3:] == (["remote"] if static else [])
     assert page.input_value("#target") == "baremetal"
     assert page.locator("#contentFormat option").all_inner_texts() == ["rmstory story/", "Instruqt track", "markdown"]
     page.select_option("#target", "aws")

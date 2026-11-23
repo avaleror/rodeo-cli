@@ -36,7 +36,7 @@ _STRINGS_RE = re.compile(r"^story/strings/[a-z]{2,3}(-[a-z0-9]{2,8})*/[A-Za-z0-9
 MAX_FILES = 2000
 MAX_FILE_BYTES = 2 * 1024 * 1024
 MAX_TOTAL_BYTES = 20 * 1024 * 1024
-_TARGETS = ("baremetal", "instruqt", "aws")
+_TARGETS = ("baremetal", "instruqt", "aws", "remote")
 
 
 @dataclass(frozen=True)

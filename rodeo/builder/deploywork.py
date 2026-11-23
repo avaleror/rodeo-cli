@@ -35,6 +35,7 @@ from ..paths import invoking_home
 from ..privilege import find_rodeo_bin
 from ..profile_install import ProfileFile, check_files, check_name, write_rodeo
 from ..secretgen import _read_secrets, append_secret, ensure_plan_secrets, secrets_path
+from . import remotehost
 
 LOG = ".builder-deploy.log"
 LOG_CHUNK = 256 * 1024
@@ -150,8 +151,11 @@ class Deployer:
                     "rc": cur["rc"], "log": text, "log_from": begin, "log_next": nxt}
 
     def start(self, req: Any, popen: Callable[..., Any] = subprocess.Popen, run: Run = subprocess.run) -> dict[str, Any]:
-        """Deploy ``{"name", "base", "files", "secrets", "secret_refs"}``. ValueError for a bad request, PermissionError
-        without root, NeedSecrets for missing operator secrets, RuntimeError while another deploy runs."""
+        """Deploy ``{"name", "base", "files", "secrets", "secret_refs", "remote_host"}``. ValueError for a bad
+        request, PermissionError without root, NeedSecrets for missing operator secrets,
+        NeedRemoteHost when the rodeo deploys to a KVM host and the request named none,
+        RuntimeError while another deploy runs. ``remote_host`` carries an opened KVM host
+        credential (host, ssh_user, private_key); see :mod:`.remotehost`."""
         if not isinstance(req, dict):
             raise ValueError("send a JSON object")
         state = self.status()
@@ -190,6 +194,7 @@ class Deployer:
             # The operator submitted these files and pressed deploy in the Builder:
             # that is the approval, recorded before anything else touches the lab.
             trust_lab(lab)
+            remotehost.apply(lab, lab / "rodeo-plan.yaml", req.get("remote_host"))
             plan = yaml.safe_load((lab / "rodeo-plan.yaml").read_text()) or {}
             _, missing = ensure_plan_secrets(plan, lab_path=lab / LAB_SECRETS_FILE)
             lacking = [k for k in missing if not str(secrets.get(k) or "")]

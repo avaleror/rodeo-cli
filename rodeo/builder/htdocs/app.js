@@ -329,12 +329,25 @@ function contentError() {
 // Shown names of the instructions formats the server lists; one not named here shows its id.
 const FORMAT_LABELS = { rmstory: "rmstory story/", instruqt: "Instruqt track" };
 
+// The stored KVM host credentials a remote deploy can use.
+function kvmHosts() { return window.RB_STATIC ? [] : RB.kvmHostItems(state.vault); }
+
+// Deployment target names as the page shows them. The plan keeps the registered value
+// (baremetal is "where rodeo runs", which for a builder deploy is this very host); only the
+// label says so. A target with no label here, a plugin's for example, shows its own name.
+const TARGET_LABELS = { baremetal: "This host (localhost)", instruqt: "Instruqt", aws: "AWS (EC2)",
+  remote: "A KVM host of mine (SSH)" };
+
+function offeredTargets() {
+  return window.RB_STATIC ? state.targets : RB.targetChoices(state.targets, state.target, state.vault);
+}
+
 // The Deployment target and Instructions format choices: what the server lists (the registered
 // deployment targets and content formats), plus the rodeo's own value when it is not among them.
 function fillChoices() {
   const opts = (values, cur, label) => [...new Set([...values, cur].filter(Boolean))]
     .map((v) => el("option", { value: v, text: label(v) }));
-  $("#target").replaceChildren(...opts(state.targets, state.target, (v) => v));
+  $("#target").replaceChildren(...opts(offeredTargets(), state.target, (v) => TARGET_LABELS[v] || v));
   $("#target").value = state.target;
   $("#contentFormat").replaceChildren(...opts(state.contentFormats, state.contentFormat, (v) => FORMAT_LABELS[v] || v));
   $("#contentFormat").value = state.contentFormat;
@@ -2423,8 +2436,17 @@ async function openDeploy() {
   const cur = state.deploy.current;
   if (cur && (cur.status === "running" || cur.status === "stopping")) { toast("A deploy is already running: see the banner", true); return; }
   state.name = name;
-  $("#dpWhere").textContent = "rodeo up runs on this builder's host (target " + state.target + ", as " + state.deploy.as
-    + ") from a new lab directory, ~/rodeo-labs/" + name + "-unsaved-<time>/: a copy of what is on this page now.";
+  const hosts = kvmHosts();
+  $("#dpWhere").textContent = state.target === "remote"
+    ? "This builder ships a copy of what is on this page now to the KVM host you pick, and runs rodeo up"
+      + " there over SSH (the host needs passwordless sudo). Nothing is deployed on the builder's own host."
+    : "rodeo up runs on this builder's host (target " + state.target + ", as " + state.deploy.as
+      + ") from a new lab directory, ~/rodeo-labs/" + name + "-unsaved-<time>/: a copy of what is on this page now.";
+  $("#dpHostRow").hidden = state.target !== "remote";
+  if (state.target === "remote") {
+    $("#dpHost").replaceChildren(...hosts.map((i) => el("option", { value: i.id, text: i.name })));
+    if (!hosts.length) $("#dpHost").append(el("option", { value: "", text: "No KVM host credential yet" }));
+  }
   $("#dpSecrets").hidden = true;
   $("#dpSecretFields").replaceChildren();
   $("#dpResult").textContent = "";
@@ -2449,6 +2471,17 @@ async function startDeploy(saveFirst) {
   const refs = Object.fromEntries(inputs.filter((i) => i.dataset.ref).map((i) => [i.name, i.dataset.ref]));
   const payload = { name, base: r.base || null, files, secrets };
   if (Object.keys(refs).length) payload.secret_refs = refs;
+  if (state.target === "remote") {
+    const item = kvmHosts().find((i) => i.id === $("#dpHost").value);
+    if (!item) {
+      $("#dpResult").textContent = "Add a KVM host credential on the Settings page, then deploy to it.";
+      return;
+    }
+    const fields = await openVault(item);
+    if (!fields) return;
+    payload.remote_host = { host: fields.host || "", ssh_user: fields.ssh_user || "",
+      private_key: fields.private_key || "", lab_dir: fields.lab_dir || "" };
+  }
   $("#dpSubmit").disabled = true;
   const res = await apiPost("deploy", payload).catch((err) => ({ status: 0, body: { error: err.message } }));
   $("#dpSubmit").disabled = false;

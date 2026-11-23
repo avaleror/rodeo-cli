@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import io
+import re
 import shlex
 import tarfile
 import urllib.error
@@ -183,14 +184,22 @@ def provision_primary(
 def _fleet_inventory_for(
     cfg: dict[str, Any],
     host: ProvisionedHost,
+    *,
+    ssh_user: str | None = None,
+    identity_file: str | None = None,
+    lab_dir: str | None = None,
 ) -> tuple[FleetInventory, FleetHost]:
+    """The one-host fleet inventory a remote ``rodeo up`` runs over.
+
+    *ssh_user*, *identity_file* and *lab_dir* override the ``provider:`` block for a host
+    that is not provisioned by a provider (``deployment_target: remote``)."""
     provider_cfg = _provider_cfg(cfg)
     plan_name = str(cfg.get("name") or "rodeo")
-    identity = resolve_ssh_identity(workshop=plan_name)
-    ssh_user = str(provider_cfg.get("ssh_user") or "ec2-user")
+    identity = identity_file or resolve_ssh_identity(workshop=plan_name)
+    ssh_user = str(ssh_user or provider_cfg.get("ssh_user") or "ec2-user")
     inv = FleetInventory(
         name=plan_name,
-        lab_dir=str(provider_cfg.get("lab_dir") or _DEFAULT_LAB_DIR),
+        lab_dir=str(lab_dir or provider_cfg.get("lab_dir") or _DEFAULT_LAB_DIR),
         defaults={
             "ssh_user": ssh_user,
             "identity_file": identity,
@@ -207,6 +216,15 @@ def _fleet_inventory_for(
     return inv, fh
 
 
+def _log_base(name: str) -> str:
+    """The file-name stem for a run's log, pid and exit files: ``<stem>-up.log`` and friends.
+
+    Only the stem is interpolated into the remote shell script, so anything unusual in a
+    target name is flattened to a safe token.
+    """
+    return re.sub(r"[^A-Za-z0-9._-]", "-", name) or "remote"
+
+
 def remote_up_script(
     *,
     lab_dir: str,
@@ -215,6 +233,8 @@ def remote_up_script(
     ref: str | None = None,
     ship_plan: bool = False,
     detach: bool = False,
+    target: str = "aws",
+    log_name: str | None = None,
 ) -> str:
     """Bootstrap + remote ``rodeo up --target aws`` (phases still run as baremetal).
 
@@ -233,6 +253,10 @@ def remote_up_script(
     run even when ``rodeo`` is already installed, which is the only way local
     commits reach a host that was provisioned before them.
 
+    *target* is the ``--target`` the remote runs (and names its log unless *log_name* says
+    otherwise). ``deployment_target: remote`` sends ``baremetal``: the host is a plain KVM host,
+    and sending ``remote`` would have it ship the lab on to itself.
+
     *ship_plan*: stdin carries the local lab's plan files (base64 tar, see
     pack_plan_files), unpacked into the lab dir first, before the bootstrap
     can read stdin. The host then finds an existing lab and deploys the
@@ -250,6 +274,8 @@ def remote_up_script(
     prints an ``AWS_UP_RUNNING`` line before exit 75.
     """
     lab = shlex.quote(lab_dir)
+    remote_target = shlex.quote(target)
+    base = _log_base(log_name or target)
     unpack = ""
     if ship_plan:
         shipped = shlex.quote(f"{lab_dir}/{_SHIPPED_SECRETS}")
@@ -264,7 +290,7 @@ def remote_up_script(
     profile_bits = ""
     if profile:
         profile_bits = f"--profile {shlex.quote(profile)} "
-    up = f"rodeo up --yes --no-tmux {profile_bits}--dir {lab} --target aws"
+    up = f"rodeo up --yes --no-tmux {profile_bits}--dir {lab} --target {remote_target}"
     running = (
         "printf 'AWS_UP_RUNNING pid=%s log=%s\\n' \"$rpid\" \"$log\"; " if detach else ""
     )
@@ -278,9 +304,9 @@ def remote_up_script(
         # so it must exist before rodeo starts. $HOME is /root here
         # (sudo -n bash -lc).
         'mkdir -p "$HOME/.rodeo/logs"; '
-        'log="$HOME/.rodeo/logs/aws-up.log"; '
-        'pidf="$HOME/.rodeo/logs/aws-up.pid"; '
-        'exitf="$HOME/.rodeo/logs/aws-up.exit"; '
+        f'log="$HOME/.rodeo/logs/{base}-up.log"; '
+        f'pidf="$HOME/.rodeo/logs/{base}-up.pid"; '
+        f'exitf="$HOME/.rodeo/logs/{base}-up.exit"; '
         # The job creates the log by redirecting into it, but _followed_job's
         # tail can open it first and exit ("no files remaining"), losing the
         # deploy's output for the whole session. Creating it here is a no-op
@@ -304,7 +330,7 @@ def remote_up_script(
         f"rodeo trust --yes --config-dir {lab} </dev/null >/dev/null 2>&1 || true; "
         # A previous detached run's exit code must not describe this run.
         'rm -f "$exitf"; '
-        f"{_detached_job(up) if detach else _followed_job(up)}"
+        f"{_detached_job(up, base) if detach else _followed_job(up)}"
     )
 
 
@@ -329,23 +355,23 @@ def _followed_job(up: str) -> str:
     )
 
 
-def _detached_job(up: str) -> str:
+def _detached_job(up: str, base: str = "aws") -> str:
     """Start *up* as a job that records its own pid and outcome, then return.
 
-    The job, not this shell, writes ``aws-up.pid`` (its pid and start time,
+    The job, not this shell, writes ``<base>-up.pid`` (its pid and start time,
     field 22 of its /proc stat) before rodeo starts, so an instant failure
-    can't race us, and writes rodeo's exit code to ``aws-up.exit`` before it
+    can't race us, and writes rodeo's exit code to ``<base>-up.exit`` before it
     removes the pid file. It keeps today's redirections: nothing holds the SSH
     channel, so the session ends as soon as this script does.
     """
     job = (
-        'pidf="$HOME/.rodeo/logs/aws-up.pid"; exitf="$HOME/.rodeo/logs/aws-up.exit"; '
+        f'pidf="$HOME/.rodeo/logs/{base}-up.pid"; exitf="$HOME/.rodeo/logs/{base}-up.exit"; '
         # $$ is this job's shell. /proc/self would be sed's own process. Field
         # 22 counted after the ") " that closes the command name, which may
         # itself contain spaces: field 3 there is the first, so 22 is the 20th.
         'st=$(sed "s/^.*) //" /proc/$$/stat | cut -d " " -f 20); '
         'echo "$$ $st" >"$pidf"; '
-        f'{up} </dev/null >>"$HOME/.rodeo/logs/aws-up.log" 2>&1; '
+        f'{up} </dev/null >>"$HOME/.rodeo/logs/{base}-up.log" 2>&1; '
         'ec=$?; echo "$ec" >"$exitf.tmp" && mv -f "$exitf.tmp" "$exitf"; '
         'rm -f "$pidf"; exit "$ec"'
     )
@@ -444,18 +470,27 @@ def run_remote_up(
     ref: str | None = None,
     timeout: float = 7200.0,
     plan_dir: Path | None = None,
+    target: str = "aws",
+    log_name: str | None = None,
+    ssh_user: str | None = None,
+    identity_file: str | None = None,
+    lab_dir: str | None = None,
     detach: bool = False,
 ) -> dict[str, Any] | None:
     """SSH to the provisioned host and run ``rodeo up`` as baremetal.
 
-    With *plan_dir* the host deploys that lab's plan (see remote_up_script).
+    With *plan_dir* the host deploys that lab's plan (see remote_up_script). *target*,
+    *log_name*, *ssh_user*, *identity_file* and *lab_dir* serve a host that no provider
+    created (``deployment_target: remote``); their defaults are the aws path unchanged.
     With *detach* it returns once the host has started the deploy:
     ``{"state": "started", "pid", "start", "log", "host"}``, or
     ``{"state": "already_running", ...}`` (raised as AlreadyRunning, exit 75).
     """
-    inv, fh = _fleet_inventory_for(cfg, host)
+    inv, fh = _fleet_inventory_for(
+        cfg, host, ssh_user=ssh_user, identity_file=identity_file, lab_dir=lab_dir,
+    )
     provider_cfg = _provider_cfg(cfg)
-    lab_dir = str(provider_cfg.get("lab_dir") or _DEFAULT_LAB_DIR)
+    lab_dir = str(lab_dir or provider_cfg.get("lab_dir") or _DEFAULT_LAB_DIR)
     install_url, resolved_ref = resolve_install_source(provider_cfg, ref=ref)
     script = remote_up_script(
         lab_dir=lab_dir,
@@ -464,6 +499,8 @@ def run_remote_up(
         ref=resolved_ref,
         ship_plan=plan_dir is not None,
         detach=detach,
+        target=target,
+        log_name=log_name,
     )
     extra: dict[str, Any] = {}
     if plan_dir is not None:
@@ -495,14 +532,16 @@ def run_remote_up(
             raise ConfigError(
                 f"lost the session to {host.public_ip} (exit {result.rc}): {msg}\n"
                 "If the deploy had started, it keeps running on the host. Follow it with "
-                "`sudo tail -f /root/.rodeo/logs/aws-up.log` there; re-running "
+                f"`sudo tail -f /root/.rodeo/logs/{_log_base(log_name or target)}-up.log` "
+                "there; re-running "
                 "rodeo up refuses to start a second deploy while it runs."
             )
+        who = "the AMI's login user" if target == "aws" else f"{inv.defaults['ssh_user']} on the host"
         raise ConfigError(
             f"remote rodeo up failed on {host.public_ip} "
             f"(exit {result.rc}): {msg}\n"
-            "If the output is empty or mentions sudo, check that the AMI's "
-            "login user has passwordless sudo; otherwise the message above is "
+            f"If the output is empty or mentions sudo, check that {who} "
+            "has passwordless sudo; otherwise the message above is "
             "the real failure."
         )
     out = result.stdout or ""
@@ -513,7 +552,7 @@ def run_remote_up(
                 if code != "0":
                     raise ConfigError(
                         f"remote rodeo up exited {code} on {host.public_ip} "
-                        f"(see ~/.rodeo/logs/aws-up.log on the host)"
+                        f"(see ~/.rodeo/logs/{_log_base(log_name or target)}-up.log on the host)"
                     )
                 break
     if detach:

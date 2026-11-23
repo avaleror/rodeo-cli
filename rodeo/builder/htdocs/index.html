@@ -247,6 +247,12 @@
       <p class="alert warn-row unsaved"><strong>This rodeo is not saved.</strong> Deploying does not save it to your
         profiles: your changes stay only on this page and in this browser's draft.</p>
       <p id="dpWhere" class="note"></p>
+      <div id="dpHostRow" hidden>
+        <label class="label" for="dpHost">KVM host to deploy to</label>
+        <select id="dpHost" class="select"></select>
+        <p class="note muted">Its private key is stored encrypted: you are asked for the credential's
+          password when the deploy starts.</p>
+      </div>
       <div id="dpSecrets" hidden>
         <span class="label">Secrets only you have (saved to ~/.rodeo/secrets.yaml, never shown again)</span>
         <div id="dpSecretFields"></div>

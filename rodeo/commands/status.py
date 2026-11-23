@@ -45,8 +45,9 @@ def _colored(label: str, default: str = "white") -> Text:
 @click.option(
     "--cloud",
     is_flag=True,
-    help="Instead: the state of the last rodeo up --target aws on this lab's AWS host "
-         "(running, exited with its code, gone, none) and the tail of its log.",
+    help="Instead: the state of the last remote rodeo up on this lab's host — the AWS host "
+         "it provisioned, or the KVM host of deployment_target: remote — (running, exited "
+         "with its code, gone, none) and the tail of its log.",
 )
 @click.option("--lines", type=int, default=40, show_default=True,
               help="With --cloud: log lines to show (at most 500).")
@@ -120,12 +121,19 @@ def status_cmd(
 
 
 def _cloud_status(cfg: dict, lines: int, output_fmt: str) -> None:
-    """``rodeo status --cloud``: one SSH round trip, no job system."""
+    """``rodeo status --cloud``: one SSH round trip, no job system.
+
+    Reads whichever remote this plan deploys to: the provisioned AWS host, or the KVM host
+    of ``deployment_target: remote``, each with its own log, pid and exit files.
+    """
     from ..config import ConfigError
+    from ..providers.remote_host import deploys_to_remote
+    from ..providers.remote_host import status as remote_host_status
     from ..providers.remote_up import remote_up_status
 
+    read = remote_host_status if deploys_to_remote(cfg) else remote_up_status
     try:
-        report = remote_up_status(cfg, lines=lines)
+        report = read(cfg, lines=lines)
     except ConfigError as exc:
         if output_fmt == "json":
             click.echo(json.dumps({"state": "unknown", "error": str(exc)}, sort_keys=True))

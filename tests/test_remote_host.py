@@ -50,8 +50,8 @@ def test_execute_remote_up_runs_baremetal_on_the_host(monkeypatch, tmp_path):
 
     monkeypatch.setattr(remote_host, "run_remote_up", fake_run)
     cfg = _cfg(host="kvm-01", ssh_user="ops", identity_file=str(key), lab_dir="/srv/lab")
-    host = remote_host.execute_remote_up(cfg, profile="harvester", plan_dir=tmp_path)
-    assert host.public_ip == "kvm-01"
+    host, record = remote_host.execute_remote_up(cfg, profile="harvester", plan_dir=tmp_path)
+    assert host.public_ip == "kvm-01" and record is None
     # The host is a plain KVM host: it must not be told to ship the lab on to itself.
     assert seen["kw"]["target"] == "baremetal"
     assert seen["kw"]["ssh_user"] == "ops" and seen["kw"]["identity_file"] == str(key)
@@ -124,3 +124,46 @@ def test_profile_install_accepts_the_remote_target():
     from rodeo.profile_install import _TARGETS
 
     assert "remote" in _TARGETS
+
+
+def test_a_detached_remote_run_returns_the_hosts_record(monkeypatch, tmp_path):
+    key = tmp_path / "id"
+    key.write_text("KEY\n")
+    record = {"state": "started", "pid": 42, "start": "7", "log": "/root/.rodeo/logs/remote-up.log"}
+    seen = {}
+
+    def fake_run(cfg, host, **kw):
+        seen.update(kw)
+        return record
+
+    monkeypatch.setattr(remote_host, "run_remote_up", fake_run)
+    cfg = _cfg(host="kvm-01", identity_file=str(key))
+    host, info = remote_host.execute_remote_up(cfg, detach=True)
+    assert seen["detach"] is True and info == record and host.public_ip == "kvm-01"
+
+
+def test_status_reads_this_targets_own_files_on_the_plans_host(monkeypatch, tmp_path):
+    key = tmp_path / "id"
+    key.write_text("KEY\n")
+    seen = {}
+
+    def fake_status(cfg, **kw):
+        seen.update(kw)
+        return {"state": "running", "pid": 7}
+
+    monkeypatch.setattr(remote_host, "remote_up_status", fake_status)
+    cfg = _cfg(host="kvm-01", ssh_user="ops", identity_file=str(key))
+    assert remote_host.status(cfg, lines=9)["state"] == "running"
+    # Nothing provisioned this host, so it comes from the plan, not from saved AWS state.
+    assert seen["host"].public_ip == "kvm-01" and seen["log_name"] == "remote"
+    assert seen["ssh_user"] == "ops" and seen["identity_file"] == str(key)
+    assert seen["lines"] == 9
+
+
+def test_the_status_script_reads_one_targets_files():
+    from rodeo.providers.remote_up import _status_script
+
+    aws, remote = _status_script(), _status_script("remote")
+    assert 'log="$d/aws-up.log"' in aws and 'pidf="$d/aws-up.pid"' in aws
+    assert 'log="$d/remote-up.log"' in remote and 'exitf="$d/remote-up.exit"' in remote
+    assert "@BASE@" not in remote

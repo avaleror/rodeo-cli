@@ -262,7 +262,7 @@ def test_remote_up_status_reads_the_saved_host(monkeypatch, tmp_path):
 
 def test_remote_up_status_without_a_host(monkeypatch):
     monkeypatch.setattr(mod, "load_aws_host_state", lambda plan: None)
-    with pytest.raises(mod.ConfigError, match="no AWS host"):
+    with pytest.raises(mod.ConfigError, match="no cloud host"):
         mod.remote_up_status({"name": "lab", "provider": {"type": "aws"}})
 
 

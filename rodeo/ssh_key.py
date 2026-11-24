@@ -25,6 +25,10 @@ _REMOTE_ROOT_KEY = "/root/.ssh/id_ed25519"
 _LABS_SUBDIR = "labs"
 _KEY_NAME_FILE = "key_name"
 _REGION_FILE = "region"
+# The deployment id (issue #175): the 8 hex chars the key name ends with, kept
+# in its own file so nothing has to parse the name.
+_DEPLOYMENT_FILE = "deployment_id"
+_DEPLOYMENT_RE = re.compile(r"[0-9a-f]{8}")
 
 
 def build_ec2_userdata(
@@ -169,6 +173,13 @@ class LabKey:
     public: Path
     key_name: str
     region: str = ""
+    deployment: str = ""
+
+
+def _deployment_from_key_name(key_name: str) -> str:
+    """Fallback for keys made before the deployment_id file existed."""
+    last = key_name.rsplit("-", 1)[-1]
+    return last if _DEPLOYMENT_RE.fullmatch(last) else ""
 
 
 def _safe_lab(workshop: str) -> str:
@@ -194,7 +205,11 @@ def load_lab_ssh_key(workshop: str) -> LabKey | None:
         return None
     region_file = d / _REGION_FILE
     region = region_file.read_text().strip() if region_file.is_file() else ""
-    return LabKey(workshop, private, public, key_name, region)
+    dep_file = d / _DEPLOYMENT_FILE
+    deployment = dep_file.read_text().strip() if dep_file.is_file() else ""
+    if not _DEPLOYMENT_RE.fullmatch(deployment):
+        deployment = _deployment_from_key_name(key_name)
+    return LabKey(workshop, private, public, key_name, region, deployment)
 
 
 def new_lab_ssh_key(workshop: str, *, region: str = "") -> LabKey:
@@ -210,12 +225,15 @@ def new_lab_ssh_key(workshop: str, *, region: str = "") -> LabKey:
     d.mkdir(parents=True, mode=0o700)
     private = d / _PRIVATE_NAME
     _keygen(private, comment=f"rodeo-lab-{_safe_lab(workshop)}")
-    key_name = f"rodeo-{_safe_lab(workshop)[:200]}-{secrets.token_hex(4)}"
+    deployment = secrets.token_hex(4)
+    key_name = f"rodeo-{_safe_lab(workshop)[:200]}-{deployment}"
     (d / _KEY_NAME_FILE).write_text(key_name + "\n")
+    (d / _DEPLOYMENT_FILE).write_text(deployment + "\n")
     if region:
         (d / _REGION_FILE).write_text(region + "\n")
     fix_invoking_ownership()
-    return LabKey(workshop, private, private.with_name(f"{_PRIVATE_NAME}.pub"), key_name, region)
+    return LabKey(workshop, private, private.with_name(f"{_PRIVATE_NAME}.pub"), key_name, region,
+                  deployment)
 
 
 def delete_lab_ssh_key(workshop: str) -> None:

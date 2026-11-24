@@ -76,7 +76,7 @@ def test_provisioned_lab_hosts_ask_for_the_boot_install(ssh_home, monkeypatch):
     monkeypatch.setattr(AwsHostProvider, "_run_instances_kwargs", fake_kwargs)
     spec = SimpleNamespace(workshop="lab", ssh_user="ec2-user", extra_labels={})
     with pytest.raises(RuntimeError):
-        AwsHostProvider(ec2_client=object())._create(object(), spec, dict(_BASE), "primary")
+        AwsHostProvider(ec2_client=object())._create(object(), spec, dict(_BASE), "primary", {})
     assert seen["lab_host"] is True
 
 

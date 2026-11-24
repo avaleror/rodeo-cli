@@ -681,12 +681,14 @@ def destroy_primary(
     plan_name = str(cfg.get("name") or "rodeo")
     identity = resolve_ssh_identity(workshop=plan_name)
     ssh_user = str(provider_cfg.get("ssh_user") or "ec2-user")
+    saved = load_aws_host_state(plan_name) or {}
     spec = ProvisionSpec(
         workshop=plan_name,
         host_ids=[SINGLE_HOST_ID],
         ssh_user=ssh_user,
         identity_file=identity,
         wait_ssh=False,
+        known_instance_ids=[str(saved["provider_id"])] if saved.get("provider_id") else [],
     )
     getter = get_provider_fn or get_provider
     provider = getter(str(provider_cfg["type"]))

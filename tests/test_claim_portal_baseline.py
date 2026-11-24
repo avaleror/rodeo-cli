@@ -17,6 +17,7 @@ from rodeo.fleet.inventory import load_inventory
 from rodeo.providers.aws import MANAGED_SG_PORTS, AwsHostProvider
 from rodeo.providers.base import ProvisionSpec
 from tests.test_aws_managed_sg import _FakeEC2WithSG, _provider
+from tests.test_aws_managed_sg import DEMO_ID
 from tests.test_aws_managed_sg import managed_ssh  # noqa: F401 (fixture)
 
 REPO = Path(__file__).resolve().parent.parent
@@ -57,16 +58,16 @@ def test_default_managed_sg_has_only_operator_cidr_on_exactly_the_managed_ports(
     assert MANAGED_SG_PORTS == (22, 8443, 30002)
     fake = _FakeEC2WithSG()
     p = AwsHostProvider(ec2_client=fake, sleep=lambda s: None, caller_ip_fn=lambda: "203.0.113.9")
-    sg_id = p._resolve_security_groups(fake, _provider(), workshop="demo")[0]
+    sg_id = p._resolve_security_groups(fake, _provider(), workshop="demo", identity=DEMO_ID)[0]
     assert _all_cidrs(fake, sg_id) == {port: {"203.0.113.9/32"} for port in MANAGED_SG_PORTS}
 
 
 def test_managed_sg_rerun_from_same_ip_makes_no_ingress_calls():
     fake = _CountingEC2()
     p = AwsHostProvider(ec2_client=fake, sleep=lambda s: None, caller_ip_fn=lambda: "203.0.113.9")
-    p._resolve_security_groups(fake, _provider(), workshop="demo")
+    p._resolve_security_groups(fake, _provider(), workshop="demo", identity=DEMO_ID)
     fake.authorize_calls = fake.revoke_calls = 0
-    p._resolve_security_groups(fake, _provider(), workshop="demo")
+    p._resolve_security_groups(fake, _provider(), workshop="demo", identity=DEMO_ID)
     assert (fake.authorize_calls, fake.revoke_calls) == (0, 0)
 
 
@@ -75,7 +76,7 @@ def test_managed_sg_reconcile_revokes_a_hand_added_world_cidr():
     including 0.0.0.0/0 opened by hand, is revoked on the next run."""
     fake = _FakeEC2WithSG()
     p = AwsHostProvider(ec2_client=fake, sleep=lambda s: None, caller_ip_fn=lambda: "203.0.113.9")
-    sg_id = p._resolve_security_groups(fake, _provider(), workshop="demo")[0]
+    sg_id = p._resolve_security_groups(fake, _provider(), workshop="demo", identity=DEMO_ID)[0]
     fake.authorize_security_group_ingress(
         GroupId=sg_id,
         IpPermissions=[
@@ -83,7 +84,7 @@ def test_managed_sg_reconcile_revokes_a_hand_added_world_cidr():
              "IpRanges": [{"CidrIp": "0.0.0.0/0"}]}
         ],
     )
-    p._resolve_security_groups(fake, _provider(), workshop="demo")
+    p._resolve_security_groups(fake, _provider(), workshop="demo", identity=DEMO_ID)
     assert fake._cidrs_for(sg_id, 8443) == {"203.0.113.9/32"}
 
 

@@ -20,10 +20,14 @@ from ..ssh_key import (
     new_lab_ssh_key,
     plant_rodeo_ssh_key,
 )
+from ..ssh_key import _safe_lab as safe_lab
 from . import deadman
 from .base import (
+    OWNER_ENV,
     ROLE_PORTAL,
+    TAG_DEPLOYMENT,
     TAG_HOST_ID,
+    TAG_OWNER,
     TAG_ROLE,
     TAG_MANAGED_BY,
     TAG_MANAGED_BY_VALUE,
@@ -31,8 +35,15 @@ from .base import (
     DeprovisionResult,
     ProvisionedHost,
     ProvisionSpec,
+    check_owner,
+    deployment_tags,
     ownership_tags,
+    reject_reserved_labels,
 )
+
+LIVE_STATES = ["pending", "running", "stopping", "stopped"]
+TAG_RESOURCE = "rodeo-resource"
+LAB_SG_RESOURCE = "security-group"
 
 _REQUIRED = ("region", "subnet_id")
 
@@ -127,6 +138,62 @@ def _tag(inst: dict[str, Any], key: str) -> str | None:
     return None
 
 
+def _tags(resource: dict[str, Any]) -> dict[str, str]:
+    return {str(t.get("Key")): str(t.get("Value")) for t in resource.get("Tags") or []}
+
+
+def _tag_list(tags: dict[str, str]) -> list[dict[str, str]]:
+    return [{"Key": k, "Value": v} for k, v in tags.items()]
+
+
+def _rodeo_version() -> str:
+    from .. import __version__
+
+    return str(__version__)
+
+
+def _sts_caller_arn(region: str) -> str:
+    """The caller ARN from ``sts get-caller-identity`` (the ``Arn`` field).
+
+    The whole ARN, not the session name: a shared role whose session name is
+    ``aws-cli`` would otherwise give every caller the same owner."""
+    _require_boto3()
+    import boto3
+
+    try:
+        return str(boto3.client("sts", region_name=region or None).get_caller_identity()["Arn"])
+    except Exception as exc:  # noqa: BLE001 — botocore errors vary
+        raise ConfigError(
+            f"could not read the AWS caller identity (sts get-caller-identity): {exc}. "
+            f"Log in to AWS, or set {OWNER_ENV} in CI."
+        ) from exc
+
+
+def caller_owner(region: str = "", sts_fn: Callable[[str], str] = _sts_caller_arn) -> str:
+    """``rodeo-owner`` for this caller: ``RODEO_OWNER`` when set (STS is not
+    called), else the caller ARN."""
+    env = os.environ.get(OWNER_ENV, "").strip()
+    if env:
+        return check_owner(env)
+    return check_owner(sts_fn(region))
+
+
+def is_mine(inst: dict[str, Any], *, workshop: str, key: LabKey | None, owner: str) -> bool:
+    """Whether ``inst`` belongs to this caller's deployment of ``workshop``.
+
+    Tagged instances (issue #175) match on deployment id + owner. Instances from
+    before that match only when this machine holds the lab key they were
+    launched with. Without a local key nothing matches by tag: the lab name is
+    shared across people and proves nothing."""
+    tags = _tags(inst)
+    if tags.get(TAG_MANAGED_BY) != TAG_MANAGED_BY_VALUE or key is None:
+        return False
+    dep = tags.get(TAG_DEPLOYMENT)
+    if dep:
+        return bool(key.deployment) and dep == key.deployment and tags.get(TAG_OWNER) == owner
+    return tags.get(TAG_WORKSHOP) == workshop and inst.get("KeyName") == key.key_name
+
+
 def _require_boto3():
     try:
         import boto3  # noqa: F401
@@ -181,10 +248,27 @@ class AwsHostProvider:
         ec2_client: Any | None = None,
         sleep: Callable[[float], None] = time.sleep,
         caller_ip_fn: Callable[[], str] = _detect_caller_ip,
+        sts_fn: Callable[[str], str] = _sts_caller_arn,
     ) -> None:
         self._ec2 = ec2_client
         self._sleep = sleep
         self._caller_ip_fn = caller_ip_fn
+        self._sts_fn = sts_fn
+        self._owner_cache: str | None = None
+
+    def owner(self, config: dict[str, Any]) -> str:
+        """This caller's ``rodeo-owner`` value (cached per provider)."""
+        if self._owner_cache is None:
+            self._owner_cache = caller_owner(str(config.get("region") or ""), self._sts_fn)
+        return self._owner_cache
+
+    def identity_tags(self, config: dict[str, Any], key: LabKey) -> dict[str, str]:
+        if not key.deployment:
+            raise ConfigError(
+                f"lab key {key.key_name!r} has no deployment id; remove "
+                f"{key.private.parent} and deploy again"
+            )
+        return deployment_tags(self.owner(config), key.deployment, _rodeo_version())
 
     def _client(self, config: dict[str, Any]) -> Any:
         if self._ec2 is not None:
@@ -417,53 +501,45 @@ class AwsHostProvider:
         return str(groups[0]["GroupId"])
 
     @staticmethod
-    def _find_managed_sg(ec2: Any, *, vpc_id: str, workshop: str) -> str | None:
+    def _find_managed_sg(
+        ec2: Any, *, vpc_id: str, identity: dict[str, str], resource: str = LAB_SG_RESOURCE,
+    ) -> str | None:
+        """This deployment's rodeo-managed SG (lab or portal), by deployment +
+        owner tags. Never by name: two people may run labs with the same name."""
         resp = ec2.describe_security_groups(
             Filters=[
                 {"Name": "vpc-id", "Values": [vpc_id]},
                 {"Name": f"tag:{TAG_MANAGED_BY}", "Values": [TAG_MANAGED_BY_VALUE]},
-                {"Name": f"tag:{TAG_WORKSHOP}", "Values": [workshop]},
-                {"Name": "tag:rodeo-resource", "Values": ["security-group"]},
+                {"Name": f"tag:{TAG_DEPLOYMENT}", "Values": [identity[TAG_DEPLOYMENT]]},
+                {"Name": f"tag:{TAG_OWNER}", "Values": [identity[TAG_OWNER]]},
+                {"Name": f"tag:{TAG_RESOURCE}", "Values": [resource]},
             ]
         )
         groups = resp.get("SecurityGroups") or []
         return str(groups[0]["GroupId"]) if groups else None
 
     @staticmethod
-    def _create_managed_sg(ec2: Any, *, vpc_id: str, workshop: str) -> str:
-        name = f"rodeo-{workshop}"
-        tags = {
-            TAG_MANAGED_BY: TAG_MANAGED_BY_VALUE,
-            TAG_WORKSHOP: workshop,
-            "rodeo-resource": "security-group",
-        }
+    def _create_sg(
+        ec2: Any, *, vpc_id: str, name: str, description: str, tags: dict[str, str],
+    ) -> str:
+        """Create a tagged SG. On a duplicate name, reuse the existing group only
+        when it carries this deployment and owner; never reuse by name alone."""
         try:
             resp = ec2.create_security_group(
                 GroupName=name,
                 # EC2's GroupDescription rejects non-ASCII (rejected an em
-                # dash live on 2026-09-11) — keep this string plain ASCII.
-                Description=(
-                    f"rodeo-managed: {workshop} - SSH + Harvester UI + Rancher "
-                    f"NodePort ({', '.join(str(p) for p in MANAGED_SG_PORTS)})"
-                ),
+                # dash live on 2026-09-11), so keep this string plain ASCII.
+                Description=description,
                 VpcId=vpc_id,
-                TagSpecifications=[
-                    {
-                        "ResourceType": "security-group",
-                        "Tags": [{"Key": k, "Value": v} for k, v in tags.items()],
-                    }
-                ],
+                TagSpecifications=[{"ResourceType": "security-group", "Tags": _tag_list(tags)}],
             )
             return str(resp["GroupId"])
         except Exception as exc:  # noqa: BLE001
             code, message = _aws_error_parts(exc)
             if code != "InvalidGroup.Duplicate":
                 raise ConfigError(
-                    f"could not create security group {name!r} in vpc {vpc_id}: "
-                    f"{message}"
+                    f"could not create security group {name!r} in vpc {vpc_id}: {message}"
                 ) from exc
-            # Racing another run, or a stale untagged leftover from a name
-            # that matches ours: reuse it by name rather than fail.
             resp = ec2.describe_security_groups(
                 Filters=[
                     {"Name": "vpc-id", "Values": [vpc_id]},
@@ -474,9 +550,37 @@ class AwsHostProvider:
             if not groups:
                 raise ConfigError(
                     f"security group {name!r} reported as duplicate but not found "
-                    f"in vpc {vpc_id} — transient AWS inconsistency, retry"
+                    f"in vpc {vpc_id}: transient AWS inconsistency, retry"
+                ) from exc
+            found = _tags(groups[0])
+            if (found.get(TAG_DEPLOYMENT) != tags.get(TAG_DEPLOYMENT)
+                    or found.get(TAG_OWNER) != tags.get(TAG_OWNER)):
+                raise ConfigError(
+                    f"security group {name!r} already exists in vpc {vpc_id} and belongs "
+                    f"to another deployment or owner ({found.get(TAG_OWNER) or 'untagged'}). "
+                    "rodeo will not reuse it; delete it or deploy again for a new id."
                 ) from exc
             return str(groups[0]["GroupId"])
+
+    @classmethod
+    def _create_managed_sg(
+        cls, ec2: Any, *, vpc_id: str, workshop: str, identity: dict[str, str],
+    ) -> str:
+        return cls._create_sg(
+            ec2,
+            vpc_id=vpc_id,
+            name=f"rodeo-{safe_lab(workshop)[:200]}-{identity[TAG_DEPLOYMENT]}",
+            description=(
+                f"rodeo-managed: {workshop} - SSH + Harvester UI + Rancher "
+                f"NodePort ({', '.join(str(p) for p in MANAGED_SG_PORTS)})"
+            ),
+            tags={
+                TAG_MANAGED_BY: TAG_MANAGED_BY_VALUE,
+                TAG_WORKSHOP: workshop,
+                TAG_RESOURCE: LAB_SG_RESOURCE,
+                **identity,
+            },
+        )
 
     def _reconcile_managed_sg_ingress(
         self,
@@ -556,6 +660,7 @@ class AwsHostProvider:
         config: dict[str, Any],
         *,
         workshop: str | None = None,
+        identity: dict[str, str] | None = None,
     ) -> list[str]:
         """``provider.security_group_ids`` if given (BYO SG, unchanged
         behaviour); otherwise a rodeo-managed SG scoped to this machine's
@@ -572,11 +677,13 @@ class AwsHostProvider:
         if sgs:
             return list(sgs)
         vpc_id = self._vpc_id_for_subnet(ec2, str(config["subnet_id"]))
-        if not workshop:
+        if not workshop or identity is None:
             return [self._default_sg_for_vpc(ec2, vpc_id)]
-        sg_id = self._find_managed_sg(ec2, vpc_id=vpc_id, workshop=workshop)
+        sg_id = self._find_managed_sg(ec2, vpc_id=vpc_id, identity=identity)
         if sg_id is None:
-            sg_id = self._create_managed_sg(ec2, vpc_id=vpc_id, workshop=workshop)
+            sg_id = self._create_managed_sg(
+                ec2, vpc_id=vpc_id, workshop=workshop, identity=identity
+            )
         caller_ip = self._caller_ip_fn()
         self._reconcile_managed_sg_ingress(ec2, sg_id, f"{caller_ip}/32")
         if config.get("host_to_host"):
@@ -640,11 +747,15 @@ class AwsHostProvider:
             raise ConfigError(f"ports {bad} cannot be opened to students")
         ec2 = self._client(config)
         vpc_id = self._vpc_id_for_subnet(ec2, str(config["subnet_id"]))
-        sg_id = self._find_managed_sg(ec2, vpc_id=vpc_id, workshop=workshop)
+        key = load_lab_ssh_key(workshop)
+        sg_id = (
+            self._find_managed_sg(ec2, vpc_id=vpc_id, identity=self.identity_tags(config, key))
+            if key is not None else None
+        )
         if sg_id is None:
             raise ConfigError(
-                f"no rodeo-managed security group for workshop {workshop!r} "
-                "(run `rodeo fleet provision` first)"
+                f"no rodeo-managed security group of yours for workshop {workshop!r} "
+                "(run `rodeo fleet provision` first, from the machine that deployed it)"
             )
         caller_ip = self._caller_ip_fn()
         self._reconcile_managed_sg_ingress(
@@ -657,9 +768,9 @@ class AwsHostProvider:
         ec2: Any,
         config: dict[str, Any],
         *,
-        workshop: str,
+        identity: dict[str, str],
     ) -> DeprovisionResult | None:
-        """Best-effort delete of the rodeo-managed SG for this workshop.
+        """Best-effort delete of this deployment's rodeo-managed lab SG.
 
         Only called when ``provider.security_group_ids`` was unset (rodeo
         owns the SG). SG deletion fails with DependencyViolation while any
@@ -673,7 +784,7 @@ class AwsHostProvider:
             if not subnet_id:
                 return None
             vpc_id = self._vpc_id_for_subnet(ec2, subnet_id)
-            sg_id = self._find_managed_sg(ec2, vpc_id=vpc_id, workshop=workshop)
+            sg_id = self._find_managed_sg(ec2, vpc_id=vpc_id, identity=identity)
             if not sg_id:
                 return None
             for attempt in range(6):
@@ -823,17 +934,19 @@ class AwsHostProvider:
         profile = str(config.get("lab_profile") or config.get("profile") or "harvester")
         cfg = self.apply_instance_selection(config, profile=profile)
         self.validate(cfg)
+        reject_reserved_labels(cfg.get("labels"))
         ec2 = self._client(cfg)
         cfg = dict(cfg)
         cfg["ami"] = self.resolve_ami(ec2, cfg)
-        lab_key = self._lab_key(ec2, cfg, spec.workshop)
-        identity = str(lab_key.private)
+        lab_key, mine = self._lab_key(ec2, cfg, spec.workshop)
+        identity = self.identity_tags(cfg, lab_key)
+        key_path = str(lab_key.private)
         # The lab's own key for the SSH wait, whatever ProvisionSpec carried.
         wait_spec = ProvisionSpec(
             workshop=spec.workshop,
             host_ids=spec.host_ids,
             ssh_user=spec.ssh_user,
-            identity_file=identity,
+            identity_file=key_path,
             extra_labels=spec.extra_labels,
             wait_ssh=spec.wait_ssh,
             ssh_timeout=spec.ssh_timeout,
@@ -843,20 +956,24 @@ class AwsHostProvider:
         out: list[ProvisionedHost] = []
         to_create: list[str] = []
         existing_map: dict[str, dict[str, Any]] = {}
+        for inst in mine:
+            tags = _tags(inst)
+            if tags.get(TAG_ROLE) == ROLE_PORTAL:
+                continue
+            hid = tags.get(TAG_HOST_ID)
+            if hid and hid not in existing_map:
+                existing_map[hid] = inst
         for host_id in wait_spec.host_ids:
-            existing = self._find_owned(ec2, wait_spec.workshop, host_id)
-            if existing:
-                existing_map[host_id] = existing
-            else:
+            if host_id not in existing_map:
                 to_create.append(host_id)
         if to_create:
             self.assert_available(cfg, count=len(to_create))
         # Real managed SG (create/reuse + reconcile to this machine's current
-        # IP) only after capacity is confirmed — a failed capacity check must
+        # IP) only after capacity is confirmed: a failed capacity check must
         # not leave a security group behind. No-op when the operator supplied
         # provider.security_group_ids explicitly.
         cfg["security_group_ids"] = self._resolve_security_groups(
-            ec2, cfg, workshop=wait_spec.workshop
+            ec2, cfg, workshop=wait_spec.workshop, identity=identity
         )
         for host_id in wait_spec.host_ids:
             if host_id in existing_map:
@@ -865,7 +982,7 @@ class AwsHostProvider:
                 if inst["State"]["Name"] in ("stopped", "stopping"):
                     ec2.start_instances(InstanceIds=[inst["InstanceId"]])
             else:
-                inst = self._create(ec2, wait_spec, cfg, host_id)
+                inst = self._create(ec2, wait_spec, cfg, host_id, identity)
                 action = "create"
             inst = self._wait_running(ec2, inst["InstanceId"], timeout=float(cfg.get("wait_timeout") or 600))
             public_ip = (inst.get("PublicIpAddress") or "").strip()
@@ -873,13 +990,14 @@ class AwsHostProvider:
                 forget_host_key(wait_spec.workshop, public_ip)  # EC2 reuses public IPs
             if not public_ip:
                 raise ConfigError(
-                    f"AWS instance {inst['InstanceId']} ({host_id}) has no public IP — "
+                    f"AWS instance {inst['InstanceId']} ({host_id}) has no public IP: "
                     "enable associate_public_ip or use a subnet that assigns one"
                 )
             labels = {
                 "provider": "aws",
                 **wait_spec.extra_labels,
                 **(cfg.get("labels") or {}),
+                "deployment": identity[TAG_DEPLOYMENT],
             }
             expiry_tag = _tag(inst, deadman.TAG_EXPIRES_AT)
             if expiry_tag:
@@ -899,7 +1017,7 @@ class AwsHostProvider:
                     lab_dir="/",
                     defaults={
                         "ssh_user": wait_spec.ssh_user,
-                        "identity_file": identity,
+                        "identity_file": key_path,
                     },
                     hosts=[],
                 )
@@ -920,33 +1038,34 @@ class AwsHostProvider:
         spec: ProvisionSpec,
         config: dict[str, Any],
     ) -> list[DeprovisionResult]:
+        """Terminate this caller's deployment of ``spec.workshop`` (never a
+        teammate's lab with the same name): matched by deployment id + owner,
+        by the local key for labs from before issue #175, or, without a local
+        key, only the instance ids this machine recorded."""
         self.validate(config)
         ec2 = self._client(config)
-        # Always scope destroy to workshop tag; optionally limit to host ids
-        filters = [
-            {"Name": f"tag:{TAG_MANAGED_BY}", "Values": [TAG_MANAGED_BY_VALUE]},
-            {"Name": f"tag:{TAG_WORKSHOP}", "Values": [spec.workshop]},
-            {
-                "Name": "instance-state-name",
-                "Values": ["pending", "running", "stopping", "stopped"],
-            },
-        ]
-        resp = ec2.describe_instances(Filters=filters)
+        owner = self.owner(config)
+        key = load_lab_ssh_key(spec.workshop)
+        if key is not None:
+            lab = self._mine(ec2, spec.workshop, key)
+            self._adopt(ec2, config, spec.workshop, key, lab)
+            identity: dict[str, str] | None = self.identity_tags(config, key)
+        else:
+            lab = self._recorded(ec2, spec, owner)
+            deps = {_tags(i).get(TAG_DEPLOYMENT) for i in lab} - {None}
+            identity = (
+                deployment_tags(owner, deps.pop(), _rodeo_version()) if len(deps) == 1 else None
+            )
         targets: list[tuple[str, str]] = []  # host_id, instance_id
         want = set(spec.host_ids) if spec.host_ids else None
-        for res in resp.get("Reservations") or []:
-            for inst in res.get("Instances") or []:
-                tags = {t["Key"]: t["Value"] for t in inst.get("Tags") or []}
-                if tags.get(TAG_MANAGED_BY) != TAG_MANAGED_BY_VALUE:
-                    continue
-                if tags.get(TAG_WORKSHOP) != spec.workshop:
-                    continue
-                hid = tags.get(TAG_HOST_ID) or inst["InstanceId"]
-                if tags.get(TAG_ROLE) == ROLE_PORTAL:
-                    continue  # only deprovision_portal terminates the portal
-                if want is not None and hid not in want:
-                    continue
-                targets.append((hid, inst["InstanceId"]))
+        for inst in lab:
+            tags = _tags(inst)
+            hid = tags.get(TAG_HOST_ID) or inst["InstanceId"]
+            if tags.get(TAG_ROLE) == ROLE_PORTAL:
+                continue  # only deprovision_portal terminates the portal
+            if want is not None and hid not in want:
+                continue
+            targets.append((hid, inst["InstanceId"]))
 
         if not targets:
             results = [
@@ -970,89 +1089,180 @@ class AwsHostProvider:
                 ]
 
         # Managed-SG cleanup (only ours to delete when the operator didn't
-        # supply provider.security_group_ids) — but only once nothing else
-        # tagged for this workshop is still alive: `spec.host_ids` can scope
-        # a partial teardown (Fleet destroying one student while others keep
-        # running), and deleting a shared SG out from under them would be
-        # wrong. A fresh, unscoped re-query is the authoritative check —
-        # correct whether termination above just succeeded, failed, or found
-        # nothing to do (which also makes "re-run destroy to catch a
-        # leftover SG" work, per _cleanup_managed_sg's own retry message).
-        if not config.get("security_group_ids"):
-            terminated_ids = {iid for _, iid in targets}
-            remaining = ec2.describe_instances(Filters=filters)
+        # supply provider.security_group_ids), and only once nothing else of
+        # this deployment is still alive: `spec.host_ids` can scope a partial
+        # teardown (Fleet destroying one student while others keep running).
+        # A fresh re-query is the authoritative check, correct whether
+        # termination above succeeded, failed or found nothing to do.
+        terminated_ids = {iid for _, iid in targets}
+        if not config.get("security_group_ids") and identity is not None:
+            remaining = self._deployment_instances(ec2, identity)
+            if key is not None:
+                remaining += self._mine(ec2, spec.workshop, key)
             # The portal VM (F5.2) has its own SG and lifecycle: it must not keep
             # the lab SG alive, or `fleet deprovision --keep-portal` leaks it.
             still_alive = any(
                 inst["InstanceId"] not in terminated_ids
                 and _tag(inst, TAG_ROLE) != ROLE_PORTAL
-                for res in remaining.get("Reservations") or []
-                for inst in res.get("Instances") or []
+                for inst in remaining
             )
             if not still_alive:
-                cleanup = self._cleanup_managed_sg(ec2, config, workshop=spec.workshop)
+                cleanup = self._cleanup_managed_sg(ec2, config, identity=identity)
                 if cleanup:
                     results.append(cleanup)
         # The lab key lives exactly as long as the lab: gone with its last
         # instance. The portal counts here (it was launched with this key).
-        if not self._owned_instances(ec2, spec.workshop, exclude={iid for _, iid in targets}):
+        if key is not None and not self._mine(ec2, spec.workshop, key, exclude=terminated_ids):
             key_result = self._delete_lab_key(ec2, spec.workshop)
             if key_result:
                 results.append(key_result)
         return results
 
-    def _owned_instances(
-        self, ec2: Any, workshop: str, *, exclude: set[str] | None = None
-    ) -> list[dict[str, Any]]:
-        """Live (not terminated) rodeo instances of ``workshop``, portal included."""
+    def _live_instances(self, ec2: Any, filters: list[dict[str, Any]]) -> list[dict[str, Any]]:
         resp = ec2.describe_instances(Filters=[
-            {"Name": f"tag:{TAG_MANAGED_BY}", "Values": [TAG_MANAGED_BY_VALUE]},
-            {"Name": f"tag:{TAG_WORKSHOP}", "Values": [workshop]},
-            {"Name": "instance-state-name",
-             "Values": ["pending", "running", "stopping", "stopped"]},
+            *filters,
+            {"Name": "instance-state-name", "Values": LIVE_STATES},
         ])
-        skip = exclude or set()
         return [
             inst
             for res in resp.get("Reservations") or []
             for inst in res.get("Instances") or []
-            if inst["InstanceId"] not in skip
         ]
 
-    def _lab_key(self, ec2: Any, cfg: dict[str, Any], workshop: str) -> LabKey:
-        """The SSH key this deployment of ``workshop`` uses.
+    def _deployment_instances(self, ec2: Any, identity: dict[str, str]) -> list[dict[str, Any]]:
+        """Live instances tagged with this deployment id and owner."""
+        return self._live_instances(ec2, [
+            {"Name": f"tag:{TAG_MANAGED_BY}", "Values": [TAG_MANAGED_BY_VALUE]},
+            {"Name": f"tag:{TAG_DEPLOYMENT}", "Values": [identity[TAG_DEPLOYMENT]]},
+            {"Name": f"tag:{TAG_OWNER}", "Values": [identity[TAG_OWNER]]},
+        ])
 
-        A lab with live instances keeps the key it was created with; a new
-        deployment gets a freshly generated one (imported under a unique
-        name), after the previous one is deleted locally and in EC2.
-        """
+    def _mine(
+        self, ec2: Any, workshop: str, key: LabKey | None, *, exclude: set[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Live instances of this caller's deployment of ``workshop``, portal
+        included: tagged with the key's deployment id + this owner, plus
+        untagged ones from before issue #175 launched with this key."""
+        if key is None:
+            return []
+        owner = self._owner_cache or ""
+        found: dict[str, dict[str, Any]] = {}
+        if key.deployment:
+            for inst in self._live_instances(ec2, [
+                {"Name": f"tag:{TAG_MANAGED_BY}", "Values": [TAG_MANAGED_BY_VALUE]},
+                {"Name": f"tag:{TAG_DEPLOYMENT}", "Values": [key.deployment]},
+            ]):
+                found[inst["InstanceId"]] = inst
+        for inst in self._live_instances(ec2, [
+            {"Name": f"tag:{TAG_MANAGED_BY}", "Values": [TAG_MANAGED_BY_VALUE]},
+            {"Name": f"tag:{TAG_WORKSHOP}", "Values": [workshop]},
+        ]):
+            found.setdefault(inst["InstanceId"], inst)
+        skip = exclude or set()
+        return [
+            inst for iid, inst in found.items()
+            if iid not in skip and is_mine(inst, workshop=workshop, key=key, owner=owner)
+        ]
+
+    def _recorded(self, ec2: Any, spec: ProvisionSpec, owner: str) -> list[dict[str, Any]]:
+        """Destroy without the lab key: only instance ids this machine recorded,
+        and only those still tagged for this lab and not owned by someone else."""
+        ids = [i for i in spec.known_instance_ids if i]
+        if not ids:
+            raise ConfigError(
+                f"lab {spec.workshop!r} has no SSH key on this machine and no recorded "
+                "instance ids, so rodeo cannot tell which instances are yours. List "
+                "your deployments with `rodeo cloud ls` and remove one with "
+                "`rodeo cloud destroy <deployment>`."
+            )
+        out = []
+        for inst in self._live_instances(ec2, [{"Name": "instance-id", "Values": ids}]):
+            tags = _tags(inst)
+            if tags.get(TAG_MANAGED_BY) != TAG_MANAGED_BY_VALUE:
+                continue
+            if tags.get(TAG_WORKSHOP) != spec.workshop:
+                continue
+            if tags.get(TAG_OWNER) not in (None, owner):
+                continue
+            out.append(inst)
+        return out
+
+    def _adopt(
+        self,
+        ec2: Any,
+        config: dict[str, Any],
+        workshop: str,
+        key: LabKey,
+        lab: list[dict[str, Any]],
+    ) -> None:
+        """Add the deployment tags to this caller's instances from before issue
+        #175 (matched by the local key), plus their volumes, network interfaces,
+        rodeo security groups and the key pair. Old resource names stay."""
+        legacy = [i for i in lab if not _tag(i, TAG_DEPLOYMENT)]
+        if not legacy:
+            return
+        identity = self.identity_tags(config, key)
+        tag_list = _tag_list(identity)
+        ec2.create_tags(Resources=[i["InstanceId"] for i in legacy], Tags=tag_list)
+        for inst in legacy:
+            inst["Tags"] = [*(inst.get("Tags") or []), *tag_list]
+        extra: list[str] = []
+        sg_ids: set[str] = set()
+        for inst in legacy:
+            for bdm in inst.get("BlockDeviceMappings") or []:
+                vid = (bdm.get("Ebs") or {}).get("VolumeId")
+                if vid:
+                    extra.append(str(vid))
+            for eni in inst.get("NetworkInterfaces") or []:
+                if eni.get("NetworkInterfaceId"):
+                    extra.append(str(eni["NetworkInterfaceId"]))
+            sg_ids.update(str(g["GroupId"]) for g in inst.get("SecurityGroups") or [] if g.get("GroupId"))
+        try:
+            if sg_ids:
+                groups = ec2.describe_security_groups(GroupIds=sorted(sg_ids)).get("SecurityGroups") or []
+                for g in groups:
+                    gt = _tags(g)
+                    if (gt.get(TAG_MANAGED_BY) == TAG_MANAGED_BY_VALUE
+                            and gt.get(TAG_WORKSHOP) == workshop
+                            and not gt.get(TAG_DEPLOYMENT)):
+                        extra.append(str(g["GroupId"]))
+            pairs = ec2.describe_key_pairs(KeyNames=[key.key_name]).get("KeyPairs") or []
+            extra.extend(str(p["KeyPairId"]) for p in pairs if p.get("KeyPairId"))
+            if extra:
+                ec2.create_tags(Resources=extra, Tags=tag_list)
+        except Exception:  # noqa: BLE001 — the instances carry the tags; the rest is best-effort
+            pass
+
+    def _lab_key(
+        self, ec2: Any, cfg: dict[str, Any], workshop: str,
+    ) -> tuple[LabKey, list[dict[str, Any]]]:
+        """The SSH key this deployment of ``workshop`` uses, and its live instances.
+
+        A lab with live instances of this caller keeps the key it was created
+        with (older untagged ones get adopted). Otherwise this is a new
+        deployment: a freshly generated key and deployment id, after the
+        previous key is deleted locally and in EC2. A teammate's lab with the
+        same name is not ours and does not block this."""
         region = str(cfg.get("region") or "")
+        self.owner(cfg)
         self._sweep_stale_lab_keys(ec2, region, skip=workshop)
-        alive = self._owned_instances(ec2, workshop)
         key = load_lab_ssh_key(workshop)
-        if alive:
-            names = {str(i.get("KeyName") or "") for i in alive}
-            if key is None or key.key_name not in names:
-                ids = ", ".join(sorted(i["InstanceId"] for i in alive))
-                raise ConfigError(
-                    f"lab {workshop!r} already has instances in AWS ({ids}) launched "
-                    f"with key pair {', '.join(sorted(n for n in names if n)) or '(none)'}, "
-                    "whose private key is not on this machine. They were created "
-                    "from another machine or by another user of this account. "
-                    "Give your plan a different name, or destroy that lab from "
-                    "where it was deployed."
-                )
+        mine = self._mine(ec2, workshop, key)
+        if mine and key is not None:
+            self._adopt(ec2, cfg, workshop, key, mine)
         else:
             if key is not None:
                 delete_ec2_key_pair(ec2, key.key_name)
             key = new_lab_ssh_key(workshop, region=region)
+            mine = []
         ensure_ec2_key_pair(
             ec2,
             key_name=key.key_name,
             public_key=key.public,
-            tags={TAG_MANAGED_BY: TAG_MANAGED_BY_VALUE, TAG_WORKSHOP: workshop},
+            tags={TAG_MANAGED_BY: TAG_MANAGED_BY_VALUE, TAG_WORKSHOP: workshop,
+                  **self.identity_tags(cfg, key)},
         )
-        return key
+        return key, mine
 
     def _delete_lab_key(self, ec2: Any, workshop: str) -> DeprovisionResult | None:
         key = load_lab_ssh_key(workshop)
@@ -1070,34 +1280,18 @@ class AwsHostProvider:
     def _sweep_stale_lab_keys(self, ec2: Any, region: str, *, skip: str) -> None:
         """Delete this machine's lab keys whose lab is gone (dead-man switch,
         console termination): the key pair in EC2 and the private key here.
-        Only keys recorded for ``region``; never fails the caller."""
+        Only keys recorded for ``region``, and only when no instance of that
+        key's own deployment is left; never fails the caller."""
         try:
             for key in list_lab_ssh_keys():
                 if key.workshop == skip or not key.region or key.region != region:
                     continue
-                if self._owned_instances(ec2, key.workshop):
+                if self._mine(ec2, key.workshop, key):
                     continue
                 if delete_ec2_key_pair(ec2, key.key_name):
                     delete_lab_ssh_key(key.workshop)
         except Exception:  # noqa: BLE001 — housekeeping only
             pass
-
-    def _find_owned(self, ec2: Any, workshop: str, host_id: str) -> dict[str, Any] | None:
-        resp = ec2.describe_instances(
-            Filters=[
-                {"Name": f"tag:{TAG_MANAGED_BY}", "Values": [TAG_MANAGED_BY_VALUE]},
-                {"Name": f"tag:{TAG_WORKSHOP}", "Values": [workshop]},
-                {"Name": f"tag:{TAG_HOST_ID}", "Values": [host_id]},
-                {
-                    "Name": "instance-state-name",
-                    "Values": ["pending", "running", "stopping", "stopped"],
-                },
-            ]
-        )
-        for res in resp.get("Reservations") or []:
-            for inst in res.get("Instances") or []:
-                return inst
-        return None
 
     def _create(
         self,
@@ -1105,6 +1299,7 @@ class AwsHostProvider:
         spec: ProvisionSpec,
         config: dict[str, Any],
         host_id: str,
+        identity: dict[str, str],
     ) -> dict[str, Any]:
         kwargs = self._run_instances_kwargs(
             config,
@@ -1112,6 +1307,7 @@ class AwsHostProvider:
             workshop=spec.workshop,
             ssh_user=spec.ssh_user,
             extra_labels=spec.extra_labels,
+            identity=identity,
             dry_run=False,
             min_count=1,
             max_count=1,
@@ -1128,18 +1324,22 @@ class AwsHostProvider:
         workshop: str,
         ssh_user: str = "ec2-user",
         extra_labels: dict[str, str] | None = None,
+        identity: dict[str, str] | None = None,
         dry_run: bool = False,
         min_count: int = 1,
         max_count: int = 1,
         lab_host: bool = False,
     ) -> dict[str, Any]:
+        reject_reserved_labels(config.get("labels"))
         tags = {"Name": f"{workshop}-{host_id}"}
         for k, v in (config.get("labels") or {}).items():
             tags[str(k)] = str(v)
         for k, v in (extra_labels or {}).items():
             tags[str(k)] = str(v)
-        # Ownership and expiry go last so no label can replace them: deprovision
-        # finds instances by these tags, and a lost one would leak the instance.
+        # Identity, ownership and expiry go last so no label can replace them:
+        # deprovision finds instances by these tags, and a lost one would leak
+        # the instance or let someone else's destroy match it.
+        tags.update(identity or {})
         tags.update(ownership_tags(workshop, host_id))
         # Dead-man switch (deadman.py): every instance rodeo creates expires,
         # except kvm-hosts labs that turned it off (tagged "never").
@@ -1159,11 +1359,12 @@ class AwsHostProvider:
             "MinCount": min_count,
             "MaxCount": max_count,
             "NetworkInterfaces": [ni],
+            # Instance first (tests read index 0). AWS does not copy instance
+            # tags onto the root volume or the ENI, so both get their own entry
+            # and the disk shows up under the same tags on the bill (#175).
             "TagSpecifications": [
-                {
-                    "ResourceType": "instance",
-                    "Tags": [{"Key": k, "Value": v} for k, v in tags.items()],
-                }
+                {"ResourceType": rtype, "Tags": _tag_list(tags)}
+                for rtype in ("instance", "volume", "network-interface")
             ],
             "DryRun": dry_run,
             # The guest's dead-man timer powers it off; AWS then terminates it
@@ -1248,40 +1449,29 @@ class AwsHostProvider:
         )
 
     # ------------------------------------------------------------------ portal VM (F5.2)
-    def _find_portal_sg(self, ec2: Any, *, vpc_id: str, workshop: str) -> str | None:
-        resp = ec2.describe_security_groups(
-            Filters=[
-                {"Name": "vpc-id", "Values": [vpc_id]},
-                {"Name": f"tag:{TAG_MANAGED_BY}", "Values": [TAG_MANAGED_BY_VALUE]},
-                {"Name": f"tag:{TAG_WORKSHOP}", "Values": [workshop]},
-                {"Name": "tag:rodeo-resource", "Values": [PORTAL_SG_RESOURCE]},
-            ]
-        )
-        groups = resp.get("SecurityGroups") or []
-        return str(groups[0]["GroupId"]) if groups else None
-
-    def _ensure_portal_sg(self, ec2: Any, *, vpc_id: str, workshop: str) -> str:
+    def _ensure_portal_sg(
+        self, ec2: Any, *, vpc_id: str, workshop: str, identity: dict[str, str],
+    ) -> str:
         """Own SG for the portal: 80/443 from anywhere, 22 from the operator /32.
 
-        Tagged ``rodeo-resource: portal-security-group`` so ``_find_managed_sg``
-        (lab SG lookup, filters on ``security-group``) can never return it."""
-        sg_id = self._find_portal_sg(ec2, vpc_id=vpc_id, workshop=workshop)
+        Tagged ``rodeo-resource: portal-security-group`` so the lab SG lookup
+        (filters on ``security-group``) can never return it."""
+        sg_id = self._find_managed_sg(
+            ec2, vpc_id=vpc_id, identity=identity, resource=PORTAL_SG_RESOURCE
+        )
         if sg_id is None:
-            name = f"rodeo-{workshop}-portal"
-            resp = ec2.create_security_group(
-                GroupName=name,
-                Description=f"rodeo-managed: {workshop} claim portal - HTTPS 443, ACME 80, SSH operator",
-                VpcId=vpc_id,
-                TagSpecifications=[{
-                    "ResourceType": "security-group",
-                    "Tags": [
-                        {"Key": TAG_MANAGED_BY, "Value": TAG_MANAGED_BY_VALUE},
-                        {"Key": TAG_WORKSHOP, "Value": workshop},
-                        {"Key": "rodeo-resource", "Value": PORTAL_SG_RESOURCE},
-                    ],
-                }],
+            sg_id = self._create_sg(
+                ec2,
+                vpc_id=vpc_id,
+                name=f"rodeo-{safe_lab(workshop)[:200]}-{identity[TAG_DEPLOYMENT]}-portal",
+                description=f"rodeo-managed: {workshop} claim portal - HTTPS 443, ACME 80, SSH operator",
+                tags={
+                    TAG_MANAGED_BY: TAG_MANAGED_BY_VALUE,
+                    TAG_WORKSHOP: workshop,
+                    TAG_RESOURCE: PORTAL_SG_RESOURCE,
+                    **identity,
+                },
             )
-            sg_id = str(resp["GroupId"])
         caller = f"{self._caller_ip_fn()}/32"
         desired = {22: {caller}, **{p: {STUDENT_ACCESS_CIDR} for p in PORTAL_PUBLIC_PORTS}}
         perms = (ec2.describe_security_groups(GroupIds=[sg_id]).get("SecurityGroups") or [{}])[0]
@@ -1304,15 +1494,10 @@ class AwsHostProvider:
                                  for c in sorted(want - have)]}])
         return sg_id
 
-    def _find_portal(self, ec2: Any, workshop: str) -> dict[str, Any] | None:
-        resp = ec2.describe_instances(Filters=[
-            {"Name": f"tag:{TAG_MANAGED_BY}", "Values": [TAG_MANAGED_BY_VALUE]},
-            {"Name": f"tag:{TAG_WORKSHOP}", "Values": [workshop]},
-            {"Name": f"tag:{TAG_ROLE}", "Values": [ROLE_PORTAL]},
-            {"Name": "instance-state-name", "Values": ["pending", "running", "stopping", "stopped"]},
-        ])
-        for res in resp.get("Reservations") or []:
-            for inst in res.get("Instances") or []:
+    @staticmethod
+    def _portal_of(lab: list[dict[str, Any]]) -> dict[str, Any] | None:
+        for inst in lab:
+            if _tag(inst, TAG_ROLE) == ROLE_PORTAL:
                 return inst
         return None
 
@@ -1335,11 +1520,13 @@ class AwsHostProvider:
         ec2 = self._client(config)
         cfg = dict(config)
         cfg["ami"] = self.resolve_ami(ec2, cfg)
-        lab_key = self._lab_key(ec2, cfg, workshop)
+        lab_key, mine = self._lab_key(ec2, cfg, workshop)
+        tags_identity = self.identity_tags(cfg, lab_key)
         identity = str(lab_key.private)
         vpc_id = self._vpc_id_for_subnet(ec2, str(cfg["subnet_id"]))
-        sg_id = self._ensure_portal_sg(ec2, vpc_id=vpc_id, workshop=workshop)
-        inst = self._find_portal(ec2, workshop)
+        sg_id = self._ensure_portal_sg(ec2, vpc_id=vpc_id, workshop=workshop,
+                                       identity=tags_identity)
+        inst = self._portal_of(mine)
         action = "reuse"
         if inst is None:
             portal_cfg = {
@@ -1355,6 +1542,7 @@ class AwsHostProvider:
             kwargs = self._run_instances_kwargs(
                 portal_cfg, host_id=ROLE_PORTAL, workshop=workshop, ssh_user=ssh_user,
                 extra_labels={TAG_ROLE: ROLE_PORTAL},
+                identity=tags_identity,
             )
             inst = ec2.run_instances(**kwargs)["Instances"][0]
             action = "create"
@@ -1381,8 +1569,19 @@ class AwsHostProvider:
         """Terminate the portal VM, then delete its SG once its ENI is gone."""
         self.validate(config)
         ec2 = self._client(config)
+        self.owner(config)
+        key = load_lab_ssh_key(workshop)
+        if key is None:
+            raise ConfigError(
+                f"lab {workshop!r} has no SSH key on this machine, so rodeo cannot tell "
+                "which portal is yours. Use `rodeo cloud ls` and `rodeo cloud destroy "
+                "<deployment>`."
+            )
+        lab = self._mine(ec2, workshop, key)
+        self._adopt(ec2, config, workshop, key, lab)
+        tags_identity = self.identity_tags(config, key)
         results: list[DeprovisionResult] = []
-        inst = self._find_portal(ec2, workshop)
+        inst = self._portal_of(lab)
         if inst is not None:
             ec2.terminate_instances(InstanceIds=[inst["InstanceId"]])
             results.append(DeprovisionResult(id=ROLE_PORTAL, ok=True,
@@ -1391,7 +1590,9 @@ class AwsHostProvider:
             results.append(DeprovisionResult(id=ROLE_PORTAL, ok=True, detail="no portal instance"))
         try:
             vpc_id = self._vpc_id_for_subnet(ec2, str(config["subnet_id"]))
-            sg_id = self._find_portal_sg(ec2, vpc_id=vpc_id, workshop=workshop)
+            sg_id = self._find_managed_sg(
+                ec2, vpc_id=vpc_id, identity=tags_identity, resource=PORTAL_SG_RESOURCE
+            )
         except Exception:  # noqa: BLE001 - cleanup never fails the teardown
             sg_id = None
         if sg_id:
@@ -1411,8 +1612,110 @@ class AwsHostProvider:
             results.append(DeprovisionResult(id="portal-security-group", ok=True,
                                              provider_id=sg_id, detail=detail))
         exclude = {inst["InstanceId"]} if inst is not None else set()
-        if not self._owned_instances(ec2, workshop, exclude=exclude):
+        if not self._mine(ec2, workshop, key, exclude=exclude):
             key_result = self._delete_lab_key(ec2, workshop)
             if key_result:
                 results.append(key_result)
         return results
+
+    # ------------------------------------------------------------------ rodeo cloud (issue #175)
+    def list_deployments(self, config: dict[str, Any]) -> list[dict[str, Any]]:
+        """Every live rodeo instance in the region, grouped by deployment.
+
+        Instances from before issue #175 have no deployment id: they are grouped
+        by lab name + key pair and flagged ``legacy``."""
+        ec2 = self._client(config)
+        groups: dict[str, dict[str, Any]] = {}
+        for inst in self._live_instances(ec2, [
+            {"Name": f"tag:{TAG_MANAGED_BY}", "Values": [TAG_MANAGED_BY_VALUE]},
+        ]):
+            tags = _tags(inst)
+            dep = tags.get(TAG_DEPLOYMENT) or ""
+            gid = dep or f"legacy:{tags.get(TAG_WORKSHOP, '')}:{inst.get('KeyName') or ''}"
+            row = groups.setdefault(gid, {
+                "deployment": dep,
+                "legacy": not dep,
+                "workshop": tags.get(TAG_WORKSHOP, ""),
+                "owner": tags.get(TAG_OWNER, ""),
+                "key_name": str(inst.get("KeyName") or ""),
+                "hosts": [],
+                "instances": [],
+                "states": [],
+                "launched": "",
+                "expires": "",
+            })
+            row["hosts"].append(tags.get(TAG_HOST_ID) or inst["InstanceId"])
+            row["instances"].append(inst["InstanceId"])
+            row["states"].append(str((inst.get("State") or {}).get("Name") or ""))
+            launched = inst.get("LaunchTime") or ""
+            if launched and (not row["launched"] or launched < row["launched"]):
+                row["launched"] = launched
+            expires = tags.get(deadman.TAG_EXPIRES_AT, "")
+            if expires and (not row["expires"] or expires > row["expires"]):
+                row["expires"] = expires
+        return sorted(groups.values(), key=lambda r: (r["workshop"], r["deployment"]))
+
+    def destroy_deployment(
+        self, config: dict[str, Any], deployment: str, *, allow_foreign: bool = False,
+    ) -> list[DeprovisionResult]:
+        """Terminate every instance of one deployment, then its security groups
+        and key pair. Refuses a deployment owned by someone else unless
+        ``allow_foreign`` (the CLI asks for the owner to be typed first)."""
+        ec2 = self._client(config)
+        owner = self.owner(config)
+        insts = self._live_instances(ec2, [
+            {"Name": f"tag:{TAG_MANAGED_BY}", "Values": [TAG_MANAGED_BY_VALUE]},
+            {"Name": f"tag:{TAG_DEPLOYMENT}", "Values": [deployment]},
+        ])
+        dep_filter = [
+            {"Name": f"tag:{TAG_MANAGED_BY}", "Values": [TAG_MANAGED_BY_VALUE]},
+            {"Name": f"tag:{TAG_DEPLOYMENT}", "Values": [deployment]},
+        ]
+        sgs = ec2.describe_security_groups(Filters=dep_filter).get("SecurityGroups") or []
+        try:
+            pairs = ec2.describe_key_pairs(Filters=dep_filter).get("KeyPairs") or []
+        except Exception:  # noqa: BLE001 — a missing pair is not an error here
+            pairs = []
+        owners = {_tags(r).get(TAG_OWNER, "") for r in [*insts, *sgs, *pairs]}
+        if not owners:
+            return [DeprovisionResult(id=deployment, ok=True, detail="nothing found")]
+        foreign = sorted(o for o in owners if o != owner)
+        if foreign and not allow_foreign:
+            raise ConfigError(
+                f"deployment {deployment} belongs to {', '.join(foreign)}, not to you "
+                f"({owner}). Pass --not-mine to remove it anyway."
+            )
+        results: list[DeprovisionResult] = []
+        if insts:
+            ec2.terminate_instances(InstanceIds=[i["InstanceId"] for i in insts])
+            results += [
+                DeprovisionResult(id=_tag(i, TAG_HOST_ID) or i["InstanceId"], ok=True,
+                                  provider_id=i["InstanceId"], detail="terminating")
+                for i in insts
+            ]
+        for sg in sgs:
+            results.append(self._delete_sg_retrying(ec2, str(sg["GroupId"])))
+        for pair in pairs:
+            name = str(pair.get("KeyName") or "")
+            ok = delete_ec2_key_pair(ec2, name)
+            results.append(DeprovisionResult(
+                id="key-pair", ok=True, provider_id=name,
+                detail="deleted" if ok else "delete failed - re-run to retry",
+            ))
+        return results
+
+    def _delete_sg_retrying(self, ec2: Any, sg_id: str, attempts: int = 12) -> DeprovisionResult:
+        detail = "still attached - re-run in a minute"
+        for attempt in range(attempts):
+            try:
+                ec2.delete_security_group(GroupId=sg_id)
+                detail = "deleted"
+                break
+            except Exception as exc:  # noqa: BLE001
+                code, _ = _aws_error_parts(exc)
+                if code != "DependencyViolation":
+                    detail = f"cleanup skipped ({code or 'error'})"
+                    break
+                if attempt < attempts - 1:
+                    self._sleep(10)
+        return DeprovisionResult(id="security-group", ok=True, provider_id=sg_id, detail=detail)

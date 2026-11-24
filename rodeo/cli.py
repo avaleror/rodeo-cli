@@ -43,6 +43,7 @@ from .commands.eject_iso_cmd import eject_iso_cmd
 from .commands.watch import watch_cmd
 from .commands.fleet_cmd import fleet_cmd
 from .commands.destroy_cmd import destroy_cmd
+from .commands.cloud_cmd import cloud_cmd
 from .config import ConfigError
 
 
@@ -121,5 +122,6 @@ cli.add_command(pull_edge_image_cmd,  name="pull-edge-image")
 cli.add_command(eject_iso_cmd,        name="eject-iso")
 cli.add_command(fleet_cmd,            name="fleet")
 cli.add_command(destroy_cmd,          name="destroy")
+cli.add_command(cloud_cmd,            name="cloud")
 cli.add_command(mcp_cmd,              name="mcp")
 cli.add_command(agent_setup_cmd,      name="agent-setup")

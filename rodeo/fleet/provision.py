@@ -59,6 +59,7 @@ def fleet_deprovision(
         ssh_user=inventory.ssh_user,
         identity_file=inventory.identity_file,
         wait_ssh=False,
+        known_instance_ids=[h.provider_id for h in inventory.hosts if h.provider_id],
     )
     provider = get_provider(str(provider_cfg["type"]))
     return provider.deprovision(spec, provider_cfg)

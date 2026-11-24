@@ -17,6 +17,7 @@ from rodeo.fleet.status import HostStatusResult
 from rodeo.providers.aws import MANAGED_SG_PORTS, AwsHostProvider
 from rodeo.providers.base import ProvisionSpec
 from rodeo.secretgen import is_strong_password, random_password
+from rodeo.ssh_key import load_lab_ssh_key, new_lab_ssh_key
 from tests.test_aws_managed_sg import _FakeEC2WithSG, _provider
 from tests.test_aws_managed_sg import managed_ssh  # noqa: F401 (fixture)
 from tests.test_claim_portal_baseline import _all_cidrs, _CountingEC2
@@ -137,7 +138,12 @@ def _aws(fake) -> AwsHostProvider:
 
 
 def _provisioned(fake) -> str:
-    return _aws(fake)._resolve_security_groups(fake, _provider(), workshop="demo")[0]
+    """The lab SG of this machine's deployment of "demo" (it holds the lab key)."""
+    key = load_lab_ssh_key("demo") or new_lab_ssh_key("demo", region="eu-central-1")
+    p = _aws(fake)
+    return p._resolve_security_groups(
+        fake, _provider(), workshop="demo", identity=p.identity_tags(_provider(), key)
+    )[0]
 
 
 def test_open_adds_world_only_on_requested_ui_ports():
@@ -207,7 +213,8 @@ def test_single_host_provision_never_opens_even_with_student_access_in_config(
         ProvisionSpec(workshop="demo", host_ids=["primary"], ssh_user="ec2-user", wait_ssh=False),
         _provider(student_access="open"),
     )
-    sg_id = next(g["GroupId"] for g in fake.security_groups.values() if g["GroupName"] == "rodeo-demo")
+    sg_id = next(g["GroupId"] for g in fake.security_groups.values()
+                 if g["GroupName"].startswith("rodeo-demo-"))
     assert _all_cidrs(fake, sg_id) == {p: {OPERATOR} for p in MANAGED_SG_PORTS}
 
 

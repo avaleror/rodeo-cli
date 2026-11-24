@@ -300,3 +300,10 @@ def test_fill_missing_from_profile_ignores_non_bundled(tmp_path):
     from rodeo.labseed import fill_missing_from_profile
 
     assert fill_missing_from_profile("no-such-profile", tmp_path) == []
+
+
+def test_seed_lab_accepts_remote_target(tmp_path):
+    """`rodeo up --target remote` on a new lab used to crash in normalize_plan."""
+    lab = seed_lab("rancher-test", tmp_path / "remote-lab", deployment_target="remote")
+    plan = yaml.safe_load((lab / "rodeo-plan.yaml").read_text())
+    assert plan["deployment_target"] == "remote"

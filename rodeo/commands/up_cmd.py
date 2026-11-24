@@ -439,7 +439,8 @@ def _remote_control_plane_deploy(
     from ..providers.remote_host import execute_remote_up, host_block, ssh_user
 
     try:
-        cfg = load_config("rodeo-plan.yaml", config_dir=str(lab))
+        # secrets="all", like the aws path: validate_config needs ??key placeholders resolved.
+        cfg = load_config("rodeo-plan.yaml", config_dir=str(lab), secrets="all")
         validate_config(cfg)
     except (ConfigError, ValueError) as exc:
         console.print(f"[red]✗  {exc}[/red]")

@@ -22,3 +22,18 @@ jobs:
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+      # A new release is not the validated one until a live deploy passed and a
+      # PR moved STABLE to it (docs/releasing.md). GitHub marks every new
+      # release "Latest"; put the badge back on the release install.sh installs.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Keep "Latest" on the STABLE release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="$(tr -d '[:space:]' < STABLE)"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release edit "$tag" --latest
+          else
+            echo "::warning::STABLE names $tag, which has no GitHub release"
+          fi

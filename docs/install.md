@@ -35,7 +35,12 @@ prints the `PATH` line to add if `~/.local/bin` is not on it yet.
 It needs `git` and `curl`. On macOS they come with the Xcode command line tools
 (`xcode-select --install`); on Linux, as root, the installer adds them itself.
 
-- `--ref <tag|branch|sha>` pins a version.
+- By default it installs the **latest validated release**: the version that last
+  passed a live deploy, recorded in the [`STABLE`](https://github.com/avaleror/rodeo-cli/blob/main/STABLE)
+  file. A release tagged after it isn't installed until it passes too
+  ([how releases are validated](releasing.md)).
+- `--ref <tag|branch|sha>` installs something else: a specific release
+  (`--ref v0.33.0`), or `--ref main` for the latest code.
 - `--mode kvm-host|control-plane` (or `RODEO_MODE`) overrides the automatic choice,
   for example a KVM host on another distribution at your own risk.
 - `--no-builder` (or `RODEO_BUILDER=0`) skips the [Rodeo Builder service](#rodeo-builder-service)
@@ -183,8 +188,9 @@ session (sleep, Wi-Fi, Ctrl-C), the deploy keeps running on the host. Its log is
 starting a second one.
 
 **Which rodeo runs where.** Your local checkout only drives the control side. KVM
-hosts install rodeo from GitHub (`main`, or the ref you pass with `--ref` /
-`lab.ref`), so a local change reaches the hosts only after it is pushed. The one
+hosts install rodeo from GitHub: the same release your laptop runs, `main` when
+your laptop runs a checkout between releases, or the ref you pass with `--ref` /
+`lab.ref`. A local change reaches the hosts only after it is pushed. The one
 exception is the claim portal: `rodeo fleet portal up` copies the portal code from
 your local checkout to the portal VM.
 

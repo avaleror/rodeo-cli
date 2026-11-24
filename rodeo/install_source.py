@@ -169,7 +169,10 @@ def bootstrap_fragment(*, install_url: str, ref: str | None = None) -> str:
     run could "pass" against stale code.
 
     Without a ref the guard stays: don't move a pinned host's version unasked
-    — the same stance as ``clean --refresh``.
+    — the same stance as ``clean --refresh``. That first install asks for main
+    explicitly: no ref means the operator runs a checkout between releases,
+    and install.sh's own default (the STABLE release) would put the host on
+    older code than the laptop driving it.
 
     A set RODEO_REPO is passed on to the remote install.sh.
     """
@@ -181,7 +184,7 @@ def bootstrap_fragment(*, install_url: str, ref: str | None = None) -> str:
     else:
         install = (
             "if ! command -v rodeo >/dev/null 2>&1; then "
-            f"curl -fsSL {url} | {bash}; "
+            f"curl -fsSL {url} | {bash} -s -- --ref main; "
             "fi; "
         )
     return f"{install}command -v rodeo >/dev/null"

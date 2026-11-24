@@ -47,7 +47,7 @@ Then:
 rodeo up
 ```
 
-That is it. The installer clones the repo, sets up a Python environment internally, and links `rodeo` as a system command. No venv to activate, no PATH to set, no sudo prefix, ever.
+That is it. The installer installs the latest validated release (the one in [`STABLE`](STABLE), which passed a live deploy; `--ref main` for the latest code), sets up a Python environment internally, and links `rodeo` as a system command. No venv to activate, no PATH to set, no sudo prefix, ever.
 
 On a laptop (macOS, or any other Linux, SLES 15 included) the same command installs rodeo as a control machine, without root, and you deploy to the cloud instead:
 
@@ -152,7 +152,7 @@ rodeo picks the region (`eu-north-1`, or `$RODEO_AWS_REGION`), the default VPC s
 | `install-extensions` | Install Rancher UI extensions (e.g. Harvester) |
 | `pull-edge-image` | (SUSE Edge) Seed edge node boot disks from the EIB VM or a local image |
 | `eject-iso` | (SUSE Edge) Remove the install ISO from edge nodes and boot from disk |
-| `self-update` | Align to the latest `main` and reinstall the CLI in one shot, then restart the Rodeo Builder service on a host that runs it (`--no-restart` to skip); refuses to discard local changes without `--force` |
+| `self-update` | Move to the latest validated release (`--branch main` for the latest code) and reinstall the CLI in one shot, then restart the Rodeo Builder service on a host that runs it (`--no-restart` to skip); refuses to discard local changes without `--force` |
 | `bootstrap` | (advanced) One-shot host setup for clean SLES, links binary, seeds a lab dir |
 | `generate` | (advanced) Interactive config-dir skeleton from templates |
 

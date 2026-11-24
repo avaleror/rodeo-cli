@@ -196,7 +196,10 @@ def test_remote_up_script_without_a_ref_leaves_an_existing_install_alone():
     a pinned host's rodeo out from under it unasked."""
     script = remote_up_script(lab_dir="/root/lab", profile="test")
     assert "if ! command -v rodeo >/dev/null 2>&1; then" in script
-    assert "--ref" not in script
+    # The first install asks for main (a checkout between releases), only
+    # inside the guard: an existing install is never reset.
+    assert "bash -s -- --ref main; fi;" in script
+    assert script.count("--ref") == 1
 
 
 def test_remote_up_script_with_a_ref_always_reinstalls():
@@ -291,7 +294,7 @@ def test_bootstrap_forwards_rodeo_repo(monkeypatch):
     monkeypatch.setenv("RODEO_REPO", "https://github.com/fork/rodeo-cli.git")
     frag = bootstrap_fragment(install_url="https://x/install.sh", ref="main")
     assert "| RODEO_REPO=https://github.com/fork/rodeo-cli.git bash -s -- --ref main" in frag
-    assert "RODEO_REPO=https://github.com/fork/rodeo-cli.git bash;" in bootstrap_fragment(
+    assert "RODEO_REPO=https://github.com/fork/rodeo-cli.git bash -s -- --ref main;" in bootstrap_fragment(
         install_url="https://x/install.sh"
     )
 

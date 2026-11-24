@@ -134,6 +134,7 @@ Must be unique per host. Changing `name` after deploy creates orphaned resources
 | `baremetal` | Full deploy on the host rodeo runs on (this machine). `finalise` enables VM autostart on host reboot. |
 | `instruqt` | `finalise` is skipped automatically. Run it after the Instruqt snapshot: `rodeo deploy --from finalise --finalise` |
 | `aws` | Laptop control plane: require a `provider:` block, provision/reuse one EC2 KVM host, wait for SSH, remote-run `rodeo up` on that host. Tear down with `rodeo destroy --cloud --yes`. BYO: create the instance yourself, keep `deployment_target: aws` (or set `storage.backend: nvme`) and deploy on the box. |
+| `gcp` | Same as `aws` on Google Cloud: provision/reuse one Compute Engine VM with nested virtualization, wait for SSH, remote-run `rodeo up` on it. Tear down with `rodeo destroy --cloud --yes`. See [`provider` (gcp)](#provider-when-deployment_target-gcp). |
 
 | `remote` | Control plane: deploy to a KVM host you already own. Requires a `remote_host:` block, ships the lab's plan files over SSH and runs `rodeo up --target baremetal` on the host. Nothing is provisioned and `rodeo destroy --cloud` does not apply: the host is yours. |
 
@@ -357,6 +358,54 @@ PAYG avoids both traps at a licence surcharge of roughly $0.125/hr on
 pubkey for **root** and **passwordless sudo** for `ssh_user` (`ec2-user` on SLES 16).
 Remote `rodeo up` runs under `sudo -n` so it never prompts. `rodeo ssh primary`
 or `rodeo ssh primary/rancher` use the same managed key.
+
+### `provider` (when `deployment_target: gcp`)
+
+**The block is optional for `rodeo up --target gcp`.** Log in once with
+`gcloud auth application-default login`, then any profile deploys with
+`rodeo up --profile <name> --target gcp`. Missing fields are filled in and written
+back to `rodeo-plan.yaml`:
+
+| Field | Default |
+|-------|---------|
+| `type` | `gcp` |
+| `project` | `$RODEO_GCP_PROJECT` / `$GOOGLE_CLOUD_PROJECT`, else the application default credentials' quota project, else `gcloud config get-value project` |
+| `region` | `$RODEO_GCP_REGION`, else `europe-west4` (the only EU region with every tier) |
+| `zone` | first zone of the region that offers the machine type; the next one when a zone has no capacity |
+| `instance_type` | the profile's `recommended` tier (see the table below) |
+| `image` | latest `sles-16-1-x86-64` from `suse-cloud` (SLES 16.1 pay-as-you-go). `image_family` / `image_project` pick another family |
+| `ssh_user` | `rodeo` (created by the guest agent from the lab key in `ssh-keys` metadata, with passwordless sudo) |
+| `network` / `subnetwork` | `rodeo-<region>` for both, created on first use (10.90.0.0/20). Set them to use your own VPC |
+| `allowed_cidrs` | this machine's public IP (`/32`) |
+| `boot_disk_gb` | 100 on `-lssd` shapes; on shapes without local SSD, the plan's guest disks plus 60 |
+| `service_account` | `default` (the project's compute service account) with only the `userinfo.email` scope |
+| `ttl_hours` | `6`: the dead-man switch |
+
+What rodeo creates, all labelled `managed-by=rodeo` and `rodeo-workshop=<lab>`:
+
+- **The VM**, with `enableNestedVirtualization`. Only Intel series run nested KVM on GCE
+  (C4, N4, N2, C3, Z3); AMD, Arm and E2 shapes are refused.
+- **A firewall rule** `rodeo-<lab>` for ports 22, 8443 and 30002 from `allowed_cidrs`,
+  re-scoped when your IP changes, deleted with the last instance.
+- **The dead-man switch is native**: `scheduling.maxRunDuration` with
+  `instanceTerminationAction: DELETE`. Google deletes the VM and its disks at expiry, even
+  if your laptop is off.
+- **A service account on the VM.** SLES pay-as-you-go registers its repositories with the
+  VM's identity token. Without a service account there is no token and zypper has no
+  repositories.
+
+**Machine types per tier** (bare metal is left out for now: it starts at 192 vCPU and
+about $9/h):
+
+| Tier | Series | Example |
+|------|--------|---------|
+| `budget` | N4 + Hyperdisk Balanced (no local SSD, the pool sits on the boot disk) | `n4-standard-16` |
+| `recommended` | C4 `-lssd` (local NVMe) | `c4-standard-16-lssd`, `c4-standard-32-lssd` for Harvester |
+| `performance` | a bigger or high-memory C4 `-lssd` | `c4-highmem-32-lssd` |
+
+Local SSD comes as 375 GiB NVMe disks, several of them on shapes above 8 vCPU
+(`c4-standard-32-lssd` has 5). The `kvm_host` phase stripes them into one RAID0 pool for
+`image_dir`. The data is gone when the VM stops, like an AWS instance store.
 
 ### `resources`
 

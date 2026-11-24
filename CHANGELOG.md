@@ -5,12 +5,9 @@
 
 ### Features
 
-* **builder:** close any warning or error message ([8ffd528](https://github.com/avaleror/rodeo-cli/commit/8ffd528cf03583306251300d4a39dcadcdf8f413))
 * **builder:** close any warning or error message ([f693f6f](https://github.com/avaleror/rodeo-cli/commit/f693f6f49d1177d4a78d3366b86f4cb93da23ec8)), closes [#206](https://github.com/avaleror/rodeo-cli/issues/206)
 * **builder:** name the local target and deploy to a KVM host over SSH ([af8e64c](https://github.com/avaleror/rodeo-cli/commit/af8e64c615a48d0f071d1b64646d0c23b73bfbdd))
-* **install:** install the latest validated release by default ([5b6a07c](https://github.com/avaleror/rodeo-cli/commit/5b6a07c2aaa03fcf55425f2994f75952b10c19bf))
 * **install:** install the latest validated release by default ([a1b723f](https://github.com/avaleror/rodeo-cli/commit/a1b723fb36af4f4c35f5d922ac2c4f5f8e4d9e93))
-* **remote:** detach and status for a KVM host deploy ([766f35f](https://github.com/avaleror/rodeo-cli/commit/766f35fa9c7336bc86d264c984364f0d5114a5ea))
 * **remote:** detach and status for a KVM host deploy ([c08a054](https://github.com/avaleror/rodeo-cli/commit/c08a054102a6fa9ac123b69aa6d96db02fde6139))
 
 
@@ -21,7 +18,6 @@
 
 ### Documentation
 
-* **smlm-workshop:** drop the outdated "bump ref" comment ([aad119c](https://github.com/avaleror/rodeo-cli/commit/aad119cd3e47bb0bc5ef2bc67d27382482bf09c0))
 * **smlm-workshop:** drop the outdated "bump ref" comment ([58e2ce8](https://github.com/avaleror/rodeo-cli/commit/58e2ce8992dd094a677891f987d560112975b8ac))
 
 ## [0.32.2](https://github.com/avaleror/rodeo-cli/compare/v0.32.1...v0.32.2) (2026-11-23)

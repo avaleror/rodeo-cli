@@ -330,3 +330,24 @@ def test_cloud_targets_run_the_matching_target_on_the_host():
     assert _cloud_target({"deployment_target": "gcp"}) == "gcp"
     assert _cloud_target({"deployment_target": "aws"}) == "aws"
     assert default_ssh_user("gcp") == "rodeo" and default_ssh_user("aws") == "ec2-user"
+
+
+def test_provision_waits_for_the_image_repositories(ssh_dir, monkeypatch):
+    """SLES PAYG registers its repos after sshd answers; the installer needs them."""
+    calls = []
+
+    class Result:
+        def __init__(self, ok):
+            self.ok = ok
+
+    def fake_run(inv, fh, cmd, **kw):
+        calls.append(cmd)
+        return Result(len(calls) >= 3)
+
+    monkeypatch.setattr(gcp, "run_remote", fake_run)
+    p = _provider(FakeApi())
+    monkeypatch.setattr(p, "_wait_ssh", lambda *a, **k: None)
+    monkeypatch.setattr(gcp, "plant_rodeo_ssh_key", lambda *a, **k: None)
+    spec = ProvisionSpec(workshop="lab", host_ids=["primary"], ssh_user="rodeo", wait_ssh=True)
+    p.provision(spec, {"type": "gcp", "instance_type": "c4-standard-8-lssd", "region": "europe-west4"})
+    assert len(calls) == 3 and "zypper" in calls[0][-1]

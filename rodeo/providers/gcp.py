@@ -31,7 +31,7 @@ from typing import Any, Callable
 
 from ..config import ConfigError
 from ..fleet.inventory import FleetHost, FleetInventory
-from ..fleet.ssh_exec import forget_host_key
+from ..fleet.ssh_exec import forget_host_key, run_remote
 from ..ssh_key import (
     LabKey,
     delete_lab_ssh_key,
@@ -477,6 +477,7 @@ class GcpHostProvider:
                                    provider_id=inst["name"])
             if wait_spec.wait_ssh:
                 self._wait_ssh(wait_spec, host, timeout=wait_spec.ssh_timeout)
+                self._wait_repos(wait_spec, host, timeout=float(cfg.get("repo_timeout") or 600))
                 inv = FleetInventory(name=spec.workshop, lab_dir="/", hosts=[],
                                      defaults={"ssh_user": ssh_user, "identity_file": str(lab_key.private)})
                 plant_rodeo_ssh_key(inv, FleetHost(id=host.id, ssh=host.ssh, public_ip=host.public_ip),
@@ -597,6 +598,30 @@ class GcpHostProvider:
                 return inst
             self._sleep(5)
         raise ConfigError(f"timed out waiting for GCE instance {name} to be running")
+
+    # SLES PAYG on GCE registers its repositories (guestregister) a minute or two after
+    # sshd answers. rodeo's installer runs zypper straight away, and with no repositories
+    # it fails ("No repositories defined"). Live-caught 2026-11-24. Images without zypper
+    # pass at once.
+    _REPOS_READY = ("command -v zypper >/dev/null || exit 0; "
+                    "sudo -n zypper -n -q lr >/dev/null 2>&1")
+
+    def _wait_repos(self, spec: ProvisionSpec, host: ProvisionedHost, *, timeout: float) -> None:
+        inv = FleetInventory(name=spec.workshop, lab_dir="/", hosts=[],
+                             defaults={"ssh_user": spec.ssh_user, "identity_file": spec.identity_file})
+        fh = FleetHost(id=host.id, ssh=host.ssh, public_ip=host.public_ip)
+        deadline = time.monotonic() + timeout
+        while True:
+            result = run_remote(inv, fh, ["bash", "-c", self._REPOS_READY], timeout=60.0, as_root=False)
+            if result.ok:
+                return
+            if time.monotonic() >= deadline:
+                raise ConfigError(
+                    f"{host.public_ip}: the image's package repositories are still not "
+                    f"registered after {int(timeout)} s (SLES PAYG registers them at boot; "
+                    "check `sudo systemctl status guestregister` on the host)"
+                )
+            self._sleep(10)
 
     def _wait_ssh(self, spec: ProvisionSpec, host: ProvisionedHost, *, timeout: float) -> None:
         from .aws import AwsHostProvider

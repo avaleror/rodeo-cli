@@ -167,3 +167,37 @@ def test_the_status_script_reads_one_targets_files():
     assert 'log="$d/aws-up.log"' in aws and 'pidf="$d/aws-up.pid"' in aws
     assert 'log="$d/remote-up.log"' in remote and 'exitf="$d/remote-up.exit"' in remote
     assert "@BASE@" not in remote
+
+
+def test_remote_target_needs_no_provider_block():
+    """The paths remote shares with aws read provider: but must not require it."""
+    from rodeo.providers.remote_up import _fleet_inventory_for, _provider_cfg
+
+    cfg = {"name": "lab", "deployment_target": "remote", "remote_host": {"host": "kvm-01"}}
+    assert "lab_dir" not in _provider_cfg(cfg)  # no raise, nothing invented
+    host = remote_host.host_from_cfg(cfg)
+    inv, fh = _fleet_inventory_for(cfg, host, ssh_user="ops", identity_file="/k")
+    assert inv.defaults["ssh_user"] == "ops" and fh.public_ip == "kvm-01"
+
+
+def test_aws_target_still_requires_a_provider_block():
+    from rodeo.providers.remote_up import _provider_cfg
+
+    with pytest.raises(ConfigError, match="requires provider"):
+        _provider_cfg({"name": "lab", "deployment_target": "aws"})
+
+
+def test_remote_control_plane_resolves_secrets_before_validating(monkeypatch, tmp_path):
+    """Loading without secrets left ??key placeholders and validate_config refused the plan."""
+    from rodeo.commands import up_cmd
+
+    seen = {}
+
+    def fake_load(name, **kw):
+        seen.update(kw)
+        raise ConfigError("stop here")
+
+    monkeypatch.setattr(up_cmd, "load_config", fake_load)
+    with pytest.raises(SystemExit):
+        up_cmd._remote_control_plane_deploy(tmp_path, profile=None)
+    assert seen.get("secrets") == "all"

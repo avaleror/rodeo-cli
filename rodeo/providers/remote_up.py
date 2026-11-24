@@ -143,7 +143,12 @@ def clear_aws_host_state(plan_name: str) -> None:
 def _provider_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
     provider = cfg.get("provider")
     if not isinstance(provider, dict):
-        raise ConfigError("deployment_target: aws requires provider:")
+        # deployment_target: remote has no provider: (nothing is provisioned);
+        # the paths it shares with aws only read optional keys from it.
+        if str(cfg.get("deployment_target") or "").strip().lower() == "remote":
+            provider = {}
+        else:
+            raise ConfigError("deployment_target: aws requires provider:")
     out = dict(provider)
     out["type"] = str(out.get("type") or "aws").strip().lower()
     # Only the fleet inventory loader may lift the dead-man switch.

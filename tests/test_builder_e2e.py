@@ -1709,10 +1709,10 @@ def test_targets_and_formats_are_the_registered_ones(page):
     """
     labels = page.locator("#target option").all_inner_texts()
     values = page.locator("#target").evaluate("el => [...el.options].map(o => o.value)")
-    assert labels[:3] == ["AWS (EC2)", "This host (localhost)", "Instruqt"]
-    assert values[:3] == ["aws", "baremetal", "instruqt"]
+    assert labels[:4] == ["AWS (EC2)", "This host (localhost)", "GCP (Compute Engine)", "Instruqt"]
+    assert values[:4] == ["aws", "baremetal", "gcp", "instruqt"]
     static = page.evaluate("Boolean(window.RB_STATIC)")
-    assert values[3:] == (["remote"] if static else [])
+    assert values[4:] == (["remote"] if static else [])
     assert page.input_value("#target") == "baremetal"
     assert page.locator("#contentFormat option").all_inner_texts() == ["rmstory story/", "Instruqt track", "markdown"]
     page.select_option("#target", "aws")

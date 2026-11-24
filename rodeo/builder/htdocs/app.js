@@ -357,7 +357,7 @@ function kvmHosts() { return window.RB_STATIC ? [] : RB.kvmHostItems(state.vault
 // (baremetal is "where rodeo runs", which for a builder deploy is this very host); only the
 // label says so. A target with no label here, a plugin's for example, shows its own name.
 const TARGET_LABELS = { baremetal: "This host (localhost)", instruqt: "Instruqt", aws: "AWS (EC2)",
-  remote: "A KVM host of mine (SSH)" };
+  gcp: "GCP (Compute Engine)", remote: "A KVM host of mine (SSH)" };
 
 function offeredTargets() {
   return window.RB_STATIC ? state.targets : RB.targetChoices(state.targets, state.target, state.vault);

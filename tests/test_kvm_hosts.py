@@ -16,6 +16,7 @@ from rodeo.providers.aws import AwsHostProvider
 from rodeo.providers.instance_catalog import resolve_instance_type
 from rodeo.providers.remote_up import _provider_cfg
 from tests.test_aws_managed_sg import _FakeEC2WithSG, _provider
+from tests.test_aws_managed_sg import DEMO_ID
 from tests.test_cloud_deadman import _BASE, _kwargs, _tags, ssh_home  # noqa: F401
 
 
@@ -115,12 +116,12 @@ def test_host_to_host_adds_one_self_rule():
     fake.authorize_security_group_ingress = lambda **kw: calls.append(kw) or real(**kw)
     p = AwsHostProvider(ec2_client=fake, sleep=lambda s: None, caller_ip_fn=lambda: "203.0.113.9")
     cfg = {**_provider(), "host_to_host": True}
-    sg_id = p._resolve_security_groups(fake, cfg, workshop="hw")[0]
+    sg_id = p._resolve_security_groups(fake, cfg, workshop="hw", identity=DEMO_ID)[0]
     self_rules = [c for c in calls if c["IpPermissions"][0]["IpProtocol"] == "-1"]
     assert len(self_rules) == 1
     assert self_rules[0]["IpPermissions"][0]["UserIdGroupPairs"][0]["GroupId"] == sg_id
     calls.clear()
-    p._resolve_security_groups(fake, cfg, workshop="hw")
+    p._resolve_security_groups(fake, cfg, workshop="hw", identity=DEMO_ID)
     assert not [c for c in calls if c["IpPermissions"][0]["IpProtocol"] == "-1"]
 
 
@@ -130,7 +131,7 @@ def test_no_host_to_host_rule_by_default():
     real = fake.authorize_security_group_ingress
     fake.authorize_security_group_ingress = lambda **kw: calls.append(kw) or real(**kw)
     p = AwsHostProvider(ec2_client=fake, sleep=lambda s: None, caller_ip_fn=lambda: "203.0.113.9")
-    p._resolve_security_groups(fake, _provider(), workshop="w")
+    p._resolve_security_groups(fake, _provider(), workshop="w", identity=DEMO_ID)
     assert not [c for c in calls if c["IpPermissions"][0]["IpProtocol"] == "-1"]
 
 

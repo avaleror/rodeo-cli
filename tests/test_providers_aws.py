@@ -35,7 +35,14 @@ class _FakeEC2:
         self.key_pairs: dict[str, dict] = {}
         self.imported: list[str] = []
 
-    def describe_key_pairs(self, KeyNames=None):
+    def describe_key_pairs(self, KeyNames=None, Filters=None):
+        if Filters is not None:
+            pairs = list(self.key_pairs.values())
+            for f in Filters:
+                key = f["Name"].split(":", 1)[1]
+                pairs = [p for p in pairs if any(
+                    t["Key"] == key and t["Value"] in f["Values"] for t in p.get("Tags") or [])]
+            return {"KeyPairs": pairs}
         names = KeyNames or []
         pairs = [self.key_pairs[n] for n in names if n in self.key_pairs]
         if names and not pairs:
@@ -51,7 +58,8 @@ class _FakeEC2:
         blob = base64.b64decode(PublicKeyMaterial.decode().split()[1])
         fp = base64.b64encode(hashlib.sha256(blob).digest()).decode()  # EC2 style
         tags = [t for spec in TagSpecifications or [] for t in spec.get("Tags") or []]
-        self.key_pairs[KeyName] = {"KeyName": KeyName, "KeyFingerprint": fp, "Tags": tags}
+        self.key_pairs[KeyName] = {"KeyName": KeyName, "KeyFingerprint": fp, "Tags": tags,
+                                   "KeyPairId": f"key-{len(self.key_pairs) + 1:04d}"}
         self.imported.append(KeyName)
         return {"KeyName": KeyName, "KeyFingerprint": fp}
 
@@ -138,7 +146,22 @@ class _FakeEC2:
                     ]
                 elif name == "instance-state-name":
                     items = [i for i in items if i["State"]["Name"] in values]
+                elif name == "instance-id":
+                    items = [i for i in items if i["InstanceId"] in values]
         return {"Reservations": [{"Instances": items}] if items else []}
+
+    def create_tags(self, Resources, Tags):
+        self.tagged = getattr(self, "tagged", [])
+        self.tagged.append((list(Resources), list(Tags)))
+        pools = [self.instances, getattr(self, "security_groups", {})]
+        by_pair_id = {p.get("KeyPairId"): p for p in self.key_pairs.values()}
+        for rid in Resources:
+            target = next((pool[rid] for pool in pools if rid in pool), None) or by_pair_id.get(rid)
+            if target is None:
+                continue
+            keys = {t["Key"] for t in Tags}
+            target["Tags"] = [t for t in target.get("Tags") or [] if t["Key"] not in keys] + list(Tags)
+        return {}
 
     def run_instances(self, **kwargs):
         if kwargs.get("DryRun"):

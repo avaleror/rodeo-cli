@@ -8,8 +8,17 @@ import pytest
 
 from rodeo.config import ConfigError
 from rodeo.providers.aws import MANAGED_SG_PORTS, AwsHostProvider, _detect_caller_ip
-from rodeo.providers.base import ProvisionSpec
+from rodeo.providers.base import ProvisionSpec, deployment_tags
+from tests.conftest import TEST_OWNER
 from tests.test_providers_aws import _FakeEC2
+
+# This deployment's identity tags (issue #175): the SG is found and named by them.
+DEMO_ID = deployment_tags(TEST_OWNER, "0a1b2c3d", "test")
+
+
+def _lab_sg_ids(fake) -> list[str]:
+    return [g["GroupId"] for g in fake.security_groups.values()
+            if g["GroupName"].startswith("rodeo-demo-")]
 
 
 @pytest.fixture
@@ -177,15 +186,17 @@ def test_resolve_with_workshop_creates_and_scopes_to_caller_ip():
     p = AwsHostProvider(
         ec2_client=fake, sleep=lambda s: None, caller_ip_fn=lambda: "203.0.113.9"
     )
-    result = p._resolve_security_groups(fake, _provider(), workshop="demo")
+    result = p._resolve_security_groups(fake, _provider(), workshop="demo", identity=DEMO_ID)
     assert len(result) == 1
     sg_id = result[0]
     assert sg_id != "sg-default-vpc-1"
     sg = fake.security_groups[sg_id]
-    assert sg["GroupName"] == "rodeo-demo"
+    assert sg["GroupName"] == "rodeo-demo-0a1b2c3d"
     tag_map = {t["Key"]: t["Value"] for t in sg["Tags"]}
     assert tag_map["ManagedBy"] == "rodeo"
     assert tag_map["rodeo-workshop"] == "demo"
+    assert tag_map["rodeo-deployment"] == "0a1b2c3d"
+    assert tag_map["rodeo-owner"] == TEST_OWNER
     for port in MANAGED_SG_PORTS:
         assert fake._cidrs_for(sg_id, port) == {"203.0.113.9/32"}
 
@@ -195,21 +206,21 @@ def test_resolve_reuses_existing_managed_sg_for_same_workshop():
     p = AwsHostProvider(
         ec2_client=fake, sleep=lambda s: None, caller_ip_fn=lambda: "203.0.113.9"
     )
-    first = p._resolve_security_groups(fake, _provider(), workshop="demo")
-    second = p._resolve_security_groups(fake, _provider(), workshop="demo")
+    first = p._resolve_security_groups(fake, _provider(), workshop="demo", identity=DEMO_ID)
+    second = p._resolve_security_groups(fake, _provider(), workshop="demo", identity=DEMO_ID)
     assert first == second
-    assert len([g for g in fake.security_groups.values() if g["GroupName"] == "rodeo-demo"]) == 1
+    assert _lab_sg_ids(fake) == first
 
 
 def test_resolve_reconciles_stale_ip_on_drift():
     fake = _FakeEC2WithSG()
     ips = iter(["203.0.113.9", "203.0.113.200"])
     p = AwsHostProvider(ec2_client=fake, sleep=lambda s: None, caller_ip_fn=lambda: next(ips))
-    sg_id = p._resolve_security_groups(fake, _provider(), workshop="demo")[0]
+    sg_id = p._resolve_security_groups(fake, _provider(), workshop="demo", identity=DEMO_ID)[0]
     for port in MANAGED_SG_PORTS:
         assert fake._cidrs_for(sg_id, port) == {"203.0.113.9/32"}
 
-    same_sg = p._resolve_security_groups(fake, _provider(), workshop="demo")[0]
+    same_sg = p._resolve_security_groups(fake, _provider(), workshop="demo", identity=DEMO_ID)[0]
     assert same_sg == sg_id
     for port in MANAGED_SG_PORTS:
         # Old IP revoked, new one authorized — never both at once.
@@ -248,7 +259,7 @@ def test_provision_end_to_end_uses_managed_sg(managed_ssh, monkeypatch):
     groups = captured["NetworkInterfaces"][0]["Groups"]
     assert len(groups) == 1
     sg_id = groups[0]
-    assert fake.security_groups[sg_id]["GroupName"] == "rodeo-demo"
+    assert _lab_sg_ids(fake) == [sg_id]
     for port in MANAGED_SG_PORTS:
         assert fake._cidrs_for(sg_id, port) == {"198.51.100.4/32"}
 
@@ -261,7 +272,7 @@ def test_deprovision_deletes_managed_sg_when_last_host_gone(managed_ssh, monkeyp
     p = AwsHostProvider(ec2_client=fake, sleep=lambda s: None, caller_ip_fn=lambda: "203.0.113.9")
     spec = ProvisionSpec(workshop="demo", host_ids=["primary"], ssh_user="ec2-user", wait_ssh=False)
     p.provision(spec, _provider())
-    sg_id = next(g["GroupId"] for g in fake.security_groups.values() if g["GroupName"] == "rodeo-demo")
+    sg_id = _lab_sg_ids(fake)[0]
 
     results = p.deprovision(spec, _provider())
     sg_result = next(r for r in results if r.id == "security-group")
@@ -316,7 +327,7 @@ def test_deprovision_skips_sg_cleanup_when_sibling_host_still_alive(managed_ssh,
         ),
         _provider(),
     )
-    sg_id = next(g["GroupId"] for g in fake.security_groups.values() if g["GroupName"] == "rodeo-demo")
+    sg_id = _lab_sg_ids(fake)[0]
 
     partial_spec = ProvisionSpec(
         workshop="demo", host_ids=["student-01"], ssh_user="ec2-user", wait_ssh=False

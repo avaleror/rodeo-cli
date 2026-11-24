@@ -13,6 +13,9 @@ from rodeo.profiles import _REGISTRY
 from rodeo.profiles.base import RodeoProfile
 
 
+TEST_OWNER = "arn:aws:sts::123456789012:assumed-role/RodeoTest/tester@example.com"
+
+
 @pytest.fixture(autouse=True)
 def isolated_env(tmp_path, monkeypatch):
     """Keep ~/.rodeo state/vars and secrets inside tmp_path for every test."""
@@ -21,6 +24,9 @@ def isolated_env(tmp_path, monkeypatch):
     for var in ("RODEO_REPO", "RODEO_INSTALL_URL_TEMPLATE", "RODEO_LABINABOX_REPO",
                 "RODEO_LABINABOX_REF", "RODEO_LABINABOX_PATH"):
         monkeypatch.delenv(var, raising=False)
+    # Cloud providers tag every resource with the caller (issue #175); tests
+    # never call STS, they run as this fixed owner unless they override it.
+    monkeypatch.setenv("RODEO_OWNER", TEST_OWNER)
     return tmp_path
 
 

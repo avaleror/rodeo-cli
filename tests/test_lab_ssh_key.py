@@ -6,7 +6,6 @@ import base64
 
 import pytest
 
-from rodeo.config import ConfigError
 from rodeo.fleet.inventory import FleetInventory
 from rodeo.fleet.ssh_exec import _identity
 from rodeo.providers.aws import AwsHostProvider
@@ -20,6 +19,7 @@ from rodeo.ssh_key import (
     resolve_ssh_identity,
     rodeo_ssh_public_key_path,
 )
+from tests.conftest import TEST_OWNER
 from tests.test_aws_managed_sg import _FakeEC2WithSG, _provider
 from tests.test_aws_managed_sg import managed_ssh  # noqa: F401 (fixture)
 
@@ -75,7 +75,12 @@ def test_provision_uses_a_new_lab_key_not_the_machine_key(managed_ssh, no_wait, 
     assert captured["KeyName"] == key.key_name
     assert fake.imported == [key.key_name]
     tags = {t["Key"]: t["Value"] for t in fake.key_pairs[key.key_name]["Tags"]}
-    assert tags == {"ManagedBy": "rodeo", "rodeo-workshop": "demo"}
+    assert tags == {
+        "ManagedBy": "rodeo", "rodeo-workshop": "demo",
+        "rodeo-owner": TEST_OWNER, "rodeo-deployment": key.deployment,
+        "rodeo-version": tags["rodeo-version"], "rodeo-created-by": TEST_OWNER,
+    }
+    assert key.key_name.endswith("-" + key.deployment)
     lab_pub = key.public.read_text().split()[1]
     machine_pub = rodeo_ssh_public_key_path().read_text().split()[1]
     assert lab_pub in captured["UserData"]
@@ -156,24 +161,37 @@ def test_stale_keys_of_other_labs_are_swept(managed_ssh, no_wait):  # noqa: F811
     assert load_lab_ssh_key("elsewhere") == other_region
 
 
-def test_someone_elses_lab_with_the_same_name_fails_clearly(managed_ssh, no_wait):  # noqa: F811
-    """Shared account: another user's live `rancher` lab must not be adopted."""
+def _live(fake):
+    return [i for i in fake.instances.values() if i["State"]["Name"] == "running"]
+
+
+def test_someone_elses_lab_with_the_same_name_is_left_alone(managed_ssh, no_wait):  # noqa: F811
+    """Shared account (issue #175): another machine's live `rancher` lab is
+    neither adopted nor a blocker. This machine gets its own deployment."""
     fake = _FakeEC2WithSG()
     _aws(fake).provision(_spec("rancher"), _provider())
+    theirs = _live(fake)[0]["InstanceId"]
     # Same lab name, other machine: no local key for it.
     import shutil
 
     shutil.rmtree(lab_ssh_dir("rancher"))
-    with pytest.raises(ConfigError, match="not on this machine"):
-        _aws(fake).provision(_spec("rancher"), _provider())
+    _aws(fake).provision(_spec("rancher"), _provider())
+    live = _live(fake)
+    assert len(live) == 2 and theirs in {i["InstanceId"] for i in live}
+    deps = {t["Value"] for i in live for t in i["Tags"] if t["Key"] == "rodeo-deployment"}
+    assert len(deps) == 2
 
 
-def test_local_key_that_does_not_match_the_live_instance_fails(managed_ssh, no_wait):  # noqa: F811
+def test_local_key_that_does_not_match_the_live_instance_starts_a_new_deployment(
+    managed_ssh, no_wait,  # noqa: F811
+):
     fake = _FakeEC2WithSG()
     _aws(fake).provision(_spec("rancher"), _provider())
+    other = _live(fake)[0]["InstanceId"]
     new_lab_ssh_key("rancher", region="eu-central-1")  # stale/foreign local key
-    with pytest.raises(ConfigError, match="not on this machine"):
-        _aws(fake).provision(_spec("rancher"), _provider())
+    _aws(fake).provision(_spec("rancher"), _provider())
+    assert other in {i["InstanceId"] for i in _live(fake)}
+    assert other not in fake.terminated
 
 
 def test_fake_fingerprint_matches_ssh_keygen(managed_ssh):  # noqa: F811

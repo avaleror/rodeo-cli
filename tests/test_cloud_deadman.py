@@ -75,12 +75,19 @@ def test_every_instance_terminates_on_shutdown_and_carries_its_expiry(ssh_home):
 
 def test_labels_cannot_replace_ownership_or_expiry_tags(ssh_home):
     """deprovision finds instances by these tags: a label that replaced one would
-    leave the instance running until the dead-man switch."""
+    leave the instance running until the dead-man switch. provider.labels may not
+    even name them (issue #175); internal extra labels still lose to them."""
+    from rodeo.config import ConfigError
     from rodeo.providers.base import TAG_HOST_ID, TAG_MANAGED_BY, TAG_WORKSHOP, ownership_tags
     hostile = {TAG_MANAGED_BY: "x", TAG_WORKSHOP: "other", TAG_HOST_ID: "y",
                deadman.TAG_EXPIRES_AT: "2099-01-01T00:00:00Z", "Name": "custom", "team": "edge"}
-    kw = AwsHostProvider(ec2_client=object())._run_instances_kwargs(
-        {**_BASE, "labels": hostile}, host_id="primary", workshop="lab", extra_labels=hostile)
+    provider = AwsHostProvider(ec2_client=object())
+    with pytest.raises(ConfigError, match="reserved"):
+        provider._run_instances_kwargs(
+            {**_BASE, "labels": hostile}, host_id="primary", workshop="lab")
+    kw = provider._run_instances_kwargs(
+        {**_BASE, "labels": {"Name": "custom", "team": "edge"}}, host_id="primary",
+        workshop="lab", extra_labels=hostile)
     tags = _tags(kw)
     assert {k: tags[k] for k in ownership_tags("lab", "primary")} == ownership_tags("lab", "primary")
     assert tags[deadman.TAG_EXPIRES_AT] != "2099-01-01T00:00:00Z"

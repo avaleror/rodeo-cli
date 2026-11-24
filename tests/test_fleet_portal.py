@@ -12,6 +12,7 @@ from rodeo.config import ConfigError
 from rodeo.fleet import portal as fp
 from rodeo.fleet.inventory import STUDENT_SSH_PORT, load_inventory
 from rodeo.fleet.ssh_exec import RemoteResult
+from rodeo.ssh_key import load_lab_ssh_key
 from rodeo.providers.aws import AwsHostProvider
 from rodeo.providers.base import ProvisionSpec
 from tests.test_aws_managed_sg import _FakeEC2WithSG, _provider
@@ -61,7 +62,9 @@ def test_portal_vm_gets_own_sg_small_type_and_no_rodeo_key(managed_ssh, no_wait,
     sg = captured["NetworkInterfaces"][0]["Groups"][0]
     assert _sg_rules(fake, sg) == {22: {"203.0.113.9/32"}, 80: {"0.0.0.0/0"}, 443: {"0.0.0.0/0"}}
     # the lab SG lookup must never return the portal SG (R4)
-    assert _aws(fake)._find_managed_sg(fake, vpc_id="vpc-1", workshop="demo") is None
+    p = _aws(fake)
+    identity = p.identity_tags(_provider(), load_lab_ssh_key("demo"))
+    assert p._find_managed_sg(fake, vpc_id="vpc-1", identity=identity) is None
 
 
 def test_portal_provision_is_idempotent(managed_ssh, no_wait):  # noqa: F811
@@ -130,7 +133,8 @@ def test_open_access_closes_22_left_open_by_older_releases(managed_ssh, no_wait)
     fake = _FakeEC2WithSG()
     p = _aws(fake)
     p.provision(ProvisionSpec(workshop="demo", host_ids=["s1"], ssh_user="root", wait_ssh=False), _provider())
-    sg = next(g["GroupId"] for g in fake.security_groups.values() if g["GroupName"] == "rodeo-demo")
+    sg = next(g["GroupId"] for g in fake.security_groups.values()
+              if g["GroupName"].startswith("rodeo-demo-") and not g["GroupName"].endswith("-portal"))
     fake.authorize_security_group_ingress(GroupId=sg, IpPermissions=[
         {"IpProtocol": "tcp", "FromPort": 22, "ToPort": 22, "IpRanges": [{"CidrIp": "0.0.0.0/0"}]}])
     assert "0.0.0.0/0" in _sg_rules(fake, sg)[22]

@@ -16,7 +16,7 @@ console = Console()
     "--cloud",
     "cloud",
     is_flag=True,
-    help="Terminate the ownership-tagged cloud KVM host for this plan (AWS).",
+    help="Terminate this login's cloud KVM host for this plan (AWS).",
 )
 @click.option("--yes", "-y", "assume_yes", is_flag=True, help="Skip confirmation.")
 @click.option(
@@ -31,7 +31,8 @@ def destroy_cmd(cloud: bool, assume_yes: bool, config_dir: str | None) -> None:
     """Destroy cloud infrastructure for a lab (does not clean nested VMs).
 
     Nested lab cleanup stays on the guest: SSH in and run ``rodeo clean``.
-    This command only terminates the EC2 host tagged for the plan name.
+    This command only terminates the EC2 host of this login's deployment of
+    the plan, never a teammate's lab with the same name (see ``rodeo cloud``).
     """
     if not cloud:
         console.print(

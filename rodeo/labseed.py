@@ -322,7 +322,7 @@ def normalize_plan(
 
     if name:
         data["name"] = name
-    if deployment_target not in ("baremetal", "instruqt", "aws", "remote"):
+    if deployment_target not in ("baremetal", "instruqt", "aws", "gcp", "remote"):
         raise ValueError(f"Unknown deployment_target: {deployment_target!r}")
     data["deployment_target"] = deployment_target
 
@@ -350,7 +350,7 @@ def normalize_plan(
             host_cpus=os.cpu_count() or 0,
             flavor_counts=counts,
         )
-    elif deployment_target == "aws":
+    elif deployment_target in ("aws", "gcp"):
         from .host_context import apply_host_context
 
         adapted, _ = apply_host_context(data, host_facts={})

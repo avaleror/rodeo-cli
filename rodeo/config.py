@@ -1142,6 +1142,8 @@ def validate_config(cfg: dict, *, check: bool = False) -> None:
         )
     if target == "aws":
         _validate_aws_provider(cfg)
+    if target == "gcp":
+        _validate_gcp_provider(cfg)
     if target == "remote":
         from .providers.remote_host import validate as _validate_remote_host
 
@@ -1266,6 +1268,31 @@ def _validate_aws_provider(cfg: dict) -> None:
     from .providers.aws import AwsHostProvider
 
     AwsHostProvider(sleep=lambda _s: None).validate(dict(provider))
+
+
+def validate_gcp_provider(cfg: dict) -> None:
+    """Public entry for destroy --cloud (same as the gcp branch of validate_config)."""
+    _validate_gcp_provider(cfg)
+
+
+def _validate_gcp_provider(cfg: dict) -> None:
+    """deployment_target: gcp needs a provider: block of type gcp (skipped on the VM itself)."""
+    from .providers.remote_up import on_gce
+
+    if on_gce():
+        return
+    provider = cfg.get("provider")
+    if not isinstance(provider, dict):
+        raise ConfigError(
+            "deployment_target: gcp requires a provider: block "
+            "(type: gcp, region, instance_type or instance_tier, ...)."
+        )
+    ptype = str(provider.get("type") or "").strip().lower()
+    if ptype != "gcp":
+        raise ConfigError(f"deployment_target: gcp requires provider.type: gcp (got {ptype!r})")
+    from .providers.gcp import GcpHostProvider
+
+    GcpHostProvider(sleep=lambda _s: None).validate(dict(provider))
 
 
 def find_ansible_root(cfg: dict) -> Path | None:

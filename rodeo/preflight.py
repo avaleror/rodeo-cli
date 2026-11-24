@@ -211,6 +211,7 @@ def _pending_nvme_pool_gib(
     *,
     sys_block: Path = Path("/sys/block"),
     proc_mounts: Path = Path("/proc/mounts"),
+    by_id: Path = Path("/dev/disk/by-id"),
 ) -> int:
     """GiB that kvm_host is about to provide from an unmounted NVMe device.
 
@@ -235,7 +236,14 @@ def _pending_nvme_pool_gib(
         candidates = sorted(sys_block.glob("nvme*n1"))
     except OSError:
         return 0
+    # GCE local SSD: kvm_host stripes every google-local-nvme-ssd-* disk into one
+    # RAID0 pool, so the pending capacity is their sum, not the largest one.
+    try:
+        gce = {p.resolve().name for p in by_id.glob("google-local-nvme-ssd-*") if "-part" not in p.name}
+    except OSError:
+        gce = set()
     best = 0
+    gce_total = 0
     for dev in candidates:
         name = dev.name
         # In use as a whole disk, or via any of its partitions (the root volume).
@@ -247,8 +255,11 @@ def _pending_nvme_pool_gib(
             sectors = int((dev / "size").read_text().strip())
         except (OSError, ValueError):
             continue
-        best = max(best, sectors * 512 // (1024**3))
-    return best
+        gib = sectors * 512 // (1024**3)
+        best = max(best, gib)
+        if name in gce:
+            gce_total += gib
+    return max(best, gce_total)
 
 
 def _resource_needs(cfg: dict) -> tuple[int, int]:

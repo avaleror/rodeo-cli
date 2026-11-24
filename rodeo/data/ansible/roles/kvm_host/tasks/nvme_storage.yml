@@ -1,5 +1,5 @@
 ---
-# Instance-store NVMe → shared image_dir pool (AWS i7i / similar).
+# Instance-store NVMe → shared image_dir pool (AWS i7i / similar, GCE local SSD).
 # Performance-first: one shared XFS under image_dir (no per-node volumes).
 # Idempotent: skip when image_dir is already a non-root mount; never reformat
 # a device that already has a filesystem (blkid guard).
@@ -60,6 +60,36 @@
       {%- endif -%}
       {%- endfor -%}
       {{ ns.dev }}
+
+# GCE local SSD: the -lssd shapes expose 375 GiB NVMe disks, several of them above
+# 8 vCPU (c4-standard-32-lssd has 5). Picking only the largest would waste the rest,
+# so stripe them into one RAID0 device. Only GCE creates these by-id names, so AWS
+# and bare-metal hosts keep the single-device pick above.
+- name: Find GCE local SSD disks
+  ansible.builtin.find:
+    paths: /dev/disk/by-id
+    patterns: "google-local-nvme-ssd-*"
+    excludes: "*-part*"
+    file_type: any
+  register: _gce_lssd
+
+- name: List GCE local SSD disks in order
+  ansible.builtin.set_fact:
+    _gce_lssd_devices: "{{ _gce_lssd.files | map(attribute='path') | sort | list }}"
+
+- name: Stripe GCE local SSDs into one RAID0 device
+  ansible.builtin.command: >-
+    mdadm --create /dev/md/rodeo-pool --level=0 --run --name=rodeo-pool
+    --raid-devices={{ _gce_lssd_devices | length }} {{ _gce_lssd_devices | join(' ') }}
+  args:
+    creates: /dev/md/rodeo-pool
+  when: _gce_lssd_devices | length > 1
+
+- name: Use the GCE local SSD pool
+  ansible.builtin.set_fact:
+    _nvme_pool_device: >-
+      {{ '/dev/md/rodeo-pool' if (_gce_lssd_devices | length > 1) else _gce_lssd_devices[0] }}
+  when: _gce_lssd_devices | length > 0
 
 - name: Decide whether NVMe pool setup is needed
   ansible.builtin.set_fact:

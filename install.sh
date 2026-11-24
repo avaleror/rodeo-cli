@@ -10,7 +10,7 @@
 #                  (rodeo up --target aws, rodeo fleet ..., rodeo destroy --cloud),
 #                  never runs a lab itself. No system packages: uses a Python
 #                  3.10+ already on the machine, or a private one fetched with uv
-#                  (the system Python is never touched), and installs the [aws]
+#                  (the system Python is never touched), and installs the [aws,gcp]
 #                  extra. As a normal user: ~/.local/share/rodeo-cli and
 #                  ~/.local/bin/rodeo. As root: /opt/rodeo-cli and /usr/local/bin.
 #
@@ -321,7 +321,7 @@ fi
 
 # ── 4. venv + install ─────────────────────────────────────────────────────────
 # kvm-host: --system-site-packages exposes the SLES libvirt-python system binding
-# to Ansible. control-plane: an isolated venv with the [aws] extra (boto3).
+# to Ansible. control-plane: an isolated venv with the [aws,gcp] extras (boto3, google-cloud-compute).
 # pip install -e creates an editable (symlinked) install in both modes — source
 # changes are reflected immediately without reinstalling.
 echo "==> Setting up Python environment (this is internal — you will never need to touch it)"
@@ -337,8 +337,8 @@ if [[ "$RODEO_MODE" == "kvm-host" ]]; then
   if [[ $DEV -eq 1 ]]; then EXTRAS="[dev]"; fi
 else
   "$PY" -m venv "$VENV"
-  EXTRAS="[aws]"
-  if [[ $DEV -eq 1 ]]; then EXTRAS="[dev,aws]"; fi
+  EXTRAS="[aws,gcp]"
+  if [[ $DEV -eq 1 ]]; then EXTRAS="[dev,aws,gcp]"; fi
 fi
 "$VENV/bin/pip" install --quiet --upgrade pip
 if [[ $DEV -eq 1 ]]; then

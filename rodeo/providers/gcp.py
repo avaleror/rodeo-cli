@@ -59,6 +59,7 @@ MANAGED_FW_PORTS = (22, 8443, 30002)
 # Boot disk when the pool lives on local SSD; without local SSD it must hold the pool.
 LSSD_BOOT_DISK_GB = 100
 MIN_BOOT_DISK_GB = 100
+IDENTITY_SCOPE = "https://www.googleapis.com/auth/userinfo.email"
 
 LABEL_MANAGED_BY = "managed-by"
 LABEL_WORKSHOP = TAG_WORKSHOP  # "rodeo-workshop": already a valid label key
@@ -563,6 +564,14 @@ class GcpHostProvider:
             }],
             "scheduling": scheduling,
             "advanced_machine_features": {"enable_nested_virtualization": True},
+            # SLES PAYG registers its repositories with an identity token from the metadata
+            # server, which needs a service account on the VM (gcloud attaches one by default,
+            # the API does not: without it registration fails with "Malformed instance data").
+            # Only the userinfo.email scope, so the VM's access token reaches no Google API.
+            "service_accounts": [{
+                "email": str(cfg.get("service_account") or "default"),
+                "scopes": list(cfg.get("service_account_scopes") or [IDENTITY_SCOPE]),
+            }],
         }
         return body
 

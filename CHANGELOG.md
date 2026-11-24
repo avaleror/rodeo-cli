@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.34.0](https://github.com/avaleror/rodeo-cli/compare/v0.33.0...v0.34.0) (2026-11-24)
+
+
+### Features
+
+* **aws:** destroy only your own deployment in a shared account ([#175](https://github.com/avaleror/rodeo-cli/issues/175)) ([3ad8aa0](https://github.com/avaleror/rodeo-cli/commit/3ad8aa06e5b74606f98e9e85ee81e6e46bd6696f))
+* **aws:** destroy only your own deployment in a shared account ([#175](https://github.com/avaleror/rodeo-cli/issues/175)) ([03183e5](https://github.com/avaleror/rodeo-cli/commit/03183e5fdb354dd59ca885a400de0a7d895480a8))
+* **gcp:** destroy only your own deployment in a shared project ([#175](https://github.com/avaleror/rodeo-cli/issues/175)) ([322288c](https://github.com/avaleror/rodeo-cli/commit/322288c86b74b663b6a3504372f1125583a9dbcd))
+* **gcp:** GCP Compute Engine host provider (F4b) ([bafb50a](https://github.com/avaleror/rodeo-cli/commit/bafb50a957a189e2cc7ccf3636615e98ecd7cbc6))
+* **gcp:** GCP host provider, destroying only your own deployment (F4b, [#175](https://github.com/avaleror/rodeo-cli/issues/175)) ([7e69b5d](https://github.com/avaleror/rodeo-cli/commit/7e69b5d25520d6612e3907a2c04b6c4bb840eee2))
+
+
+### Bug Fixes
+
+* **builder:** show the gcp deployment target as GCP (Compute Engine) ([32fc7cd](https://github.com/avaleror/rodeo-cli/commit/32fc7cd4e01b338a1d3db31f82d6a070e0cff924))
+* **gcp:** attach a minimal service account so SLES PAYG can register ([380863e](https://github.com/avaleror/rodeo-cli/commit/380863ec29bbb6549737384f89526f307a487eb8))
+* **gcp:** find the project from the ADC quota project or gcloud off PATH ([2eaaa1c](https://github.com/avaleror/rodeo-cli/commit/2eaaa1c497c1fbcf13eac89f72407c6c56b49c9d))
+* **gcp:** wait for SLES PAYG repo registration before deploying ([61bbb26](https://github.com/avaleror/rodeo-cli/commit/61bbb2675631eff62a5d7b0311d035bf79f981e8))
+* **remote:** make rodeo up --target remote work on a new lab ([b62110e](https://github.com/avaleror/rodeo-cli/commit/b62110e35b66a8dcba6ce77163207433a7e0c814))
+* **remote:** make rodeo up --target remote work on a new lab ([d6b9db1](https://github.com/avaleror/rodeo-cli/commit/d6b9db10f72a8d870b64ef8fd54cbfbb995a91dc))
+
+
+### Documentation
+
+* **gcp:** document --target gcp; keep unrelated mcp/runbook edits out of this branch ([f367a82](https://github.com/avaleror/rodeo-cli/commit/f367a829bab9b6d15b49608210d1c6b1dac3a580))
+
+
+### Build & Release
+
+* **deps:** bump actions/setup-python from 7.0.0 to 7.1.0 in the github-actions group ([3b7ba7f](https://github.com/avaleror/rodeo-cli/commit/3b7ba7fa407209fe2a75d485eab7c2dffaee8044))
+
 ## [0.33.0](https://github.com/avaleror/rodeo-cli/compare/v0.32.2...v0.33.0) (2026-11-24)
 
 

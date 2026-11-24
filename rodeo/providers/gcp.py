@@ -260,17 +260,41 @@ class GceApi:
         self.firewalls.delete(project=self.project, firewall=name).result(timeout=300)
 
 
+def _gcloud_config_project() -> str | None:
+    """``gcloud config get-value project``; gcloud is often installed off PATH."""
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    gcloud = shutil.which("gcloud")
+    if not gcloud:
+        user_install = Path.home() / "google-cloud-sdk" / "bin" / "gcloud"
+        gcloud = str(user_install) if user_install.is_file() else None
+    if not gcloud:
+        return None
+    try:
+        out = subprocess.run([gcloud, "config", "get-value", "project"], capture_output=True,
+                             text=True, timeout=30, check=False).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return out if out and "(unset)" not in out else None
+
+
 def default_project() -> str:
     """The project from the environment or Application Default Credentials."""
     for var in ("RODEO_GCP_PROJECT", "GOOGLE_CLOUD_PROJECT", "CLOUDSDK_CORE_PROJECT"):
         if os.environ.get(var, "").strip():
             return os.environ[var].strip()
+    project = None
     try:
         import google.auth
 
-        _, project = google.auth.default()
+        creds, project = google.auth.default()
+        # User credentials carry no project, but `set-quota-project` stores one.
+        project = project or getattr(creds, "quota_project_id", None)
     except Exception:  # noqa: BLE001
-        project = None
+        pass
+    project = project or _gcloud_config_project()
     if not project:
         raise ConfigError(
             "no GCP project: set provider.project in rodeo-plan.yaml (or GOOGLE_CLOUD_PROJECT), "
@@ -292,6 +316,7 @@ def credentials_identity() -> tuple[bool, str]:
     except Exception as exc:  # noqa: BLE001
         return False, f"{exc} (run: gcloud auth application-default login)"
     who = getattr(creds, "service_account_email", None) or "application default credentials"
+    project = project or getattr(creds, "quota_project_id", None) or _gcloud_config_project()
     return True, f"{who}, project {project or '(unset)'}"
 
 

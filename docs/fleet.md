@@ -17,7 +17,8 @@ See also: [Get started](get-started.md) (single host), [Architecture](architectu
 | **F2.2** | Shipped | The whole flow in one command | `rodeo fleet up` |
 | **F2.1** | Shipped | Failure forensics | `rodeo fleet diagnose` |
 | **F4a** | Shipped | AWS host-acquire, 6 h dead-man switch per host | `rodeo fleet provision`, `deprovision` |
-| **F4b–d** | Roadmap | GCP → Vultr BM → Hetzner | (planned) |
+| **F4b** | Shipped (single host) | GCP | `rodeo up --target gcp` |
+| **F4c–d** | Roadmap | Vultr BM → Hetzner | (planned) |
 | **F5** | Shipped (AWS, v0.18) | Student claim portal: each student enters a workshop code and gets their own lab; student SSH on its own port | `rodeo fleet open-access`, `rodeo fleet portal ...` ([design](claim-portal.md), [plan](claim-portal-plan.md)) |
 
 Host prerequisites (after [`install.sh`](https://github.com/avaleror/rodeo-cli/blob/main/install.sh) on each lab machine):
@@ -62,7 +63,7 @@ OpenSSH-only.
 | Order | Provider | Status |
 |-------|----------|--------|
 | **F4a** | **AWS** (`boto3`, the `[aws]` extra: see [Install](install.md)) | **MVP shipped**: create/reuse by tags, wait running + SSH, write `hosts[]`, terminate tagged only |
-| **F4b** | **GCP** (`google-cloud-compute`) | Planned |
+| **F4b** | **GCP** (`google-cloud-compute`) | Single host shipped; fleet portal and open-access still AWS-only |
 | **F4c** | **Vultr Bare Metal** (`[vultr]` extra) | Planned: after GCP; real metal for nested KVM |
 | **F4d** | **Hetzner Cloud** (`hcloud`) | Planned: after Vultr; nested KVM must be validated |
 
@@ -529,7 +530,7 @@ Fleet does **not** sudo-re-exec on the laptop.
 
 Shared Protocol / schema for host-acquire. **AWS (F4a) MVP is implemented** in
 `rodeo/providers/` for both Fleet and single-host `deployment_target: aws`.
-GCP / Vultr / Hetzner remain stubs. Summary in [Roadmap](#roadmap).
+Vultr / Hetzner remain stubs; GCP has a provider (single host live-tested). Summary in [Roadmap](#roadmap).
 
 **Important: never set `lab.target: aws` in `workshop.yaml`.**
 
@@ -704,18 +705,22 @@ SLES 16 works too: set `ami:` to that image id and `ssh_user` if it is not `ec2-
 provider:
   type: gcp
   count: 12
-  project: my-gcp-project           # required
-  zone: europe-west3-a              # required
-  machine_type: n2-standard-32      # required
-  image: projects/…/global/images/… # required (or family)
-  network: default                  # or full URL
-  subnetwork: regions/…/subnetworks/…
-  # enable_nested_virtualization: true   # default true for rodeo
-  # min_cpu_platform: "Intel Cascade Lake"
-  # tags: [rodeo-fleet]             # GCP network tags for firewall
+  project: my-gcp-project           # default: gcloud / ADC project
+  region: europe-west4              # default; zone is picked per capacity
+  # zone: europe-west4-b            # pin one zone
+  instance_tier: recommended        # or instance_type: c4-standard-32-lssd
+  # image_family: sles-16-1-x86-64  # default, image_project: suse-cloud
+  # network: rodeo-europe-west4     # default: created by rodeo
+  # allowed_cidrs: ["203.0.113.0/24"]   # default: this machine's IP only
+  # ttl_hours: 6
 ```
 
-Auth: Application Default Credentials / service account, not stored in `workshop.yaml`.
+Auth: Application Default Credentials (`gcloud auth application-default login`), never stored
+in `workshop.yaml`. Field details: [plan reference](reference/plan.md#provider-when-deployment_target-gcp).
+
+Status: single-host `rodeo up --target gcp` is live-tested. `fleet provision` uses the same
+provider and creates one VM per host id, but the claim portal and `fleet open-access` are
+AWS-only for now.
 
 #### `provider.type: vultr` (F4c)
 

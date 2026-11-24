@@ -125,7 +125,10 @@ Read-only (always offered):
 | `rodeo_doctor` | `rodeo doctor` |
 | `rodeo_profiles` | `rodeo profiles` |
 | `rodeo_plan` | `rodeo plan` (`output: json` for one JSON object, see below) |
-| `rodeo_status` | `rodeo status`; `cloud: true` runs `rodeo status --cloud` (the AWS host, or the KVM host when the plan says `deployment_target: remote`) |
+| `rodeo_status` | `rodeo status` |
+
+| `rodeo_plan` | `rodeo plan` |
+| `rodeo_status` | `rodeo status`; `cloud: true` runs `rodeo status --cloud` (the AWS host's deploy) |
 | `rodeo_list` | `rodeo list` |
 | `rodeo_logs` | `rodeo logs --no-follow` |
 | `rodeo_instances_list` | `rodeo instances list` |
@@ -137,7 +140,7 @@ Lifecycle (only with `--allow-write`):
 
 | Tool | rodeo command |
 |---|---|
-| `rodeo_up` | `rodeo up --yes --no-tmux`; for target `aws` it adds `--detach` (see below). Target `remote` does not, yet. |
+| `rodeo_up` | `rodeo up --yes --no-tmux`; for target `aws` it adds `--detach` (see below) |
 | `rodeo_deploy` | `rodeo deploy --no-tui` (`from_phase` resumes a phase) |
 | `rodeo_init` | `rodeo init` |
 | `rodeo_new` | `rodeo new` |
@@ -201,16 +204,8 @@ rebooted) or `none`, plus the tail of the log. A deploy that is already running
 there comes back as a tool error carrying
 `{"state": "already_running", "pid", "log", "host"}` (rodeo exit 75).
 
-On the CLI, `deployment_target: remote` (a KVM host you already own, since
-v0.33.0) has the same `--detach` and the same `rodeo status --cloud` report,
-with its own `remote-up.log`, `.pid` and `.exit` on that host. The MCP tool
-does not pass `--detach` for `remote`, and its `target` enum is `baremetal`,
-`instruqt` or `aws`. A remote plan still deploys. The call blocks until the
-host finishes. `rodeo_status` with `cloud: true` does follow the CLI, so once
-a detached remote run exists it can be read from here.
-
-A local `baremetal` deploy has no detach. `rodeo_up` blocks until it ends,
-within the server's timeout.
+Local deploys have no detach yet: `rodeo_up` for any other target blocks until
+the deploy ends, within the server's timeout.
 
 ## Adding a tool
 

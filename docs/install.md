@@ -23,7 +23,7 @@ curl -fsSL https://raw.githubusercontent.com/avaleror/rodeo-cli/main/install.sh 
 | Machine | Role | What it installs |
 |---------|------|------------------|
 | SLES 16 / Leap 16 | **KVM host** | Needs root. `python3`, `pip` and `git` with zypper, rodeo in `/opt/rodeo-cli`, `/usr/local/bin/rodeo`. Then: `rodeo up` |
-| macOS, SLES/Leap 15, Ubuntu, Fedora, any other Linux | **Control machine** | No system packages and no root needed. rodeo with the `[aws]` extra in `~/.local/share/rodeo-cli`, `~/.local/bin/rodeo` (as root: `/opt/rodeo-cli`, `/usr/local/bin`). Then: `rodeo up --profile <name> --target aws` |
+| macOS, SLES/Leap 15, Ubuntu, Fedora, any other Linux | **Control machine** | No system packages and no root needed. rodeo with the `[aws,gcp]` extras in `~/.local/share/rodeo-cli`, `~/.local/bin/rodeo` (as root: `/opt/rodeo-cli`, `/usr/local/bin`). Then: `rodeo up --profile <name> --target aws` (or `--target gcp`) |
 
 On a control machine the installer uses a Python 3.10+ that is already there
 (Homebrew, `python311` on SLES 15, ...). If there is none, for example the

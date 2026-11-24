@@ -11,8 +11,13 @@ GCP specifics, and how they map from AWS:
 - Network. Projects may have no VPC at all (``compute.skipDefaultNetworkCreation``), so rodeo
   creates its own: network and subnet ``rodeo-<region>`` (10.90.0.0/20), one per region so
   ranges never overlap. ``provider.network`` / ``provider.subnetwork`` bring your own.
-- Firewall. One rule per workshop, ``rodeo-<workshop>``, targeting the network tag of the
-  same name, scoped to this machine's public IP (like the AWS managed security group).
+- Firewall. One rule per deployment, ``rodeo-<workshop>-<deployment>``, targeting the network
+  tag of the same name, scoped to this machine's public IP (like the AWS managed security group).
+  Firewall rules take no labels, so the rule's description records owner and deployment.
+- Ownership (issue #175). Same rule as AWS: what is yours is decided by ``rodeo-deployment`` and
+  ``rodeo-owner``, never by the lab name. The owner is the GCP account (or ``RODEO_OWNER``). Labels
+  cannot hold ``@`` or ``.``, so the label is a readable form plus a short hash, and the raw value
+  travels in metadata (``rodeo-owner``, ``rodeo-created-by``).
 - Dead-man switch. Native: ``scheduling.maxRunDuration`` with ``instanceTerminationAction:
   DELETE`` deletes the VM and its disks when the TTL runs out, with no timer in the guest.
 - Nested virtualization. ``advancedMachineFeatures.enableNestedVirtualization`` on Intel
@@ -24,6 +29,7 @@ GCP specifics, and how they map from AWS:
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import time
@@ -41,12 +47,19 @@ from ..ssh_key import (
 )
 from . import deadman
 from .base import (
+    OWNER_ENV,
+    TAG_CREATED_BY,
+    TAG_DEPLOYMENT,
     TAG_HOST_ID,
     TAG_MANAGED_BY_VALUE,
+    TAG_OWNER,
+    TAG_VERSION,
     TAG_WORKSHOP,
     DeprovisionResult,
     ProvisionedHost,
     ProvisionSpec,
+    check_owner,
+    reject_reserved_labels,
 )
 
 DEFAULT_REGION = "europe-west4"
@@ -66,6 +79,12 @@ LABEL_WORKSHOP = TAG_WORKSHOP  # "rodeo-workshop": already a valid label key
 LABEL_HOST_ID = TAG_HOST_ID  # "rodeo-host-id"
 LABEL_EXPIRES_AT = "rodeo-expires-at"  # unix seconds; ISO has ':' which labels forbid
 META_WORKSHOP = "rodeo-workshop"  # exact (unsanitised) workshop name
+LABEL_OWNER = TAG_OWNER  # readable owner + short hash (labels forbid '@' and '.')
+LABEL_DEPLOYMENT = TAG_DEPLOYMENT
+LABEL_VERSION = TAG_VERSION
+META_OWNER = TAG_OWNER  # the raw owner
+META_CREATED_BY = TAG_CREATED_BY
+_FW_OWNER_RE = re.compile(r"owner=(\S+) deployment=([0-9a-f]{8})")
 
 # Series that run nested KVM (Intel). Everything else (AMD, Arm, E2) cannot.
 NESTED_SERIES = ("n1", "n2", "n4", "c2", "c3", "c4", "z3", "h3", "c4n", "n4d")
@@ -115,12 +134,104 @@ def boot_disk_type(machine_type: str) -> str:
     return "pd-balanced" if machine_series(machine_type) in PD_SERIES else "hyperdisk-balanced"
 
 
-def workshop_firewall(workshop: str) -> str:
-    return resource_name(f"rodeo-{workshop}")
+def _with_tail(workshop: str, tail: str) -> str:
+    """``rodeo-<workshop><tail>`` within 63 characters, cutting the workshop part, never
+    the tail (deployment id and host id are what keep names apart)."""
+    tail = re.sub(r"[^a-z0-9-]+", "-", tail.lower())
+    head = resource_name(f"rodeo-{workshop}")[: max(63 - len(tail), 8)].rstrip("-")
+    return resource_name(head + tail)
 
 
-def instance_name(workshop: str, host_id: str) -> str:
-    return resource_name(f"rodeo-{workshop}-{host_id}")
+def workshop_firewall(workshop: str, deployment: str = "") -> str:
+    """Firewall rule and network tag. Without a deployment: the name labs used before
+    issue #175 (kept for labs adopted from then)."""
+    if not deployment:
+        return resource_name(f"rodeo-{workshop}")
+    return _with_tail(workshop, f"-{deployment}")
+
+
+def instance_name(workshop: str, host_id: str, deployment: str = "") -> str:
+    if not deployment:
+        return resource_name(f"rodeo-{workshop}-{host_id}")
+    return _with_tail(workshop, f"-{deployment}-{host_id}")
+
+
+def owner_label(owner: str) -> str:
+    """The owner as a label value: readable, plus a hash of the raw value so two
+    accounts that sanitise the same (``a.b@x`` and ``a-b@x``) stay two owners."""
+    digest = hashlib.sha256(owner.encode()).hexdigest()[:8]
+    readable = label_value(owner)[:54].rstrip("-_")
+    return f"{readable}-{digest}" if readable else digest
+
+
+def _adc_account() -> str:
+    """The account behind Application Default Credentials (the GCP ``rodeo-owner``)."""
+    try:
+        import google.auth
+        import google.auth.transport.requests
+
+        creds, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/userinfo.email"])
+        email = getattr(creds, "service_account_email", None)
+        if email and email != "default":
+            return str(email)
+        creds.refresh(google.auth.transport.requests.Request())
+        import json
+        import urllib.parse
+        import urllib.request
+
+        data = urllib.parse.urlencode({"access_token": creds.token}).encode()
+        with urllib.request.urlopen("https://oauth2.googleapis.com/tokeninfo", data=data,
+                                    timeout=15) as resp:
+            info = json.load(resp)
+        if info.get("email"):
+            return str(info["email"])
+    except Exception:  # noqa: BLE001 — fall back to the gcloud account below
+        pass
+    account = _gcloud_config_value("account")
+    if account:
+        return account
+    raise ConfigError(
+        "could not tell which GCP account you are (gcloud auth application-default login), "
+        f"or set {OWNER_ENV}"
+    )
+
+
+def caller_owner(account_fn: Callable[[], str] = _adc_account) -> str:
+    env = os.environ.get(OWNER_ENV, "").strip()
+    if env:
+        return check_owner(env)
+    return check_owner(account_fn())
+
+
+def is_mine(inst: dict[str, Any], *, workshop: str, key: LabKey | None, owner: str) -> bool:
+    """Same rule as AWS: deployment id + owner, or (labs from before issue #175) the
+    workshop plus this machine's lab public key in the instance's ssh-keys metadata."""
+    labels, meta = inst.get("labels") or {}, inst.get("metadata") or {}
+    if labels.get(LABEL_MANAGED_BY) != TAG_MANAGED_BY_VALUE or key is None:
+        return False
+    dep = labels.get(LABEL_DEPLOYMENT)
+    if dep:
+        return (bool(key.deployment) and dep == key.deployment
+                and labels.get(LABEL_OWNER) == owner_label(owner)
+                and meta.get(META_OWNER, owner) == owner)
+    if labels.get(LABEL_WORKSHOP) != label_value(workshop):
+        return False
+    if meta.get(META_WORKSHOP, workshop) != workshop:
+        return False
+    try:
+        blob = key.public.read_text().split()[1]
+    except (OSError, IndexError):
+        return False
+    return blob in str(meta.get("ssh-keys") or "")
+
+
+def _fw_description(owner: str, deployment: str) -> str:
+    return f"rodeo-cli lab access (managed by rodeo) owner={owner} deployment={deployment}"
+
+
+def _fw_owner(description: str) -> tuple[str, str]:
+    m = _FW_OWNER_RE.search(description or "")
+    return (m.group(1), m.group(2)) if m else ("", "")
 
 
 def _detect_caller_ip() -> str:
@@ -197,12 +308,23 @@ class GceApi:
         return {
             "name": inst.name, "zone": zone, "status": inst.status, "id": str(inst.id),
             "labels": dict(inst.labels or {}), "public_ip": nat_ip, "metadata": meta,
+            "tags": list(inst.tags.items) if inst.tags else [],
+            "created": str(getattr(inst, "creation_timestamp", "") or ""),
         }
 
     # -- writes ----------------------------------------------------------------
     def insert_instance(self, zone: str, body: dict[str, Any]) -> None:
         inst = self.c.Instance(body)
         self.instances.insert(project=self.project, zone=zone, instance_resource=inst).result(timeout=600)
+
+    def set_labels(self, zone: str, name: str, labels: dict[str, str]) -> None:
+        """Merge ``labels`` into the instance's labels (needs the current fingerprint)."""
+        inst = self.instances.get(project=self.project, zone=zone, instance=name)
+        req = self.c.InstancesSetLabelsRequest(
+            label_fingerprint=inst.label_fingerprint, labels={**dict(inst.labels or {}), **labels},
+        )
+        self.instances.set_labels(project=self.project, zone=zone, instance=name,
+                                  instances_set_labels_request_resource=req).result(timeout=300)
 
     def start_instance(self, zone: str, name: str) -> None:
         self.instances.start(project=self.project, zone=zone, instance=name).result(timeout=600)
@@ -238,10 +360,17 @@ class GceApi:
             if _is_not_found(exc):
                 return None
             raise
-        return {"name": fw.name, "source_ranges": sorted(fw.source_ranges or [])}
+        return {"name": fw.name, "source_ranges": sorted(fw.source_ranges or []),
+                "description": str(fw.description or "")}
+
+    def list_firewalls(self) -> list[dict[str, Any]]:
+        req = self.c.ListFirewallsRequest(project=self.project)
+        return [{"name": fw.name, "description": str(fw.description or "")}
+                for fw in self.firewalls.list(request=req) if fw.name.startswith("rodeo-")]
 
     def upsert_firewall(self, name: str, network: str, ports: tuple[int, ...],
-                        source_ranges: list[str], tag: str, exists: bool) -> None:
+                        source_ranges: list[str], tag: str, exists: bool,
+                        description: str = "rodeo-cli lab access (managed by rodeo)") -> None:
         fw = self.c.Firewall(
             name=name,
             network=f"projects/{self.project}/global/networks/{network}",
@@ -249,7 +378,7 @@ class GceApi:
             source_ranges=source_ranges,
             target_tags=[tag],
             allowed=[self.c.Allowed(I_p_protocol="tcp", ports=[str(p) for p in ports])],
-            description="rodeo-cli lab access (managed by rodeo)",
+            description=description,
         )
         if exists:
             self.firewalls.patch(project=self.project, firewall=name,
@@ -262,7 +391,11 @@ class GceApi:
 
 
 def _gcloud_config_project() -> str | None:
-    """``gcloud config get-value project``; gcloud is often installed off PATH."""
+    return _gcloud_config_value("project")
+
+
+def _gcloud_config_value(key: str) -> str | None:
+    """``gcloud config get-value <key>``; gcloud is often installed off PATH."""
     import shutil
     import subprocess
     from pathlib import Path
@@ -274,7 +407,7 @@ def _gcloud_config_project() -> str | None:
     if not gcloud:
         return None
     try:
-        out = subprocess.run([gcloud, "config", "get-value", "project"], capture_output=True,
+        out = subprocess.run([gcloud, "config", "get-value", key], capture_output=True,
                              text=True, timeout=30, check=False).stdout.strip()
     except (OSError, subprocess.SubprocessError):
         return None
@@ -332,10 +465,27 @@ class GcpHostProvider:
         api: Any | None = None,
         sleep: Callable[[float], None] = time.sleep,
         caller_ip_fn: Callable[[], str] = _detect_caller_ip,
+        account_fn: Callable[[], str] = _adc_account,
     ) -> None:
         self._api = api
         self._sleep = sleep
         self._caller_ip_fn = caller_ip_fn
+        self._account_fn = account_fn
+        self._owner_cache: str | None = None
+
+    def owner(self, config: dict[str, Any] | None = None) -> str:
+        """This caller's raw ``rodeo-owner`` (cached per provider)."""
+        if self._owner_cache is None:
+            self._owner_cache = caller_owner(self._account_fn)
+        return self._owner_cache
+
+    def _deployment(self, key: LabKey) -> str:
+        if not key.deployment:
+            raise ConfigError(
+                f"lab key {key.key_name!r} has no deployment id; remove "
+                f"{key.private.parent} and deploy again"
+            )
+        return key.deployment
 
     # -- config --------------------------------------------------------------
     def _client(self, config: dict[str, Any]) -> Any:
@@ -433,29 +583,38 @@ class GcpHostProvider:
         profile = str(config.get("lab_profile") or config.get("profile") or "harvester")
         cfg = self.apply_instance_selection(config, profile=profile)
         self.validate(cfg)
+        reject_reserved_labels(cfg.get("labels"))
         cfg.setdefault("region", default_region())
         api = self._client(cfg)
-        lab_key = self._lab_key(api, spec.workshop)
+        lab_key, mine = self._lab_key(api, spec.workshop)
+        deployment = self._deployment(lab_key)
         ssh_user = spec.ssh_user or DEFAULT_SSH_USER
         wait_spec = ProvisionSpec(
             workshop=spec.workshop, host_ids=spec.host_ids, ssh_user=ssh_user,
             identity_file=str(lab_key.private), extra_labels=spec.extra_labels,
             wait_ssh=spec.wait_ssh, ssh_timeout=spec.ssh_timeout,
         )
-        existing = {h: self._find_owned(api, spec.workshop, h) for h in spec.host_ids}
+        existing: dict[str, dict[str, Any] | None] = {h: None for h in spec.host_ids}
+        for inst in mine:
+            hid = inst["labels"].get(LABEL_HOST_ID)
+            for h in spec.host_ids:
+                if hid == label_value(h) and existing[h] is None:
+                    existing[h] = inst
         to_create = [h for h, inst in existing.items() if inst is None]
         zones = self.candidate_zones(api, cfg) if to_create else []
         net, sub = self.network_names(cfg)
         if not (cfg.get("network") or cfg.get("subnetwork")):
             api.ensure_network(net, str(cfg["region"]), sub, SUBNET_RANGE)
-        self._reconcile_firewall(api, cfg, net, spec.workshop)
+        # A lab adopted from before issue #175 keeps its old firewall rule and tag.
+        firewall = self._firewall_of(mine) or workshop_firewall(spec.workshop, deployment)
+        self._reconcile_firewall(api, cfg, net, firewall, deployment)
         image = self._image(api, cfg) if to_create else ""
 
         out: list[ProvisionedHost] = []
         for host_id in spec.host_ids:
             inst = existing[host_id]
             if inst is None:
-                inst = self._create(api, wait_spec, cfg, host_id, zones, image, lab_key)
+                inst = self._create(api, wait_spec, cfg, host_id, zones, image, lab_key, firewall)
                 action = "create"
             else:
                 action = "reuse"
@@ -467,7 +626,7 @@ class GcpHostProvider:
             if action == "create":
                 forget_host_key(spec.workshop, public_ip)  # GCE reuses ephemeral IPs
             labels = {"provider": "gcp", "zone": inst["zone"], **spec.extra_labels,
-                      **(cfg.get("labels") or {})}
+                      **(cfg.get("labels") or {}), "deployment": deployment}
             expiry = inst["labels"].get(LABEL_EXPIRES_AT, "")
             if expiry.isdigit():
                 from datetime import datetime, timezone
@@ -500,12 +659,15 @@ class GcpHostProvider:
     def instance_body(
         self, cfg: dict[str, Any], *, project: str, workshop: str, host_id: str, zone: str,
         image: str, ssh_user: str, public_key: str, extra_labels: dict[str, str] | None = None,
-        lab_host: bool = True,
+        lab_host: bool = True, owner: str = "", deployment: str = "", firewall: str = "",
     ) -> dict[str, Any]:
         """The Instance resource (as a dict) for one lab host."""
+        from .aws import _rodeo_version
+
         itype = str(cfg["instance_type"])
         region = zone.rsplit("-", 1)[0]
         _, sub = self.network_names({**cfg, "region": region})
+        reject_reserved_labels(cfg.get("labels"))
         labels: dict[str, str] = {}
         for k, v in {**(cfg.get("labels") or {}), **(extra_labels or {})}.items():
             key, val = label_value(k), label_value(v)
@@ -513,11 +675,17 @@ class GcpHostProvider:
                 labels[key] = val
         # Ownership labels last so nothing above can replace them: deprovision finds
         # instances by these, and a lost one would leak a billing VM.
-        labels.update({
+        ownership = {
             LABEL_MANAGED_BY: TAG_MANAGED_BY_VALUE,
             LABEL_WORKSHOP: label_value(workshop),
-            LABEL_HOST_ID: label_value(host_id),
-        })
+        }
+        if owner and deployment:
+            ownership.update({
+                LABEL_OWNER: owner_label(owner),
+                LABEL_DEPLOYMENT: deployment,
+                LABEL_VERSION: label_value(_rodeo_version()),
+            })
+        labels.update({**ownership, LABEL_HOST_ID: label_value(host_id)})
         scheduling: dict[str, Any] = {"automatic_restart": True, "on_host_maintenance": "TERMINATE"}
         expiry = deadman.expires_at(cfg)
         if expiry:
@@ -534,6 +702,13 @@ class GcpHostProvider:
             {"key": "ssh-keys", "value": f"{ssh_user}:{public_key.strip()}"},
             {"key": META_WORKSHOP, "value": workshop},
         ]
+        if owner and deployment:
+            metadata += [
+                {"key": META_OWNER, "value": owner},
+                {"key": META_CREATED_BY, "value": owner},
+                {"key": TAG_DEPLOYMENT, "value": deployment},
+            ]
+        firewall = firewall or workshop_firewall(workshop, deployment)
         if lab_host:
             from ..commands.install_deps import zypper_boot_install_script
 
@@ -545,10 +720,10 @@ class GcpHostProvider:
         if bool(cfg.get("associate_public_ip", True)):
             nic["access_configs"] = [{"name": "external-nat", "type_": "ONE_TO_ONE_NAT"}]
         body: dict[str, Any] = {
-            "name": instance_name(workshop, host_id),
+            "name": instance_name(workshop, host_id, deployment),
             "machine_type": f"zones/{zone}/machineTypes/{itype}",
             "labels": labels,
-            "tags": {"items": [workshop_firewall(workshop)]},
+            "tags": {"items": [firewall]},
             "metadata": {"items": metadata},
             "network_interfaces": [nic],
             "disks": [{
@@ -558,8 +733,7 @@ class GcpHostProvider:
                     "source_image": image,
                     "disk_size_gb": boot_gb,
                     "disk_type": f"zones/{zone}/diskTypes/{boot_disk_type(itype)}",
-                    "labels": {LABEL_MANAGED_BY: TAG_MANAGED_BY_VALUE,
-                               LABEL_WORKSHOP: label_value(workshop)},
+                    "labels": dict(ownership),
                 },
             }],
             "scheduling": scheduling,
@@ -576,13 +750,14 @@ class GcpHostProvider:
         return body
 
     def _create(self, api: Any, spec: ProvisionSpec, cfg: dict[str, Any], host_id: str,
-                zones: list[str], image: str, key: LabKey) -> dict[str, Any]:
+                zones: list[str], image: str, key: LabKey, firewall: str = "") -> dict[str, Any]:
         last: BaseException | None = None
         for zone in zones:
             body = self.instance_body(
                 cfg, project=str(api.project), workshop=spec.workshop, host_id=host_id,
                 zone=zone, image=image, ssh_user=spec.ssh_user,
                 public_key=key.public.read_text(), extra_labels=spec.extra_labels,
+                owner=self.owner(cfg), deployment=self._deployment(key), firewall=firewall,
             )
             try:
                 api.insert_instance(zone, body)
@@ -640,61 +815,151 @@ class GcpHostProvider:
         AwsHostProvider(sleep=self._sleep)._wait_ssh(spec, host, timeout=timeout)
 
     # -- firewall --------------------------------------------------------------
-    def _reconcile_firewall(self, api: Any, cfg: dict[str, Any], network: str, workshop: str) -> None:
+    def _reconcile_firewall(self, api: Any, cfg: dict[str, Any], network: str, name: str,
+                            deployment: str) -> None:
         cidrs = cfg.get("allowed_cidrs")
         if not cidrs:
             ip = self._caller_ip_fn()
             cidrs = [f"{ip}/32" if ":" not in ip else f"{ip}/128"]
-        name = workshop_firewall(workshop)
         current = api.get_firewall(name)
+        owner = self.owner(cfg)
+        if current is not None:
+            fw_owner, fw_dep = _fw_owner(current.get("description", ""))
+            if fw_owner and (fw_owner != owner or fw_dep != deployment):
+                raise ConfigError(
+                    f"firewall rule {name!r} belongs to another deployment or owner "
+                    f"({fw_owner}); rodeo will not change it"
+                )
         want = sorted(str(c) for c in cidrs)
-        if current is not None and current["source_ranges"] == want:
+        description = _fw_description(owner, deployment)
+        if (current is not None and current["source_ranges"] == want
+                and current.get("description") == description):
             return
-        api.upsert_firewall(name, network, MANAGED_FW_PORTS, want, name, exists=current is not None)
+        api.upsert_firewall(name, network, MANAGED_FW_PORTS, want, name,
+                            exists=current is not None, description=description)
+
+    @staticmethod
+    def _firewall_of(lab: list[dict[str, Any]]) -> str:
+        """The firewall tag a lab's instances already carry (first one found)."""
+        for inst in lab:
+            for tag in inst.get("tags") or []:
+                if str(tag).startswith("rodeo-"):
+                    return str(tag)
+        return ""
+
+    def _delete_firewalls(self, api: Any, names: set[str], workshop: str,
+                          gone: set[str]) -> list[DeprovisionResult]:
+        """Delete these firewall rules unless a live instance (anyone's) still uses the tag,
+        or the rule's description names another owner."""
+        owner = self._owner_cache or ""
+        users = [i for i in api.find_instances(self._workshop_filter(workshop))
+                 if i["name"] not in gone]
+        results: list[DeprovisionResult] = []
+        for name in sorted(names):
+            fw = api.get_firewall(name)
+            if fw is None:
+                continue
+            fw_owner, _ = _fw_owner(fw.get("description", ""))
+            if fw_owner and fw_owner != owner:
+                continue
+            if any(name in (i.get("tags") or []) for i in users):
+                continue
+            try:
+                api.delete_firewall(name)
+                results.append(DeprovisionResult(id="firewall", ok=True, provider_id=name,
+                                                 detail="deleted"))
+            except Exception as exc:  # noqa: BLE001
+                results.append(DeprovisionResult(id="firewall", ok=True, provider_id=name,
+                                                 detail=f"delete failed, re-run destroy: {exc}"))
+        return results
 
     # -- ownership -------------------------------------------------------------
     @staticmethod
-    def _filter(workshop: str) -> str:
+    def _workshop_filter(workshop: str) -> str:
         return (f'labels.{LABEL_MANAGED_BY} = "{TAG_MANAGED_BY_VALUE}" AND '
                 f'labels.{LABEL_WORKSHOP} = "{label_value(workshop)}"')
 
-    def _owned(self, api: Any, workshop: str) -> list[dict[str, Any]]:
-        """Live instances of exactly this workshop (label match + metadata name)."""
-        out = []
-        for inst in api.find_instances(self._filter(workshop)):
-            if inst["labels"].get(LABEL_MANAGED_BY) != TAG_MANAGED_BY_VALUE:
+    @staticmethod
+    def _deployment_filter(deployment: str) -> str:
+        return (f'labels.{LABEL_MANAGED_BY} = "{TAG_MANAGED_BY_VALUE}" AND '
+                f'labels.{LABEL_DEPLOYMENT} = "{deployment}"')
+
+    def _mine(self, api: Any, workshop: str, key: LabKey | None) -> list[dict[str, Any]]:
+        """Live instances of this caller's deployment of ``workshop`` (see ``is_mine``)."""
+        if key is None:
+            return []
+        owner = self._owner_cache or ""
+        found: dict[str, dict[str, Any]] = {}
+        if key.deployment:
+            for inst in api.find_instances(self._deployment_filter(key.deployment)):
+                found[f"{inst['zone']}/{inst['name']}"] = inst
+        for inst in api.find_instances(self._workshop_filter(workshop)):
+            found.setdefault(f"{inst['zone']}/{inst['name']}", inst)
+        return [i for i in found.values() if is_mine(i, workshop=workshop, key=key, owner=owner)]
+
+    def _adopt(self, api: Any, key: LabKey, lab: list[dict[str, Any]]) -> None:
+        """Label this caller's instances from before issue #175 (matched by the lab key)."""
+        from .aws import _rodeo_version
+
+        owner = self._owner_cache or ""
+        new = {LABEL_OWNER: owner_label(owner), LABEL_DEPLOYMENT: self._deployment(key),
+               LABEL_VERSION: label_value(_rodeo_version())}
+        for inst in lab:
+            if inst["labels"].get(LABEL_DEPLOYMENT):
                 continue
-            if inst["metadata"].get(META_WORKSHOP, workshop) != workshop:
-                continue  # another workshop whose name sanitises the same
+            api.set_labels(inst["zone"], inst["name"], new)
+            inst["labels"] = {**inst["labels"], **new}
+
+    def _lab_key(self, api: Any, workshop: str) -> tuple[LabKey, list[dict[str, Any]]]:
+        """This deployment's SSH key and live instances: kept while this caller's lab has
+        instances (older ones adopted), else a fresh key and deployment id. A teammate's
+        lab with the same name is not ours and does not block this."""
+        self.owner()
+        key = load_lab_ssh_key(workshop)
+        mine = self._mine(api, workshop, key)
+        if mine and key is not None:
+            self._adopt(api, key, mine)
+            return key, mine
+        return new_lab_ssh_key(workshop), []
+
+    def _recorded(self, api: Any, spec: ProvisionSpec) -> list[dict[str, Any]]:
+        """Destroy without the lab key: only instance names this machine recorded."""
+        names = {n for n in spec.known_instance_ids if n}
+        if not names:
+            raise ConfigError(
+                f"lab {spec.workshop!r} has no SSH key on this machine and no recorded "
+                "instance, so rodeo cannot tell which instances are yours. List your "
+                "deployments with `rodeo cloud ls --provider gcp` and remove one with "
+                "`rodeo cloud destroy --provider gcp <deployment>`."
+            )
+        owner = self._owner_cache or ""
+        out = []
+        for inst in api.find_instances(self._workshop_filter(spec.workshop)):
+            if inst["name"] not in names:
+                continue
+            if inst["metadata"].get(META_WORKSHOP, spec.workshop) != spec.workshop:
+                continue
+            label = inst["labels"].get(LABEL_OWNER)
+            if label is not None and label != owner_label(owner):
+                continue
             out.append(inst)
         return out
 
-    def _find_owned(self, api: Any, workshop: str, host_id: str) -> dict[str, Any] | None:
-        for inst in self._owned(api, workshop):
-            if inst["labels"].get(LABEL_HOST_ID) == label_value(host_id):
-                return inst
-        return None
-
-    def _lab_key(self, api: Any, workshop: str) -> LabKey:
-        """This deployment's SSH key: kept while the lab has instances, else a fresh one."""
-        key = load_lab_ssh_key(workshop)
-        if self._owned(api, workshop):
-            if key is None:
-                raise ConfigError(
-                    f"lab {workshop!r} already has instances in GCP whose private key is not "
-                    "on this machine (deployed from elsewhere). Give your plan a different "
-                    "name, or destroy that lab from where it was deployed."
-                )
-            return key
-        return new_lab_ssh_key(workshop)
-
     # -- deprovision -----------------------------------------------------------
     def deprovision(self, spec: ProvisionSpec, config: dict[str, Any]) -> list[DeprovisionResult]:
+        """Delete this caller's deployment of ``spec.workshop``, never a teammate's lab
+        with the same name (same rule as the AWS provider)."""
         self.validate({**config, "instance_tier": config.get("instance_tier") or "recommended"})
         api = self._client(config)
+        self.owner(config)
+        key = load_lab_ssh_key(spec.workshop)
+        if key is not None:
+            lab = self._mine(api, spec.workshop, key)
+            self._adopt(api, key, lab)
+        else:
+            lab = self._recorded(api, spec)
         want = {label_value(h) for h in spec.host_ids} if spec.host_ids else None
-        targets = [i for i in self._owned(api, spec.workshop)
-                   if want is None or i["labels"].get(LABEL_HOST_ID) in want]
+        targets = [i for i in lab if want is None or i["labels"].get(LABEL_HOST_ID) in want]
         results: list[DeprovisionResult] = []
         for inst in targets:
             hid = inst["labels"].get(LABEL_HOST_ID) or inst["name"]
@@ -709,15 +974,83 @@ class GcpHostProvider:
             results = [DeprovisionResult(id=h, ok=True, detail="no matching instance")
                        for h in spec.host_ids] or [DeprovisionResult(id="*", ok=True,
                                                                      detail="no matching instances")]
-        if all(r.ok for r in results) and not self._owned(api, spec.workshop):
-            name = workshop_firewall(spec.workshop)
-            if api.get_firewall(name) is not None:
-                try:
-                    api.delete_firewall(name)
-                    results.append(DeprovisionResult(id="firewall", ok=True, provider_id=name,
-                                                     detail="deleted"))
-                except Exception as exc:  # noqa: BLE001
-                    results.append(DeprovisionResult(id="firewall", ok=True, provider_id=name,
-                                                     detail=f"delete failed, re-run destroy: {exc}"))
-            delete_lab_ssh_key(spec.workshop)
+        gone = {i["name"] for i in targets}
+        left = [i for i in (self._mine(api, spec.workshop, key) if key else lab)
+                if i["name"] not in gone]
+        if all(r.ok for r in results) and not left:
+            names = {t for i in lab for t in i.get("tags") or [] if str(t).startswith("rodeo-")}
+            if key is not None:
+                names.add(workshop_firewall(spec.workshop, self._deployment(key)))
+            results += self._delete_firewalls(api, names, spec.workshop, gone)
+            if key is not None:
+                delete_lab_ssh_key(spec.workshop)
+        return results
+
+    # -- rodeo cloud (issue #175) ----------------------------------------------
+    def list_deployments(self, config: dict[str, Any]) -> list[dict[str, Any]]:
+        """Every rodeo instance in the project, grouped by deployment (``legacy`` without one)."""
+        api = self._client(config)
+        groups: dict[str, dict[str, Any]] = {}
+        for inst in api.find_instances(f'labels.{LABEL_MANAGED_BY} = "{TAG_MANAGED_BY_VALUE}"'):
+            labels, meta = inst["labels"], inst["metadata"]
+            if labels.get(LABEL_MANAGED_BY) != TAG_MANAGED_BY_VALUE:
+                continue
+            dep = labels.get(LABEL_DEPLOYMENT, "")
+            ssh_keys = str(meta.get("ssh-keys") or "")
+            gid = dep or f"legacy:{labels.get(LABEL_WORKSHOP, '')}:{ssh_keys}"
+            row = groups.setdefault(gid, {
+                "deployment": dep, "legacy": not dep,
+                "workshop": meta.get(META_WORKSHOP) or labels.get(LABEL_WORKSHOP, ""),
+                "owner": meta.get(META_OWNER) or labels.get(LABEL_OWNER, ""),
+                "key_name": "", "ssh_keys": ssh_keys, "hosts": [], "instances": [],
+                "states": [], "launched": "", "expires": "",
+            })
+            row["hosts"].append(labels.get(LABEL_HOST_ID) or inst["name"])
+            row["instances"].append(inst["name"])
+            row["states"].append(str(inst.get("status") or "").lower())
+            created = str(inst.get("created") or "")
+            if created and (not row["launched"] or created < row["launched"]):
+                row["launched"] = created
+            expiry = labels.get(LABEL_EXPIRES_AT, "")
+            if expiry.isdigit():
+                from datetime import datetime, timezone
+
+                expiry = deadman.iso(datetime.fromtimestamp(int(expiry), tz=timezone.utc))
+            if expiry and (not row["expires"] or expiry > row["expires"]):
+                row["expires"] = expiry
+        return sorted(groups.values(), key=lambda r: (r["workshop"], r["deployment"]))
+
+    def destroy_deployment(
+        self, config: dict[str, Any], deployment: str, *, allow_foreign: bool = False,
+    ) -> list[DeprovisionResult]:
+        """Delete every instance and firewall rule of one deployment."""
+        api = self._client(config)
+        owner = self.owner(config)
+        insts = [i for i in api.find_instances(self._deployment_filter(deployment))
+                 if i["labels"].get(LABEL_DEPLOYMENT) == deployment
+                 and i["labels"].get(LABEL_MANAGED_BY) == TAG_MANAGED_BY_VALUE]
+        fws = [fw for fw in api.list_firewalls() if _fw_owner(fw["description"])[1] == deployment]
+        owners = {i["metadata"].get(META_OWNER) or i["labels"].get(LABEL_OWNER, "") for i in insts}
+        owners |= {_fw_owner(fw["description"])[0] for fw in fws}
+        if not owners:
+            return [DeprovisionResult(id=deployment, ok=True, detail="nothing found")]
+        foreign = sorted(o for o in owners if o != owner)
+        if foreign and not allow_foreign:
+            raise ConfigError(
+                f"deployment {deployment} belongs to {', '.join(foreign)}, not to you "
+                f"({owner}). Pass --not-mine to remove it anyway."
+            )
+        results: list[DeprovisionResult] = []
+        for inst in insts:
+            api.delete_instance(inst["zone"], inst["name"])
+            results.append(DeprovisionResult(id=inst["labels"].get(LABEL_HOST_ID) or inst["name"],
+                                             ok=True, provider_id=inst["name"], detail="deleted"))
+        for fw in fws:
+            try:
+                api.delete_firewall(fw["name"])
+                detail = "deleted"
+            except Exception as exc:  # noqa: BLE001
+                detail = f"delete failed, re-run: {exc}"
+            results.append(DeprovisionResult(id="firewall", ok=True, provider_id=fw["name"],
+                                             detail=detail))
         return results

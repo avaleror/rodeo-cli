@@ -4,10 +4,11 @@
     rodeo cloud ls --all                 # everyone's, with owners
     rodeo cloud destroy 3f9a1c22         # remove one of yours, from any machine
     rodeo cloud destroy 3f9a1c22 --not-mine   # someone else's: type their owner to confirm
+    rodeo cloud ls --provider gcp        # the same on GCP (whole project, every region)
 
 Every resource rodeo launches carries ``rodeo-owner`` (the caller ARN, or
 ``RODEO_OWNER``) and ``rodeo-deployment`` (8 hex chars per deployment). These
-commands read them from AWS, so they work after the local lab key is gone.
+commands read them from the cloud, so they work after the local lab key is gone.
 """
 from __future__ import annotations
 
@@ -67,6 +68,11 @@ def _short_owner(owner: str) -> str:
 
 
 def _age(launched: Any) -> str:
+    if isinstance(launched, str) and launched:
+        try:
+            launched = datetime.fromisoformat(launched)
+        except ValueError:
+            return "-"
     if not isinstance(launched, datetime):
         return "-"
     delta = datetime.now(timezone.utc) - launched.astimezone(timezone.utc)
@@ -80,13 +86,39 @@ def _local_keys() -> dict[str, Any]:
 
 def _is_mine(row: dict[str, Any], owner: str, local: dict[str, Any]) -> bool:
     if row["legacy"]:
+        if row.get("ssh_keys"):  # GCP: the lab public key sits in the ssh-keys metadata
+            blobs = []
+            for key in local.values():
+                try:
+                    blobs.append(key.public.read_text().split()[1])
+                except (OSError, IndexError):
+                    continue
+            return any(b in row["ssh_keys"] for b in blobs)
         return row["key_name"] in local
     return row["owner"] == owner
 
 
+def _target(provider: str, region: str | None, project: str | None,
+            config_dir: str | None) -> tuple[Any, dict[str, Any], str]:
+    """(provider object, its config, where) for --provider aws|gcp."""
+    if provider == "gcp":
+        from ..providers.gcp import GcpHostProvider, default_project
+
+        cfg = {"type": "gcp", "project": project or default_project()}
+        return GcpHostProvider(), cfg, f"GCP project {cfg['project']}"
+    cfg = {"region": resolve_region(region, config_dir)}
+    return AwsHostProvider(), cfg, cfg["region"]
+
+
+_PROVIDER_OPT = click.option("--provider", "provider", type=click.Choice(["aws", "gcp"]),
+                             default="aws", show_default=True, help="Which cloud.")
+_PROJECT_OPT = click.option("--project", default=None,
+                            help="GCP project (default: environment / gcloud).")
+
+
 @click.group("cloud")
 def cloud_cmd() -> None:
-    """Your rodeo deployments on a shared cloud account (AWS)."""
+    """Your rodeo deployments on a shared cloud account (AWS or GCP)."""
 
 
 @cloud_cmd.command("ls")
@@ -95,20 +127,22 @@ def cloud_cmd() -> None:
 @click.option("--region", default=None, help="AWS region (default: plan, then env).")
 @click.option("--config-dir", "config_dir", default=None, metavar="DIR",
               help="Lab directory to read provider.region from.")
-def cloud_ls(mine: bool, region: str | None, config_dir: str | None) -> None:
-    """List live rodeo deployments in one region."""
-    cfg = {"region": resolve_region(region, config_dir)}
-    provider = AwsHostProvider()
-    owner = provider.owner(cfg)
+@_PROVIDER_OPT
+@_PROJECT_OPT
+def cloud_ls(mine: bool, region: str | None, config_dir: str | None, provider: str,
+             project: str | None) -> None:
+    """List live rodeo deployments (one AWS region, or a whole GCP project)."""
+    prov, cfg, where = _target(provider, region, project, config_dir)
+    owner = prov.owner(cfg)
     local = _local_keys()
-    rows = provider.list_deployments(cfg)
+    rows = prov.list_deployments(cfg)
     if mine:
         rows = [r for r in rows if _is_mine(r, owner, local)]
     if not rows:
         console.print(f"No {'deployments of yours' if mine else 'rodeo deployments'} "
-                      f"in {cfg['region']}.")
+                      f"in {where}.")
         return
-    table = Table(title=f"rodeo deployments in {cfg['region']}")
+    table = Table(title=f"rodeo deployments in {where}")
     for col in ("deployment", "lab", "owner", "hosts", "state", "age", "expires"):
         table.add_column(col, overflow="fold")
     for r in rows:
@@ -134,14 +168,16 @@ def cloud_ls(mine: bool, region: str | None, config_dir: str | None) -> None:
 @click.option("--region", default=None, help="AWS region (default: plan, then env).")
 @click.option("--config-dir", "config_dir", default=None, metavar="DIR",
               help="Lab directory to read provider.region from.")
+@_PROVIDER_OPT
+@_PROJECT_OPT
 def cloud_destroy(deployment: str, not_mine: bool, assume_yes: bool,
-                  region: str | None, config_dir: str | None) -> None:
-    """Terminate one deployment: instances, security groups, key pair."""
+                  region: str | None, config_dir: str | None, provider: str,
+                  project: str | None) -> None:
+    """Terminate one deployment: instances, security groups or firewall, key pair."""
     deployment = deployment.strip().lower()
-    cfg = {"region": resolve_region(region, config_dir)}
-    provider = AwsHostProvider()
-    owner = provider.owner(cfg)
-    rows = [r for r in provider.list_deployments(cfg) if r["deployment"] == deployment]
+    prov, cfg, where = _target(provider, region, project, config_dir)
+    owner = prov.owner(cfg)
+    rows = [r for r in prov.list_deployments(cfg) if r["deployment"] == deployment]
     owners = sorted({r["owner"] for r in rows})
     foreign = [o for o in owners if o != owner]
     if foreign:
@@ -158,11 +194,11 @@ def cloud_destroy(deployment: str, not_mine: bool, assume_yes: bool,
             console.print("Aborted: the owner did not match.")
             raise SystemExit(1)
     elif not assume_yes and not Confirm.ask(
-        f"Terminate deployment {deployment} in {cfg['region']}?", default=False,
+        f"Terminate deployment {deployment} in {where}?", default=False,
     ):
         console.print("Aborted.")
         raise SystemExit(0)
-    results = provider.destroy_deployment(cfg, deployment, allow_foreign=bool(foreign))
+    results = prov.destroy_deployment(cfg, deployment, allow_foreign=bool(foreign))
     for r in results:
         console.print(f"[green]✓[/green]  {r.id}  {r.provider_id or '-'}  {r.detail or 'done'}")
     if foreign:

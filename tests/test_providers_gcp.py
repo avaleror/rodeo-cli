@@ -40,7 +40,8 @@ class FakeApi:
         return f"projects/{project}/global/images/family/{family}"
 
     def _view(self, inst):
-        return {k: inst[k] for k in ("name", "zone", "status", "id", "labels", "public_ip", "metadata")}
+        keys = ("name", "zone", "status", "id", "labels", "public_ip", "metadata", "tags", "created")
+        return {k: inst.get(k) for k in keys}
 
     def find_instances(self, label_filter):
         return [self._view(i) for i in self.instances.values()]
@@ -57,7 +58,11 @@ class FakeApi:
         self.instances[body["name"]] = {
             "name": body["name"], "zone": zone, "status": "RUNNING", "id": "1",
             "labels": dict(body["labels"]), "public_ip": "203.0.113.7", "metadata": meta,
+            "tags": list(body["tags"]["items"]), "created": "2026-11-24T10:00:00+00:00",
         }
+
+    def set_labels(self, zone, name, labels):
+        self.instances[name]["labels"] = {**self.instances[name]["labels"], **labels}
 
     def start_instance(self, zone, name):
         self.instances[name]["status"] = "RUNNING"
@@ -72,9 +77,15 @@ class FakeApi:
     def get_firewall(self, name):
         return self.firewalls.get(name)
 
-    def upsert_firewall(self, name, network, ports, source_ranges, tag, exists):
+    def upsert_firewall(self, name, network, ports, source_ranges, tag, exists,
+                        description="rodeo-cli lab access (managed by rodeo)"):
         self.firewalls[name] = {"name": name, "source_ranges": sorted(source_ranges),
-                                "ports": ports, "network": network, "tag": tag}
+                                "ports": ports, "network": network, "tag": tag,
+                                "description": description}
+
+    def list_firewalls(self):
+        return [{"name": f["name"], "description": f.get("description", "")}
+                for f in self.firewalls.values()]
 
     def delete_firewall(self, name):
         del self.firewalls[name]
@@ -87,6 +98,17 @@ def _provider(api):
 def _spec(**kw):
     return ProvisionSpec(workshop=kw.pop("workshop", "My_Lab"), host_ids=["primary"],
                          ssh_user="rodeo", wait_ssh=False, **kw)
+
+
+def _fw(api, lab="rodeo-my-lab-"):
+    """The one firewall rule of a lab (named rodeo-<lab>-<deployment> since issue #175)."""
+    names = [n for n in api.firewalls if n.startswith(lab)]
+    assert len(names) == 1, names
+    return api.firewalls[names[0]]
+
+
+def _inst_names(api, lab="rodeo-my-lab-"):
+    return [n for n in api.instances if n.startswith(lab)]
 
 
 @pytest.fixture
@@ -174,7 +196,14 @@ def test_ttl_off_means_no_max_run_duration():
 
 
 def test_ownership_labels_cannot_be_overridden():
-    body = _body(labels={"managed-by": "someone", "rodeo-workshop": "other"})
+    with pytest.raises(ConfigError, match="reserved"):
+        _body(labels={"managed-by": "someone", "rodeo-workshop": "other"})
+    body = _provider(FakeApi()).instance_body(
+        {"instance_type": "c4-standard-16-lssd"}, project="proj", workshop="My_Lab",
+        host_id="primary", zone="europe-west4-b", image="img", ssh_user="rodeo",
+        public_key="ssh-ed25519 AAAA lab\n",
+        extra_labels={"managed-by": "someone", "rodeo-workshop": "other", "scope": "single-host"},
+    )
     assert body["labels"]["managed-by"] == "rodeo"
     assert body["labels"]["rodeo-workshop"] == "my_lab"
     assert body["labels"]["scope"] == "single-host"
@@ -215,7 +244,7 @@ def test_provision_creates_network_firewall_and_instance(ssh_dir):
     assert hosts[0].public_ip == "203.0.113.7"
     assert hosts[0].labels["provision_action"] == "create"
     assert api.networks == [("rodeo-europe-west4", "europe-west4", "rodeo-europe-west4", "10.90.0.0/20")]
-    fw = api.firewalls["rodeo-my-lab"]
+    fw = _fw(api)
     assert fw["source_ranges"] == ["198.51.100.9/32"] and fw["ports"] == (22, 8443, 30002)
     zone, body = api.inserts[0]
     assert zone == "europe-west4-a" and body["machine_type"].endswith("c4-standard-16-lssd")
@@ -245,15 +274,18 @@ def test_provision_reuses_a_live_instance_and_keeps_its_key(ssh_dir):
     assert len(api.inserts) == 1
 
 
-def test_provision_refuses_a_lab_whose_key_is_elsewhere(ssh_dir):
+def test_a_lab_whose_key_is_elsewhere_is_left_alone(ssh_dir):
     api = FakeApi()
     cfg = {"type": "gcp", "instance_type": "c4-standard-8-lssd", "region": "europe-west4"}
     _provider(api).provision(_spec(), cfg)
     import shutil
 
+    first = _inst_names(api)
     shutil.rmtree(ssh_dir)
-    with pytest.raises(ConfigError, match="private key is not on this machine"):
-        _provider(api).provision(_spec(), cfg)
+    # Same lab name from another machine (issue #175): a second deployment, side by side.
+    _provider(api).provision(_spec(), cfg)
+    assert len(_inst_names(api)) == 2 and set(first) <= set(_inst_names(api))
+    assert len([n for n in api.firewalls if n.startswith("rodeo-my-lab-")]) == 2
 
 
 def test_byo_network_is_not_created(ssh_dir):
@@ -262,7 +294,7 @@ def test_byo_network_is_not_created(ssh_dir):
                                        "region": "europe-west4", "network": "corp",
                                        "subnetwork": "corp-sub"})
     assert api.networks == []
-    assert api.firewalls["rodeo-my-lab"]["network"] == "corp"
+    assert _fw(api)["network"] == "corp"
 
 
 def test_firewall_follows_the_callers_ip(ssh_dir):
@@ -271,7 +303,7 @@ def test_firewall_follows_the_callers_ip(ssh_dir):
     _provider(api).provision(_spec(), cfg)
     moved = GcpHostProvider(api=api, sleep=lambda _s: None, caller_ip_fn=lambda: "192.0.2.1")
     moved.provision(_spec(), cfg)
-    assert api.firewalls["rodeo-my-lab"]["source_ranges"] == ["192.0.2.1/32"]
+    assert _fw(api)["source_ranges"] == ["192.0.2.1/32"]
 
 
 def test_deprovision_deletes_only_this_workshop_then_the_firewall(ssh_dir):
@@ -280,9 +312,11 @@ def test_deprovision_deletes_only_this_workshop_then_the_firewall(ssh_dir):
     cfg = {"type": "gcp", "instance_type": "c4-standard-8-lssd", "region": "europe-west4"}
     p.provision(_spec(), cfg)
     p.provision(_spec(workshop="other"), cfg)
+    mine = _inst_names(api)
     results = p.deprovision(_spec(), cfg)
-    assert api.deleted == ["rodeo-my-lab-primary"]
-    assert "rodeo-my-lab" not in api.firewalls and "rodeo-other" in api.firewalls
+    assert api.deleted == mine and len(mine) == 1
+    assert not [n for n in api.firewalls if n.startswith("rodeo-my-lab-")]
+    assert [n for n in api.firewalls if n.startswith("rodeo-other-")]
     assert {r.id for r in results} == {"primary", "firewall"}
     assert all(r.ok for r in results)
 
@@ -292,8 +326,12 @@ def test_deprovision_ignores_a_workshop_whose_name_sanitises_the_same(ssh_dir):
     p = _provider(api)
     cfg = {"type": "gcp", "instance_type": "c4-standard-8-lssd", "region": "europe-west4"}
     p.provision(_spec(workshop="my-lab"), cfg)
-    api.instances["rodeo-my-lab-primary"]["metadata"]["rodeo-workshop"] = "my-lab"
-    p.deprovision(_spec(workshop="My_Lab"), cfg)
+    name = _inst_names(api)[0]
+    api.instances[name]["metadata"]["rodeo-workshop"] = "my-lab"
+    # My_Lab has no key here and nothing recorded: refused, nothing deleted.
+    with pytest.raises(ConfigError, match="cloud ls"):
+        p.deprovision(_spec(workshop="My_Lab"), cfg)
+    p.deprovision(_spec(workshop="My_Lab", known_instance_ids=[name]), cfg)
     assert api.deleted == []
 
 

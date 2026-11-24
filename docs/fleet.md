@@ -368,7 +368,7 @@ stays operator-only. Any later `fleet provision` closes the ports again. With
 `provider.security_group_ids` (BYO) rodeo changes nothing and asks you to open the
 ports yourself.
 
-### Shared accounts: who owns what (AWS)
+### Shared accounts: who owns what (AWS and GCP)
 
 Several people often deploy into one AWS account, and lab names repeat: two people
 running the `rancher-test` profile both get a lab called `rancher-test`. So rodeo
@@ -390,6 +390,15 @@ never picks cloud resources by lab name alone. Every resource carries
 - Labs from before this change have no `rodeo-deployment`. The machine holding
   their key adopts them on the next `up` or `destroy` (tags added, names kept).
   Anyone else sees them as `legacy` in `rodeo cloud ls --all`.
+
+On GCP the same rule applies, with three differences. The owner is your GCP account
+(from Application Default Credentials). Labels cannot hold `@` or `.`, so the
+`rodeo-owner` label is a readable form plus a short hash, and the raw account sits
+in instance metadata. Firewall rules take no labels, so `rodeo-<lab>-<deployment>`
+records owner and deployment in its description. Use `rodeo cloud ls --provider gcp`
+(the whole project) and `rodeo cloud destroy --provider gcp <deployment>`. A GCP lab
+from before this change is adopted by the machine whose lab public key sits in the
+instance's `ssh-keys` metadata.
 
 The owner check guards against a rodeo command hitting the wrong lab. It is not a
 permission system: anyone with PowerUser can still delete the instance in the
@@ -720,7 +729,7 @@ their own. When the last instance of the workshop goes (`fleet deprovision`,
 labs that ended some other way (dead-man switch, console) are swept on the next
 `provision` in the same region. Another user's live lab with the same name (shared
 account) is not yours: `provision` ignores it and starts its own deployment, see
-[Shared accounts](#shared-accounts-who-owns-what-aws).
+[Shared accounts](#shared-accounts-who-owns-what-aws-and-gcp).
 New instances also get cloud-init UserData: root authorized_keys + `NOPASSWD` sudo
 for `ssh_user` so remote `rodeo up` never asks for a password.
 Use `rodeo ssh student-01` or `rodeo ssh student-01/rancher`.
@@ -772,6 +781,8 @@ provider:
 
 Auth: Application Default Credentials (`gcloud auth application-default login`), never stored
 in `workshop.yaml`. Field details: [plan reference](reference/plan.md#provider-when-deployment_target-gcp).
+
+Ownership works as on AWS: see [Shared accounts](#shared-accounts-who-owns-what-aws-and-gcp).
 
 Status: single-host `rodeo up --target gcp` is live-tested. `fleet provision` uses the same
 provider and creates one VM per host id, but the claim portal and `fleet open-access` are

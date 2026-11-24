@@ -351,3 +351,9 @@ def test_provision_waits_for_the_image_repositories(ssh_dir, monkeypatch):
     spec = ProvisionSpec(workshop="lab", host_ids=["primary"], ssh_user="rodeo", wait_ssh=True)
     p.provision(spec, {"type": "gcp", "instance_type": "c4-standard-8-lssd", "region": "europe-west4"})
     assert len(calls) == 3 and "zypper" in calls[0][-1]
+
+
+def test_body_attaches_a_service_account_for_payg_registration():
+    """Without one the identity token 404s and SLES PAYG cannot register its repos."""
+    sa = _body()["service_accounts"]
+    assert sa == [{"email": "default", "scopes": ["https://www.googleapis.com/auth/userinfo.email"]}]

@@ -633,3 +633,44 @@ def test_public_ingress_skipped_when_public_ip_explicitly_disabled():
     AwsHostProvider().assert_public_ingress(
         ec2, _ingress_cfg(associate_public_ip=False)
     )
+
+
+class _AwsClientError(Exception):
+    """Shaped like botocore's ClientError (.response['Error']['Code'])."""
+
+    def __init__(self, code: str):
+        super().__init__(f"An error occurred ({code})")
+        self.response = {"Error": {"Code": code, "Message": str(self)}}
+
+
+class _LaggingEC2(_FakeEC2):
+    """describe_instances does not see a just-launched instance for a few calls."""
+
+    def __init__(self, misses: int, code: str = "InvalidInstanceID.NotFound"):
+        super().__init__()
+        self.misses, self.code, self.calls = misses, code, 0
+        self.instances["i-new"] = {"InstanceId": "i-new", "State": {"Name": "running"},
+                                   "PublicIpAddress": "192.0.2.10", "Tags": []}
+
+    def describe_instances(self, Filters=None, InstanceIds=None):
+        self.calls += 1
+        if self.calls <= self.misses:
+            raise _AwsClientError(self.code)
+        return super().describe_instances(Filters=Filters, InstanceIds=InstanceIds)
+
+
+def test_wait_running_tolerates_a_just_launched_instance_not_yet_visible():
+    # EC2 is eventually consistent: DescribeInstances right after RunInstances
+    # can say the id does not exist. Crashing there left a running, untracked host.
+    fake = _LaggingEC2(misses=2)
+    p = AwsHostProvider(ec2_client=fake, sleep=lambda s: None)
+    inst = p._wait_running(fake, "i-new", timeout=60)
+    assert inst["InstanceId"] == "i-new"
+    assert fake.calls == 3
+
+
+def test_wait_running_still_raises_other_aws_errors():
+    fake = _LaggingEC2(misses=1, code="UnauthorizedOperation")
+    p = AwsHostProvider(ec2_client=fake, sleep=lambda s: None)
+    with pytest.raises(_AwsClientError):
+        p._wait_running(fake, "i-new", timeout=60)

@@ -1404,8 +1404,21 @@ class AwsHostProvider:
     def _wait_running(self, ec2: Any, instance_id: str, *, timeout: float) -> dict[str, Any]:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            resp = ec2.describe_instances(InstanceIds=[instance_id])
-            inst = resp["Reservations"][0]["Instances"][0]
+            try:
+                resp = ec2.describe_instances(InstanceIds=[instance_id])
+            except Exception as exc:  # noqa: BLE001 — boto ClientError varies by install
+                # EC2 is eventually consistent: right after RunInstances the new
+                # id can be reported as not found. Keep polling instead of
+                # crashing and leaving a running host nobody tracks.
+                if _aws_error_parts(exc)[0] != "InvalidInstanceID.NotFound":
+                    raise
+                self._sleep(5)
+                continue
+            reservations = resp.get("Reservations") or []
+            if not reservations or not reservations[0].get("Instances"):
+                self._sleep(5)
+                continue
+            inst = reservations[0]["Instances"][0]
             state = inst["State"]["Name"]
             if state == "running" and inst.get("PublicIpAddress"):
                 return inst

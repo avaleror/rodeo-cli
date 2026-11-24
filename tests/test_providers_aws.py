@@ -391,6 +391,46 @@ def test_aws_provision_create_and_reuse(tmp_path, managed_ssh, monkeypatch):
     assert reloaded.hosts[0].public_ip == "203.0.113.1"
 
 
+def test_fleet_provision_sizes_instance_tier_by_lab_profile(tmp_path, managed_ssh, monkeypatch):
+    """instance_tier must resolve through lab.profile, not the harvester fallback."""
+    path = tmp_path / "workshop.yaml"
+    path.write_text(
+        textwrap.dedent(
+            """
+            name: demo
+            lab:
+              dir: /root/lab
+              profile: rancher
+            defaults:
+              ssh_user: ec2-user
+            provider:
+              type: aws
+              count: 1
+              region: eu-central-1
+              instance_tier: recommended
+              ami: ami-abc
+              subnet_id: subnet-1
+              security_group_ids: [sg-1]
+            hosts: []
+            """
+        )
+    )
+    inv = load_inventory(path)
+    seen: dict = {}
+    provider = AwsHostProvider(ec2_client=_FakeEC2(), sleep=lambda s: None)
+
+    def capture(spec, cfg):
+        seen.update(provider.apply_instance_selection(
+            cfg, profile=str(cfg.get("lab_profile") or "harvester")))
+        return []
+
+    monkeypatch.setattr(provider, "provision", capture)
+    monkeypatch.setattr("rodeo.fleet.provision.get_provider", lambda name: provider)
+    fleet_provision(inv, path, wait_ssh=False, write_inventory=False)
+    assert seen["lab_profile"] == "rancher"
+    assert seen["instance_type"] == "m8id.4xlarge"
+
+
 def test_aws_provision_reports_the_dead_man_expiry_and_reuse_keeps_it(tmp_path, managed_ssh, monkeypatch):
     path = _aws_workshop(tmp_path, count=1)
     inv = load_inventory(path)

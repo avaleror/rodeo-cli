@@ -106,13 +106,18 @@ def test_register_provider_and_get():
 
 def test_register_provider_can_implement_a_planned_name():
     sentinel = object()
-    register_provider("gcp", lambda: sentinel)
-    assert get_provider("gcp") is sentinel
+    register_provider("vultr", lambda: sentinel)
+    assert get_provider("vultr") is sentinel
 
 
 def test_planned_provider_message_preserved():
-    with pytest.raises(ConfigError, match=r"planned \(F4b\)"):
-        get_provider("gcp")
+    with pytest.raises(ConfigError, match=r"planned \(F4c\)"):
+        get_provider("vultr")
+
+
+def test_gcp_is_a_built_in_provider():
+    assert get_provider("gcp").name == "gcp"
+    assert "gcp" in list_providers()
 
 
 def test_unknown_provider_lists_known_types():

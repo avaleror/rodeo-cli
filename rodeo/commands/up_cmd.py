@@ -61,7 +61,13 @@ from ..privilege import (
     tmux_available,
 )
 from ..paths import fix_invoking_ownership, invoking_home
-from ..providers.remote_up import AlreadyRunning, execute_aws_up, execute_aws_up_detached, on_ec2
+from ..providers.remote_up import (
+    CLOUD_TARGETS,
+    AlreadyRunning,
+    execute_aws_up,
+    execute_aws_up_detached,
+    on_cloud_host,
+)
 from ..secretgen import append_secret, ensure_plan_secrets, ensure_secrets_file, secrets_path
 from .deploy import execute_deploy
 
@@ -241,8 +247,10 @@ def _up(profile: str | None, name: str | None, lab_dir: str | None,
     # AWS from a laptop = control plane: provision EC2, then remote-run up.
     # On the EC2 guest itself (IMDS), fall through to a normal local deploy
     # with baremetal phase behaviour.
+    # Same for gcp: provision a GCE VM, then remote-run up there.
     aws_control_plane = (
-        deployment_target == "aws" and not resume and not on_ec2()
+        deployment_target in CLOUD_TARGETS and not resume
+        and not on_cloud_host(str(deployment_target))
     )
     # remote = a KVM host the operator already owns: this machine only ships the lab and
     # runs `rodeo up` on the host over SSH, exactly like the AWS path minus the provisioning.
@@ -288,8 +296,8 @@ def _up(profile: str | None, name: str | None, lab_dir: str | None,
         host = detect_host()  # re-read after any install
     else:
         console.print(
-            "[dim]AWS control plane — will provision EC2 and remote-run "
-            "rodeo up on the instance (phases run as baremetal there).[/dim]\n"
+            f"[dim]{_CLOUD_LABEL.get(str(deployment_target), 'Cloud')} control plane — will "
+            "provision a VM and remote-run rodeo up on it (phases run as baremetal there).[/dim]\n"
             if aws_control_plane else
             "[dim]Control plane — will ship this lab to the KVM host in remote_host: and "
             "run rodeo up there (phases run as baremetal on the host).[/dim]\n"
@@ -325,7 +333,7 @@ def _up(profile: str | None, name: str | None, lab_dir: str | None,
             seed_lab(chosen, lab, force=False, deployment_target=deployment_target)
     else:
         console.print(f"\nUsing existing lab at [cyan]{lab}[/cyan].")
-        if profile and deployment_target == "aws" and not aws_control_plane:
+        if profile and deployment_target in CLOUD_TARGETS and not aws_control_plane:
             # On the AWS host: the laptop shipped only the plan files, so add
             # the bundled profile's custom/scripts, checks/, manifests/...
             with keep_trust(lab):
@@ -378,6 +386,7 @@ def _up(profile: str | None, name: str | None, lab_dir: str | None,
         assert lab is not None
         _aws_control_plane_deploy(
             lab,
+            target=str(deployment_target),
             profile=profile,
             instance_tier=instance_tier,
             assume_yes=assume_yes,
@@ -387,22 +396,23 @@ def _up(profile: str | None, name: str | None, lab_dir: str | None,
         return
 
     # On EC2 with deployment_target aws: run local phases as baremetal.
-    local_target = "baremetal" if deployment_target == "aws" else deployment_target
-    if deployment_target == "aws" and lab is not None:
+    cloud = deployment_target in CLOUD_TARGETS
+    local_target = "baremetal" if cloud else deployment_target
+    if cloud and lab is not None:
         _plan_path = lab / "rodeo-plan.yaml"
         if _plan_path.exists():
             import yaml as _yaml
             _plan_data = _yaml.safe_load(_plan_path.read_text()) or {}
-            # Keep aws in the plan for destroy --cloud; phases use baremetal below.
-            if _plan_data.get("deployment_target") != "aws":
-                _plan_data["deployment_target"] = "aws"
+            # Keep aws/gcp in the plan for destroy --cloud; phases use baremetal below.
+            if _plan_data.get("deployment_target") != deployment_target:
+                _plan_data["deployment_target"] = deployment_target
                 with keep_trust(lab):
                     write_lab_file(lab, "rodeo-plan.yaml", _yaml.dump(_plan_data, default_flow_style=False), 0o644)
 
     if not is_root():
         console.print("\n[bold]Switching to root for the install[/bold] (sudo)…")
         resume_args = ["up", "--resume", "--dir", str(lab), "--yes",
-                       "--target", local_target if deployment_target != "aws" else "baremetal"]
+                       "--target", local_target]
         resume_args.append("--reconcile" if reconcile else "--no-reconcile")
         ensure_root(resume_args)  # does not return
     elif os.environ.get("SUDO_USER"):
@@ -494,16 +504,20 @@ def _remote_done_message(cfg: dict, ip: str) -> str:
     return "\n".join(lines)
 
 
+_CLOUD_LABEL = {"aws": "AWS", "gcp": "GCP"}
+
+
 def _aws_control_plane_deploy(
     lab: Path,
     *,
+    target: str = "aws",
     profile: str | None,
     instance_tier: str | None,
     assume_yes: bool,
     ref: str | None = None,
     detach_out=None,
 ) -> None:
-    """Provision EC2 + remote ``rodeo up --target baremetal`` from the laptop.
+    """Provision a cloud VM (EC2 or GCE, per *target*) and remote-run ``rodeo up`` on it.
 
     With *detach_out* (``--detach``) it returns once the host has started the
     deploy and writes the record as one JSON line to that stream.
@@ -517,7 +531,8 @@ def _aws_control_plane_deploy(
     # Resolve lab profile name for the instance catalog (not engine type).
     lab_profile = profile or _infer_lab_profile(lab) or "harvester"
     try:
-        cfg = _resolve_aws_instance_choice(
+        resolve = _resolve_gcp_instance_choice if target == "gcp" else _resolve_aws_instance_choice
+        cfg = resolve(
             cfg,
             lab=lab,
             lab_profile=lab_profile,
@@ -538,17 +553,23 @@ def _aws_control_plane_deploy(
     _persist_plan_overlays(lab, cfg)
 
     provider = cfg.get("provider") or {}
-    from ..awscli import boto3_identity
+    label = _CLOUD_LABEL.get(target, target)
+    if target == "gcp":
+        from ..providers.gcp import credentials_identity
 
-    aws_ok, aws_detail = boto3_identity(str(provider.get("region") or ""))
-    if not aws_ok:
-        console.print(f"[red]✗  AWS credentials: {aws_detail}[/red]")
+        cred_ok, cred_detail = credentials_identity()
+    else:
+        from ..awscli import boto3_identity
+
+        cred_ok, cred_detail = boto3_identity(str(provider.get("region") or ""))
+    if not cred_ok:
+        console.print(f"[red]✗  {label} credentials: {cred_detail}[/red]")
         raise SystemExit(1)
-    console.print(f"[green]✓[/green]  AWS credentials: {aws_detail}")
+    console.print(f"[green]✓[/green]  {label} credentials: {cred_detail}")
     console.print(
-        f"\n[bold]Provisioning AWS KVM host[/bold]  "
+        f"\n[bold]Provisioning {label} KVM host[/bold]  "
         f"[cyan]{provider.get('instance_type')}[/cyan] "
-        f"in [cyan]{provider.get('region')}[/cyan]…"
+        f"in [cyan]{provider.get('zone') or provider.get('region')}[/cyan]…"
     )
     try:
         # Hint catalog profile for AwsHostProvider.apply_instance_selection
@@ -689,6 +710,66 @@ def _infer_lab_profile(lab: Path) -> str | None:
             best = max(matches, key=len)
             return PROFILE_ALIASES.get(best, best)
     return None
+
+
+def _resolve_gcp_instance_choice(
+    cfg: dict,
+    *,
+    lab: Path,
+    lab_profile: str,
+    instance_tier: str | None,
+    assume_yes: bool,
+) -> dict:
+    """GCP twin of _resolve_aws_instance_choice: fill provider type, project, region,
+    machine type and, for shapes without local SSD, a boot disk that holds the pool."""
+    from ..host_context import _planned_disk_gb
+    from ..providers.gcp import (
+        MIN_BOOT_DISK_GB,
+        default_project,
+        default_region,
+        has_local_ssd,
+    )
+    from ..providers.instance_catalog import TIERS, catalog_for_profile, normalize_tier, resolve_instance_type
+
+    provider = dict(cfg.get("provider") or {})
+    provider.setdefault("type", "gcp")
+    if not str(provider.get("project") or "").strip():
+        provider["project"] = default_project()
+        console.print(f"[dim]provider.project not set, using {provider['project']}[/dim]")
+    if not str(provider.get("region") or "").strip():
+        zone = str(provider.get("zone") or "").strip()
+        provider["region"] = zone.rsplit("-", 1)[0] if zone else default_region()
+        console.print(f"[dim]provider.region not set, using {provider['region']}[/dim]")
+    explicit = str(provider.get("instance_type") or "").strip()
+    tier_cli = instance_tier or str(provider.get("instance_tier") or "").strip() or None
+    if not explicit and not tier_cli and not assume_yes:
+        catalog = catalog_for_profile(lab_profile, "gcp")
+        tiers = [t for t in TIERS if t in catalog]
+        console.print(f"\n[bold]GCP machine type[/bold] for profile [cyan]{lab_profile}[/cyan]:\n")
+        for i, tier in enumerate(tiers, start=1):
+            offer = catalog[tier]
+            mark = " (default)" if tier == "recommended" else ""
+            console.print(f"  {i}) [bold]{tier}[/bold]{mark}  [cyan]{offer.instance_type}[/cyan]  {offer.notes}")
+        numbers = [str(i) for i in range(1, len(tiers) + 1)]
+        choice = Prompt.ask("\nPick a size", choices=numbers + tiers,
+                            default=str(tiers.index("recommended") + 1))
+        tier_cli = tiers[int(choice) - 1] if choice in numbers else normalize_tier(choice)
+    itype, tier_used = resolve_instance_type(
+        profile=lab_profile, instance_type=explicit or None, instance_tier=tier_cli, provider="gcp",
+    )
+    provider["instance_type"] = itype
+    if tier_used:
+        provider["instance_tier"] = tier_used
+    if not has_local_ssd(itype) and not provider.get("boot_disk_gb"):
+        # No local SSD: the image pool lives on the boot disk, so size it for the guests.
+        need = _planned_disk_gb(cfg)
+        provider["boot_disk_gb"] = max(MIN_BOOT_DISK_GB, need + 60)
+        console.print(f"[dim]{itype} has no local SSD: boot disk {provider['boot_disk_gb']} GB "
+                      f"(guests need ~{need} GB)[/dim]")
+    provider["lab_profile"] = lab_profile
+    cfg = {**cfg, "provider": provider}
+    _persist_plan_overlays(lab, cfg)  # re-runs and destroy keep the same choice
+    return cfg
 
 
 def _resolve_aws_instance_choice(

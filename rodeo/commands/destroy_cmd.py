@@ -5,7 +5,7 @@ import click
 from rich.console import Console
 from rich.prompt import Confirm
 
-from ..config import ConfigError, load_config, validate_aws_provider
+from ..config import ConfigError, load_config, validate_aws_provider, validate_gcp_provider
 from ..providers.remote_up import destroy_primary
 
 console = Console()
@@ -31,7 +31,7 @@ def destroy_cmd(cloud: bool, assume_yes: bool, config_dir: str | None) -> None:
     """Destroy cloud infrastructure for a lab (does not clean nested VMs).
 
     Nested lab cleanup stays on the guest: SSH in and run ``rodeo clean``.
-    This command only terminates the EC2 host tagged for the plan name.
+    This command only terminates the EC2 or GCE host labelled for the plan name.
     """
     if not cloud:
         console.print(
@@ -40,7 +40,7 @@ def destroy_cmd(cloud: bool, assume_yes: bool, config_dir: str | None) -> None:
         )
         raise SystemExit(2)
     if not assume_yes and not Confirm.ask(
-        "Terminate the AWS KVM host for this plan?",
+        "Terminate the cloud KVM host (AWS or GCP) for this plan?",
         default=False,
     ):
         console.print("Aborted.")
@@ -51,11 +51,15 @@ def destroy_cmd(cloud: bool, assume_yes: bool, config_dir: str | None) -> None:
             "rodeo-plan.yaml",
             config_dir=config_dir,
         )
-        if cfg.get("deployment_target") != "aws":
+        target = str(cfg.get("deployment_target") or "")
+        if target not in ("aws", "gcp"):
             raise ConfigError(
-                "rodeo destroy --cloud requires deployment_target: aws in the plan"
+                "rodeo destroy --cloud requires deployment_target: aws or gcp in the plan"
             )
-        validate_aws_provider(cfg)
+        if target == "gcp":
+            validate_gcp_provider(cfg)
+        else:
+            validate_aws_provider(cfg)
         results = destroy_primary(cfg)
     except ConfigError as exc:
         console.print(f"[red]✗  {exc}[/red]")

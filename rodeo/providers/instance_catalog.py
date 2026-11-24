@@ -1,4 +1,4 @@
-"""AWS instance-size catalog: three tiers per lab profile (single-host v1).
+"""Cloud instance-size catalog (AWS, GCP): three tiers per lab profile (single-host v1).
 
 Fleet multi-host will reuse the same catalog later. Explicit
 ``provider.instance_type`` always wins over ``provider.instance_tier``.
@@ -213,6 +213,89 @@ AWS_PROFILE_TIERS: dict[str, dict[InstanceTier, InstanceOffer]] = {
     },
 }
 
+
+# GCP (Compute Engine), same tiers. Nested KVM needs an Intel series (C4, N4, N2...).
+# budget = N4 + Hyperdisk Balanced (no local SSD: the pool sits on the boot disk, sized by
+# the control plane); recommended = C4 -lssd (local NVMe, 375 GiB disks striped into one
+# pool); performance = a bigger -lssd shape. Bare metal (c3-*-metal from 192 vCPU, ~$9/h,
+# us-central1 / europe-west4 only) is left out for now. Sized like the AWS picks above;
+# researched 2026-11-24, availability checked in europe-west4 / europe-north1 / us-central1.
+def _g(machine: str, tier: str, notes: str) -> InstanceOffer:
+    return InstanceOffer(machine, tier, notes)
+
+
+_LSSD8 = "8 vCPU / 30 GB / 1 x 375 GiB local SSD"
+_LSSD16 = "16 vCPU / 60 GB / 2 x 375 GiB local SSD (750 GiB pool)"
+_LSSD24 = "24 vCPU / 90 GB / 4 x 375 GiB local SSD (1.5 TiB pool)"
+_LSSD32 = "32 vCPU / 120 GB / 5 x 375 GiB local SSD (1.8 TiB pool)"
+_HM32 = "32 vCPU / 248 GB / 5 x 375 GiB local SSD, max headroom"
+
+GCP_PROFILE_TIERS: dict[str, dict[InstanceTier, InstanceOffer]] = {
+    "rancher": {
+        "budget": _g("n4-standard-16", "budget", "16 vCPU / 64 GB, Hyperdisk only"),
+        "recommended": _g("c4-standard-16-lssd", "recommended", _LSSD16),
+        "performance": _g("c4-standard-24-lssd", "performance", _LSSD24),
+    },
+    "rancher-test": {
+        "budget": _g("n4-standard-8", "budget", "8 vCPU / 32 GB, Hyperdisk only"),
+        "recommended": _g("c4-standard-16-lssd", "recommended", _LSSD16 + ", fastest deploy"),
+        "performance": _g("c4-standard-32-lssd", "performance", _LSSD32),
+    },
+    "kvm-hosts": {
+        "budget": _g("n4-standard-8", "budget", "8 vCPU / 32 GB, 3 to 4 small test VMs"),
+        "recommended": _g("c4-standard-8-lssd", "recommended", _LSSD8),
+        "performance": _g("n4-standard-16", "performance", "16 vCPU / 64 GB, room for bigger VMs"),
+    },
+    "test": {
+        "budget": _g("n4-standard-16", "budget", "16 vCPU / 64 GB, 2-node Harvester on Hyperdisk"),
+        "recommended": _g("c4-standard-24-lssd", "recommended", _LSSD24),
+        "performance": _g("c4-standard-32-lssd", "performance", _LSSD32),
+    },
+    "harvester-2n": {
+        "budget": _g("n4-standard-32", "budget", "32 vCPU / 128 GB, Hyperdisk only"),
+        "recommended": _g("c4-standard-32-lssd", "recommended", _LSSD32 + ", fits ~1060 GB"),
+        "performance": _g("c4-highmem-32-lssd", "performance", _HM32),
+    },
+    "harvester-ha": {
+        "budget": _g("n4-standard-48", "budget", "48 vCPU / 192 GB, 3-node HA on Hyperdisk"),
+        "recommended": _g("c4-standard-32-lssd", "recommended", _LSSD32),
+        "performance": _g("c4-highmem-32-lssd", "performance", _HM32),
+    },
+    "harvester": {
+        "budget": _g("n4-standard-64", "budget", "64 vCPU / 256 GB, 3-node + Rancher on Hyperdisk"),
+        "recommended": _g("c4-standard-32-lssd", "recommended", _LSSD32 + ", fits ~1560 GB"),
+        "performance": _g("c4-highmem-32-lssd", "performance", _HM32),
+    },
+    "virt-workshop": {
+        "recommended": _g("c4-standard-32-lssd", "recommended", _LSSD32),
+        "performance": _g("c4-highmem-32-lssd", "performance", _HM32),
+    },
+    "smlm-workshop": {
+        "recommended": _g("c4-standard-16-lssd", "recommended", _LSSD16 + ", fits ~450 GB"),
+        "performance": _g("c4-standard-24-lssd", "performance", _LSSD24),
+    },
+    "virt-workshop-2n": {
+        "budget": _g("c4-standard-24-lssd", "budget", _LSSD24 + ", fits 2x400 + 60 GB"),
+        "recommended": _g("c4-standard-32-lssd", "recommended", _LSSD32),
+        "performance": _g("c4-highmem-32-lssd", "performance", _HM32),
+    },
+    "suse-edge": {
+        "budget": _g("n4-standard-16", "budget", "16 vCPU / 64 GB, Hyperdisk only"),
+        "recommended": _g("c4-standard-16-lssd", "recommended", _LSSD16 + ", fits ~310 GB"),
+        "performance": _g("c4-standard-24-lssd", "performance", _LSSD24),
+    },
+    "suse-telco": {
+        "budget": _g("n4-standard-16", "budget", "16 vCPU / 64 GB, Hyperdisk only. Not measured."),
+        "recommended": _g("c4-standard-16-lssd", "recommended", _LSSD16 + ". Not measured."),
+        "performance": _g("c4-highmem-32-lssd", "performance", _HM32 + ". Not measured."),
+    },
+}
+
+_CATALOGS: dict[str, dict[str, dict[InstanceTier, InstanceOffer]]] = {
+    "aws": AWS_PROFILE_TIERS,
+    "gcp": GCP_PROFILE_TIERS,
+}
+
 _DEFAULT_PROFILE_KEY = "harvester"
 
 
@@ -235,18 +318,19 @@ def normalize_tier(raw: str | None) -> InstanceTier:
     return key  # type: ignore[return-value]
 
 
-def catalog_for_profile(profile: str) -> dict[InstanceTier, InstanceOffer]:
+def catalog_for_profile(profile: str, provider: str = "aws") -> dict[InstanceTier, InstanceOffer]:
     """Return the offers for a lab profile (fallback: harvester), in TIERS order."""
+    tiers = _CATALOGS.get(str(provider or "aws").lower())
+    if tiers is None:
+        raise ConfigError(f"no instance catalog for provider {provider!r}")
     name = _canonical_profile(profile)
-    if name in AWS_PROFILE_TIERS:
-        return AWS_PROFILE_TIERS[name]
-    return AWS_PROFILE_TIERS[_DEFAULT_PROFILE_KEY]
+    return tiers.get(name, tiers[_DEFAULT_PROFILE_KEY])
 
 
-def offer_for(profile: str, tier: str | InstanceTier) -> InstanceOffer:
+def offer_for(profile: str, tier: str | InstanceTier, provider: str = "aws") -> InstanceOffer:
     """Resolve one tier to an InstanceOffer for the profile."""
     t = normalize_tier(str(tier))
-    catalog = catalog_for_profile(profile)
+    catalog = catalog_for_profile(profile, provider)
     if t not in catalog:
         raise ConfigError(
             f"profile {_canonical_profile(profile)!r} has no {t!r} instance tier; "
@@ -260,6 +344,7 @@ def resolve_instance_type(
     profile: str,
     instance_type: str | None = None,
     instance_tier: str | None = None,
+    provider: str = "aws",
 ) -> tuple[str, InstanceTier | None]:
     """Return ``(instance_type, tier_used)``.
 
@@ -270,4 +355,4 @@ def resolve_instance_type(
     if explicit:
         return explicit, None
     tier = normalize_tier(instance_tier)
-    return offer_for(profile, tier).instance_type, tier
+    return offer_for(profile, tier, provider).instance_type, tier

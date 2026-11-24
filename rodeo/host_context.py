@@ -128,7 +128,7 @@ def apply_host_context(
     notes.extend(overlay(out, facts))
 
     # EC2 + NVMe detection can enable the storage backend even on baremetal BYO.
-    if target != "aws" and (facts.get("on_ec2") or facts.get("has_nvme")):
+    if target not in ("aws", "gcp") and (facts.get("on_ec2") or facts.get("has_nvme")):
         notes.extend(_ensure_nvme_backend(out, force=bool(facts.get("has_nvme"))))
 
     return out, notes
@@ -337,3 +337,16 @@ register_host_context("remote", _apply_baremetal)
 register_host_context("baremetal", _apply_baremetal)
 register_host_context("instruqt", _apply_instruqt)
 register_host_context("aws", _apply_aws)
+
+
+def _apply_gcp(cfg: dict[str, Any], facts: dict[str, Any]) -> list[str]:
+    """GCE lab host: same shaping as AWS (disk floors, local-NVMe pool, O_DIRECT).
+
+    The ``-lssd`` shapes give local NVMe that the kvm_host role stripes into one pool.
+    Budget shapes (N4) have none; the pool then stays on the boot disk, which the control
+    plane sizes from the plan, and nvme_storage.yml leaves image_dir where it is.
+    """
+    return [n.replace("(aws/nvme)", "(gcp/nvme)") for n in _apply_aws(cfg, facts)]
+
+
+register_host_context("gcp", _apply_gcp)

@@ -224,3 +224,29 @@ def test_aws_suse_edge_overlay_does_not_run_on_baremetal_or_other_types():
     }
     out2, _ = apply_host_context(harvester_on_aws)
     assert "rancher_tls" not in out2
+
+
+def test_deploy_host_facts_mark_ec2_so_fleet_hosts_use_nvme(monkeypatch):
+    """Fleet hosts deploy as baremetal on EC2: the NVMe backend must still apply."""
+    from rodeo.commands import up_cmd
+    from rodeo.host_context import apply_host_context
+
+    monkeypatch.setattr(up_cmd, "on_ec2", lambda: True)
+    facts = up_cmd._deploy_host_facts({"cpus": 16, "disk_free_gib": 7,
+                                       "image_dir": "/var/lib/libvirt/images"})
+    assert facts["on_ec2"] is True
+    cfg, notes = apply_host_context({"deployment_target": "baremetal",
+                                     "storage": {"image_dir": "/var/lib/libvirt/images"}},
+                                    host_facts=facts)
+    assert cfg["storage"]["backend"] == "nvme"
+    assert "storage.backend: → nvme" in notes
+
+
+def test_deploy_host_facts_off_ec2_leave_storage_alone(monkeypatch):
+    from rodeo.commands import up_cmd
+    from rodeo.host_context import apply_host_context
+
+    monkeypatch.setattr(up_cmd, "on_ec2", lambda: False)
+    cfg, _ = apply_host_context({"deployment_target": "baremetal", "storage": {}},
+                                host_facts=up_cmd._deploy_host_facts({}))
+    assert "backend" not in cfg["storage"]

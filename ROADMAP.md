@@ -8,7 +8,7 @@ Design pillars: plan/apply/destroy lifecycle, deep-mergeable override files, inl
 
 1. **B1** — ownership tags on libvirt domains (`rodeo:plan=<name>`) → accurate `destroy` / `list`
 2. **Phase H Level 1** — Hauler prefetch (skip multi-GB re-downloads on Instruqt / clean+up)
-3. **F4b** — GCP host-acquire (after AWS F4a)
+3. **F4b**: GCP host-acquire: single host shipped (`rodeo up --target gcp`); fleet portal pending
 4. **Phase F** — `suse-edge` live validation (bare metal, then Instruqt)
 
 ⚠ #48 landed three areas this roadmap doesn't cover yet — third-party
@@ -176,7 +176,7 @@ AWS MVP is shipped (see checkboxes). Remaining: AL2023 deps path, SG automation,
 - [x] `--ref <branch|tag|sha>` on both remote paths — `rodeo up --target aws` (also `provider.ref`) and `rodeo fleet deploy` / `retry` (also `lab.ref`): pin the rodeo-cli the *hosts* run, and force the bootstrap even where `rodeo` is already installed. Without it a host keeps the code it was first installed with, so a pushed commit was invisible and a live run silently tested stale code — fleet-wide, on every host at once. The installer is fetched from the same ref it checks out; an invalid ref is rejected before any instance launches or any host is contacted. No ref still means "don't move a pinned host's version". Shared in `rodeo/install_source.py` so the two paths cannot drift.
 - [ ] Cost guard: `rodeo plan` estimates on-demand hourly cost for the selected instance type
 - [x] Live validate: `i7i.4xlarge` SLES 16 + NVMe pool + harvester (provisioned) — checklist in [docs/examples/testing.md](docs/examples/testing.md#aws-live-smoke-i7i8xlarge--nvme). Done 2026-09-10: 2/2 Harvester nodes `Ready` via `kubectl`, VIP reachable, `rodeo status` all phases green. Torn down after verification. Surfaced one new bug on the way — stale libvirt-python availability check inside a single `rodeo up` process, fixed same day in `rodeo/engine/libvirt.py`.
-- [ ] GCP equivalent: Compute Engine with `--enable-nested-virtualization` on N2 / C3
+- [x] GCP equivalent: `rodeo up --target gcp` (`rodeo/providers/gcp.py`): GCE VM with nested virtualization on C4 / N4, own VPC + per-lab firewall, native dead-man switch (`maxRunDuration` + DELETE), local SSDs striped into one pool. Live-tested 2026-11-24 with `rancher-test` in europe-west4. Bare metal tier and fleet portal still open.
 
 **Share with Fleet F4:** same `rodeo/providers/aws` backs `rodeo fleet provision` and single-host `rodeo up --target aws`. Remaining providers: GCP → Vultr Bare Metal → Hetzner Cloud (see Phase I). Equinix is out of scope.
 
@@ -318,7 +318,7 @@ over OpenSSH (workshop inventory). Engine/phases stay single-host. See [docs/fle
 - [x] F2.1 — `rodeo fleet diagnose` (central log/status collect for failure forensics)
 - [ ] F4 — Host-acquire → `workshop.yaml` (separate from converge); Python native SDKs behind `rodeo/providers/`
   - [x] F4a — **AWS** MVP (`boto3`, optional `[aws]` extra): `fleet provision|deprovision`, ownership tags, inventory merge — gaps: no plan dry-run; deprovision does not clear `hosts[]`
-  - [ ] F4b — **GCP** (`google-cloud-compute`) — after AWS
+  - [x] F4b: **GCP** (`google-cloud-compute`): single host shipped; claim portal and open-access pending
   - [ ] F4c — **Vultr Bare Metal** (API `/v2/bare-metals`, optional `[vultr]` extra) — after GCP
   - [ ] F4d — **Hetzner Cloud** (`hcloud`) — after Vultr; nested-KVM must be validated for labs
   - Equinix Metal: **out of scope** (service sunset)

@@ -64,7 +64,7 @@ rancher            aws              Rancher on an AWS EC2 KVM host
 | `baremetal` | Linux bare metal with KVM | full firewalld + DNAT; optional disk-space warn |
 | `instruqt` | Instruqt managed KVM builder | `finalise` guarded; vCPU/RAM presets (~70% host) |
 | `aws` | Provisioned EC2 *or* BYO on EC2 | `provider:` + destroy; `disk_gb` floor 500/Harvester-node, 60/Rancher-node (flat); NVMe → `image_dir` |
-| `gcp` *(planned)* | GCP instance with KVM | external IP via GCE metadata; VPC firewall rules |
+| `gcp` | GCE VM with nested KVM | ephemeral external IP; per-lab VPC firewall rule; native maxRunDuration dead-man switch |
 
 **Two install roles.** `install.sh` installs a **KVM host** on SLES 16 / Leap 16 (`/opt/rodeo-cli`, system packages, a venv with system site packages for the libvirt binding) and a **control machine** everywhere else (macOS, other Linux: no root, an isolated venv with the `[aws]` extra, a private Python via a pinned uv when the system one is older than 3.10). `rodeo/hostos.py` makes the same call at run time: on a machine that cannot host labs, `rodeo up` without `--target aws` and `rodeo deploy` stop with the reason instead of failing halfway (`RODEO_ALLOW_ANY_KVM_HOST=1` overrides). lab-in-a-box profiles are left to the plugin.
 

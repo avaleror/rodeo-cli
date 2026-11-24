@@ -93,6 +93,17 @@ No `provider:` block needed: rodeo uses `eu-north-1` (or `$RODEO_AWS_REGION`), t
 
 Every cloud host has a **6-hour dead-man switch**: it powers off and AWS terminates it. Set `provider.ttl_hours` for longer sessions, and tear down sooner with `rodeo destroy --cloud --yes --config-dir ~/rodeo-labs/<profile>`. See [provider fields](reference/plan.md#provider-when-deployment_target-aws).
 
+## On Google Cloud, from your laptop
+
+Same flow on GCP. Log in once with Application Default Credentials and deploy:
+
+```bash
+gcloud auth application-default login
+rodeo up --profile harvester --target gcp --yes
+```
+
+rodeo uses your gcloud project, `europe-west4` (or `$RODEO_GCP_REGION`) and the profile's recommended machine type, creates its own `rodeo-europe-west4` network and a firewall rule for your IP, and writes the choices to the lab plan. The same 6-hour dead-man switch applies, enforced by Google (the VM is deleted at expiry). Tear down with `rodeo destroy --cloud --yes --config-dir ~/rodeo-labs/<profile>`. See [provider fields for GCP](reference/plan.md#provider-when-deployment_target-gcp).
+
 ## Many hosts (workshop fleet)
 
 To run the **same** lab for a whole room, use `rodeo fleet` with a `workshop.yaml` inventory. On AWS, `rodeo fleet provision` creates one host per attendee; `deploy` builds every lab in parallel, and `status`, `doctor`, `retry` and `diagnose` work per lab. The claim portal lets each attendee claim their own lab with a workshop code. See [Fleet](fleet.md).

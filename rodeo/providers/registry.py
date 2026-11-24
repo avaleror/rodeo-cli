@@ -3,8 +3,8 @@
 Built-in providers register a factory below. External code adds its own with
 :func:`register_provider` — directly, or through a ``rodeo.plugins`` entry
 point (see rodeo/plugins.py), which is discovered lazily on the first lookup
-that misses. A plugin may also implement one of the planned names (gcp,
-vultr, hetzner) — registration takes precedence over the planned stub.
+that misses. A plugin may also implement one of the planned names
+(vultr, hetzner) — registration takes precedence over the planned stub.
 """
 from __future__ import annotations
 
@@ -22,13 +22,20 @@ def _aws_factory() -> "HostProvider":
     return AwsHostProvider()
 
 
+def _gcp_factory() -> "HostProvider":
+    from .gcp import GcpHostProvider
+
+    return GcpHostProvider()
+
+
 _FACTORIES: dict[str, Callable[[], "HostProvider"]] = {
     "aws": _aws_factory,
+    "gcp": _gcp_factory,
 }
 
 # Named on the roadmap but not implemented; get_provider explains instead of
 # reporting them as unknown.
-_PLANNED: dict[str, str] = {"gcp": "F4b", "vultr": "F4c", "hetzner": "F4d"}
+_PLANNED: dict[str, str] = {"vultr": "F4c", "hetzner": "F4d"}
 
 
 def register_provider(

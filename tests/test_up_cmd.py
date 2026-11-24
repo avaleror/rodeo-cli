@@ -293,7 +293,7 @@ def test_aws_host_adds_profile_extras_to_a_shipped_plan(tmp_path, monkeypatch):
     from rodeo.labseed import example_dir
 
     monkeypatch.setattr(up_mod, "detect_host", _ready_host)
-    monkeypatch.setattr(up_mod, "on_ec2", lambda *a, **k: True)
+    monkeypatch.setattr(up_mod, "on_cloud_host", lambda *a, **k: True)
     lab = tmp_path / "rodeo-lab"
     lab.mkdir()
     plan = (example_dir("virt-workshop") / "rodeo-plan.yaml").read_text()

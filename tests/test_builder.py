@@ -39,7 +39,7 @@ def test_engines_have_bases_resources_and_capabilities():
     assert yaml.safe_load(liab["definition"])["definition"]["nodes"][0]["name"] == "vm1"
     provides = {c for e in engines.values() for c in e["provides"]}
     assert data["capabilities"] == sorted(provides) and "rancher" in data["capabilities"]
-    assert data["targets"] == ["aws", "baremetal", "instruqt", "remote"]
+    assert data["targets"] == ["aws", "baremetal", "gcp", "instruqt", "remote"]
     assert data["content_formats"] == ["rmstory", "instruqt", "markdown"]
 
 

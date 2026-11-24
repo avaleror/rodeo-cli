@@ -101,6 +101,49 @@ def _on_ec2_dmi() -> bool:
     return False
 
 
+def on_gce(*, timeout: float = 0.4) -> bool:
+    """True when running on a Compute Engine VM (DMI first, metadata server fallback)."""
+    try:
+        if "Google Compute Engine" in Path("/sys/class/dmi/id/product_name").read_text():
+            return True
+    except OSError:
+        pass
+    try:
+        req = urllib.request.Request(
+            "http://metadata.google.internal/computeMetadata/v1/instance/id",
+            headers={"Metadata-Flavor": "Google"},
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.headers.get("Metadata-Flavor") == "Google"
+    except (urllib.error.URLError, OSError, ValueError):
+        return False
+
+
+# deployment_target values that acquire a cloud VM and run the lab on it.
+CLOUD_TARGETS = ("aws", "gcp")
+
+
+def on_cloud_host(target: str) -> bool:
+    """True when this process runs on the VM that *target* provisions (no recursion)."""
+    target = (target or "").strip().lower()
+    if target == "aws":
+        return on_ec2()
+    if target == "gcp":
+        return on_gce()
+    return False
+
+
+def _cloud_target(cfg: dict[str, Any]) -> str:
+    """The plan's cloud target (aws or gcp): the --target the host runs and its log's name."""
+    target = str(cfg.get("deployment_target") or "").strip().lower()
+    return target if target in CLOUD_TARGETS else "aws"
+
+
+def default_ssh_user(provider_type: str) -> str:
+    """The login the provider's default image gives rodeo."""
+    return "rodeo" if (provider_type or "").lower() == "gcp" else "ec2-user"
+
+
 def aws_host_state_path(plan_name: str) -> Path:
     safe = "".join(c if c.isalnum() or c in "-_" else "-" for c in plan_name)
     return rodeo_state_dir() / f"{safe}-aws-host.yaml"
@@ -150,7 +193,9 @@ def _provider_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
         else:
             raise ConfigError("deployment_target: aws requires provider:")
     out = dict(provider)
-    out["type"] = str(out.get("type") or "aws").strip().lower()
+    target = str(cfg.get("deployment_target") or "").strip().lower()
+    default_type = target if target in CLOUD_TARGETS else "aws"
+    out["type"] = str(out.get("type") or default_type).strip().lower()
     # Only the fleet inventory loader may lift the dead-man switch.
     out.pop(deadman.ALLOW_OFF_KEY, None)
     return out
@@ -167,7 +212,7 @@ def provision_primary(
     identity = resolve_ssh_identity(workshop=plan_name)
     provider_cfg = dict(provider_cfg)
     provider_cfg["identity_file"] = identity
-    ssh_user = str(provider_cfg.get("ssh_user") or "ec2-user")
+    ssh_user = str(provider_cfg.get("ssh_user") or default_ssh_user(provider_cfg["type"]))
     spec = ProvisionSpec(
         workshop=plan_name,
         host_ids=[SINGLE_HOST_ID],
@@ -180,7 +225,7 @@ def provision_primary(
     provider = getter(str(provider_cfg["type"]))
     hosts = provider.provision(spec, provider_cfg)
     if not hosts:
-        raise ConfigError("AWS provision returned no hosts")
+        raise ConfigError(f"{provider_cfg['type']} provision returned no hosts")
     host = hosts[0]
     save_aws_host_state(plan_name, host)
     return host
@@ -201,7 +246,7 @@ def _fleet_inventory_for(
     provider_cfg = _provider_cfg(cfg)
     plan_name = str(cfg.get("name") or "rodeo")
     identity = identity_file or resolve_ssh_identity(workshop=plan_name)
-    ssh_user = str(ssh_user or provider_cfg.get("ssh_user") or "ec2-user")
+    ssh_user = str(ssh_user or provider_cfg.get("ssh_user") or default_ssh_user(provider_cfg["type"]))
     inv = FleetInventory(
         name=plan_name,
         lab_dir=str(lab_dir or provider_cfg.get("lab_dir") or _DEFAULT_LAB_DIR),
@@ -639,8 +684,8 @@ def remote_up_status(
         saved = load_aws_host_state(plan_name)
         if not saved or not saved.get("public_ip"):
             raise ConfigError(
-                f"no AWS host recorded for plan '{plan_name}' on this machine "
-                "(rodeo up --target aws records it)"
+                f"no cloud host recorded for plan '{plan_name}' on this machine "
+                f"(rodeo up --target {_cloud_target(cfg)} records it)"
             )
         host = ProvisionedHost(
             id=str(saved.get("host_id") or SINGLE_HOST_ID),
@@ -654,7 +699,7 @@ def remote_up_status(
         cfg, host, ssh_user=ssh_user, identity_file=identity_file,
     )
     result = run_remote(
-        inv, fh, ["bash", "-c", _status_script(log_name or "aws"), "status", str(n)],
+        inv, fh, ["bash", "-c", _status_script(log_name or _cloud_target(cfg)), "status", str(n)],
         timeout=timeout,
     )
     out = result.stdout or ""
@@ -680,7 +725,7 @@ def destroy_primary(
     provider_cfg = _provider_cfg(cfg)
     plan_name = str(cfg.get("name") or "rodeo")
     identity = resolve_ssh_identity(workshop=plan_name)
-    ssh_user = str(provider_cfg.get("ssh_user") or "ec2-user")
+    ssh_user = str(provider_cfg.get("ssh_user") or default_ssh_user(provider_cfg["type"]))
     saved = load_aws_host_state(plan_name) or {}
     spec = ProvisionSpec(
         workshop=plan_name,
@@ -751,8 +796,10 @@ def _provision_and_run(
     # i7i is already running and billing.
     resolve_install_source(_provider_cfg(cfg), ref=ref)
     host = provision_primary(cfg, get_provider_fn=get_provider_fn)
+    # The host runs `rodeo up --target <aws|gcp>`: it detects that it *is* that cloud's
+    # VM (on_cloud_host), deploys locally, and keeps the cloud's host shaping.
     info = run_remote_up(
         cfg, host, profile=profile, ref=ref, timeout=remote_timeout, plan_dir=plan_dir,
-        detach=detach,
+        detach=detach, target=_cloud_target(cfg),
     )
     return host, info

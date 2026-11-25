@@ -21,16 +21,23 @@ import time
 import urllib.parse
 from dataclasses import dataclass, field
 from http import HTTPStatus
+from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+from .auth import COOKIE, SESSION_SECONDS, Auth
+from .auth import load as load_auth
 from .runner import MoveResult, Runner, RunnerError, ScriptResult
 
 STATIC_DIR = Path(__file__).resolve().parents[1] / "data" / "player" / "static"
 LOOPBACK = {"127.0.0.1", "::1", "localhost"}
 CSRF_HEADER = "X-Rodeo-Player"
 _TAG = re.compile(r"<[^>]+>")
+LOCKED_PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Lab locked</title>
+<style>body{font:16px/1.5 system-ui,sans-serif;max-width:34rem;margin:4rem auto;padding:0 1rem}</style></head>
+<body><h1>This lab needs its link</h1><p>Open the lab link you were given (from the workshop portal or your
+instructor). It signs this browser in for 24 hours.</p></body></html>"""
 _STATIC_TYPES = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8"}
 
 
@@ -49,6 +56,11 @@ class PlayerConfig:
     # the raw lab address). Keys are strings because JSON keys are.
     tab_urls: dict[str, str] = field(default_factory=dict)
     terminal_url: str = "/terminal/"
+    # Access control (rodeo.player.auth). Empty auth_file = no login, for
+    # local runs and tests; ``rodeo player setup`` always sets it.
+    auth_file: str = ""
+    # Public names: {"player": base, "hv": "hv.<base>", "rancher": "rancher.<base>"}.
+    hosts: dict[str, str] = field(default_factory=dict)
 
 
 def load_config(path: Path | str) -> PlayerConfig:
@@ -70,6 +82,9 @@ class Player:
 
     def __init__(self, cfg: PlayerConfig, runner: Runner | None = None) -> None:
         self.cfg = cfg
+        self.auth: Auth | None = load_auth(cfg.auth_file) if cfg.auth_file else None
+        if self.auth and not cfg.hosts.get("player"):
+            raise ValueError("auth_file needs hosts.player in the player config")
         self.runner = runner or Runner(
             cfg.track_dir, cfg.state_dir, host=cfg.host, sandbox_id=cfg.sandbox_id,
             home=cfg.home, kubeconfig=cfg.kubeconfig,
@@ -195,10 +210,97 @@ class Handler(BaseHTTPRequestHandler):
     def _error(self, status: int, message: str) -> None:
         self._json(status, {"error": message})
 
+    # -- access -------------------------------------------------------------
+
+    def _host(self) -> str:
+        """The public name asked for (Caddy passes it through)."""
+        h = self.headers.get("X-Forwarded-Host") or self.headers.get("Host") or ""
+        return h.split(",")[0].strip().split(":")[0].lower()
+
+    def _cookie(self) -> str:
+        jar = SimpleCookie()
+        try:
+            jar.load(self.headers.get("Cookie") or "")
+        except CookieError:
+            return ""
+        return jar[COOKIE].value if COOKIE in jar else ""
+
+    def _signed_in(self, host: str) -> bool:
+        auth = self.player.auth
+        return auth is None or auth.cookie_ok(host, self._cookie())
+
+    def _redirect(self, location: str, cookie_for: str | None = None) -> None:
+        self.send_response(302)
+        self.send_header("Location", location)
+        if cookie_for and self.player.auth:
+            self.send_header("Set-Cookie", f"{COOKIE}={self.player.auth.cookie(cookie_for)}; "
+                             f"Max-Age={SESSION_SECONDS}; Path=/; Secure; HttpOnly; SameSite=Lax")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def _locked(self) -> None:
+        self._send(401, LOCKED_PAGE.encode(), "text/html; charset=utf-8")
+
+    @staticmethod
+    def _safe_return(r: str) -> str:
+        """A same-host path to go back to after a hop, never another site."""
+        return r if r.startswith("/") and not r.startswith("//") and "\\" not in r else "/"
+
+    def _ui_label(self, host: str) -> str | None:
+        hosts = self.player.cfg.hosts
+        return next((k for k in ("hv", "rancher") if hosts.get(k) == host), None)
+
+    def _access(self, path: str, query: dict[str, list[str]]) -> bool:
+        """Handle the login routes. True when the request was answered here."""
+        auth, hosts = self.player.auth, self.player.cfg.hosts
+        if auth is None:
+            return False
+        host = self._host()
+        player = hosts["player"]
+        if path == "/enter" and host == player:
+            if auth.token_ok((query.get("t") or [""])[0]):
+                self._redirect("/", cookie_for=player)
+            else:
+                self._locked()
+            return True
+        if path == "/_auth":  # Caddy's forward_auth for every request, all three names
+            if auth.cookie_ok(host, self._cookie()):
+                self._send(200, b"ok", "text/plain")
+            elif self._ui_label(host):
+                ret = urllib.parse.quote(self._safe_return(self.headers.get("X-Forwarded-Uri") or "/"), safe="")
+                self._redirect(f"https://{player}/auth/hop?to={self._ui_label(host)}&r={ret}")
+            else:
+                self._locked()
+            return True
+        if path == "/auth/hop" and host == player:
+            to = (query.get("to") or [""])[0]
+            target = hosts.get(to) if to in ("hv", "rancher") else None
+            if not target or not auth.cookie_ok(player, self._cookie()):
+                self._locked()
+                return True
+            ret = urllib.parse.quote(self._safe_return((query.get("r") or ["/"])[0]), safe="")
+            self._redirect(f"https://{target}/.rodeo/auth?ticket={auth.ticket(target)}&r={ret}")
+            return True
+        if path == "/.rodeo/auth" and self._ui_label(host):
+            if auth.ticket_ok(host, (query.get("ticket") or [""])[0]):
+                self._redirect(self._safe_return((query.get("r") or ["/"])[0]), cookie_for=host)
+            else:
+                self._locked()
+            return True
+        # Defence in depth: the player's own routes need the cookie even if a
+        # request reached it without going through Caddy's forward_auth.
+        if path != "/healthz" and not auth.cookie_ok(player, self._cookie()):
+            self._locked()
+            return True
+        return False
+
     # -- GET ----------------------------------------------------------------
 
     def do_GET(self) -> None:  # noqa: N802
-        path = self.path.split("?", 1)[0]
+        path, _, qs = self.path.partition("?")
+        if self._access(path, urllib.parse.parse_qs(qs)):
+            return
         if path == "/":
             self._send(200, page(self.player.cfg.title).encode(), "text/html; charset=utf-8")
         elif path == "/api/state":
@@ -243,6 +345,9 @@ class Handler(BaseHTTPRequestHandler):
         # answers, so another site cannot make a student's browser press Check.
         if self.headers.get(CSRF_HEADER) != "1":
             self._error(403, "missing player header")
+            return
+        if self.player.auth and not self._signed_in(self.player.cfg.hosts["player"]):
+            self._error(401, "open the lab link first")
             return
         action = self.path.split("?", 1)[0].removeprefix("/api/")
         if action not in {"enter", "check", "next", "skip", "back"}:

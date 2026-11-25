@@ -65,12 +65,36 @@ def setup_cmd(track_ref: str, track_repo: str | None, base: str | None, harveste
     if as_json:
         click.echo(json.dumps(result))
         return
+    click.echo(f"Lab link:   {result['access_url']}")
+    click.echo("            (give it only to this lab's student; it signs a browser in for 24 h)")
     click.echo(f"Player:     {result['player']}")
     click.echo(f"Harvester:  {result['harvester']}")
     click.echo(f"Rancher:    {result['rancher']}")
     click.echo(f"Chapters:   {result['chapters']}")
     click.echo(f"Variables:  {', '.join(result['variables_seeded']) or 'none found in secrets.yaml'}")
     click.echo(f"Caddy CA:   {result['ca_root']} (trust it in the tester's browser)")
+
+
+@player_cmd.command("link")
+@click.option("--config", "config_path", type=click.Path(exists=True, dir_okay=False),
+              default="/etc/rodeo-player/config.json", show_default=True)
+@click.option("--rotate", is_flag=True, help="New link; every link and browser signed in so far is logged out.")
+def link_cmd(config_path: str, rotate: bool) -> None:
+    """Print this lab's access link (root)."""
+    from ..player import auth
+    from ..player.server import load_config
+
+    if os.geteuid() != 0:
+        raise click.ClickException("run with sudo: the link is a secret only root can read")
+    cfg = load_config(config_path)
+    if not cfg.auth_file:
+        raise click.ClickException("this player has no login configured (re-run rodeo player setup)")
+    a = auth.rotate(cfg.auth_file) if rotate else auth.load(cfg.auth_file)
+    if rotate:
+        import subprocess
+
+        subprocess.run(["systemctl", "restart", "rodeo-player"], check=False)
+    click.echo(f"https://{cfg.hosts['player']}/enter?t={a.token}")
 
 
 @player_cmd.command("test")

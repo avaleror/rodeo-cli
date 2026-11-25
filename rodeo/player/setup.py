@@ -41,6 +41,7 @@ VAR = Path("/var/lib/rodeo-player")
 TRACK_DIR = VAR / "track"
 STATE_DIR = VAR / "state"
 CONFIG = ETC / "config.json"
+AUTH_FILE = VAR / "auth.json"     # root-only: lab secret + access token
 CADDYFILE = ETC / "Caddyfile"
 CADDY_DATA = Path("/var/lib/rodeo-player-caddy")
 CA_ROOT = CADDY_DATA / "caddy" / "pki" / "authorities" / "local" / "root.crt"
@@ -112,8 +113,19 @@ def caddyfile(opts: SetupOptions) -> str:
         # address, and Rancher/Harvester build absolute API links from Host,
         # so the UI called https://192.168.122.10/v1/... and hung after login
         # (found live 2026-11-25).
+        # Every request asks the player first (forward_auth), except the
+        # cookie hop the player itself answers (see rodeo.player.auth).
         return f"""{name} {{
 \ttls internal
+\t@hop path /.rodeo/auth
+\t@protected not path /.rodeo/auth
+\tforward_auth @protected 127.0.0.1:{PLAYER_PORT} {{
+\t\turi /_auth
+\t}}
+\thandle @hop {{
+\t\treverse_proxy 127.0.0.1:{PLAYER_PORT}
+\t}}
+\thandle {{
 \treverse_proxy https://{target} {{
 \t\theader_up Host {{host}}
 \t\theader_up X-Forwarded-Host {{host}}
@@ -121,6 +133,7 @@ def caddyfile(opts: SetupOptions) -> str:
 \t\t\ttls_insecure_skip_verify
 \t\t}}
 \t\theader_down -X-Frame-Options
+\t}}
 \t}}
 }}
 """
@@ -135,6 +148,10 @@ def caddyfile(opts: SetupOptions) -> str:
 
 {n['player']} {{
 \ttls internal
+\t@protected not path /enter /auth/hop /favicon.ico
+\tforward_auth @protected 127.0.0.1:{PLAYER_PORT} {{
+\t\turi /_auth
+\t}}
 \thandle /terminal* {{
 \t\treverse_proxy 127.0.0.1:{TTYD_PORT}
 \t}}
@@ -158,6 +175,8 @@ def player_config(opts: SetupOptions) -> dict:
         "sandbox_id": opts.sandbox_id,
         "tab_urls": {"8443": f"https://{n['harvester']}/", "30002": f"https://{n['rancher']}/"},
         "terminal_url": "/terminal/",
+        "auth_file": str(AUTH_FILE),
+        "hosts": {"player": n["player"], "hv": n["harvester"], "rancher": n["rancher"]},
     }
 
 
@@ -336,6 +355,11 @@ def run_setup(opts: SetupOptions, *, sudo_user: str | None) -> dict:
     """Do the whole install. Returns URLs and the CA path, never a password."""
     opts.validate()
     rodeo_bin = shutil.which("rodeo") or "/usr/local/bin/rodeo"
+    from . import auth
+
+    # Before the units start: the player refuses to run without it.
+    VAR.mkdir(mode=0o700, parents=True, exist_ok=True)
+    access = auth.ensure(AUTH_FILE)
     student = subprocess.run(["bash", "-c", STUDENT_SETUP_SCRIPT], input="", text=True,
                              capture_output=True, timeout=300)
     if student.returncode != 0 or "STUDENT_OK" not in student.stdout:
@@ -354,6 +378,7 @@ def run_setup(opts: SetupOptions, *, sudo_user: str | None) -> dict:
         seeded.append(key)
     n = opts.names
     return {
+        "access_url": f"https://{n['player']}/enter?t={access.token}",
         "player": f"https://{n['player']}/",
         "harvester": f"https://{n['harvester']}/",
         "rancher": f"https://{n['rancher']}/",

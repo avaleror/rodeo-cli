@@ -38,8 +38,15 @@ def test_validation_refuses_bad_input(kw, match):
 def test_caddyfile_proxies_only_the_player_ttyd_and_the_two_uis():
     text = s.caddyfile(_opts())
     upstreams = re.findall(r"reverse_proxy (\S+)", text)
-    assert upstreams == [f"127.0.0.1:{s.TTYD_PORT}", f"127.0.0.1:{s.PLAYER_PORT}",
-                         "https://192.168.122.10:443", "https://192.168.122.9:30002"]
+    assert set(upstreams) == {f"127.0.0.1:{s.TTYD_PORT}", f"127.0.0.1:{s.PLAYER_PORT}",
+                              "https://192.168.122.10:443", "https://192.168.122.9:30002"}
+    # Every site asks the player before proxying anything.
+    sites = re.split(r"\n(?=\S+ \{\n)", text.split("}\n", 1)[1].strip())
+    assert len(sites) == 3
+    for site in sites:
+        assert re.search(r"forward_auth @protected 127\.0\.0\.1:%d \{\n\t\turi /_auth" % s.PLAYER_PORT, site), site
+    assert "@protected not path /enter /auth/hop /favicon.ico" in text
+    assert text.count("@protected not path /.rodeo/auth") == 2
     assert "13-61-184-227.sslip.io {" in text
     assert "hv.13-61-184-227.sslip.io {" in text and "rancher.13-61-184-227.sslip.io {" in text
     assert text.count("tls internal") == 3
@@ -111,7 +118,7 @@ def test_player_is_a_registered_command():
     from rodeo.cli import cli
 
     assert "player" in cli.commands
-    assert set(cli.commands["player"].commands) == {"serve", "setup", "test"}
+    assert set(cli.commands["player"].commands) == {"serve", "setup", "test", "link"}
 
 
 def test_config_is_valid_json():

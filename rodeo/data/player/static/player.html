@@ -74,6 +74,7 @@ main { display: grid; grid-template-columns: minmax(320px, 40%) 1fr; min-height:
     <div id="actions">
       <div class="row">
         <button id="primary" type="button"></button>
+        <button id="skip" type="button" class="secondary" hidden>Skip chapter</button>
         <button id="tocurrent" type="button" class="secondary" hidden>Back to the current chapter</button>
       </div>
       <div id="confirm" hidden>
@@ -168,9 +169,16 @@ main { display: grid; grid-template-columns: minmax(320px, 40%) 1fr; min-height:
 
   function pickChapter(i) {
     if (i <= state.readable) { pendingSkip = null; $("confirm").hidden = true; loadChapter(i); return; }
+    askSkip(i);
+  }
+
+  function askSkip(i) {
     pendingSkip = i;
-    $("confirmText").textContent = `Skip to chapter ${i + 1}? The solution scripts of every chapter before it ` +
-      "run first, so your lab ends up as if you had done them. This can take a few minutes.";
+    $("confirmText").textContent = i === state.current + 1
+      ? `Skip chapter ${state.current + 1}? Its solution script runs first, so your lab ends up as if ` +
+        "you had done it, then chapter " + (i + 1) + " opens. This can take a few minutes."
+      : `Skip to chapter ${i + 1}? The solution scripts of every chapter before it ` +
+        "run first, so your lab ends up as if you had done them. This can take a few minutes.";
     $("confirm").hidden = false;
   }
 
@@ -200,6 +208,11 @@ main { display: grid; grid-template-columns: minmax(320px, 40%) 1fr; min-height:
     btn.textContent = state.busy ? "Working..." : (done ? "Track complete" : p.label);
     btn.disabled = !!state.busy || done;
     btn.onclick = () => run(p.action);
+    // Skip = solve (and cleanup) this chapter, then open the next one.
+    const skip = $("skip");
+    skip.hidden = done || state.current >= state.chapters.length - 1;
+    skip.disabled = !!state.busy;
+    skip.onclick = () => askSkip(state.current + 1);
     $("status").textContent = state.busy ? `running ${state.busy}...`
       : `Chapter ${state.current + 1} of ${state.chapters.length}`;
     const last = state.last, msg = $("message"), out = $("output");

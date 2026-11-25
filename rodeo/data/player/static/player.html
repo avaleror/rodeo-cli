@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}}</title>
+<style>
+:root {
+  --bg: #f4f6f5; --panel: #ffffff; --fg: #1d2522; --muted: #5d6b65; --rule: #d7ddda;
+  --accent: #0c7a52; --accent-fg: #ffffff; --bad: #a8321e; --bad-bg: #fbeae6;
+  --good-bg: #e4f3ec; --code: #eef2f0;
+  --font: "Segoe UI", system-ui, -apple-system, sans-serif;
+  --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #111715; --panel: #18201d; --fg: #e2e8e5; --muted: #98a6a0; --rule: #2a3531;
+    --accent: #3fbf8c; --accent-fg: #0b1310; --bad: #f08a75; --bad-bg: #3a1f19; --good-bg: #173328;
+    --code: #1f2925; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--font); display: grid;
+  grid-template-rows: auto 1fr; }
+header { display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: 1px solid var(--rule);
+  background: var(--panel); }
+header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+header .status { margin-left: auto; font-size: 13px; color: var(--muted); }
+main { display: grid; grid-template-columns: minmax(320px, 40%) 1fr; min-height: 0; }
+#left { display: grid; grid-template-rows: auto 1fr auto; min-height: 0; border-right: 1px solid var(--rule);
+  background: var(--panel); }
+#chapters { display: flex; gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--rule); overflow-x: auto; }
+#chapters button { flex: 0 0 auto; border: 1px solid var(--rule); background: transparent; color: var(--fg);
+  border-radius: 4px; padding: 3px 9px; font: 13px var(--font); cursor: pointer; }
+#chapters button.done { background: var(--good-bg); }
+#chapters button.current { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+#chapters button.viewing { outline: 2px solid var(--accent); outline-offset: 1px; }
+#chapters button.ahead { color: var(--muted); }
+#assignment { overflow: auto; padding: 16px 20px; min-width: 0; }
+#assignment h1, #assignment h2 { line-height: 1.25; }
+#assignment pre { background: var(--code); padding: 10px; overflow-x: auto; border-radius: 4px; }
+#assignment code { font-family: var(--mono); font-size: 13px; }
+#assignment img { max-width: 100%; }
+.rodeo-tab-button, #actions button { border: 0; border-radius: 4px; padding: 6px 12px; font: 600 14px var(--font);
+  cursor: pointer; background: var(--accent); color: var(--accent-fg); }
+.rodeo-var-missing { color: var(--bad); font-weight: 600; }
+#actions { border-top: 1px solid var(--rule); padding: 10px 16px; display: grid; gap: 8px; }
+#actions .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+#actions button.secondary { background: transparent; color: var(--fg); border: 1px solid var(--rule); }
+#actions button:disabled { opacity: .5; cursor: wait; }
+#message { font-size: 14px; }
+#message.bad { color: var(--bad); }
+#output { margin: 0; max-height: 30vh; overflow: auto; background: var(--bad-bg); padding: 8px; border-radius: 4px;
+  font: 12px/1.4 var(--mono); white-space: pre-wrap; }
+#confirm { background: var(--code); padding: 10px; border-radius: 4px; }
+#right { display: grid; grid-template-rows: auto 1fr; min-height: 0; min-width: 0; }
+#tabbar { display: flex; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid var(--rule); background: var(--panel); }
+#tabbar .tab { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid transparent;
+  border-bottom: 0; border-radius: 4px 4px 0 0; cursor: pointer; font-size: 14px; color: var(--muted); }
+#tabbar .tab.active { border-color: var(--rule); background: var(--bg); color: var(--fg); font-weight: 600; }
+#tabbar .tab a { font-size: 12px; color: var(--accent); text-decoration: none; }
+#frames { position: relative; min-height: 0; }
+#frames iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #fff; }
+#frames .empty { padding: 24px; color: var(--muted); }
+[hidden] { display: none !important; }
+@media (max-width: 800px) { main { grid-template-columns: 1fr; grid-template-rows: 55% 45%; } }
+</style>
+</head>
+<body>
+<header><h1 id="title">{{TITLE}}</h1><span class="status" id="status"></span></header>
+<main>
+  <section id="left">
+    <nav id="chapters" aria-label="Chapters"></nav>
+    <article id="assignment"></article>
+    <div id="actions">
+      <div class="row">
+        <button id="primary" type="button"></button>
+        <button id="tocurrent" type="button" class="secondary" hidden>Back to the current chapter</button>
+      </div>
+      <div id="confirm" hidden>
+        <p id="confirmText"></p>
+        <div class="row">
+          <button id="confirmYes" type="button">Skip ahead</button>
+          <button id="confirmNo" type="button" class="secondary">Cancel</button>
+        </div>
+      </div>
+      <div id="message" role="status"></div>
+      <pre id="output" hidden></pre>
+    </div>
+  </section>
+  <section id="right">
+    <div id="tabbar" role="tablist"></div>
+    <div id="frames"></div>
+  </section>
+</main>
+<script src="/static/marked.min.js"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  let state = null, viewing = null, activeTab = 0, pendingSkip = null, polling = null;
+  const frames = new Map();  // url -> iframe, kept alive across chapters
+
+  async function api(path, body) {
+    const opts = body === undefined ? {} : {method: "POST", headers: {"X-Rodeo-Player": "1",
+      "Content-Type": "application/json"}, body: JSON.stringify(body)};
+    const res = await fetch(path, opts);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    return data;
+  }
+
+  function setTabs(tabs) {
+    const bar = $("tabbar");
+    bar.replaceChildren();
+    tabs.forEach((t) => {
+      const el = document.createElement("div");
+      el.className = "tab"; el.setAttribute("role", "tab"); el.dataset.index = t.index;
+      el.append(document.createTextNode(t.title));
+      if (t.url && t.type === "service") {
+        const a = document.createElement("a");
+        a.href = t.url; a.target = "_blank"; a.rel = "noopener"; a.textContent = "open in new tab";
+        a.addEventListener("click", (e) => e.stopPropagation());
+        el.append(a);
+      }
+      el.addEventListener("click", () => showTab(t.index));
+      bar.append(el);
+      if (t.url && !frames.has(t.url)) {
+        const f = document.createElement("iframe");
+        f.src = t.url; f.title = t.title; f.hidden = true;
+        f.setAttribute("allow", "clipboard-read; clipboard-write");
+        $("frames").append(f);
+        frames.set(t.url, f);
+      }
+    });
+    state.tabsNow = tabs;
+    showTab(Math.min(activeTab, tabs.length - 1));
+  }
+
+  function showTab(i) {
+    activeTab = i;
+    const tabs = state.tabsNow || [];
+    document.querySelectorAll("#tabbar .tab").forEach((el) =>
+      el.classList.toggle("active", Number(el.dataset.index) === i));
+    const want = tabs[i] && tabs[i].url;
+    frames.forEach((f, url) => { f.hidden = url !== want; });
+    let empty = $("frames").querySelector(".empty");
+    if (!want) {
+      if (!empty) { empty = document.createElement("p"); empty.className = "empty"; $("frames").append(empty); }
+      empty.textContent = "This tab is not configured on this lab.";
+    } else if (empty) { empty.remove(); }
+  }
+
+  function renderChapters() {
+    const nav = $("chapters");
+    nav.replaceChildren();
+    state.chapters.forEach((c) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.textContent = String(c.index + 1); b.title = c.title;
+      if (state.completed.includes(c.index)) b.classList.add("done");
+      if (c.index === state.current) b.classList.add("current");
+      if (c.index === viewing) b.classList.add("viewing");
+      if (c.index > state.readable) b.classList.add("ahead");
+      b.addEventListener("click", () => pickChapter(c.index));
+      nav.append(b);
+    });
+  }
+
+  function pickChapter(i) {
+    if (i <= state.readable) { pendingSkip = null; $("confirm").hidden = true; loadChapter(i); return; }
+    pendingSkip = i;
+    $("confirmText").textContent = `Skip to chapter ${i + 1}? The solution scripts of every chapter before it ` +
+      "run first, so your lab ends up as if you had done them. This can take a few minutes.";
+    $("confirm").hidden = false;
+  }
+
+  async function loadChapter(i) {
+    const view = await api(`/api/chapter/${i}`);
+    viewing = i;
+    $("assignment").innerHTML = window.marked ? marked.parse(view.body) : view.body;
+    $("assignment").scrollTop = 0;
+    $("tocurrent").hidden = i === state.current;
+    renderChapters();
+    setTabs(view.tabs);
+  }
+
+  function primaryAction() {
+    const ch = state.chapters[state.current];
+    if (!state.entered) return {label: state.last && state.last.action === "enter" && !state.last.ok
+      ? "Retry chapter setup" : "Start", action: "enter"};
+    if (ch.check) return {label: "Check", action: "check"};
+    if (state.current === state.chapters.length - 1) return {label: "Finish", action: "next"};
+    return {label: "Next", action: "next"};
+  }
+
+  function renderActions() {
+    const btn = $("primary");
+    const done = state.completed.includes(state.chapters.length - 1);
+    const p = primaryAction();
+    btn.textContent = state.busy ? "Working..." : (done ? "Track complete" : p.label);
+    btn.disabled = !!state.busy || done;
+    btn.onclick = () => run(p.action);
+    $("status").textContent = state.busy ? `running ${state.busy}...`
+      : `Chapter ${state.current + 1} of ${state.chapters.length}`;
+    const last = state.last, msg = $("message"), out = $("output");
+    msg.className = ""; msg.textContent = ""; out.hidden = true;
+    if (!last || state.busy) return;
+    const check = last.scripts.find((s) => s.kind === "check");
+    if (last.ok) {
+      msg.textContent = last.message || "Done.";
+    } else {
+      msg.className = "bad";
+      const failed = last.scripts.filter((s) => s.exit !== 0 || s.timed_out).map((s) =>
+        s.timed_out ? `${s.kind} timed out` : `${s.kind} exited ${s.exit}`);
+      msg.textContent = [last.message, ...failed].filter(Boolean).join(" · ");
+    }
+    if (check && check.output && (!last.ok || check.exit !== 0)) {
+      out.textContent = check.output; out.hidden = false;
+    }
+  }
+
+  async function refresh(reloadChapter) {
+    const prevCurrent = state && state.current;
+    state = {...await api("/api/state"), tabsNow: state && state.tabsNow};
+    $("title").textContent = state.title;
+    if (reloadChapter || viewing === null || prevCurrent !== state.current) await loadChapter(state.current);
+    renderChapters();
+    renderActions();
+    if (state.busy && !polling) polling = setInterval(poll, 2000);
+  }
+
+  async function poll() {
+    const wasBusy = state.busy;
+    await refresh(false);
+    if (!state.busy) { clearInterval(polling); polling = null; if (wasBusy) await loadChapter(state.current); }
+  }
+
+  async function run(action, target) {
+    try {
+      await api(`/api/${action}`, target === undefined ? {} : {target});
+    } catch (e) {
+      $("message").className = "bad"; $("message").textContent = e.message;
+      return;
+    }
+    await refresh(false);
+  }
+
+  $("confirmYes").onclick = () => { $("confirm").hidden = true; if (pendingSkip !== null) run("skip", pendingSkip); };
+  $("confirmNo").onclick = () => { pendingSkip = null; $("confirm").hidden = true; };
+  $("tocurrent").onclick = () => loadChapter(state.current);
+  $("assignment").addEventListener("click", (e) => {
+    const b = e.target.closest(".rodeo-tab-button");
+    if (b) showTab(Number(b.dataset.tab));
+  });
+  refresh(true).catch((e) => { $("message").className = "bad"; $("message").textContent = e.message; });
+})();
+</script>
+</body>
+</html>

@@ -39,24 +39,40 @@ def serve_cmd(config_path: str) -> None:
 @click.option("--base", default=None,
               help="Player hostname; hv.<base> and rancher.<base> are the UIs. "
                    "Default: <public-ip>.sslip.io from AWS instance metadata.")
+@click.option("--domain", default=None,
+              help="Owned DNS zone: names become <label>, hv-<label>, rancher-<label> under it. "
+                   "Needs --label and --tls-stdin.")
+@click.option("--label", default=None, help="This lab's random id under --domain.")
+@click.option("--tls-stdin", is_flag=True,
+              help="Read the certificate chain and key (PEM) from stdin; stored root-only.")
 @click.option("--harvester-upstream", default="192.168.122.10:443", show_default=True)
 @click.option("--rancher-upstream", default="192.168.122.9:30002", show_default=True)
 @click.option("--json", "as_json", is_flag=True, help="Print the result as JSON.")
-def setup_cmd(track_ref: str, track_repo: str | None, base: str | None, harvester_upstream: str,
+def setup_cmd(track_ref: str, track_repo: str | None, base: str | None, domain: str | None,
+              label: str | None, tls_stdin: bool, harvester_upstream: str,
               rancher_upstream: str, as_json: bool) -> None:
     """Install the player on this lab host (root, after rodeo up)."""
     from ..player import setup as s
 
     if os.geteuid() != 0:
         raise click.ClickException("run with sudo: setup installs users, units and binaries")
+    if bool(domain) != bool(label) or (domain and base):
+        raise click.ClickException("--domain and --label go together, and replace --base")
+    if domain and not tls_stdin:
+        raise click.ClickException("--domain needs the event certificate: pass it with --tls-stdin")
+    tls_pem = sys.stdin.read() if tls_stdin else ""
     try:
+        if domain:
+            base = s.domain_base(label or "", domain)
         base = base or s.sslip_base(s.aws_public_ip())
     except OSError as exc:
         raise click.ClickException(f"no --base and no AWS metadata: {exc}") from exc
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
     opts = s.SetupOptions(
         base=base, track_ref=track_ref, track_repo=track_repo or s.TRACK_REPO,
         harvester_upstream=harvester_upstream, rancher_upstream=rancher_upstream,
-        sandbox_id=base.split(".", 1)[0],
+        sandbox_id=base.split(".", 1)[0], domain=(domain or "").strip(".").lower(), tls_pem=tls_pem,
     )
     try:
         result = s.run_setup(opts, sudo_user=os.environ.get("SUDO_USER"))
@@ -72,7 +88,8 @@ def setup_cmd(track_ref: str, track_repo: str | None, base: str | None, harveste
     click.echo(f"Rancher:    {result['rancher']}")
     click.echo(f"Chapters:   {result['chapters']}")
     click.echo(f"Variables:  {', '.join(result['variables_seeded']) or 'none found in secrets.yaml'}")
-    click.echo(f"Caddy CA:   {result['ca_root']} (trust it in the tester's browser)")
+    if result["ca_root"]:
+        click.echo(f"Caddy CA:   {result['ca_root']} (trust it in the tester's browser)")
 
 
 @player_cmd.command("link")

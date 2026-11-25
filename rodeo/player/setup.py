@@ -11,15 +11,26 @@ What it installs, all new names, nothing the existing lab uses:
 - the track at a pinned commit, root-only (it holds the solve scripts);
 - ``rodeo-player`` (this package, loopback), ``rodeo-player-ttyd`` (the
   browser terminal, as ``student``, loopback) and ``rodeo-player-caddy`` (the
-  only public listener, three names, ``tls internal`` for this week's test);
+  only public listener, three names);
 - the lab's Rancher and Harvester passwords as track variables.
 
 Access: Caddy runs forward_auth to the player on all three names, so only a
 browser that opened the lab link gets in (see rodeo.player.auth). The link's
 token also ends up in that browser's history and in Caddy's journal: treat it
-like the lab password. Still a test-grade shortcut: Caddy uses its own CA
-(tls internal) on sslip.io names; a fleet for students needs a domain the
-operator owns and a real certificate. The player runs as root (chapter
+like the lab password.
+
+Names and TLS, two modes:
+
+- test mode (no ``--domain``): ``<ip-dashed>.sslip.io``, ``hv.`` and
+  ``rancher.`` under it, Caddy's own CA (``tls internal``);
+- owned zone (``--domain`` + ``--label``): flat names ``<label>``,
+  ``hv-<label>``, ``rancher-<label>`` under the zone, and the event's
+  wildcard certificate pushed by the laptop (``--tls-stdin``). It lands in
+  /etc/rodeo-player/tls, root-only 0600; Caddy reads it through systemd
+  ``LoadCredential``, so neither the Caddy user nor the student can open the
+  key file. No ACME on the lab.
+
+The player runs as root (chapter
 scripts need the root kubeconfig and root's key to the Rancher VM) under the
 systemd sandbox in player_unit().
 """
@@ -31,7 +42,7 @@ import shlex
 import shutil
 import subprocess
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..fleet.portal import CADDY_SHA512, CADDY_VERSION, STUDENT_SETUP_SCRIPT, STUDENT_USER
@@ -48,6 +59,9 @@ CONFIG = ETC / "config.json"
 AUTH_FILE = VAR / "auth.json"     # root-only: lab secret + access token
 CADDYFILE = ETC / "Caddyfile"
 CADDY_DATA = Path("/var/lib/rodeo-player-caddy")
+TLS_DIR = ETC / "tls"              # root 0700
+TLS_CERT = TLS_DIR / "cert"         # root 0600, chain
+TLS_KEY = TLS_DIR / "key"           # root 0600; Caddy gets it via LoadCredential
 CA_ROOT = CADDY_DATA / "caddy" / "pki" / "authorities" / "local" / "root.crt"
 ROOT_KUBECONFIG = Path("/root/.rodeo/harvester-kubeconfig")
 LAB_VM_KEY = "/opt/suse-virt-workshop/lab-vm-key"   # from the profile's 65-student-kit.sh
@@ -69,10 +83,21 @@ class SetupOptions:
     rancher_upstream: str = "192.168.122.9:30002"
     title: str = "SUSE Virtualization Rodeo"
     sandbox_id: str = ""
+    # Owned-zone mode (flat names under one wildcard certificate):
+    # base = <label>.<domain>, UIs = hv-<label>.<domain>, rancher-<label>.<domain>.
+    # Empty = the sslip.io test mode, UIs = hv.<base>, rancher.<base>.
+    domain: str = ""
+    # Certificate chain + key (PEM). Empty = Caddy's own CA. Never in repr.
+    tls_pem: str = field(default="", repr=False)
 
     def validate(self) -> None:
-        if not _NAME_RE.match(self.base):
-            raise ValueError(f"not a DNS name: {self.base!r}")
+        for name in self.names.values():
+            if not _NAME_RE.match(name):
+                raise ValueError(f"not a DNS name: {name!r}")
+        if self.domain and not self.base.endswith("." + self.domain):
+            raise ValueError(f"{self.base!r} is not under --domain {self.domain!r}")
+        if self.tls_pem:
+            split_pem(self.tls_pem)
         if not _SHA_RE.match(self.track_ref):
             raise ValueError("--track-ref must be a full 40-character commit SHA (pin the track)")
         if not self.track_repo.startswith("https://"):
@@ -83,7 +108,43 @@ class SetupOptions:
 
     @property
     def names(self) -> dict[str, str]:
+        if self.domain:
+            label = self.base.removesuffix(f".{self.domain}")
+            return {"player": self.base, "harvester": f"hv-{label}.{self.domain}",
+                    "rancher": f"rancher-{label}.{self.domain}"}
         return {"player": self.base, "harvester": f"hv.{self.base}", "rancher": f"rancher.{self.base}"}
+
+    @property
+    def tls_directive(self) -> str:
+        # {$CREDENTIALS_DIRECTORY} is read when Caddy loads the file: systemd
+        # sets it for the unit, the install script sets it for `caddy validate`.
+        if self.tls_pem:
+            return "tls {$CREDENTIALS_DIRECTORY}/cert {$CREDENTIALS_DIRECTORY}/key"
+        return "tls internal"
+
+
+_PEM_RE = re.compile(r"-----BEGIN ([A-Z ]+)-----\n.*?\n-----END \1-----\n?", re.DOTALL)
+
+
+def split_pem(bundle: str) -> tuple[str, str]:
+    """Certificate chain and private key out of one PEM bundle."""
+    certs, keys = [], []
+    for m in _PEM_RE.finditer(bundle.replace("\r\n", "\n")):
+        block = m.group(0).rstrip("\n") + "\n"
+        if m.group(1) == "CERTIFICATE":
+            certs.append(block)
+        elif m.group(1).endswith("PRIVATE KEY"):
+            keys.append(block)
+    if not certs or len(keys) != 1:
+        raise ValueError("TLS bundle must hold the certificate chain and exactly one private key (PEM)")
+    return "".join(certs), keys[0]
+
+
+def domain_base(label: str, domain: str) -> str:
+    """``k7q2mx`` + ``labs.example.com`` -> ``k7q2mx.labs.example.com``."""
+    if not re.match(r"^[a-z0-9]([a-z0-9-]{0,40}[a-z0-9])?$", label):
+        raise ValueError(f"bad lab label {label!r} (lowercase letters, digits, dashes)")
+    return f"{label}.{domain.strip('.').lower()}"
 
 
 def sslip_base(public_ip: str) -> str:
@@ -121,7 +182,7 @@ def caddyfile(opts: SetupOptions) -> str:
         # Every request asks the player first (forward_auth), except the
         # cookie hop the player itself answers (see rodeo.player.auth).
         return f"""{name} {{
-\ttls internal
+\t{opts.tls_directive}
 \t@hop path /.rodeo/auth
 \t@protected not path /.rodeo/auth
 \tforward_auth @protected 127.0.0.1:{PLAYER_PORT} {{
@@ -152,7 +213,7 @@ def caddyfile(opts: SetupOptions) -> str:
 }}
 
 {n['player']} {{
-\ttls internal
+\t{opts.tls_directive}
 \t@protected not path /enter /auth/hop /favicon.ico
 \tforward_auth @protected 127.0.0.1:{PLAYER_PORT} {{
 \t\turi /_auth
@@ -237,7 +298,11 @@ WantedBy=multi-user.target
 """
 
 
-def caddy_unit() -> str:
+def caddy_unit(opts: SetupOptions | None = None) -> str:
+    # The key stays root-only on disk; systemd hands the unit a private copy
+    # in $CREDENTIALS_DIRECTORY that only this service can read.
+    creds = (f"LoadCredential=cert:{TLS_CERT}\nLoadCredential=key:{TLS_KEY}\n"
+             if opts is not None and opts.tls_pem else "")
     return f"""[Unit]
 Description=rodeo virt rodeo player TLS (Caddy)
 After=network-online.target rodeo-player.service
@@ -257,7 +322,7 @@ ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
 PrivateDevices=yes
-
+{creds}
 [Install]
 WantedBy=multi-user.target
 """
@@ -274,7 +339,7 @@ def install_script(opts: SetupOptions, rodeo_bin: str) -> str:
         str(CONFIG): json.dumps(player_config(opts), indent=2) + "\n",
         "/etc/systemd/system/rodeo-player.service": player_unit(rodeo_bin),
         "/etc/systemd/system/rodeo-player-ttyd.service": ttyd_unit(),
-        "/etc/systemd/system/rodeo-player-caddy.service": caddy_unit(),
+        "/etc/systemd/system/rodeo-player-caddy.service": caddy_unit(opts),
     }
     writes = "\n".join(
         f"cat > {q(path)} <<'RODEO_PLAYER_EOF'\n{body}RODEO_PLAYER_EOF" for path, body in files.items()
@@ -332,8 +397,10 @@ fi
 
 {writes}
 chmod 644 {CONFIG} {CADDYFILE}
+export CREDENTIALS_DIRECTORY={TLS_DIR}   # what systemd gives the unit (owned-zone TLS)
 /usr/local/bin/caddy validate --config {CADDYFILE} --adapter caddyfile >/dev/null 2>&1 \\
   || {{ /usr/local/bin/caddy validate --config {CADDYFILE} --adapter caddyfile; exit 1; }}
+unset CREDENTIALS_DIRECTORY
 
 # Runtime + permanent, never --reload: a reload makes libvirt put its reject
 # back in front of rodeo's DNAT accept and silently breaks the lab's own
@@ -387,6 +454,23 @@ def lab_passwords(sudo_user: str | None) -> dict[str, str]:
 
 # ---------------------------------------------------------------- run
 
+def install_tls(bundle: str, tls_dir: Path = TLS_DIR) -> None:
+    """Write the pushed chain + key root-only (dir 0700, files 0600)."""
+    import os
+
+    chain, key = split_pem(bundle)
+    tls_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    tls_dir.chmod(0o700)
+    for name, body in (("cert", chain), ("key", key)):
+        path = tls_dir / name
+        tmp = tls_dir / f".{name}.tmp"
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as fh:
+            fh.write(body)
+        os.replace(tmp, path)
+        path.chmod(0o600)
+
+
 def run_setup(opts: SetupOptions, *, sudo_user: str | None) -> dict:
     """Do the whole install. Returns URLs and the CA path, never a password."""
     opts.validate()
@@ -395,6 +479,8 @@ def run_setup(opts: SetupOptions, *, sudo_user: str | None) -> dict:
 
     # Before the units start: the player refuses to run without it.
     VAR.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if opts.tls_pem:
+        install_tls(opts.tls_pem)
     access = auth.ensure(AUTH_FILE)
     student = subprocess.run(["bash", "-c", STUDENT_SETUP_SCRIPT], input="", text=True,
                              capture_output=True, timeout=300)
@@ -418,7 +504,7 @@ def run_setup(opts: SetupOptions, *, sudo_user: str | None) -> dict:
         "player": f"https://{n['player']}/",
         "harvester": f"https://{n['harvester']}/",
         "rancher": f"https://{n['rancher']}/",
-        "ca_root": str(CA_ROOT),
+        "ca_root": "" if opts.tls_pem else str(CA_ROOT),
         "variables_seeded": seeded,
         "chapters": len(runner.chapters),
     }

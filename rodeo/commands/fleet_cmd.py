@@ -914,11 +914,26 @@ def fleet_deprovision_cmd(
                 console.print(f"[yellow]⚠  could not reopen claiming ({exc}): "
                               "run `rodeo fleet portal open`.[/yellow]")
 
+    dns_note = ""
+    if inventory.player is not None:
+        # Names of terminated labs leave the zone (only names rodeo marked for
+        # this workshop). Best effort: the instances are already gone.
+        gone_ids = [r.id for r in results if r.ok and r.id != "portal"]
+        try:
+            from ..fleet import dns as fleet_dns
+
+            removed = fleet_dns.delete(inventory, host_ids=gone_ids if host_ids else None)
+            dns_note = f"removed {len(removed)} DNS name(s)"
+        except Exception as exc:  # noqa: BLE001
+            dns_note = f"DNS names not removed ({exc}): run `rodeo fleet dns --delete`"
+
     from ..fleet.local_cleanup import forget_cloud_hosts
 
     cleaned = forget_cloud_hosts(inventory.name, inventory_path, results, portal_removed=portal_removed)
     payload = deprovision_payload(inventory.name, results)
     payload["local_cleanup"] = cleaned
+    if dns_note:
+        payload["dns"] = dns_note
     if scale_down:
         payload["portal_removed_labs"] = portal_labs
         if portal_warning:
@@ -942,6 +957,8 @@ def fleet_deprovision_cmd(
         console.print(table)
         for line in cleaned:
             console.print(f"  [dim]local:[/dim] {line}")
+        if dns_note:
+            console.print(f"  [dim]dns:[/dim] {dns_note}")
         if portal_labs:
             console.print(f"  [dim]portal:[/dim] removed {len(portal_labs)} lab(s): {', '.join(portal_labs)}")
         if portal_warning:
@@ -1074,6 +1091,81 @@ def fleet_player_setup_cmd(inventory_path: Path, track_ref: str, concurrency: in
             console.print(f"{mark}  {r.id:<16} {detail}")
     if not all(r.ok for r in rows):
         raise SystemExit(1)
+
+
+@fleet_cmd.command("dns")
+@_output_opt
+@click.option("--delete", "do_delete", is_flag=True, help="Remove this workshop's records instead.")
+@click.option("--host", "host_ids", multiple=True, help="Only these host ids (repeatable).")
+@click.option("-f", "--file", "inventory_path", required=True,
+              type=click.Path(exists=True, dir_okay=False, path_type=Path),
+              help="Path to workshop.yaml inventory.")
+def fleet_dns_cmd(inventory_path: Path, do_delete: bool, host_ids: tuple[str, ...], output_fmt: str) -> None:
+    """Player names for every lab in the player.domain Route 53 zone.
+
+    Gives each host a random ``labels.player_id`` (kept in workshop.yaml), then
+    writes ``<id>``, ``hv-<id>`` and ``rancher-<id>`` A records to its public IP.
+    Each name carries a rodeo TXT mark; names rodeo did not write are refused.
+    Re-runs are safe. ``--delete`` removes only names marked for this workshop
+    (``fleet destroy`` does that too)."""
+    from ..fleet import dns
+    from ..fleet.inventory import ensure_player_ids
+
+    try:
+        inventory = load_inventory(inventory_path)
+        if inventory.player is None:
+            raise ConfigError("add a player: block to workshop.yaml (player.domain: <your zone>)")
+        if do_delete:
+            names = dns.delete(inventory, host_ids=list(host_ids) or None)
+            if output_fmt == "json":
+                click.echo(json.dumps({"deleted": names}, indent=2))
+            else:
+                console.print(f"[green]✓[/green]  removed {len(names)} name(s)")
+                for n in names:
+                    console.print(f"   {n}")
+            return
+        ensure_player_ids(inventory_path)
+        inventory = load_inventory(inventory_path)
+        rows = dns.publish(inventory, host_ids=list(host_ids) or None)
+    except ConfigError as exc:
+        console.print(f"[red]✗  {exc}[/red]")
+        raise SystemExit(1)
+    if output_fmt == "json":
+        click.echo(json.dumps([r.__dict__ for r in rows], indent=2))
+    else:
+        for r in rows:
+            mark = "[green]✓[/green]" if r.ok else "[red]✗[/red]"
+            detail = f"{r.names[0] if r.names else ''} -> {r.detail}" if r.ok else r.detail
+            console.print(f"{mark}  {r.id:<16} {detail}")
+    if not all(r.ok for r in rows):
+        raise SystemExit(1)
+
+
+@fleet_cmd.command("cert")
+@click.option("-f", "--file", "inventory_path", required=True,
+              type=click.Path(exists=True, dir_okay=False, path_type=Path),
+              help="Path to workshop.yaml inventory.")
+def fleet_cert_cmd(inventory_path: Path) -> None:
+    """One *.<player.domain> certificate for the event (Let's Encrypt, DNS-01).
+
+    Runs on this laptop with a pinned lego and your current AWS credentials
+    (Route 53 on that zone only). Files stay in ~/.rodeo/certs/<domain>/;
+    ``fleet player-setup`` pushes them to each lab over SSH. A re-run reuses
+    the certificate until it is due for renewal."""
+    from ..fleet import cert, dns
+
+    try:
+        inventory = load_inventory(inventory_path)
+        if inventory.player is None:
+            raise ConfigError("add a player: block to workshop.yaml (player.domain: <your zone>)")
+        zone_id = dns.find_zone(dns.route53_client(), inventory.player.domain)
+        files = cert.issue(inventory, zone_id=zone_id)
+    except ConfigError as exc:
+        console.print(f"[red]✗  {exc}[/red]")
+        raise SystemExit(1)
+    staging = " (STAGING: browsers will not trust it)" if inventory.player.staging else ""
+    console.print(f"[green]✓[/green]  *.{inventory.player.domain}, {files.days_left:.0f} days left{staging}")
+    console.print(f"   {files.cert}")
 
 
 @fleet_cmd.command("lab-images")

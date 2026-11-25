@@ -139,3 +139,71 @@ def test_student_gets_the_lab_vm_key_never_roots():
     assert 'install -m 600 -o student -g "$SG" "$LABKEY" /home/student/.ssh/id_ed25519' in text
     assert 'cmp -s "$LABKEY" /root/.ssh/id_ed25519' in text
     assert "/root/.ssh/id_ed25519 /home/student" not in text
+
+
+# ---------------------------------------------------------------- owned zone
+
+PEM = ("-----BEGIN CERTIFICATE-----\nAAA\n-----END CERTIFICATE-----\n"
+       "-----BEGIN CERTIFICATE-----\nBBB\n-----END CERTIFICATE-----\n"
+       "-----BEGIN EC PRIVATE KEY-----\nKKK\n-----END EC PRIVATE KEY-----\n")  # gitleaks:allow (fake test key)
+
+
+def _zone_opts(**kw) -> s.SetupOptions:
+    return s.SetupOptions(base=s.domain_base("k7q2mx9a", "rodeocli.com"), track_ref=SHA,
+                          domain="rodeocli.com", tls_pem=PEM, **kw)
+
+
+def test_owned_zone_uses_flat_names_and_the_pushed_cert():
+    opts = _zone_opts()
+    opts.validate()
+    assert opts.names == {"player": "k7q2mx9a.rodeocli.com", "harvester": "hv-k7q2mx9a.rodeocli.com",
+                          "rancher": "rancher-k7q2mx9a.rodeocli.com"}
+    text = s.caddyfile(opts)
+    assert "tls internal" not in text
+    assert text.count("tls {$CREDENTIALS_DIRECTORY}/cert {$CREDENTIALS_DIRECTORY}/key") == 3
+    assert "KKK" not in text and "KKK" not in repr(opts)
+    cfg = s.player_config(opts)
+    assert cfg["tab_urls"]["8443"] == "https://hv-k7q2mx9a.rodeocli.com/"
+    unit = s.caddy_unit(opts)
+    assert f"LoadCredential=key:{s.TLS_KEY}" in unit and f"LoadCredential=cert:{s.TLS_CERT}" in unit
+    assert "LoadCredential" not in s.caddy_unit(_opts())
+    script = s.install_script(opts, "/usr/local/bin/rodeo")
+    assert f"export CREDENTIALS_DIRECTORY={s.TLS_DIR}" in script and "KKK" not in script
+    assert subprocess.run(["bash", "-n"], input=script, text=True).returncode == 0
+
+
+def test_install_tls_is_root_only(tmp_path):
+    d = tmp_path / "tls"
+    s.install_tls(PEM, d)
+    assert (d / "cert").read_text().count("BEGIN CERTIFICATE") == 2
+    assert "KKK" in (d / "key").read_text() and "CERTIFICATE" not in (d / "key").read_text()
+    assert oct(d.stat().st_mode & 0o777) == "0o700"
+    assert {oct((d / n).stat().st_mode & 0o777) for n in ("cert", "key")} == {"0o600"}
+
+
+_CERT = "-----BEGIN CERTIFICATE-----\nAAA\n-----END CERTIFICATE-----\n"
+_KEY = "-----BEGIN EC PRIVATE KEY-----\nKKK\n-----END EC PRIVATE KEY-----\n"  # gitleaks:allow (fake test key)
+
+
+@pytest.mark.parametrize("pem", ["junk", _CERT, _KEY, _CERT + _KEY + _KEY])
+def test_bad_tls_bundles_are_refused(pem):
+    with pytest.raises(ValueError, match="TLS bundle"):
+        s.split_pem(pem)
+
+
+def test_label_and_domain_must_be_clean():
+    with pytest.raises(ValueError):
+        s.domain_base("Bad_Label", "rodeocli.com")
+    with pytest.raises(ValueError, match="not under"):
+        s.SetupOptions(base="x.other.com", track_ref=SHA, domain="rodeocli.com").validate()
+
+
+def test_setup_cli_domain_needs_label_and_cert(monkeypatch):
+    from rodeo.cli import cli
+
+    monkeypatch.setattr("os.geteuid", lambda: 0)
+    r = CliRunner().invoke(cli, ["player", "setup", "--track-ref", SHA, "--domain", "rodeocli.com"])
+    assert r.exit_code != 0 and "--label" in r.output
+    r = CliRunner().invoke(cli, ["player", "setup", "--track-ref", SHA, "--domain", "rodeocli.com",
+                                 "--label", "k7q2mx9a"])
+    assert r.exit_code != 0 and "--tls-stdin" in r.output

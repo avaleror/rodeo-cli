@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 from ..config import ConfigError
 from .fanout import fanout
-from .inventory import FleetHost, FleetInventory
+from .inventory import FleetHost, FleetInventory, player_id
 from .ssh_exec import run_remote
 
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -29,9 +29,23 @@ class PlayerSetupRow:
     error: str = ""         # last lines of stderr, never stdout (it holds the link)
 
 
-def _one(inventory: FleetInventory, host: FleetHost, track_ref: str) -> PlayerSetupRow:
-    res = run_remote(inventory, host, ["rodeo", "player", "setup", "--track-ref", track_ref, "--json"],
-                     timeout=SETUP_TIMEOUT)
+def setup_argv(inventory: FleetInventory, host: FleetHost, track_ref: str) -> list[str]:
+    argv = ["rodeo", "player", "setup", "--track-ref", track_ref, "--json"]
+    if inventory.player is not None:
+        pid = player_id(host)
+        if not pid:
+            raise ConfigError(f"{host.id}: no labels.player_id (run `rodeo fleet dns` first)")
+        argv += ["--domain", inventory.player.domain, "--label", pid, "--tls-stdin"]
+    return argv
+
+
+def _one(inventory: FleetInventory, host: FleetHost, track_ref: str, tls_pem: str | None) -> PlayerSetupRow:
+    try:
+        argv = setup_argv(inventory, host, track_ref)
+    except ConfigError as exc:
+        return PlayerSetupRow(host.id, False, error=str(exc))
+    # The certificate key goes over the SSH session's stdin, never argv or a file.
+    res = run_remote(inventory, host, argv, timeout=SETUP_TIMEOUT, stdin=tls_pem)
     if not res.ok:
         return PlayerSetupRow(host.id, False, error=(res.stderr or "").strip()[-300:] or f"exit {res.rc}")
     try:
@@ -46,4 +60,9 @@ def fleet_player_setup(inventory: FleetInventory, *, track_ref: str, concurrency
         raise ConfigError("--track-ref must be a full 40-character commit SHA (pin the track)")
     if not inventory.hosts:
         raise ConfigError("no hosts in the inventory (run `rodeo fleet provision` first)")
-    return fanout(inventory.hosts, lambda h: _one(inventory, h, track_ref), concurrency=concurrency)
+    tls_pem = None
+    if inventory.player is not None:
+        from .cert import bundle_for_push
+
+        tls_pem = bundle_for_push(inventory.player.domain)
+    return fanout(inventory.hosts, lambda h: _one(inventory, h, track_ref, tls_pem), concurrency=concurrency)

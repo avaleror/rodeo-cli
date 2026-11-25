@@ -1068,3 +1068,35 @@ def fleet_player_setup_cmd(inventory_path: Path, track_ref: str, concurrency: in
             console.print(f"{mark}  {r.id:<16} {detail}")
     if not all(r.ok for r in rows):
         raise SystemExit(1)
+
+
+@fleet_cmd.command("lab-images")
+@_concurrency_opt(8)
+@click.option("--bucket", required=True, help="Private S3 bucket holding the lab images.")
+@click.option("--prefix", default="images/", show_default=True, help="Key prefix in the bucket.")
+@click.option("--expires", "seconds", default=6 * 3600, show_default=True, type=int,
+              help="Link lifetime in seconds (also capped by your AWS session).")
+@click.option("--run", is_flag=True, help="Fetch the images now (on a lab already deployed).")
+@click.option("-f", "--file", "inventory_path", required=True,
+              type=click.Path(exists=True, dir_okay=False, path_type=Path),
+              help="Path to workshop.yaml inventory.")
+def fleet_lab_images_cmd(inventory_path: Path, bucket: str, prefix: str, seconds: int, run: bool,
+                         concurrency: int) -> None:
+    """Give every lab short-lived links to private images (virt-rodeo SLES images).
+
+    Signs the links on this machine and writes them root-only to each host;
+    the hosts never get AWS credentials. Before `fleet deploy`, the deploy
+    fetches them; after it, add --run.
+    """
+    from ..fleet.lab_images import fleet_lab_images
+
+    try:
+        rows = fleet_lab_images(load_inventory(inventory_path), bucket=bucket, prefix=prefix,
+                                seconds=seconds, run=run, concurrency=concurrency)
+    except ConfigError as exc:
+        console.print(f"[red]✗  {exc}[/red]")
+        raise SystemExit(1)
+    for r in rows:
+        console.print(f"{'[green]✓[/green]' if r.ok else '[red]✗[/red]'}  {r.id:<16} {r.detail}")
+    if not all(r.ok for r in rows):
+        raise SystemExit(1)

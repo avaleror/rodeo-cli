@@ -41,6 +41,37 @@ extra_css:
 
 plugins:
   - search
+  - i18n:
+      docs_structure: suffix
+      fallback_to_default: true
+      reconfigure_material: true
+      languages:
+        - locale: en
+          default: true
+          name: English
+          build: true
+        - locale: zh-TW
+          name: 繁體中文
+          build: true
+          site_name: rodeo-cli
+          nav_translations:
+            Home: 首頁
+            Get started: 開始使用
+            Install on Linux and macOS: 在 Linux 與 macOS 上安裝
+            Profiles: Profile 指南
+            Create your own rodeo: 建立自己的 rodeo
+            Fleet (multi-host workshops): Fleet（多主機 workshop）
+            MCP server (agents): MCP server（AI agent）
+            Reference: 參考
+            Examples: 範例
+            Bare metal: 裸機
+            AWS from a Mac: 從 Mac 部署到 AWS
+            Instruqt track: Instruqt track
+            Workshop fleet inventory: Workshop fleet 清單
+            Testing & CI: 測試與 CI
+            Troubleshooting: 故障排除
+            For contributors: 給貢獻者
+            Plain KVM hosts: 一般 KVM 主機
 
 markdown_extensions:
   - admonition

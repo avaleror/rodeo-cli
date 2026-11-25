@@ -59,8 +59,9 @@ def _platform() -> tuple[str, str]:
     return system, machine
 
 
-def cert_dir(domain: str) -> Path:
-    return Path.home() / ".rodeo" / "certs" / domain
+def cert_dir(domain: str, staging: bool = False) -> Path:
+    # Separate trees: lego would treat a staging cert as current and skip prod.
+    return Path.home() / ".rodeo" / "certs" / (f"{domain}-staging" if staging else domain)
 
 
 def lego_path() -> Path:
@@ -119,8 +120,12 @@ def aws_env() -> dict[str, str]:
 def lego_argv(lego: Path, inventory: FleetInventory) -> list[str]:
     p = inventory.player
     assert p is not None
-    argv = [str(lego), "run", "--accept-tos", "--path", str(cert_dir(p.domain)),
-            "--dns", "route53", "--domains", f"*.{p.domain}", "--cert.name", CERT_NAME]
+    argv = [str(lego), "run", "--accept-tos", "--path", str(cert_dir(p.domain, p.staging)),
+            "--dns", "route53", "--domains", f"*.{p.domain}", "--cert.name", CERT_NAME,
+            # Check propagation on the zone's own nameservers only: a laptop's
+            # resolver can cache the NXDOMAIN for _acme-challenge and fail the
+            # run (seen live 2026-11-25). Route 53 is in sync when lego writes.
+            "--dns.propagation.disable-rns"]
     if p.acme_email:
         argv += ["--email", p.acme_email]
     if p.staging:
@@ -133,9 +138,9 @@ def _not_after(cert: Path) -> float:
     return ssl.cert_time_to_seconds(decoded["notAfter"])
 
 
-def current(domain: str) -> CertFiles | None:
+def current(domain: str, staging: bool = False) -> CertFiles | None:
     """The certificate lego left for ``domain``, if any."""
-    base = cert_dir(domain) / "certificates"
+    base = cert_dir(domain, staging) / "certificates"
     cert, key = base / f"{CERT_NAME}.crt", base / f"{CERT_NAME}.key"
     if not (cert.is_file() and key.is_file()):
         return None
@@ -146,9 +151,9 @@ def issue(inventory: FleetInventory, *, zone_id: str | None = None) -> CertFiles
     """Obtain or renew ``*.<domain>``. Needs Route 53 rights on that zone only."""
     if inventory.player is None:
         raise ConfigError("this workshop has no player: block (player.domain: <your zone>)")
-    domain = inventory.player.domain
+    domain, staging = inventory.player.domain, inventory.player.staging
     lego = ensure_lego()
-    cert_dir(domain).mkdir(parents=True, exist_ok=True, mode=0o700)
+    cert_dir(domain, staging).mkdir(parents=True, exist_ok=True, mode=0o700)
     env = {**os.environ, **aws_env()}
     for k in ("AWS_PROFILE", "AWS_DEFAULT_PROFILE"):
         env.pop(k, None)  # the frozen keys above are the ones to use
@@ -159,16 +164,16 @@ def issue(inventory: FleetInventory, *, zone_id: str | None = None) -> CertFiles
     if res.returncode != 0:
         tail = "\n".join((res.stderr or res.stdout).strip().splitlines()[-8:])
         raise ConfigError(f"lego failed (exit {res.returncode}):\n{tail}")
-    files = current(domain)
+    files = current(domain, staging)
     if files is None:
-        raise ConfigError(f"lego finished but left no certificate in {cert_dir(domain)}")
+        raise ConfigError(f"lego finished but left no certificate in {cert_dir(domain, staging)}")
     files.key.chmod(0o600)
     return files
 
 
-def bundle_for_push(domain: str) -> str:
+def bundle_for_push(domain: str, staging: bool = False) -> str:
     """Cert chain then key, PEM, for ``rodeo player setup --tls-stdin``."""
-    files = current(domain)
+    files = current(domain, staging)
     if files is None:
         raise ConfigError(f"no certificate for *.{domain} yet: run `rodeo fleet cert` first")
     if files.days_left < MIN_DAYS_LEFT:

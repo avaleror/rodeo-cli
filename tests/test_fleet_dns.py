@@ -213,6 +213,8 @@ def test_lego_is_pinned_and_scoped(tmp_path, monkeypatch):
     assert "--server" not in argv
     assert all(len(v) == 64 for v in fcert.LEGO_SHA256.values())
     assert fcert.lego_path().name == f"lego-{fcert.LEGO_VERSION}"
+    assert "--dns.propagation.disable-rns" in argv
+    assert fcert.cert_dir(ZONE, True) != fcert.cert_dir(ZONE)
 
 
 def _bundle() -> str:
@@ -223,7 +225,7 @@ def _bundle() -> str:
 
 def test_player_setup_pushes_the_cert_on_stdin_never_argv(tmp_path, monkeypatch):
     _, inv = _ready(tmp_path)
-    monkeypatch.setattr(fcert, "bundle_for_push", lambda domain: _bundle())
+    monkeypatch.setattr(fcert, "bundle_for_push", lambda domain, staging=False: _bundle())
     seen = []
 
     def fake_remote(inventory, host, argv, *, timeout=120.0, as_root=True, stdin=None):
@@ -241,19 +243,19 @@ def test_player_setup_pushes_the_cert_on_stdin_never_argv(tmp_path, monkeypatch)
 
 def test_player_setup_without_ids_fails_per_host(tmp_path, monkeypatch):
     inv = load_inventory(_workshop(tmp_path))
-    monkeypatch.setattr(fcert, "bundle_for_push", lambda domain: _bundle())
+    monkeypatch.setattr(fcert, "bundle_for_push", lambda domain, staging=False: _bundle())
     monkeypatch.setattr(fpl, "run_remote", lambda *a, **k: pytest.fail("must not run"))
     rows = fpl.fleet_player_setup(inv, track_ref=SHA)
     assert not any(r.ok for r in rows) and "fleet dns" in rows[0].error
 
 
 def test_bundle_for_push_refuses_a_missing_or_expiring_cert(tmp_path, monkeypatch):
-    monkeypatch.setattr(fcert, "current", lambda domain: None)
+    monkeypatch.setattr(fcert, "current", lambda domain, staging=False: None)
     with pytest.raises(ConfigError, match="fleet cert"):
         fcert.bundle_for_push(ZONE)
     import time
 
-    monkeypatch.setattr(fcert, "current", lambda domain: fcert.CertFiles(tmp_path / "c", tmp_path / "k",
+    monkeypatch.setattr(fcert, "current", lambda domain, staging=False: fcert.CertFiles(tmp_path / "c", tmp_path / "k",
                                                                          time.time() + 86400))
     with pytest.raises(ConfigError, match="expires"):
         fcert.bundle_for_push(ZONE)

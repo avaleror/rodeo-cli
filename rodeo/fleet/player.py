@@ -64,5 +64,5 @@ def fleet_player_setup(inventory: FleetInventory, *, track_ref: str, concurrency
     if inventory.player is not None:
         from .cert import bundle_for_push
 
-        tls_pem = bundle_for_push(inventory.player.domain)
+        tls_pem = bundle_for_push(inventory.player.domain, inventory.player.staging)
     return fanout(inventory.hosts, lambda h: _one(inventory, h, track_ref, tls_pem), concurrency=concurrency)

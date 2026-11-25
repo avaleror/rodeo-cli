@@ -24,6 +24,7 @@ from .commands.logs import logs_cmd
 from .commands.mcp_cmd import mcp_cmd
 from .commands.new_cmd import new_cmd
 from .commands.plan_cmd import plan_cmd
+from .commands.player_cmd import player_cmd
 from .commands.profiles_cmd import profiles_cmd
 from .commands.restart import restart_cmd
 from .commands.ssh_cmd import ssh_cmd
@@ -125,3 +126,4 @@ cli.add_command(destroy_cmd,          name="destroy")
 cli.add_command(cloud_cmd,            name="cloud")
 cli.add_command(mcp_cmd,              name="mcp")
 cli.add_command(agent_setup_cmd,      name="agent-setup")
+cli.add_command(player_cmd,           name="player")

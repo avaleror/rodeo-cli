@@ -70,7 +70,7 @@ exit 0
 
 def _harness(tmp_path: Path) -> tuple[Path, dict]:
     root = tmp_path / "root"
-    for d in ("srv", "etc", "run", "var/lib", "state", "bin"):
+    for d in ("srv", "etc", "run", "var/lib/libvirt/images", "state", "bin"):
         (root / d).mkdir(parents=True, exist_ok=True)
     (root / "etc" / "fstab").write_text("UUID=abc / ext4 defaults 0 1\n")
     for name, body in FAKES.items():
@@ -78,7 +78,7 @@ def _harness(tmp_path: Path) -> tuple[Path, dict]:
         f.write_text(body)
         f.chmod(0o755)
     text = SCRIPT.read_text()
-    for real in ("/srv/backups", "/etc/fstab", "/etc/exports", "/var/lib/rodeo-nfs", "/run/rodeo-nfs-migrate"):
+    for real in ("/srv/backups", "/etc/fstab", "/etc/exports", "/var/lib/libvirt/images/rodeo-nfs", "/run/rodeo-nfs-migrate"):
         text = text.replace(real, f"{root}{real}")
     script = root / "nfs.sh"
     script.write_text(text)
@@ -126,7 +126,7 @@ def test_fresh_host_mounts_image_hardened_then_exports(tmp_path):
     res = _run(root, env)
     assert res.returncode == 0, res.stdout + res.stderr
 
-    img = f"{root}/var/lib/rodeo-nfs/backups.ext4"
+    img = f"{root}/var/lib/libvirt/images/rodeo-nfs/backups.ext4"
     assert Path(img).is_file()
     assert oct(Path(img).stat().st_mode & 0o777) == "0o600"
     log = _log(root)
@@ -135,7 +135,8 @@ def test_fresh_host_mounts_image_hardened_then_exports(tmp_path):
     assert log.index("mount -o") < log.index("exportfs -ra")
 
     fstab = (root / "etc" / "fstab").read_text().splitlines()
-    assert f"{img} {root}/srv/backups ext4 loop,nosuid,nodev,noexec 0 0" in fstab
+    assert (f"{img} {root}/srv/backups ext4 loop,nosuid,nodev,noexec,nofail,"
+            f"x-systemd.requires-mounts-for={root}/var/lib/libvirt/images/rodeo-nfs 0 0") in fstab
     assert fstab[0].startswith("UUID=abc /")
 
 
@@ -170,7 +171,7 @@ def test_existing_plain_directory_is_migrated(tmp_path):
 def test_own_mount_that_lost_options_is_remounted(tmp_path):
     root, env = _harness(tmp_path)
     assert _run(root, env).returncode == 0
-    img = f"{root}/var/lib/rodeo-nfs/backups.ext4"
+    img = f"{root}/var/lib/libvirt/images/rodeo-nfs/backups.ext4"
     (root / "state" / "mounts").write_text(f"{root}/srv/backups|{img}|rw,loop\n")
     (root / "state" / "log").write_text("")
 

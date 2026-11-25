@@ -32,10 +32,15 @@ BACKUP_DIR="/srv/backups"
 EXPORT_CIDR="192.168.122.0/24"
 EXPORT_LINE="${BACKUP_DIR} ${EXPORT_CIDR}(rw,sync,no_subtree_check,no_root_squash)"
 
-BACKUP_IMG="${RODEO_NFS_BACKUP_IMG:-/var/lib/rodeo-nfs/backups.ext4}"
+# In the VM image directory, not on the root disk: on AWS that directory is
+# the NVMe pool (~1.9 TiB), while the root EBS volume is small and one VM
+# backup from chapter 6 could fill it.
+BACKUP_IMG="${RODEO_NFS_BACKUP_IMG:-/var/lib/libvirt/images/rodeo-nfs/backups.ext4}"
 BACKUP_SIZE="${RODEO_NFS_BACKUP_SIZE:-200G}"   # sparse: only what is written uses disk
 MOUNT_OPTS="loop,nosuid,nodev,noexec"
-FSTAB_LINE="${BACKUP_IMG} ${BACKUP_DIR} ext4 ${MOUNT_OPTS} 0 0"
+# nofail: a missing image must not hang the host's boot. requires-mounts-for:
+# mount the NVMe pool (its own fstab line) before the image that lives on it.
+FSTAB_LINE="${BACKUP_IMG} ${BACKUP_DIR} ext4 ${MOUNT_OPTS},nofail,x-systemd.requires-mounts-for=$(dirname "${BACKUP_IMG}") 0 0"
 
 fail(){ echo ">>> [nfs-backup] FAILED: $*" >&2; exit 1; }
 

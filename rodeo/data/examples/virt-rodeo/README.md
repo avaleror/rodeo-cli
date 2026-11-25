@@ -29,7 +29,7 @@ without changing what Harvester sees.
 
 `60-nfs-backup-target.sh`:
 
-- creates `/var/lib/rodeo-nfs/backups.ext4` (sparse, 200G by default;
+- creates `/var/lib/libvirt/images/rodeo-nfs/backups.ext4` (sparse, 200G by default;
   `RODEO_NFS_BACKUP_IMG` and `RODEO_NFS_BACKUP_SIZE` override) once;
 - moves the contents of an older plain `/srv/backups` into it once;
 - mounts it and writes the `/etc/fstab` line once;

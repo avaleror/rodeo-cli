@@ -226,3 +226,17 @@ def test_lab_kubeconfig_prefers_the_invoking_users_home(tmp_path, monkeypatch):
     dest = tmp_path / "copy"
     s.install_kubeconfig(fleet_home / ".rodeo" / "harvester-kubeconfig", dest)
     assert dest.read_text() == "apiVersion: v1\n" and oct(dest.stat().st_mode & 0o777) == "0o600"
+
+
+def test_root_gets_the_track_kubeconfig_only_when_missing(tmp_path):
+    src = tmp_path / "ec2" / "kc"
+    src.parent.mkdir()
+    src.write_text("lab\n")
+    dest = tmp_path / "root" / ".rodeo" / "harvester-kubeconfig"
+    assert s.ensure_root_kubeconfig(src, dest) is True
+    assert dest.read_text() == "lab\n" and oct(dest.stat().st_mode & 0o777) == "0o600"
+    assert oct(dest.parent.stat().st_mode & 0o777) == "0o700"
+    dest.write_text("root's own\n")
+    assert s.ensure_root_kubeconfig(src, dest) is False
+    assert dest.read_text() == "root's own\n"
+    assert s.ensure_root_kubeconfig(dest, dest) is False

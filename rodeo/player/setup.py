@@ -488,6 +488,18 @@ def install_kubeconfig(src: Path, dest: Path = PLAYER_KUBECONFIG) -> None:
     dest.chmod(0o600)
 
 
+ROOT_KUBECONFIG = Path("/root/.rodeo/harvester-kubeconfig")
+
+
+def ensure_root_kubeconfig(src: Path, dest: Path = ROOT_KUBECONFIG) -> bool:
+    """Copy the lab kubeconfig to root's ~/.rodeo if root has none. True if copied."""
+    if dest.exists() or src == dest:
+        return False
+    dest.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    install_kubeconfig(src, dest)
+    return True
+
+
 def install_tls(bundle: str, tls_dir: Path = TLS_DIR) -> None:
     """Write the pushed chain + key root-only (dir 0700, files 0600)."""
     import os
@@ -513,7 +525,12 @@ def run_setup(opts: SetupOptions, *, sudo_user: str | None) -> dict:
 
     # Before the units start: the player refuses to run without it.
     VAR.mkdir(mode=0o700, parents=True, exist_ok=True)
-    install_kubeconfig(lab_kubeconfig(sudo_user))
+    src = lab_kubeconfig(sudo_user)
+    install_kubeconfig(src)
+    # The track's own scripts hard-code /root/.rodeo/harvester-kubeconfig (the
+    # Instruqt layout). On a fleet host rodeo up wrote it for the SSH user, so
+    # give root the same file. Never overwrite one root already has.
+    ensure_root_kubeconfig(src)
     if opts.tls_pem:
         install_tls(opts.tls_pem)
     access = auth.ensure(AUTH_FILE)

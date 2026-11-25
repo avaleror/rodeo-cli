@@ -91,7 +91,8 @@ def test_install_script_verifies_pins_and_protects_the_track():
     assert f'[ "$(git -C {s.TRACK_DIR} rev-parse HEAD)" = {SHA} ]' in text
     assert f"chmod 700 {s.TRACK_DIR}" in text
     assert "student can read the rodeo key" in text
-    assert "install -m 640 -o root -g rodeo-student /root/.rodeo/harvester-kubeconfig" in text
+    assert f"install -m 640 -o root -g rodeo-student {s.PLAYER_KUBECONFIG}" in text
+    assert s.player_config(_opts())["kubeconfig"] == str(s.PLAYER_KUBECONFIG)
     assert text.rstrip().endswith("echo PLAYER_UP")
     # A firewalld reload breaks the lab's DNAT access to :8443/:30002.
     assert not any("firewall-cmd" in ln and "--reload" in ln for ln in text.splitlines() if not ln.lstrip().startswith("#"))
@@ -207,3 +208,21 @@ def test_setup_cli_domain_needs_label_and_cert(monkeypatch):
     r = CliRunner().invoke(cli, ["player", "setup", "--track-ref", SHA, "--domain", "rodeocli.com",
                                  "--label", "k7q2mx9a"])
     assert r.exit_code != 0 and "--tls-stdin" in r.output
+
+
+def test_lab_kubeconfig_prefers_the_invoking_users_home(tmp_path, monkeypatch):
+    import pwd
+    from types import SimpleNamespace
+
+    fleet_home = tmp_path / "ec2-user"
+    (fleet_home / ".rodeo").mkdir(parents=True)
+    (fleet_home / ".rodeo" / "harvester-kubeconfig").write_text("apiVersion: v1\n")
+    monkeypatch.setattr(pwd, "getpwnam", lambda u: SimpleNamespace(pw_dir=str(fleet_home)))
+    assert s.lab_kubeconfig("ec2-user") == fleet_home / ".rodeo" / "harvester-kubeconfig"
+    monkeypatch.setattr(pwd, "getpwnam", lambda u: SimpleNamespace(pw_dir=str(tmp_path / "nobody")))
+    if not (s.Path("/root/.rodeo/harvester-kubeconfig")).exists():
+        with pytest.raises(RuntimeError, match="has rodeo up finished"):
+            s.lab_kubeconfig("ec2-user")
+    dest = tmp_path / "copy"
+    s.install_kubeconfig(fleet_home / ".rodeo" / "harvester-kubeconfig", dest)
+    assert dest.read_text() == "apiVersion: v1\n" and oct(dest.stat().st_mode & 0o777) == "0o600"

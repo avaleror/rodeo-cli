@@ -132,3 +132,18 @@ def test_only_virt_rodeo_has_the_script():
     examples = Path(rodeo.__file__).parent / "data" / "examples"
     assert SCRIPT.stat().st_mode & 0o111
     assert not (examples / "virt-workshop" / "custom" / "scripts" / "55-sles-images.sh").exists()
+
+
+def test_pre_deploy_links_refused_when_the_credentials_end_first(tmp_path):
+    from rodeo.config import ConfigError
+
+    with pytest.raises(ConfigError, match="--run"):
+        li.fleet_lab_images(_inv(tmp_path), bucket="rodeo-lab-images-x", sign=_sign,
+                            seconds_left=lambda: 14 * 60.0)
+
+
+def test_pre_deploy_links_allowed_with_long_lived_credentials(tmp_path, monkeypatch):
+    monkeypatch.setattr(li, "_push", lambda inv, h, text, run: li.LabImagesRow(h.id, True, "ok"))
+    rows = li.fleet_lab_images(_inv(tmp_path), bucket="rodeo-lab-images-x", sign=_sign,
+                               seconds_left=lambda: None)
+    assert all(r.ok for r in rows)

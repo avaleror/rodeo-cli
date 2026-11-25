@@ -63,7 +63,10 @@ TLS_DIR = ETC / "tls"              # root 0700
 TLS_CERT = TLS_DIR / "cert"         # root 0600, chain
 TLS_KEY = TLS_DIR / "key"           # root 0600; Caddy gets it via LoadCredential
 CA_ROOT = CADDY_DATA / "caddy" / "pki" / "authorities" / "local" / "root.crt"
-ROOT_KUBECONFIG = Path("/root/.rodeo/harvester-kubeconfig")
+# rodeo up writes the kubeconfig to the invoking user's ~/.rodeo: /root on a
+# single-host lab, the SSH user's home (ec2-user) on a fleet host. The player
+# keeps its own root-only copy, so it does not depend on which one it was.
+PLAYER_KUBECONFIG = VAR / "harvester-kubeconfig"
 LAB_VM_KEY = "/opt/suse-virt-workshop/lab-vm-key"   # from the profile's 65-student-kit.sh
 STUDENT_GROUP = "rodeo-student"
 PLAYER_PORT = 8680
@@ -242,6 +245,7 @@ def player_config(opts: SetupOptions) -> dict:
         "tab_urls": {"8443": f"https://{n['harvester']}/", "30002": f"https://{n['rancher']}/"},
         "terminal_url": "/terminal/",
         "auth_file": str(AUTH_FILE),
+        "kubeconfig": str(PLAYER_KUBECONFIG),
         "hosts": {"player": n["player"], "hv": n["harvester"], "rancher": n["rancher"]},
     }
 
@@ -347,7 +351,7 @@ def install_script(opts: SetupOptions, rodeo_bin: str) -> str:
     home = f"/home/{STUDENT_USER}"
     return f"""set -euo pipefail
 [ "$(uname -m)" = x86_64 ] || {{ echo "player setup supports x86_64 hosts only" >&2; exit 2; }}
-[ -s {ROOT_KUBECONFIG} ] || {{ echo "{ROOT_KUBECONFIG} missing: has rodeo up finished?" >&2; exit 2; }}
+[ -s {PLAYER_KUBECONFIG} ] || {{ echo "{PLAYER_KUBECONFIG} missing: has rodeo up finished?" >&2; exit 2; }}
 WORK=$(mktemp -d); trap 'rm -rf "$WORK"' EXIT
 id rodeo-player-caddy >/dev/null 2>&1 || useradd --system --user-group --home-dir {CADDY_DATA} --shell /usr/sbin/nologin rodeo-player-caddy
 install -d -m 700 {VAR} {STATE_DIR}
@@ -377,7 +381,7 @@ chmod 700 {TRACK_DIR}
 getent group {STUDENT_GROUP} >/dev/null || groupadd --system {STUDENT_GROUP}
 usermod -a -G {STUDENT_GROUP} {STUDENT_USER}
 install -d -m 750 -o {STUDENT_USER} -g {STUDENT_GROUP} {home}/.rodeo
-install -m 640 -o root -g {STUDENT_GROUP} {ROOT_KUBECONFIG} {home}/.rodeo/harvester-kubeconfig
+install -m 640 -o root -g {STUDENT_GROUP} {PLAYER_KUBECONFIG} {home}/.rodeo/harvester-kubeconfig
 runuser -u {STUDENT_USER} -- test -r {home}/.rodeo/harvester-kubeconfig
 if runuser -u {STUDENT_USER} -- test -r /root/.ssh/id_ed25519; then echo "student can read the rodeo key" >&2; exit 3; fi
 
@@ -454,6 +458,36 @@ def lab_passwords(sudo_user: str | None) -> dict[str, str]:
 
 # ---------------------------------------------------------------- run
 
+def lab_kubeconfig(sudo_user: str | None) -> Path:
+    """The kubeconfig rodeo up wrote: the invoking user's ~/.rodeo, then root's."""
+    import pwd
+
+    homes = []
+    if sudo_user:
+        try:
+            homes.append(Path(pwd.getpwnam(sudo_user).pw_dir))
+        except KeyError:
+            pass
+    homes.append(Path("/root"))
+    for home in homes:
+        path = home / ".rodeo" / "harvester-kubeconfig"
+        if path.is_file() and path.stat().st_size > 0:
+            return path
+    raise RuntimeError("no ~/.rodeo/harvester-kubeconfig for the invoking user or root: "
+                       "has rodeo up finished?")
+
+
+def install_kubeconfig(src: Path, dest: Path = PLAYER_KUBECONFIG) -> None:
+    import os
+
+    data = src.read_bytes()
+    fd = os.open(dest.with_suffix(".tmp"), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "wb") as fh:
+        fh.write(data)
+    os.replace(dest.with_suffix(".tmp"), dest)
+    dest.chmod(0o600)
+
+
 def install_tls(bundle: str, tls_dir: Path = TLS_DIR) -> None:
     """Write the pushed chain + key root-only (dir 0700, files 0600)."""
     import os
@@ -479,6 +513,7 @@ def run_setup(opts: SetupOptions, *, sudo_user: str | None) -> dict:
 
     # Before the units start: the player refuses to run without it.
     VAR.mkdir(mode=0o700, parents=True, exist_ok=True)
+    install_kubeconfig(lab_kubeconfig(sudo_user))
     if opts.tls_pem:
         install_tls(opts.tls_pem)
     access = auth.ensure(AUTH_FILE)

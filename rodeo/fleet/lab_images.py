@@ -7,9 +7,13 @@ already holds the AWS session, signs one download link per image and writes
 them to ``/etc/rodeo/lab-images.list`` (root 0600) on every lab host over
 SSH stdin. Lab hosts never get AWS credentials or an instance role.
 
-Run it before ``fleet deploy`` (the custom scripts phase picks the list up),
-or after, with ``--run`` to fetch the images right away. A signed link lives
-as long as the shorter of ``--expires`` and the laptop's AWS session.
+Run it after ``fleet deploy`` with ``--run`` to fetch the images right away,
+or before the deploy (the custom scripts phase picks the list up) when the
+laptop's credentials live long enough. A signed link dies with the
+credentials that signed it: ``aws login`` hands boto3 keys that live about
+15 minutes, so links signed before a deploy are dead by the time its custom
+scripts run (found live 2026-11-25, S3 ``ExpiredToken``). Without ``--run``
+the command now refuses when the credentials end before ``PRE_DEPLOY_MIN``.
 """
 from __future__ import annotations
 
@@ -35,6 +39,24 @@ _BUCKET_RE = re.compile(r"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$")
 _PREFIX_RE = re.compile(r"^[A-Za-z0-9._/-]*$")
 
 Signer = Callable[[str, str, int], str]  # (bucket, key, seconds) -> https URL
+# A deploy reaches its custom scripts about 20-30 minutes after it starts.
+PRE_DEPLOY_MIN = 60 * 60
+
+
+def credential_seconds_left() -> float | None:
+    """How long the laptop's current AWS credentials live, None if they do not expire."""
+    import datetime
+
+    import boto3
+
+    creds = boto3.Session().get_credentials()
+    if creds is None:
+        raise ConfigError("no AWS credentials on this machine (run `aws login`)")
+    creds.get_frozen_credentials()  # refresh first: an idle session reports an old expiry
+    expiry = getattr(creds, "_expiry_time", None)
+    if expiry is None:
+        return None
+    return (expiry - datetime.datetime.now(datetime.timezone.utc)).total_seconds()
 
 
 @dataclass(frozen=True)
@@ -88,9 +110,17 @@ def _push(inventory: FleetInventory, host: FleetHost, text: str, run: bool) -> L
 
 def fleet_lab_images(inventory: FleetInventory, *, bucket: str, prefix: str = "images/",
                      seconds: int = 6 * 3600, run: bool = False, concurrency: int = 8,
-                     sign: Signer | None = None) -> list[LabImagesRow]:
+                     sign: Signer | None = None,
+                     seconds_left: Callable[[], float | None] | None = None) -> list[LabImagesRow]:
     if not inventory.hosts:
         raise ConfigError("no hosts in the inventory (run `rodeo fleet provision` first)")
+    if not run:
+        left = (seconds_left or credential_seconds_left)()
+        if left is not None and left < PRE_DEPLOY_MIN:
+            raise ConfigError(
+                f"your AWS credentials end in {max(left, 0) / 60:.0f} min, and the signed links "
+                "end with them, before a deploy reaches its custom scripts. Run "
+                "`rodeo fleet lab-images --run` after `rodeo fleet deploy` instead.")
     region = str((inventory.provider or {}).get("region") or "")
     signer = sign or s3_signer(region)
     text = list_text(bucket, prefix, seconds, signer)

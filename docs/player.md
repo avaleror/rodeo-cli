@@ -63,8 +63,8 @@ Order of a fleet run:
 
 ```bash
 rodeo fleet provision   -f workshop.yaml
-rodeo fleet lab-images  -f workshop.yaml --bucket <private image bucket>
 rodeo fleet deploy      -f workshop.yaml
+rodeo fleet lab-images  -f workshop.yaml --bucket <private image bucket> --run
 rodeo fleet dns         -f workshop.yaml   # ids + A records
 rodeo fleet cert        -f workshop.yaml   # *.<zone>, once per event
 rodeo fleet player-setup -f workshop.yaml --track-ref <sha>
@@ -73,6 +73,11 @@ rodeo fleet portal publish -f workshop.yaml
 ```
 
 `rodeo fleet destroy` also removes the lab names from the zone.
+
+`lab-images` signs S3 links on your laptop, and a link dies with the
+credentials that signed it. `aws login` credentials live about 15 minutes, so
+fetch the images right after the deploy with `--run`. Without `--run`, the
+command refuses when your credentials end within the hour.
 
 ### DNS records
 

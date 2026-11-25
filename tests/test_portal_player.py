@@ -79,11 +79,27 @@ def test_publish_without_the_flag_never_probes_the_player(tmp_path, monkeypatch)
     assert ["bash", "-c", fp.PLAYER_LINK_SCRIPT] not in calls
 
 
-def test_publish_with_the_flag_adds_the_link(tmp_path, monkeypatch):
+def test_publish_with_the_flag_adds_the_link_and_drops_the_raw_lab(tmp_path, monkeypatch):
     data, _ = _publish(tmp_path, monkeypatch, player=True)
     assert data["player_url"] == LINK
+    # No UI URLs, no admin passwords: the player is the only way in.
+    assert "components" not in data
+    assert "x" * 16 not in json.dumps(data)
 
 
-def test_publish_ignores_a_lab_without_player_or_garbage(tmp_path, monkeypatch):
-    assert "player_url" not in _publish(tmp_path, monkeypatch, player=True, link_out="")[0]
-    assert "player_url" not in _publish(tmp_path, monkeypatch, player=True, link_out="oops\n")[0]
+def test_publish_without_the_flag_keeps_the_cards(tmp_path, monkeypatch):
+    data, _ = _publish(tmp_path, monkeypatch, player=False)
+    assert data["components"] and "player_url" not in data
+
+
+def test_card_page_with_a_player_shows_no_credentials():
+    data = {"player_url": LINK,
+            "components": [{"label": "H", "url": "https://1.2.3.4:8443", "user": "admin", "password": "pw-secret"}]}
+    html = _lab_cards("lab-1", data, "/k", ssh_title="SSH")
+    assert "Open your lab" in html and "pw-secret" not in html and ":8443" not in html
+
+
+def test_flagged_lab_without_a_player_is_not_ready_and_leaks_nothing(tmp_path, monkeypatch):
+    # Never fall back to raw credentials on a fleet that promised the player.
+    assert _publish(tmp_path, monkeypatch, player=True, link_out="")[0] == {}
+    assert _publish(tmp_path, monkeypatch, player=True, link_out="oops\n")[0] == {}

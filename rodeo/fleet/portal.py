@@ -533,8 +533,14 @@ def _lab_record(inventory: FleetInventory, host: FleetHost, *, timeout: float) -
         ssh = True
     if require_portal(inventory).player:  # opt-in: fleets without it publish as before
         player = player_link(inventory, host, timeout=timeout)
-        if player:
-            data["player_url"] = player
+        if not player:
+            return ({"id": host.id, "ready": False, "data": {}},
+                    PublishRow(host.id, False, "no player on this lab (run `rodeo fleet player-setup`)"))
+        # The player link is the student's way in. The UI URLs and admin
+        # passwords are not published: the UIs sit behind the player's login,
+        # and the chapters show the password the student needs.
+        data.pop("components", None)
+        data["player_url"] = player
     return {"id": host.id, "ready": True, "data": data}, PublishRow(host.id, True, None, ssh)
 
 

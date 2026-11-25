@@ -69,3 +69,23 @@ def test_player_setup_reports_failures(tmp_path, monkeypatch):
 def test_player_setup_needs_a_pinned_sha(tmp_path):
     with pytest.raises(ConfigError, match="40-character"):
         fpl.fleet_player_setup(_inv(tmp_path, player=True), track_ref="main")
+
+
+def _with(tmp_path, *, player, ssh=False):
+    inv = _inv(tmp_path, player=player)
+    if ssh:
+        from dataclasses import replace
+        inv = replace(inv, portal=replace(inv.portal, student_ssh=True))
+    return inv
+
+
+def test_open_access_with_the_player_opens_443_only(tmp_path):
+    from rodeo.fleet.student_access import open_access_ports
+    assert open_access_ports(_with(tmp_path, player=True)) == (443,)
+    assert open_access_ports(_with(tmp_path, player=True, ssh=True)) == (2222, 443)
+
+
+def test_open_access_without_the_player_is_unchanged(tmp_path):
+    from rodeo.fleet.student_access import open_access_ports
+    assert open_access_ports(_with(tmp_path, player=False)) == (8443, 30002)
+    assert 22 not in open_access_ports(_with(tmp_path, player=False, ssh=True))

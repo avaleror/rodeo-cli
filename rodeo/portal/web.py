@@ -303,7 +303,7 @@ def _lab_cards(lab_id: str, data: dict[str, Any], key_href: str, *, ssh_title: s
                   "<p>Chapters, the SUSE Virtualization and Rancher UIs and a terminal, in one window.</p>"
                   f"<p><a class=btn href='{_e(player)}' target=_blank rel='noopener noreferrer'>Open your lab</a></p>"
                   "<p class=note>This link signs your browser in to your lab. Do not share it.</p></div>")
-    for c in data.get("components") or []:
+    for c in ([] if PLAYER_URL_RE.match(player) else data.get("components") or []):
         cards += (
             f"<div class=card><h2>{_e(c.get('label', ''))}</h2><dl>"
             f"<dt>URL</dt><dd><a href='{_e(c['url'])}' target=_blank rel='noopener noreferrer'>{_e(c['url'])}</a></dd>"

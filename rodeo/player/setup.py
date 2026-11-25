@@ -458,7 +458,7 @@ def lab_passwords(sudo_user: str | None) -> dict[str, str]:
 
 # ---------------------------------------------------------------- run
 
-def lab_kubeconfig(sudo_user: str | None) -> Path:
+def lab_kubeconfig(sudo_user: str | None, root_home: Path = Path("/root")) -> Path:
     """The kubeconfig rodeo up wrote: the invoking user's ~/.rodeo, then root's."""
     import pwd
 
@@ -468,11 +468,14 @@ def lab_kubeconfig(sudo_user: str | None) -> Path:
             homes.append(Path(pwd.getpwnam(sudo_user).pw_dir))
         except KeyError:
             pass
-    homes.append(Path("/root"))
+    homes.append(root_home)
     for home in homes:
         path = home / ".rodeo" / "harvester-kubeconfig"
-        if path.is_file() and path.stat().st_size > 0:
-            return path
+        try:
+            if path.is_file() and path.stat().st_size > 0:
+                return path
+        except OSError:  # e.g. an unreadable home: not this one
+            continue
     raise RuntimeError("no ~/.rodeo/harvester-kubeconfig for the invoking user or root: "
                        "has rodeo up finished?")
 

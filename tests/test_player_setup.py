@@ -218,11 +218,14 @@ def test_lab_kubeconfig_prefers_the_invoking_users_home(tmp_path, monkeypatch):
     (fleet_home / ".rodeo").mkdir(parents=True)
     (fleet_home / ".rodeo" / "harvester-kubeconfig").write_text("apiVersion: v1\n")
     monkeypatch.setattr(pwd, "getpwnam", lambda u: SimpleNamespace(pw_dir=str(fleet_home)))
-    assert s.lab_kubeconfig("ec2-user") == fleet_home / ".rodeo" / "harvester-kubeconfig"
+    root_home = tmp_path / "root"
+    assert s.lab_kubeconfig("ec2-user", root_home) == fleet_home / ".rodeo" / "harvester-kubeconfig"
     monkeypatch.setattr(pwd, "getpwnam", lambda u: SimpleNamespace(pw_dir=str(tmp_path / "nobody")))
-    if not (s.Path("/root/.rodeo/harvester-kubeconfig")).exists():
-        with pytest.raises(RuntimeError, match="has rodeo up finished"):
-            s.lab_kubeconfig("ec2-user")
+    with pytest.raises(RuntimeError, match="has rodeo up finished"):
+        s.lab_kubeconfig("ec2-user", root_home)
+    (root_home / ".rodeo").mkdir(parents=True)
+    (root_home / ".rodeo" / "harvester-kubeconfig").write_text("root\n")
+    assert s.lab_kubeconfig("ec2-user", root_home) == root_home / ".rodeo" / "harvester-kubeconfig"
     dest = tmp_path / "copy"
     s.install_kubeconfig(fleet_home / ".rodeo" / "harvester-kubeconfig", dest)
     assert dest.read_text() == "apiVersion: v1\n" and oct(dest.stat().st_mode & 0o777) == "0o600"

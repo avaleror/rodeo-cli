@@ -196,6 +196,18 @@ def test_bad_move_is_reported_not_crashed(served):
     assert s["last"]["ok"] is False and "setup has not passed" in s["last"]["message"]
 
 
+def test_track_images_are_served_and_nothing_else(served, track):
+    base, _ = served
+    (track / "assets" / "logos").mkdir(parents=True)
+    (track / "assets" / "logos" / "suse.svg").write_text("<svg/>")
+    (track / "assets" / "notes.txt").write_text("not an image")
+    code, body = _get(base + "/assets/logos/suse.svg")
+    assert code == 200 and body == "<svg/>"
+    assert _get(base + "/assets/notes.txt")[0] == 404
+    assert _get(base + "/assets/..%2F01-one%2Fsolve-kvm-host")[0] == 404
+    assert _get(base + "/assets/%2E%2E/01-one/assignment.md")[0] == 404
+
+
 def test_refuses_to_bind_a_public_address(track, tmp_path):
     cfg = PlayerConfig(track_dir=str(track), state_dir=str(tmp_path / "s"), listen="0.0.0.0", port=0)
     with pytest.raises(ValueError, match="loopback only"):

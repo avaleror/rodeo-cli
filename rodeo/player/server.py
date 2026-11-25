@@ -14,9 +14,11 @@ from __future__ import annotations
 
 import html
 import json
+import mimetypes
 import re
 import threading
 import time
+import urllib.parse
 from dataclasses import dataclass, field
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -214,10 +216,25 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._send(200, f.read_bytes(), _STATIC_TYPES.get(f.suffix, "application/octet-stream"),
                        cache=True)
+        elif path.startswith("/assets/"):
+            self._asset(path[len("/assets/"):])
         elif path == "/healthz":
             self._send(200, b"ok\n", "text/plain")
         else:
             self._error(404, "not found")
+
+    def _asset(self, rel: str) -> None:
+        """Track images: the assignments say ``../assets/x``, which is ``/assets/x`` here.
+
+        Only files under the track's ``assets/`` directory, only image types.
+        """
+        root = (Path(self.player.cfg.track_dir) / "assets").resolve()
+        target = (root / urllib.parse.unquote(rel)).resolve()
+        ctype = mimetypes.guess_type(target.name)[0] or ""
+        if root not in target.parents or not target.is_file() or not ctype.startswith("image/"):
+            self._error(404, "not found")
+            return
+        self._send(200, target.read_bytes(), ctype, cache=True)
 
     # -- POST ---------------------------------------------------------------
 

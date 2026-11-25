@@ -92,6 +92,15 @@ class Player:
         self._lock = threading.Lock()
         self._busy: str | None = None
         self._last: dict[str, Any] | None = None
+        self._started: float | None = None
+        # The runner's position, copied under the lock when no move is
+        # running. The worker changes the runner mid-skip; pages read this
+        # copy, so they never see a half-updated chapter index.
+        self._pos = self._position()
+
+    def _position(self) -> dict[str, Any]:
+        r = self.runner
+        return {"current": r.current, "entered": r.entered, "completed": r.completed}
 
     # -- moves --------------------------------------------------------------
 
@@ -101,6 +110,7 @@ class Player:
             if self._busy:
                 return False
             self._busy = action
+            self._started = time.time()
         threading.Thread(target=self._run, args=(action, target), daemon=True).start()
         return True
 
@@ -114,8 +124,6 @@ class Player:
                 res = self.runner.next()
             elif action == "skip":
                 res = self.runner.skip(int(target))  # type: ignore[arg-type]
-            elif action == "back":
-                res = self.runner.back(int(target))  # type: ignore[arg-type]
             else:
                 raise RunnerError(f"unknown action {action}")
             last = self._summary(action, res)
@@ -126,7 +134,9 @@ class Player:
                     "scripts": []}
         with self._lock:
             self._last = {**last, "finished": time.time()}
+            self._pos = self._position()
             self._busy = None
+            self._started = None
 
     @staticmethod
     def _script(r: ScriptResult) -> dict[str, Any]:
@@ -144,8 +154,9 @@ class Player:
 
     def readable(self) -> int:
         """Highest chapter index the student may read (no reading ahead)."""
-        r = self.runner
-        return max([r.current, *r.completed])
+        with self._lock:
+            pos = self._pos
+        return max([pos["current"], *pos["completed"]])
 
     def tabs(self, index: int) -> list[dict[str, Any]]:
         out = []
@@ -162,18 +173,19 @@ class Player:
     def state(self) -> dict[str, Any]:
         r = self.runner
         with self._lock:
-            busy, last = self._busy, self._last
+            busy, last, pos, started = self._busy, self._last, dict(self._pos), self._started
         return {
             "title": self.cfg.title,
             "chapters": [{"index": c.index, "title": plain(c.title), "check": c.has("check")}
                          for c in r.chapters],
-            "current": r.current,
-            "entered": r.entered,
-            "completed": r.completed,
-            "readable": self.readable(),
+            "current": pos["current"],
+            "entered": pos["entered"],
+            "completed": pos["completed"],
+            "readable": max([pos["current"], *pos["completed"]]),
             "busy": busy,
+            "busy_seconds": round(time.time() - started) if busy and started else 0,
             "last": last,
-            "tabs": self.tabs(r.current),
+            "tabs": self.tabs(pos["current"]),
         }
 
     def chapter_view(self, index: int) -> dict[str, Any]:
@@ -236,6 +248,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Set-Cookie", f"{COOKIE}={self.player.auth.cookie(cookie_for)}; "
                              f"Max-Age={SESSION_SECONDS}; Path=/; Secure; HttpOnly; SameSite=Lax")
         self.send_header("Cache-Control", "no-store")
+        # The hop puts a 60 s ticket in the query string: never leak it.
+        self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Content-Length", "0")
         self.end_headers()
 
@@ -350,11 +364,13 @@ class Handler(BaseHTTPRequestHandler):
             self._error(401, "open the lab link first")
             return
         action = self.path.split("?", 1)[0].removeprefix("/api/")
-        if action not in {"enter", "check", "next", "skip", "back"}:
+        # No "back": past chapters are read with GET /api/chapter/<n>, which
+        # never moves the runner, so a crafted POST cannot rewind a solved lab.
+        if action not in {"enter", "check", "next", "skip"}:
             self._error(404, "not found")
             return
         target = None
-        if action in {"skip", "back"}:
+        if action == "skip":
             try:
                 length = min(int(self.headers.get("Content-Length") or 0), 1024)
                 target = int(json.loads(self.rfile.read(length) or b"{}")["target"])

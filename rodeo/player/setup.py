@@ -14,10 +14,14 @@ What it installs, all new names, nothing the existing lab uses:
   only public listener, three names, ``tls internal`` for this week's test);
 - the lab's Rancher and Harvester passwords as track variables.
 
-Functional-test shortcuts, to remove before students (plan WP2/WP3): the
-player runs as root instead of a dedicated user plus a root helper; Caddy uses
-its own CA instead of a wildcard certificate; there is no forward_auth, so the
-security group must restrict 443 to the testers.
+Access: Caddy runs forward_auth to the player on all three names, so only a
+browser that opened the lab link gets in (see rodeo.player.auth). The link's
+token also ends up in that browser's history and in Caddy's journal: treat it
+like the lab password. Still a test-grade shortcut: Caddy uses its own CA
+(tls internal) on sslip.io names; a fleet for students needs a domain the
+operator owns and a real certificate. The player runs as root (chapter
+scripts need the root kubeconfig and root's key to the Rancher VM) under the
+systemd sandbox in player_unit().
 """
 from __future__ import annotations
 

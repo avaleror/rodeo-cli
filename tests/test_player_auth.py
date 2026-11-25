@@ -137,3 +137,10 @@ def test_post_needs_the_cookie(lab):
     port, _ = lab
     status, _, body = _req(port, "/api/check", P, method="POST", headers={"X-Rodeo-Player": "1"})
     assert status == 401 and json.loads(body)["error"]
+
+
+def test_redirects_never_leak_the_ticket_in_referer(lab):
+    port, a = lab
+    player_cookie = _set_cookie(_req(port, f"/enter?t={a.token}", P)[1])
+    _, h, _ = _req(port, "/auth/hop?to=hv&r=%2F", P, player_cookie)
+    assert h["Referrer-Policy"] == "no-referrer"

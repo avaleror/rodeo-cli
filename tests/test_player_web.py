@@ -223,3 +223,25 @@ def test_config_rejects_unknown_keys(tmp_path):
 
 def test_plain_strips_rmstory_spans():
     assert plain('<span lang="en">\U0001F3E6 Chapter 1: The &amp; Arrival</span>') == "\U0001F3E6 Chapter 1: The & Arrival"
+
+
+def test_back_is_gone(served):
+    base, _ = served
+    assert _post(base + "/api/back", {"target": 0})[0] == 404
+
+
+def test_state_reports_elapsed_seconds_while_busy(served, track):
+    base, _ = served
+    (track / "01-one" / "setup-kvm-host").write_text(_sh("sleep 2"))
+    _post(base + "/api/enter")
+    time.sleep(1.2)
+    _, s = _get(base + "/api/state")
+    assert s["busy"] == "enter" and s["busy_seconds"] >= 1
+    s = _wait(base)
+    assert s["busy_seconds"] == 0 and s["entered"] is True
+
+
+def test_page_strips_scripts_and_handlers_from_assignments(served):
+    base, _ = served
+    _, body = _get(base + "/")
+    assert "function clean(" in body and 'querySelectorAll("script' in body and "/^on/i" in body

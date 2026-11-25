@@ -100,6 +100,19 @@ main { display: grid; grid-template-columns: minmax(320px, 40%) 1fr; min-height:
   let state = null, viewing = null, activeTab = 0, pendingSkip = null, polling = null;
   const frames = new Map();  // url -> iframe, kept alive across chapters
 
+  // Assignments are trusted track HTML, but a chapter must not be able to
+  // press buttons on its own: drop scripts, embedded frames and inline
+  // handlers, keep the markup and the rodeo-tab-button spans.
+  function clean(html) {
+    const doc = new DOMParser().parseFromString(`<div>${html}</div>`, "text/html");
+    doc.querySelectorAll("script, iframe, object, embed, form, base, meta, link").forEach((n) => n.remove());
+    doc.querySelectorAll("*").forEach((el) => [...el.attributes].forEach((a) => {
+      if (/^on/i.test(a.name) || (/^(href|src|action|formaction)$/i.test(a.name) && /^\s*javascript:/i.test(a.value)))
+        el.removeAttribute(a.name);
+    }));
+    return doc.body.firstChild.innerHTML;
+  }
+
   async function api(path, body) {
     const opts = body === undefined ? {} : {method: "POST", headers: {"X-Rodeo-Player": "1",
       "Content-Type": "application/json"}, body: JSON.stringify(body)};
@@ -185,7 +198,7 @@ main { display: grid; grid-template-columns: minmax(320px, 40%) 1fr; min-height:
   async function loadChapter(i) {
     const view = await api(`/api/chapter/${i}`);
     viewing = i;
-    $("assignment").innerHTML = window.marked ? marked.parse(view.body) : view.body;
+    $("assignment").innerHTML = clean(window.marked ? marked.parse(view.body) : view.body);
     $("assignment").scrollTop = 0;
     $("tocurrent").hidden = i === state.current;
     renderChapters();

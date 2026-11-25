@@ -93,6 +93,7 @@ def test_provision_uses_a_new_lab_key_not_the_machine_key(managed_ssh, no_wait, 
 
 def test_plant_gets_the_lab_key(managed_ssh, monkeypatch):  # noqa: F811
     monkeypatch.setattr("rodeo.providers.aws.AwsHostProvider._wait_ssh", lambda *a, **k: None)
+    monkeypatch.setattr("rodeo.providers.aws.AwsHostProvider._wait_repos", lambda *a, **k: None)
     planted = []
     monkeypatch.setattr("rodeo.providers.aws.plant_rodeo_ssh_key",
                         lambda inv, fh, key=None: planted.append((inv.identity_file, key)))

@@ -49,6 +49,7 @@ def _all_cidrs(fake: _FakeEC2WithSG, sg_id: str) -> dict[int, set[str]]:
 @pytest.fixture
 def no_wait(monkeypatch):
     monkeypatch.setattr("rodeo.providers.aws.AwsHostProvider._wait_ssh", lambda *a, **k: None)
+    monkeypatch.setattr("rodeo.providers.aws.AwsHostProvider._wait_repos", lambda *a, **k: None)
 
 
 # -- security group rules (R3) ------------------------------------------------

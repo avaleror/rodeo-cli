@@ -186,11 +186,28 @@ Description=rodeo virt rodeo player (loopback)
 After=network-online.target
 
 [Service]
-# Functional-test shortcut: root, because chapter scripts need the root
-# kubeconfig. Before students: a dedicated user plus a root-only helper.
+# Root, because the chapter scripts need the root kubeconfig and root's SSH
+# key to the Rancher VM. Sandboxed so a bug in the web process cannot change
+# the host: everything read-only except root's home (kubectl cache, ssh
+# known_hosts) and the player's own state; no capabilities, so uid 0 only
+# reaches what root owns. Every chapter script was run under exactly these
+# settings on a live lab (2026-11-25).
 ExecStart={rodeo_bin} player serve --config {CONFIG}
 Restart=on-failure
+ProtectSystem=strict
+ReadWritePaths={VAR} /root
 PrivateTmp=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 
 [Install]
 WantedBy=multi-user.target

@@ -123,3 +123,12 @@ def test_player_is_a_registered_command():
 
 def test_config_is_valid_json():
     json.loads(json.dumps(s.player_config(_opts())))
+
+
+def test_player_unit_is_sandboxed_but_can_run_chapters():
+    unit = s.player_unit("/usr/local/bin/rodeo")
+    for line in ("ProtectSystem=strict", "NoNewPrivileges=yes", "CapabilityBoundingSet=",
+                 "PrivateTmp=yes", "ProtectKernelModules=yes", "RestrictSUIDSGID=yes"):
+        assert line in unit.splitlines(), line
+    # Chapters need root's home (kubectl cache, ssh known_hosts) and the player state.
+    assert f"ReadWritePaths={s.VAR} /root" in unit

@@ -281,10 +281,10 @@ systemctl restart rke2-server
 
 叢集 token 是 `~/.rodeo/secrets.yaml` 裡的 `harvester_token`。
 
-### 不知道管理者密碼（不在 secrets.yaml、不是保存的檔案裡那組、也不是 admin/admin） { #admin-password-unknown-not-in-secretsyaml-not-the-persisted-file-not-adminadmin }
+### 不知道管理者密碼（不在 secrets.yaml、不是儲存的檔案裡那組、也不是 admin/admin） { #admin-password-unknown-not-in-secretsyaml-not-the-persisted-file-not-adminadmin }
 
 `rodeo set-password` 會嘗試已知的候選密碼來找回管理者密碼：
-`secrets.yaml` 裡設定的值、它上次保存在主機上的值，以及
+`secrets.yaml` 裡設定的值、它上次儲存在主機上的值，以及
 `admin`/`admin` 的 bootstrap 密碼。如果這些都不符（例如有人在
 rodeo-cli 之外手動改了密碼又忘記），它就沒有任何可以*用來*登入的密碼，因此
 無法把密碼往下更新。這時請改用 `kubectl` 直接復原：這和 Rancher 針對「被鎖在外面、
@@ -315,7 +315,7 @@ kubectl -n cattle-system rollout restart deployment/rancher
 kubectl -n cattle-system rollout status deployment/rancher --timeout=180s
 ```
 
-驗證之後，把 `secrets.yaml` 與保存候選密碼的檔案同步回來，
+驗證之後，把 `secrets.yaml` 與儲存候選密碼的檔案同步回來，
 下次更換密碼時才不會再發生：
 
 ```bash

@@ -133,7 +133,7 @@ firewalld 本身會在稍後的 `cluster` 階段被 unmask 並啟動，遠早於
 firewall-cmd --zone=public --change-interface=<ext-iface> --permanent
 ```
 
-`--permanent` 旗標會把介面→zone 的對應寫進 firewalld 自己保存的設定。參加者的執行個體全新開機時，firewalld 會直接讀取這個對應，而不是透過 D-Bus 和 NetworkManager 協商即時的 zone 指派，搶時序的問題正是因此消除。所以快照中的 firewalld 是啟用並執行中的，這是預期的，沒有問題。
+`--permanent` 旗標會把介面→zone 的對應寫進 firewalld 自己儲存的設定。參加者的執行個體全新開機時，firewalld 會直接讀取這個對應，而不是透過 D-Bus 和 NetworkManager 協商即時的 zone 指派，搶時序的問題正是因此消除。所以快照中的 firewalld 是啟用並執行中的，這是預期的，沒有問題。
 
 快照之前真正重要的是：確認這個固定 zone 的步驟有執行，而且挑對了網路介面。在部署日誌中找 `Instruqt: pinning <iface> to public zone...`，並用 `firewall-cmd --get-active-zones` 確認你真正的管理網卡出現在 `public` 底下。從快照第一次以參加者身分開機時，再用同一個指令檢查一次，這才是驗證固定設定有沒有保留下來的真正測試。
 

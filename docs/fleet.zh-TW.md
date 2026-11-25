@@ -137,7 +137,7 @@ lab:
   # components: [harvester]         # 可選：請見下方的「存取表」。
   #                                  # 省略的話，會顯示 fleet 能組出的所有網址。
   # ref: main                        # 主機要執行的 rodeo-cli git ref
-  # install_url: https://…           # install.sh 的 fork 或離線鏡像
+  # install_url: https://…           # install.sh 的 fork 或離線鏡像站
 defaults:
   ssh_user: ec2-user                 # AMI 使用者（ec2-user / sles / root）；非 root 時透過 sudo -n 執行
   # identity_file: 可選；預設為 workshop key（雲端）或 ~/.rodeo/ssh/id_ed25519
@@ -279,7 +279,7 @@ rodeo fleet retry  -f workshop.yaml --ref feat/my-fix  # 用修正版重跑失�
 指定 ref 時，安裝每次都會執行，`install.sh --ref` 會把每台
 主機的 checkout 強制重設（hard reset）到那個 ref。`lab.ref` 在清單中設定同樣的東西；`--ref`
 會覆寫它。安裝程式會從它要 checkout 的同一個 ref 抓取，除非
-`lab.install_url` 明確指向別處（fork、離線鏡像），這時會
+`lab.install_url` 明確指向別處（fork、離線鏡像站），這時會
 原樣使用該網址，並把 ref 傳給它。無效的 ref 會在載入清單時就失敗，在連到任何主機之前。
 
 這和單機的 `rodeo up --target aws --ref …` 是同一套機制，兩條

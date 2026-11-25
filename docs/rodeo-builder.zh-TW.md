@@ -144,7 +144,7 @@ rodeo up --profile <name>     # 在 Save to profiles 之後
   新群組；**×** 會再把群組移除。已發布版頁面透過 GitHub API 讀取公開的
   github.com repository（未驗證時每小時 60 次請求）；
   rodeo builder 伺服器可以 clone 任何公開的 https repository（shallow
-  且 sparse，不使用帳密）。匯入的群組會和草稿一起保存。
+  且 sparse，不使用帳密）。匯入的群組會和草稿一起儲存。
 - **Story。** 章節上的 **Edit** 會開啟 story 編輯器（有 span
   警告的列會顯示警告數量）。選取文字後點擊 **Tag selection**、使用工具列，或按
   Alt+T / Alt+I / Alt+N，把它標記為 Translatable、Don't translate 或 No-lang。
@@ -180,7 +180,7 @@ lab 是否涵蓋每個章節、span id 是否有效（每個警告都有 **Fix**
 「已修正」：上方的計數仍會把它算進去，內容不同的警告
 仍會顯示，重新載入後也會全部再出現。
 
-頁面會在這個瀏覽器中保存你的 rodeo 草稿。重新載入後，它會提議
+頁面會在這個瀏覽器中儲存你的 rodeo 草稿。重新載入後，它會提議
 還原草稿。
 
 ### 在即時版 builder 上搭配 rmstory { #with-rmstory-on-the-live-builder }
@@ -386,9 +386,9 @@ builder 以 root 執行，或使用者有免密碼 sudo（`sudo -n true`）。
 
 即時版 builder 頁首右側的 **Settings** 會在新分頁中開啟
 Settings 頁面：位於 builder 本身的位址與 port 上的 `/rodeo-builder/settings/`。
-它會保存你部署時用的帳密——SCC 註冊碼、registry 與
+它會儲存你部署時用的帳密——SCC 註冊碼、registry 與
 Application Collection 登入帳號、AWS key、SSH key、GitHub token，或任何
-`key: value` 欄位——在該主機上加密保存，每份帳密一個檔案，放在
+`key: value` 欄位——在該主機上加密儲存，每份帳密一個檔案，放在
 root 的 `~/.rodeo/vault/`，也就是 builder 讀取的儲存區。
 
 這個頁面由 `rodeo builder` 本身提供，並使用它的 API（`GET vault`、
@@ -402,7 +402,7 @@ root 的 `~/.rodeo/vault/`，也就是 builder 讀取的儲存區。
 
 - 每份帳密都有自己的密碼，至少 8 個字元，在
   新增時、每次使用時以及刪除時都會詢問：密碼錯誤的刪除
-  會被拒絕。頁面不會保存密碼或值：
+  會被拒絕。頁面不會儲存密碼或值：
   表格會顯示每份帳密的名稱、應用程式、engine（這裡儲存的帳密
   為 `rodeo`）、是否加密、新增時間與最後
   使用時間，絕不顯示它的值。rodeo 帳密的應用程式就是它的類型。

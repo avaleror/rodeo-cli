@@ -59,7 +59,10 @@ def fleet_deprovision(
         ssh_user=inventory.ssh_user,
         identity_file=inventory.identity_file,
         wait_ssh=False,
-        known_instance_ids=[h.provider_id for h in inventory.hosts if h.provider_id],
+        # provision writes the instance id into each host's labels
+        # (workshop.yaml hosts[].labels.provider_id); FleetHost has no field for it.
+        known_instance_ids=[str(h.labels["provider_id"]) for h in inventory.hosts
+                            if h.labels.get("provider_id")],
     )
     provider = get_provider(str(provider_cfg["type"]))
     return provider.deprovision(spec, provider_cfg)

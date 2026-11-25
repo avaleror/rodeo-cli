@@ -127,7 +127,7 @@ def test_state_lists_chapters_with_plain_titles_and_proxy_tabs(served):
 def test_chapter_body_escapes_variables_and_rewrites_buttons(served):
     base, _ = served
     _, view = _get(base + "/api/chapter/0")
-    assert "Hello &lt;pw&amp;&gt;" in view["body"]
+    assert 'Hello <code class="rodeo-var" title="Click to copy">&lt;pw&amp;&gt;</code>' in view["body"]
     assert 'class="rodeo-tab-button" data-tab="1"' in view["body"]
 
 

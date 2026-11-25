@@ -202,7 +202,8 @@ def render_body(body: str, values: dict[str, str]) -> str:
     def var(m: re.Match) -> str:
         key = m.group(1)
         if key in values:
-            return html.escape(values[key])
+            # A click-to-copy chip: students retype these into Harvester and Rancher.
+            return f'<code class="rodeo-var" title="Click to copy">{html.escape(values[key])}</code>'
         return f'<span class="rodeo-var-missing">{html.escape(key)} not set</span>'
 
     def button(m: re.Match) -> str:

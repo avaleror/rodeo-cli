@@ -20,17 +20,17 @@
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
 body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--font); display: grid;
-  grid-template-rows: auto 1fr; }
+  grid-template-rows: auto 1fr; grid-template-columns: minmax(0, 1fr); }
 header { display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: 1px solid var(--rule);
   background: var(--panel); }
 header h1 { font-size: 15px; margin: 0; font-weight: 600; }
 header .status { margin-left: auto; font-size: 13px; color: var(--muted); }
 main { display: grid; grid-template-columns: minmax(320px, 40%) 1fr; min-height: 0; }
-#left { display: grid; grid-template-rows: auto 1fr auto; min-height: 0; border-right: 1px solid var(--rule);
+#left { display: grid; grid-template-rows: auto 1fr auto; min-height: 0; min-width: 0; border-right: 1px solid var(--rule);
   background: var(--panel); }
 #chapters { display: flex; gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--rule); overflow-x: auto; }
 #chapters button { flex: 0 0 auto; border: 1px solid var(--rule); background: transparent; color: var(--fg);
-  border-radius: 4px; padding: 3px 9px; font: 13px var(--font); cursor: pointer; }
+  border-radius: 4px; padding: 3px 9px; font: 13px var(--font); cursor: pointer; white-space: nowrap; }
 #chapters button.done { background: var(--good-bg); }
 #chapters button.current { border-color: var(--accent); color: var(--accent); font-weight: 600; }
 #chapters button.viewing { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -39,10 +39,23 @@ main { display: grid; grid-template-columns: minmax(320px, 40%) 1fr; min-height:
 #assignment h1, #assignment h2 { line-height: 1.25; }
 #assignment pre { background: var(--code); padding: 10px; overflow-x: auto; border-radius: 4px; }
 #assignment code { font-family: var(--mono); font-size: 13px; }
-#assignment img { max-width: 100%; }
+#assignment img { max-width: 100%; height: auto; }
+#assignment * { max-width: 100%; }
 .rodeo-tab-button, #actions button { border: 0; border-radius: 4px; padding: 6px 12px; font: 600 14px var(--font);
   cursor: pointer; background: var(--accent); color: var(--accent-fg); }
 .rodeo-var-missing { color: var(--bad); font-weight: 600; }
+.rodeo-var { background: var(--code); border: 1px solid var(--rule); border-radius: 4px; padding: 1px 6px;
+  cursor: copy; font-family: var(--mono); }
+.rodeo-var:hover { border-color: var(--accent); }
+.rodeo-var.copied { border-color: var(--accent); color: var(--accent); }
+#message.good { color: var(--accent); font-weight: 600; }
+#frames .loading { position: absolute; inset: 0; display: grid; place-content: center; gap: 8px; text-align: center;
+  padding: 24px; color: var(--muted); background: var(--bg); }
+#frames .loading a { color: var(--accent); }
+#mobileToggle { display: none; gap: 4px; }
+#mobileToggle button { border: 1px solid var(--rule); background: transparent; color: var(--fg); border-radius: 4px;
+  padding: 4px 10px; font: 13px var(--font); cursor: pointer; }
+#mobileToggle button.on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
 #actions { border-top: 1px solid var(--rule); padding: 10px 16px; display: grid; gap: 8px; }
 #actions .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 #actions button.secondary { background: transparent; color: var(--fg); border: 1px solid var(--rule); }
@@ -62,11 +75,22 @@ main { display: grid; grid-template-columns: minmax(320px, 40%) 1fr; min-height:
 #frames iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #fff; }
 #frames .empty { padding: 24px; color: var(--muted); }
 [hidden] { display: none !important; }
-@media (max-width: 800px) { main { grid-template-columns: 1fr; grid-template-rows: 55% 45%; } }
+/* Phones: one surface at a time, the lab at full height. */
+@media (max-width: 800px) {
+  main { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+  #mobileToggle { display: flex; }
+  body.show-lab #left, body:not(.show-lab) #right { display: none; }
+  header .status { display: none; }
+}
 </style>
 </head>
 <body>
-<header><h1 id="title">{{TITLE}}</h1><span class="status" id="status"></span></header>
+<header><h1 id="title">{{TITLE}}</h1>
+  <div id="mobileToggle" role="tablist" aria-label="View">
+    <button id="viewText" type="button" class="on">Instructions</button>
+    <button id="viewLab" type="button">Lab</button>
+  </div>
+  <span class="status" id="status"></span></header>
 <main>
   <section id="left">
     <nav id="chapters" aria-label="Chapters"></nav>
@@ -113,6 +137,15 @@ main { display: grid; grid-template-columns: minmax(320px, 40%) 1fr; min-height:
     return doc.body.firstChild.innerHTML;
   }
 
+  // "🏦 Chapter 1: The Arrival" -> "The Arrival" for the rail.
+  const short = (title) => title.replace(/^.*?Chapter\s*\d+\s*[:.-]\s*/i, "") || title;
+  const ACTION = {enter: "setting up the chapter", check: "checking your work", next: "moving on",
+                  skip: "skipping ahead"};
+  function setView(lab) {
+    document.body.classList.toggle("show-lab", lab);
+    $("viewLab").classList.toggle("on", lab); $("viewText").classList.toggle("on", !lab);
+  }
+
   async function api(path, body) {
     const opts = body === undefined ? {} : {method: "POST", headers: {"X-Rodeo-Player": "1",
       "Content-Type": "application/json"}, body: JSON.stringify(body)};
@@ -154,10 +187,25 @@ main { display: grid; grid-template-columns: minmax(320px, 40%) 1fr; min-height:
       const f = document.createElement("iframe");
       f.src = want; f.title = tabs[i].title;
       f.setAttribute("allow", "clipboard-read; clipboard-write");
-      $("frames").append(f);
+      // Until the frame loads, say what is opening; if it stays blank, point at
+      // "open in new tab" (a certificate warning or a dropped VNC websocket
+      // cannot show inside a frame).
+      const cover = document.createElement("div");
+      cover.className = "loading";
+      cover.textContent = `Opening ${tabs[i].title}…`;
+      const hint = setTimeout(() => {
+        const a = document.createElement("a");
+        a.href = want; a.target = "_blank"; a.rel = "noopener"; a.textContent = "Open it in a new tab";
+        const p = document.createElement("p");
+        p.append("Still blank after a few seconds? ", a, ".");
+        cover.append(p);
+      }, 10000);
+      f.addEventListener("load", () => { clearTimeout(hint); cover.remove(); });
+      f.cover = cover;
+      $("frames").append(f, cover);
       frames.set(want, f);
     }
-    frames.forEach((f, url) => { f.hidden = url !== want; });
+    frames.forEach((f, url) => { f.hidden = url !== want; if (f.cover) f.cover.hidden = url !== want; });
     let empty = $("frames").querySelector(".empty");
     if (!want) {
       if (!empty) { empty = document.createElement("p"); empty.className = "empty"; $("frames").append(empty); }
@@ -170,7 +218,7 @@ main { display: grid; grid-template-columns: minmax(320px, 40%) 1fr; min-height:
     nav.replaceChildren();
     state.chapters.forEach((c) => {
       const b = document.createElement("button");
-      b.type = "button"; b.textContent = String(c.index + 1); b.title = c.title;
+      b.type = "button"; b.textContent = `${c.index + 1}. ${short(c.title)}`; b.title = c.title;
       if (state.completed.includes(c.index)) b.classList.add("done");
       if (c.index === state.current) b.classList.add("current");
       if (c.index === viewing) b.classList.add("viewing");
@@ -218,7 +266,7 @@ main { display: grid; grid-template-columns: minmax(320px, 40%) 1fr; min-height:
     const btn = $("primary");
     const done = state.completed.includes(state.chapters.length - 1);
     const p = primaryAction();
-    btn.textContent = state.busy ? "Working..." : (done ? "Track complete" : p.label);
+    btn.textContent = state.busy ? "Working…" : (done ? "Track complete" : p.label);
     btn.disabled = !!state.busy || done;
     btn.onclick = () => run(p.action);
     // Skip = solve (and cleanup) this chapter, then open the next one.
@@ -226,14 +274,27 @@ main { display: grid; grid-template-columns: minmax(320px, 40%) 1fr; min-height:
     skip.hidden = done || state.current >= state.chapters.length - 1;
     skip.disabled = !!state.busy;
     skip.onclick = () => askSkip(state.current + 1);
-    $("status").textContent = state.busy ? `running ${state.busy}...`
-      : `Chapter ${state.current + 1} of ${state.chapters.length}`;
+    const cur = state.chapters[state.current];
+    $("status").textContent = state.busy
+      ? `${ACTION[state.busy] || state.busy}… ${state.busy_seconds || 0} s`
+      : `Chapter ${state.current + 1} of ${state.chapters.length}: ${short(cur.title)}`;
     const last = state.last, msg = $("message"), out = $("output");
     msg.className = ""; msg.textContent = ""; out.hidden = true;
     if (!last || state.busy) return;
     const check = last.scripts.find((s) => s.kind === "check");
     if (last.ok) {
-      msg.textContent = last.message || "Done.";
+      msg.className = "good";
+      const passed = state.completed[state.completed.length - 1];
+      if (last.action === "check" || last.action === "next") {
+        msg.textContent = last.message === "track complete"
+          ? "Track complete. Well done."
+          : `Chapter ${passed + 1} passed: ${short(state.chapters[passed].title)}. ` +
+            `Now on chapter ${state.current + 1}: ${short(cur.title)}.`;
+      } else if (last.action === "skip") {
+        msg.textContent = `Skipped to chapter ${state.current + 1}: ${short(cur.title)}.`;
+      } else {
+        msg.textContent = last.message || "Ready.";
+      }
     } else {
       msg.className = "bad";
       const failed = last.scripts.filter((s) => s.exit !== 0 || s.timed_out).map((s) =>
@@ -276,8 +337,16 @@ main { display: grid; grid-template-columns: minmax(320px, 40%) 1fr; min-height:
   $("tocurrent").onclick = () => loadChapter(state.current);
   $("assignment").addEventListener("click", (e) => {
     const b = e.target.closest(".rodeo-tab-button");
-    if (b) showTab(Number(b.dataset.tab));
+    if (b) { showTab(Number(b.dataset.tab)); setView(true); return; }
+    const v = e.target.closest(".rodeo-var");
+    if (v && navigator.clipboard) {
+      navigator.clipboard.writeText(v.textContent).then(() => {
+        v.classList.add("copied"); setTimeout(() => v.classList.remove("copied"), 1200);
+      }).catch(() => {});
+    }
   });
+  $("viewText").onclick = () => setView(false);
+  $("viewLab").onclick = () => setView(true);
   refresh(true).catch((e) => { $("message").className = "bad"; $("message").textContent = e.message; });
 })();
 </script>

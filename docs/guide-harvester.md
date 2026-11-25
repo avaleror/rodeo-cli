@@ -1,6 +1,6 @@
 # SUSE Virtualization (Harvester): profile guide
 
-This guide covers the Harvester profiles in rodeo-cli. All deploy **SUSE Virtualization (Harvester HCI)** as nested KVM VMs on a single host: your own SLES 16 box, or an EC2 instance that rodeo creates for you. Pick the one that fits your host and workshop goals.
+This guide covers the Harvester profiles in rodeo-cli. All deploy **SUSE Virtualization (Harvester HCI)** as nested KVM VMs on a single host: your own SLES 16 box, an EC2 instance, or a Compute Engine VM that rodeo creates for you. Pick the one that fits your host and workshop goals.
 
 **Component versions:** Harvester 1.8.2 (RKE2, Longhorn, KubeVirt, Kube-OVN) · Rancher Prime 2.14.5 on K3s v1.35.3+k3s1 · cert-manager v1.20.1 · Harvester UI extension 1.8.2.
 
@@ -15,6 +15,7 @@ This guide covers the Harvester profiles in rodeo-cli. All deploy **SUSE Virtual
 | `harvester-2n` | 2 Harvester + 1 Rancher | Yes | 1 leader | ~56 GiB | HCI + Rancher on a mid-size host, no etcd HA |
 | `harvester` | 3 Harvester + 1 Rancher | Yes | 3-member HA | ~72 GiB | Full lab: HCI + multi-cluster management |
 | `virt-workshop` | 3 Harvester + 1 Rancher | Yes | 3-member HA | AWS `m8id.8xlarge` | The [SUSE Virtualization workshop](https://avaleror.github.io/suse-virt-workshop/): `harvester` plus image cache, NFS backup target and sample VMs |
+| `virt-workshop-2n` | 2 Harvester + 1 Rancher | Yes | 1 leader | AWS `m8id.4xlarge` | Same workshop scripts on the 2-node shape. The old name `virt-workshop-aws-2n` means this profile |
 
 Run `rodeo doctor` to see which profiles fit your host's available RAM.
 
@@ -30,7 +31,7 @@ Run `rodeo doctor` to see which profiles fit your host's available RAM.
 | Harvester UI via host | host IP | `https://<host>:8443` (DNAT, reachable from outside) |
 | harvester1 | 192.168.122.11 | `rodeo ssh harvester1` |
 | harvester2 | 192.168.122.12 | `rodeo ssh harvester2` |
-| harvester3 | 192.168.122.13 | `rodeo ssh harvester3` (not present in `test` / `harvester-2n`) |
+| harvester3 | 192.168.122.13 | `rodeo ssh harvester3` (not present in `test`, `harvester-2n`, or `virt-workshop-2n`) |
 
 ### `harvester` and `harvester-2n` profiles add
 
@@ -51,7 +52,7 @@ Lab footprint (guest RAM sum) is in the table above. `rodeo doctor` uses a highe
 | `harvester-2n` | ~56 GiB | ~700 GiB | ~24 vCPU |
 | `harvester` | ~72 GiB | ~1050 GiB | ~34 vCPU |
 
-**OS:** SLES 16 or Leap 16 with KVM. On any other machine `rodeo up` stops and points you to `--target aws` (set `RODEO_ALLOW_ANY_KVM_HOST=1` to try another Linux at your own risk). Nested virtualization must be enabled if the host is itself a VM (cloud, Instruqt).
+**OS:** SLES 16 or Leap 16 with KVM. On any other machine `rodeo up` stops and points you to `--target aws` or `--target gcp` (set `RODEO_ALLOW_ANY_KVM_HOST=1` to try another Linux at your own risk). Nested virtualization must be enabled if the host is itself a VM (cloud, Instruqt).
 
 Harvester installs via **iPXE network boot** (the `pxe_server` phase serves boot scripts and config over HTTP). This is why the disk requirement is high: each node gets a 320 GiB virtual disk (Harvester's Elemental installer carves a fixed 150 GiB persistent partition regardless of disk size, so the rest goes to Longhorn's own partition).
 
@@ -85,7 +86,9 @@ rodeo up --profile harvester --target aws --yes          # full lab
 rodeo up --profile virt-workshop --target aws --yes  # the workshop lab
 ```
 
-rodeo picks the region, subnet and instance (`m8id.8xlarge`, 32 vCPU / 128 GiB / local NVMe), creates the EC2 host, and runs the same pipeline there. The workshop lab took about 25 minutes end to end on that instance. The host has a 6-hour dead-man switch (`provider.ttl_hours` to extend it); tear it down with `rodeo destroy --cloud --yes --config-dir ~/rodeo-labs/<profile>`.
+rodeo picks the region, subnet and instance (`m8id.8xlarge` for `harvester` and `virt-workshop`, `m8id.4xlarge` for `virt-workshop-2n`), creates the EC2 host, and runs the same pipeline there. The workshop lab took about 25 minutes end to end on `m8id.8xlarge`. The host has a 6-hour dead-man switch (`provider.ttl_hours` to extend it); tear it down with `rodeo destroy --cloud --yes --config-dir ~/rodeo-labs/<profile>`.
+
+The same profiles run on Google Cloud: `rodeo up --profile harvester --target gcp --yes`. Region `europe-west4`, recommended machine `c4-standard-32-lssd`. See [Get started](get-started.md).
 
 For a lab per attendee, see [Fleet](fleet.md).
 
@@ -93,7 +96,7 @@ For a lab per attendee, see [Fleet](fleet.md).
 
 ## What happens during deploy
 
-The `suse-virt` pipeline (used by all four Harvester profiles) runs these phases:
+The `suse-virt` pipeline (every profile in the table above) runs these phases:
 
 1. **kvm_host**: prepares the hypervisor: KVM packages, libvirt daemon, firewall rules (including the DNAT rule that makes `:8443` reach the Harvester VIP), and the image storage pool
 2. **vms**: downloads the Harvester ISO, creates virtual disks (size varies by profile, see Host requirements above), and writes libvirt XML definitions (VMs are defined but not started yet)

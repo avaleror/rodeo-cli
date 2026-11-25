@@ -6,15 +6,16 @@ Design pillars: plan/apply/destroy lifecycle, deep-mergeable override files, inl
 
 ## Next up
 
-1. **B1** — ownership tags on libvirt domains (`rodeo:plan=<name>`) → accurate `destroy` / `list`
-2. **Phase H Level 1** — Hauler prefetch (skip multi-GB re-downloads on Instruqt / clean+up)
-3. **F4b**: GCP host-acquire: single host shipped (`rodeo up --target gcp`); fleet portal pending
-4. **Phase F** — `suse-edge` live validation (bare metal, then Instruqt)
+Checked against the tree at v0.34.0 (2026-11-25).
 
-⚠ #48 landed three areas this roadmap doesn't cover yet — third-party
-extensibility (`rodeo.plugins` entry points + a `deployment_target` registry),
-workshop story rendering and i18n (`rodeo story render`), and lab-in-a-box
-export (`rodeo export`). They still need a phase of their own here.
+1. **Phase F** — `suse-edge` live validation (bare metal, then Instruqt). The profile is on main. The live check is not.
+2. **F4b remainder** — GCP `rodeo up` is live-tested and `fleet provision` creates one VM per host. The claim portal and `fleet open-access` are still AWS-only.
+3. **F4c / F4d** — Vultr and Hetzner are names in the provider registry. `get_provider` rejects both. There is no extra to install.
+4. **Phase H Level 1** — Hauler prefetch. Not started.
+5. **Phase B remainder** — B1 ownership tags are in. Broader topology and pxe reconcile is not.
+6. **Fleet SSH key** — every lab host still shares `/root/.ssh/id_ed25519`. A per-host key is not built.
+
+Plugins (`rodeo.plugins`), `rodeo story render`, and `rodeo export` shipped with #48. This file never grew a phase for them. They are in the tree.
 
 ✅ B2 step 5 live-validated 2026-08-06 (bare-metal SLES, `test` profile): plan showed memory drift; deploy without reconcile skipped `vms`; `--reconcile` reset from `vms` and wrote new memory into inactive domain XML; cold start applied 20480 MiB. Reconcile is now the default (`--no-reconcile` opt-out).
 
@@ -62,8 +63,8 @@ Live-validated on bare metal (SLES 16) and on an **Instruqt builder** with `depl
 Today, default idempotency is **phase-level with live drift reconcile for VMs**:
 `DeployRunner.run()` skips phases marked `completed` unless drift is detected (default),
 or the operator passes `--force` / `--from` / `--no-reconcile`. `rodeo plan` always
-computes the live diff. B2 steps 1–5 are done; remaining work is ownership tagging (B1)
-and broader topology/pxe reconcile (V2).
+computes the live diff. B1 and B2 steps 1–5 are done. Remaining work is broader
+topology and pxe reconcile.
 
 ### B1 — Ownership tagging (~2 days)
 
@@ -221,6 +222,8 @@ The rodeo deploys a management plane (Rancher + Rancher Prime) plus one or more 
 
 ## Phase G — SUSE Telco Cloud Rodeo
 
+The sketch below (Harvester plus Open5GS) is not what shipped. The profile on main is `suse-telco`: SUSE Telco Cloud 3.7, an RKE2 management cluster, an emulated Redfish BMC, a downstream image, and BareMetalHost enroll. Students apply the workshop manifests. See [the telco guide](docs/guide-suse-telco.md). The milestone list under this heading is the old sketch and is not a status of `suse-telco`.
+
 A new bundled profile (`telco-cloud`) for SUSE Telco Cloud workshops. SUSE Telco Cloud = SUSE Virtualization (Harvester) as the infrastructure layer, plus a 5G RAN simulation stack (Open5GS or OAI) running as CNFs on top.
 
 Attendees practice deploying and operating a telco workload on HCI infrastructure — scaling vDU/vCU functions, observability, and lifecycle management — without physical RAN hardware.
@@ -317,18 +320,18 @@ over OpenSSH (workshop inventory). Engine/phases stay single-host. See [docs/fle
 - [x] F2 — `rodeo fleet deploy|retry|access` (tmux start, job file, failed-only retry, URL sheet)
 - [x] F2.1 — `rodeo fleet diagnose` (central log/status collect for failure forensics)
 - [ ] F4 — Host-acquire → `workshop.yaml` (separate from converge); Python native SDKs behind `rodeo/providers/`
-  - [x] F4a — **AWS** MVP (`boto3`, optional `[aws]` extra): `fleet provision|deprovision`, ownership tags, inventory merge — gaps: no plan dry-run; deprovision does not clear `hosts[]`
-  - [x] F4b: **GCP** (`google-cloud-compute`): single host shipped; claim portal and open-access pending
-  - [ ] F4c — **Vultr Bare Metal** (API `/v2/bare-metals`, optional `[vultr]` extra) — after GCP
-  - [ ] F4d — **Hetzner Cloud** (`hcloud`) — after Vultr; nested-KVM must be validated for labs
+  - [x] F4a — **AWS** MVP (`boto3`, optional `[aws]` extra): `fleet provision|deprovision`, ownership tags, inventory merge. `deprovision` removes the cloud `hosts[]` entries it created (`rodeo/fleet/local_cleanup.py`). No plan dry-run yet.
+  - [x] F4b: **GCP** (`google-cloud-compute`): single host live-tested; `fleet provision` creates one VM per host id. Claim portal and `open-access` are still AWS-only.
+  - [ ] F4c — **Vultr Bare Metal**. Not implemented. The registry rejects `provider.type: vultr`. There is no `[vultr]` extra.
+  - [ ] F4d — **Hetzner Cloud**. Not implemented. The registry rejects `provider.type: hetzner`. Nested KVM has not been tried.
   - Equinix Metal: **out of scope** (service sunset)
-- [ ] F5: Claim portal, so each student gets their own lab with zero network knowledge. Design: [docs/claim-portal.md](docs/claim-portal.md), plan: [docs/claim-portal-plan.md](docs/claim-portal-plan.md). All opt-in; no change to existing fleets or single-host AWS.
-  - [ ] F5.0: baseline tests pinning today's SG/provision/deprovision behaviour, then `provider.student_access: open` + password strength gate
-  - [ ] F5.1: portal service (`rodeo portal serve|admin`), roster + event-code claim flows, new code only
-  - [ ] F5.2: portal VM lifecycle (own SG, `role: portal` skips key planting, Caddy + TLS, deprovision without SG leaks)
-  - [ ] F5.3: `rodeo fleet portal publish|invite|status|...`, secrets never logged
-  - [ ] F5.4: optional student SSH (off by default, no sudo)
-  - [ ] F5.5: docs, CHANGELOG
+- [x] F5: Claim portal on AWS, so each student gets their own lab. Shipped v0.18.0 (2026-10-02). Student SSH on port 2222 shipped v0.20.1 and was removed in #249 (students use the player). Still AWS-only. Design: [docs/claim-portal.md](docs/claim-portal.md).
+  - [x] F5.0: `provider.student_access: open` and the password gate, in `rodeo/fleet/student_access.py`
+  - [x] F5.1: roster and workshop-code claim, served by the portal VM (not a separate `rodeo portal serve`)
+  - [x] F5.2: portal VM lifecycle, own security group, Caddy, deprovision cleanup
+  - [x] F5.3: `rodeo fleet portal publish|invite|status|...`
+  - [x] F5.4: optional student SSH, off by default, no sudo, port 2222, never port 22. Removed in #249: students come in through the player only
+  - [x] F5.5: CHANGELOG entries for 0.18.0 and 0.20.1. The design page said "pending" until the 2026-11 docs pass.
 - [ ] Per-host nested-hop key: today every lab host carries the fleet-wide rodeo private key in `/root/.ssh/id_ed25519`, so root on one host is root on all. Replace with a per-host key; needs a live `rodeo ssh host/vm` regression. Prerequisite for ever giving students root on their host.
 
 ---

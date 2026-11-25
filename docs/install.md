@@ -52,8 +52,9 @@ It needs `git` and `curl`. On macOS they come with the Xcode command line tools
 You normally never run it by hand on cloud hosts: `rodeo up --target aws` and
 `rodeo fleet deploy` run it on the host for you.
 
-On a control machine, `rodeo up` without `--target aws` stops and says so instead
-of starting a lab it cannot run (`--no-deploy` still sets the lab up).
+On a control machine, `rodeo up` without `--target aws`, `--target gcp`, or
+`--target remote` stops and says so instead of starting a lab it cannot run
+(`--no-deploy` still sets the lab up).
 `RODEO_ALLOW_ANY_KVM_HOST=1` lets you try a local lab on an unsupported Linux
 anyway.
 
@@ -155,7 +156,7 @@ still being valid: re-run the command.
 | Installer | `install.sh` (KVM host on SLES 16 / Leap 16, control machine elsewhere) | `install.sh` (control machine) |
 | Python | Distribution `python3` 3.10+, else a private one via uv | Homebrew's if present, else a private one via uv (system `python3` is 3.9) |
 | `[aws]` extra | Installed on control machines | Installed |
-| Local labs (`rodeo up` without `--target aws`) | Yes, on a KVM host | No |
+| Local labs (no `--target aws`, `gcp`, or `remote`) | Yes, on a KVM host | No |
 | SSH | OpenSSH | Built-in OpenSSH; nothing extra needed |
 | rodeo's own SSH key | `~/.rodeo/ssh/id_ed25519`, created on first use; AWS labs get their own key in `~/.rodeo/ssh/labs/<lab>/`, deleted with the lab | Same |
 

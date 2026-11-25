@@ -1,6 +1,6 @@
 ---
 title: Fleet claim portal (students get their own lab)
-status: approved design (2026-09-25); F5.0-F5.4 implemented 2026-09-30 (AWS); 2026-11-26 students come in through the player only (no student SSH)
+status: shipped for AWS fleets in v0.18.0 (2026-10-02). Student SSH on port 2222 shipped in v0.20.1 and was removed in #249 (2026-11-26): students now come in through the player only. Claim portal and open-access are still AWS-only. This page is the design that was built.
 plan: docs/claim-portal-plan.md
 audience: maintainers, implementing AI or engineer
 repo: https://github.com/avaleror/rodeo-cli
@@ -11,10 +11,12 @@ related:
   - rodeo/ssh_key.py
   - rodeo/secretgen.py
 language: en
-last_updated: 2026-09-25
+last_updated: 2026-11-25
 ---
 
 # Fleet claim portal
+
+Shipped for AWS fleets in v0.18.0. Student SSH on port 2222 (v0.20.1) was removed in #249: students now come in through the player only, and `open-access` closes the 2222 rules an older release left. GCP `fleet provision` creates hosts. It does not publish them to this portal, and `fleet open-access` is AWS-only. The sections below are the design that was built, written in the present tense of September 2025.
 
 ## 1. Problem
 
@@ -50,8 +52,9 @@ credentials and no rodeo SSH key ever leave the instructor's machine.
 - A student opens one URL, identifies themselves, and gets *their* lab: UI URLs,
   usernames, passwords and, optionally, SSH access. Nothing about anyone else's lab.
 - The instructor sees who has which lab and can release or reassign one.
-- Works for any fleet: AWS today, GCP/Vultr/Hetzner once F4b-d ship, bare metal via
-  a bring-your-own portal host.
+- Works for an AWS fleet. A bring-your-own portal host was part of this design.
+  GCP provision exists and the portal does not publish GCP hosts. Vultr and Hetzner
+  are not implemented.
 - Idempotent like the rest of rodeo: every command safe to re-run.
 - No new Python dependencies in the core package.
 

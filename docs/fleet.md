@@ -17,9 +17,9 @@ See also: [Get started](get-started.md) (single host), [Architecture](architectu
 | **F2.2** | Shipped | The whole flow in one command | `rodeo fleet up` |
 | **F2.1** | Shipped | Failure forensics | `rodeo fleet diagnose` |
 | **F4a** | Shipped | AWS host-acquire, 6 h dead-man switch per host | `rodeo fleet provision`, `deprovision` |
-| **F4b** | Shipped (single host) | GCP | `rodeo up --target gcp` |
-| **F4c–d** | Roadmap | Vultr BM → Hetzner | (planned) |
-| **F5** | Shipped (AWS, v0.18) | Student claim portal: each student enters a workshop code and gets their own lab; student SSH on its own port | `rodeo fleet open-access`, `rodeo fleet portal ...` ([design](claim-portal.md), [plan](claim-portal-plan.md)) |
+| **F4b** | Shipped for provision | GCP. `fleet provision` creates one VM per host. The claim portal and `open-access` are still AWS-only | `rodeo up --target gcp`, `rodeo fleet provision` |
+| **F4c–d** | Not implemented | Vultr, then Hetzner. The registry rejects both | `provider.type` `vultr` or `hetzner` raises `ConfigError` |
+| **F5** | Shipped (AWS, v0.18) | Student claim portal: each student enters a workshop code and gets their own lab and enters it through the player | `rodeo fleet open-access`, `rodeo fleet portal ...` ([design](claim-portal.md), [plan](claim-portal-plan.md)) |
 
 Host prerequisites (after [`install.sh`](https://github.com/avaleror/rodeo-cli/blob/main/install.sh) on each lab machine):
 
@@ -63,9 +63,9 @@ OpenSSH-only.
 | Order | Provider | Status |
 |-------|----------|--------|
 | **F4a** | **AWS** (`boto3`, the `[aws]` extra: see [Install](install.md)) | **MVP shipped**: create/reuse by tags, wait running + SSH, write `hosts[]`, terminate tagged only |
-| **F4b** | **GCP** (`google-cloud-compute`) | Single host shipped; fleet portal and open-access still AWS-only |
-| **F4c** | **Vultr Bare Metal** (`[vultr]` extra) | Planned: after GCP; real metal for nested KVM |
-| **F4d** | **Hetzner Cloud** (`hcloud`) | Planned: after Vultr; nested KVM must be validated |
+| **F4b** | **GCP** (`google-cloud-compute`) | Single host live-tested. `fleet provision` creates one VM per host id. Claim portal and `open-access` are still AWS-only |
+| **F4c** | **Vultr Bare Metal** | Not implemented. `get_provider("vultr")` rejects it |
+| **F4d** | **Hetzner Cloud** | Not implemented. `get_provider("hetzner")` rejects it |
 
 **Out of scope:** Equinix Metal (service sunset). Shared secrets across hosts.
 Changing the nested phase engine for multi-host.
@@ -603,11 +603,10 @@ What protects what:
   Past that, only addresses that already sent 3 wrong codes wait; new students still
   get in, and everyone who entered keeps their 24 h access.
   Logs never contain tokens, emails, codes, PINs or passwords.
-- **Student SSH:** a `student` user per lab host, key-only, with its own key generated
-  on your laptop (`~/.rodeo/fleet/<workshop>/student-keys/`). Publish proves on every
-  host that the user has no sudo, is in no privileged group and cannot read `/root`,
-  where the fleet-wide rodeo key lives; any failed check aborts. Students never get
-  root on a lab host.
+- **Student shell:** students work in the player's terminal as a `student` user with
+  no sudo, who cannot read `/root`, where the fleet-wide rodeo key lives. Students never
+  get root on a lab host. Student SSH on port 2222 (v0.20.1) was removed in #249; old
+  keys in `~/.rodeo/fleet/<workshop>/student-keys/` are cleaned up by `deprovision`.
 - `publish` is safe to re-run (after a `fleet retry`, or when a lab finishes later):
   labs that are not ready are shown to students as "still building" and are never
   assigned.
@@ -643,9 +642,13 @@ Fleet does **not** sudo-re-exec on the laptop.
 
 ## F4 host-acquire design
 
-Shared Protocol / schema for host-acquire. **AWS (F4a) MVP is implemented** in
-`rodeo/providers/` for both Fleet and single-host `deployment_target: aws`.
-Vultr / Hetzner remain stubs; GCP has a provider (single host live-tested). Summary in [Roadmap](#roadmap).
+Shared contract for host-acquire. **AWS (F4a) and GCP (F4b) are implemented** in
+`rodeo/providers/` for Fleet and for single-host `rodeo up`. GCP fleet provision
+creates the VMs. The claim portal and `fleet open-access` still call AWS only.
+Vultr and Hetzner are listed below so the intended fields stay written down.
+`rodeo fleet provision` with either type stops immediately: the registry raises
+`provider.type vultr is planned (F4c)` or the Hetzner equivalent. There is no
+`[vultr]` or `[hetzner]` extra to install.
 
 **Important: never set `lab.target: aws` in `workshop.yaml`.**
 
@@ -664,8 +667,9 @@ kept on the instance for disk floors + `destroy --cloud`). Mixing
 
 ### `HostProvider` Protocol
 
-Shared contract in planned `rodeo/providers/`. Fleet CLI never imports boto3/GCP/hcloud
-directly: only the registry + this surface.
+Shared contract in `rodeo/providers/`. Fleet CLI never imports boto3 or the
+Google client directly: only the registry and this surface. `hcloud` is not
+imported because Hetzner is not implemented.
 
 **Types (conceptual)**
 
@@ -680,7 +684,7 @@ directly: only the registry + this surface.
 
 | Method | Behavior |
 |--------|----------|
-| `name` | Stable id: `aws` \| `gcp` \| `vultr` \| `hetzner` |
+| `name` | Stable id. Implemented: `aws`, `gcp`. Named and rejected: `vultr`, `hetzner` |
 | `validate(config) → None` | Fail closed (`ConfigError`) on missing/invalid fields **for that type only** |
 | `plan(spec, config) → list[action]` | Optional dry-run: create / reuse / noop per desired host id (nice-to-have for F4a) |
 | `provision(spec, config) → list[ProvisionedHost]` | Idempotent: reuse instances tagged for this workshop+host id; create the rest; wait until **running** + **SSH BatchMode** succeeds |
@@ -690,7 +694,7 @@ directly: only the registry + this surface.
 
 - SSH wait / probe via existing `rodeo/fleet/ssh_exec.py` (no paramiko).
 - Inventory merge: write/update `hosts[]` by `id`; do not delete static hosts unless `--prune`.
-- Optional extras: `[aws]`, `[gcp]`, `[vultr]`, `[hetzner]` so core install stays light.
+- Optional extras that exist: `[aws]`, `[gcp]`. There is no `[vultr]` or `[hetzner]` extra.
 
 **Ownership tags** (every created instance; same keys on all clouds)
 
@@ -734,7 +738,7 @@ defaults:
   identity_file: ~/.ssh/rodeo-workshop.pem
   # ssh_options: ["ProxyJump=bastion"]
 provider:
-  type: aws                         # aws | gcp | vultr | hetzner  (required if provider: present)
+  type: aws                         # aws or gcp. vultr and hetzner are rejected
   count: 12                         # how many hosts to ensure when hosts: [] or undersized
   # host_id_prefix: student-        # default "student-"; ids student-01 … student-N
   # ttl_hours: 10                   # dead-man switch, default 6: every host (and the
@@ -747,7 +751,7 @@ hosts: []                           # empty → provision creates; or pre-seed s
 
 Validation rules (fail closed):
 
-- `provider.type` ∈ `{aws, gcp, vultr, hetzner}`.
+- `provider.type` is `aws` or `gcp`. `vultr` and `hetzner` are rejected.
 - `provider.student_access` ∈ `{operator, open}` when set (default `operator`); see [Student network access](#student-network-access-aws).
 - `provider.ttl_hours` more than 0 and at most 168 when set (default 6); it cannot be turned off, except `off` for [kvm-hosts](guide-kvm-hosts.md) labs.
 - `provider.host_to_host: true` lets the hosts reach each other on any port (set by default for kvm-hosts). See the [dead-man switch](reference/plan.md#provider-when-deployment_target-aws).
@@ -847,7 +851,9 @@ Status: single-host `rodeo up --target gcp` is live-tested. `fleet provision` us
 provider and creates one VM per host id, but the claim portal and `fleet open-access` are
 AWS-only for now.
 
-#### `provider.type: vultr` (F4c)
+#### `provider.type: vultr` (F4c, not implemented)
+
+Field notes only. `fleet provision` rejects `type: vultr`.
 
 ```yaml
 provider:
@@ -865,7 +871,9 @@ Auth: `VULTR_API_KEY` (API key may require IP allowlisting). Prefer REST `/v2/ba
 or the OpenAPI client over a thin community wrapper. **Bare metal only** for nested KVM,
 not Vultr Cloud VPS. Gate plans by RAM for the chosen profile (`rodeo doctor`).
 
-#### `provider.type: hetzner` (F4d)
+#### `provider.type: hetzner` (F4d, not implemented)
+
+Field notes only. `fleet provision` rejects `type: hetzner`.
 
 ```yaml
 provider:

@@ -5,6 +5,8 @@ This page has moved. Start at [Get started](get-started.md), or jump straight to
 - [Rancher Prime](guide-rancher.md): `--profile rancher` or `--profile rancher-test`
 - [Harvester HCI](guide-harvester.md): `test`, `harvester-2n`, `harvester-ha`, `harvester` and the workshop lab
 - [SUSE Edge](guide-suse-edge.md): `--profile suse-edge`
+- [SUSE Telco Cloud](guide-suse-telco.md): `--profile suse-telco`
+- [Plain KVM hosts](guide-kvm-hosts.md): `--profile kvm-hosts`
 - [Install on Linux and macOS](install.md): KVM host or control machine
 - [Create your own rodeo](custom-rodeos.md): scaffold and customize a topology
 - [Architecture](architecture.md): codebase design for contributors

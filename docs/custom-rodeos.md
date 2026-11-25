@@ -45,10 +45,11 @@ building anyway.
 | **profile** (`--profile`) | a named, runnable *lab* you pick on the CLI | a config-dir (bundled or under `~/.rodeo/profiles/`) |
 
 The engine types today: `suse-virt` (Harvester HCI + Rancher), `rancher` and
-`rancher-test` (Rancher Prime plus the K3s/RKE2 clusters it provisions, no Harvester), and
-`suse-edge` (Rancher + Elemental + EIB + edge nodes). `lab-in-a-box` is an external plugin
-with its own engine. Your custom labs pick one of these as their `type` and customize the
-rest. You are authoring topology, not a new pipeline.
+`rancher-test` (Rancher Prime plus the K3s/RKE2 clusters it provisions, no Harvester),
+`suse-edge` (Rancher + Elemental + EIB + edge nodes), `suse-telco` (SUSE Telco Cloud 3.7),
+`kvm-hosts` (KVM and libvirt only), and `lab-in-a-box` (rodeo prepares the host;
+lab-in-a-box builds the VMs). Your custom labs pick one of these as their `type` and
+customize the rest. You are authoring topology, not a new pipeline.
 
 List everything you can deploy:
 
@@ -67,7 +68,8 @@ rodeo profiles
 | `virt-workshop` | bundled | suse-virt | `harvester` + image cache, NFS and sample VMs for the SUSE Virtualization workshop |
 | `virt-workshop-2n` | bundled | suse-virt | 2-node version of the workshop lab |
 | `suse-edge` | bundled | suse-edge | Rancher + Elemental + EIB + edge nodes (SUSE Edge 3.7) |
-| `smlm-workshop` | bundled | lab-in-a-box | SUSE Multi-Linux Manager + 8 clients, built by the lab-in-a-box plugin |
+| `suse-telco` | bundled | suse-telco | SUSE Telco Cloud 3.7. Students apply the workshop manifests ([guide](guide-suse-telco.md)) |
+| `smlm-workshop` | bundled | lab-in-a-box | SUSE Multi-Linux Manager + 8 clients. rodeo prepares the host; lab-in-a-box builds the VMs |
 | `kvm-hosts` | bundled | kvm-hosts | Plain KVM host, no VMs; with fleet a small KVM cluster ([guide](guide-kvm-hosts.md)) |
 | *(yours)* | custom | any | whatever you scaffold and edit |
 

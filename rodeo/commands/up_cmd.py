@@ -125,7 +125,8 @@ def _default_labs_root() -> Path:
     "ref",
     default=None,
     metavar="GIT_REF",
-    help="Branch, tag or SHA of rodeo-cli to run on the AWS host (--target aws only). "
+    help="Branch, tag or SHA of rodeo-cli to run on the host "
+         "(--target aws, gcp, or remote). "
          "Forces the host's checkout to it, even if rodeo is already installed — "
          "the only way a just-pushed commit reaches an existing host. "
          "Default: leave whatever the host has (first bootstrap installs main).",
@@ -133,7 +134,7 @@ def _default_labs_root() -> Path:
 @click.option(
     "--detach",
     is_flag=True,
-    help="--target aws or remote only: return once the host has started rodeo up, printing "
+    help="--target aws, gcp, or remote: return once the host has started rodeo up, printing "
          "one JSON object (pid, log, host) on stdout; everything else goes to stderr. The "
          "deploy keeps running on the host: follow it with rodeo status --cloud. Exit 75 "
          "(and JSON) when a deploy is already running there.",
@@ -261,8 +262,8 @@ def _up(profile: str | None, name: str | None, lab_dir: str | None,
 
     if detach_out is not None and not control_plane:
         console.print(
-            "[red]✗  --detach only applies to a control plane: rodeo up --target aws from "
-            "outside EC2, or --target remote (local deploys have no detach yet).[/red]"
+            "[red]✗  --detach only applies to a control plane: rodeo up --target aws or gcp from "
+            "outside that cloud, or --target remote (local deploys have no detach yet).[/red]"
         )
         raise SystemExit(2)
 
@@ -270,9 +271,9 @@ def _up(profile: str | None, name: str | None, lab_dir: str | None,
         # --ref only steers the *remote* bootstrap. Ignoring it silently would
         # let someone believe a local deploy is running the pinned code.
         console.print(
-            f"[yellow]⚠  --ref {ref} ignored — it only applies when this "
-            "machine is the AWS control plane (rodeo up --target aws from "
-            "outside EC2).[/yellow]\n"
+            f"[yellow]⚠  --ref {ref} ignored — it only applies on a control plane "
+            "(rodeo up --target aws or gcp from outside that cloud, or "
+            "--target remote).[/yellow]\n"
         )
 
     # A machine that cannot host labs (macOS, SLES 15, ...) is a control plane:
@@ -655,8 +656,8 @@ def _install_from_catalog(profile: str) -> None:
 def _runs_on_this_machine(lab: Path | None, profile: str | None) -> bool:
     """Whether a local `rodeo up` would run lab phases (kvm_host) on this machine.
 
-    lab-in-a-box is an external plugin with its own hosts and targets, so its
-    profiles are never treated as local KVM deploys here.
+    lab-in-a-box builds the VMs itself, so its profiles are not treated as
+    local KVM deploys here.
     """
     import yaml as _yaml
 

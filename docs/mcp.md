@@ -125,10 +125,7 @@ Read-only (always offered):
 | `rodeo_doctor` | `rodeo doctor` |
 | `rodeo_profiles` | `rodeo profiles` |
 | `rodeo_plan` | `rodeo plan` (`output: json` for one JSON object, see below) |
-| `rodeo_status` | `rodeo status` |
-
-| `rodeo_plan` | `rodeo plan` |
-| `rodeo_status` | `rodeo status`; `cloud: true` runs `rodeo status --cloud` (the AWS host's deploy) |
+| `rodeo_status` | `rodeo status`; `cloud: true` runs `rodeo status --cloud` (the AWS or GCP host, or the KVM host when the plan says `deployment_target: remote`) |
 | `rodeo_list` | `rodeo list` |
 | `rodeo_logs` | `rodeo logs --no-follow` |
 | `rodeo_instances_list` | `rodeo instances list` |
@@ -140,7 +137,7 @@ Lifecycle (only with `--allow-write`):
 
 | Tool | rodeo command |
 |---|---|
-| `rodeo_up` | `rodeo up --yes --no-tmux`; for target `aws` it adds `--detach` (see below) |
+| `rodeo_up` | `rodeo up --yes --no-tmux`; for target `aws` it adds `--detach` (see below). `gcp` and `remote` do not, yet. |
 | `rodeo_deploy` | `rodeo deploy --no-tui` (`from_phase` resumes a phase) |
 | `rodeo_init` | `rodeo init` |
 | `rodeo_new` | `rodeo new` |
@@ -204,8 +201,17 @@ rebooted) or `none`, plus the tail of the log. A deploy that is already running
 there comes back as a tool error carrying
 `{"state": "already_running", "pid", "log", "host"}` (rodeo exit 75).
 
-Local deploys have no detach yet: `rodeo_up` for any other target blocks until
-the deploy ends, within the server's timeout.
+On the CLI, `--detach` also works for `gcp` and for `remote` (a KVM host you
+already own, since v0.33.0). `rodeo status --cloud` reads that run. The log
+files are `aws-up.log`, `gcp-up.log`, or `remote-up.log`, each with a `.pid`
+and a `.exit` beside it. The MCP tool does not pass `--detach` for `gcp` or
+`remote`, and its `target` enum is `baremetal`, `instruqt`, or `aws`. A gcp or
+remote plan still deploys. The call blocks until the host finishes.
+`rodeo_status` with `cloud: true` does follow the CLI, so a detached gcp or
+remote run can be read from here once it exists.
+
+A local `baremetal` deploy has no detach. `rodeo_up` blocks until it ends,
+within the server's timeout.
 
 ## Adding a tool
 

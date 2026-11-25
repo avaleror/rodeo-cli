@@ -3,7 +3,7 @@
   <img alt="rodeo-cli" src="docs/assets/logo/wordmark-light.png" height="60">
 </picture>
 
-A CLI for deploying hands-on lab infrastructure. Point it at a Linux host with KVM, pick a profile, and it builds a working lab of nested VMs (Harvester HCI clusters, Rancher Prime, or a full SUSE Edge stack) without you writing a line of Ansible or touching libvirt directly.
+A CLI for deploying hands-on lab infrastructure. Point it at a Linux host with KVM, pick a profile, and it builds a working lab of nested VMs (Harvester HCI, Rancher Prime, SUSE Edge, SUSE Telco Cloud, or a plain KVM host) without you writing a line of Ansible or touching libvirt directly.
 
 [![Release](https://img.shields.io/github/v/release/avaleror/rodeo-cli?sort=semver&label=release)](https://github.com/avaleror/rodeo-cli/releases)
 [![CI](https://github.com/avaleror/rodeo-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/avaleror/rodeo-cli/actions/workflows/ci.yml)
@@ -18,7 +18,7 @@ A CLI for deploying hands-on lab infrastructure. Point it at a Linux host with K
 
 A **profile** describes a lab: how many VMs, what they run, how much RAM, what ports to expose on the host. Two YAML files define each profile:
 
-- `rodeo-plan.yaml`: resources, credentials, deployment target (bare metal or Instruqt)
+- `rodeo-plan.yaml`: resources, credentials, and where the lab runs (`baremetal`, `instruqt`, `aws`, `gcp`, or `remote`)
 - `definition.yaml`: topology: nodes, network, exposed services, start order
 
 The CLI reads those files and drives a **phase pipeline** through Ansible roles on the target host. Not every phase runs in every profile: the engine `type` decides which ones apply:
@@ -90,10 +90,13 @@ rodeo up --profile suse-edge      # SUSE Edge: Rancher + Elemental + EIB + edge 
 | `harvester-2n` | `suse-virt` | 2-node Harvester + Rancher Prime | ~56 GiB |
 | `harvester` | `suse-virt` | 3-node Harvester HCI + Rancher Prime | ~72 GiB |
 | `virt-workshop` | `suse-virt` | `harvester` plus image cache, NFS backup target and sample VMs for the [SUSE Virtualization workshop](https://avaleror.github.io/suse-virt-workshop/) | AWS `m8id.8xlarge` |
+| `virt-workshop-2n` | `suse-virt` | 2-node workshop, same scripts, budget tier | AWS `m8id.4xlarge` |
 | `suse-edge` | `suse-edge` | Rancher + Elemental + EIB + edge nodes (SUSE Edge 3.7) | ~40 GiB |
-| `smlm-workshop` | `lab-in-a-box` | SUSE Multi-Linux Manager + 8 clients (instruqt-SMLM workshop), built by the lab-in-a-box plugin | ~30 GiB |
+| `suse-telco` | `suse-telco` | SUSE Telco Cloud 3.7: management cluster, emulated Redfish BMC, downstream image, hosts enrolled. Students apply the workshop manifests | see the [telco guide](docs/guide-suse-telco.md) |
+| `smlm-workshop` | `lab-in-a-box` | SUSE Multi-Linux Manager + 8 clients. rodeo prepares the host; lab-in-a-box builds the VMs | ~30 GiB |
+| `kvm-hosts` | `kvm-hosts` | KVM and libvirt only. You create the VMs. Fleet can turn the dead-man switch off | 8 vCPU / 32 GiB per host on AWS |
 
-`rodeo doctor` recommends the largest profile that fits available RAM. `rodeo profiles` lists all profiles including any you create yourself. Each profile picks an **engine type** (`suse-virt`, `rancher`, `rancher-test`, `suse-edge`) that decides which pipeline phases run; `lab-in-a-box` is an external plugin with its own engine.
+`rodeo doctor` recommends the largest profile that fits available RAM. `rodeo profiles` lists all profiles including any you create yourself. The engine (`suse-virt`, `rancher`, `rancher-test`, `suse-edge`, `suse-telco`, `kvm-hosts`, `lab-in-a-box`) decides which phases run. Where the lab runs is `--target`, not a second profile: the old `virt-workshop-aws` names still work and mean `virt-workshop`.
 
 You can scaffold and customize your own:
 
@@ -105,15 +108,24 @@ rodeo up --profile mylab
 
 Full walkthrough: [Create your own rodeo](docs/custom-rodeos.md).
 
-### On AWS
+### Where it runs
 
-Any profile also deploys on AWS from your laptop:
+| `--target` | What happens |
+|---|---|
+| `baremetal` | Deploy on this machine. The default. |
+| `instruqt` | Deploy on an Instruqt builder. `finalise` is skipped so a host image stays bootable. |
+| `aws` | From a laptop: create an EC2 host, then deploy over SSH. Region `eu-north-1` or `$RODEO_AWS_REGION`. |
+| `gcp` | From a laptop: create a Compute Engine VM, then deploy over SSH. Region `europe-west4` or `$RODEO_GCP_REGION`. Live-tested for a single host. |
+| `remote` | Deploy over SSH to a KVM host you already own. rodeo does not create it and does not destroy it. |
 
 ```bash
 rodeo up --profile harvester --target aws
+rodeo up --profile harvester --target gcp
 ```
 
-rodeo picks the region (`eu-north-1`, or `$RODEO_AWS_REGION`), the default VPC subnet and the instance size, creates the EC2 host and builds the lab there. Every cloud host has a **6-hour dead-man switch**: it terminates itself unless you set a longer `provider.ttl_hours`. Tear it down sooner with `rodeo destroy --cloud --yes`. See [provider fields](docs/reference/plan.md#provider-when-deployment_target-aws).
+Every cloud host has a **6-hour dead-man switch**: it terminates itself unless you set `provider.ttl_hours` (168 hours maximum). `kvm-hosts` fleets can turn it off with `--no-deadman`. Tear a cloud host down sooner with `rodeo destroy --cloud --yes`.
+
+A workshop fleet (`rodeo fleet`) can provision many AWS or GCP hosts. The student claim portal and `fleet open-access` are AWS-only. Vultr and Hetzner are named in the fleet reference, and the provider registry rejects them. See [Get started](docs/get-started.md) and [Fleet](docs/fleet.md).
 
 ---
 
@@ -182,6 +194,8 @@ Precedence: profile defaults < plan < paramfile < `-P`.
 | [Rancher profile guide](docs/guide-rancher.md) | Deploy Rancher Prime with K3s and RKE2 downstream clusters |
 | [Harvester profile guide](docs/guide-harvester.md) | Deploy Harvester HCI (2-node, 3-node, HA, full lab) |
 | [SUSE Edge profile guide](docs/guide-suse-edge.md) | Deploy the SUSE Edge 3.7 stack (Rancher + Elemental + EIB + edge nodes) |
+| [SUSE Telco Cloud profile guide](docs/guide-suse-telco.md) | Management cluster, BMC, image, enrolled hosts. Students apply the manifests |
+| [Plain KVM hosts](docs/guide-kvm-hosts.md) | KVM and libvirt only, including a small fleet with no dead-man switch |
 | [Bare metal example](docs/examples/bare-metal.md) | Full walkthrough on a physical or cloud host |
 | [AWS from a Mac](docs/examples/aws-macos.md) | Step by step from a clean Mac to a lab on AWS |
 | [Instruqt example](docs/examples/instruqt.md) | Build an Instruqt track image with a pre-deployed cluster |

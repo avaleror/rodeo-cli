@@ -47,7 +47,7 @@ class UntrustedLab(ConfigError):
 _BASE_DEFAULTS: dict[str, Any] = {
     "type": "suse-virt",
     "name": "suse-virt-rodeo",
-    "deployment_target": "baremetal",  # instruqt | baremetal | aws | remote
+    "deployment_target": "baremetal",  # baremetal | instruqt | aws | gcp | remote
     "network": {
         "mode": "nat",
         "vip": "192.168.122.10",

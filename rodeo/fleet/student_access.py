@@ -21,7 +21,7 @@ from ..providers import get_provider
 from ..secretgen import STRONG_PASSWORD_MIN_LENGTH
 from ..service.status import cacheable_phases_complete
 from .fanout import fanout
-from .inventory import STUDENT_SSH_PORT, FleetHost, FleetInventory, require_provider
+from .inventory import PLAYER_PORT, STUDENT_SSH_PORT, FleetHost, FleetInventory, require_provider
 from .ssh_exec import run_remote
 from .status import fleet_status
 
@@ -103,6 +103,12 @@ def student_ports(inventory: FleetInventory) -> dict[str, int]:
             "lab.components has neither harvester nor rancher: no UI port to open"
         )
     return out
+
+
+def player_ports(inventory: FleetInventory) -> tuple[int, ...]:
+    """Extra port open-access exposes when the labs run `rodeo player` (opt-in)."""
+    portal = inventory.portal
+    return (PLAYER_PORT,) if portal and portal.enabled and portal.player else ()
 
 
 def _check_host(
@@ -193,7 +199,7 @@ def fleet_open_access(
         )
     if not inventory.hosts:
         raise ConfigError("no hosts in the inventory (run `rodeo fleet provision` first)")
-    ports = tuple(sorted(set(student_ports(inventory).values())))
+    ports = tuple(sorted(set(student_ports(inventory).values()) | set(player_ports(inventory))))
     # Claim portal with student SSH (F5.4): the per-lab `student` user on its
     # own key-only sshd (STUDENT_SSH_PORT, set up by publish). :22 is never
     # opened to students: the fleet-wide rodeo key works there.

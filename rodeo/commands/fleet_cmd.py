@@ -1035,3 +1035,36 @@ fleet_cmd.add_command(fleet_up_cmd)
 
 # `rodeo fleet destroy`: the same command under the name people reach for first.
 fleet_cmd.add_command(fleet_deprovision_cmd, name="destroy")
+
+
+@fleet_cmd.command("player-setup")
+@_output_opt
+@_concurrency_opt(8)
+@click.option("--track-ref", required=True, help="suse-virt-rodeo commit SHA to pin (40 hex).")
+@click.option("-f", "--file", "inventory_path", required=True,
+              type=click.Path(exists=True, dir_okay=False, path_type=Path),
+              help="Path to workshop.yaml inventory.")
+def fleet_player_setup_cmd(inventory_path: Path, track_ref: str, concurrency: int, output_fmt: str) -> None:
+    """Install the rodeo player on every lab host (after `fleet deploy`).
+
+    Opt-in and new: nothing else runs it. Then set ``portal.player: true``,
+    run ``fleet open-access`` (opens 443 too) and ``fleet portal publish``
+    so each student's lab page gets an "Open your lab" link.
+    """
+    from ..fleet.player import fleet_player_setup
+
+    try:
+        rows = fleet_player_setup(load_inventory(inventory_path), track_ref=track_ref,
+                                  concurrency=concurrency)
+    except ConfigError as exc:
+        console.print(f"[red]✗  {exc}[/red]")
+        raise SystemExit(1)
+    if output_fmt == "json":
+        click.echo(json.dumps([r.__dict__ for r in rows], indent=2))
+    else:
+        for r in rows:
+            mark = "[green]✓[/green]" if r.ok else "[red]✗[/red]"
+            detail = f"{r.player} ({r.chapters} chapters)" if r.ok else r.error
+            console.print(f"{mark}  {r.id:<16} {detail}")
+    if not all(r.ok for r in rows):
+        raise SystemExit(1)

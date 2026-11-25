@@ -6,7 +6,7 @@ import time
 from typing import Any, Callable
 
 from ..config import ConfigError
-from ..fleet.inventory import STUDENT_SSH_PORT, FleetHost, FleetInventory
+from ..fleet.inventory import PLAYER_PORT, STUDENT_SSH_PORT, FleetHost, FleetInventory
 from ..fleet.ssh_exec import forget_host_key, run_remote
 from ..ssh_key import (
     DEFAULT_EC2_KEY_NAME,
@@ -602,8 +602,10 @@ class AwsHostProvider:
         perms = (resp.get("SecurityGroups") or [{}])[0].get("IpPermissions") or []
         # The student SSH port has no operator rule (the operator uses :22): it
         # exists only while open-access has it open, and is removed otherwise.
-        for port in (*MANAGED_SG_PORTS, STUDENT_SSH_PORT):
-            desired = set() if port == STUDENT_SSH_PORT else {caller_cidr}
+        # The player port (rodeo player, portal.player) is the same: no rule
+        # unless open-access opened it, so labs without a player never get one.
+        for port in (*MANAGED_SG_PORTS, STUDENT_SSH_PORT, PLAYER_PORT):
+            desired = set() if port in (STUDENT_SSH_PORT, PLAYER_PORT) else {caller_cidr}
             if port in open_ports:
                 desired.add(STUDENT_ACCESS_CIDR)
             current = {
@@ -741,7 +743,7 @@ class AwsHostProvider:
             p for p in open_ports
             if p == 22
             or (p == STUDENT_SSH_PORT and not allow_ssh)
-            or p not in (*MANAGED_SG_PORTS, STUDENT_SSH_PORT)
+            or p not in (*MANAGED_SG_PORTS, STUDENT_SSH_PORT, PLAYER_PORT)
         )
         if bad:
             raise ConfigError(f"ports {bad} cannot be opened to students")

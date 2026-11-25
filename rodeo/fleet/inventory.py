@@ -20,6 +20,8 @@ _VALID_STUDENT_ACCESS = frozenset({"operator", "open"})
 # lets the `student` user in. Port 22 stays operator-only, so the fleet-wide
 # rodeo key (root, ssh_user) is never usable from the internet.
 STUDENT_SSH_PORT = 2222
+# rodeo player (Caddy) on lab hosts with portal.player: opened only by open-access.
+PLAYER_PORT = 443
 
 
 @dataclass(frozen=True)

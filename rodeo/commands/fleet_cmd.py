@@ -1053,9 +1053,15 @@ def fleet_player_setup_cmd(inventory_path: Path, track_ref: str, concurrency: in
     """
     from ..fleet.player import fleet_player_setup
 
+    from ..ssh_key import per_host_ssh_key
+
     try:
-        rows = fleet_player_setup(load_inventory(inventory_path), track_ref=track_ref,
-                                  concurrency=concurrency)
+        inventory = load_inventory(inventory_path)
+        if not per_host_ssh_key(inventory.provider):
+            console.print("[yellow]⚠  provider.per_host_ssh_key is off: every lab host shares one root "
+                          "SSH key, so a student who gets root on one lab can reach the others. Turn it "
+                          "on before provisioning a fleet that students use.[/yellow]")
+        rows = fleet_player_setup(inventory, track_ref=track_ref, concurrency=concurrency)
     except ConfigError as exc:
         console.print(f"[red]✗  {exc}[/red]")
         raise SystemExit(1)

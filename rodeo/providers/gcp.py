@@ -44,6 +44,7 @@ from ..ssh_key import (
     load_lab_ssh_key,
     new_lab_ssh_key,
     plant_rodeo_ssh_key,
+    planted_key,
 )
 from . import deadman
 from .base import (
@@ -641,7 +642,7 @@ class GcpHostProvider:
                 inv = FleetInventory(name=spec.workshop, lab_dir="/", hosts=[],
                                      defaults={"ssh_user": ssh_user, "identity_file": str(lab_key.private)})
                 plant_rodeo_ssh_key(inv, FleetHost(id=host.id, ssh=host.ssh, public_ip=host.public_ip),
-                                    key=lab_key)
+                                    key=planted_key(cfg, lab_key, host.id))
             out.append(ProvisionedHost(
                 id=host.id, ssh=host.ssh, public_ip=host.public_ip,
                 labels={**host.labels, "provision_action": action}, provider_id=host.provider_id,

@@ -6,7 +6,7 @@ import re
 import secrets
 import shutil
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from datetime import datetime
 from typing import Any
@@ -234,6 +234,38 @@ def new_lab_ssh_key(workshop: str, *, region: str = "") -> LabKey:
     fix_invoking_ownership()
     return LabKey(workshop, private, private.with_name(f"{_PRIVATE_NAME}.pub"), key_name, region,
                   deployment)
+
+
+_HOSTS_SUBDIR = "hosts"
+
+
+def per_host_ssh_key(config: dict[str, Any] | None) -> bool:
+    """``provider.per_host_ssh_key``: one root key per lab host (off by default)."""
+    return bool((config or {}).get("per_host_ssh_key", False))
+
+
+def host_ssh_key(lab_key: LabKey, host_id: str) -> LabKey:
+    """This host's own key pair, created once on this machine.
+
+    With ``provider.per_host_ssh_key`` each host's ``/root/.ssh/id_ed25519``
+    (the key the host uses to reach its nested VMs) is its own, so root on one
+    lab opens no other lab: the deployment key, which the laptop uses to log
+    in as the SSH user, never lands on a host. Kept under the lab's key
+    directory, so deleting the lab's keys deletes these too. Same EC2 key
+    pair name and deployment as the lab key: nothing new is registered in
+    the cloud.
+    """
+    d = lab_ssh_dir(lab_key.workshop) / _HOSTS_SUBDIR / _safe_lab(host_id)
+    private = d / _PRIVATE_NAME
+    if not private.is_file():
+        d.mkdir(parents=True, mode=0o700, exist_ok=True)
+        _keygen(private, comment=f"rodeo-host-{_safe_lab(lab_key.workshop)}-{_safe_lab(host_id)}")
+    return replace(lab_key, private=private, public=private.with_name(f"{_PRIVATE_NAME}.pub"))
+
+
+def planted_key(config: dict[str, Any] | None, lab_key: LabKey, host_id: str) -> LabKey:
+    """The key to plant in a host's /root/.ssh: its own, or the lab's (default)."""
+    return host_ssh_key(lab_key, host_id) if per_host_ssh_key(config) else lab_key
 
 
 def delete_lab_ssh_key(workshop: str) -> None:

@@ -19,6 +19,7 @@ from ..ssh_key import (
     load_lab_ssh_key,
     new_lab_ssh_key,
     plant_rodeo_ssh_key,
+    planted_key,
 )
 from ..ssh_key import _safe_lab as safe_lab
 from . import deadman
@@ -1024,7 +1025,7 @@ class AwsHostProvider:
                     hosts=[],
                 )
                 fh = FleetHost(id=host.id, ssh=host.ssh, public_ip=host.public_ip)
-                plant_rodeo_ssh_key(inv, fh, key=lab_key)
+                plant_rodeo_ssh_key(inv, fh, key=planted_key(cfg, lab_key, host.id))
             host = ProvisionedHost(
                 id=host.id,
                 ssh=host.ssh,

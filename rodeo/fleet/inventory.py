@@ -20,6 +20,8 @@ _VALID_STUDENT_ACCESS = frozenset({"operator", "open"})
 # lets the `student` user in. Port 22 stays operator-only, so the fleet-wide
 # rodeo key (root, ssh_user) is never usable from the internet.
 STUDENT_SSH_PORT = 2222
+# rodeo player (Caddy) on lab hosts with portal.player: opened only by open-access.
+PLAYER_PORT = 443
 
 
 @dataclass(frozen=True)
@@ -55,6 +57,7 @@ class PortalConfig:
     mode: str = "both"  # open (workshop code + email) | roster (invite links) | both
     roster: Path | None = None  # CSV name,email[,host_id]; resolved beside workshop.yaml
     student_ssh: bool = False  # per-lab `student` user + key, :22 opened by open-access
+    player: bool = False  # labs run `rodeo player`: publish adds each lab's player link
     title: str = ""
     code_letters: int = 6  # random letters in RODEO-XXXXXX-YYYYMMDD (4-8)
     guide_url: str = ""  # workshop guide link on every student page (https URL or /path)
@@ -78,6 +81,81 @@ class PortalConfig:
     def target(self) -> str | None:
         """SSH target for the portal machine (BYO ``host`` wins)."""
         return self.host or self.ssh
+
+
+@dataclass(frozen=True)
+class PlayerConfig:
+    """``player:`` block: the rodeo player on an operator-owned DNS zone.
+
+    Without it the player uses sslip.io names and Caddy's own CA (test mode).
+    With it, each lab gets ``<id>``, ``hv-<id>`` and ``rancher-<id>`` under
+    ``domain`` (Route 53 records written by ``rodeo fleet dns``) and one
+    ``*.<domain>`` certificate per event (``rodeo fleet cert``)."""
+
+    domain: str
+    acme_email: str = ""
+    staging: bool = False  # Let's Encrypt staging CA (untrusted certs, no rate limit)
+
+
+PLAYER_ID_LABEL = "player_id"
+_PLAYER_ID_RE = re.compile(r"^[a-z][a-z0-9]{7}$")
+
+
+def _parse_player(raw: Any) -> PlayerConfig | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ConfigError("player: must be a mapping")
+    domain = str(raw.get("domain") or "").strip().strip(".").lower()
+    if not domain or not _HOSTNAME_RE.match(domain):
+        raise ConfigError(f"player.domain must be a DNS zone you own, got: {raw.get('domain')!r}")
+    if domain.endswith(("sslip.io", "nip.io")):
+        raise ConfigError("player.domain must be a zone you own (sslip.io is on the Public Suffix List)")
+    email = str(raw.get("acme_email") or "").strip()
+    if email and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        raise ConfigError(f"player.acme_email is not an email address: {email[:80]!r}")
+    return PlayerConfig(domain=domain, acme_email=email, staging=bool(raw.get("staging", False)))
+
+
+def player_id(host: FleetHost) -> str | None:
+    """The random lab id from ``labels.player_id`` (written by ``fleet dns``)."""
+    pid = host.labels.get(PLAYER_ID_LABEL)
+    return pid if pid and _PLAYER_ID_RE.match(pid) else None
+
+
+def ensure_player_ids(inventory_path: Path) -> dict[str, str]:
+    """Give every host in workshop.yaml a random ``labels.player_id``; keep existing ones.
+
+    Random, not a sequence: ``lab-01`` is guessable. The lab cookie is the
+    real gate; the id is the second one. Returns ``{host id: player id}``."""
+    import secrets
+    import string
+
+    p = Path(inventory_path).expanduser().resolve()
+    raw = yaml.safe_load(p.read_text()) or {}
+    hosts = raw.get("hosts") or []
+    used = {str((h.get("labels") or {}).get(PLAYER_ID_LABEL)) for h in hosts if isinstance(h, dict)}
+    out: dict[str, str] = {}
+    changed = False
+    alphabet = string.ascii_lowercase + string.digits
+    for entry in hosts:
+        if not isinstance(entry, dict) or not entry.get("id"):
+            continue
+        labels = dict(entry.get("labels") or {})
+        pid = str(labels.get(PLAYER_ID_LABEL) or "")
+        if not _PLAYER_ID_RE.match(pid):
+            while True:
+                pid = secrets.choice(string.ascii_lowercase) + "".join(secrets.choice(alphabet) for _ in range(7))
+                if pid not in used:
+                    break
+            used.add(pid)
+            labels[PLAYER_ID_LABEL] = pid
+            entry["labels"] = labels
+            changed = True
+        out[str(entry["id"])] = pid
+    if changed:
+        p.write_text(yaml.dump(raw, default_flow_style=False, sort_keys=False))
+    return out
 
 
 def _parse_portal(raw: Any, base: Path, provider: dict[str, Any] | None) -> PortalConfig | None:
@@ -124,6 +202,7 @@ def _parse_portal(raw: Any, base: Path, provider: dict[str, Any] | None) -> Port
         mode=mode,
         roster=roster,
         student_ssh=bool(raw.get("student_ssh", False)),
+        player=bool(raw.get("player", False)),
         title=str(raw.get("title") or ""),
         code_letters=code_letters,
         guide_url=guide_url,
@@ -180,6 +259,8 @@ class FleetInventory:
     ui_ports: dict[str, int] = field(default_factory=dict)
     # F5 claim portal (optional)
     portal: PortalConfig | None = None
+    # rodeo player on an owned DNS zone (optional; none = sslip.io test mode)
+    player: PlayerConfig | None = None
 
     @property
     def ssh_user(self) -> str:
@@ -380,6 +461,7 @@ def load_inventory(path: str | Path) -> FleetInventory:
         operator_secrets=list(secrets_raw),
         ui_ports={str(k): int(v) for k, v in ui_raw.items()},
         portal=_parse_portal(raw.get("portal"), p.parent, provider),
+        player=_parse_player(raw.get("player")),
     )
 
 

@@ -1,0 +1,405 @@
+"""The player web app for one lab: assignment on the left, tabs on the right.
+
+Standard library only, like the claim portal. It binds loopback; Caddy is the
+only public listener. Moves (enter, check, next, skip) can run for minutes, so
+they run on one background worker and the page polls ``/api/state``.
+
+What the student sees from scripts: the check output only, as on Instruqt.
+Setup, solve and cleanup results are reported as exit codes, never output,
+because those scripts print passwords.
+
+Config is one JSON file (see :func:`load_config`).
+"""
+from __future__ import annotations
+
+import html
+import json
+import mimetypes
+import re
+import threading
+import time
+import urllib.parse
+from dataclasses import dataclass, field
+from http import HTTPStatus
+from http.cookies import CookieError, SimpleCookie
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from typing import Any
+
+from .auth import COOKIE, SESSION_SECONDS, Auth
+from .auth import load as load_auth
+from .runner import MoveResult, Runner, RunnerError, ScriptResult
+
+STATIC_DIR = Path(__file__).resolve().parents[1] / "data" / "player" / "static"
+LOOPBACK = {"127.0.0.1", "::1", "localhost"}
+CSRF_HEADER = "X-Rodeo-Player"
+_TAG = re.compile(r"<[^>]+>")
+LOCKED_PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Lab locked</title>
+<style>body{font:16px/1.5 system-ui,sans-serif;max-width:34rem;margin:4rem auto;padding:0 1rem}</style></head>
+<body><h1>This lab needs its link</h1><p>Open the lab link you were given (from the workshop portal or your
+instructor). It signs this browser in for 24 hours.</p></body></html>"""
+_STATIC_TYPES = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8"}
+
+
+@dataclass
+class PlayerConfig:
+    track_dir: str
+    state_dir: str
+    title: str = "SUSE Virtualization Rodeo"
+    listen: str = "127.0.0.1"
+    port: int = 8680
+    host: str = "kvm-host"
+    home: str = "/root"
+    kubeconfig: str = "/root/.rodeo/harvester-kubeconfig"
+    sandbox_id: str = ""
+    # Track tab port -> URL the browser opens for it (the proxy name, never
+    # the raw lab address). Keys are strings because JSON keys are.
+    tab_urls: dict[str, str] = field(default_factory=dict)
+    terminal_url: str = "/terminal/"
+    # Access control (rodeo.player.auth). Empty auth_file = no login, for
+    # local runs and tests; ``rodeo player setup`` always sets it.
+    auth_file: str = ""
+    # Public names: {"player": base, "hv": "hv.<base>", "rancher": "rancher.<base>"}.
+    hosts: dict[str, str] = field(default_factory=dict)
+
+
+def load_config(path: Path | str) -> PlayerConfig:
+    data = json.loads(Path(path).read_text())
+    known = set(PlayerConfig.__dataclass_fields__)
+    unknown = set(data) - known
+    if unknown:
+        raise ValueError(f"unknown player config keys: {sorted(unknown)}")
+    return PlayerConfig(**data)
+
+
+def plain(text: str) -> str:
+    """Chapter titles carry rmstory spans; the sidebar wants text."""
+    return html.unescape(_TAG.sub("", text)).strip()
+
+
+class Player:
+    """The runner plus one background worker and its last result."""
+
+    def __init__(self, cfg: PlayerConfig, runner: Runner | None = None) -> None:
+        self.cfg = cfg
+        self.auth: Auth | None = load_auth(cfg.auth_file) if cfg.auth_file else None
+        if self.auth and not cfg.hosts.get("player"):
+            raise ValueError("auth_file needs hosts.player in the player config")
+        self.runner = runner or Runner(
+            cfg.track_dir, cfg.state_dir, host=cfg.host, sandbox_id=cfg.sandbox_id,
+            home=cfg.home, kubeconfig=cfg.kubeconfig,
+        )
+        self._lock = threading.Lock()
+        self._busy: str | None = None
+        self._last: dict[str, Any] | None = None
+        self._started: float | None = None
+        # The runner's position, copied under the lock when no move is
+        # running. The worker changes the runner mid-skip; pages read this
+        # copy, so they never see a half-updated chapter index.
+        self._pos = self._position()
+
+    def _position(self) -> dict[str, Any]:
+        r = self.runner
+        return {"current": r.current, "entered": r.entered, "completed": r.completed}
+
+    # -- moves --------------------------------------------------------------
+
+    def start(self, action: str, target: int | None = None) -> bool:
+        """Start a move on the worker; False when one is already running."""
+        with self._lock:
+            if self._busy:
+                return False
+            self._busy = action
+            self._started = time.time()
+        threading.Thread(target=self._run, args=(action, target), daemon=True).start()
+        return True
+
+    def _run(self, action: str, target: int | None) -> None:
+        try:
+            if action == "enter":
+                res = self.runner.enter()
+            elif action == "check":
+                res = self.runner.check()
+            elif action == "next":
+                res = self.runner.next()
+            elif action == "skip":
+                res = self.runner.skip(int(target))  # type: ignore[arg-type]
+            else:
+                raise RunnerError(f"unknown action {action}")
+            last = self._summary(action, res)
+        except (RunnerError, ValueError, IndexError) as exc:
+            last = {"action": action, "ok": False, "message": str(exc), "scripts": []}
+        except Exception as exc:  # keep the worker alive; the page shows it
+            last = {"action": action, "ok": False, "message": f"internal error: {exc.__class__.__name__}",
+                    "scripts": []}
+        with self._lock:
+            self._last = {**last, "finished": time.time()}
+            self._pos = self._position()
+            self._busy = None
+            self._started = None
+
+    @staticmethod
+    def _script(r: ScriptResult) -> dict[str, Any]:
+        out = {"kind": r.kind, "exit": r.exit_code, "timed_out": r.timed_out,
+               "seconds": round(r.duration, 1)}
+        if r.kind == "check":
+            out["output"] = r.output
+        return out
+
+    def _summary(self, action: str, res: MoveResult) -> dict[str, Any]:
+        return {"action": action, "ok": res.ok, "message": res.message,
+                "scripts": [self._script(r) for r in res.results]}
+
+    # -- views --------------------------------------------------------------
+
+    def readable(self) -> int:
+        """Highest chapter index the student may read (no reading ahead)."""
+        with self._lock:
+            pos = self._pos
+        return max([pos["current"], *pos["completed"]])
+
+    def tabs(self, index: int) -> list[dict[str, Any]]:
+        out = []
+        for i, t in enumerate(self.runner.chapter(index).tabs):
+            if t.type == "terminal":
+                url = self.cfg.terminal_url
+            elif t.type == "service" and t.port is not None:
+                url = self.cfg.tab_urls.get(str(t.port), "")
+            else:
+                url = ""
+            out.append({"index": i, "title": t.title, "type": t.type, "url": url})
+        return out
+
+    def state(self) -> dict[str, Any]:
+        r = self.runner
+        with self._lock:
+            busy, last, pos, started = self._busy, self._last, dict(self._pos), self._started
+        return {
+            "title": self.cfg.title,
+            "chapters": [{"index": c.index, "title": plain(c.title), "check": c.has("check")}
+                         for c in r.chapters],
+            "current": pos["current"],
+            "entered": pos["entered"],
+            "completed": pos["completed"],
+            "readable": max([pos["current"], *pos["completed"]]),
+            "busy": busy,
+            "busy_seconds": round(time.time() - started) if busy and started else 0,
+            "last": last,
+            "tabs": self.tabs(pos["current"]),
+        }
+
+    def chapter_view(self, index: int) -> dict[str, Any]:
+        if not 0 <= index <= self.readable():
+            raise IndexError(index)
+        ch = self.runner.chapter(index)
+        return {"index": index, "title": plain(ch.title), "body": self.runner.render(index),
+                "tabs": self.tabs(index)}
+
+
+class Handler(BaseHTTPRequestHandler):
+    player: Player  # set on the subclass made by make_server
+    server_version = "rodeo-player"
+    sys_version = ""
+
+    def log_message(self, fmt: str, *args: Any) -> None:  # requests only, no bodies
+        pass
+
+    # -- helpers ------------------------------------------------------------
+
+    def _send(self, status: int, body: bytes, ctype: str, *, cache: bool = False) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "public, max-age=3600" if cache else "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "same-origin")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _json(self, status: int, data: Any) -> None:
+        self._send(status, json.dumps(data).encode(), "application/json")
+
+    def _error(self, status: int, message: str) -> None:
+        self._json(status, {"error": message})
+
+    # -- access -------------------------------------------------------------
+
+    def _host(self) -> str:
+        """The public name asked for (Caddy passes it through)."""
+        h = self.headers.get("X-Forwarded-Host") or self.headers.get("Host") or ""
+        return h.split(",")[0].strip().split(":")[0].lower()
+
+    def _cookie(self) -> str:
+        jar = SimpleCookie()
+        try:
+            jar.load(self.headers.get("Cookie") or "")
+        except CookieError:
+            return ""
+        return jar[COOKIE].value if COOKIE in jar else ""
+
+    def _signed_in(self, host: str) -> bool:
+        auth = self.player.auth
+        return auth is None or auth.cookie_ok(host, self._cookie())
+
+    def _redirect(self, location: str, cookie_for: str | None = None) -> None:
+        self.send_response(302)
+        self.send_header("Location", location)
+        if cookie_for and self.player.auth:
+            self.send_header("Set-Cookie", f"{COOKIE}={self.player.auth.cookie(cookie_for)}; "
+                             f"Max-Age={SESSION_SECONDS}; Path=/; Secure; HttpOnly; SameSite=Lax")
+        self.send_header("Cache-Control", "no-store")
+        # The hop puts a 60 s ticket in the query string: never leak it.
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def _locked(self) -> None:
+        self._send(401, LOCKED_PAGE.encode(), "text/html; charset=utf-8")
+
+    @staticmethod
+    def _safe_return(r: str) -> str:
+        """A same-host path to go back to after a hop, never another site."""
+        return r if r.startswith("/") and not r.startswith("//") and "\\" not in r else "/"
+
+    def _ui_label(self, host: str) -> str | None:
+        hosts = self.player.cfg.hosts
+        return next((k for k in ("hv", "rancher") if hosts.get(k) == host), None)
+
+    def _access(self, path: str, query: dict[str, list[str]]) -> bool:
+        """Handle the login routes. True when the request was answered here."""
+        auth, hosts = self.player.auth, self.player.cfg.hosts
+        if auth is None:
+            return False
+        host = self._host()
+        player = hosts["player"]
+        if path == "/enter" and host == player:
+            if auth.token_ok((query.get("t") or [""])[0]):
+                self._redirect("/", cookie_for=player)
+            else:
+                self._locked()
+            return True
+        if path == "/_auth":  # Caddy's forward_auth for every request, all three names
+            if auth.cookie_ok(host, self._cookie()):
+                self._send(200, b"ok", "text/plain")
+            elif self._ui_label(host):
+                ret = urllib.parse.quote(self._safe_return(self.headers.get("X-Forwarded-Uri") or "/"), safe="")
+                self._redirect(f"https://{player}/auth/hop?to={self._ui_label(host)}&r={ret}")
+            else:
+                self._locked()
+            return True
+        if path == "/auth/hop" and host == player:
+            to = (query.get("to") or [""])[0]
+            target = hosts.get(to) if to in ("hv", "rancher") else None
+            if not target or not auth.cookie_ok(player, self._cookie()):
+                self._locked()
+                return True
+            ret = urllib.parse.quote(self._safe_return((query.get("r") or ["/"])[0]), safe="")
+            self._redirect(f"https://{target}/.rodeo/auth?ticket={auth.ticket(target)}&r={ret}")
+            return True
+        if path == "/.rodeo/auth" and self._ui_label(host):
+            if auth.ticket_ok(host, (query.get("ticket") or [""])[0]):
+                self._redirect(self._safe_return((query.get("r") or ["/"])[0]), cookie_for=host)
+            else:
+                self._locked()
+            return True
+        # Defence in depth: the player's own routes need the cookie even if a
+        # request reached it without going through Caddy's forward_auth.
+        if path != "/healthz" and not auth.cookie_ok(player, self._cookie()):
+            self._locked()
+            return True
+        return False
+
+    # -- GET ----------------------------------------------------------------
+
+    def do_GET(self) -> None:  # noqa: N802
+        path, _, qs = self.path.partition("?")
+        if self._access(path, urllib.parse.parse_qs(qs)):
+            return
+        if path == "/":
+            self._send(200, page(self.player.cfg.title).encode(), "text/html; charset=utf-8")
+        elif path == "/api/state":
+            self._json(200, self.player.state())
+        elif path.startswith("/api/chapter/"):
+            try:
+                self._json(200, self.player.chapter_view(int(path.rsplit("/", 1)[1])))
+            except (ValueError, IndexError):
+                self._error(404, "chapter not available")
+        elif path.startswith("/static/"):
+            name = path[len("/static/"):]
+            f = STATIC_DIR / name
+            if "/" in name or name.startswith(".") or not f.is_file():
+                self._error(404, "not found")
+                return
+            self._send(200, f.read_bytes(), _STATIC_TYPES.get(f.suffix, "application/octet-stream"),
+                       cache=True)
+        elif path.startswith("/assets/"):
+            self._asset(path[len("/assets/"):])
+        elif path == "/healthz":
+            self._send(200, b"ok\n", "text/plain")
+        else:
+            self._error(404, "not found")
+
+    def _asset(self, rel: str) -> None:
+        """Track images: the assignments say ``../assets/x``, which is ``/assets/x`` here.
+
+        Only files under the track's ``assets/`` directory, only image types.
+        """
+        root = (Path(self.player.cfg.track_dir) / "assets").resolve()
+        target = (root / urllib.parse.unquote(rel)).resolve()
+        ctype = mimetypes.guess_type(target.name)[0] or ""
+        if root not in target.parents or not target.is_file() or not ctype.startswith("image/"):
+            self._error(404, "not found")
+            return
+        self._send(200, target.read_bytes(), ctype, cache=True)
+
+    # -- POST ---------------------------------------------------------------
+
+    def do_POST(self) -> None:  # noqa: N802
+        # A custom header forces a CORS preflight, which this server never
+        # answers, so another site cannot make a student's browser press Check.
+        if self.headers.get(CSRF_HEADER) != "1":
+            self._error(403, "missing player header")
+            return
+        if self.player.auth and not self._signed_in(self.player.cfg.hosts["player"]):
+            self._error(401, "open the lab link first")
+            return
+        action = self.path.split("?", 1)[0].removeprefix("/api/")
+        # No "back": past chapters are read with GET /api/chapter/<n>, which
+        # never moves the runner, so a crafted POST cannot rewind a solved lab.
+        if action not in {"enter", "check", "next", "skip"}:
+            self._error(404, "not found")
+            return
+        target = None
+        if action == "skip":
+            try:
+                length = min(int(self.headers.get("Content-Length") or 0), 1024)
+                target = int(json.loads(self.rfile.read(length) or b"{}")["target"])
+            except (ValueError, KeyError, TypeError):
+                self._error(400, "target chapter missing")
+                return
+        if not self.player.start(action, target):
+            self._error(HTTPStatus.CONFLICT, "a step is already running")
+            return
+        self._json(202, {"started": action})
+
+
+def make_server(player: Player, *, allow_public: bool = False) -> ThreadingHTTPServer:
+    """Bind the player. Refuses anything but loopback unless a test says so."""
+    if player.cfg.listen not in LOOPBACK and not allow_public:
+        raise ValueError(f"the player binds loopback only, not {player.cfg.listen!r}; Caddy is the public listener")
+    handler = type("BoundHandler", (Handler,), {"player": player})
+    server = ThreadingHTTPServer((player.cfg.listen, player.cfg.port), handler)
+    server.daemon_threads = True
+    return server
+
+
+def serve(cfg: PlayerConfig) -> None:
+    server = make_server(Player(cfg))
+    try:
+        server.serve_forever()
+    finally:
+        server.server_close()
+
+
+def page(title: str) -> str:
+    return (STATIC_DIR / "player.html").read_text().replace("{{TITLE}}", html.escape(title))

@@ -531,7 +531,32 @@ def _lab_record(inventory: FleetInventory, host: FleetHost, *, timeout: float) -
         data["ssh"] = {"user": user, "host": host_public_ip(host), "port": STUDENT_SSH_PORT,
                        "private_key": private}
         ssh = True
+    if require_portal(inventory).player:  # opt-in: fleets without it publish as before
+        player = player_link(inventory, host, timeout=timeout)
+        if not player:
+            return ({"id": host.id, "ready": False, "data": {}},
+                    PublishRow(host.id, False, "no player on this lab (run `rodeo fleet player-setup`)"))
+        # The player link is the student's way in. The UI URLs and admin
+        # passwords are not published: the UIs sit behind the player's login,
+        # and the chapters show the password the student needs.
+        data.pop("components", None)
+        data["player_url"] = player
     return {"id": host.id, "ready": True, "data": data}, PublishRow(host.id, True, None, ssh)
+
+
+# Only labs where `rodeo player setup` ran have a player; on every other lab
+# the probe finds no config, prints nothing, and the record stays as before.
+PLAYER_LINK_SCRIPT = ("test -f /etc/rodeo-player/config.json || exit 0; "
+                      "rodeo player link 2>/dev/null || true")
+
+
+def player_link(inventory: FleetInventory, host: FleetHost, *, timeout: float) -> str:
+    """The lab's player access link, or "" when the lab has no player."""
+    from ..portal.web import PLAYER_URL_RE
+
+    res = run_remote(inventory, host, ["bash", "-c", PLAYER_LINK_SCRIPT], timeout=timeout)
+    link = res.stdout.strip().splitlines()[-1] if res.ok and res.stdout.strip() else ""
+    return link if PLAYER_URL_RE.match(link) else ""
 
 
 def portal_publish(inventory: FleetInventory, *, concurrency: int = 8,

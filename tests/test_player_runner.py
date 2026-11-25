@@ -358,3 +358,59 @@ def test_failing_setup_of_a_skipped_chapter_stops_the_skip(tmp_path):
     res = r.skip(3)
     assert _calls(tmp_path) == ["1 solve", "2 setup"]
     assert not res.ok and r.current == 1 and not r.entered
+
+
+def test_track_test_judges_the_first_check_against_expectations(tmp_path):
+    from rodeo.player.runner import load_expectations, track_test
+
+    r = _runner(tmp_path)
+    names = [c.dirname for c in r.chapters]
+    exp = tmp_path / "expect.yaml"
+    # In this fixture every check passes, before and after the solve.
+    exp.write_text(f"first_check:\n  {names[0]}: fail\n  {names[1]}: pass\n")
+    report = track_test(r, stop_on_failure=False, expect=load_expectations(exp))
+    assert not report[0].first_check_as_expected and not report[0].ok
+    assert report[1].first_check_as_expected
+
+
+def test_bundled_expectations_cover_the_real_track():
+    from pathlib import Path
+
+    import rodeo
+    from rodeo.player.runner import load_expectations
+
+    exp = load_expectations(Path(rodeo.__file__).parent / "data" / "player" / "suse-virt-rodeo.expect.yaml")
+    assert exp["01-the-arrival-welcome"] == "pass" and exp["03-the-flash-crash-first-vm"] == "fail"
+    assert set(exp.values()) <= {"pass", "fail", "any"}
+
+
+def test_bad_expectation_is_refused(tmp_path):
+    from rodeo.player.runner import load_expectations
+
+    exp = tmp_path / "e.yaml"
+    exp.write_text("first_check:\n  01-x: maybe\n")
+    with pytest.raises(ValueError):
+        load_expectations(exp)
+
+
+def test_rmstory_spans_are_stripped_like_the_track_ci():
+    from rodeo.player.runner import strip_rmstory_spans
+
+    src = ('<span id="a.67" lang="en" hist="vertrex-bank">\nChapter 4\n=====\n</span>\n'
+           '<span class="keep">x</span> <span lang="en"><span no>**Rack 4**</span></span>')
+    out = strip_rmstory_spans(src)
+    assert out == '\nChapter 4\n=====\n\n<span class="keep">x</span> **Rack 4**'
+
+
+def test_real_track_bodies_render_without_rmstory_spans():
+    import os
+    from pathlib import Path
+
+    from rodeo.player.runner import load_track, render_body, strip_rmstory_spans
+
+    track = Path(os.environ.get("RODEO_PLAYER_TRACK", Path.home() / "GitHub" / "suse-virt-rodeo"))
+    if not (track / "04-the-rising-tide-live-migration").is_dir():
+        pytest.skip("no suse-virt-rodeo checkout")
+    for ch in load_track(track):
+        out = render_body(strip_rmstory_spans(ch.body), {})
+        assert 'lang="en"' not in out and "hist=" not in out

@@ -101,7 +101,10 @@ def link_cmd(config_path: str, rotate: bool) -> None:
 @click.option("--config", "config_path", type=click.Path(exists=True, dir_okay=False),
               default="/etc/rodeo-player/config.json", show_default=True)
 @click.option("--keep-going", is_flag=True, help="Do not stop at the first failing chapter.")
-def test_cmd(config_path: str, keep_going: bool) -> None:
+@click.option("--expect", "expect_path", type=click.Path(exists=True, dir_okay=False), default=None,
+              help="Expected check results before each solve (default: the bundled "
+                   "suse-virt-rodeo file). 'none' to judge nothing.")
+def test_cmd(config_path: str, keep_going: bool, expect_path: str | None) -> None:
     """Instruqt-style track test against the live lab.
 
     Per chapter: setup, check, solve, check, cleanup. It solves every
@@ -119,13 +122,20 @@ def test_cmd(config_path: str, keep_going: bool) -> None:
 
     for key, value in agent.read_vars(Path(cfg.state_dir) / "vars.json").items():
         runner.set_variable(key, value)
-    report = track_test(runner, stop_on_failure=not keep_going)
+    from ..player.runner import load_expectations
+
+    default = Path(__file__).resolve().parents[1] / "data" / "player" / "suse-virt-rodeo.expect.yaml"
+    expect = load_expectations(expect_path or default)
+    report = track_test(runner, stop_on_failure=not keep_going, expect=expect)
     failed = False
     for t in report:
         def fmt(r):  # noqa: ANN001, ANN202
             return "-" if r is None else ("ok" if r.ok else ("timeout" if r.timed_out else f"exit {r.exit_code}"))
         click.echo(f"{t.chapter:<45} setup {fmt(t.setup):<8} check {fmt(t.first_check):<8} "
                    f"solve {fmt(t.solve):<8} check {fmt(t.final_check):<8} cleanup {fmt(t.cleanup)}")
+        if not t.first_check_as_expected:
+            click.echo(f"    check before the solve should {t.expect_first}, "
+                       f"it {'passed' if t.first_check.ok else 'failed'}")
         if not t.ok:
             failed = True
             final = t.final_check or t.solve or t.setup

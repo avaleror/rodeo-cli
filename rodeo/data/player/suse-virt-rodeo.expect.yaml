@@ -1,0 +1,15 @@
+# Expected result of each chapter's check BEFORE its solve script runs, for
+# github.com/SUSE-Technical-Marketing/suse-virt-rodeo (locked from the first
+# live run of `rodeo player test` on a virt-rodeo lab, 2026-11-25).
+#   pass  the chapter only verifies the lab is healthy (nothing to do yet)
+#   fail  the check really tests the student's work
+#   any   not judged (the track's check is always-pass by design: chapters
+#         4-7 say so in their own check-kvm-host comments)
+first_check:
+  01-the-arrival-welcome: pass
+  02-the-subterranean-divide-cluster-prep: fail
+  03-the-flash-crash-first-vm: fail
+  04-the-rising-tide-live-migration: any
+  05-the-invisible-intruder-networking: any
+  06-the-unthinkable-error-snapshots: any
+  07-the-stampede-automation: any

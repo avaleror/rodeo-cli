@@ -192,6 +192,45 @@ def load_track(track_dir: Path | str, host: str = DEFAULT_HOST) -> list[Chapter]
 # Rendering
 # --------------------------------------------------------------------------
 
+_SPAN_OPEN = re.compile(r"<span\b([^>]*)>")
+_SPAN_CLOSE = re.compile(r"</span>")
+_RMSTORY_ATTR = re.compile(r'\blang\s*=|\bhist\s*=|\bno\b')
+
+
+def strip_rmstory_spans(text: str) -> str:
+    """Remove rmstory tagging spans (lang=, hist=, no) and keep their content.
+
+    The track's CI does exactly this before every Instruqt push
+    (suse-virt-rodeo/.github/scripts/strip-rmstory-spans.py, ported here):
+    Markdown wrapped in one of these spans is otherwise an HTML block that no
+    Markdown renderer touches, so headings and **bold** showed raw. Stack
+    based, so nested spans work and plain spans (no rmstory attribute) stay.
+    """
+    out: list[str] = []
+    stack: list[bool] = []
+    pos = 0
+    while pos < len(text):
+        m = _SPAN_OPEN.match(text, pos)
+        if m:
+            strip = bool(_RMSTORY_ATTR.search(m.group(1)))
+            stack.append(strip)
+            if not strip:
+                out.append(m.group(0))
+            pos = m.end()
+            continue
+        m = _SPAN_CLOSE.match(text, pos)
+        if m:
+            if not (stack.pop() if stack else False):
+                out.append(m.group(0))
+            pos = m.end()
+            continue
+        nxt = text.find("<", pos + 1)
+        nxt = len(text) if nxt < 0 else nxt
+        out.append(text[pos:nxt])
+        pos = nxt
+    return "".join(out)
+
+
 def render_body(body: str, values: dict[str, str]) -> str:
     """Substitute Instruqt variables and tab buttons; leave the rest as is.
 
@@ -304,7 +343,7 @@ class Runner:
         _agent.set_var(self.vars_file, key, value)
 
     def render(self, index: int | None = None) -> str:
-        return render_body(self.chapter(index).body, self.variables())
+        return render_body(strip_rmstory_spans(self.chapter(index).body), self.variables())
 
     # -- subprocesses -------------------------------------------------------
 
@@ -482,23 +521,46 @@ class ChapterTest:
     solve: ScriptResult | None = None
     final_check: ScriptResult | None = None
     cleanup: ScriptResult | None = None
+    # What the check must do before the solve: "pass", "fail", or "any".
+    expect_first: str = "any"
+
+    @property
+    def first_check_as_expected(self) -> bool:
+        if self.first_check is None or self.expect_first == "any":
+            return True
+        return self.first_check.ok == (self.expect_first == "pass")
 
     @property
     def ok(self) -> bool:
         steps = (self.setup, self.solve, self.final_check)
-        return all(s is None or s.ok for s in steps)
+        return all(s is None or s.ok for s in steps) and self.first_check_as_expected
 
 
-def track_test(runner: Runner, *, stop_on_failure: bool = True) -> list[ChapterTest]:
+def load_expectations(path: Path | str) -> dict[str, str]:
+    """``{chapter dirname: pass|fail|any}`` for the check before the solve."""
+    data = yaml.safe_load(Path(path).read_text()) or {}
+    first = data.get("first_check") or {}
+    out = {}
+    for chapter, want in first.items():
+        if want not in ("pass", "fail", "any"):
+            raise ValueError(f"{chapter}: first_check must be pass, fail or any, not {want!r}")
+        out[str(chapter)] = str(want)
+    return out
+
+
+def track_test(runner: Runner, *, stop_on_failure: bool = True,
+               expect: dict[str, str] | None = None) -> list[ChapterTest]:
     """Instruqt's track test: per chapter, setup, check, solve, check, cleanup.
 
-    The first check's result is recorded, not judged: chapter 1's check passes
-    on a healthy cluster before any work, most others must fail. Which is
-    which gets locked in after the first live run (plan WP4).
+    ``expect`` locks the check before the solve per chapter: a chapter whose
+    check passes before the work is done (when it should fail) does not test
+    the student, and one that fails on a healthy lab (when it should pass)
+    blocks them. Chapters not listed are not judged.
     """
+    expect = expect or {}
     report: list[ChapterTest] = []
     for ch in runner.chapters:
-        t = ChapterTest(ch.dirname)
+        t = ChapterTest(ch.dirname, expect_first=expect.get(ch.dirname, "any"))
         t.setup = runner.run_script(ch.index, "setup")
         if ch.has("check") and ch.has("solve"):
             t.first_check = runner.run_script(ch.index, "check")

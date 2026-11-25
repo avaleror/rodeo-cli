@@ -44,6 +44,8 @@ def test_caddyfile_proxies_only_the_player_ttyd_and_the_two_uis():
     assert "hv.13-61-184-227.sslip.io {" in text and "rancher.13-61-184-227.sslip.io {" in text
     assert text.count("tls internal") == 3
     assert "admin off" in text and "skip_install_trust" in text
+    # The lab already listens on :80 (nginx); Caddy must not try to.
+    assert "auto_https disable_redirects" in text
     assert "{http." not in text and "{query" not in text  # no request-chosen upstream
 
 
@@ -82,6 +84,9 @@ def test_install_script_verifies_pins_and_protects_the_track():
     assert "student can read the rodeo key" in text
     assert "install -m 640 -o root -g rodeo-student /root/.rodeo/harvester-kubeconfig" in text
     assert text.rstrip().endswith("echo PLAYER_UP")
+    # A firewalld reload breaks the lab's DNAT access to :8443/:30002.
+    assert not any("firewall-cmd" in ln and "--reload" in ln for ln in text.splitlines() if not ln.lstrip().startswith("#"))
+    assert "firewall-cmd -q --add-service=https && firewall-cmd -q --permanent --add-service=https" in text
     assert subprocess.run(["bash", "-n"], input=text, text=True).returncode == 0
 
 

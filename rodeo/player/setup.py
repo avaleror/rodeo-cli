@@ -119,9 +119,12 @@ def caddyfile(opts: SetupOptions) -> str:
 }}
 """
 
+    # disable_redirects: Caddy must not bind :80. The lab already serves
+    # something there (nginx), and tls internal needs no HTTP challenge.
     return f"""{{
 \tadmin off
 \tskip_install_trust
+\tauto_https disable_redirects
 }}
 
 {n['player']} {{
@@ -271,8 +274,11 @@ chmod 644 {CONFIG} {CADDYFILE}
 /usr/local/bin/caddy validate --config {CADDYFILE} --adapter caddyfile >/dev/null 2>&1 \\
   || {{ /usr/local/bin/caddy validate --config {CADDYFILE} --adapter caddyfile; exit 1; }}
 
+# Runtime + permanent, never --reload: a reload makes libvirt put its reject
+# back in front of rodeo's DNAT accept and silently breaks the lab's own
+# :8443/:30002 access (seen live 2026-11-25; rodeo's finalise re-asserts it).
 if systemctl is-active -q firewalld; then
-  firewall-cmd -q --permanent --add-service=http --add-service=https && firewall-cmd -q --reload
+  firewall-cmd -q --add-service=https && firewall-cmd -q --permanent --add-service=https
 fi
 systemctl daemon-reload
 systemctl enable -q rodeo-player rodeo-player-ttyd rodeo-player-caddy

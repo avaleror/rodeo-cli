@@ -123,13 +123,6 @@ main { display: grid; grid-template-columns: minmax(320px, 40%) 1fr; min-height:
       }
       el.addEventListener("click", () => showTab(t.index));
       bar.append(el);
-      if (t.url && !frames.has(t.url)) {
-        const f = document.createElement("iframe");
-        f.src = t.url; f.title = t.title; f.hidden = true;
-        f.setAttribute("allow", "clipboard-read; clipboard-write");
-        $("frames").append(f);
-        frames.set(t.url, f);
-      }
     });
     state.tabsNow = tabs;
     showTab(Math.min(activeTab, tabs.length - 1));
@@ -141,6 +134,15 @@ main { display: grid; grid-template-columns: minmax(320px, 40%) 1fr; min-height:
     document.querySelectorAll("#tabbar .tab").forEach((el) =>
       el.classList.toggle("active", Number(el.dataset.index) === i));
     const want = tabs[i] && tabs[i].url;
+    // Load a tab the first time it is shown, not all at once on page load:
+    // Harvester and Rancher are heavy and slowed each other down.
+    if (want && !frames.has(want)) {
+      const f = document.createElement("iframe");
+      f.src = want; f.title = tabs[i].title;
+      f.setAttribute("allow", "clipboard-read; clipboard-write");
+      $("frames").append(f);
+      frames.set(want, f);
+    }
     frames.forEach((f, url) => { f.hidden = url !== want; });
     let empty = $("frames").querySelector(".empty");
     if (!want) {

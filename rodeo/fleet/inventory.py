@@ -55,6 +55,7 @@ class PortalConfig:
     mode: str = "both"  # open (workshop code + email) | roster (invite links) | both
     roster: Path | None = None  # CSV name,email[,host_id]; resolved beside workshop.yaml
     student_ssh: bool = False  # per-lab `student` user + key, :22 opened by open-access
+    player: bool = False  # labs run `rodeo player`: publish adds each lab's player link
     title: str = ""
     code_letters: int = 6  # random letters in RODEO-XXXXXX-YYYYMMDD (4-8)
     guide_url: str = ""  # workshop guide link on every student page (https URL or /path)
@@ -124,6 +125,7 @@ def _parse_portal(raw: Any, base: Path, provider: dict[str, Any] | None) -> Port
         mode=mode,
         roster=roster,
         student_ssh=bool(raw.get("student_ssh", False)),
+        player=bool(raw.get("player", False)),
         title=str(raw.get("title") or ""),
         code_letters=code_letters,
         guide_url=guide_url,

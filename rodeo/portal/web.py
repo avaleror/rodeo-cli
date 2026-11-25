@@ -28,6 +28,8 @@ from . import claims
 from .db import connect
 
 MAX_BODY = 4096
+# A lab's rodeo player link, as `rodeo player link` prints it.
+PLAYER_URL_RE = re.compile(r"^https://[a-z0-9.-]+/enter\?t=[A-Za-z0-9_-]{16,64}$")
 # Only *failed* attempts count (wrong code or PIN, unknown link, bad admin token):
 # a whole classroom behind one NAT address claims freely.
 RATE_LIMIT = 30
@@ -292,6 +294,15 @@ def claim_form(title: str, csrf: str, *, mode: str, is_open: bool, err: str = ""
 def _lab_cards(lab_id: str, data: dict[str, Any], key_href: str, *, ssh_title: str) -> str:
     """Credential cards for one lab (student page and instructor page share them)."""
     cards = ""
+    # Labs with the rodeo player get one big way in; the link signs the
+    # browser in, so it is shown only here, behind the claim. Labs without a
+    # player have no player_url and render exactly as before.
+    player = str(data.get("player_url") or "")
+    if PLAYER_URL_RE.match(player):
+        cards += ("<div class=card><h2>Your lab</h2>"
+                  "<p>Chapters, the SUSE Virtualization and Rancher UIs and a terminal, in one window.</p>"
+                  f"<p><a class=btn href='{_e(player)}' target=_blank rel='noopener noreferrer'>Open your lab</a></p>"
+                  "<p class=note>This link signs your browser in to your lab. Do not share it.</p></div>")
     for c in data.get("components") or []:
         cards += (
             f"<div class=card><h2>{_e(c.get('label', ''))}</h2><dl>"

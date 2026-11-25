@@ -74,6 +74,8 @@ def _run_script(tmp_path, list_body: str | None):
                                      'case "$*" in *"get virtualmachineimages"*"displayName"*) [ -f "$KSTATE" ] && cat "$KSTATE";;'
                                      ' *"create -f -"*) cat >/dev/null; printf "image-1 SLES-16.0-Minimal-VM.x86_64-Cloud-GM.qcow2\\nSLES-16.0-Minimal-VM.x86_64-Cloud-GM.qcow2 100\\n" > "$KSTATE";;'
                                      ' *"create namespace"*) echo "apiVersion: v1";; *) cat >/dev/null 2>&1;; esac\n')
+    (bin_dir / "nft").write_text('#!/bin/bash\n[ "$1" = "-c" ] && shift; [ "$1" = "-f" ] && cp "$2" "$NFT_LAST"; exit 0\n')
+    (bin_dir / "systemctl").write_text("#!/bin/bash\nexit 0\n")
     for f in bin_dir.iterdir():
         f.chmod(0o755)
     lst = tmp_path / "lab-images.list"
@@ -81,7 +83,8 @@ def _run_script(tmp_path, list_body: str | None):
         lst.write_text(list_body)
     env = {"PATH": f"{bin_dir}:{os.environ['PATH']}", "RODEO_LAB_IMAGES_LIST": str(lst),
            "RODEO_IMAGE_CACHE_DIR": str(tmp_path / "cache"), "KLOG": str(tmp_path / "klog"),
-           "KSTATE": str(tmp_path / "kstate")}
+           "KSTATE": str(tmp_path / "kstate"), "NFT_LAST": str(tmp_path / "nft-last"),
+           "RODEO_IMAGE_CACHE_GUARD": str(tmp_path / "guard.nft"), "RODEO_SYSTEMD_DIR": str(tmp_path)}
     return subprocess.run(["bash", str(SCRIPT)], env=env, capture_output=True, text=True, timeout=60)
 
 
@@ -99,6 +102,12 @@ def test_script_caches_registers_and_never_prints_links(tmp_path, monkeypatch):
     assert (cache / "SLES15-SP7-Minimal-VM.x86_64-Cloud-GM.qcow2").read_bytes().startswith(b"QFI\xfb")
     assert "is Active in official-images" in res.stdout
     assert "X-Amz-Signature" not in res.stdout + res.stderr
+    # Licensed copies are root-only, the links are gone, the cache serves the nodes only.
+    assert oct((cache / "SLES15-SP7-Minimal-VM.x86_64-Cloud-GM.qcow2").stat().st_mode & 0o777) == "0o600"
+    assert not (tmp_path / "lab-images.list").exists()
+    rule = (tmp_path / "nft-last").read_text()
+    assert "ip daddr 192.168.122.1 tcp dport 8889 ip saddr != { 192.168.122.11-192.168.122.13 } drop" in rule
+    (tmp_path / "lab-images.list").write_text(body)
     # Second run: nothing downloaded again, nothing created again.
     res2 = _run_script_again(tmp_path)
     assert "already cached" in res2.stdout and "already registered" in res2.stdout
@@ -107,13 +116,15 @@ def test_script_caches_registers_and_never_prints_links(tmp_path, monkeypatch):
 def _run_script_again(tmp_path):
     env = {"PATH": f"{tmp_path / 'bin'}:{os.environ['PATH']}", "RODEO_LAB_IMAGES_LIST": str(tmp_path / "lab-images.list"),
            "RODEO_IMAGE_CACHE_DIR": str(tmp_path / "cache"), "KLOG": str(tmp_path / "klog"),
-           "KSTATE": str(tmp_path / "kstate")}
+           "KSTATE": str(tmp_path / "kstate"), "NFT_LAST": str(tmp_path / "nft-last"),
+           "RODEO_IMAGE_CACHE_GUARD": str(tmp_path / "guard.nft"), "RODEO_SYSTEMD_DIR": str(tmp_path)}
     return subprocess.run(["bash", str(SCRIPT)], env=env, capture_output=True, text=True, timeout=60)
 
 
 def test_script_rejects_non_qcow2_downloads(tmp_path):
     res = _run_script(tmp_path, "SLES15-SP7-Minimal-VM.x86_64-Cloud-GM.qcow2 https://x.example/bad\n")
     assert res.returncode == 1 and "FAILED to download" in res.stdout
+    assert (tmp_path / "lab-images.list").exists(), "keep the list for a retry when something failed"
     assert not (tmp_path / "cache" / "SLES15-SP7-Minimal-VM.x86_64-Cloud-GM.qcow2").exists()
 
 

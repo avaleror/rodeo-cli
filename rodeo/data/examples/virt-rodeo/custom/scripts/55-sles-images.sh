@@ -29,6 +29,8 @@ IMAGE_DIR="${RODEO_IMAGE_CACHE_DIR:-/var/lib/libvirt/images/workshop-cache}"
 CACHE_URL="http://192.168.122.1:8889"
 IMAGE_NS="official-images"
 FILE_RE='^[A-Za-z0-9][A-Za-z0-9._-]*\.qcow2$'
+# The Harvester nodes (definition.yaml: harvester1-3), the only cache clients.
+CACHE_CLIENTS="${RODEO_IMAGE_CACHE_CLIENTS:-192.168.122.11-192.168.122.13}"
 
 if [ ! -s "${LIST_FILE}" ]; then
   log "no ${LIST_FILE}: skipping (run 'rodeo fleet lab-images' to add the SLES images chapter 3 needs)"
@@ -56,7 +58,9 @@ while read -r file url flag; do
     # The URL is a signed link: never echo it, it is a credential until it expires.
     if curl -fsSL --retry 3 --max-time 1800 -o "${dest}.part" "${url}" && is_qcow2 "${dest}.part"; then
       mv -f "${dest}.part" "${dest}"
-      chmod 644 "${dest}"
+      # Root only: the cache server runs as root; students on the host must
+      # not copy licensed images out of the lab.
+      chmod 600 "${dest}"
       log "${file} cached ($(du -h "${dest}" | cut -f1))"
     else
       rm -f "${dest}.part"
@@ -65,8 +69,53 @@ while read -r file url flag; do
       continue
     fi
   fi
+  chmod 600 "${dest}"   # also for copies cached by an older run
   [ "${flag:-}" = "harvester" ] && HARVESTER+=("${file}")
 done < "${LIST_FILE}"
+
+# Only the Harvester nodes may download from the cache: they import the
+# images (chapter 3, and the student's own import in chapter 4). Anyone else
+# on the lab network (a VM the student creates, or the student's shell on
+# this host, whose traffic to 192.168.122.1 arrives here too) is dropped, so
+# a licensed image cannot be pulled out of the lab through the cache. Its
+# own nftables table: firewalld and libvirt never touch it, and a drop in
+# any input chain wins over accepts elsewhere.
+GUARD_FILE="${RODEO_IMAGE_CACHE_GUARD:-/etc/rodeo/image-cache-guard.nft}"
+UNIT_DIR="${RODEO_SYSTEMD_DIR:-/etc/systemd/system}"
+mkdir -p "$(dirname "${GUARD_FILE}")"
+cat > "${GUARD_FILE}.tmp" <<EOF
+table inet rodeo_image_cache
+delete table inet rodeo_image_cache
+table inet rodeo_image_cache {
+  chain input {
+    type filter hook input priority filter - 5; policy accept;
+    ip daddr 192.168.122.1 tcp dport 8889 ip saddr != { ${CACHE_CLIENTS} } drop
+  }
+}
+EOF
+if nft -c -f "${GUARD_FILE}.tmp" && nft -f "${GUARD_FILE}.tmp"; then
+  mv -f "${GUARD_FILE}.tmp" "${GUARD_FILE}"
+  cat > "${UNIT_DIR}/rodeo-image-cache-guard.service" <<EOF
+[Unit]
+Description=rodeo virt-rodeo: image cache only for the Harvester nodes
+After=network-pre.target
+Before=rodeo-image-cache.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/nft -f ${GUARD_FILE}
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  systemctl daemon-reload && systemctl enable -q rodeo-image-cache-guard
+  log "image cache limited to ${CACHE_CLIENTS}"
+else
+  rm -f "${GUARD_FILE}.tmp"
+  log "FAILED to limit the image cache to the Harvester nodes"
+  FAILED=1
+fi
 
 if [ "${#HARVESTER[@]}" -gt 0 ]; then
   kubectl create namespace "${IMAGE_NS}" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
@@ -109,5 +158,12 @@ EOF
   fi
 done
 
-[ "${FAILED}" -eq 0 ] && log "custom_scripts step complete." || log "finished with failures (see above)"
+if [ "${FAILED}" -eq 0 ]; then
+  # The signed links are credentials until they expire: once every image is
+  # cached and registered, nothing needs them on this host any more.
+  rm -f "${LIST_FILE}"
+  log "custom_scripts step complete (link list removed)."
+else
+  log "finished with failures (see above); link list kept for a retry"
+fi
 exit "${FAILED}"

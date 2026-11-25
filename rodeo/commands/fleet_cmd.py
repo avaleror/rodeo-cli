@@ -261,13 +261,20 @@ def fleet_status_cmd(
                 vip_ok = r.report.get("vip_reachable")
                 vip = r.report.get("vip", "")
                 vip_s = f"{vip} ({'up' if vip_ok else 'down'})" if vip else "—"
+                up_exit = r.report.get("fleet_up_exit")
+                if isinstance(up_exit, int) and up_exit != 0:
+                    detail = f"[red]rodeo up exited {up_exit}[/red] (rodeo fleet diagnose)"
+                elif up_exit is None and r.report.get("fleet_up_running"):
+                    detail = "deploy running"
+                else:
+                    detail = ""
                 table.add_row(
                     r.id,
                     "[green]yes[/green]",
                     str(r.report.get("name", "")),
                     vip_s,
                     f"{done}/{total}",
-                    "",
+                    detail,
                 )
             else:
                 table.add_row(

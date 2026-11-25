@@ -42,6 +42,16 @@
 # (`mgmt-br`) depends on how libvirt named it during `vms`/`cluster`.
 
 set -uo pipefail
+# rodeo up writes ~/.rodeo for the invoking user: /root on a single host, the
+# SSH user's home (ec2-user) on a fleet host. rodeo sets KUBECONFIG when it runs
+# this script; a hand run (e.g. `fleet lab-images --run`) finds it here.
+if [ -z "${KUBECONFIG:-}" ]; then
+  for _h in "$(getent passwd "${SUDO_USER:-root}" | cut -d: -f6)" /root; do
+    if [ -n "$_h" ] && [ -s "$_h/.rodeo/harvester-kubeconfig" ]; then
+      KUBECONFIG="$_h/.rodeo/harvester-kubeconfig"; break
+    fi
+  done
+fi
 export KUBECONFIG="${KUBECONFIG:-/root/.rodeo/harvester-kubeconfig}"
 
 log(){ echo ">>> [webserver-prod] $*"; }

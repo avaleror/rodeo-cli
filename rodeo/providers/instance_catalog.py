@@ -143,6 +143,18 @@ AWS_PROFILE_TIERS: dict[str, dict[InstanceTier, InstanceOffer]] = {
             "m7i.metal-24xl", "performance", "bare metal — max nested performance"
         ),
     },
+    # virt-rodeo: virt-workshop's footprint (same topology and scripts; the
+    # NFS loop file is sparse), so the same tiers.
+    "virt-rodeo": {
+        "recommended": InstanceOffer(
+            "m8id.8xlarge", "recommended",
+            "32 vCPU / 128 GiB / a single ~1.9 TiB NVMe device — same as "
+            "virt-workshop",
+        ),
+        "performance": InstanceOffer(
+            "m7i.metal-24xl", "performance", "bare metal — max nested performance"
+        ),
+    },
     # lab-in-a-box SMLM workshop: ~30 GiB RAM of VMs, ~450 GB of disk.
     "smlm-workshop": {
         "recommended": InstanceOffer(
@@ -267,6 +279,10 @@ GCP_PROFILE_TIERS: dict[str, dict[InstanceTier, InstanceOffer]] = {
         "performance": _g("c4-highmem-32-lssd", "performance", _HM32),
     },
     "virt-workshop": {
+        "recommended": _g("c4-standard-32-lssd", "recommended", _LSSD32),
+        "performance": _g("c4-highmem-32-lssd", "performance", _HM32),
+    },
+    "virt-rodeo": {
         "recommended": _g("c4-standard-32-lssd", "recommended", _LSSD32),
         "performance": _g("c4-highmem-32-lssd", "performance", _HM32),
     },

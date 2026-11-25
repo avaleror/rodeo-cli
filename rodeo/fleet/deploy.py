@@ -44,11 +44,17 @@ def start_up_script(inventory: FleetInventory, session: str) -> str:
     trust_bits = ""
     if inventory.lab_source:
         trust_bits = f"{{ rodeo trust --yes --config-dir {lab} >/dev/null 2>&1 || true; }} && "
+    # pipefail: without it $? is tee's status (always 0) and a failed rodeo up
+    # (e.g. a custom script) looked like success. The exit code also goes to
+    # fleet-up.exit, which `fleet status` reads: custom_scripts runs after
+    # finalise, so the phases alone say "done" before the lab really is.
+    exit_file = '"$HOME/.rodeo/logs/fleet-up.exit"'
     inner = (
+        f"set -o pipefail; rm -f {exit_file}; "
         f"cd {lab} && {trust_bits}rodeo up --yes --no-tmux {profile_bits}"
         f"--dir {lab} --target {target} "
         f"2>&1 | tee -a \"$HOME/.rodeo/logs/fleet-up.log\"; "
-        f'echo FLEET_UP_EXIT:$?'
+        f"rc=$?; echo $rc > {exit_file}; echo FLEET_UP_EXIT:$rc"
     )
     # Single-quoted for tmux; escape any single quotes in inner (none expected after quote)
     return (
@@ -323,6 +329,18 @@ def apply_status_to_job(job: FleetJob, status_results: list[Any]) -> FleetJob:
                 )
             continue
         phases = sr.report.get("phases") or {}
+        up_exit = sr.report.get("fleet_up_exit")
+        if isinstance(up_exit, int) and up_exit != 0:
+            job.set_host(
+                sr.id,
+                state="failed",
+                finished_at=_now(),
+                last_error=f"rodeo up exited {up_exit} (see `rodeo fleet diagnose`)",
+            )
+            continue
+        if up_exit is None and sr.report.get("fleet_up_running") is True:
+            job.set_host(sr.id, state="running", last_error=None)
+            continue
         if sr.report.get("phases_complete") is True or cacheable_phases_complete(
             phases
         ):

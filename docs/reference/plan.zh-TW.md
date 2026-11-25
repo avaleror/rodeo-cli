@@ -134,6 +134,7 @@ parameters:
 | `baremetal` | 在 rodeo 執行的主機（這台機器）上完整部署。`finalise` 會啟用主機重開機時 VM 自動啟動。 |
 | `instruqt` | 自動略過 `finalise`。在 Instruqt 快照之後再執行：`rodeo deploy --from finalise --finalise` |
 | `aws` | 筆電當控制端：需要 `provider:` 區塊，建立或沿用一台 EC2 KVM 主機、等待 SSH 可用，然後在那台主機上遠端執行 `rodeo up`。用 `rodeo destroy --cloud --yes` 拆除。自備（BYO）：自己建立 instance，保留 `deployment_target: aws`（或設定 `storage.backend: nvme`），然後在那台機器上部署。 |
+| `gcp` | 和 `aws` 相同，只是在 Google Cloud 上：建立或沿用一台啟用 nested virtualization 的 Compute Engine VM、等待 SSH 可用，然後在 VM 上遠端執行 `rodeo up`。用 `rodeo destroy --cloud --yes` 拆除。請見 [`provider`（gcp）](#provider-when-deployment_target-gcp)。 |
 
 | `remote` | 控制端：部署到你已經擁有的 KVM 主機。需要 `remote_host:` 區塊，會透過 SSH 把 lab 的 plan 檔案送過去，並在主機上執行 `rodeo up --target baremetal`。不會建立任何資源，`rodeo destroy --cloud` 也不適用：主機是你的。 |
 
@@ -356,6 +357,52 @@ PAYG 可以避開這兩個陷阱，代價是在 `i7i.8xlarge` 上每小時約 $0
 公鑰，並為 `ssh_user`（SLES 16 上是 `ec2-user`）設定**免密碼 sudo**。
 遠端的 `rodeo up` 以 `sudo -n` 執行，所以絕不會跳出提示。`rodeo ssh primary`
 或 `rodeo ssh primary/rancher` 使用同一把受管理的金鑰。
+
+### `provider`（`deployment_target: gcp` 時） { #provider-when-deployment_target-gcp }
+
+**`rodeo up --target gcp` 可以不寫這個區塊。**用
+`gcloud auth application-default login` 登入一次之後，任何 profile 都可以用
+`rodeo up --profile <name> --target gcp` 部署。缺少的欄位會自動補上，並寫回
+`rodeo-plan.yaml`：
+
+| 欄位 | 預設值 |
+|-------|---------|
+| `type` | `gcp` |
+| `project` | `$RODEO_GCP_PROJECT`／`$GOOGLE_CLOUD_PROJECT`，否則用 application default credentials 的 quota project，再否則用 `gcloud config get-value project` |
+| `region` | `$RODEO_GCP_REGION`，否則 `europe-west4`（歐盟唯一提供所有等級機型的 region） |
+| `zone` | 該 region 中第一個提供此機型的 zone；某個 zone 容量不足時改用下一個 |
+| `instance_type` | profile 的 `recommended` 等級（見下表） |
+| `image` | `suse-cloud` 中最新的 `sles-16-1-x86-64`（SLES 16.1 pay-as-you-go）。用 `image_family`／`image_project` 指定其他 family |
+| `ssh_user` | `rodeo`（由 guest agent 依 `ssh-keys` metadata 中的 lab key 建立，具備免密碼 sudo） |
+| `network`／`subnetwork` | 兩者都是 `rodeo-<region>`，第一次使用時建立（10.90.0.0/20）。要用自己的 VPC 就設定這兩個欄位 |
+| `allowed_cidrs` | 這台機器的公開 IP（`/32`） |
+| `boot_disk_gb` | `-lssd` 機型為 100；沒有 local SSD 的機型為 plan 中 guest 磁碟的總和加 60 |
+| `service_account` | `default`（project 的 compute service account），只有 `userinfo.email` scope |
+| `ttl_hours` | `6`：自動銷毀計時 |
+
+rodeo 建立的資源全部都有 `managed-by=rodeo` 與 `rodeo-workshop=<lab>` label：
+
+- **VM**，啟用 `enableNestedVirtualization`。GCE 上只有 Intel 系列能跑 nested KVM
+  （C4、N4、N2、C3、Z3）；AMD、Arm 與 E2 機型會被拒絕。
+- **一條防火牆規則** `rodeo-<lab>`，對 `allowed_cidrs` 開放 22、8443 與 30002 埠；
+  你的 IP 改變時會重新調整範圍，最後一台 instance 刪除時一併刪除。
+- **自動銷毀計時是 GCP 原生功能**：`scheduling.maxRunDuration` 搭配
+  `instanceTerminationAction: DELETE`。時間到時 Google 會刪除 VM 與它的磁碟，
+  即使你的筆電已經關機也一樣。
+- **VM 上的 service account。**SLES pay-as-you-go 用 VM 的 identity token
+  註冊 repo。沒有 service account 就沒有 token，zypper 也就沒有 repo。
+
+**各等級的機型**（暫不提供 bare metal：最小規格就是 192 vCPU，每小時約 $9）：
+
+| 等級 | 系列 | 範例 |
+|------|--------|---------|
+| `budget` | N4 + Hyperdisk Balanced（沒有 local SSD，儲存池放在開機磁碟上） | `n4-standard-16` |
+| `recommended` | C4 `-lssd`（本機 NVMe） | `c4-standard-16-lssd`；Harvester 用 `c4-standard-32-lssd` |
+| `performance` | 更大或高記憶體的 C4 `-lssd` | `c4-highmem-32-lssd` |
+
+Local SSD 以 375 GiB 的 NVMe 磁碟提供，超過 8 vCPU 的機型會有好幾顆
+（`c4-standard-32-lssd` 有 5 顆）。`kvm_host` 階段會把它們組成一個 RAID0 儲存池，
+作為 `image_dir`。VM 停止後資料就會消失，和 AWS 的 instance store 一樣。
 
 ### `resources`
 

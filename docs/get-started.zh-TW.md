@@ -93,6 +93,17 @@ rodeo up --profile harvester --target aws --yes
 
 每台雲端主機都有 **6 小時自動銷毀計時（dead-man switch）**：時間到會關機，接著由 AWS 終止。需要更長的時段請設定 `provider.ttl_hours`；要提早拆除，執行 `rodeo destroy --cloud --yes --config-dir ~/rodeo-labs/<profile>`。請見 [provider 欄位](reference/plan.md#provider-when-deployment_target-aws)。
 
+## 從筆電部署到 Google Cloud { #on-google-cloud-from-your-laptop }
+
+GCP 上的流程相同。用 Application Default Credentials 登入一次，然後部署：
+
+```bash
+gcloud auth application-default login
+rodeo up --profile harvester --target gcp --yes
+```
+
+rodeo 會使用你 gcloud 設定的 project、`europe-west4`（或 `$RODEO_GCP_REGION` 指定的 region）以及 profile 建議的機型，建立自己的 `rodeo-europe-west4` 網路與一條只允許你的 IP 的防火牆規則，並把這些選擇寫進 lab plan。同樣有 6 小時自動銷毀計時，由 Google 執行（時間到會刪除 VM）。用 `rodeo destroy --cloud --yes --config-dir ~/rodeo-labs/<profile>` 拆除。請見 [GCP 的 provider 欄位](reference/plan.md#provider-when-deployment_target-gcp)。
+
 ## 多台主機（workshop fleet） { #many-hosts-workshop-fleet }
 
 要讓整間教室都跑**同一套** lab，請用 `rodeo fleet` 搭配 `workshop.yaml` 清單。在 AWS 上，`rodeo fleet provision` 會為每位學員建立一台主機；`deploy` 會平行建好每一套 lab，`status`、`doctor`、`retry` 與 `diagnose` 都可以針對單一 lab 執行。學員可以透過領取入口，用 workshop 代碼領到自己的 lab。請見 [Fleet](fleet.md)。

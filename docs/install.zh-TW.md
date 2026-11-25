@@ -23,7 +23,7 @@ curl -fsSL https://raw.githubusercontent.com/avaleror/rodeo-cli/main/install.sh 
 | 機器 | 角色 | 安裝內容 |
 |---------|------|------------------|
 | SLES 16 / Leap 16 | **KVM 主機** | 需要 root。用 zypper 安裝 `python3`、`pip` 與 `git`，rodeo 裝在 `/opt/rodeo-cli`、`/usr/local/bin/rodeo`。接著執行：`rodeo up` |
-| macOS、SLES/Leap 15、Ubuntu、Fedora、其他任何 Linux | **控制端** | 不需要系統套件，也不需要 root。含 `[aws]` extra 的 rodeo 裝在 `~/.local/share/rodeo-cli`、`~/.local/bin/rodeo`（以 root 安裝時：`/opt/rodeo-cli`、`/usr/local/bin`）。接著執行：`rodeo up --profile <name> --target aws` |
+| macOS、SLES/Leap 15、Ubuntu、Fedora、其他任何 Linux | **控制端** | 不需要系統套件，也不需要 root。含 `[aws,gcp]` extras 的 rodeo 裝在 `~/.local/share/rodeo-cli`、`~/.local/bin/rodeo`（以 root 安裝時：`/opt/rodeo-cli`、`/usr/local/bin`）。接著執行：`rodeo up --profile <name> --target aws`（或 `--target gcp`） |
 
 在控制端上，安裝程式會使用機器上已經有的 Python 3.10+
 （Homebrew、SLES 15 上的 `python311`……）。如果沒有，例如 macOS 的

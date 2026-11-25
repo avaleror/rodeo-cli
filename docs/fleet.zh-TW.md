@@ -17,7 +17,8 @@ Engine 階段、Ansible role 與 nested 網路都沒有改變。
 | **F2.2** | 已推出 | 一個指令跑完整個流程 | `rodeo fleet up` |
 | **F2.1** | 已推出 | 失敗鑑識 | `rodeo fleet diagnose` |
 | **F4a** | 已推出 | AWS 取得主機，每台主機有 6 小時自動銷毀計時（dead-man switch） | `rodeo fleet provision`, `deprovision` |
-| **F4b–d** | 規劃中 | GCP → Vultr BM → Hetzner | （規劃中） |
+| **F4b** | 已推出（單機） | GCP | `rodeo up --target gcp` |
+| **F4c–d** | 規劃中 | Vultr BM → Hetzner | （規劃中） |
 | **F5** | 已推出（AWS，v0.18） | 學員領取入口（claim portal）：每位學員輸入 workshop 代碼，就能拿到自己的 lab；學員 SSH 走獨立的 port | `rodeo fleet open-access`, `rodeo fleet portal ...`（[設計](claim-portal.md)、[計畫](claim-portal-plan.md)） |
 
 主機前置條件（在每台 lab 機器上執行 [`install.sh`](https://github.com/avaleror/rodeo-cli/blob/main/install.sh) 之後）：
@@ -61,7 +62,7 @@ Fleet **尚未**推出的部分。完整檢查清單：[ROADMAP Phase I](https:/
 | 順序 | Provider | 狀態 |
 |-------|----------|--------|
 | **F4a** | **AWS**（`boto3`，`[aws]` extra：請見[安裝](install.md)） | **MVP 已推出**：依 tag 建立／重用、等待 running + SSH、寫入 `hosts[]`、只終止有 tag 的執行個體 |
-| **F4b** | **GCP**（`google-cloud-compute`） | 規劃中 |
+| **F4b** | **GCP**（`google-cloud-compute`） | 單機已推出；fleet 的領取入口與 open-access 仍只支援 AWS |
 | **F4c** | **Vultr Bare Metal**（`[vultr]` extra） | 規劃中：排在 GCP 之後；用實體機跑 nested KVM |
 | **F4d** | **Hetzner Cloud**（`hcloud`） | 規劃中：排在 Vultr 之後；nested KVM 必須先驗證 |
 
@@ -363,6 +364,59 @@ rodeo fleet open-access --close -f workshop.yaml
 `provider.security_group_ids`（BYO），rodeo 不會做任何變更，而是請你自己開放
 這些 port。
 
+### 共用帳號：哪些資源是誰的（AWS 與 GCP） { #shared-accounts-who-owns-what-aws-and-gcp }
+
+常常有好幾個人部署到同一個 AWS 帳號，而且 lab 名稱會重複：兩個人都跑
+`rancher-test` profile，就會各有一個叫 `rancher-test` 的 lab。所以 rodeo
+絕不只憑 lab 名稱挑選雲端資源。每個資源都帶有
+`rodeo-owner`（呼叫者的 ARN，CI 中則是 `RODEO_OWNER`）與 `rodeo-deployment`
+（8 個十六進位字元，由 lab key 產生），由這兩者決定哪些是你的。
+
+- 兩個人可以在同一個 region、同一時間使用相同的 plan 或 workshop 名稱。
+  每個人都有自己的執行個體、security group
+  （`rodeo-<lab>-<deployment>`）與 key pair。
+- `rodeo destroy --cloud`、`fleet deprovision` 與 portal 拆除只會移除
+  這個登入身分擁有的部署。這台機器上沒有 lab key 時，只會處理
+  這台機器記錄過的執行個體 id；一個都沒有就拒絕執行。
+- `rodeo cloud ls` 列出你在某個 region 的部署（`--all` 會列出所有人的，
+  並顯示擁有者）。它從 AWS 讀取 tag，所以換一台筆電也能用。
+- `rodeo cloud destroy <deployment>` 可以在任何地方移除你的某個部署：
+  執行個體、security group 與 key pair。要移除別人的部署需要
+  `--not-mine`，而且你必須輸入對方的擁有者名稱確認。
+- 這項改變之前建立的 lab 沒有 `rodeo-deployment`。持有它們 key 的機器
+  會在下一次 `up` 或 `destroy` 時接管它們（補上 tag，名稱不變）。
+  其他人在 `rodeo cloud ls --all` 中會看到它們標示為 `legacy`。
+
+GCP 上規則相同，但有三點不同。擁有者是你的 GCP 帳號
+（來自 Application Default Credentials）。label 不能包含 `@` 或 `.`，所以
+`rodeo-owner` label 是一個易讀的形式加上一段短雜湊，原始帳號則放在
+執行個體的 metadata 中。防火牆規則不能加 label，所以 `rodeo-<lab>-<deployment>`
+會把擁有者與部署記錄在說明欄位中。請使用 `rodeo cloud ls --provider gcp`
+（整個 project）與 `rodeo cloud destroy --provider gcp <deployment>`。這項改變之前的
+GCP lab，由 lab 公鑰位於執行個體 `ssh-keys` metadata 中的那台機器接管。
+
+擁有者檢查是為了防止 rodeo 指令動到錯的 lab。它不是權限系統：
+任何有 PowerUser 權限的人仍然可以在主控台刪除執行個體。
+
+### 追蹤 workshop 費用 { #track-workshop-cost }
+
+上面這些 tag 也是成本分配 tag（cost allocation tag）。`rodeo-workshop` 依 workshop
+拆分帳單，`rodeo-owner` 依人拆分，`ManagedBy` 則加總 rodeo 執行的所有資源。
+
+- 要在 AWS 的**管理（付款）帳號**中啟用，位置在 Billing 的 Cost
+  allocation tags。連結帳號（linked account）無法啟用（在那裡
+  `aws ce list-cost-allocation-tags` 會失敗），請詢問負責帳務的人。
+- 啟用後約 24 小時才會出現新資料。回填（最多回溯 12 個月，
+  每 24 小時只能申請一次）只會計入資源上已經有該 tag 的時數。
+- 值有區分大小寫：`rodeo-workshop=suse-virt` 與 `SUSE-Virt` 在帳單上是
+  兩行。
+- 根磁碟區與網路介面也帶有這些 tag，所以磁碟費用會算在該
+  workshop 下。公開 IPv4 的費用在 Cost Explorer 中是否會跟著網路介面的 tag，
+  目前尚未確認：依賴它之前請先看一次實際帳單。
+
+tag 只能說明帳單，不能限制金額。上限仍然是自動銷毀計時：預設 6 小時，
+最多 168 小時（`provider.ttl_hours`）。
+
 ### 領取入口（F5） { #claim-portal-f5 }
 
 學員開啟一個 HTTPS 頁面，輸入你給他們的 **workshop 代碼**（來自
@@ -525,7 +579,7 @@ Fleet **不會**在筆電上以 sudo 重新執行自己。
 
 取得主機的共用 Protocol／schema。**AWS（F4a）MVP 已實作**於
 `rodeo/providers/`，供 Fleet 與單機 `deployment_target: aws` 使用。
-GCP／Vultr／Hetzner 仍是 stub。摘要請見[規劃](#roadmap)。
+Vultr／Hetzner 仍是 stub；GCP 已有 provider（單機已實機測試）。摘要請見[規劃](#roadmap)。
 
 **重要：絕不要在 `workshop.yaml` 中設定 `lab.target: aws`。**
 
@@ -579,6 +633,14 @@ firewalld／DNAT／`finalise`）。`deployment_target: aws` 是筆電
 | `ManagedBy` | `rodeo` |
 | `rodeo-workshop` | plan 的 `name:`／workshop 的 `name:` |
 | `rodeo-host-id` | 清單中的主機 `id`（例如 `student-01`），單機則為 `primary` |
+| `rodeo-owner` | 誰啟動的：`sts get-caller-identity` 回傳的呼叫者 ARN，或 `RODEO_OWNER` |
+| `rodeo-deployment` | 8 個十六進位字元，每次部署一個（也是 lab key pair 名稱的後綴） |
+| `rodeo-version` | 建立它的 rodeo-cli 版本 |
+| `rodeo-created-by` | 原始的呼叫者 ARN |
+
+在 AWS 上，相同的 tag 會加在執行個體、它的根磁碟區、它的網路介面、
+lab 與 portal 的 security group，以及 lab key pair 上。`provider.labels` 不能
+設定 `ManagedBy`、`managed-by` 或任何 `rodeo-*` key：設定了會驗證失敗。
 
 GCP 使用 label（DNS-1123）；在雲端要求的地方把 key 轉成小寫，但保留相同的邏輯名稱。
 
@@ -657,9 +719,9 @@ SSH：每次部署都有自己的 key。當 workshop 沒有存活中的執行個
 取用。當 workshop 的最後一個執行個體被移除時（`fleet deprovision`、
 `rodeo destroy --cloud`），rodeo 會刪除 EC2 中的 key pair 與本機的 key。以其他方式結束的
 lab（自動銷毀計時、主控台）的 key，會在同一個 region 的下一次
-`provision` 時清掉。如果該 workshop 名稱已經有存活中的執行個體，
-而且啟動時用的 key 不在這台機器上（共用帳號中的其他使用者），
-`provision` 會以錯誤停止，而不是接管它們：請換一個名稱。
+`provision` 時清掉。共用帳號中其他使用者同名的存活 lab 不是你的：
+`provision` 會略過它，另外開始自己的部署，請見
+[共用帳號](#shared-accounts-who-owns-what-aws-and-gcp)。
 新的執行個體也會取得 cloud-init UserData：root authorized_keys + 為
 `ssh_user` 設定 `NOPASSWD` sudo，讓遠端 `rodeo up` 永遠不會要求輸入密碼。
 使用 `rodeo ssh student-01` 或 `rodeo ssh student-01/rancher`。
@@ -699,18 +761,24 @@ SLES 16 也可以用：把 `ami:` 設成該映像的 id，如果使用者不是 
 provider:
   type: gcp
   count: 12
-  project: my-gcp-project           # 必填
-  zone: europe-west3-a              # 必填
-  machine_type: n2-standard-32      # 必填
-  image: projects/…/global/images/… # 必填（或 family）
-  network: default                  # 或完整網址
-  subnetwork: regions/…/subnetworks/…
-  # enable_nested_virtualization: true   # rodeo 預設 true
-  # min_cpu_platform: "Intel Cascade Lake"
-  # tags: [rodeo-fleet]             # 供防火牆使用的 GCP network tag
+  project: my-gcp-project           # 預設：gcloud／ADC 的 project
+  region: europe-west4              # 預設值；zone 依容量挑選
+  # zone: europe-west4-b            # 固定使用某個 zone
+  instance_tier: recommended        # 或 instance_type: c4-standard-32-lssd
+  # image_family: sles-16-1-x86-64  # 預設值，image_project: suse-cloud
+  # network: rodeo-europe-west4     # 預設：由 rodeo 建立
+  # allowed_cidrs: ["203.0.113.0/24"]   # 預設：只有這台機器的 IP
+  # ttl_hours: 6
 ```
 
-驗證：Application Default Credentials／service account，不存放在 `workshop.yaml` 中。
+驗證：Application Default Credentials（`gcloud auth application-default login`），絕不存放
+在 `workshop.yaml` 中。欄位細節請見 [plan 參考](reference/plan.md#provider-when-deployment_target-gcp)。
+
+擁有權的運作方式和 AWS 相同：請見[共用帳號](#shared-accounts-who-owns-what-aws-and-gcp)。
+
+狀態：單機的 `rodeo up --target gcp` 已實機測試。`fleet provision` 使用相同的
+provider，每個主機 id 建立一台 VM，但領取入口與 `fleet open-access` 目前
+只支援 AWS。
 
 #### `provider.type: vultr`（F4c） { #providertype-vultr-f4c }
 

@@ -220,7 +220,7 @@ def test_virt_rodeo_profile_seeds_without_checks(tmp_path):
     scripts_dir = lab / "custom" / "scripts"
     scripts = sorted(f.name for f in scripts_dir.iterdir() if f.is_file())
     assert scripts == ["50-image-cache.sh", "55-sles-images.sh", "60-nfs-backup-target.sh",
-                       "65-student-kit.sh", "70-webserver-prod.sh"]
+                       "65-student-kit.sh", "70-payment-gateway-prod.sh"]
     for name in scripts:
         assert (scripts_dir / name).stat().st_mode & stat.S_IXUSR, f"{name} must be executable"
 

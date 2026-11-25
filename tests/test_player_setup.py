@@ -132,3 +132,10 @@ def test_player_unit_is_sandboxed_but_can_run_chapters():
         assert line in unit.splitlines(), line
     # Chapters need root's home (kubectl cache, ssh known_hosts) and the player state.
     assert f"ReadWritePaths={s.VAR} /root" in unit
+
+
+def test_student_gets_the_lab_vm_key_never_roots():
+    text = s.install_script(_opts(), "/usr/local/bin/rodeo")
+    assert 'install -m 600 -o student -g "$SG" "$LABKEY" /home/student/.ssh/id_ed25519' in text
+    assert 'cmp -s "$LABKEY" /root/.ssh/id_ed25519' in text
+    assert "/root/.ssh/id_ed25519 /home/student" not in text

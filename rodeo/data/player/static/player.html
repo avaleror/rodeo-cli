@@ -177,8 +177,8 @@ main { display: grid; grid-template-columns: minmax(320px, 40%) 1fr; min-height:
     $("confirmText").textContent = i === state.current + 1
       ? `Skip chapter ${state.current + 1}? Its solution script runs first, so your lab ends up as if ` +
         "you had done it, then chapter " + (i + 1) + " opens. This can take a few minutes."
-      : `Skip to chapter ${i + 1}? The solution scripts of every chapter before it ` +
-        "run first, so your lab ends up as if you had done them. This can take a few minutes.";
+      : `Skip to chapter ${i + 1}? Every chapter before it is set up and solved first, in order, ` +
+        "so your lab ends up as if you had done them. This can take several minutes.";
     $("confirm").hidden = false;
   }
 

@@ -46,6 +46,7 @@ CADDYFILE = ETC / "Caddyfile"
 CADDY_DATA = Path("/var/lib/rodeo-player-caddy")
 CA_ROOT = CADDY_DATA / "caddy" / "pki" / "authorities" / "local" / "root.crt"
 ROOT_KUBECONFIG = Path("/root/.rodeo/harvester-kubeconfig")
+LAB_VM_KEY = "/opt/suse-virt-workshop/lab-vm-key"   # from the profile's 65-student-kit.sh
 STUDENT_GROUP = "rodeo-student"
 PLAYER_PORT = 8680
 TTYD_PORT = 7681
@@ -310,6 +311,20 @@ install -d -m 750 -o {STUDENT_USER} -g {STUDENT_GROUP} {home}/.rodeo
 install -m 640 -o root -g {STUDENT_GROUP} {ROOT_KUBECONFIG} {home}/.rodeo/harvester-kubeconfig
 runuser -u {STUDENT_USER} -- test -r {home}/.rodeo/harvester-kubeconfig
 if runuser -u {STUDENT_USER} -- test -r /root/.ssh/id_ed25519; then echo "student can read the rodeo key" >&2; exit 3; fi
+
+# The lab VM key (65-student-kit.sh) as the student's default SSH key, so the
+# assignment's bare `ssh sles@<vm>` works, as it does with the Instruqt
+# sandbox key. Never root's key: refuse if they were ever the same.
+LABKEY={LAB_VM_KEY}
+if [ -f "$LABKEY" ]; then
+  if [ -f /root/.ssh/id_ed25519 ] && cmp -s "$LABKEY" /root/.ssh/id_ed25519; then
+    echo "the lab VM key is root's key; refusing to give it to {STUDENT_USER}" >&2; exit 3
+  fi
+  SG=$(id -gn {STUDENT_USER})
+  install -d -m 700 -o {STUDENT_USER} -g "$SG" {home}/.ssh
+  install -m 600 -o {STUDENT_USER} -g "$SG" "$LABKEY" {home}/.ssh/id_ed25519
+  install -m 644 -o {STUDENT_USER} -g "$SG" "$LABKEY.pub" {home}/.ssh/id_ed25519.pub
+fi
 
 {writes}
 chmod 644 {CONFIG} {CADDYFILE}

@@ -418,12 +418,29 @@ class Runner:
         return self._advance([])
 
     def skip(self, target: int) -> MoveResult:
-        """Skip forward: solve + cleanup each chapter before ``target``, in order."""
+        """Skip forward to ``target``, as if the student pressed Skip on each chapter.
+
+        Every skipped chapter that was not entered yet runs its setup first,
+        then solve, then cleanup. Setup is not optional: chapter 4's setup is
+        what sets PAYMENT_GATEWAY_IP and creates daily-batch-processor, and a
+        later chapter must find the lab in the state the story built.
+        A failing setup or solve stops the skip on that chapter.
+        """
         if not self.current < target < len(self.chapters):
             raise RunnerError(f"skip goes forward only: {self.current} -> {target}")
         results: list[ScriptResult] = []
         for i in range(self.current, target):
+            already_entered = i == self.current and self.entered
             self._state["current"] = i
+            if not already_entered:
+                setup = self.run_script(i, "setup")
+                if setup:
+                    results.append(setup)
+                    if not setup.ok:
+                        self._state["entered"] = None
+                        self._save_state()
+                        return MoveResult(False, i, results, f"setup failed in {self.chapters[i].dirname}")
+                self._state["entered"] = i
             solve = self.run_script(i, "solve")
             if solve:
                 results.append(solve)

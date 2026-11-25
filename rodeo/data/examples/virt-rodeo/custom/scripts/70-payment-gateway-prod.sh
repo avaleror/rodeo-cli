@@ -1,4 +1,12 @@
 #!/bin/bash
+# virt-rodeo copy of virt-workshop's 70-webserver-prod.sh, shaped like the
+# Instruqt image the suse-virt-rodeo track was written against: chapter 4
+# live-migrates `payment-gateway-prod` and SSHes to it as `sles` at the
+# hard-coded 192.168.122.147 (its setup sets PAYMENT_GATEWAY_IP to that).
+# So here the VM is named payment-gateway-prod, gets a fixed MAC plus a
+# libvirt DHCP reservation for .147 (a reservation, so the DHCP pool never
+# hands .147 to another VM), and cloud-init adds a `sles` user holding the
+# same keys. virt-workshop's own script is unchanged.
 # suse-virt-workshop custom_scripts step 4/4.
 #
 # Pre-creates the two VMs suse-virt-rodeo's chapter 4 (The Rising Tide,
@@ -44,7 +52,9 @@ NET="${NS}/${NET_NAME}"
 IMAGE_NS="official-images"
 IMAGE_HTTP_URL="http://192.168.122.1:8889/Leap-16.0-Minimal-VM.x86_64-Cloud.qcow2"
 IMAGE_DISPLAY_NAME="Leap-16.0-Minimal-VM.x86_64-Cloud.qcow2"
-VM_NAME="webserver-prod"
+VM_NAME="payment-gateway-prod"
+GATEWAY_MAC="52:54:00:12:01:47"
+GATEWAY_IP="192.168.122.147"
 
 for pubkey_file in /root/.rodeo/ssh/id_ed25519.pub /root/.ssh/id_ed25519.pub /root/.ssh/id_rsa.pub; do
   [ -f "${pubkey_file}" ] && SSH_PUBKEY="$(cat "${pubkey_file}")" && break
@@ -62,6 +72,21 @@ AUTHORIZED_KEYS=""
 for k in "${SSH_PUBKEY}" "${LAB_VM_PUBKEY}"; do
   [ -n "${k}" ] && AUTHORIZED_KEYS+="${AUTHORIZED_KEYS:+$'\n'}              - ${k}"
 done
+
+# The same keys again for the `sles` user (deeper indent: inside users:).
+SLES_KEYS=""
+for k in "${SSH_PUBKEY}" "${LAB_VM_PUBKEY}"; do
+  [ -n "${k}" ] && SLES_KEYS+="${SLES_KEYS:+$'\n'}                  - ${k}"
+done
+
+# DHCP reservation for the payment gateway, on the libvirt network the VM
+# bridges onto. Idempotent: added once, live and persistent.
+if ! virsh net-dumpxml default 2>/dev/null | grep -q "mac='${GATEWAY_MAC}'"; then
+  log "reserving ${GATEWAY_IP} for ${VM_NAME} (${GATEWAY_MAC}) in libvirt DHCP ..."
+  virsh net-update default add ip-dhcp-host \
+    "<host mac='${GATEWAY_MAC}' name='${VM_NAME}' ip='${GATEWAY_IP}'/>" --live --config \
+    || log "warn: could not add the DHCP reservation; ${VM_NAME} will get a random address."
+fi
 
 log "waiting for kubeconfig / API server ..."
 for _ in $(seq 1 30); do
@@ -196,7 +221,10 @@ log "boot disk size: ${DISK_GI}Gi (image virtualSize=${IMAGE_VIRTUAL_SIZE:-unkno
 # (kubernetes.io/hostname) instead of the normal stage=prod pool — used only
 # for daily-batch-processor's guaranteed first collision with webserver-prod.
 create_vm() {
-  local name="$1" pin_node="${2:-}"
+  local name="$1" pin_node="${2:-}" mac="${3:-}"
+  # Quoted: unquoted, YAML 1.1 reads 52:54:00:12:01:47 as a base-60 number.
+  local mac_line=""
+  [ -n "${mac}" ] && mac_line=$'\n            macAddress: "'"${mac}"'"'
   local affinity_key affinity_value
 
   if kubectl get vm -n "${NS}" "${name}" &>/dev/null; then
@@ -269,7 +297,7 @@ spec:
           interfaces:
           - name: default
             model: virtio
-            bridge: {}
+            bridge: {}${mac_line}
       networks:
       - name: default
         multus:
@@ -285,6 +313,13 @@ spec:
             hostname: ${name}
             ssh_authorized_keys:
 ${AUTHORIZED_KEYS}
+            users:
+              - default
+              - name: sles
+                shell: /bin/bash
+                sudo: ALL=(ALL) NOPASSWD:ALL
+                ssh_authorized_keys:
+${SLES_KEYS}
 EOF
 }
 
@@ -299,7 +334,7 @@ wait_running() {
   log "warn: ${name} not Running yet after 5 minutes (non-fatal, check the UI)."
 }
 
-create_vm "${VM_NAME}"
+create_vm "${VM_NAME}" "" "${GATEWAY_MAC}"
 wait_running "${VM_NAME}"
 
 # --- daily-batch-processor: the "pause target" chapter 4 also needs --------

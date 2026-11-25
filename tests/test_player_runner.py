@@ -167,12 +167,14 @@ def test_next_refused_on_a_chapter_with_check(tmp_path):
 
 # -- skip / back -------------------------------------------------------------------
 
-def test_skip_1_to_4_runs_solves_and_cleanups_in_order(tmp_path):
+def test_skip_1_to_4_runs_setup_solve_cleanup_per_chapter_in_order(tmp_path):
     r = _runner(tmp_path)
     r.enter()
     _reset_calls(tmp_path)
     res = r.skip(3)
-    assert _calls(tmp_path) == ["1 solve", "2 solve", "2 cleanup", "3 solve", "4 setup"]
+    # Chapter 1 was entered (its setup ran on Start); 2 and 3 were not, so their
+    # setup runs before their solve, like pressing Skip once per chapter.
+    assert _calls(tmp_path) == ["1 solve", "2 setup", "2 solve", "2 cleanup", "3 solve", "4 setup"]
     assert res.ok and r.current == 3 and r.entered
     assert r.completed == [0, 1, 2]
 
@@ -182,7 +184,7 @@ def test_failing_solve_stops_the_skip(tmp_path):
     r.enter()
     _reset_calls(tmp_path)
     res = r.skip(3)
-    assert _calls(tmp_path) == ["1 solve", "2 solve"]
+    assert _calls(tmp_path) == ["1 solve", "2 setup", "2 solve"]
     assert not res.ok and r.current == 1 and not r.entered
     assert "02-the-subterranean-divide-cluster-prep" in res.message
 
@@ -347,3 +349,12 @@ def test_real_track_loads_and_renders():
         out = render_body(c.body, {"RANCHER_PASSWORD": "x", "PAYMENT_GATEWAY_IP": "y", "_SANDBOX_ID": "z"})
         assert "Instruqt-Var" not in out and "[button" not in out
         assert sorted(c.scripts) == sorted(SCRIPTS[c.dirname])
+
+
+def test_failing_setup_of_a_skipped_chapter_stops_the_skip(tmp_path):
+    r = _runner(tmp_path, fail={(2, "setup"): 1})
+    r.enter()
+    _reset_calls(tmp_path)
+    res = r.skip(3)
+    assert _calls(tmp_path) == ["1 solve", "2 setup"]
+    assert not res.ok and r.current == 1 and not r.entered

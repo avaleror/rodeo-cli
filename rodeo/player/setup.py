@@ -107,10 +107,16 @@ def caddyfile(opts: SetupOptions) -> str:
     def upstream(name: str, target: str) -> str:
         # The products serve their own self-signed certificates on the lab
         # network; the browser only ever sees Caddy's. X-Frame-Options is
-        # dropped so the UIs can sit in the player's iframes.
+        # dropped so the UIs can sit in the player's iframes. Host is the
+        # browser's: for an https upstream Caddy would send the upstream
+        # address, and Rancher/Harvester build absolute API links from Host,
+        # so the UI called https://192.168.122.10/v1/... and hung after login
+        # (found live 2026-11-25).
         return f"""{name} {{
 \ttls internal
 \treverse_proxy https://{target} {{
+\t\theader_up Host {{host}}
+\t\theader_up X-Forwarded-Host {{host}}
 \t\ttransport http {{
 \t\t\ttls_insecure_skip_verify
 \t\t}}

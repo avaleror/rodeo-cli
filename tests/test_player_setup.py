@@ -46,6 +46,8 @@ def test_caddyfile_proxies_only_the_player_ttyd_and_the_two_uis():
     assert "admin off" in text and "skip_install_trust" in text
     # The lab already listens on :80 (nginx); Caddy must not try to.
     assert "auto_https disable_redirects" in text
+    # The UIs build absolute API links from Host: it must be the browser's.
+    assert text.count("header_up Host {host}") == 2
     assert "{http." not in text and "{query" not in text  # no request-chosen upstream
 
 

@@ -79,7 +79,8 @@ def steps(monkeypatch):
     """Every invoked fleet command records its name instead of running."""
     seen: list[str] = []
     for module, names in ((fleet_cmd, ("fleet_provision_cmd", "fleet_deploy_cmd", "fleet_open_access_cmd",
-                                       "fleet_access_cmd")),
+                                       "fleet_access_cmd", "fleet_lab_images_cmd", "fleet_dns_cmd",
+                                       "fleet_cert_cmd", "fleet_player_setup_cmd")),
                           (fleet_portal_cmd, ("portal_up_cmd", "portal_publish_cmd", "portal_info_cmd"))):
         for name in names:
             monkeypatch.setattr(module, name, lambda _n=name, **kw: seen.append(_n))
@@ -156,3 +157,51 @@ def test_fleet_up_refuses_an_unapproved_source_before_provisioning(tmp_path, mon
     assert result.exit_code == 1
     assert "not trusted" in result.output
     assert not provisioned
+
+
+SHA = "77022fd51ab5797cd201b9512fe44af3dc2ae9f6"
+
+
+def _player_file(tmp_path, *, domain=True):
+    path = _inventory_file(tmp_path)
+    data = yaml.safe_load(path.read_text())
+    data["portal"]["player"] = True
+    if domain:
+        data["player"] = {"domain": "example.org"}
+    path.write_text(yaml.safe_dump(data))
+    return path
+
+
+def test_up_runs_the_player_steps_once_the_labs_are_ready(tmp_path, steps):
+    path = _player_file(tmp_path)
+    r = CliRunner().invoke(fleet_cmd.fleet_cmd, ["up", "-f", str(path), "--track-ref", SHA,
+                                                 "--images-bucket", "my-images"])
+    assert r.exit_code == 0, r.output
+    assert steps == ["fleet_provision_cmd", "fleet_deploy_cmd", "portal_up_cmd", "wait",
+                     "fleet_lab_images_cmd", "fleet_dns_cmd", "fleet_cert_cmd", "fleet_player_setup_cmd",
+                     "fleet_open_access_cmd", "portal_publish_cmd", "portal_info_cmd"]
+
+
+def test_up_with_portal_player_but_no_domain_skips_dns_and_cert(tmp_path, steps):
+    path = _player_file(tmp_path, domain=False)
+    r = CliRunner().invoke(fleet_cmd.fleet_cmd, ["up", "-f", str(path), "--track-ref", SHA])
+    assert r.exit_code == 0, r.output
+    assert "fleet_dns_cmd" not in steps and "fleet_cert_cmd" not in steps
+    assert "fleet_lab_images_cmd" not in steps  # no bucket given
+    assert steps.index("wait") < steps.index("fleet_player_setup_cmd") < steps.index("fleet_open_access_cmd")
+
+
+@pytest.mark.parametrize("ref", [None, "main", "77022fd"])
+def test_up_with_the_player_needs_a_full_track_sha_before_provisioning(tmp_path, steps, ref):
+    path = _player_file(tmp_path)
+    args = ["up", "-f", str(path)] + (["--track-ref", ref] if ref else [])
+    r = CliRunner().invoke(fleet_cmd.fleet_cmd, args)
+    assert r.exit_code == 1 and "--track-ref" in r.output
+    assert steps == []  # nothing provisioned
+
+
+def test_up_without_the_player_ignores_the_player_steps(tmp_path, steps):
+    path = _inventory_file(tmp_path)
+    r = CliRunner().invoke(fleet_cmd.fleet_cmd, ["up", "-f", str(path)])
+    assert r.exit_code == 0, r.output
+    assert not {"fleet_dns_cmd", "fleet_cert_cmd", "fleet_player_setup_cmd"} & set(steps)

@@ -5,11 +5,15 @@
 
 Runs the instructor flow in order: provision, deploy, portal up, wait until every
 lab is complete, open the UI ports, publish the labs on the portal and print what
-the students need. Every step is the existing ``rodeo fleet`` command, so a
+the students need. A workshop that runs the lab player (a ``player:`` block or
+``portal.player: true``) also gets, once the labs are ready: lab images
+(``--images-bucket``), lab names in DNS and the event certificate (``player:``),
+then the player itself (``--track-ref``). Every step is the existing ``rodeo fleet`` command, so a
 failed run is resumed with the same ``rodeo fleet up -f workshop.yaml``.
 """
 from __future__ import annotations
 
+import re
 import time
 from datetime import datetime
 from pathlib import Path
@@ -86,6 +90,15 @@ def build_inventory(*, profile: str, count: int, name: str | None = None,
     return out
 
 
+TRACK_REF_RE = re.compile(r"^[0-9a-f]{40}$")
+
+
+def uses_player(inventory: FleetInventory) -> bool:
+    """The workshop runs the lab player: its own domain, or the portal links to it."""
+    return inventory.player is not None or bool(inventory.portal and inventory.portal.enabled
+                                                and inventory.portal.player)
+
+
 def wait_for_labs(inventory: FleetInventory, inventory_path: Path, *, minutes: float,
                   echo: Any = click.echo, sleep: Any = time.sleep,
                   clock: Any = time.monotonic) -> tuple[str, list[str]]:
@@ -149,6 +162,11 @@ def wait_for_labs(inventory: FleetInventory, inventory_path: Path, *, minutes: f
 @click.option("--wait-minutes", default=90, show_default=True, type=click.IntRange(1, 1440),
               help="Give up waiting for the labs after this long.")
 @click.option("--ref", default=None, metavar="GIT_REF", help="rodeo-cli ref the hosts run (as fleet deploy --ref).")
+@click.option("--track-ref", default=None, metavar="SHA",
+              help="Track commit the lab player pins (40 hex). Needed when the workshop runs the player.")
+@click.option("--images-bucket", default=None, metavar="BUCKET",
+              help="Private S3 bucket with lab images: fetched on every lab once it is ready "
+                   "(as fleet lab-images --run).")
 @click.option("--trust-source", "trust_source_flag", is_flag=True, default=False,
               help="Approve the workshop's git lab.source (as fleet deploy --trust-source).")
 @click.pass_context
@@ -157,10 +175,12 @@ def fleet_up_cmd(ctx: click.Context, inventory_path: Path, profile: str | None, 
                  instance_tier: str | None, subnet_id: str | None, ttl_hours: float | None,
                  no_deadman: bool, portal: bool, title: str | None, guide_url: str | None,
                  concurrency: int | None, wait_minutes: int, ref: str | None,
+                 track_ref: str | None = None, images_bucket: str | None = None,
                  trust_source_flag: bool = False) -> None:
     """Provision, deploy and open a whole workshop: one command, start to finish."""
-    from .fleet_cmd import (_approve_source, console, fleet_access_cmd, fleet_deploy_cmd,
-                            fleet_open_access_cmd, fleet_provision_cmd)
+    from .fleet_cmd import (_approve_source, console, fleet_access_cmd, fleet_cert_cmd, fleet_deploy_cmd,
+                            fleet_dns_cmd, fleet_lab_images_cmd, fleet_open_access_cmd,
+                            fleet_player_setup_cmd, fleet_provision_cmd)
     from .fleet_portal_cmd import portal_info_cmd, portal_publish_cmd, portal_up_cmd
 
     given = {k: v for k, v in ctx.params.items() if k in _BUILD_FLAGS and v not in (None, False)}
@@ -219,6 +239,12 @@ def fleet_up_cmd(ctx: click.Context, inventory_path: Path, profile: str | None, 
         console.print(f"[red]✗  {exc}[/red]")
         raise SystemExit(1)
     with_portal = bool(inventory.portal and inventory.portal.enabled)
+    with_player = uses_player(inventory)
+    # Before provisioning, not after an hour of deploy.
+    if with_player and not (track_ref and TRACK_REF_RE.match(track_ref)):
+        console.print("[red]✗  this workshop runs the lab player: give --track-ref <track commit SHA, "
+                      "40 hex>[/red]")
+        raise SystemExit(1)
     from ..hooks import operation
 
     # One operation: the provision and deploy invoked below reuse it.
@@ -244,6 +270,22 @@ def fleet_up_cmd(ctx: click.Context, inventory_path: Path, profile: str | None, 
         console.print(f"  Fix:   [bold]rodeo fleet retry -f {inventory_path} --failed-only[/bold]")
         console.print(f"  Then:  [bold]rodeo fleet up -f {inventory_path}[/bold] (finished steps are skipped)\n")
         raise SystemExit(1)
+
+    if images_bucket:
+        step("Lab images")
+        ctx.invoke(fleet_lab_images_cmd, inventory_path=inventory_path, bucket=images_bucket,
+                   prefix="images/", seconds=6 * 3600, run=True, concurrency=8)
+    if with_player:
+        if inventory.player is not None:
+            step(f"Lab names in {inventory.player.domain}")
+            ctx.invoke(fleet_dns_cmd, inventory_path=inventory_path, do_delete=False, host_ids=(),
+                       output_fmt="text")
+            step(f"Certificate for *.{inventory.player.domain}")
+            ctx.invoke(fleet_cert_cmd, inventory_path=inventory_path)  # reuses a valid one
+        step("Lab player")
+        ctx.invoke(fleet_player_setup_cmd, inventory_path=inventory_path, track_ref=track_ref,
+                   concurrency=8, output_fmt="text")
+        inventory = load_inventory(inventory_path)
 
     if inventory.student_access == "open":
         step("Open the lab UIs to students")

@@ -375,8 +375,8 @@ runuser -u {STUDENT_USER} -- test -r {home}/.rodeo/{kube}""" if kube else ""
     lab_key = opts.profile.student_ssh_key
     key_copy = f"""
 # The lab VM key (the profile's student_ssh_key) as the student's default SSH
-# key, so the assignment's bare `ssh sles@<vm>` works, as it does with the
-# Instruqt sandbox key. Never root's key: refuse if they were ever the same.
+# key, so the assignment's bare `ssh sles@<vm>` works without naming a key.
+# Never root's key: refuse if they were ever the same.
 LABKEY={q(lab_key)}
 if [ -f "$LABKEY" ]; then
   if [ -f /root/.ssh/id_ed25519 ] && cmp -s "$LABKEY" /root/.ssh/id_ed25519; then

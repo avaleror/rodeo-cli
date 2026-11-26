@@ -180,6 +180,26 @@ rodeo fleet status -f workshop.yaml --host student-01 -j 4
 
 ---
 
+## 大型活動之前：`rodeo fleet preflight` { #before-a-big-event-rodeo-fleet-preflight }
+
+在建立任何資源之前，執行唯讀檢查：
+
+```bash
+rodeo fleet preflight -f workshop.yaml              # 依清單的規劃
+rodeo fleet preflight -f workshop.yaml --count 30   # 用同一個檔案規劃更大的活動
+```
+
+- **vCPU 配額**：該執行個體系列的隨需配額中可用的 vCPU，與新主機（以及 portal 機器）
+  所需的數量比較。超過 80% 時警告，超過配額時失敗，並列出要提高的 Service Quotas 代碼。
+  請在活動前數週向 AWS 申請：提高配額不會立即生效。
+- **執行個體類型**：子網路所在的可用區域有提供此類型。
+- **AWS 工作階段**：可自動更新的憑證（`aws login`、SSO）沒有問題；固定憑證的有效時間
+  必須超過約一小時的執行。
+- **有 `player:` 區塊時**：Route 53 區域存在，且活動憑證還有 7 天以上的效期
+  （`fleet cert` 會簽發或更新）。
+
+有檢查失敗時，結束代碼為 1。
+
 ## 一個指令：`rodeo fleet up` { #one-command-rodeo-fleet-up }
 
 `rodeo fleet up` 會依序執行下方整套講師流程：`provision`、

@@ -352,6 +352,9 @@
   });
 
   function pickChapter(i) {
+    // The menu sits above the lobby, cover and complete screens; what it opens
+    // (a chapter, the skip question) is in the guide, under them.
+    if (overlay) showOverlay(null);
     if (i <= state.readable) { pendingSkip = null; $("confirm").hidden = true; loadChapter(i); return; }
     askSkip(i);
   }
@@ -827,6 +830,8 @@
     document.title = state.title;
     const moved = prev && prev.current !== state.current;
     if (reloadChapter || viewing === null || moved) await loadChapter(state.current);
+    // A cover still open from before the move belongs to the old chapter.
+    if (moved && overlay === "cover") showOverlay(null);
     renderChapters();
     renderActions();
     if (state.busy && !polling) polling = setInterval(poll, 2000);

@@ -200,6 +200,32 @@ rodeo fleet preflight -f workshop.yaml --count 30   # 用同一個檔案規劃�
 
 有檢查失敗時，結束代碼為 1。
 
+## 從雲端執行：`rodeo fleet operator` { #run-it-from-the-cloud-rodeo-fleet-operator }
+
+長時間的 `fleet up` 不應該依賴筆電：闔上螢幕、睡眠或 Wi-Fi 斷線都會讓它停止。operator
+主機是 workshop 子網路中的一台小型執行個體（t3.small），替你執行 fleet 指令：
+
+```bash
+rodeo fleet operator up    -f workshop.yaml   # 建立主機，安裝 rodeo 與 AWS CLI
+rodeo fleet operator login -f workshop.yaml   # 在主機上執行 aws login --remote
+rodeo fleet operator push  -f workshop.yaml   # workshop 目錄、lab 金鑰、known_hosts、活動憑證
+rodeo fleet operator run   -f workshop.yaml -- up --track-ref <sha> --images-bucket <bucket>
+rodeo fleet operator logs  -f workshop.yaml   # Ctrl-C 只停止追蹤，不會停止執行
+rodeo fleet operator status -f workshop.yaml  # running、done 或 failed (exit N)
+rodeo fleet operator pull  -f workshop.yaml   # 取回結果；會先備份本機副本
+rodeo fleet operator down  -f workshop.yaml
+```
+
+- **AWS 工作階段**：`login` 會在主機上執行 `aws login --remote`。在任何裝置上開啟網址，
+  再把代碼貼回來。只要主控台工作階段仍有效，CLI 會自動更新，所以筆電可以睡眠。
+  執行個體角色不需要登入也能做到，但建立角色需要 PowerUser 沒有的 IAM 權限。
+- **安全性**：主機上有 lab SSH 金鑰、活動憑證與一個 AWS 工作階段。它的安全群組只對你的
+  筆電 IP 開放 SSH，與每台 rodeo 執行個體一樣有 dead-man switch，`down` 會移除它。
+- **兩邊都能 SSH 到 lab**：從 operator 主機執行時，lab 的 SSH 仍允許你的筆電 IP，
+  與 operator 自己的 IP 並存。
+- **不影響學員**：學員和以前一樣，透過 `open-access` 從任何網路連到 lab。
+- `run` 接的 fleet 指令不用加 `-f`。主機上沒有人能回答提示，指令需要確認時請加上 `--yes`。
+
 ## 一個指令：`rodeo fleet up` { #one-command-rodeo-fleet-up }
 
 `rodeo fleet up` 會依序執行下方整套講師流程：`provision`、

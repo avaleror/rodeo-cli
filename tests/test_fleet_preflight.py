@@ -102,6 +102,7 @@ def test_no_quota_permission_is_a_warning(tmp_path):
 def test_type_not_offered_in_the_subnet_az_fails(tmp_path):
     c = _run(_inventory(tmp_path), ec2=FakeEC2(offered=False))
     assert c["instance type"].state == "fail" and "eu-north-1a" in c["instance type"].detail
+    assert "vCPU quota" not in c  # AWS cannot size a type it does not have (InvalidInstanceType)
 
 
 @pytest.mark.parametrize("session,state", [((None, False), "ok"), ((900, True), "ok"),

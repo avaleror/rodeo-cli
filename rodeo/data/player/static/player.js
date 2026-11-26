@@ -579,13 +579,14 @@
   async function showComplete(index) {
     const v = await api(`/api/chapter/${index}`);
     const trackDone = state.completed.includes(state.chapters.length - 1);
-    $("completeEyebrow").textContent = trackDone && index === state.chapters.length - 1
-      ? "Track complete" : `Chapter ${index + 1} complete`;
-    $("completeTitle").textContent = nameOf(v);
+    const wholeTrack = trackDone && index === state.chapters.length - 1;
+    $("completeEyebrow").textContent = wholeTrack ? "Track complete" : `Chapter ${index + 1} complete`;
+    $("completeTitle").textContent = wholeTrack ? state.title : nameOf(v);
     const did = $("completeDid"); did.replaceChildren();
-    v.steps.filter((s) => s.kind === "task" && s.name).forEach((s) => {
-      const li = el("li", "", ICON.check); li.append(text("span", "", s.name)); did.append(li);
-    });
+    // The whole track: every chapter. One chapter: its tasks.
+    const lines = wholeTrack ? state.chapters.map((c) => `${c.index + 1} · ${nameOf(c)}`)
+                             : v.steps.filter((s) => s.kind === "task" && s.name).map((s) => s.name);
+    lines.forEach((line) => { const li = el("li", "", ICON.check); li.append(text("span", "", line)); did.append(li); });
     if (!did.children.length) { const li = el("li", "", ICON.check); li.append(text("span", "", "Finished the chapter")); did.append(li); }
     const next = state.chapters[state.current];
     const hasNext = !trackDone && next && next.index !== index;

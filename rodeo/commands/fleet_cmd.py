@@ -5,6 +5,7 @@ import json
 import sys
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import click
 from rich.console import Console
@@ -709,6 +710,11 @@ def fleet_provision_cmd(
     try:
         inventory = load_inventory(inventory_path)
         begin_operation(inventory_path, "fleet.provision")
+        if inventory.provider:
+            pruned = _prune_cloud(inventory)
+            if pruned and output_fmt != "json":
+                console.print(f"  [dim]pruned {len(pruned)} leftover security group(s) / key pair(s) "
+                              "of labs that are gone[/dim]")
         hosts = fleet_provision(
             inventory,
             inventory_path,
@@ -933,6 +939,9 @@ def fleet_deprovision_cmd(
     from ..fleet.local_cleanup import forget_cloud_hosts
 
     cleaned = forget_cloud_hosts(inventory.name, inventory_path, results, portal_removed=portal_removed)
+    # Leftovers of earlier labs the dead-man switch ended. This workshop's own
+    # instances are still shutting down, so its group is not touched here.
+    results = [*results, *(_prune_cloud(inventory) if inventory.provider else [])]
     payload = deprovision_payload(inventory.name, results)
     payload["local_cleanup"] = cleaned
     if dns_note:
@@ -1098,6 +1107,20 @@ def fleet_player_setup_cmd(inventory_path: Path, track_ref: str, check_timeout: 
             console.print(f"{mark}  {r.id:<16} {detail}")
     if not all(r.ok for r in rows):
         raise SystemExit(1)
+
+
+def _prune_cloud(inventory: FleetInventory) -> list[Any]:
+    """Best effort: your security groups and key pairs left by labs that are
+    gone (AWS only; see ``rodeo cloud prune``). Never fatal, never an instance."""
+    provider = inventory.provider or {}
+    if str(provider.get("type") or "aws") != "aws" or not provider.get("region"):
+        return []
+    from ..providers.aws import AwsHostProvider
+
+    try:
+        return AwsHostProvider().prune_orphans({"region": str(provider["region"])})
+    except Exception:  # noqa: BLE001
+        return []
 
 
 def _prune_dns(inventory: FleetInventory, *, quiet: bool = False) -> list[str]:

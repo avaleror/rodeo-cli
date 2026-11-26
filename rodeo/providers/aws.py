@@ -1,6 +1,7 @@
 """AWS EC2 HostProvider for Fleet F4a."""
 from __future__ import annotations
 
+import calendar
 import os
 import time
 from typing import Any, Callable
@@ -44,6 +45,10 @@ from .base import (
 
 LIVE_STATES = ["pending", "running", "stopping", "stopped"]
 TAG_RESOURCE = "rodeo-resource"
+# When rodeo made a security group (EC2 does not record it; key pairs have
+# CreateTime). The orphan prune leaves anything younger than its grace alone.
+TAG_CREATED_AT = "rodeo-created-at"
+ORPHAN_GRACE_HOURS = 2.0
 LAB_SG_RESOURCE = "security-group"
 
 _REQUIRED = ("region", "subnet_id")
@@ -525,6 +530,7 @@ class AwsHostProvider:
     ) -> str:
         """Create a tagged SG. On a duplicate name, reuse the existing group only
         when it carries this deployment and owner; never reuse by name alone."""
+        tags = {**tags, TAG_CREATED_AT: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
         try:
             resp = ec2.create_security_group(
                 GroupName=name,
@@ -1705,6 +1711,94 @@ class AwsHostProvider:
                 id="key-pair", ok=True, provider_id=name,
                 detail="deleted" if ok else "delete failed - re-run to retry",
             ))
+        return results
+
+    def orphans(self, config: dict[str, Any], *, grace_hours: float = ORPHAN_GRACE_HOURS,
+                now: float | None = None) -> list[dict[str, Any]]:
+        """Your rodeo security groups and key pairs whose deployment has no
+        instance left (a dead-man switch terminates instances, nothing else).
+
+        Only resources tagged ``ManagedBy=rodeo`` with a deployment id and your
+        ``rodeo-owner``. A deployment with any instance not terminated (anyone's)
+        is kept, and so is anything younger than ``grace_hours``, so a deploy
+        that is still launching is never touched. Untagged key pairs and groups
+        (made by hand, or by rodeo before deployment ids) are never listed.
+        """
+        ec2 = self._client(config)
+        owner = self.owner(config)
+        now = time.time() if now is None else now
+        cutoff = now - grace_hours * 3600
+        # Any instance that carries a deployment id keeps it, whatever its other
+        # tags, until it is terminated (one shutting down still holds its group).
+        live: set[str | None] = set()
+        for page in ec2.get_paginator("describe_instances").paginate(Filters=[
+            {"Name": "tag-key", "Values": [TAG_DEPLOYMENT]},
+            {"Name": "instance-state-name", "Values": [*LIVE_STATES, "shutting-down"]},
+        ]):
+            live |= {_tags(i).get(TAG_DEPLOYMENT) for res in page.get("Reservations") or []
+                     for i in res.get("Instances") or []}
+        mine = [
+            {"Name": f"tag:{TAG_MANAGED_BY}", "Values": [TAG_MANAGED_BY_VALUE]},
+            {"Name": f"tag:{TAG_OWNER}", "Values": [owner]},
+        ]
+        rows: dict[str, dict[str, Any]] = {}
+
+        def row(tags: dict[str, str]) -> dict[str, Any]:
+            dep = tags[TAG_DEPLOYMENT]
+            return rows.setdefault(dep, {"deployment": dep, "workshop": tags.get(TAG_WORKSHOP, ""),
+                                         "security_groups": [], "key_pairs": []})
+
+        def old(stamp: Any) -> bool:
+            if not stamp:
+                return True  # made before rodeo stamped it: hours old at least
+            if isinstance(stamp, str):
+                try:
+                    stamp = calendar.timegm(time.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ"))
+                except ValueError:
+                    return False
+            else:
+                stamp = stamp.timestamp()
+            return stamp <= cutoff
+
+        for page in ec2.get_paginator("describe_security_groups").paginate(Filters=mine):
+            for sg in page.get("SecurityGroups", []):
+                tags = _tags(sg)
+                if tags.get(TAG_DEPLOYMENT) and tags[TAG_DEPLOYMENT] not in live \
+                        and old(tags.get(TAG_CREATED_AT)):
+                    row(tags)["security_groups"].append(str(sg["GroupId"]))
+        for pair in ec2.describe_key_pairs(Filters=mine).get("KeyPairs") or []:
+            tags = _tags(pair)
+            if tags.get(TAG_DEPLOYMENT) and tags[TAG_DEPLOYMENT] not in live \
+                    and old(pair.get("CreateTime")):
+                row(tags)["key_pairs"].append(str(pair["KeyName"]))
+        return sorted(rows.values(), key=lambda r: (r["workshop"], r["deployment"]))
+
+    def prune_orphans(self, config: dict[str, Any], *, grace_hours: float = ORPHAN_GRACE_HOURS,
+                      dry_run: bool = False) -> list[DeprovisionResult]:
+        """Delete what ``orphans`` lists. Never terminates an instance."""
+        ec2 = self._client(config)
+        results: list[DeprovisionResult] = []
+        for r in self.orphans(config, grace_hours=grace_hours):
+            for sg_id in r["security_groups"]:
+                if dry_run:
+                    results.append(DeprovisionResult(id="security-group", ok=True, provider_id=sg_id,
+                                                     detail=f"would delete ({r['workshop']} {r['deployment']})"))
+                    continue
+                try:
+                    ec2.delete_security_group(GroupId=sg_id)
+                    detail = f"deleted ({r['workshop']} {r['deployment']})"
+                except Exception as exc:  # noqa: BLE001
+                    code, _ = _aws_error_parts(exc)
+                    detail = f"kept ({code or 'error'})"
+                results.append(DeprovisionResult(id="security-group", ok=True, provider_id=sg_id,
+                                                 detail=detail))
+            for name in r["key_pairs"]:
+                if dry_run:
+                    detail = f"would delete ({r['workshop']} {r['deployment']})"
+                else:
+                    ok = delete_ec2_key_pair(ec2, name)
+                    detail = f"deleted ({r['workshop']} {r['deployment']})" if ok else "delete failed"
+                results.append(DeprovisionResult(id="key-pair", ok=True, provider_id=name, detail=detail))
         return results
 
     def _delete_sg_retrying(self, ec2: Any, sg_id: str, attempts: int = 12) -> DeprovisionResult:

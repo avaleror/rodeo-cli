@@ -408,6 +408,12 @@ never picks cloud resources by lab name alone. Every resource carries
 - `rodeo cloud destroy <deployment>` removes one of your deployments from
   anywhere: instances, security groups and key pair. Someone else's needs
   `--not-mine`, and you have to type their owner to confirm.
+- `rodeo cloud prune` deletes the security groups and key pairs left by your
+  labs that are gone. A dead-man switch terminates the instances and nothing
+  else, so these pile up. It only touches resources tagged as yours whose
+  deployment no instance carries any more, leaves anything younger than two
+  hours alone (`--grace-hours`), and never terminates an instance. `--dry-run`
+  lists without deleting. `fleet provision` and `fleet destroy` run it too.
 - Labs from before this change have no `rodeo-deployment`. The machine holding
   their key adopts them on the next `up` or `destroy` (tags added, names kept).
   Anyone else sees them as `legacy` in `rodeo cloud ls --all`.

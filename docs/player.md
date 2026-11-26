@@ -269,6 +269,13 @@ Shipped profiles: `virt-rodeo` (track), `virt-workshop` and `virt-workshop-2n`
   behind the lab login, and the track tabs on `tab_port` open it.
 - **kubeconfig** and **student_ssh_key**: leave them out when the track does
   not use them. The student gets a copy of each.
+- **student_libvirt** and **student_vm_access**: for labs whose guide drives
+  VMs from the host. The first puts the student in the `libvirt` group with
+  `qemu:///system` as the default (root-equivalent on that host, so `fleet
+  player-setup` refuses it without `per_host_ssh_key: true`). The second makes
+  the student their own key and installs it for root on the listed lab VMs,
+  using root's key, which the student never sees. Not shipped yet for
+  suse-edge and suse-telco: edge3/edge4 images only trust the host key.
 - **credentials**: what the student signs in with, resolved on the lab into a
   root-only file the player serves behind the lab login. `??<key>` only.
 - **variables**: passwords the track shows, read from the host's

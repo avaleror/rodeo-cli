@@ -99,9 +99,24 @@ def require_track_ref(inventory: FleetInventory, track_ref: str | None) -> str |
     return track_ref
 
 
+def require_safe_student_access(inventory: FleetInventory) -> None:
+    """A profile that gives the student libvirt gives them root on their host in
+    practice: refuse unless every host has its own root key (per_host_ssh_key),
+    so that root on one lab opens no other."""
+    from ..ssh_key import per_host_ssh_key
+
+    prof = player_profile(inventory)
+    if prof.student_libvirt and inventory.provider and not per_host_ssh_key(inventory.provider):
+        raise ConfigError(
+            f"lab profile {prof.name} gives students libvirt (root-equivalent on their host): "
+            "set provider.per_host_ssh_key: true before provisioning, so root on one lab "
+            "opens no other")
+
+
 def fleet_player_setup(inventory: FleetInventory, *, track_ref: str | None = None, concurrency: int = 8,
                        check_timeout: int | None = None) -> list[PlayerSetupRow]:
     track_ref = require_track_ref(inventory, track_ref)
+    require_safe_student_access(inventory)
     if check_timeout is not None:
         try:
             check_timeout_ok(check_timeout)

@@ -14,6 +14,8 @@ its ``rodeo-plan.yaml`` (``rodeo/data/examples/<profile>/player.yaml``)::
         upstream: 192.168.122.10:443      # on the lab network
         scheme: https                     # https (default) or http
         tab_port: 8443                    # the port the track's tabs use
+    student_libvirt: false                # student may use virsh (qemu:///system); root-equivalent
+    student_vm_access: [192.168.122.9]    # lab VMs where the student's own key logs in as root
     credentials:                          # shown to the student in the player
       - label: SUSE Virtualization
         user: admin
@@ -79,6 +81,10 @@ class PlayerProfile:
     variables: dict[str, str] = field(default_factory=dict)  # TRACK_VAR -> secrets.yaml key
     guide_url: str = ""
     credentials: tuple[PlayerCredential, ...] = ()
+    # Labs whose guide drives VMs from the host (virsh, ssh root@<vm>). libvirt
+    # access is root-equivalent on the host: fleets need per_host_ssh_key.
+    student_libvirt: bool = False
+    student_vm_access: tuple[str, ...] = ()
 
     def ui(self, key: str) -> PlayerUI | None:
         return next((u for u in self.uis if u.key == key), None)
@@ -92,7 +98,8 @@ class PlayerProfile:
         uis = tuple(PlayerUI(u.key, u.label, overrides.get(u.key, u.upstream), u.tab_port, u.scheme)
                     for u in self.uis)
         out = PlayerProfile(self.name, self.title, self.track_repo, uis, self.kubeconfig,
-                            self.student_ssh_key, dict(self.variables), self.guide_url, self.credentials)
+                            self.student_ssh_key, dict(self.variables), self.guide_url, self.credentials,
+                            self.student_libvirt, self.student_vm_access)
         out.validate()
         return out
 
@@ -106,6 +113,12 @@ class PlayerProfile:
             raise ProfileError(f"{where}: guide_url must be an https:// address")
         if len(self.credentials) > MAX_CREDENTIALS:
             raise ProfileError(f"{where}: at most {MAX_CREDENTIALS} credentials")
+        for ip in self.student_vm_access:
+            if not re.match(r"^\d{1,3}(\.\d{1,3}){3}$", ip):
+                raise ProfileError(f"{where}: student_vm_access lists lab VM addresses, got {ip!r}")
+        if self.student_vm_access and self.student_ssh_key:
+            raise ProfileError(f"{where}: student_ssh_key and student_vm_access both set the student's "
+                               "default key: pick one")
         for c in self.credentials:
             if not _TEXT_RE.match(c.label) or not _TEXT_RE.match(c.user) or not _FILE_RE.match(c.secret):
                 raise ProfileError(f"{where}: credentials need a label, a user and password: ??<secrets key>")
@@ -176,6 +189,8 @@ def parse(name: str, raw: Any) -> PlayerProfile:
         variables={str(k): _secret_ref(name, f"variables.{k}", v) for k, v in variables.items()},
         guide_url=str(raw.get("guide_url") or ""),
         credentials=tuple(creds),
+        student_libvirt=bool(raw.get("student_libvirt", False)),
+        student_vm_access=tuple(str(x) for x in (raw.get("student_vm_access") or [])),
     )
     profile.validate()
     return profile

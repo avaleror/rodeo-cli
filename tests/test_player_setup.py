@@ -299,3 +299,41 @@ def test_credentials_come_from_secrets_and_are_written_root_only(tmp_path, monke
     s.write_credentials(creds, dest)
     assert oct(dest.stat().st_mode & 0o777) == "0o600"
     assert json.loads(dest.read_text()) == creds
+
+
+def _vm_profile(**extra):
+    from rodeo.player.profile import parse
+
+    return parse("t", {"title": "T", "uis": [{"key": "rancher", "upstream": "192.168.122.9:30002",
+                                               "tab_port": 30002}], **extra})
+
+
+def test_student_libvirt_joins_the_group_and_sets_the_system_uri():
+    opts = s.SetupOptions(base="13-61-184-227.sslip.io", track_ref="", profile=_vm_profile(student_libvirt=True))
+    script = s.install_script(opts, "/usr/local/bin/rodeo")
+    assert "usermod -a -G libvirt student" in script and "exit 4" in script
+    assert "LIBVIRT_DEFAULT_URI=qemu:///system" in s.ttyd_unit(opts)
+    plain = s.SetupOptions(base="13-61-184-227.sslip.io", track_ref="", profile=_vm_profile())
+    assert "usermod -a -G libvirt" not in s.install_script(plain, "/usr/local/bin/rodeo")
+    assert "LIBVIRT_DEFAULT_URI" not in s.ttyd_unit(plain)
+
+
+def test_student_vm_access_gives_the_student_its_own_key_never_roots():
+    opts = s.SetupOptions(base="13-61-184-227.sslip.io", track_ref="",
+                          profile=_vm_profile(student_vm_access=["192.168.122.9", "192.168.122.20"]))
+    script = s.install_script(opts, "/usr/local/bin/rodeo")
+    assert f"VMKEY={s.STUDENT_VM_KEY}" in script and "the student VM key is root's key" in script
+    assert "for ip in 192.168.122.9 192.168.122.20; do" in script
+    assert "ssh -i /root/.ssh/id_ed25519 -o BatchMode=yes" in script  # root's key installs it, stays root's
+    assert "install -m 600 -o student" in script and "StrictHostKeyChecking accept-new" in script
+
+
+@pytest.mark.parametrize("extra,match", [
+    ({"student_vm_access": ["vm1"]}, "lab VM addresses"),
+    ({"student_vm_access": ["192.168.122.9"], "student_ssh_key": "/opt/k"}, "pick one"),
+])
+def test_student_access_fields_are_validated(extra, match):
+    from rodeo.player.profile import ProfileError
+
+    with pytest.raises(ProfileError, match=match):
+        _vm_profile(**extra)

@@ -66,6 +66,7 @@ STATE_DIR = VAR / "state"
 CONFIG = ETC / "config.json"
 AUTH_FILE = VAR / "auth.json"     # root-only: lab secret + access token
 CREDENTIALS_FILE = VAR / "credentials.json"  # root-only: what the student logs in with
+STUDENT_VM_KEY = VAR / "student-vm-key"      # root-only copy of the student's key to the lab VMs
 CADDYFILE = ETC / "Caddyfile"
 CADDY_DATA = Path("/var/lib/rodeo-player-caddy")
 TLS_DIR = ETC / "tls"              # root 0700
@@ -311,7 +312,9 @@ WantedBy=multi-user.target
 """
 
 
-def ttyd_unit() -> str:
+def ttyd_unit(opts: SetupOptions | None = None) -> str:
+    libvirt = (" LIBVIRT_DEFAULT_URI=qemu:///system"
+               if opts is not None and opts.profile.student_libvirt else "")
     return f"""[Unit]
 Description=rodeo lab player terminal (ttyd as {STUDENT_USER}, loopback)
 After=network-online.target
@@ -319,7 +322,7 @@ After=network-online.target
 [Service]
 User={STUDENT_USER}
 WorkingDirectory=~
-Environment=HOME=/home/{STUDENT_USER} TERM=xterm-256color
+Environment=HOME=/home/{STUDENT_USER} TERM=xterm-256color{libvirt}
 ExecStart=/usr/local/bin/ttyd --interface lo --port {TTYD_PORT} --base-path /terminal --writable -t disableLeaveAlert=true /bin/bash -l
 Restart=on-failure
 NoNewPrivileges=yes
@@ -369,7 +372,7 @@ def install_script(opts: SetupOptions, rodeo_bin: str) -> str:
         str(CADDYFILE): caddyfile(opts),
         str(CONFIG): json.dumps(player_config(opts), indent=2) + "\n",
         "/etc/systemd/system/rodeo-player.service": player_unit(rodeo_bin),
-        "/etc/systemd/system/rodeo-player-ttyd.service": ttyd_unit(),
+        "/etc/systemd/system/rodeo-player-ttyd.service": ttyd_unit(opts),
         "/etc/systemd/system/rodeo-player-caddy.service": caddy_unit(opts),
     }
     writes = "\n".join(
@@ -411,6 +414,44 @@ chmod 700 {TRACK_DIR}
 rm -rf {TRACK_DIR}
 install -d -m 700 {TRACK_DIR}
 """
+    libvirt = f"""
+# The guide drives the lab VMs with virsh: the student joins libvirt (the
+# system connection). Root-equivalent on this host, which is why fleets with
+# such a profile need one root key per host (per_host_ssh_key).
+usermod -a -G libvirt {STUDENT_USER}
+runuser -u {STUDENT_USER} -- env LIBVIRT_DEFAULT_URI=qemu:///system virsh list --all >/dev/null \\
+  || {{ echo "{STUDENT_USER} cannot use virsh on qemu:///system" >&2; exit 4; }}
+""" if opts.profile.student_libvirt else ""
+    vm_ips = " ".join(q(ip) for ip in opts.profile.student_vm_access)
+    vm_access = f"""
+# The student's own key to the lab VMs (root there), never root's key to this
+# host: made once here, installed on each VM with root's key.
+VMKEY={STUDENT_VM_KEY}
+[ -f "$VMKEY" ] || ssh-keygen -q -t ed25519 -N '' -C {STUDENT_USER}@lab-vms -f "$VMKEY"
+chmod 600 "$VMKEY"
+if [ -f /root/.ssh/id_ed25519 ] && cmp -s "$VMKEY" /root/.ssh/id_ed25519; then
+  echo "the student VM key is root's key" >&2; exit 3
+fi
+SG=$(id -gn {STUDENT_USER})
+install -d -m 700 -o {STUDENT_USER} -g "$SG" {home}/.ssh
+install -m 600 -o {STUDENT_USER} -g "$SG" "$VMKEY" {home}/.ssh/id_ed25519
+install -m 644 -o {STUDENT_USER} -g "$SG" "$VMKEY.pub" {home}/.ssh/id_ed25519.pub
+PUB=$(cat "$VMKEY.pub")
+CFG={home}/.ssh/config
+: > "$CFG"
+for ip in {vm_ips}; do
+  printf 'Host %s\\n  User root\\n  StrictHostKeyChecking accept-new\\n' "$ip" >> "$CFG"
+  if timeout 30 ssh -i /root/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=10 \\
+       -o StrictHostKeyChecking=accept-new root@"$ip" \\
+       "umask 077; mkdir -p ~/.ssh; grep -qxF '$PUB' ~/.ssh/authorized_keys 2>/dev/null || echo '$PUB' >> ~/.ssh/authorized_keys" \\
+       </dev/null >/dev/null 2>&1; then
+    echo "VM_ACCESS $ip ok"
+  else
+    echo "VM_ACCESS $ip unreachable"
+  fi
+done
+chown {STUDENT_USER}:"$SG" "$CFG"; chmod 600 "$CFG"
+""" if opts.profile.student_vm_access else ""
     return f"""set -euo pipefail
 [ "$(uname -m)" = x86_64 ] || {{ echo "player setup supports x86_64 hosts only" >&2; exit 2; }}
 {kube_check}
@@ -435,7 +476,7 @@ fi
 getent group {STUDENT_GROUP} >/dev/null || groupadd --system {STUDENT_GROUP}
 usermod -a -G {STUDENT_GROUP} {STUDENT_USER}{kube_copy}
 if runuser -u {STUDENT_USER} -- test -r /root/.ssh/id_ed25519; then echo "student can read the rodeo key" >&2; exit 3; fi
-{key_copy}
+{key_copy}{libvirt}{vm_access}
 {writes}
 chmod 644 {CONFIG} {CADDYFILE}
 export CREDENTIALS_DIRECTORY={TLS_DIR}   # what systemd gives the unit (owned-zone TLS)
@@ -629,4 +670,6 @@ def run_setup(opts: SetupOptions, *, sudo_user: str | None) -> dict:
         "variables_seeded": seeded,
         "chapters": len(runner.chapters),
         "credentials": len(opts.profile.credentials),
+        "vm_access": {parts[1]: parts[2] for parts in (line.split() for line in res.stdout.splitlines())
+                      if len(parts) == 3 and parts[0] == "VM_ACCESS"},
     }

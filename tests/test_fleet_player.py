@@ -97,3 +97,21 @@ def test_open_access_without_the_player_opens_the_ui_ports_never_ssh(tmp_path):
     from rodeo.fleet.student_access import open_access_ports
     ports = open_access_ports(_inv(tmp_path, player=False))
     assert ports == (8443, 30002) and 22 not in ports and 2222 not in ports
+
+
+def test_a_libvirt_profile_needs_one_root_key_per_host(tmp_path, monkeypatch):
+    from rodeo.player import profile as pp
+
+    real = pp.load
+    monkeypatch.setattr(pp, "load", lambda name=None, examples=pp.EXAMPLES: replace_libvirt(real(name, examples)))
+    inv = _inv(tmp_path, player=True, profile="virt-workshop")
+    with pytest.raises(ConfigError, match="per_host_ssh_key"):
+        fpl.require_safe_student_access(inv)
+    from dataclasses import replace
+    inv = replace(inv, provider={**inv.provider, "per_host_ssh_key": True})
+    fpl.require_safe_student_access(inv)  # fine now
+
+
+def replace_libvirt(prof):
+    from dataclasses import replace
+    return replace(prof, student_libvirt=True)

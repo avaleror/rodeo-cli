@@ -263,10 +263,11 @@ def fleet_up_cmd(ctx: click.Context, inventory_path: Path, profile: str | None, 
     # Before provisioning, not after an hour of deploy: the profile must say
     # what the student UI shows, and a track must be pinned.
     if with_player:
-        from ..fleet.player import require_track_ref
+        from ..fleet.player import require_safe_student_access, require_track_ref
 
         try:
             track_ref = require_track_ref(inventory, track_ref)
+            require_safe_student_access(inventory)
         except ConfigError as exc:
             console.print(f"[red]✗  {exc}[/red]")
             raise SystemExit(1)

@@ -1,4 +1,4 @@
-"""rodeo player: the Instruqt-like player for one lab (virt rodeo first).
+"""rodeo player: the lab player for one lab (virt rodeo first).
 
 Runs on the KVM host:
 
@@ -20,7 +20,7 @@ import click
 
 @click.group("player")
 def player_cmd() -> None:
-    """Instruqt-like player for one lab (assignment, tabs, Check)."""
+    """Lab player for one lab (assignment, tabs, Check)."""
 
 
 @player_cmd.command("serve")
@@ -122,7 +122,7 @@ def link_cmd(config_path: str, rotate: bool) -> None:
               help="Expected check results before each solve (default: the bundled "
                    "suse-virt-rodeo file). 'none' to judge nothing.")
 def test_cmd(config_path: str, keep_going: bool, expect_path: str | None) -> None:
-    """Instruqt-style track test against the live lab.
+    """Track test against the live lab.
 
     Per chapter: setup, check, solve, check, cleanup. It solves every
     chapter on the real cluster, so run it after the manual walk, not

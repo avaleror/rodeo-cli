@@ -108,6 +108,10 @@ def test_page_and_static_assets(served):
     code, js = _get(base + "/static/marked.min.js")
     assert code == 200 and "marked v12.0.2" in js
     assert _get(base + "/static/../server.py")[0] == 404
+    # Light, dark and auto themes live in the page; the SUSE font ships with it.
+    assert 'id="theme"' in body and ':root[data-theme="dark"]' in body
+    with urllib.request.urlopen(base + "/static/suse.woff2") as r:
+        assert r.headers["Content-Type"] == "font/woff2" and r.read(4) == b"wOF2"
 
 
 def test_state_lists_chapters_with_plain_titles_and_proxy_tabs(served):

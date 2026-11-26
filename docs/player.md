@@ -1,10 +1,10 @@
-# Lab player (Instruqt-like)
+# Lab player
 
 The rodeo player gives each student one browser window for their lab: the
 chapter text on the left, then tabs for a terminal, Harvester and Rancher, plus
 **Check**, **Next** and **Skip**. It runs the SUSE Virtualization Rodeo track
 (`suse-virt-rodeo`) on your own cloud labs, with the same setup, check and solve
-scripts the Instruqt track uses.
+scripts the track already has.
 
 It is opt-in. Nothing in rodeo runs it unless you call `rodeo player` or
 `rodeo fleet player-setup`, and the `virt-rodeo` profile is the only profile
@@ -21,7 +21,10 @@ On each lab host:
   Harvester or Rancher.
 
 A student signs in once with their lab link (`/enter?t=...`). The link is a
-secret: anyone who has it can use that lab.
+secret: anyone who has it can use that lab. Students can come from any network
+and any IP: the link is the lock, not the address. After 20 wrong links in 10
+minutes from one address, that address gets "Too many tries" (HTTP 429) for a
+while, so a bot cannot load the lab host by hammering `/enter`.
 
 ## One lab, test mode
 

@@ -93,6 +93,8 @@ class Chapter:
     body: str
     path: Path
     scripts: dict[str, Path] = field(default_factory=dict)
+    teaser: str = ""       # front matter: one-line mission (track markup)
+    difficulty: str = ""   # front matter: basic / intermediate / advanced
 
     def has(self, kind: str) -> bool:
         return kind in self.scripts
@@ -192,6 +194,8 @@ def load_track(track_dir: Path | str, host: str = DEFAULT_HOST) -> list[Chapter]
             body=body,
             path=d,
             scripts=scripts,
+            teaser=str(meta.get("teaser") or ""),
+            difficulty=str(meta.get("difficulty") or ""),
         ))
     if not chapters:
         raise ValueError(f"no NN-slug/assignment.md chapters under {root}")

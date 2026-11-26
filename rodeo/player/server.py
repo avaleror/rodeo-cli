@@ -28,6 +28,7 @@ from typing import Any
 
 from .auth import COOKIE, SESSION_SECONDS, Auth
 from .auth import load as load_auth
+from .outline import chapter_name, outline
 from .runner import CHECK_TIMEOUT, MoveResult, Runner, RunnerError, ScriptResult, check_timeout_ok
 
 STATIC_DIR = Path(__file__).resolve().parents[1] / "data" / "player" / "static"
@@ -240,8 +241,7 @@ class Player:
             busy, last, pos, started = self._busy, self._last, dict(self._pos), self._started
         return {
             "title": self.cfg.title,
-            "chapters": [{"index": c.index, "title": plain(c.title), "check": c.has("check")}
-                         for c in r.chapters],
+            "chapters": [self._chapter_summary(c) for c in r.chapters],
             "current": pos["current"],
             "entered": pos["entered"],
             "completed": pos["completed"],
@@ -256,8 +256,15 @@ class Player:
         if not 0 <= index <= self.readable():
             raise IndexError(index)
         ch = self.runner.chapter(index)
-        return {"index": index, "title": plain(ch.title), "body": self.runner.render(index, urls=self.cfg.tab_urls),
-                "tabs": self.tabs(index)}
+        body = self.runner.render(index, urls=self.cfg.tab_urls)
+        return {**self._chapter_summary(ch), "body": body, "tabs": self.tabs(index),
+                "teaser": plain(ch.teaser), **outline(body)}
+
+    @staticmethod
+    def _chapter_summary(ch: Any) -> dict[str, Any]:
+        number, name = chapter_name(ch.title)
+        return {"index": ch.index, "title": plain(ch.title), "check": ch.has("check"),
+                "number": number, "name": name, "difficulty": ch.difficulty}
 
 
 class Handler(BaseHTTPRequestHandler):

@@ -249,3 +249,15 @@ def test_page_strips_scripts_and_handlers_from_assignments(served):
     base, _ = served
     _, body = _get(base + "/")
     assert "function clean(" in body and 'querySelectorAll("script' in body and "/^on/i" in body
+
+
+def test_chapter_view_carries_the_outline_and_summary(served):
+    base, _ = served
+    _, state = _get(base + "/api/state")
+    assert {"number", "name", "difficulty"} <= set(state["chapters"][0])
+    _, view = _get(base + "/api/chapter/0")
+    # No headings in this fixture: one plain section, one step.
+    assert [s["kind"] for s in view["sections"]] == ["section"]
+    assert view["steps"] == [{"kind": "task", "name": "", "number": 1, "sections": [0]}]
+    assert "rodeo-var" in view["sections"][0]["markdown"]  # variables already substituted
+    assert view["teaser"] == ""

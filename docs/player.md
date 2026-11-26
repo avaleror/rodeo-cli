@@ -4,8 +4,7 @@ The rodeo player gives each student one browser window for their lab: the
 chapter text on the left, then tabs for a terminal, Harvester and Rancher, plus
 **Check**, **Next** and **Skip**. It runs the SUSE Virtualization Rodeo track
 (`suse-virt-rodeo`) on your own cloud labs, with the same setup, check and solve
-scripts the track already has. It reads tracks in the Instruqt track format;
-it is not affiliated with or endorsed by Instruqt.
+scripts the track already has.
 
 It is opt-in. Nothing in rodeo runs it unless you call `rodeo player` or
 `rodeo fleet player-setup`, and the `virt-rodeo` profile is the only profile

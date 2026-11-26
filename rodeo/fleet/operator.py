@@ -44,6 +44,7 @@ from .ssh_exec import known_hosts_path, run_remote, ssh_argv
 HOST_ID = "operator"
 REMOTE_WORKSHOPS = "rodeo-operator"     # under root's home on the operator host
 UNIT = "rodeo-operator-run"
+AWS = "/usr/local/bin/aws"               # the v2 CLI install_cli puts there
 ALSO_ALLOW_ENV = "RODEO_ALSO_ALLOW_IP"   # same name as providers.aws.ALSO_ALLOW_ENV
 MAX_PUSH_BYTES = 200 * 1024 * 1024      # the workshop dir is YAML, keys and logs
 _PULL_SKIP = {".DS_Store"}
@@ -136,13 +137,14 @@ fi
 {rodeo}
 RODEO_BIN=$(readlink -f "$(command -v rodeo)")
 PY=$(head -1 "$RODEO_BIN" | sed 's/^#!//')
-if ! command -v aws >/dev/null; then
+# v2 at /usr/local/bin/aws: the distro's aws (v1) has no `aws login`.
+if ! {AWS} --version 2>&1 | grep -q '^aws-cli/2'; then
   "$PY" -c 'from rodeo.awscli import install_cli; print(install_cli())'
 fi
 mkdir -p "$HOME/{REMOTE_WORKSHOPS}"
 chmod 700 "$HOME/{REMOTE_WORKSHOPS}"
 rodeo --version
-aws --version
+{AWS} --version
 echo OPERATOR_READY
 """
 
@@ -306,8 +308,8 @@ def login_command(inventory: FleetInventory) -> str:
     region = str(require_provider(inventory).get("region") or "")
     if not re.match(r"^[a-z]{2}(-[a-z]+)+-\d$", region):
         raise ConfigError(f"provider.region {region!r} is not an AWS region")
-    return (f"aws configure set region {region} && aws login --remote && "
-            "aws sts get-caller-identity --query Arn --output text")
+    return (f"{AWS} configure set region {region} && {AWS} login --remote && "
+            f"{AWS} sts get-caller-identity --query Arn --output text")
 
 
 def login(inventory: FleetInventory) -> int:

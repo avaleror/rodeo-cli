@@ -210,12 +210,13 @@ def test_status_reads_the_exit_file():
 
 def test_login_sets_the_region_and_uses_remote_login(tmp_path, home):
     cmd = op.login_command(load_inventory(_workshop(tmp_path)))
-    assert cmd.startswith("aws configure set region eu-north-1 && aws login --remote")
+    assert cmd.startswith("/usr/local/bin/aws configure set region eu-north-1 && /usr/local/bin/aws login --remote")
 
 
 def test_bootstrap_installs_rodeo_and_a_signature_checked_aws_cli(tmp_path, home):
     script = op.bootstrap_script(load_inventory(_workshop(tmp_path)))
     assert "install_cli" in script and "OPERATOR_READY" in script
+    assert "grep -q '^aws-cli/2'" in script  # the distro's v1 has no `aws login`
     assert subprocess.run(["bash", "-n"], input=script, text=True).returncode == 0
 
 

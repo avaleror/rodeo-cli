@@ -137,7 +137,11 @@
       const wrap = el("div", "my-3"), bar = el("div", "copybar");
       const b = el("button", "copy", `${ICON.copy}<span class="label">Copy</span>`);
       b.type = "button"; b.title = "Copy to clipboard"; b.setAttribute("aria-label", "Copy to clipboard");
-      bar.append(b);
+      // Paste writes into the lab terminal without pressing Enter: the student
+      // reads the command at the prompt and runs it.
+      const p = el("button", "paste", `${ICON.terminal}<span class="label">Paste in terminal</span>`);
+      p.type = "button"; p.title = "Paste into the terminal tab (it does not press Enter)";
+      bar.append(b, p);
       pre.replaceWith(wrap); wrap.append(bar, pre);
     });
     box.querySelectorAll("blockquote").forEach((q) => {
@@ -192,6 +196,37 @@
   }
   function fixAllContrast() {
     document.querySelectorAll("#guideBody .content, #coverStory, #completeWhy").forEach(fixContrast);
+  }
+
+  // The terminal tab is ttyd on this same origin, so its xterm can take the
+  // text as a paste (bracketed when the shell asks for it). No Enter is sent.
+  // Anything else (another origin, terminal not loaded): copy instead.
+  function terminalTab() { return (state.tabsNow || []).find((t) => t.type === "terminal" && t.url); }
+  function pasteToTerminal(t, node) {
+    const tab = terminalTab();
+    if (!tab) { copyText(t, node); return; }
+    showTab(tab.index);
+    const f = frames.get(tab.url);
+    const done = (ok) => {
+      const label = node.querySelector(".label");
+      node.classList.add("copied");
+      if (label) label.textContent = ok ? "Pasted, press Enter" : "Copied, paste it";
+      setTimeout(() => { node.classList.remove("copied"); if (label) label.textContent = "Paste in terminal"; }, 2200);
+    };
+    const attempt = (tries) => {
+      let term = null;
+      try { term = f && f.contentWindow && f.contentWindow.term; } catch (e) { term = null; }  // other origin
+      if (term && typeof term.paste === "function") {
+        term.paste(t.replace(/\n+$/, ""));
+        try { term.focus(); f.focus(); } catch (e) { /* focus is a comfort */ }
+        done(true);
+      } else if (tries > 0) {
+        setTimeout(() => attempt(tries - 1), 300);  // the terminal may still be loading
+      } else {
+        copyText(t, el("span")); done(false);
+      }
+    };
+    attempt(20);
   }
 
   function copyText(t, node) {
@@ -468,6 +503,8 @@
     if (b) { showTab(Number(b.dataset.tab)); return; }
     const c = e.target.closest(".copy");
     if (c) { const pre = c.closest(".my-3").querySelector("pre"); copyText(pre.innerText.replace(/\n$/, ""), c); return; }
+    const p = e.target.closest(".paste");
+    if (p) { const pre = p.closest(".my-3").querySelector("pre"); pasteToTerminal(pre.innerText.replace(/\n$/, ""), p); return; }
     const v = e.target.closest(".rodeo-var");
     if (v) copyText(v.textContent, v);
   });

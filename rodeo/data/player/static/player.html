@@ -209,7 +209,7 @@ main { display: grid; grid-template-columns: 64px minmax(340px, var(--guide, 460
 /* Code blocks get the track format's wrapper (div.my-3, copy bar first) so the
    track's own .cred styles keep working; ours stay low specificity. */
 .my-3 { position: relative; margin: .8em 0; }
-.my-3 > .copybar { position: absolute; top: 6px; right: 6px; display: flex; gap: 4px; }
+.my-3 > .copybar { display: flex; justify-content: flex-end; gap: 4px; margin-bottom: 4px; }
 .cred .my-3 > .copybar { position: static; }
 .copy, .paste { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); background: var(--surface);
   color: var(--ink-2); border-radius: 5px; padding: 2px 8px; font-size: 12px; cursor: pointer; opacity: .9; }

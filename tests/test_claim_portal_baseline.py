@@ -59,7 +59,9 @@ def test_default_managed_sg_has_only_operator_cidr_on_exactly_the_managed_ports(
     fake = _FakeEC2WithSG()
     p = AwsHostProvider(ec2_client=fake, sleep=lambda s: None, caller_ip_fn=lambda: "203.0.113.9")
     sg_id = p._resolve_security_groups(fake, _provider(), workshop="demo", identity=DEMO_ID)[0]
-    assert _all_cidrs(fake, sg_id) == {port: {"203.0.113.9/32"} for port in MANAGED_SG_PORTS}
+    # The operator also reaches the player (443) from their address, to check a
+    # lab before students come; the world never, until open-access.
+    assert _all_cidrs(fake, sg_id) == {port: {"203.0.113.9/32"} for port in (*MANAGED_SG_PORTS, 443)}
 
 
 def test_managed_sg_rerun_from_same_ip_makes_no_ingress_calls():

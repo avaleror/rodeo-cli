@@ -8,11 +8,14 @@ What it installs, all new names, nothing the existing lab uses:
 - the ``student`` user, through the claim portal's own setup script and its
   proofs (no sudo, no privileged groups, cannot read the rodeo key), plus a
   copy of the lab kubeconfig the chapters tell the student to use;
-- the track at a pinned commit, root-only (it holds the solve scripts);
+- the track at a pinned commit, root-only (it holds the solve scripts), when
+  the profile has one; without it the player shows the UIs, a terminal, the
+  credentials and the web guide link (``guide_url``), with the guide folded;
 - ``rodeo-player`` (this package, loopback), ``rodeo-player-ttyd`` (the
   browser terminal, as ``student``, loopback) and ``rodeo-player-caddy`` (the
   only public listener: the player's name plus one per product UI);
-- the lab's passwords as track variables.
+- the lab's passwords as track variables, and the credentials the profile
+  lists, resolved into a root-only file the player shows behind the login.
 
 What the lab shows (title, track, product UIs, kubeconfig, variables) comes
 from the lab profile's ``player.yaml`` (rodeo.player.profile).
@@ -62,6 +65,7 @@ TRACK_DIR = VAR / "track"
 STATE_DIR = VAR / "state"
 CONFIG = ETC / "config.json"
 AUTH_FILE = VAR / "auth.json"     # root-only: lab secret + access token
+CREDENTIALS_FILE = VAR / "credentials.json"  # root-only: what the student logs in with
 CADDYFILE = ETC / "Caddyfile"
 CADDY_DATA = Path("/var/lib/rodeo-player-caddy")
 TLS_DIR = ETC / "tls"              # root 0700
@@ -83,7 +87,7 @@ _NAME_RE = re.compile(r"^(?=.{1,200}$)[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([
 @dataclass(frozen=True)
 class SetupOptions:
     base: str                       # e.g. 13-61-184-227.sslip.io
-    track_ref: str                  # full commit SHA of the track
+    track_ref: str                  # full commit SHA of the track ("" = profile has none)
     profile: PlayerProfile = field(default_factory=load_profile)
     track_repo: str = ""            # empty = the profile's
     sandbox_id: str = ""
@@ -112,10 +116,13 @@ class SetupOptions:
             raise ValueError(f"{self.base!r} is not under --domain {self.domain!r}")
         if self.tls_pem:
             split_pem(self.tls_pem)
-        if not _SHA_RE.match(self.track_ref):
-            raise ValueError("--track-ref must be a full 40-character commit SHA (pin the track)")
-        if not self.repo.startswith("https://"):
-            raise ValueError("--track-repo must be an https:// git URL")
+        if self.repo:
+            if not _SHA_RE.match(self.track_ref):
+                raise ValueError("--track-ref must be a full 40-character commit SHA (pin the track)")
+            if not self.repo.startswith("https://"):
+                raise ValueError("--track-repo must be an https:// git URL")
+        elif self.track_ref:
+            raise ValueError(f"lab profile {self.profile.name} has no track: drop --track-ref")
         check_timeout_ok(self.check_timeout)
 
     @property
@@ -184,7 +191,7 @@ def aws_public_ip(timeout: float = 3.0) -> str:
 def caddyfile(opts: SetupOptions) -> str:
     n = opts.names
 
-    def upstream(name: str, target: str) -> str:
+    def upstream(name: str, target: str, scheme: str = "https") -> str:
         # The products serve their own self-signed certificates on the lab
         # network; the browser only ever sees Caddy's. X-Frame-Options is
         # dropped so the UIs can sit in the player's iframes. Host is the
@@ -194,6 +201,8 @@ def caddyfile(opts: SetupOptions) -> str:
         # (found live 2026-11-25).
         # Every request asks the player first (forward_auth), except the
         # cookie hop the player itself answers (see rodeo.player.auth).
+        tls = ("\n\t\ttransport http {\n\t\t\ttls_insecure_skip_verify\n\t\t}"
+               if scheme == "https" else "")
         return f"""{name} {{
 \t{opts.tls_directive}
 \t@hop path /.rodeo/auth
@@ -205,19 +214,16 @@ def caddyfile(opts: SetupOptions) -> str:
 \t\treverse_proxy 127.0.0.1:{PLAYER_PORT}
 \t}}
 \thandle {{
-\treverse_proxy https://{target} {{
+\treverse_proxy {scheme}://{target} {{
 \t\theader_up Host {{host}}
-\t\theader_up X-Forwarded-Host {{host}}
-\t\ttransport http {{
-\t\t\ttls_insecure_skip_verify
-\t\t}}
+\t\theader_up X-Forwarded-Host {{host}}{tls}
 \t\theader_down -X-Frame-Options
 \t}}
 \t}}
 }}
 """
 
-    uis = "\n".join(upstream(n[ui.key], ui.upstream) for ui in opts.profile.uis)
+    uis = "\n".join(upstream(n[ui.key], ui.upstream, ui.scheme) for ui in opts.profile.uis)
     # disable_redirects: Caddy must not bind :80. The lab already serves
     # something there (nginx), and tls internal needs no HTTP challenge.
     return f"""{{
@@ -256,9 +262,15 @@ def player_config(opts: SetupOptions) -> dict:
         "check_timeout": opts.check_timeout,
         # Health probes go straight to the upstreams Caddy proxies, not the
         # public names (those sit behind the lab login).
-        "probes": {**{str(ui.tab_port): f"https://{ui.upstream}/" for ui in opts.profile.uis},
+        "probes": {**{str(ui.tab_port): f"{ui.scheme}://{ui.upstream}/" for ui in opts.profile.uis},
                    "terminal": f"http://127.0.0.1:{TTYD_PORT}/terminal/"},
         "terminal_url": "/terminal/",
+        "track": bool(opts.repo),
+        "guide_url": opts.profile.guide_url,
+        # Without a track the tabs come from here: each UI, then the terminal.
+        "lab_tabs": [*({"title": ui.label, "type": "service", "port": ui.tab_port} for ui in opts.profile.uis),
+                     {"title": "Terminal", "type": "terminal"}],
+        "credentials_file": str(CREDENTIALS_FILE),
         "auth_file": str(AUTH_FILE),
         "kubeconfig": str(PLAYER_KUBECONFIG) if opts.profile.kubeconfig else "",
         "hosts": dict(n),
@@ -388,6 +400,17 @@ if [ -f "$LABKEY" ]; then
   install -m 644 -o {STUDENT_USER} -g "$SG" "$LABKEY.pub" {home}/.ssh/id_ed25519.pub
 fi
 """ if lab_key else ""
+    track = f"""# The track at a pinned commit, root-only: it holds the solve scripts.
+command -v git >/dev/null || zypper -n -q in git-core
+if [ ! -d {TRACK_DIR}/.git ]; then git init -q {TRACK_DIR}; fi
+git -C {TRACK_DIR} fetch -q --depth 1 {q(opts.repo)} {q(opts.track_ref)}
+git -C {TRACK_DIR} -c advice.detachedHead=false checkout -q --force FETCH_HEAD
+[ "$(git -C {TRACK_DIR} rev-parse HEAD)" = {q(opts.track_ref)} ]
+chmod 700 {TRACK_DIR}
+""" if opts.repo else f"""# No track in this profile: an empty, root-only track directory (no chapters).
+rm -rf {TRACK_DIR}
+install -d -m 700 {TRACK_DIR}
+"""
     return f"""set -euo pipefail
 [ "$(uname -m)" = x86_64 ] || {{ echo "player setup supports x86_64 hosts only" >&2; exit 2; }}
 {kube_check}
@@ -408,14 +431,7 @@ if ! echo "{TTYD_SHA256}  /usr/local/bin/ttyd" | sha256sum -c --quiet - 2>/dev/n
   install -m 755 "$WORK/ttyd" /usr/local/bin/ttyd
 fi
 
-# The track at a pinned commit, root-only: it holds the solve scripts.
-command -v git >/dev/null || zypper -n -q in git-core
-if [ ! -d {TRACK_DIR}/.git ]; then git init -q {TRACK_DIR}; fi
-git -C {TRACK_DIR} fetch -q --depth 1 {q(opts.repo)} {q(opts.track_ref)}
-git -C {TRACK_DIR} -c advice.detachedHead=false checkout -q --force FETCH_HEAD
-[ "$(git -C {TRACK_DIR} rev-parse HEAD)" = {q(opts.track_ref)} ]
-chmod 700 {TRACK_DIR}
-
+{track}
 getent group {STUDENT_GROUP} >/dev/null || groupadd --system {STUDENT_GROUP}
 usermod -a -G {STUDENT_GROUP} {STUDENT_USER}{kube_copy}
 if runuser -u {STUDENT_USER} -- test -r /root/.ssh/id_ed25519; then echo "student can read the rodeo key" >&2; exit 3; fi
@@ -474,6 +490,33 @@ def lab_passwords(sudo_user: str | None, variables: dict[str, str] | None = None
             if out:
                 return out
     return {}
+
+
+def lab_credentials(sudo_user: str | None, profile: PlayerProfile) -> list[dict[str, str]]:
+    """The profile's credentials with their passwords from secrets.yaml. A
+    credential whose secret is missing is left out, never shown empty."""
+    import yaml
+
+    for path in _secrets_files(sudo_user):
+        if path.is_file():
+            data = yaml.safe_load(path.read_text()) or {}
+            out = [{"label": c.label, "user": c.user, "password": str(data[c.secret])}
+                   for c in profile.credentials if data.get(c.secret)]
+            if out or not profile.credentials:
+                return out
+    return []
+
+
+def write_credentials(creds: list[dict[str, str]], dest: Path = CREDENTIALS_FILE) -> None:
+    """Root-only (0600) JSON the player reads and shows behind the lab login."""
+    import os
+
+    tmp = dest.with_suffix(".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        json.dump(creds, fh)
+    os.replace(tmp, dest)
+    dest.chmod(0o600)
 
 
 # ---------------------------------------------------------------- run
@@ -559,6 +602,7 @@ def run_setup(opts: SetupOptions, *, sudo_user: str | None) -> dict:
     if opts.tls_pem:
         install_tls(opts.tls_pem)
     access = auth.ensure(AUTH_FILE)
+    write_credentials(lab_credentials(sudo_user, opts.profile))
     student = subprocess.run(["bash", "-c", STUDENT_SETUP_SCRIPT], input="", text=True,
                              capture_output=True, timeout=300)
     if student.returncode != 0 or "STUDENT_OK" not in student.stdout:
@@ -570,7 +614,7 @@ def run_setup(opts: SetupOptions, *, sudo_user: str | None) -> dict:
 
     from .runner import Runner
 
-    runner = Runner(TRACK_DIR, STATE_DIR, sandbox_id=opts.sandbox_id)
+    runner = Runner(TRACK_DIR, STATE_DIR, sandbox_id=opts.sandbox_id, allow_empty=not opts.repo)
     seeded = []
     for key, value in lab_passwords(sudo_user, opts.profile.variables).items():
         runner.set_variable(key, value)
@@ -584,4 +628,5 @@ def run_setup(opts: SetupOptions, *, sudo_user: str | None) -> dict:
         "ca_root": "" if opts.tls_pem else str(CA_ROOT),
         "variables_seeded": seeded,
         "chapters": len(runner.chapters),
+        "credentials": len(opts.profile.credentials),
     }

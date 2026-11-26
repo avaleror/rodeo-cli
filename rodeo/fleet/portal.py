@@ -5,8 +5,9 @@ module pushes everything to it over SSH:
 
 - ``provision_portal`` / ``deprovision_portal``: the VM itself (provider).
 - ``portal_up``: copy ``rodeo/portal`` to the VM, systemd units, Caddy + TLS.
-- ``portal_publish``: per lab host, read its UI passwords (and create the
-  ``student`` SSH user when ``portal.student_ssh``), then upsert lab records.
+- ``portal_publish``: per lab host, read its UI passwords (or its player
+  link), then upsert lab records. Students never get SSH: the player is
+  their only way in.
 - ``portal_admin``: every instructor command (status, invite, release, ...).
 
 Secrets travel on stdin only (never argv) and never appear in error messages.
@@ -20,7 +21,6 @@ import json
 import os
 import shlex
 import ssl
-import subprocess
 import tarfile
 import time
 import urllib.request
@@ -35,16 +35,15 @@ from .access import access_for_host
 from .fanout import fanout
 from .inventory import (
     PORTAL_HOST_ID,
-    STUDENT_SSH_PORT,
     FleetHost,
     FleetInventory,
     PortalConfig,
     clear_portal,
-    host_public_ip,
     merge_portal,
+    runs_player,
     require_provider,
 )
-from .ssh_exec import known_hosts_path, run_remote
+from .ssh_exec import run_remote
 from .student_access import SECRETS_PATH_SNIPPET, _PASSWORD_KEY, _check_host, student_ports
 
 PORTAL_PKG_DIR = Path(__file__).resolve().parents[1] / "portal"
@@ -353,41 +352,20 @@ def remove_labs(inventory: FleetInventory, lab_ids: list[str]) -> list[str]:
     return portal_admin(inventory, ["remove", "--force", "--", *lab_ids])["removed"]
 
 
-# ---------------------------------------------------------------- student SSH (F5.4)
-def student_keys_dir(workshop: str) -> Path:
-    d = known_hosts_path(workshop).parent / "student-keys"  # same sanitised workshop dir
-    d.mkdir(parents=True, exist_ok=True)
-    os.chmod(d, 0o700)
-    return d
-
-
-def ensure_student_key(workshop: str, host_id: str) -> tuple[str, str]:
-    """Per-lab ed25519 key pair, generated on the laptop; returns (private, public)."""
-    priv = student_keys_dir(workshop) / host_id
-    if not priv.is_file():
-        subprocess.run(
-            ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", f"{STUDENT_USER}@{workshop}-{host_id}",
-             "-f", str(priv)],
-            check=True, capture_output=True,
-        )
-    os.chmod(priv, 0o600)
-    return priv.read_text(), Path(f"{priv}.pub").read_text().strip()
-
-
+# ---------------------------------------------------------------- the student user
 # Runs as root on the lab host. Creates an unprivileged user and then *proves* it
 # is unprivileged: no sudo, no privileged group, cannot read /root (where the
 # fleet-wide rodeo key lives, design R7). Any failed check aborts with exit 3.
 STUDENT_SETUP_SCRIPT = f"""set -euo pipefail
 U={STUDENT_USER}
-PUB="$(cat)"
 id "$U" >/dev/null 2>&1 || useradd -m -s /bin/bash "$U"
 for g in wheel sudo libvirt kvm qemu docker adm systemd-journal; do
   gpasswd -d "$U" "$g" >/dev/null 2>&1 || true
 done
 H=$(getent passwd "$U" | cut -d: -f6)
 install -d -m 700 -o "$U" -g "$(id -gn "$U")" "$H/.ssh"
-printf '%s\\n' "$PUB" > "$H/.ssh/authorized_keys"
-chown "$U:$(id -gn "$U")" "$H/.ssh/authorized_keys"; chmod 600 "$H/.ssh/authorized_keys"
+# Nobody logs in as the student over SSH: the player's terminal is the way in.
+rm -f "$H/.ssh/authorized_keys"
 chmod 700 /root
 # Explicit deny, sorted last so it wins over distro rules: SLES 16 grants every user
 # "(ALL) ALL" with targetpw (safe only while root stays locked) and a NOPASSWD rule
@@ -404,79 +382,20 @@ for g in wheel sudo libvirt kvm docker; do
   if id -nG "$U" | tr ' ' '\\n' | grep -qx "$g"; then echo "student in group $g" >&2; exit 3; fi
 done
 if runuser -u "$U" -- test -r /root/.ssh/id_ed25519; then echo "student can read the rodeo key" >&2; exit 3; fi
-# Students log in through their own sshd on STUDENT_SSH_PORT, never on :22. The
-# security group keeps :22 operator-only, so the fleet-wide rodeo key (root and
-# ssh_user) is never usable from the internet, and root on one lab can't reach
-# the others over their public IPs. This sshd lets only the student in, by key.
-P={STUDENT_SSH_PORT}
-SSHD=$(command -v sshd || echo /usr/sbin/sshd)
-CFG=/etc/ssh/rodeo-student-sshd_config
-UNIT=/etc/systemd/system/rodeo-student-sshd.service
-{{
-  printf 'Port %s\\n' "$P"
-  printf 'AllowUsers %s\\n' "$U"
-  printf '%s\\n' 'PermitRootLogin no' 'PasswordAuthentication no' \\
-    'KbdInteractiveAuthentication no' 'PubkeyAuthentication yes' \\
-    'AuthorizedKeysFile .ssh/authorized_keys' 'UsePAM yes' \\
-    'PidFile /run/rodeo-student-sshd.pid' 'Subsystem sftp internal-sftp'
-  for k in /etc/ssh/ssh_host_*_key; do printf 'HostKey %s\\n' "$k"; done
-}} > "$CFG.tmp"
-chmod 600 "$CFG.tmp"
-"$SSHD" -t -f "$CFG.tmp"
-CHANGED=0
-cmp -s "$CFG.tmp" "$CFG" || CHANGED=1
-mv -f "$CFG.tmp" "$CFG"
-cat > "$UNIT.tmp" <<UNITEOF
-[Unit]
-Description=rodeo claim portal: student-only sshd on port $P
-After=network.target
-
-[Service]
-ExecStartPre=$SSHD -t -f $CFG
-ExecStart=$SSHD -D -e -f $CFG
-ExecReload=/bin/kill -HUP \\$MAINPID
-# Restarting the listener must not end students' open sessions.
-KillMode=process
-Restart=on-failure
-
-[Install]
-WantedBy=multi-user.target
-UNITEOF
-cmp -s "$UNIT.tmp" "$UNIT" || CHANGED=1
-mv -f "$UNIT.tmp" "$UNIT"
-if command -v getenforce >/dev/null 2>&1 && [ "$(getenforce)" = Enforcing ]; then
-  command -v semanage >/dev/null 2>&1 || zypper -n -q in policycoreutils-python-utils >/dev/null
-  semanage port -a -t ssh_port_t -p tcp "$P" 2>/dev/null || semanage port -m -t ssh_port_t -p tcp "$P"
+# Students come in through the player only. An older rodeo ran a student-only
+# sshd on port 2222: stop and remove it, so nothing listens for students but
+# the player behind its login.
+if [ -f /etc/systemd/system/rodeo-student-sshd.service ]; then
+  systemctl disable -q --now rodeo-student-sshd 2>/dev/null || true
+  rm -f /etc/systemd/system/rodeo-student-sshd.service /etc/ssh/rodeo-student-sshd_config
+  systemctl daemon-reload
 fi
 if systemctl is-active -q firewalld 2>/dev/null; then
-  firewall-cmd -q --add-port="$P/tcp" && firewall-cmd -q --permanent --add-port="$P/tcp"
+  firewall-cmd -q --remove-port=2222/tcp 2>/dev/null || true
+  firewall-cmd -q --permanent --remove-port=2222/tcp 2>/dev/null || true
 fi
-systemctl daemon-reload
-systemctl enable -q rodeo-student-sshd
-if [ "$CHANGED" = 1 ] || ! systemctl is-active -q rodeo-student-sshd; then
-  systemctl restart rodeo-student-sshd
-fi
-# Prove it: only the student, key only, and actually listening.
-EFF=$("$SSHD" -T -f "$CFG")
-printf '%s\\n' "$EFF" | grep -qx "allowusers $U" || {{ echo "student sshd allows more than $U" >&2; exit 3; }}
-printf '%s\\n' "$EFF" | grep -qx "permitrootlogin no" || {{ echo "student sshd permits root" >&2; exit 3; }}
-printf '%s\\n' "$EFF" | grep -qx "passwordauthentication no" || {{ echo "student sshd allows passwords" >&2; exit 3; }}
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-  ss -Hltn "sport = :$P" | grep -q LISTEN && break
-  sleep 1
-done
-ss -Hltn "sport = :$P" | grep -q LISTEN || {{ echo "student sshd is not listening on $P" >&2; exit 3; }}
 echo STUDENT_OK
 """
-
-
-def ensure_student_user(inventory: FleetInventory, host: FleetHost) -> str:
-    _, pub = ensure_student_key(inventory.name, host.id)
-    res = run_remote(inventory, host, ["bash", "-c", STUDENT_SETUP_SCRIPT], stdin=pub,
-                     timeout=120.0)
-    if not res.ok or "STUDENT_OK" not in res.stdout:
-        raise ConfigError(f"{host.id}: student user setup failed: {res.stderr.strip()[-300:]}")
-    return STUDENT_USER
 
 
 # ---------------------------------------------------------------- publish (F5.3)
@@ -500,7 +419,6 @@ class PublishRow:
     id: str
     ready: bool
     reason: str | None  # never contains a secret
-    ssh: bool = False
 
 
 def _lab_record(inventory: FleetInventory, host: FleetHost, *, timeout: float) -> tuple[dict[str, Any], PublishRow]:
@@ -524,24 +442,17 @@ def _lab_record(inventory: FleetInventory, host: FleetHost, *, timeout: float) -
         {"label": _LABELS[c], "url": urls[c], "user": "admin", "password": secrets.get(_PASSWORD_KEY[c], "")}
         for c in ports if urls.get(c)
     ]}
-    ssh = False
-    if require_portal(inventory).student_ssh:
-        user = ensure_student_user(inventory, host)
-        private, _ = ensure_student_key(inventory.name, host.id)
-        data["ssh"] = {"user": user, "host": host_public_ip(host), "port": STUDENT_SSH_PORT,
-                       "private_key": private}
-        ssh = True
-    if require_portal(inventory).player:  # opt-in: fleets without it publish as before
+    if runs_player(inventory):  # every workshop fleet; static hosts, GCP and player: false publish URLs
         player = player_link(inventory, host, timeout=timeout)
         if not player:
             return ({"id": host.id, "ready": False, "data": {}},
                     PublishRow(host.id, False, "no player on this lab (run `rodeo fleet player-setup`)"))
         # The player link is the student's way in. The UI URLs and admin
         # passwords are not published: the UIs sit behind the player's login,
-        # and the chapters show the password the student needs.
+        # and the player shows the credentials the student needs.
         data.pop("components", None)
         data["player_url"] = player
-    return {"id": host.id, "ready": True, "data": data}, PublishRow(host.id, True, None, ssh)
+    return {"id": host.id, "ready": True, "data": data}, PublishRow(host.id, True, None)
 
 
 # Only labs where `rodeo player setup` ran have a player; on every other lab

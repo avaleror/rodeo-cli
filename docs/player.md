@@ -71,6 +71,32 @@ Leading emoji in headings are left out of the rail and the cover. A chapter
 with no task headings is shown as a single step, so older tracks still work.
 The front matter's `teaser` and `difficulty` fill the cover.
 
+## Every fleet is a workshop
+
+`rodeo fleet` gives students the player and nothing else: no SSH, no UI ports
+on the internet. `fleet open-access` opens 443 only, the UIs sit behind the
+player's lab login, and the portal hands out one "Open your lab" link per lab.
+
+What decides it, for each fleet:
+
+| Fleet | Player |
+|---|---|
+| AWS, lab profile with a `player.yaml` | yes, by default |
+| `player: false` in workshop.yaml, or `fleet up --no-player` | no: students get the UI URLs and passwords |
+| `kvm-hosts` profile | no: KVM clusters for operators, not students |
+| a profile with no `player.yaml` (custom, lab-in-a-box) | no, unless asked for, and then an error |
+| GCP (and any cloud whose provider has `supports_player = False`) | no, for now |
+| static hosts (no `provider:`) | only with a `player:` block |
+
+A profile with a track gets its chapters. A profile without one gets the lab
+tabs, a terminal and the credentials, with the guide folded; the guide panel
+has a button to the workshop guide when the profile names one (`guide_url`).
+Credentials (from the profile's `credentials:`) are always under
+**Credentials** in the header.
+
+The student's terminal runs as `student`: no sudo, cannot read `/root`. New
+fleets get `per_host_ssh_key: true`, so root on one lab opens no other.
+
 ## One lab, test mode
 
 For a quick test on one lab you do not need a domain. Names are
@@ -78,7 +104,8 @@ For a quick test on one lab you do not need a domain. Names are
 in their browser.
 
 ```bash
-sudo rodeo player setup --track-ref <40-char suse-virt-rodeo commit>
+sudo rodeo player setup --track-ref <40-char suse-virt-rodeo commit>   # a profile with a track
+sudo rodeo player setup --profile virt-workshop                           # one without
 sudo rodeo player link        # prints the lab link
 sudo rodeo player test        # solves every chapter: run it last
 ```
@@ -103,8 +130,10 @@ The value lands in the player config (`/etc/rodeo-player/config.json`,
 ## A fleet with your own domain
 
 For students, use a DNS zone you own in Route 53 (not on the Public Suffix
-List) and one wildcard certificate per event. Add a `player:` block to
-`workshop.yaml`:
+List) and one wildcard certificate per event. Without one, `fleet up` warns
+and runs in test mode: browsers do not trust Caddy's own CA, so the lab tabs
+stay blank. Add a `player:` block to `workshop.yaml` (or pass
+`fleet up --player-domain <zone>` when it writes a new one):
 
 ```yaml
 player:
@@ -112,10 +141,9 @@ player:
   acme_email: you@example.com   # optional, for Let's Encrypt expiry mail
   # staging: true           # first try: Let's Encrypt staging (untrusted, no rate limit)
 provider:
-  per_host_ssh_key: true    # one root key per lab: strongly recommended with students
+  per_host_ssh_key: true    # one root key per lab (fleet up writes it for new workshops)
 portal:
-  enabled: true
-  player: true              # the portal hands out each lab's link
+  enabled: true             # the portal hands out each lab's link
 ```
 
 Each lab gets a random 8-character id and one name per UI under the zone: `<id>`
@@ -126,6 +154,7 @@ One command does the whole run, and a failed run resumes with the same command:
 
 ```bash
 rodeo fleet up -f workshop.yaml --track-ref <sha> --images-bucket <private image bucket>
+rodeo fleet up -f workshop.yaml                  # a profile without a track needs neither
 ```
 
 It waits until every lab is ready, then fetches the images, writes the lab
@@ -139,12 +168,15 @@ rodeo fleet deploy      -f workshop.yaml
 rodeo fleet lab-images  -f workshop.yaml --bucket <private image bucket> --run
 rodeo fleet dns         -f workshop.yaml   # ids + A records
 rodeo fleet cert        -f workshop.yaml   # *.<zone>, once per event
-rodeo fleet player-setup -f workshop.yaml --track-ref <sha>
-rodeo fleet open-access -f workshop.yaml   # opens 443 (with portal.player)
+rodeo fleet player-setup -f workshop.yaml --track-ref <sha>   # --track-ref only with a track
+rodeo fleet open-access -f workshop.yaml   # opens 443 only
 rodeo fleet portal publish -f workshop.yaml
 ```
 
 `rodeo fleet destroy` also removes the lab names from the zone.
+
+Before a lab is open to students, the operator's own address can already reach
+its player on 443 (like the UI ports), to check it.
 
 `lab-images` signs S3 links on your laptop, and a link dies with the
 credentials that signed it. `aws login` credentials live about 15 minutes, so
@@ -206,27 +238,39 @@ The player is the same for every SUSE product. What changes per lab sits in a
 
 ```yaml
 title: SUSE Virtualization Rodeo
-track_repo: https://github.com/SUSE-Technical-Marketing/suse-virt-rodeo.git
+track_repo: https://github.com/SUSE-Technical-Marketing/suse-virt-rodeo.git  # optional
+# guide_url: https://.../workshop-guide/  # without a track: the web guide
 kubeconfig: harvester-kubeconfig          # in ~/.rodeo, written by rodeo up (optional)
 student_ssh_key: /opt/suse-virt-workshop/lab-vm-key   # optional
 uis:
   - key: hv                               # name: hv-<id>.<zone>
     label: SUSE Virtualization (Harvester)
-    upstream: 192.168.122.10:443          # https, on the lab network
+    upstream: 192.168.122.10:443          # on the lab network
+    # scheme: http                        # default https (self-signed is fine)
     tab_port: 8443                        # the port the track's tabs use
   - key: rancher
     label: SUSE Rancher Prime
     upstream: 192.168.122.9:30002
     tab_port: 30002
+credentials:                              # shown under Credentials in the player
+  - label: SUSE Rancher Prime
+    user: admin
+    password: ??rancher_admin_password
 variables:                                # track variable: ??secrets.yaml key
   RANCHER_PASSWORD: ??rancher_admin_password
   HARVESTER_PASSWORD: ??harvester_admin_password
 ```
 
+Shipped profiles: `virt-rodeo` (track), `virt-workshop` and `virt-workshop-2n`
+(web guide), `harvester`, `harvester-2n`, `rancher-test`, `rancher-lab-config`
+(no instructions).
+
 - **uis**: one to eight product UIs. Each gets its own name, its own Caddy site
   behind the lab login, and the track tabs on `tab_port` open it.
 - **kubeconfig** and **student_ssh_key**: leave them out when the track does
   not use them. The student gets a copy of each.
+- **credentials**: what the student signs in with, resolved on the lab into a
+  root-only file the player serves behind the lab login. `??<key>` only.
 - **variables**: passwords the track shows, read from the host's
   `~/.rodeo/secrets.yaml`. Always `??<key>`, never the password itself.
 
@@ -234,9 +278,10 @@ variables:                                # track variable: ??secrets.yaml key
 `lab.profile` in `workshop.yaml`. On one host, pass it yourself:
 
 ```bash
-sudo rodeo player setup --profile <profile> --track-ref <sha>
+sudo rodeo player setup --profile <profile> [--track-ref <sha>]
 ```
 
-A profile without a `player.yaml` gets the `virt-rodeo` one. To point a UI at
-another address on a single lab, use `--upstream <ui>=<ip>:<port>`.
+A profile without a `player.yaml` is an error: the player never borrows
+another product's UIs. To point a UI at another address on a single lab, use
+`--upstream <ui>=<ip>:<port>`.
 

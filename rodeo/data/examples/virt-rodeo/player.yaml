@@ -7,7 +7,7 @@ track_repo: https://github.com/SUSE-Technical-Marketing/suse-virt-rodeo.git
 kubeconfig: harvester-kubeconfig
 
 # From custom/scripts/65-student-kit.sh: the student's default SSH key, so the
-# track's bare `ssh sles@<vm>` works as it does on Instruqt.
+# track's bare `ssh sles@<vm>` works without naming a key.
 student_ssh_key: /opt/suse-virt-workshop/lab-vm-key
 
 uis:
@@ -19,6 +19,15 @@ uis:
     label: SUSE Rancher Prime
     upstream: 192.168.122.9:30002
     tab_port: 30002
+
+# Shown to the student in the player (Credentials). The track's chapter 1 shows them too.
+credentials:
+  - label: SUSE Virtualization (Harvester)
+    user: admin
+    password: ??harvester_admin_password
+  - label: SUSE Rancher Prime
+    user: admin
+    password: ??rancher_admin_password
 
 # Track variable: ??key in the host's ~/.rodeo/secrets.yaml (same form as rodeo-plan.yaml).
 variables:

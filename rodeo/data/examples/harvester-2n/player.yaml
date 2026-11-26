@@ -1,0 +1,21 @@
+# What the student UI (rodeo player) shows for this lab (see rodeo/player/profile.py).
+# No instructions: the UIs, a terminal and the credentials, with the guide folded.
+title: SUSE Virtualization lab
+
+uis:
+  - key: hv
+    label: SUSE Virtualization (Harvester)
+    upstream: 192.168.122.10:443
+    tab_port: 8443
+  - key: rancher
+    label: SUSE Rancher Prime
+    upstream: 192.168.122.9:30002
+    tab_port: 30002
+
+credentials:
+  - label: SUSE Virtualization (Harvester)
+    user: admin
+    password: ??harvester_admin_password
+  - label: SUSE Rancher Prime
+    user: admin
+    password: ??rancher_admin_password

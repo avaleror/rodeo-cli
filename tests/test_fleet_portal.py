@@ -93,57 +93,37 @@ def test_lab_deprovision_never_terminates_portal_and_still_deletes_lab_sg(manage
     ]
 
 
-def test_student_access_never_opens_port_22(managed_ssh, no_wait):  # noqa: F811
-    """The fleet-wide rodeo key logs in on :22 as root and ssh_user, so :22 never
-    opens to the internet, not even with student SSH (Cursor review on #53)."""
+def test_student_access_never_opens_ssh(managed_ssh, no_wait):  # noqa: F811
+    """Students come in through the player only: neither :22 (the rodeo key logs
+    in there) nor the old student SSH port ever opens to the internet."""
     fake = _FakeEC2WithSG()
     p = _aws(fake)
     p.provision(ProvisionSpec(workshop="demo", host_ids=["s1"], ssh_user="root", wait_ssh=False), _provider())
-    for allow in (False, True):
-        with pytest.raises(ConfigError, match=r"\[22\]"):
-            p.set_student_access(_provider(), workshop="demo", open_ports=(22, 8443), allow_ssh=allow)
+    for ports in ((22, 8443), (STUDENT_SSH_PORT, 443)):
+        with pytest.raises(ConfigError, match="cannot be opened"):
+            p.set_student_access(_provider(), workshop="demo", open_ports=ports)
 
 
-def test_student_ssh_port_opens_only_with_allow_ssh(managed_ssh, no_wait):  # noqa: F811
-    fake = _FakeEC2WithSG()
-    p = _aws(fake)
-    p.provision(ProvisionSpec(workshop="demo", host_ids=["s1"], ssh_user="root", wait_ssh=False), _provider())
-    with pytest.raises(ConfigError, match=rf"\[{STUDENT_SSH_PORT}\]"):
-        p.set_student_access(_provider(), workshop="demo", open_ports=(STUDENT_SSH_PORT, 8443))
-    sg = p.set_student_access(_provider(), workshop="demo", open_ports=(STUDENT_SSH_PORT, 8443),
-                              allow_ssh=True)
-    rules = _sg_rules(fake, sg)
-    assert rules[STUDENT_SSH_PORT] == {"0.0.0.0/0"}  # no operator rule: the operator uses :22
-    assert rules[22] == {"203.0.113.9/32"}
-
-
-def test_closing_access_removes_the_student_ssh_port(managed_ssh, no_wait):  # noqa: F811
-    fake = _FakeEC2WithSG()
-    p = _aws(fake)
-    p.provision(ProvisionSpec(workshop="demo", host_ids=["s1"], ssh_user="root", wait_ssh=False), _provider())
-    p.set_student_access(_provider(), workshop="demo", open_ports=(STUDENT_SSH_PORT,), allow_ssh=True)
-    sg = p.set_student_access(_provider(), workshop="demo", open_ports=())
-    assert not _sg_rules(fake, sg).get(STUDENT_SSH_PORT)
-    assert _sg_rules(fake, sg)[22] == {"203.0.113.9/32"}
-
-
-def test_open_access_closes_22_left_open_by_older_releases(managed_ssh, no_wait):  # noqa: F811
-    """v0.18.0 and v0.19.0 opened :22 to 0.0.0.0/0 with student_ssh. Re-running
-    open-access with this release takes that rule away."""
+def test_open_access_closes_ssh_rules_left_by_older_releases(managed_ssh, no_wait):  # noqa: F811
+    """Older releases opened :22 (v0.18-0.19) or the student SSH port to the world.
+    Running open-access with this release takes both away."""
     fake = _FakeEC2WithSG()
     p = _aws(fake)
     p.provision(ProvisionSpec(workshop="demo", host_ids=["s1"], ssh_user="root", wait_ssh=False), _provider())
     sg = next(g["GroupId"] for g in fake.security_groups.values()
               if g["GroupName"].startswith("rodeo-demo-") and not g["GroupName"].endswith("-portal"))
-    fake.authorize_security_group_ingress(GroupId=sg, IpPermissions=[
-        {"IpProtocol": "tcp", "FromPort": 22, "ToPort": 22, "IpRanges": [{"CidrIp": "0.0.0.0/0"}]}])
-    assert "0.0.0.0/0" in _sg_rules(fake, sg)[22]
-    p.set_student_access(_provider(), workshop="demo", open_ports=(STUDENT_SSH_PORT, 8443), allow_ssh=True)
-    assert _sg_rules(fake, sg)[22] == {"203.0.113.9/32"}
+    for port in (22, STUDENT_SSH_PORT):
+        fake.authorize_security_group_ingress(GroupId=sg, IpPermissions=[
+            {"IpProtocol": "tcp", "FromPort": port, "ToPort": port, "IpRanges": [{"CidrIp": "0.0.0.0/0"}]}])
+    p.set_student_access(_provider(), workshop="demo", open_ports=(443,))
+    rules = _sg_rules(fake, sg)
+    assert rules[22] == {"203.0.113.9/32"}
+    assert not rules.get(STUDENT_SSH_PORT)
+    assert rules[443] == {"203.0.113.9/32", "0.0.0.0/0"}
 
 
 # ---------------------------------------------------------------- inventory
-def _write(tmp_path, portal: dict, student_access="open", roster: str | None = None) -> Path:
+def _write(tmp_path, portal: dict, student_access="open", roster: str | None = None, player=None) -> Path:
     if roster is not None:
         (tmp_path / "students.csv").write_text(roster)
     data = {
@@ -152,6 +132,8 @@ def _write(tmp_path, portal: dict, student_access="open", roster: str | None = N
                      "instance_type": "m8id.8xlarge", "student_access": student_access},
         "hosts": [], "portal": portal,
     }
+    if player is not None:
+        data["player"] = player
     p = tmp_path / "workshop.yaml"
     p.write_text(yaml.safe_dump(data))
     return p
@@ -159,7 +141,7 @@ def _write(tmp_path, portal: dict, student_access="open", roster: str | None = N
 
 def test_inventory_portal_defaults_and_fqdn(tmp_path):
     inv = load_inventory(_write(tmp_path, {"enabled": True}))
-    assert inv.portal.mode == "both" and not inv.portal.student_ssh
+    assert inv.portal.mode == "both"
     assert inv.portal.fqdn is None
     fp_ = tmp_path / "workshop.yaml"
     from rodeo.fleet.inventory import merge_portal
@@ -194,8 +176,9 @@ def test_portal_host_id_is_reserved(tmp_path):
 SECRET = "Sup3rSecretPassw0rdXY"  # gitleaks:allow (fake fixture for the leak tests)
 
 
-def _publish_env(tmp_path, monkeypatch, *, ready: bool, student_ssh=False, secrets_ok=True):
-    p = _write(tmp_path, {"enabled": True, "student_ssh": student_ssh})
+def _publish_env(tmp_path, monkeypatch, *, ready: bool, secrets_ok=True, player=False):
+    # player=False: a fleet without the student UI publishes URLs and passwords.
+    p = _write(tmp_path, {"enabled": True}, player=None if player else False)
     data = yaml.safe_load(p.read_text())
     data["hosts"] = [{"id": "student-01", "ssh": "10.0.0.1", "public_ip": "10.0.0.1"}]
     data["portal"].update({"ssh": "10.9.9.9", "public_ip": "10.9.9.9"})
@@ -216,9 +199,8 @@ def _publish_env(tmp_path, monkeypatch, *, ready: bool, student_ssh=False, secre
         if argv[:2] == ["python3", "-c"]:
             out = json.dumps({"harvester_admin_password": SECRET, "rancher_admin_password": SECRET})
             return RemoteResult(host.id, 0 if secrets_ok else 1, out if secrets_ok else SECRET, "boom")
-        if argv[:2] == ["bash", "-c"]:
-            pushed["student_pub"] = stdin
-            return RemoteResult(host.id, 0, "STUDENT_OK\n", "")
+        if argv[:2] == ["bash", "-c"]:  # the player link probe
+            return RemoteResult(host.id, 0, "https://lab1.example.org/enter?t=" + "T" * 32 + "\n", "")
         raise AssertionError(argv)
 
     monkeypatch.setattr(fp, "run_remote", fake_remote)
@@ -252,17 +234,13 @@ def test_publish_error_never_leaks_secrets(tmp_path, monkeypatch):
     assert SECRET not in pushed["stdin"]
 
 
-def test_publish_with_student_ssh_generates_per_lab_key(tmp_path, monkeypatch):
-    inv, pushed = _publish_env(tmp_path, monkeypatch, ready=True, student_ssh=True)
+def test_publish_with_the_player_gives_only_the_link(tmp_path, monkeypatch):
+    inv, pushed = _publish_env(tmp_path, monkeypatch, ready=True, player=True)
     rows = fp.portal_publish(inv)
     lab = json.loads(pushed["stdin"])[0]
-    assert rows[0].ssh and lab["data"]["ssh"]["user"] == "student"
-    assert lab["data"]["ssh"]["port"] == STUDENT_SSH_PORT
-    assert "PRIVATE KEY" in lab["data"]["ssh"]["private_key"]
-    assert pushed["student_pub"].startswith("ssh-ed25519 ")
-    key = tmp_path / "rodeo" / "fleet" / "ws" / "student-keys" / "student-01"
-    assert oct(key.stat().st_mode & 0o777) == "0o600"
-    assert oct(key.parent.stat().st_mode & 0o777) == "0o700"
+    assert rows[0].ready
+    assert lab["data"] == {"player_url": "https://lab1.example.org/enter?t=" + "T" * 32}
+    assert SECRET not in pushed["stdin"], "with the player, no UI password reaches the portal"
 
 
 def test_student_setup_script_proves_the_user_is_unprivileged():
@@ -278,18 +256,12 @@ def test_student_setup_script_proves_the_user_is_unprivileged():
         assert g in s
 
 
-def test_student_setup_script_runs_a_student_only_sshd_off_port_22():
+def test_student_setup_script_gives_no_ssh_and_removes_the_old_student_sshd():
     s = fp.STUDENT_SETUP_SCRIPT
-    assert f"P={STUDENT_SSH_PORT}" in s and "rodeo-student-sshd" in s
-    for line in ("PermitRootLogin no", "PasswordAuthentication no", "KbdInteractiveAuthentication no"):
-        assert line in s
-    assert "AllowUsers %s" in s
-    # Validated before install, proven after: only the student, key only, listening.
-    assert '"$SSHD" -t -f "$CFG.tmp"' in s
-    for check in ("allowusers $U", "permitrootlogin no", "passwordauthentication no", "ss -Hltn"):
-        assert check in s
-    # A restart (config change) must not drop open student sessions.
-    assert "KillMode=process" in s
+    assert "rm -f \"$H/.ssh/authorized_keys\"" in s  # nobody logs in as the student over SSH
+    assert "systemctl disable -q --now rodeo-student-sshd" in s
+    assert "--remove-port=2222/tcp" in s
+    assert "ExecStart" not in s and "AllowUsers" not in s  # no sshd is set up any more
     # The main sshd on :22 is never touched.
     assert "/etc/ssh/sshd_config" not in s.replace("/etc/ssh/rodeo-student-sshd_config", "")
 
@@ -361,12 +333,6 @@ def test_portal_up_script_uses_private_temp_dir_and_code_letters():
     s = fp.portal_up_script("portal-1-2-3-4.sslip.io", mode="open", title="T", code_letters=6)
     assert "mktemp -d" in s and "/tmp/" not in s
     assert "--code-letters 6" in s
-
-
-def test_student_keys_dir_is_sanitised(tmp_path, monkeypatch):
-    monkeypatch.setattr("rodeo.paths.rodeo_dir", lambda: tmp_path)
-    d = fp.student_keys_dir("../../evil")
-    assert d.is_relative_to(tmp_path / "fleet") and oct(d.stat().st_mode & 0o777) == "0o700"
 
 
 # ---------------------------------------------------------------- live bug 2026-09-30

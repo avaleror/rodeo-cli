@@ -16,11 +16,11 @@ _VALID_TARGETS = frozenset({"baremetal", "instruqt"})
 # operator: this machine's /32 only (default). open: also 0.0.0.0/0, applied
 # only by `rodeo fleet open-access` after every lab is up with strong passwords.
 _VALID_STUDENT_ACCESS = frozenset({"operator", "open"})
-# Student SSH (portal.student_ssh) runs on its own sshd on this port, which only
-# lets the `student` user in. Port 22 stays operator-only, so the fleet-wide
-# rodeo key (root, ssh_user) is never usable from the internet.
+# Older rodeo ran a student-only sshd (portal.student_ssh) on this port. Students
+# now come in through the player only; the constant stays so security groups
+# that still have the port get it closed. Port 22 is always operator-only.
 STUDENT_SSH_PORT = 2222
-# rodeo player (Caddy) on lab hosts with portal.player: opened only by open-access.
+# The rodeo player (Caddy) on lab hosts: opened only by open-access.
 PLAYER_PORT = 443
 
 
@@ -56,7 +56,6 @@ class PortalConfig:
     enabled: bool = False
     mode: str = "both"  # open (workshop code + email) | roster (invite links) | both
     roster: Path | None = None  # CSV name,email[,host_id]; resolved beside workshop.yaml
-    student_ssh: bool = False  # per-lab `student` user + key, :22 opened by open-access
     player: bool = False  # labs run `rodeo player`: publish adds each lab's player link
     title: str = ""
     code_letters: int = 6  # random letters in RODEO-XXXXXX-YYYYMMDD (4-8)
@@ -201,7 +200,6 @@ def _parse_portal(raw: Any, base: Path, provider: dict[str, Any] | None) -> Port
         enabled=enabled,
         mode=mode,
         roster=roster,
-        student_ssh=bool(raw.get("student_ssh", False)),
         player=bool(raw.get("player", False)),
         title=str(raw.get("title") or ""),
         code_letters=code_letters,
@@ -261,6 +259,8 @@ class FleetInventory:
     portal: PortalConfig | None = None
     # rodeo player on an owned DNS zone (optional; none = sslip.io test mode)
     player: PlayerConfig | None = None
+    # ``player: false`` in workshop.yaml: no student UI on this fleet.
+    player_disabled: bool = False
 
     @property
     def ssh_user(self) -> str:
@@ -461,7 +461,8 @@ def load_inventory(path: str | Path) -> FleetInventory:
         operator_secrets=list(secrets_raw),
         ui_ports={str(k): int(v) for k, v in ui_raw.items()},
         portal=_parse_portal(raw.get("portal"), p.parent, provider),
-        player=_parse_player(raw.get("player")),
+        player=None if raw.get("player") is False else _parse_player(raw.get("player")),
+        player_disabled=raw.get("player") is False,
     )
 
 
@@ -533,6 +534,40 @@ def profile_plan_type(profile: str) -> str | None:
         return None
     kind = data.get("type") if isinstance(data, dict) else None
     return str(kind).strip() if kind else None
+
+
+def provider_supports_player(provider_type: str) -> bool:
+    """The cloud can expose the player (443 in, names, certificate). A provider
+    says so with ``supports_player = True``; one that does not yet (GCP today)
+    keeps fleets without a player instead of failing them."""
+    from ..providers import get_provider
+
+    try:
+        return bool(getattr(get_provider(provider_type), "supports_player", False))
+    except ConfigError:
+        return False
+
+
+def runs_player(inventory: FleetInventory) -> bool:
+    """Every rodeo fleet is a workshop and runs the student UI (the rodeo player),
+    except: ``player: false``; a ``kvm-hosts`` fleet (KVM clusters for operators,
+    no students); a lab profile with no ``player.yaml`` (nothing to show: a
+    custom profile, lab-in-a-box); and fleets on hosts or clouds that cannot
+    expose it (static hosts, a provider without ``supports_player``). A
+    ``player:`` block or ``portal.player: true`` asks for it explicitly, and
+    then a missing ``player.yaml`` is an error (``rodeo.fleet.player``)."""
+    from ..player.profile import has_profile
+
+    if inventory.player_disabled:
+        return False
+    if inventory.lab_profile and profile_plan_type(inventory.lab_profile) == "kvm-hosts":
+        return False
+    if inventory.player is not None or (inventory.portal and inventory.portal.player):
+        return True
+    if not has_profile(inventory.lab_profile):
+        return False
+    provider = inventory.provider or {}
+    return bool(provider) and provider_supports_player(str(provider.get("type") or "aws"))
 
 
 def require_provider(inventory: FleetInventory) -> dict[str, Any]:

@@ -12,7 +12,7 @@ _SCHEMA = """
 CREATE TABLE IF NOT EXISTS labs(
   id    TEXT PRIMARY KEY,
   ord   INTEGER NOT NULL,
-  data  TEXT NOT NULL,              -- JSON lab card (URLs, credentials, ssh)
+  data  TEXT NOT NULL,              -- JSON lab card (player link, or URLs and credentials)
   ready INTEGER NOT NULL DEFAULT 0  -- 0 = still building, not claimable
 );
 CREATE TABLE IF NOT EXISTS claims(

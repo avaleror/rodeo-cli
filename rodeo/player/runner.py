@@ -176,8 +176,10 @@ def _tabs(meta: dict) -> tuple[Tab, ...]:
     return tuple(tabs)
 
 
-def load_track(track_dir: Path | str, host: str = DEFAULT_HOST) -> list[Chapter]:
-    """Chapters in directory-name order, with the scripts present for ``host``."""
+def load_track(track_dir: Path | str, host: str = DEFAULT_HOST, *,
+               allow_empty: bool = False) -> list[Chapter]:
+    """Chapters in directory-name order, with the scripts present for ``host``.
+    ``allow_empty``: a lab without a track (no chapters) is fine."""
     root = Path(track_dir)
     chapters: list[Chapter] = []
     dirs = sorted(d for d in root.iterdir() if d.is_dir() and _CHAPTER_DIR.match(d.name)
@@ -197,7 +199,7 @@ def load_track(track_dir: Path | str, host: str = DEFAULT_HOST) -> list[Chapter]
             teaser=str(meta.get("teaser") or ""),
             difficulty=str(meta.get("difficulty") or ""),
         ))
-    if not chapters:
+    if not chapters and not allow_empty:
         raise ValueError(f"no NN-slug/assignment.md chapters under {root}")
     return chapters
 
@@ -321,8 +323,9 @@ class Runner:
         script_timeout: float = SCRIPT_TIMEOUT,
         output_cap: int = OUTPUT_CAP,
         system_path: str = SYSTEM_PATH,
+        allow_empty: bool = False,
     ) -> None:
-        self.chapters = load_track(track_dir, host)
+        self.chapters = load_track(track_dir, host, allow_empty=allow_empty)
         self.state_dir = Path(state_dir)
         self.state_dir.mkdir(parents=True, exist_ok=True)
         os.chmod(self.state_dir, 0o700)

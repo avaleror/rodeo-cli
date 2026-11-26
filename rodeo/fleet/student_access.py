@@ -21,7 +21,7 @@ from ..providers import get_provider
 from ..secretgen import STRONG_PASSWORD_MIN_LENGTH
 from ..service.status import cacheable_phases_complete
 from .fanout import fanout
-from .inventory import PLAYER_PORT, STUDENT_SSH_PORT, FleetHost, FleetInventory, require_provider
+from .inventory import PLAYER_PORT, FleetHost, FleetInventory, require_provider, runs_player
 from .ssh_exec import run_remote
 from .status import fleet_status
 
@@ -108,22 +108,17 @@ def student_ports(inventory: FleetInventory) -> dict[str, int]:
 def open_access_ports(inventory: FleetInventory) -> tuple[int, ...]:
     """Ports `fleet open-access` opens to the world.
 
-    With the player (portal.player), students come in through 443 only: the
-    UIs are behind its login, so 8443/30002 stay on the operator's address.
-    Without it, today's UI ports. Student SSH (F5.4) adds its own sshd port;
-    :22 is never opened to students (the fleet-wide rodeo key works there).
+    With the player (every workshop fleet), students come in through 443 only:
+    the UIs are behind its login, so 8443/30002 stay on the operator's address.
+    Without it (player: false, static hosts, a cloud without the player), the
+    UI ports. Students never get SSH: :22 and the old student port stay closed.
     """
-    ports = player_ports(inventory) or tuple(sorted(set(student_ports(inventory).values())))
-    portal = inventory.portal
-    if portal and portal.enabled and portal.student_ssh:
-        ports = (STUDENT_SSH_PORT, *ports)
-    return ports
+    return player_ports(inventory) or tuple(sorted(set(student_ports(inventory).values())))
 
 
 def player_ports(inventory: FleetInventory) -> tuple[int, ...]:
-    """Extra port open-access exposes when the labs run `rodeo player` (opt-in)."""
-    portal = inventory.portal
-    return (PLAYER_PORT,) if portal and portal.enabled and portal.player else ()
+    """The port open-access exposes when the labs run the rodeo player."""
+    return (PLAYER_PORT,) if runs_player(inventory) else ()
 
 
 def _check_host(
@@ -215,14 +210,10 @@ def fleet_open_access(
     if not inventory.hosts:
         raise ConfigError("no hosts in the inventory (run `rodeo fleet provision` first)")
     ports = open_access_ports(inventory)
-    student_ssh = STUDENT_SSH_PORT in ports
     readiness = check_fleet_ready(inventory, concurrency=concurrency, timeout=timeout)
     if not all(r.ready for r in readiness):
         return OpenAccessResult(inventory.name, "refused", ports, None, readiness)
-    extra = {"allow_ssh": True} if student_ssh else {}
-    sg = provider.set_student_access(
-        provider_cfg, workshop=inventory.name, open_ports=ports, **extra
-    )
+    sg = provider.set_student_access(provider_cfg, workshop=inventory.name, open_ports=ports)
     return OpenAccessResult(inventory.name, "opened", ports, sg, readiness)
 
 

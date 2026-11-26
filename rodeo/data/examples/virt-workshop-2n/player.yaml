@@ -1,0 +1,26 @@
+# What the student UI (rodeo player) shows for this lab (see rodeo/player/profile.py).
+# No track: the exercises live on the workshop guide, opened from the player.
+title: SUSE Virtualization Workshop
+guide_url: https://avaleror.github.io/suse-virt-workshop/
+
+# From custom/scripts/65-student-kit.sh: the key the lab VMs trust, as the
+# student's default SSH key (the guide's bare `ssh sles@<vm>`).
+student_ssh_key: /opt/suse-virt-workshop/lab-vm-key
+
+uis:
+  - key: hv
+    label: SUSE Virtualization (Harvester)
+    upstream: 192.168.122.10:443
+    tab_port: 8443
+  - key: rancher
+    label: SUSE Rancher Prime
+    upstream: 192.168.122.9:30002
+    tab_port: 30002
+
+credentials:
+  - label: SUSE Virtualization (Harvester)
+    user: admin
+    password: ??harvester_admin_password
+  - label: SUSE Rancher Prime
+    user: admin
+    password: ??rancher_admin_password

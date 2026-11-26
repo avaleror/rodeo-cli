@@ -1,4 +1,4 @@
-"""Claim portal + rodeo player: opt-in "Open your lab" card (portal.player)."""
+"""Claim portal + rodeo player: the "Open your lab" card (on for every workshop fleet)."""
 from __future__ import annotations
 
 import json
@@ -14,17 +14,17 @@ LINK = "https://13-61-184-227.sslip.io/enter?t=AbCdEfGhIjKlMnOpQrStUvWx"
 
 
 def test_card_shows_only_for_a_well_formed_link():
-    html = _lab_cards("lab-1", {"player_url": LINK}, "/k", ssh_title="SSH")
+    html = _lab_cards("lab-1", {"player_url": LINK})
     assert "Open your lab" in html and LINK in html
     for bad in ("javascript:alert(1)", "https://evil.example/", "http://x.example/enter?t=" + "a" * 20,
                 LINK + "'><script>"):
-        assert "Open your lab" not in _lab_cards("lab-1", {"player_url": bad}, "/k", ssh_title="SSH")
+        assert "Open your lab" not in _lab_cards("lab-1", {"player_url": bad})
 
 
 def test_lab_without_a_player_renders_as_before():
     data = {"components": [{"label": "H", "url": "https://1.2.3.4:8443", "user": "admin", "password": "p"}]}
-    assert _lab_cards("lab-1", data, "/k", ssh_title="SSH") == _lab_cards(
-        "lab-1", {**data, "player_url": ""}, "/k", ssh_title="SSH")
+    assert _lab_cards("lab-1", data) == _lab_cards(
+        "lab-1", {**data, "player_url": ""})
 
 
 def _inv(tmp_path, player: bool):
@@ -32,9 +32,11 @@ def _inv(tmp_path, player: bool):
         "name": "ws", "lab": {"dir": "/root/lab", "profile": "virt-rodeo"},
         "provider": {"type": "aws", "region": "eu-north-1", "subnet_id": "subnet-1",
                      "instance_type": "m8id.8xlarge", "student_access": "open"},
-        "portal": {"enabled": True, "player": player, "ssh": "10.9.9.9", "public_ip": "10.9.9.9"},
+        "portal": {"enabled": True, "ssh": "10.9.9.9", "public_ip": "10.9.9.9"},
         "hosts": [{"id": "student-01", "ssh": "10.0.0.1", "public_ip": "10.0.0.1"}],
     }
+    if not player:
+        data["player"] = False  # the fleet opted out of the student UI
     p = tmp_path / "workshop.yaml"
     p.write_text(yaml.safe_dump(data))
     return load_inventory(p)
@@ -68,18 +70,20 @@ def _publish(tmp_path, monkeypatch, *, player: bool, link_out: str = LINK + "\n"
     return json.loads(pushed["stdin"])[0]["data"], calls
 
 
-def test_inventory_reads_the_flag(tmp_path):
-    assert _inv(tmp_path, True).portal.player is True
-    assert _inv(tmp_path, False).portal.player is False
+def test_inventory_reads_the_opt_out(tmp_path):
+    from rodeo.fleet.inventory import runs_player
+
+    assert runs_player(_inv(tmp_path, True)) is True
+    assert runs_player(_inv(tmp_path, False)) is False
 
 
-def test_publish_without_the_flag_never_probes_the_player(tmp_path, monkeypatch):
+def test_publish_without_the_player_never_probes_it(tmp_path, monkeypatch):
     data, calls = _publish(tmp_path, monkeypatch, player=False)
     assert "player_url" not in data
     assert ["bash", "-c", fp.PLAYER_LINK_SCRIPT] not in calls
 
 
-def test_publish_with_the_flag_adds_the_link_and_drops_the_raw_lab(tmp_path, monkeypatch):
+def test_publish_with_the_player_adds_the_link_and_drops_the_raw_lab(tmp_path, monkeypatch):
     data, _ = _publish(tmp_path, monkeypatch, player=True)
     assert data["player_url"] == LINK
     # No UI URLs, no admin passwords: the player is the only way in.
@@ -87,7 +91,7 @@ def test_publish_with_the_flag_adds_the_link_and_drops_the_raw_lab(tmp_path, mon
     assert "x" * 16 not in json.dumps(data)
 
 
-def test_publish_without_the_flag_keeps_the_cards(tmp_path, monkeypatch):
+def test_publish_without_the_player_keeps_the_cards(tmp_path, monkeypatch):
     data, _ = _publish(tmp_path, monkeypatch, player=False)
     assert data["components"] and "player_url" not in data
 
@@ -95,11 +99,11 @@ def test_publish_without_the_flag_keeps_the_cards(tmp_path, monkeypatch):
 def test_card_page_with_a_player_shows_no_credentials():
     data = {"player_url": LINK,
             "components": [{"label": "H", "url": "https://1.2.3.4:8443", "user": "admin", "password": "pw-secret"}]}
-    html = _lab_cards("lab-1", data, "/k", ssh_title="SSH")
+    html = _lab_cards("lab-1", data)
     assert "Open your lab" in html and "pw-secret" not in html and ":8443" not in html
 
 
-def test_flagged_lab_without_a_player_is_not_ready_and_leaks_nothing(tmp_path, monkeypatch):
+def test_lab_without_its_player_is_not_ready_and_leaks_nothing(tmp_path, monkeypatch):
     # Never fall back to raw credentials on a fleet that promised the player.
     assert _publish(tmp_path, monkeypatch, player=True, link_out="")[0] == {}
     assert _publish(tmp_path, monkeypatch, player=True, link_out="oops\n")[0] == {}

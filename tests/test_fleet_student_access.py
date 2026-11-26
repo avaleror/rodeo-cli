@@ -24,14 +24,17 @@ from tests.test_claim_portal_baseline import _all_cidrs, _CountingEC2
 
 OPERATOR = "203.0.113.9/32"
 WORLD = "0.0.0.0/0"
+# The operator reaches the UI ports and the player (443) from their address.
+OPERATOR_PORTS = (*MANAGED_SG_PORTS, 443)
 
 
-def _inventory(tmp_path: Path, provider_extra: str = "", lab_extra: str = "") -> Path:
+def _inventory(tmp_path: Path, provider_extra: str = "", lab_extra: str = "", top_extra: str = "") -> Path:
     path = tmp_path / "workshop.yaml"
     path.write_text(
         textwrap.dedent(
             f"""\
             name: demo
+            {top_extra}
             lab:
               dir: /root/lab
               profile: harvester
@@ -154,6 +157,7 @@ def test_open_adds_world_only_on_requested_ui_ports():
         22: {OPERATOR},
         8443: {OPERATOR, WORLD},
         30002: {OPERATOR, WORLD},
+        443: {OPERATOR},
     }
 
 
@@ -162,7 +166,7 @@ def test_close_revokes_world_and_keeps_operator():
     sg_id = _provisioned(fake)
     _aws(fake).set_student_access(_provider(), workshop="demo", open_ports=(8443, 30002))
     _aws(fake).set_student_access(_provider(), workshop="demo", open_ports=())
-    assert _all_cidrs(fake, sg_id) == {p: {OPERATOR} for p in MANAGED_SG_PORTS}
+    assert _all_cidrs(fake, sg_id) == {p: {OPERATOR} for p in OPERATOR_PORTS}
 
 
 def test_reprovision_closes_opened_ports():
@@ -215,7 +219,7 @@ def test_single_host_provision_never_opens_even_with_student_access_in_config(
     )
     sg_id = next(g["GroupId"] for g in fake.security_groups.values()
                  if g["GroupName"].startswith("rodeo-demo-"))
-    assert _all_cidrs(fake, sg_id) == {p: {OPERATOR} for p in MANAGED_SG_PORTS}
+    assert _all_cidrs(fake, sg_id) == {p: {OPERATOR} for p in OPERATOR_PORTS}
 
 
 # -- readiness gate -------------------------------------------------------------
@@ -333,11 +337,18 @@ def test_open_refused_when_any_host_not_ready(tmp_path, fake_provider, monkeypat
     assert [(h.id, h.ready) for h in result.hosts] == [("s1", True), ("s2", False)]
 
 
-def test_open_when_all_ready_opens_component_ports(tmp_path, fake_provider, monkeypatch):
+def test_open_when_all_ready_opens_the_player_port_only(tmp_path, fake_provider, monkeypatch):
     _ready(monkeypatch)
-    inv = load_inventory(
-        _inventory(tmp_path, "  student_access: open", lab_extra="  components: [harvester]")
-    )
+    inv = load_inventory(_inventory(tmp_path, "  student_access: open"))
+    result = sa.fleet_open_access(inv)
+    assert result.action == "opened"
+    assert fake_provider.calls == [("demo", (443,))]
+
+
+def test_open_without_the_player_opens_component_ports(tmp_path, fake_provider, monkeypatch):
+    _ready(monkeypatch)
+    inv = load_inventory(_inventory(tmp_path, "  student_access: open", lab_extra="  components: [harvester]",
+                                    top_extra="player: false"))
     result = sa.fleet_open_access(inv)
     assert result.action == "opened"
     assert fake_provider.calls == [("demo", (8443,))]
@@ -380,4 +391,4 @@ def test_cli_opened_json(tmp_path, fake_provider, monkeypatch):
     res = CliRunner().invoke(cli, ["fleet", "open-access", "-f", str(path), "--output", "json"])
     assert res.exit_code == 0, res.output
     assert '"action": "opened"' in res.output
-    assert '"ports": [\n    8443,\n    30002\n  ]' in res.output
+    assert '"ports": [\n    443\n  ]' in res.output

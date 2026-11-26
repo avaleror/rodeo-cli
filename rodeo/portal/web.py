@@ -291,7 +291,7 @@ def claim_form(title: str, csrf: str, *, mode: str, is_open: bool, err: str = ""
                  sub="Claim your personal lab: it is yours for the whole workshop.", **shell)
 
 
-def _lab_cards(lab_id: str, data: dict[str, Any], key_href: str, *, ssh_title: str) -> str:
+def _lab_cards(lab_id: str, data: dict[str, Any]) -> str:
     """Credential cards for one lab (student page and instructor page share them)."""
     cards = ""
     # Labs with the rodeo player get one big way in; the link signs the
@@ -300,7 +300,7 @@ def _lab_cards(lab_id: str, data: dict[str, Any], key_href: str, *, ssh_title: s
     player = str(data.get("player_url") or "")
     if PLAYER_URL_RE.match(player):
         cards += ("<div class=card><h2>Your lab</h2>"
-                  "<p>Chapters, the SUSE Virtualization and Rancher UIs and a terminal, in one window.</p>"
+                  "<p>Your lab's UIs, a terminal and the workshop instructions, in one window.</p>"
                   f"<p><a class=btn href='{_e(player)}' target=_blank rel='noopener noreferrer'>Open your lab</a></p>"
                   "<p class=note>This link signs your browser in to your lab. Do not share it.</p></div>")
     for c in ([] if PLAYER_URL_RE.match(player) else data.get("components") or []):
@@ -309,22 +309,6 @@ def _lab_cards(lab_id: str, data: dict[str, Any], key_href: str, *, ssh_title: s
             f"<dt>URL</dt><dd><a href='{_e(c['url'])}' target=_blank rel='noopener noreferrer'>{_e(c['url'])}</a></dd>"
             f"<dt>User</dt><dd>{_copyable(c.get('user', 'admin'))}</dd>"
             f"<dt>Password</dt><dd>{_copyable(c.get('password', ''))}</dd></dl></div>"
-        )
-    ssh = data.get("ssh")
-    if ssh:
-        key = f"{lab_id}.key"
-        # Student SSH has its own port (not 22); records published before it had none.
-        raw_port = str(ssh.get("port") or "")
-        port = int(raw_port) if raw_port.isdigit() else 22
-        port_opt = f"-p {port} " if port != 22 else ""
-        cmd = f"ssh {port_opt}-i {key} {ssh['user']}@{ssh['host']}"
-        cards += (
-            f"<div class=card><h2>{_e(ssh_title)}</h2><dl>"
-            f"<dt>User</dt><dd>{_copyable(ssh['user'])}</dd><dt>Host</dt><dd>{_copyable(ssh['host'])}</dd>"
-            f"<dt>Port</dt><dd>{_copyable(str(port))}</dd></dl>"
-            f"<p><a class=btn href='{_e(key_href)}' download='{_e(key)}'>Download SSH key</a></p>"
-            "<p class=note>Then, in the folder where you saved it:</p>"
-            f"<pre>chmod 600 {_e(key)}\n{_e(cmd)}</pre></div>"
         )
     return cards
 
@@ -357,11 +341,13 @@ def lab_page(row: Any, token: str, *, title: str = "", guide_url: str = "",
         return _page(f"Lab {lab_id}", "<div class=card><h2>Still building</h2>"
                      "<p>Your lab is not ready yet. This page refreshes every minute.</p></div>"
                      + guide, refresh=60, **shell)
-    cards = guide + _lab_cards(lab_id, json.loads(row["data"] or "{}"), f"/l/{token}/key",
-                       ssh_title="SSH to your lab host")
+    data = json.loads(row["data"] or "{}")
+    cards = guide + _lab_cards(lab_id, data)
     forget = _forget_form(csrf) if csrf else ""
-    return _page(f"Lab {lab_id}", cards + "<p class=note>The lab web UIs use self-signed "
-                 "certificates. Accept the browser warning to continue.</p>" + forget, **shell)
+    # Only the direct UI links (labs without the player) have self-signed certificates.
+    note = ("<p class=note>The lab web UIs use self-signed certificates. Accept the browser "
+            "warning to continue.</p>" if data.get("components") and not data.get("player_url") else "")
+    return _page(f"Lab {lab_id}", cards + note + forget, **shell)
 
 
 STALE_AFTER = 180  # seconds without a progress push before the page warns
@@ -454,10 +440,9 @@ def admin_page(s: dict[str, Any], rows: list[dict[str, Any]], labs: dict[str, di
     for r in rows:
         data = labs.get(r["lab"]) or {}
         who = f"{_e(r['name'])} &lt;{_e(r['email'])}&gt;" if r["email"] else "not claimed"
-        host = (data.get("ssh") or {}).get("host") or data.get("host") or ""
-        inner = (_lab_cards(r["lab"], data, f"/admin/{token}/key/{r['lab']}",
-                            ssh_title="SSH as the student user")
-                 if data.get("components") or data.get("ssh")
+        host = data.get("host") or ""
+        inner = (_lab_cards(r["lab"], data)
+                 if data.get("components") or data.get("player_url")
                  else "<p class=note>Not published yet (still building).</p>")
         details += (
             f"<details class=card id='lab-{_e(r['lab'])}'><summary><b>{_e(r['lab'])}</b> "
@@ -637,7 +622,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, (STATIC_DIR / name).read_bytes(), STATIC_FILES[name],
                                   cache="public, max-age=86400")
             return self._send(404, b"", "text/plain")
-        m = re.fullmatch(r"/l/([^/]+)(/key)?", path)
+        m = re.fullmatch(r"/l/([^/]+)", path)
         if m:
             # Look the link up before the limit: a classroom shares one NAT address,
             # and other people's typos must not lock a student out of a valid link.
@@ -654,12 +639,6 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(404, _page("Link not valid", "<p><a class=btn href=/>Claim a lab</a></p>",
                                              heading="Link not valid",
                                              sub="This link was released or never existed."))
-            if m.group(2):
-                key = (json.loads(row["data"] or "{}").get("ssh") or {}).get("private_key")
-                if not key or not row["ready"]:
-                    return self._send(404, b"no key", "text/plain")
-                return self._send(200, key.encode(), "application/octet-stream", extra=[
-                    ("Content-Disposition", f'attachment; filename="{row["id"]}.key"')])
             con = connect(self.db_path)
             try:
                 st = claims.settings(con)
@@ -670,7 +649,7 @@ class Handler(BaseHTTPRequestHandler):
                                             guide_url=st["guide_url"], csrf=csrf),
                               extra=[("Set-Cookie", self._lab_cookie(m.group(1))),
                                      ("Set-Cookie", f"csrf={csrf}; Path=/{self._flags()}")])
-        m = re.fullmatch(r"/admin/([^/]+)(?:/key/([A-Za-z0-9_.-]+))?", path)
+        m = re.fullmatch(r"/admin/([^/]+)", path)
         if m:
             if self.limiter.over(self._ip()):
                 return self._slow_down()
@@ -680,12 +659,6 @@ class Handler(BaseHTTPRequestHandler):
                     self.limiter.fail(self._ip())
                     return self._send(404, _page("Not found", "", heading="Not found"))
                 labs = claims.lab_data(con)
-                if m.group(2):
-                    key = (labs.get(m.group(2), {}).get("ssh") or {}).get("private_key")
-                    if not key:
-                        return self._send(404, b"no key", "text/plain")
-                    return self._send(200, key.encode(), "application/octet-stream", extra=[
-                        ("Content-Disposition", f'attachment; filename="{m.group(2)}.key"')])
                 prog, prog_at = claims.progress(con)
                 return self._send(200, admin_page(claims.settings(con), claims.status_rows(con),
                                                   labs, m.group(1), progress=prog,

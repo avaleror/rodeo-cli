@@ -5,10 +5,12 @@
 
 Runs the instructor flow in order: provision, deploy, portal up, wait until every
 lab is complete, open the UI ports, publish the labs on the portal and print what
-the students need. A workshop that runs the lab player (a ``player:`` block or
-``portal.player: true``) also gets, once the labs are ready: lab images
-(``--images-bucket``), lab names in DNS and the event certificate (``player:``),
-then the player itself (``--track-ref``). Every step is the existing ``rodeo fleet`` command, so a
+the students need. Every fleet is a workshop and runs the student UI (the rodeo
+player), except ``player: false``, kvm-hosts fleets and clouds without it (see
+``rodeo.fleet.inventory.runs_player``). Once the labs are ready it also gets:
+lab images (``--images-bucket``), lab names in DNS and the event certificate
+(``player.domain``), then the player itself (``--track-ref`` for a profile
+with a track). Every step is the existing ``rodeo fleet`` command, so a
 failed run is resumed with the same ``rodeo fleet up -f workshop.yaml``.
 """
 from __future__ import annotations
@@ -30,14 +32,16 @@ POLL_SECONDS = 120
 
 # Flags that describe the workshop; with -f pointing at an existing file they are refused.
 _BUILD_FLAGS = ("profile", "count", "name", "region", "instance_type", "instance_tier",
-                "subnet_id", "ttl_hours", "no_deadman", "title", "guide_url")
+                "subnet_id", "ttl_hours", "no_deadman", "title", "guide_url", "player_domain",
+                "no_player")
 
 
 def build_inventory(*, profile: str, count: int, name: str | None = None,
                     region: str | None = None, instance_type: str | None = None,
                     instance_tier: str | None = None, subnet_id: str | None = None,
                     ttl_hours: float | str = 6, portal: bool = True, title: str | None = None,
-                    guide_url: str | None = None, default_subnet: Any = None) -> dict[str, Any]:
+                    guide_url: str | None = None, default_subnet: Any = None,
+                    player_domain: str | None = None, player: bool = True) -> dict[str, Any]:
     """The workshop.yaml mapping for *count* AWS hosts running *profile*.
 
     A ``kvm-hosts`` profile gets what a KVM cluster needs instead of a workshop:
@@ -82,10 +86,18 @@ def build_inventory(*, profile: str, count: int, name: str | None = None,
         "provider": provider,
     }
     if portal:
-        out["portal"] = {"enabled": True, "mode": "open", "student_ssh": True,
+        out["portal"] = {"enabled": True, "mode": "open",
                          "title": title or "{} workshop".format(profile)}
         if guide_url:
             out["portal"]["guide_url"] = guide_url
+    if not kvm_cluster:
+        # Students get a terminal on the host (and, on some labs, libvirt): one
+        # root key per host, so root on one lab opens no other.
+        provider["per_host_ssh_key"] = True
+        if not player:
+            out["player"] = False
+        elif player_domain:
+            out["player"] = {"domain": player_domain}
     out["hosts"] = []
     return out
 
@@ -94,9 +106,10 @@ TRACK_REF_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
 def uses_player(inventory: FleetInventory) -> bool:
-    """The workshop runs the lab player: its own domain, or the portal links to it."""
-    return inventory.player is not None or bool(inventory.portal and inventory.portal.enabled
-                                                and inventory.portal.player)
+    """The workshop runs the student UI (see ``runs_player``)."""
+    from ..fleet.inventory import runs_player
+
+    return runs_player(inventory)
 
 
 def wait_for_labs(inventory: FleetInventory, inventory_path: Path, *, minutes: float,
@@ -157,6 +170,11 @@ def wait_for_labs(inventory: FleetInventory, inventory_path: Path, *, minutes: f
               help="Student claim portal (students claim a lab with a workshop code).")
 @click.option("--title", default=None, help="Portal title (default: '<profile> workshop').")
 @click.option("--guide-url", default=None, help="Workshop guide the portal links to.")
+@click.option("--player-domain", default=None, metavar="ZONE",
+              help="DNS zone you own in Route 53 for the student UI names and certificate. "
+                   "Without it the UI runs in test mode (sslip.io, untrusted certificate).")
+@click.option("--no-player", "no_player", is_flag=True, default=False,
+              help="No student UI on this fleet (students get the UI URLs and passwords instead).")
 @click.option("-j", "--concurrency", default=None, type=click.IntRange(1, 64),
               help="Parallel deploys (default: lab.concurrency).")
 @click.option("--wait-minutes", default=90, show_default=True, type=click.IntRange(1, 1440),
@@ -176,7 +194,8 @@ def fleet_up_cmd(ctx: click.Context, inventory_path: Path, profile: str | None, 
                  no_deadman: bool, portal: bool, title: str | None, guide_url: str | None,
                  concurrency: int | None, wait_minutes: int, ref: str | None,
                  track_ref: str | None = None, images_bucket: str | None = None,
-                 trust_source_flag: bool = False) -> None:
+                 trust_source_flag: bool = False, player_domain: str | None = None,
+                 no_player: bool = False) -> None:
     """Provision, deploy and open a whole workshop: one command, start to finish."""
     from .fleet_cmd import (_approve_source, console, fleet_access_cmd, fleet_cert_cmd, fleet_deploy_cmd,
                             fleet_dns_cmd, fleet_lab_images_cmd, fleet_open_access_cmd,
@@ -212,7 +231,8 @@ def fleet_up_cmd(ctx: click.Context, inventory_path: Path, profile: str | None, 
             data = build_inventory(profile=profile, count=count, name=name, region=region,
                                    instance_type=instance_type, instance_tier=instance_tier,
                                    subnet_id=subnet_id, ttl_hours=ttl,
-                                   portal=portal, title=title, guide_url=guide_url)
+                                   portal=portal, title=title, guide_url=guide_url,
+                                   player_domain=player_domain, player=not no_player)
         except ConfigError as exc:
             console.print(f"[red]✗  {exc}[/red]")
             raise SystemExit(1)
@@ -240,11 +260,22 @@ def fleet_up_cmd(ctx: click.Context, inventory_path: Path, profile: str | None, 
         raise SystemExit(1)
     with_portal = bool(inventory.portal and inventory.portal.enabled)
     with_player = uses_player(inventory)
-    # Before provisioning, not after an hour of deploy.
-    if with_player and not (track_ref and TRACK_REF_RE.match(track_ref)):
-        console.print("[red]✗  this workshop runs the lab player: give --track-ref <track commit SHA, "
-                      "40 hex>[/red]")
-        raise SystemExit(1)
+    # Before provisioning, not after an hour of deploy: the profile must say
+    # what the student UI shows, and a track must be pinned.
+    if with_player:
+        from ..fleet.player import require_track_ref
+
+        try:
+            track_ref = require_track_ref(inventory, track_ref)
+        except ConfigError as exc:
+            console.print(f"[red]✗  {exc}[/red]")
+            raise SystemExit(1)
+        if inventory.player is None:
+            console.print("[yellow]⚠  no player.domain: the student UI runs in test mode (sslip.io names, "
+                          "a certificate browsers do not trust, so the lab tabs stay blank until each "
+                          "name is accepted). For students, set player.domain to a zone you own.[/yellow]")
+    elif inventory.provider and not inventory.player_disabled:
+        console.print("[dim]  No student UI on this fleet (kvm-hosts, or a cloud without it yet).[/dim]")
     from ..hooks import operation
 
     # One operation: the provision and deploy invoked below reuse it.

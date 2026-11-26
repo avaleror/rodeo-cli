@@ -104,6 +104,27 @@ body.is-busy #segments button.current::before {
 #health.ok .dot { background: var(--go); }
 #health.warn .dot { background: var(--warn-fill); }
 
+#credsPop { position: absolute; z-index: 8; right: 14px; top: 52px; width: min(380px, calc(100vw - 28px));
+  background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: var(--r-md);
+  box-shadow: var(--shadow); padding: 14px; display: grid; gap: 12px; }
+.creds { display: grid; gap: 12px; }
+.creds .c { display: grid; gap: 4px; }
+.creds .c b { font-size: 13px; }
+.creds .kv { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; align-items: center; gap: 6px;
+  font-size: 13px; }
+.creds .kv span:first-child { color: var(--ink-2); }
+.creds .kv code { font-family: var(--mono); background: var(--sunk); border-radius: 4px; padding: 2px 6px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.creds .copy { border: 0; background: transparent; padding: 2px 4px; }
+.creds .copy .label { display: none; }
+/* A lab without a track: the UIs, a terminal, credentials and the web guide. */
+body.free #trail, body.free #railSteps, body.free #rail .sep, body.free #storyBtn,
+body.free #actions { display: none !important; }
+.freebox { display: grid; gap: 14px; padding: 4px 2px; }
+.freebox .fcard { border: 1px solid var(--line); border-radius: var(--r-md); padding: 14px; display: grid; gap: 10px;
+  background: var(--surface); }
+.freebox h3 { margin: 0; font-size: 15px; }
+.freebox p { margin: 0; color: var(--ink-2); font-size: 14px; line-height: 1.5; }
 #chapterMenu { position: absolute; z-index: 8; left: 20px; top: 52px; width: min(400px, calc(100vw - 40px));
   background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: var(--r-md);
   box-shadow: var(--shadow); padding: 6px; margin: 0; list-style: none; max-height: 70vh; overflow: auto; }
@@ -431,6 +452,10 @@ body.in-lobby #health { display: none; }
   <div class="spacer"></div>
   <span id="status" role="status" aria-live="polite"></span>
   <button id="health" class="barbtn" type="button" hidden><span class="dot"></span><span class="txt"></span></button>
+  <button id="credsBtn" class="barbtn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="credsPop" hidden>
+    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M16 7l3 3M14 9l2 2"/></svg>
+    <span>Credentials</span></button>
+  <div id="credsPop" role="dialog" aria-label="Lab credentials" hidden></div>
   <button id="theme" class="barbtn icon" type="button"></button>
 </header>
 <main>
@@ -525,7 +550,7 @@ body.in-lobby #health { display: none; }
         <div class="know">
           <b>Good to know</b>
           <span>Your progress is kept on the lab. You can close this tab and come back with your lab link.</span>
-          <span>Every chapter has a check that tells you what is still missing, and its story is one click away.</span>
+          <span id="lobbyKnow">Every chapter has a check that tells you what is still missing, and its story is one click away.</span>
         </div>
       </aside>
     </div>

@@ -1,0 +1,14 @@
+# What the student UI (rodeo player) shows for this lab (see rodeo/player/profile.py).
+# No instructions: the UI, a terminal and the credentials, with the guide folded.
+title: SUSE Rancher Prime lab
+
+uis:
+  - key: rancher
+    label: SUSE Rancher Prime
+    upstream: 192.168.122.9:30002
+    tab_port: 30002
+
+credentials:
+  - label: SUSE Rancher Prime
+    user: admin
+    password: ??rancher_admin_password

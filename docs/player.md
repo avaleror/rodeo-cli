@@ -62,7 +62,16 @@ portal:
 Each lab gets a random 8-character id and three names: `<id>`, `hv-<id>` and
 `rancher-<id>` under the zone.
 
-Order of a fleet run:
+One command does the whole run, and a failed run resumes with the same command:
+
+```bash
+rodeo fleet up -f workshop.yaml --track-ref <sha> --images-bucket <private image bucket>
+```
+
+It waits until every lab is ready, then fetches the images, writes the lab
+names, reuses or issues the certificate, installs the player, opens 443 and
+publishes the labs. `--images-bucket` is only for tracks that need private
+images. The same steps one by one:
 
 ```bash
 rodeo fleet provision   -f workshop.yaml

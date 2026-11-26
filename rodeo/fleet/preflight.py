@@ -180,10 +180,11 @@ def preflight(inventory: FleetInventory, *, count: int | None = None, ec2: Any =
     subnet = str(provider.get("subnet_id") or "")
     if not region or not subnet:
         raise ConfigError("provider.region and provider.subnet_id are needed (`fleet up` writes them)")
-    import boto3
+    if ec2 is None or quotas is None:
+        import boto3  # the [aws] extra; tests pass fakes
 
-    ec2 = ec2 or boto3.client("ec2", region_name=region)
-    quotas = quotas or boto3.client("service-quotas", region_name=region)
+        ec2 = ec2 or boto3.client("ec2", region_name=region)
+        quotas = quotas or boto3.client("service-quotas", region_name=region)
     session = session or session_info
     itype = planned_instance_type(inventory, provider)
     new_hosts = hosts_to_create(inventory, count)

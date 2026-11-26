@@ -5,7 +5,7 @@
   const $ = (id) => document.getElementById(id);
   const root = document.documentElement;
   let state = null, view = null, viewing = null, activeTab = 0, pendingSkip = null, polling = null;
-  let stepNow = 0, lastShown = null, overlay = null;  // overlay: null | "cover" | "complete"
+  let stepNow = 0, lastShown = null, overlay = null;  // overlay: null | "lobby" | "cover" | "complete"
   const frames = new Map();  // url -> iframe, kept alive across chapters
 
   const ICON = {
@@ -504,6 +504,8 @@
   const seenKey = (i) => `rodeo-cover-${i}`;
   function showOverlay(name) {
     overlay = name;
+    $("lobby").hidden = name !== "lobby";
+    document.body.classList.toggle("in-lobby", name === "lobby");
     $("cover").hidden = name !== "cover";
     $("complete").hidden = name !== "complete";
   }
@@ -568,6 +570,75 @@
     showOverlay(null);
     if (view && view.index === state.current && !store.get(seenKey(state.current))) showCover(view);
   };
+
+  // -- lobby (first visit) and lab health -----------------------------------
+  // The lobby shows once per browser, before chapter 1 starts: each lab tab
+  // answering, and the chapters ahead. Health comes from GET /api/health,
+  // which probes the lab from the host and caches the answer.
+  const LOBBY_PATIENCE = 90000;  // then "Continue anyway" (a slow probe never locks anyone out)
+  let lobbyTimer = null, lobbySince = 0, healthTimer = null;
+  const wantsLobby = () => !store.get("rodeo-lobby") && state.current === 0 && !state.entered && !state.completed.length;
+
+  function showLobby() {
+    $("lobbyEyebrow").textContent = state.title;
+    $("lobbyCount").textContent = `${state.chapters.length} chapters`;
+    const ol = $("lobbyChapters"); ol.replaceChildren();
+    state.chapters.forEach((c) => ol.append(text("li", "", nameOf(c))));
+    showOverlay("lobby");
+    lobbySince = Date.now();
+    const tick = async () => {
+      try { renderLobby(await api("/api/health")); } catch (e) { /* next tick */ }
+      if (Date.now() - lobbySince > LOBBY_PATIENCE) $("lobbyAnyway").hidden = false;
+    };
+    tick();
+    lobbyTimer = setInterval(tick, 3000);
+  }
+
+  function renderLobby(h) {
+    const rows = $("lobbyRows"); rows.replaceChildren();
+    const late = Date.now() - lobbySince > LOBBY_PATIENCE;
+    h.items.forEach((i) => {
+      const kind = i.ok === true ? "ok" : i.ok === false ? (late ? "bad" : "wait") : "";
+      const r = el("div", `lrow ${kind}`, `<span class="ic">${i.ok ? ICON.check : ""}</span>`);
+      r.append(text("span", "name", i.name),
+        text("span", "st", i.ok === true ? "Ready" : i.ok === false ? (late ? "Not answering yet" : "Starting") : "Not checked"));
+      rows.append(r);
+    });
+    const checked = h.items.filter((i) => i.ok !== null), up = checked.filter((i) => i.ok).length;
+    const bar = el("div"); bar.id = "lobbyBar";
+    const fill = el("span"); fill.style.width = `${checked.length ? Math.round(100 * up / checked.length) : 100}%`;
+    bar.append(fill); rows.append(bar);
+    const ready = h.ready || !h.checked;
+    $("lobbyTitle").textContent = ready ? "Your lab is ready" : "Your lab is getting ready";
+    $("lobbyGo").disabled = !ready;
+    $("lobbyNote").hidden = ready;
+    if (ready) $("lobbyAnyway").hidden = true;
+  }
+  function leaveLobby() {
+    store.set("rodeo-lobby", "1");
+    clearInterval(lobbyTimer); lobbyTimer = null;
+    showOverlay(null);
+    if (view && !store.get(seenKey(view.index))) showCover(view);
+  }
+  $("lobbyGo").onclick = leaveLobby;
+  $("lobbyAnyway").onclick = leaveLobby;
+
+  function renderHealth(h) {
+    const b = $("health");
+    b.hidden = !h.checked;
+    if (!h.checked) return;
+    const down = h.items.filter((i) => i.ok === false);
+    b.classList.toggle("ok", !down.length); b.classList.toggle("warn", !!down.length);
+    b.querySelector(".txt").textContent = down.length ? `${down.map((i) => i.name).join(", ")} not answering` : "Lab healthy";
+    const label = h.items.map((i) => `${i.name}: ${i.ok === true ? "answering" : i.ok === false ? "not answering" : "not checked"}`).join("\n");
+    b.title = label; b.setAttribute("aria-label", `Lab health. ${label.replace(/\n/g, ". ")}`);
+  }
+  async function checkHealth() {
+    if (document.hidden) return;
+    try { renderHealth(await api("/api/health")); } catch (e) { /* keep the last answer */ }
+  }
+  $("health").onclick = checkHealth;
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) checkHealth(); });
 
   // -- loading a chapter ----------------------------------------------------
   async function loadChapter(i) {
@@ -726,6 +797,8 @@
     const passed = prev ? state.completed.filter((c) => !prev.completed.includes(c)) : [];
     if (passed.length && state.last && state.last.ok && state.last.action !== "skip") {
       await showComplete(passed[passed.length - 1]);
+    } else if (!overlay && wantsLobby()) {
+      showLobby();
     } else if (!overlay && viewing === state.current && !store.get(seenKey(state.current))) {
       showCover(view);
     }
@@ -752,4 +825,6 @@
   $("confirmNo").onclick = () => { pendingSkip = null; $("confirm").hidden = true; };
   $("tocurrent").onclick = () => loadChapter(state.current);
   refresh(true).catch((e) => showError(e.message));
+  checkHealth();
+  healthTimer = setInterval(checkHealth, 30000);
 })();

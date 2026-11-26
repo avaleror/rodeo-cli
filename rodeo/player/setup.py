@@ -254,6 +254,10 @@ def player_config(opts: SetupOptions) -> dict:
         "sandbox_id": opts.sandbox_id,
         "tab_urls": {str(ui.tab_port): f"https://{n[ui.key]}/" for ui in opts.profile.uis},
         "check_timeout": opts.check_timeout,
+        # Health probes go straight to the upstreams Caddy proxies, not the
+        # public names (those sit behind the lab login).
+        "probes": {**{str(ui.tab_port): f"https://{ui.upstream}/" for ui in opts.profile.uis},
+                   "terminal": f"http://127.0.0.1:{TTYD_PORT}/terminal/"},
         "terminal_url": "/terminal/",
         "auth_file": str(AUTH_FILE),
         "kubeconfig": str(PLAYER_KUBECONFIG) if opts.profile.kubeconfig else "",

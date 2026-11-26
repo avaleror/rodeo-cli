@@ -267,3 +267,45 @@ def test_chapter_view_carries_the_outline_and_summary(served):
     assert view["steps"] == [{"kind": "task", "name": "", "number": 1, "sections": [0]}]
     assert "rodeo-var" in view["sections"][0]["markdown"]  # variables already substituted
     assert view["teaser"] == ""
+
+
+def _health_player(track: Path, tmp_path: Path, probes: dict) -> Player:
+    cfg = PlayerConfig(track_dir=str(track), state_dir=str(tmp_path / "hstate"), port=0, home=str(tmp_path),
+                       kubeconfig=str(tmp_path / "kc"), probes=probes)
+    return Player(cfg)
+
+
+def test_health_probes_each_tab_once_per_ttl(track, tmp_path, monkeypatch):
+    from rodeo.player import server as srv
+
+    calls = []
+    monkeypatch.setattr(srv, "probe", lambda url: calls.append(url) or url.endswith("ok/"))
+    p = _health_player(track, tmp_path, {"8443": "https://10.0.0.10/ok/", "30002": "https://10.0.0.9:30002/down/",
+                                         "terminal": "http://127.0.0.1:7681/ok/"})
+    h = p.health()
+    assert [(i["name"], i["ok"]) for i in h["items"]] == [
+        ("SUSE Virtualization UI", True), ("Cluster Terminal", True), ("Rancher Prime UI", False)]
+    assert h["checked"] and not h["ready"] and h["setup"] == "waiting" and h["chapter"] == 0
+    p.health()
+    assert len(calls) == 3  # cached: a second page does not probe again
+
+
+def test_health_without_probes_checks_nothing(track, tmp_path, monkeypatch):
+    from rodeo.player import server as srv
+
+    monkeypatch.setattr(srv, "probe", lambda url: pytest.fail("no probe expected"))
+    h = _health_player(track, tmp_path, {}).health()
+    assert h["checked"] is False and h["ready"] is False
+    assert all(i["ok"] is None for i in h["items"])
+
+
+def test_health_endpoint(served):
+    base, _ = served
+    code, h = _get(base + "/api/health")
+    assert code == 200 and {"checked", "ready", "items", "setup"} <= set(h)
+
+
+def test_probe_is_false_when_nothing_answers():
+    from rodeo.player import server as srv
+
+    assert srv.probe("http://127.0.0.1:9/never", timeout=0.5) is False  # nothing listens on port 9

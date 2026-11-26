@@ -75,3 +75,10 @@ def test_fleet_passes_it_to_every_lab_only_when_set(tmp_path):
 def test_fleet_refuses_a_bad_value_before_touching_any_lab(tmp_path):
     with pytest.raises(ConfigError, match="check_timeout"):
         fpl.fleet_player_setup(_inv(tmp_path), track_ref=SHA, check_timeout=5)
+
+
+def test_setup_writes_health_probes_to_the_upstreams_not_the_public_names():
+    opts = s.SetupOptions(base="13-61-184-227.sslip.io", track_ref=SHA)
+    probes = s.player_config(opts)["probes"]
+    assert probes == {"8443": "https://192.168.122.10:443/", "30002": "https://192.168.122.9:30002/",
+                      "terminal": f"http://127.0.0.1:{s.TTYD_PORT}/terminal/"}

@@ -362,6 +362,44 @@ html:not(.guide-folded) #float { display: none; }
 #complete .why summary { cursor: pointer; font-weight: 650; }
 #complete .foot { padding: 18px 40px 28px; display: flex; gap: 16px; align-items: center; border-top: 1px solid var(--line); }
 
+#lobby { background: var(--page); }
+#lobby .wrap { display: flex; gap: 32px; flex-wrap: wrap; padding: 56px clamp(24px, 6vw, 72px); max-width: 1320px; margin: 0 auto; }
+#lobby .left { flex: 1 1 560px; display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+#lobby .eyebrow { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--link); font-weight: 650; }
+#lobby h2 { margin: 0; font-size: 44px; line-height: 1.1; font-weight: 700; }
+#lobby .lead { margin: 0; font-size: 18px; line-height: 1.5; color: var(--ink-2); max-width: 560px; }
+#lobbyRows { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 22px 24px;
+  display: flex; flex-direction: column; gap: 14px; max-width: 600px; }
+.lrow { display: flex; align-items: center; gap: 14px; font-size: 16px; }
+.lrow .ic { width: 28px; height: 28px; flex: none; border-radius: 14px; display: grid; place-items: center;
+  border: 2px solid var(--line-2); }
+.lrow.ok .ic { background: var(--go); border-color: var(--go); color: var(--go-ink); }
+.lrow.ok .ic svg.i { stroke-width: 2.8; }
+.lrow.wait .ic { border-color: var(--go); border-right-color: var(--line-2); animation: spin 1s linear infinite; }
+.lrow.bad .ic { border-color: var(--warn-fill); }
+.lrow .name { flex: 1; }
+.lrow .st { font-size: 14px; color: var(--ink-2); }
+.lrow.ok .st { color: var(--link); }
+.lrow.bad .st { color: var(--warn); }
+#lobbyBar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+#lobbyBar span { display: block; height: 6px; background: var(--go); transition: width .4s; }
+#lobby .go { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+#lobby .go .btn.primary { min-height: 52px; font-size: 16px; }
+#lobbyGo:disabled { background: var(--line-2); color: var(--ink-2); opacity: 1; }
+body.in-lobby #health { display: none; }
+#lobby .go .note { font-size: 14px; color: var(--ink-2); }
+#lobby .linkbtn { background: none; border: 0; color: var(--link); text-decoration: underline; text-underline-offset: 3px;
+  cursor: pointer; font-size: 14px; padding: 8px 0; }
+#lobby aside { flex: 0 1 420px; display: flex; flex-direction: column; gap: 16px; }
+#lobby .plan { background: var(--bar); color: var(--bar-ink); border-radius: var(--r-lg); padding: 24px;
+  display: flex; flex-direction: column; gap: 12px; }
+#lobby .plan .eyebrow { color: var(--bar-accent); }
+#lobby .plan .big { font-size: 22px; font-weight: 650; }
+#lobby .plan ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; color: #e2efea; }
+#lobby .know { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 20px;
+  font-size: 14px; line-height: 1.55; color: var(--ink-2); display: flex; flex-direction: column; gap: 8px; }
+#lobby .know b { color: var(--ink); }
+
 @media (max-width: 1100px) {
   #where, #health .txt { display: none; }
   #complete .grid { grid-template-columns: minmax(0, 1fr); }
@@ -460,6 +498,34 @@ html:not(.guide-folded) #float { display: none; }
         <button id="floatPrimary" type="button" class="btn primary"></button>
       </div>
     </section>
+  </section>
+
+  <section id="lobby" class="view" aria-labelledby="lobbyTitle" hidden>
+    <div class="wrap">
+      <div class="left">
+        <span class="eyebrow" id="lobbyEyebrow"></span>
+        <h2 id="lobbyTitle">Your lab is getting ready</h2>
+        <p class="lead">This lab is yours alone: nobody else works on it, so you can try things and break things.</p>
+        <div id="lobbyRows" aria-live="polite"></div>
+        <div class="go">
+          <button id="lobbyGo" type="button" class="btn primary" disabled>Enter lab</button>
+          <span class="note" id="lobbyNote">The button turns on when every part of the lab answers.</span>
+          <button id="lobbyAnyway" type="button" class="linkbtn" hidden>Continue anyway</button>
+        </div>
+      </div>
+      <aside>
+        <div class="plan">
+          <span class="eyebrow">What you will do</span>
+          <span class="big" id="lobbyCount"></span>
+          <ol id="lobbyChapters"></ol>
+        </div>
+        <div class="know">
+          <b>Good to know</b>
+          <span>Your progress is kept on the lab. You can close this tab and come back with your lab link.</span>
+          <span>Every chapter has a check that tells you what is still missing, and its story is one click away.</span>
+        </div>
+      </aside>
+    </div>
   </section>
 
   <section id="cover" class="view" aria-labelledby="coverTitle" hidden>

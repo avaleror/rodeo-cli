@@ -17,9 +17,13 @@ import html
 import json
 import mimetypes
 import re
+import ssl
 import threading
 import time
+import urllib.error
 import urllib.parse
+import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from http import HTTPStatus
 from http.cookies import CookieError, SimpleCookie
@@ -124,6 +128,10 @@ class PlayerConfig:
     hosts: dict[str, str] = field(default_factory=dict)
     # Seconds one check script may run before it is stopped and counted as failed.
     check_timeout: int = CHECK_TIMEOUT
+    # Where the host checks that each lab tab answers: tab port (as a string)
+    # or "terminal" -> a URL on the lab network or loopback, never the public
+    # names (those need the student's cookie). Empty: no lab health shown.
+    probes: dict[str, str] = field(default_factory=dict)
 
 
 def load_config(path: Path | str) -> PlayerConfig:
@@ -135,6 +143,25 @@ def load_config(path: Path | str) -> PlayerConfig:
     cfg = PlayerConfig(**data)
     check_timeout_ok(cfg.check_timeout)
     return cfg
+
+
+HEALTH_TTL = 5.0      # seconds a health answer is reused, however many pages poll
+PROBE_TIMEOUT = 3.0
+
+
+def probe(url: str, timeout: float = PROBE_TIMEOUT) -> bool:
+    """True when ``url`` answers HTTP below 500. Lab certificates are self-signed."""
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    req = urllib.request.Request(url, headers={"User-Agent": "rodeo-player-health"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:  # noqa: S310 (fixed lab URLs)
+            return r.status < 500
+    except urllib.error.HTTPError as e:
+        return e.code < 500
+    except (OSError, ValueError):
+        return False
 
 
 def plain(text: str) -> str:
@@ -156,6 +183,9 @@ class Player:
         )
         self.logins = LoginLimiter()
         self._lock = threading.Lock()
+        self._health_lock = threading.Lock()
+        self._health: dict[str, Any] | None = None
+        self._health_at = 0.0
         self._busy: str | None = None
         self._last: dict[str, Any] | None = None
         self._started: float | None = None
@@ -235,6 +265,40 @@ class Player:
                 url = ""
             out.append({"index": i, "title": t.title, "type": t.type, "url": url})
         return out
+
+    def health(self) -> dict[str, Any]:
+        """Does each tab of the current chapter answer, and is its setup done?
+
+        One probe round per HEALTH_TTL whatever the number of open pages; the
+        lock also keeps two rounds from running at once.
+        """
+        with self._health_lock:
+            if self._health is not None and time.monotonic() - self._health_at < HEALTH_TTL:
+                return self._health
+            with self._lock:
+                pos, busy, last = dict(self._pos), self._busy, self._last
+            tabs = self.runner.chapter(pos["current"]).tabs
+            keys = ["terminal" if t.type == "terminal" else str(t.port) for t in tabs]
+            urls = [self.cfg.probes.get(k, "") for k in keys]
+            todo = [u for u in urls if u]
+            results: dict[str, bool] = {}
+            if todo:
+                with ThreadPoolExecutor(max_workers=len(todo)) as pool:
+                    results = dict(zip(todo, pool.map(probe, todo)))
+            items = [{"name": t.title, "ok": results.get(u) if u else None} for t, u in zip(tabs, urls)]
+            if pos["entered"]:
+                setup = "done"
+            elif busy == "enter":
+                setup = "running"
+            elif last and last.get("action") == "enter" and not last.get("ok"):
+                setup = "failed"
+            else:
+                setup = "waiting"
+            checked = [i["ok"] for i in items if i["ok"] is not None]
+            self._health = {"checked": bool(checked), "ready": bool(checked) and all(checked),
+                            "items": items, "setup": setup, "chapter": pos["current"]}
+            self._health_at = time.monotonic()
+            return self._health
 
     def state(self) -> dict[str, Any]:
         r = self.runner
@@ -403,6 +467,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, page(self.player.cfg.title).encode(), "text/html; charset=utf-8")
         elif path == "/api/state":
             self._json(200, self.player.state())
+        elif path == "/api/health":
+            self._json(200, self.player.health())
         elif path.startswith("/api/chapter/"):
             try:
                 self._json(200, self.player.chapter_view(int(path.rsplit("/", 1)[1])))

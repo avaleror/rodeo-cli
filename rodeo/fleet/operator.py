@@ -42,7 +42,7 @@ from .inventory import FleetHost, FleetInventory, require_provider
 from .ssh_exec import known_hosts_path, run_remote, ssh_argv
 
 HOST_ID = "operator"
-REMOTE_WORKSHOPS = "rodeo-operator"     # under the operator's home
+REMOTE_WORKSHOPS = "rodeo-operator"     # under root's home on the operator host
 UNIT = "rodeo-operator-run"
 ALSO_ALLOW_ENV = "RODEO_ALSO_ALLOW_IP"   # same name as providers.aws.ALSO_ALLOW_ENV
 MAX_PUSH_BYTES = 200 * 1024 * 1024      # the workshop dir is YAML, keys and logs
@@ -122,19 +122,22 @@ def deprovision(inventory: FleetInventory) -> list[Any]:
 
 
 def bootstrap_script(inventory: FleetInventory) -> str:
-    """Login-user script: rodeo (same source as the fleet) and the AWS CLI v2."""
+    """Root script: rodeo (same source as the fleet) and the AWS CLI v2.
+
+    Root, like on the lab hosts: install.sh needs it, and keeping every
+    operator step in root's home means one place for the fleet state."""
     from ..install_source import bootstrap_fragment
 
     rodeo = bootstrap_fragment(install_url=inventory.install_url, ref=inventory.ref)
     return f"""set -euo pipefail
 if ! command -v curl >/dev/null || ! command -v gpg >/dev/null || ! command -v unzip >/dev/null; then
-  sudo -n env ZYPP_LOCK_TIMEOUT=600 zypper -n -q in curl gpg2 unzip
+  ZYPP_LOCK_TIMEOUT=600 zypper -n -q in curl gpg2 unzip
 fi
 {rodeo}
 RODEO_BIN=$(readlink -f "$(command -v rodeo)")
 PY=$(head -1 "$RODEO_BIN" | sed 's/^#!//')
 if ! command -v aws >/dev/null; then
-  sudo -n "$PY" -c 'from rodeo.awscli import install_cli; print(install_cli())'
+  "$PY" -c 'from rodeo.awscli import install_cli; print(install_cli())'
 fi
 mkdir -p "$HOME/{REMOTE_WORKSHOPS}"
 chmod 700 "$HOME/{REMOTE_WORKSHOPS}"
@@ -146,7 +149,7 @@ echo OPERATOR_READY
 
 def bootstrap(inventory: FleetInventory, op: OperatorHost) -> str:
     res = run_remote(inventory, op.as_fleet_host(), ["bash", "-c", bootstrap_script(inventory)],
-                     timeout=1200, as_root=False)
+                     timeout=1200)
     if not res.ok or "OPERATOR_READY" not in res.stdout:
         raise ConfigError(f"operator bootstrap failed (exit {res.rc}): {(res.stderr or '').strip()[-600:]}")
     return res.stdout.replace("OPERATOR_READY", "").strip()
@@ -214,10 +217,15 @@ def push_archive(inventory: FleetInventory, inventory_path: Path) -> bytes:
     return data
 
 
+def as_root(command: str) -> str:
+    """Run *command* as root with root's HOME (the operator's state lives there)."""
+    return f"sudo -n -H bash -c {shlex.quote(command)}"
+
+
 def _ssh(inventory: FleetInventory, op: OperatorHost, command: str, *, stdin: bytes | None = None,
          timeout: float = 600) -> subprocess.CompletedProcess:
     known_hosts_path(inventory.name).parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    return subprocess.run(ssh_argv(inventory, op.as_fleet_host(), command), input=stdin,
+    return subprocess.run(ssh_argv(inventory, op.as_fleet_host(), as_root(command)), input=stdin,
                           capture_output=True, timeout=timeout)
 
 
@@ -305,8 +313,8 @@ def login_command(inventory: FleetInventory) -> str:
 def login(inventory: FleetInventory) -> int:
     """Interactive: the URL and the code prompt are for the person at the terminal."""
     op = require_state(inventory)
-    argv = ssh_argv(inventory, op.as_fleet_host(), login_command(inventory))
-    argv[1:1] = ["-t", "-o", "BatchMode=no"]
+    argv = ssh_argv(inventory, op.as_fleet_host(), as_root(login_command(inventory)))
+    argv[1:1] = ["-t"]
     return subprocess.run(argv).returncode
 
 
@@ -328,7 +336,7 @@ def run_argv(inventory: FleetInventory, args: Sequence[str]) -> list[str]:
 
 def run_command(inventory: FleetInventory, inventory_path: Path, args: Sequence[str],
                 laptop_ip: str = "") -> str:
-    """Shell for the login user: a transient systemd unit, so the run survives SSH.
+    """Root shell: a transient systemd unit, so the run survives SSH.
 
     The unit writes its exit code to the workshop dir, because a unit that
     ends well is gone from systemd. *laptop_ip* stays allowed on the labs'
@@ -351,9 +359,8 @@ if systemctl is-active -q {UNIT}; then
 fi
 [ -d "$HOME/{remote_workshop_dir(inventory)}" ] || {{ echo "nothing pushed yet (rodeo fleet operator push)" >&2; exit 2; }}
 rm -f "$HOME/{remote_workshop_dir(inventory)}/{EXIT_FILE}"
-sudo -n systemctl reset-failed {UNIT} 2>/dev/null || true
-sudo -n systemd-run --unit {UNIT} --uid "$(id -u)" --gid "$(id -g)" \\
-  --working-directory "$HOME" --setenv HOME="$HOME" {also}-- bash -lc {shlex.quote(body)}
+systemctl reset-failed {UNIT} 2>/dev/null || true
+systemd-run --unit {UNIT} --working-directory "$HOME" --setenv HOME="$HOME" {also}-- bash -lc {shlex.quote(body)}
 echo RUN_STARTED
 """
 
@@ -367,15 +374,15 @@ def run(inventory: FleetInventory, inventory_path: Path, args: Sequence[str]) ->
     except ConfigError:  # without it the laptop only loses lab SSH until its next fleet run
         laptop = ""
     script = run_command(inventory, inventory_path, args, laptop_ip=laptop)
-    res = run_remote(inventory, op.as_fleet_host(), ["bash", "-c", script], timeout=120, as_root=False)
+    res = run_remote(inventory, op.as_fleet_host(), ["bash", "-c", script], timeout=120)
     if not res.ok or "RUN_STARTED" not in res.stdout:
         raise ConfigError((res.stderr or "").strip()[-400:] or f"could not start the run (exit {res.rc})")
 
 
 def logs(inventory: FleetInventory, *, follow: bool = True, lines: int = 200) -> int:
     op = require_state(inventory)
-    cmd = f"sudo -n journalctl -u {UNIT} -o cat --no-pager -n {int(lines)}" + (" -f" if follow else "")
-    argv = ssh_argv(inventory, op.as_fleet_host(), cmd)
+    cmd = f"journalctl -u {UNIT} -o cat --no-pager -n {int(lines)}" + (" -f" if follow else "")
+    argv = ssh_argv(inventory, op.as_fleet_host(), as_root(cmd))
     if follow:
         argv[1:1] = ["-t"]
     try:
@@ -390,7 +397,7 @@ def status(inventory: FleetInventory) -> str:
     exit_file = f"$HOME/{remote_workshop_dir(inventory)}/{EXIT_FILE}"
     res = run_remote(inventory, op.as_fleet_host(), ["bash", "-c",
                      f'systemctl is-active -q {UNIT} && echo running || cat "{exit_file}" 2>/dev/null || echo none'],
-                     timeout=60, as_root=False)
+                     timeout=60)
     return status_text(res.stdout)
 
 

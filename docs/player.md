@@ -7,8 +7,9 @@ chapter text on the left, then tabs for a terminal, Harvester and Rancher, plus
 scripts the track already has.
 
 It is opt-in. Nothing in rodeo runs it unless you call `rodeo player` or
-`rodeo fleet player-setup`, and the `virt-rodeo` profile is the only profile
-that uses it today.
+`rodeo fleet player-setup`. Any lab profile can use it: what the player shows
+comes from the profile's `player.yaml` (see [Player profiles](#player-profiles)).
+Today `virt-rodeo` is the profile that ships one.
 
 ## How it fits together
 
@@ -59,8 +60,9 @@ portal:
   player: true              # the portal hands out each lab's link
 ```
 
-Each lab gets a random 8-character id and three names: `<id>`, `hv-<id>` and
-`rancher-<id>` under the zone.
+Each lab gets a random 8-character id and one name per UI under the zone: `<id>`
+for the player, then `<ui>-<id>` for each product UI in the profile's
+`player.yaml` (`hv-<id>` and `rancher-<id>` for `virt-rodeo`).
 
 One command does the whole run, and a failed run resumes with the same command:
 
@@ -130,3 +132,46 @@ session's stdin. On the lab they live in `/etc/rodeo-player/tls/`, root-only
 (directory `0700`, files `0600`). Caddy reads them through systemd
 `LoadCredential`, so neither the Caddy user nor the student can open the key
 file. Lab hosts never run ACME and never get AWS credentials.
+
+## Player profiles
+
+The player is the same for every SUSE product. What changes per lab sits in a
+`player.yaml` next to the lab profile's `rodeo-plan.yaml`
+(`rodeo/data/examples/<profile>/player.yaml`). This is the `virt-rodeo` one:
+
+```yaml
+title: SUSE Virtualization Rodeo
+track_repo: https://github.com/SUSE-Technical-Marketing/suse-virt-rodeo.git
+kubeconfig: harvester-kubeconfig          # in ~/.rodeo, written by rodeo up (optional)
+student_ssh_key: /opt/suse-virt-workshop/lab-vm-key   # optional
+uis:
+  - key: hv                               # name: hv-<id>.<zone>
+    label: SUSE Virtualization (Harvester)
+    upstream: 192.168.122.10:443          # https, on the lab network
+    tab_port: 8443                        # the port the track's tabs use
+  - key: rancher
+    label: SUSE Rancher Prime
+    upstream: 192.168.122.9:30002
+    tab_port: 30002
+variables:                                # track variable: ??secrets.yaml key
+  RANCHER_PASSWORD: ??rancher_admin_password
+  HARVESTER_PASSWORD: ??harvester_admin_password
+```
+
+- **uis**: one to eight product UIs. Each gets its own name, its own Caddy site
+  behind the lab login, and the track tabs on `tab_port` open it.
+- **kubeconfig** and **student_ssh_key**: leave them out when the track does
+  not use them. The student gets a copy of each.
+- **variables**: passwords the track shows, read from the host's
+  `~/.rodeo/secrets.yaml`. Always `??<key>`, never the password itself.
+
+`rodeo fleet dns` and `rodeo fleet player-setup` read the profile from
+`lab.profile` in `workshop.yaml`. On one host, pass it yourself:
+
+```bash
+sudo rodeo player setup --profile <profile> --track-ref <sha>
+```
+
+A profile without a `player.yaml` gets the `virt-rodeo` one. To point a UI at
+another address on a single lab, use `--upstream <ui>=<ip>:<port>`.
+

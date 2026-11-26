@@ -2,8 +2,8 @@
 
 The lab has one student. Whoever opens ``https://<player>/enter?t=<token>``
 gets a cookie for the player name. Caddy asks the player (``forward_auth`` to
-``/_auth``) before every request on all three names, terminal and websockets
-included. The two UI names (``hv.`` and ``rancher.``) are separate hosts and
+``/_auth``) before every request on every name, terminal and websockets
+included. The product UI names (``hv.``, ``rancher.``...) are separate hosts and
 cannot share the player's cookie without putting it on the parent domain,
 where every other lab would receive it, so they get their own host-only
 cookie through a short hop: no cookie on ``hv.`` -> redirect to the player's

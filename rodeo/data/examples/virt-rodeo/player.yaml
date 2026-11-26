@@ -1,0 +1,26 @@
+# What the rodeo player shows for this lab (see rodeo/player/profile.py).
+# Another product's lab profile gets its own player.yaml with its own UIs.
+title: SUSE Virtualization Rodeo
+track_repo: https://github.com/SUSE-Technical-Marketing/suse-virt-rodeo.git
+
+# rodeo up writes it in ~/.rodeo; the student gets a copy, chapter 1 uses it.
+kubeconfig: harvester-kubeconfig
+
+# From custom/scripts/65-student-kit.sh: the student's default SSH key, so the
+# track's bare `ssh sles@<vm>` works as it does on Instruqt.
+student_ssh_key: /opt/suse-virt-workshop/lab-vm-key
+
+uis:
+  - key: hv
+    label: SUSE Virtualization (Harvester)
+    upstream: 192.168.122.10:443
+    tab_port: 8443
+  - key: rancher
+    label: SUSE Rancher Prime
+    upstream: 192.168.122.9:30002
+    tab_port: 30002
+
+# Track variable: ??key in the host's ~/.rodeo/secrets.yaml (same form as rodeo-plan.yaml).
+variables:
+  RANCHER_PASSWORD: ??rancher_admin_password
+  HARVESTER_PASSWORD: ??harvester_admin_password

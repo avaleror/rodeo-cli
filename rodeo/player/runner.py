@@ -240,7 +240,7 @@ _INSTRUQT_URL = re.compile(
 
 def rewrite_instruqt_urls(body: str, urls: dict[str, str], home: str = "/") -> str:
     """Point Instruqt sandbox addresses at this lab: the tab URL for that port
-    (8443 -> the Harvester name), else the player itself. A lab run by rodeo
+    (8443 -> that UI's name), else the player itself. A lab run by rodeo
     has no instruqt.io name, so a link left as it was would lead nowhere."""
     def sub(m: re.Match) -> str:
         base = urls.get(m.group(1) or "443") or home
@@ -382,7 +382,9 @@ class Runner:
 
     def script_env(self, *, with_agent: bool = True) -> dict[str, str]:
         path = f"{self._bin}:{self.system_path}" if with_agent else self.system_path
-        env = {"PATH": path, "HOME": self.home, "KUBECONFIG": self.kubeconfig, "LANG": "C.UTF-8"}
+        env = {"PATH": path, "HOME": self.home, "LANG": "C.UTF-8"}
+        if self.kubeconfig:
+            env["KUBECONFIG"] = self.kubeconfig
         if with_agent:
             env[_agent.ENV_VARS_FILE] = str(self.vars_file)
         return env

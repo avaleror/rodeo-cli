@@ -1104,7 +1104,8 @@ def fleet_dns_cmd(inventory_path: Path, do_delete: bool, host_ids: tuple[str, ..
     """Player names for every lab in the player.domain Route 53 zone.
 
     Gives each host a random ``labels.player_id`` (kept in workshop.yaml), then
-    writes ``<id>``, ``hv-<id>`` and ``rancher-<id>`` A records to its public IP.
+    writes ``<id>`` plus ``<ui>-<id>`` for each UI in the lab profile's player.yaml
+    (``hv-<id>``, ``rancher-<id>`` for virt-rodeo) as A records to its public IP.
     Each name carries a rodeo TXT mark; names rodeo did not write are refused.
     Re-runs are safe. ``--delete`` removes only names marked for this workshop
     (``fleet destroy`` does that too)."""

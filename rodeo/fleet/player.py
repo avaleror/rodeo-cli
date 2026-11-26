@@ -31,6 +31,12 @@ class PlayerSetupRow:
 
 def setup_argv(inventory: FleetInventory, host: FleetHost, track_ref: str) -> list[str]:
     argv = ["rodeo", "player", "setup", "--track-ref", track_ref, "--json"]
+    from ..player.profile import DEFAULT_PROFILE, has_profile
+
+    # Only a non-default profile is named, so a host on an older rodeo keeps
+    # working for virt-rodeo.
+    if has_profile(inventory.lab_profile) and inventory.lab_profile != DEFAULT_PROFILE:
+        argv += ["--profile", str(inventory.lab_profile)]
     if inventory.player is not None:
         pid = player_id(host)
         if not pid:

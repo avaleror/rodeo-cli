@@ -144,3 +144,29 @@ def test_redirects_never_leak_the_ticket_in_referer(lab):
     player_cookie = _set_cookie(_req(port, f"/enter?t={a.token}", P)[1])
     _, h, _ = _req(port, "/auth/hop?to=hv&r=%2F", P, player_cookie)
     assert h["Referrer-Policy"] == "no-referrer"
+
+
+def test_too_many_wrong_links_from_one_address_are_refused_for_a_while(lab):
+    port, a = lab
+    bot = {"X-Forwarded-For": "203.0.113.7"}
+    for _ in range(20):
+        assert _req(port, "/enter?t=nope", P, headers=bot)[0] == 401
+    # Blocked now, even with the right link: a bot learns nothing from it.
+    assert _req(port, f"/enter?t={a.token}", P, headers=bot)[0] == 429
+    # Another address (the real student) is not affected.
+    assert _req(port, f"/enter?t={a.token}", P, headers={"X-Forwarded-For": "198.51.100.4"})[0] == 302
+
+
+def test_login_limiter_window_reset_and_memory_bound():
+    from rodeo.player.server import LoginLimiter
+
+    lim = LoginLimiter(limit=3, window=60, max_sources=2)
+    for t in (0, 1, 2):
+        lim.failed("a", now=t)
+    assert lim.blocked("a", now=3) and not lim.blocked("a", now=61)  # window slides
+    lim.failed("b", now=0)
+    lim.cleared("b")
+    assert not lim.blocked("b", now=1)
+    for src in ("c", "d", "e"):
+        lim.failed(src, now=100)
+    assert len(lim._fails) <= 2  # bounded however many addresses show up

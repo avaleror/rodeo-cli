@@ -51,6 +51,7 @@ from pathlib import Path
 from ..fleet.portal import CADDY_SHA512, CADDY_VERSION, STUDENT_SETUP_SCRIPT, STUDENT_USER
 from .profile import PlayerProfile
 from .profile import load as load_profile
+from .runner import CHECK_TIMEOUT, check_timeout_ok
 
 TTYD_VERSION = "1.7.7"
 TTYD_SHA256 = "8a217c968aba172e0dbf3f34447218dc015bc4d5e59bf51db2f2cd12b7be4f55"  # ttyd.x86_64
@@ -86,6 +87,7 @@ class SetupOptions:
     profile: PlayerProfile = field(default_factory=load_profile)
     track_repo: str = ""            # empty = the profile's
     sandbox_id: str = ""
+    check_timeout: int = CHECK_TIMEOUT  # seconds per check script
     # Owned-zone mode (flat names under one wildcard certificate):
     # base = <label>.<domain>, UIs = <key>-<label>.<domain> (hv-, rancher-).
     # Empty = the sslip.io test mode, UIs = <key>.<base>.
@@ -114,6 +116,7 @@ class SetupOptions:
             raise ValueError("--track-ref must be a full 40-character commit SHA (pin the track)")
         if not self.repo.startswith("https://"):
             raise ValueError("--track-repo must be an https:// git URL")
+        check_timeout_ok(self.check_timeout)
 
     @property
     def names(self) -> dict[str, str]:
@@ -250,6 +253,7 @@ def player_config(opts: SetupOptions) -> dict:
         "port": PLAYER_PORT,
         "sandbox_id": opts.sandbox_id,
         "tab_urls": {str(ui.tab_port): f"https://{n[ui.key]}/" for ui in opts.profile.uis},
+        "check_timeout": opts.check_timeout,
         "terminal_url": "/terminal/",
         "auth_file": str(AUTH_FILE),
         "kubeconfig": str(PLAYER_KUBECONFIG) if opts.profile.kubeconfig else "",

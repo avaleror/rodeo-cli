@@ -1058,10 +1058,13 @@ fleet_cmd.add_command(fleet_deprovision_cmd, name="destroy")
 @_output_opt
 @_concurrency_opt(8)
 @click.option("--track-ref", required=True, help="suse-virt-rodeo commit SHA to pin (40 hex).")
+@click.option("--check-timeout", type=int, default=None,
+              help="Seconds one chapter check may run on every lab (10-3600, default 120).")
 @click.option("-f", "--file", "inventory_path", required=True,
               type=click.Path(exists=True, dir_okay=False, path_type=Path),
               help="Path to workshop.yaml inventory.")
-def fleet_player_setup_cmd(inventory_path: Path, track_ref: str, concurrency: int, output_fmt: str) -> None:
+def fleet_player_setup_cmd(inventory_path: Path, track_ref: str, check_timeout: int | None,
+                           concurrency: int, output_fmt: str) -> None:
     """Install the rodeo player on every lab host (after `fleet deploy`).
 
     Opt-in and new: nothing else runs it. Then set ``portal.player: true``,
@@ -1078,7 +1081,8 @@ def fleet_player_setup_cmd(inventory_path: Path, track_ref: str, concurrency: in
             console.print("[yellow]⚠  provider.per_host_ssh_key is off: every lab host shares one root "
                           "SSH key, so a student who gets root on one lab can reach the others. Turn it "
                           "on before provisioning a fleet that students use.[/yellow]")
-        rows = fleet_player_setup(inventory, track_ref=track_ref, concurrency=concurrency)
+        rows = fleet_player_setup(inventory, track_ref=track_ref, concurrency=concurrency,
+                                  check_timeout=check_timeout)
     except ConfigError as exc:
         console.print(f"[red]✗  {exc}[/red]")
         raise SystemExit(1)

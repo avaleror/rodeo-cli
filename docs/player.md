@@ -42,6 +42,20 @@ sudo rodeo player test        # solves every chapter: run it last
 sslip.io is on the Public Suffix List, so this mode is for testers only, never
 for students.
 
+## How long a check may run
+
+Each chapter check is stopped after 120 seconds and counts as a failed check.
+A track whose checks wait for something slow (a VM booting, a migration) can
+allow more, from 10 to 3600 seconds:
+
+```bash
+sudo rodeo player setup --track-ref <sha> --check-timeout 300            # one lab
+rodeo fleet player-setup -f workshop.yaml --track-ref <sha> --check-timeout 300   # every lab
+```
+
+The value lands in the player config (`/etc/rodeo-player/config.json`,
+`check_timeout`); `rodeo player test` uses the same value.
+
 ## A fleet with your own domain
 
 For students, use a DNS zone you own in Route 53 (not on the Public Suffix

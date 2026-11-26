@@ -28,7 +28,7 @@ from typing import Any
 
 from .auth import COOKIE, SESSION_SECONDS, Auth
 from .auth import load as load_auth
-from .runner import MoveResult, Runner, RunnerError, ScriptResult
+from .runner import CHECK_TIMEOUT, MoveResult, Runner, RunnerError, ScriptResult, check_timeout_ok
 
 STATIC_DIR = Path(__file__).resolve().parents[1] / "data" / "player" / "static"
 LOOPBACK = {"127.0.0.1", "::1", "localhost"}
@@ -120,6 +120,8 @@ class PlayerConfig:
     auth_file: str = ""
     # Public names: {"player": base, "hv": "hv.<base>", "rancher": "rancher.<base>"}.
     hosts: dict[str, str] = field(default_factory=dict)
+    # Seconds one check script may run before it is stopped and counted as failed.
+    check_timeout: int = CHECK_TIMEOUT
 
 
 def load_config(path: Path | str) -> PlayerConfig:
@@ -128,7 +130,9 @@ def load_config(path: Path | str) -> PlayerConfig:
     unknown = set(data) - known
     if unknown:
         raise ValueError(f"unknown player config keys: {sorted(unknown)}")
-    return PlayerConfig(**data)
+    cfg = PlayerConfig(**data)
+    check_timeout_ok(cfg.check_timeout)
+    return cfg
 
 
 def plain(text: str) -> str:
@@ -146,7 +150,7 @@ class Player:
             raise ValueError("auth_file needs hosts.player in the player config")
         self.runner = runner or Runner(
             cfg.track_dir, cfg.state_dir, host=cfg.host, sandbox_id=cfg.sandbox_id,
-            home=cfg.home, kubeconfig=cfg.kubeconfig,
+            home=cfg.home, kubeconfig=cfg.kubeconfig, check_timeout=cfg.check_timeout,
         )
         self.logins = LoginLimiter()
         self._lock = threading.Lock()

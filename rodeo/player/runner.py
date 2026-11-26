@@ -45,10 +45,19 @@ from . import agent as _agent
 
 SCRIPT_KINDS = ("setup", "check", "solve", "cleanup")
 DEFAULT_HOST = "kvm-host"
-CHECK_TIMEOUT = 60          # one check may run 60 s
+CHECK_TIMEOUT = 120         # default seconds per check; player config check_timeout overrides
+CHECK_TIMEOUT_RANGE = (10, 3600)
 SCRIPT_TIMEOUT = 1800       # setup / solve / cleanup
 OUTPUT_CAP = 64 * 1024
 SYSTEM_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+
+def check_timeout_ok(value: object) -> int:
+    """The check timeout as an int in CHECK_TIMEOUT_RANGE, or ValueError."""
+    low, high = CHECK_TIMEOUT_RANGE
+    if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
+        raise ValueError(f"check_timeout must be whole seconds from {low} to {high}, got {value!r}")
+    return value
 
 _CHAPTER_DIR = re.compile(r"^\d+-[a-z0-9][a-z0-9-]*$")
 _QUOTED_LINE = re.compile(r'^([A-Za-z_][\w-]*): "(.*)"\s*$')

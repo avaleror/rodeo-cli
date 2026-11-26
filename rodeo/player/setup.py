@@ -544,9 +544,9 @@ def run_setup(opts: SetupOptions, *, sudo_user: str | None) -> dict:
     if kube:
         src = lab_kubeconfig(sudo_user, name=kube)
         install_kubeconfig(src)
-        # Track scripts hard-code /root/.rodeo/<kubeconfig> (the Instruqt
-        # layout). On a fleet host rodeo up wrote it for the SSH user, so give
-        # root the same file. Never overwrite one root already has.
+        # Track scripts hard-code /root/.rodeo/<kubeconfig> (the layout the
+        # track was written for). On a fleet host rodeo up wrote it for the SSH
+        # user, so give root the same file. Never overwrite one root already has.
         ensure_root_kubeconfig(src, ROOT_RODEO / kube)
     if opts.tls_pem:
         install_tls(opts.tls_pem)

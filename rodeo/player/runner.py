@@ -1,9 +1,9 @@
-"""Chapter lifecycle for an Instruqt-layout track on a rodeo lab.
+"""Chapter lifecycle for a rodeo track on a rodeo lab.
 
 Input is a track checkout: ``NN-slug/assignment.md`` with front matter, and
 optional ``setup-<host>``, ``check-<host>``, ``solve-<host>`` and
 ``cleanup-<host>`` scripts beside it (``<host>`` is ``kvm-host`` for
-suse-virt-rodeo). The runner does what Instruqt does with them:
+suse-virt-rodeo). The runner uses them like this:
 
 - entering a chapter runs its setup; a non-zero setup is a failed enter and
   Check refuses until a retry passes;
@@ -19,7 +19,7 @@ suse-virt-rodeo). The runner does what Instruqt does with them:
 Scripts run as a subprocess in their chapter directory with a wiped
 environment: PATH (the ``agent`` shim first), HOME, KUBECONFIG and the vars
 file location. Output is captured with a size cap and returned to the
-caller (the check output is the student's feedback, as on Instruqt). The
+caller (the check output is the student's feedback). The
 history file records exit codes and timings only, never output, because
 scripts print passwords.
 
@@ -45,7 +45,7 @@ from . import agent as _agent
 
 SCRIPT_KINDS = ("setup", "check", "solve", "cleanup")
 DEFAULT_HOST = "kvm-host"
-CHECK_TIMEOUT = 60          # Instruqt's check cap
+CHECK_TIMEOUT = 60          # one check may run 60 s
 SCRIPT_TIMEOUT = 1800       # setup / solve / cleanup
 OUTPUT_CAP = 64 * 1024
 SYSTEM_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -53,6 +53,7 @@ SYSTEM_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 _CHAPTER_DIR = re.compile(r"^\d+-[a-z0-9][a-z0-9-]*$")
 _QUOTED_LINE = re.compile(r'^([A-Za-z_][\w-]*): "(.*)"\s*$')
 _UNICODE_ESC = re.compile(r"\\U([0-9a-fA-F]{8})|\\u([0-9a-fA-F]{4})")
+# The track's variable tag syntax, as the track files write it.
 _VAR = re.compile(r'\[\[\s*Instruqt-Var\s+key="([A-Za-z_][A-Za-z0-9_]*)"[^\]]*\]\]')
 # Non-greedy label: the real track wraps one label in a <span id="..."> with
 # its own quotes, so the label ends at the '" variant=' or '"]' that follows.
@@ -120,8 +121,8 @@ def _repair_front_matter(text: str) -> str:
     """Make suse-virt-rodeo's front matter loadable as YAML.
 
     rmstory writes ``title: "<span id="assignment.7" ...>...</span>"``: a
-    double-quoted scalar with bare double quotes inside, which YAML rejects
-    and Instruqt tolerates. Re-quote those single lines with single quotes,
+    double-quoted scalar with bare double quotes inside, which strict YAML
+    rejects. Re-quote those single lines with single quotes,
     decoding the ``\\UXXXXXXXX`` escapes double quotes would have decoded.
     """
     out = []
@@ -200,7 +201,7 @@ _RMSTORY_ATTR = re.compile(r'\blang\s*=|\bhist\s*=|\bno\b')
 def strip_rmstory_spans(text: str) -> str:
     """Remove rmstory tagging spans (lang=, hist=, no) and keep their content.
 
-    The track's CI does exactly this before every Instruqt push
+    The track's CI does exactly this before every publish
     (suse-virt-rodeo/.github/scripts/strip-rmstory-spans.py, ported here):
     Markdown wrapped in one of these spans is otherwise an HTML block that no
     Markdown renderer touches, so headings and **bold** showed raw. Stack
@@ -249,7 +250,7 @@ def rewrite_instruqt_urls(body: str, urls: dict[str, str], home: str = "/") -> s
 
 
 def render_body(body: str, values: dict[str, str], urls: dict[str, str] | None = None) -> str:
-    """Substitute Instruqt variables and tab buttons; leave the rest as is.
+    """Substitute the track's variables and tab buttons; leave the rest as is.
 
     Values are HTML-escaped (they come from scripts). A variable nobody set
     shows as a visible marker, not as an empty string the student would
@@ -364,7 +365,7 @@ class Runner:
         return values
 
     def set_variable(self, key: str, value: str) -> None:
-        """Seed a value the track-level setup would have set on Instruqt."""
+        """Seed a value the track-level setup would otherwise have set."""
         _agent.set_var(self.vars_file, key, value)
 
     def render(self, index: int | None = None, urls: dict[str, str] | None = None) -> str:
@@ -577,7 +578,7 @@ def load_expectations(path: Path | str) -> dict[str, str]:
 
 def track_test(runner: Runner, *, stop_on_failure: bool = True,
                expect: dict[str, str] | None = None) -> list[ChapterTest]:
-    """Instruqt's track test: per chapter, setup, check, solve, check, cleanup.
+    """Track test: per chapter, setup, check, solve, check, cleanup.
 
     ``expect`` locks the check before the solve per chapter: a chapter whose
     check passes before the work is done (when it should fail) does not test

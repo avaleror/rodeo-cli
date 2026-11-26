@@ -4,7 +4,7 @@ Standard library only, like the claim portal. It binds loopback; Caddy is the
 only public listener. Moves (enter, check, next, skip) can run for minutes, so
 they run on one background worker and the page polls ``/api/state``.
 
-What the student sees from scripts: the check output only, as on Instruqt.
+What the student sees from scripts: the check output only.
 Setup, solve and cleanup results are reported as exit codes, never output,
 because those scripts print passwords.
 

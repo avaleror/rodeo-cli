@@ -88,11 +88,10 @@ def portal_publish_cmd(inventory_path: Path, concurrency: int, output_fmt: str,
         click.echo(json.dumps([r.__dict__ for r in rows], indent=2))
         return
     t = Table(title=f"Portal publish: {inventory.name}")
-    for col in ("id", "state", "student ssh", "reason"):
+    for col in ("id", "state", "reason"):
         t.add_column(col, overflow="fold")
     for r in rows:
-        t.add_row(r.id, "[green]ready[/green]" if r.ready else "[yellow]building[/yellow]",
-                  "yes" if r.ssh else "-", r.reason or "")
+        t.add_row(r.id, "[green]ready[/green]" if r.ready else "[yellow]building[/yellow]", r.reason or "")
     console.print()
     console.print(t)
     console.print(f"\n  Students: [bold]{portal_url(inventory)}[/bold]\n")

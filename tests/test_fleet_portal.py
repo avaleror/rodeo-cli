@@ -407,3 +407,16 @@ def test_portal_up_passes_guide_url_quoted():
                             guide_url="https://avaleror.github.io/suse-virt-workshop/")
     assert "--guide-url https://avaleror.github.io/suse-virt-workshop/" in s
     assert "--guide-url ''" in fp.portal_up_script("p.sslip.io", mode="open", title="T")
+
+
+def test_publish_command_prints_its_table(tmp_path, monkeypatch):
+    """Found live 2026-11-26: the table still read a student SSH column."""
+    from click.testing import CliRunner
+
+    from rodeo.commands.fleet_portal_cmd import portal_publish_cmd
+
+    inv, _ = _publish_env(tmp_path, monkeypatch, ready=True, player=True)
+    monkeypatch.setattr("rodeo.commands.fleet_portal_cmd.load_inventory", lambda p: inv)
+    res = CliRunner().invoke(portal_publish_cmd, ["-f", str(tmp_path / "workshop.yaml")])
+    assert res.exit_code == 0, res.output
+    assert "student-01" in res.output and "ready" in res.output and "ssh" not in res.output.lower()

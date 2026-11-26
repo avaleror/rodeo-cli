@@ -1141,6 +1141,33 @@ def fleet_dns_cmd(inventory_path: Path, do_delete: bool, host_ids: tuple[str, ..
         raise SystemExit(1)
 
 
+@fleet_cmd.command("preflight")
+@click.option("--count", default=None, type=click.IntRange(1, 500),
+              help="Plan for this many labs instead of the inventory's (e.g. a 1-lab file for a 30-lab event).")
+@click.option("-f", "--file", "inventory_path", required=True,
+              type=click.Path(exists=True, dir_okay=False, path_type=Path),
+              help="Path to workshop.yaml inventory.")
+def fleet_preflight_cmd(inventory_path: Path, count: int | None) -> None:
+    """Will this workshop fit? Read-only checks before anything is created.
+
+    vCPU quota for the instance family, the instance type in the subnet's AZ,
+    the AWS session against a deploy's length and, with a player: block, the
+    DNS zone and the event certificate. Exit 1 when a check fails.
+    """
+    from ..fleet.preflight import preflight
+
+    try:
+        checks = preflight(load_inventory(inventory_path), count=count)
+    except ConfigError as exc:
+        console.print(f"[red]✗  {exc}[/red]")
+        raise SystemExit(1)
+    mark = {"ok": "[green]✓[/green]", "warn": "[yellow]![/yellow]", "fail": "[red]✗[/red]"}
+    for c in checks:
+        console.print(f"{mark[c.state]}  {c.name:<15} {c.detail}")
+    if any(c.state == "fail" for c in checks):
+        raise SystemExit(1)
+
+
 @fleet_cmd.command("cert")
 @click.option("-f", "--file", "inventory_path", required=True,
               type=click.Path(exists=True, dir_okay=False, path_type=Path),

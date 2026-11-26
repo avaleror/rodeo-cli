@@ -182,6 +182,27 @@ rodeo fleet status -f workshop.yaml --host student-01 -j 4
 
 ---
 
+## Before a big event: `rodeo fleet preflight`
+
+Read-only checks, before anything is created:
+
+```bash
+rodeo fleet preflight -f workshop.yaml              # the inventory's plan
+rodeo fleet preflight -f workshop.yaml --count 30   # plan a bigger event with the same file
+```
+
+- **vCPU quota**: free vCPUs in the instance family's on-demand quota against
+  what the new hosts (and the portal machine) need. It warns above 80% and fails
+  over the quota, naming the Service Quotas code to raise. Ask AWS weeks before
+  the event: an increase is not instant.
+- **Instance type**: offered in the subnet's Availability Zone.
+- **AWS session**: renewable credentials (`aws login`, SSO) are fine; fixed ones
+  must outlive a run of about an hour.
+- **With a `player:` block**: the Route 53 zone exists and the event
+  certificate is valid for 7 more days (`fleet cert` issues or renews it).
+
+Exit code 1 when a check fails.
+
 ## One command: `rodeo fleet up`
 
 `rodeo fleet up` runs the whole instructor flow below in order: `provision`,

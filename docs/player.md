@@ -21,7 +21,10 @@ On each lab host:
   Harvester or Rancher.
 
 A student signs in once with their lab link (`/enter?t=...`). The link is a
-secret: anyone who has it can use that lab.
+secret: anyone who has it can use that lab. Students can come from any network
+and any IP: the link is the lock, not the address. After 20 wrong links in 10
+minutes from one address, that address gets "Too many tries" (HTTP 429) for a
+while, so a bot cannot load the lab host by hammering `/enter`.
 
 ## One lab, test mode
 

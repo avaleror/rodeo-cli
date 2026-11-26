@@ -34,11 +34,70 @@ STATIC_DIR = Path(__file__).resolve().parents[1] / "data" / "player" / "static"
 LOOPBACK = {"127.0.0.1", "::1", "localhost"}
 CSRF_HEADER = "X-Rodeo-Player"
 _TAG = re.compile(r"<[^>]+>")
-LOCKED_PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Lab locked</title>
-<style>body{font:16px/1.5 system-ui,sans-serif;max-width:34rem;margin:4rem auto;padding:0 1rem}</style></head>
-<body><h1>This lab needs its link</h1><p>Open the lab link you were given (from the workshop portal or your
-instructor). It signs this browser in for 24 hours.</p></body></html>"""
-_STATIC_TYPES = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8"}
+LOCKED_PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Lab locked</title>
+<style>:root{--bg:#eef2f0;--card:#fff;--ink:#0c322c;--ink2:#4b635c;--go:#30ba78;color-scheme:light dark}
+@media (prefers-color-scheme:dark){:root{--bg:#061815;--card:#0b2420;--ink:#e3efea;--ink2:#9ab5ac}}
+body{margin:0;min-height:100vh;display:grid;place-items:center;padding:16px;box-sizing:border-box;
+background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:30rem;background:var(--card);border-radius:12px;padding:28px 32px;border-top:4px solid var(--go)}
+h1{font-size:22px;margin:0 0 8px}p{margin:0;color:var(--ink2)}</style></head>
+<body><main><h1>This lab needs its link</h1><p>Open the lab link you were given, from the workshop portal or
+your instructor. It signs this browser in for 24 hours.</p></main></body></html>"""
+TOO_MANY_PAGE = (LOCKED_PAGE.replace("<title>Lab locked</title>", "<title>Too many tries</title>")
+                 .replace("<h1>This lab needs its link</h1>", "<h1>Too many tries</h1>")
+                 .replace("""<p>Open the lab link you were given, from the workshop portal or
+your instructor. It signs this browser in for 24 hours.</p>""",
+                          """<p>This lab saw too many wrong lab links from your network. Wait a few
+minutes, then open the lab link you were given again.</p>"""))
+
+
+class LoginLimiter:
+    """Wrong lab links per source address, in a sliding window.
+
+    The token is 192 random bits, so this is not what keeps a lab safe; it
+    stops a bot hammering ``/enter`` from loading the lab host. Each lab is
+    one student's host, so a shared event network only counts that
+    student's own mistakes. A good link clears the address.
+    """
+
+    def __init__(self, limit: int = 20, window: float = 600.0, max_sources: int = 10_000) -> None:
+        self.limit, self.window, self.max_sources = limit, window, max_sources
+        self._fails: dict[str, list[float]] = {}
+        self._lock = threading.Lock()
+
+    def _recent(self, source: str, now: float) -> list[float]:
+        kept = [t for t in self._fails.get(source, []) if now - t < self.window]
+        if kept:
+            self._fails[source] = kept
+        else:
+            self._fails.pop(source, None)
+        return kept
+
+    def blocked(self, source: str, now: float | None = None) -> bool:
+        with self._lock:
+            return len(self._recent(source, time.time() if now is None else now)) >= self.limit
+
+    def failed(self, source: str, now: float | None = None) -> None:
+        now = time.time() if now is None else now
+        with self._lock:
+            recent = self._recent(source, now)
+            if not recent and len(self._fails) >= self.max_sources:
+                # Memory stays bounded: drop expired sources, then the stalest.
+                for s in list(self._fails):
+                    self._recent(s, now)
+                if len(self._fails) >= self.max_sources:
+                    self._fails.pop(min(self._fails, key=lambda s: self._fails[s][-1]))
+            self._fails[source] = [*recent, now]
+
+    def cleared(self, source: str) -> None:
+        with self._lock:
+            self._fails.pop(source, None)
+
+
+
+_STATIC_TYPES = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
+                 ".woff2": "font/woff2", ".txt": "text/plain; charset=utf-8"}
 
 
 @dataclass
@@ -89,6 +148,7 @@ class Player:
             cfg.track_dir, cfg.state_dir, host=cfg.host, sandbox_id=cfg.sandbox_id,
             home=cfg.home, kubeconfig=cfg.kubeconfig,
         )
+        self.logins = LoginLimiter()
         self._lock = threading.Lock()
         self._busy: str | None = None
         self._last: dict[str, Any] | None = None
@@ -229,6 +289,13 @@ class Handler(BaseHTTPRequestHandler):
         h = self.headers.get("X-Forwarded-Host") or self.headers.get("Host") or ""
         return h.split(",")[0].strip().split(":")[0].lower()
 
+    def _source(self) -> str:
+        """The student's address. Caddy, the only public listener, sets
+        X-Forwarded-For to the client it saw (it trusts no proxy before it),
+        so the last entry is that client."""
+        xff = self.headers.get("X-Forwarded-For") or ""
+        return xff.split(",")[-1].strip() or self.client_address[0]
+
     def _cookie(self) -> str:
         jar = SimpleCookie()
         try:
@@ -273,9 +340,14 @@ class Handler(BaseHTTPRequestHandler):
         host = self._host()
         player = hosts["player"]
         if path == "/enter" and host == player:
-            if auth.token_ok((query.get("t") or [""])[0]):
+            source, logins = self._source(), self.player.logins
+            if logins.blocked(source):
+                self._send(429, TOO_MANY_PAGE.encode(), "text/html; charset=utf-8")
+            elif auth.token_ok((query.get("t") or [""])[0]):
+                logins.cleared(source)
                 self._redirect("/", cookie_for=player)
             else:
+                logins.failed(source)
                 self._locked()
             return True
         if path == "/_auth":  # Caddy's forward_auth for every request, all three names

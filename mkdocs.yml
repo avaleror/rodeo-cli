@@ -106,7 +106,7 @@ nav:
   - Create your own rodeo: custom-rodeos.md
   - Rodeo Builder: rodeo-builder.md
   - Fleet (multi-host workshops): fleet.md
-  - Lab player (Instruqt-like): player.md
+  - Lab player: player.md
   - MCP server (agents): mcp.md
   - Reference:
     - rodeo-plan.yaml: reference/plan.md

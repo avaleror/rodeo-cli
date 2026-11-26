@@ -194,11 +194,10 @@ def preflight(inventory: FleetInventory, *, count: int | None = None, ec2: Any =
         from ..providers.aws import DEFAULT_PORTAL_INSTANCE_TYPE
 
         extra[portal.instance_type or DEFAULT_PORTAL_INSTANCE_TYPE] = 1
-    checks = [
-        check_session(*session()),
-        check_offering(ec2, subnet, itype),
-        check_quota(ec2, quotas, itype, new_hosts, extra),
-    ]
+    offering = check_offering(ec2, subnet, itype)
+    checks = [check_session(*session()), offering]
+    if offering.state != "fail":  # a type AWS does not have cannot be sized for the quota
+        checks.append(check_quota(ec2, quotas, itype, new_hosts, extra))
     if inventory.player is not None:
         from . import dns
 

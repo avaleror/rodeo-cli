@@ -388,6 +388,11 @@ class AwsHostProvider:
                     "instance types — virtual Nitro types need NestedVirtualization=enabled"
                 )
 
+    def _validate_for_operator(self, config: dict[str, Any]) -> None:
+        """The operator host has its own type: the lab's size rules do not apply."""
+        rest = {k: v for k, v in config.items() if k not in ("instance_type", "instance_tier")}
+        self.validate({**rest, "instance_tier": "recommended"})  # any valid lab size
+
     @staticmethod
     def _reject_too_small(itype: str) -> None:
         key = itype.lower()
@@ -1662,7 +1667,7 @@ class AwsHostProvider:
         nested virtualisation, the dead-man switch, and only the lab's public
         key through cloud-init. The lab's private key reaches it later, with
         ``rodeo fleet operator push``."""
-        self.validate(config)
+        self._validate_for_operator(config)
         ec2 = self._client(config)
         cfg = dict(config)
         cfg["ami"] = self.resolve_ami(ec2, cfg)
@@ -1712,7 +1717,7 @@ class AwsHostProvider:
 
     def deprovision_operator(self, config: dict[str, Any], *, workshop: str) -> list[DeprovisionResult]:
         """Terminate the operator host, then delete its SG once its ENI is gone."""
-        self.validate(config)
+        self._validate_for_operator(config)
         ec2 = self._client(config)
         key = load_lab_ssh_key(workshop)
         if key is None:
@@ -1721,8 +1726,8 @@ class AwsHostProvider:
                 "which operator host is yours. Use `rodeo cloud ls` and `rodeo cloud destroy "
                 "<deployment>`."
             )
+        tags_identity = self.identity_tags(config, key)  # first: it loads the owner _mine checks
         lab = self._mine(ec2, workshop, key)
-        tags_identity = self.identity_tags(config, key)
         inst = self._operator_of(lab)
         results: list[DeprovisionResult] = []
         if inst is not None:

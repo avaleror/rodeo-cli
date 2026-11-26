@@ -229,3 +229,10 @@ def test_operator_commands_are_registered():
     out = CliRunner().invoke(fleet_cmd, ["operator", "--help"]).output
     for word in ("up", "login", "push", "run", "logs", "status", "pull", "down"):
         assert f"  {word} " in out
+
+
+def test_operator_ignores_the_labs_instance_size_rules(managed_ssh, no_wait):  # noqa: F811
+    fake = _FakeEC2WithSG()
+    cfg = {**_provider(), "instance_type": "m7i.large"}  # too small for a nested lab
+    host = _aws(fake).provision_operator(cfg, workshop="demo", ssh_user="root")
+    assert _aws(fake).deprovision_operator(cfg, workshop="demo")[0].provider_id == host.provider_id

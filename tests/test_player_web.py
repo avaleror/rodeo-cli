@@ -107,6 +107,12 @@ def test_page_and_static_assets(served):
     assert code == 200 and "<title>SUSE Virtualization Rodeo</title>" in body
     code, js = _get(base + "/static/marked.min.js")
     assert code == 200 and "marked v12.0.2" in js
+    # The page script is versioned by its content, so upgrades are never stale.
+    import re
+    m = re.search(r'src="/static/player\.js\?v=([0-9a-f]{12})"', body)
+    assert m and "{{" not in body
+    code, js = _get(base + f"/static/player.js?v={m.group(1)}")
+    assert code == 200 and "/api/state" in js
     assert _get(base + "/static/../server.py")[0] == 404
     # Light, dark and auto themes live in the page; the SUSE font ships with it.
     assert 'id="theme"' in body and ':root[data-theme="dark"]' in body
@@ -247,5 +253,59 @@ def test_state_reports_elapsed_seconds_while_busy(served, track):
 
 def test_page_strips_scripts_and_handlers_from_assignments(served):
     base, _ = served
-    _, body = _get(base + "/")
-    assert "function clean(" in body and 'querySelectorAll("script' in body and "/^on/i" in body
+    _, js = _get(base + "/static/player.js")
+    assert "function clean(" in js and 'querySelectorAll("script' in js and "/^on/i" in js
+
+
+def test_chapter_view_carries_the_outline_and_summary(served):
+    base, _ = served
+    _, state = _get(base + "/api/state")
+    assert {"number", "name", "difficulty"} <= set(state["chapters"][0])
+    _, view = _get(base + "/api/chapter/0")
+    # No headings in this fixture: one plain section, one step.
+    assert [s["kind"] for s in view["sections"]] == ["section"]
+    assert view["steps"] == [{"kind": "task", "name": "", "number": 1, "sections": [0]}]
+    assert "rodeo-var" in view["sections"][0]["markdown"]  # variables already substituted
+    assert view["teaser"] == ""
+
+
+def _health_player(track: Path, tmp_path: Path, probes: dict) -> Player:
+    cfg = PlayerConfig(track_dir=str(track), state_dir=str(tmp_path / "hstate"), port=0, home=str(tmp_path),
+                       kubeconfig=str(tmp_path / "kc"), probes=probes)
+    return Player(cfg)
+
+
+def test_health_probes_each_tab_once_per_ttl(track, tmp_path, monkeypatch):
+    from rodeo.player import server as srv
+
+    calls = []
+    monkeypatch.setattr(srv, "probe", lambda url: calls.append(url) or url.endswith("ok/"))
+    p = _health_player(track, tmp_path, {"8443": "https://10.0.0.10/ok/", "30002": "https://10.0.0.9:30002/down/",
+                                         "terminal": "http://127.0.0.1:7681/ok/"})
+    h = p.health()
+    assert [(i["name"], i["ok"]) for i in h["items"]] == [
+        ("SUSE Virtualization UI", True), ("Cluster Terminal", True), ("Rancher Prime UI", False)]
+    assert h["checked"] and not h["ready"] and h["setup"] == "waiting" and h["chapter"] == 0
+    p.health()
+    assert len(calls) == 3  # cached: a second page does not probe again
+
+
+def test_health_without_probes_checks_nothing(track, tmp_path, monkeypatch):
+    from rodeo.player import server as srv
+
+    monkeypatch.setattr(srv, "probe", lambda url: pytest.fail("no probe expected"))
+    h = _health_player(track, tmp_path, {}).health()
+    assert h["checked"] is False and h["ready"] is False
+    assert all(i["ok"] is None for i in h["items"])
+
+
+def test_health_endpoint(served):
+    base, _ = served
+    code, h = _get(base + "/api/health")
+    assert code == 200 and {"checked", "ready", "items", "setup"} <= set(h)
+
+
+def test_probe_is_false_when_nothing_answers():
+    from rodeo.player import server as srv
+
+    assert srv.probe("http://127.0.0.1:9/never", timeout=0.5) is False  # nothing listens on port 9

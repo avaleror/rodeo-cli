@@ -51,10 +51,13 @@ def serve_cmd(config_path: str) -> None:
               help="Point one of the profile's UIs elsewhere, e.g. hv=192.168.122.10:443.")
 @click.option("--harvester-upstream", default=None, hidden=True)  # older form of --upstream hv=...
 @click.option("--rancher-upstream", default=None, hidden=True)    # older form of --upstream rancher=...
+@click.option("--check-timeout", type=int, default=None,
+              help="Seconds one chapter check may run (10-3600, default 120).")
 @click.option("--json", "as_json", is_flag=True, help="Print the result as JSON.")
 def setup_cmd(track_ref: str, profile_name: str | None, track_repo: str | None, base: str | None,
               domain: str | None, label: str | None, tls_stdin: bool, upstreams: tuple[str, ...],
-              harvester_upstream: str | None, rancher_upstream: str | None, as_json: bool) -> None:
+              harvester_upstream: str | None, rancher_upstream: str | None, check_timeout: int | None,
+              as_json: bool) -> None:
     """Install the player on this lab host (root, after rodeo up)."""
     from ..player import profile as p
     from ..player import setup as s
@@ -93,6 +96,7 @@ def setup_cmd(track_ref: str, profile_name: str | None, track_repo: str | None, 
     opts = s.SetupOptions(
         base=base, track_ref=track_ref, profile=prof, track_repo=track_repo or "",
         sandbox_id=base.split(".", 1)[0], domain=(domain or "").strip(".").lower(), tls_pem=tls_pem,
+        **({} if check_timeout is None else {"check_timeout": check_timeout}),
     )
     try:
         result = s.run_setup(opts, sudo_user=os.environ.get("SUDO_USER"))
@@ -153,7 +157,8 @@ def test_cmd(config_path: str, keep_going: bool, expect_path: str | None) -> Non
 
     cfg = load_config(config_path)
     runner = Runner(cfg.track_dir, Path(cfg.state_dir).parent / "test-state", host=cfg.host,
-                    sandbox_id=cfg.sandbox_id, home=cfg.home, kubeconfig=cfg.kubeconfig)
+                    sandbox_id=cfg.sandbox_id, home=cfg.home, kubeconfig=cfg.kubeconfig,
+                    check_timeout=cfg.check_timeout)
     # Same variables the player renders with (seeded passwords, agent sets).
     from ..player import agent
 

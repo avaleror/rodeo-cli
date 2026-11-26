@@ -177,6 +177,23 @@ def test_skip_1_to_4_runs_setup_solve_cleanup_per_chapter_in_order(tmp_path):
     assert _calls(tmp_path) == ["1 solve", "2 setup", "2 solve", "2 cleanup", "3 solve", "4 setup"]
     assert res.ok and r.current == 3 and r.entered
     assert r.completed == [0, 1, 2]
+    assert r.skipped == [0, 1, 2]
+
+
+def test_skipped_lists_only_chapters_a_skip_completed(tmp_path):
+    r = _runner(tmp_path)
+    r.enter()
+    assert r.check().ok          # chapter 1 passed by its check
+    r.skip(3)                    # 2 and 3 solved for the student
+    assert r.completed == [0, 1, 2] and r.skipped == [1, 2]
+    # An older state file without the key still loads.
+    state = tmp_path / "state" / "state.json"
+    data = json.loads(state.read_text())
+    del data["skipped"]
+    state.write_text(json.dumps(data))
+    again = Runner(tmp_path / "track", tmp_path / "state", home=str(tmp_path / "home"),
+                   kubeconfig=str(tmp_path / "home" / "kubeconfig"), sandbox_id="k7q2mx")
+    assert again.completed == [0, 1, 2] and again.skipped == []
 
 
 def test_failing_solve_stops_the_skip(tmp_path):

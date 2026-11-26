@@ -4,7 +4,7 @@ Standard library only, like the claim portal. It binds loopback; Caddy is the
 only public listener. Moves (enter, check, next, skip) can run for minutes, so
 they run on one background worker and the page polls ``/api/state``.
 
-What the student sees from scripts: the check output only, as on Instruqt.
+What the student sees from scripts: the check output only.
 Setup, solve and cleanup results are reported as exit codes, never output,
 because those scripts print passwords.
 
@@ -12,13 +12,18 @@ Config is one JSON file (see :func:`load_config`).
 """
 from __future__ import annotations
 
+import hashlib
 import html
 import json
 import mimetypes
 import re
+import ssl
 import threading
 import time
+import urllib.error
 import urllib.parse
+import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from http import HTTPStatus
 from http.cookies import CookieError, SimpleCookie
@@ -28,7 +33,8 @@ from typing import Any
 
 from .auth import COOKIE, SESSION_SECONDS, Auth
 from .auth import load as load_auth
-from .runner import MoveResult, Runner, RunnerError, ScriptResult
+from .outline import chapter_name, outline
+from .runner import CHECK_TIMEOUT, MoveResult, Runner, RunnerError, ScriptResult, check_timeout_ok
 
 STATIC_DIR = Path(__file__).resolve().parents[1] / "data" / "player" / "static"
 LOOPBACK = {"127.0.0.1", "::1", "localhost"}
@@ -120,6 +126,12 @@ class PlayerConfig:
     auth_file: str = ""
     # Public names: {"player": base, "hv": "hv.<base>", "rancher": "rancher.<base>"}.
     hosts: dict[str, str] = field(default_factory=dict)
+    # Seconds one check script may run before it is stopped and counted as failed.
+    check_timeout: int = CHECK_TIMEOUT
+    # Where the host checks that each lab tab answers: tab port (as a string)
+    # or "terminal" -> a URL on the lab network or loopback, never the public
+    # names (those need the student's cookie). Empty: no lab health shown.
+    probes: dict[str, str] = field(default_factory=dict)
 
 
 def load_config(path: Path | str) -> PlayerConfig:
@@ -128,7 +140,28 @@ def load_config(path: Path | str) -> PlayerConfig:
     unknown = set(data) - known
     if unknown:
         raise ValueError(f"unknown player config keys: {sorted(unknown)}")
-    return PlayerConfig(**data)
+    cfg = PlayerConfig(**data)
+    check_timeout_ok(cfg.check_timeout)
+    return cfg
+
+
+HEALTH_TTL = 5.0      # seconds a health answer is reused, however many pages poll
+PROBE_TIMEOUT = 3.0
+
+
+def probe(url: str, timeout: float = PROBE_TIMEOUT) -> bool:
+    """True when ``url`` answers HTTP below 500. Lab certificates are self-signed."""
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    req = urllib.request.Request(url, headers={"User-Agent": "rodeo-player-health"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:  # noqa: S310 (fixed lab URLs)
+            return r.status < 500
+    except urllib.error.HTTPError as e:
+        return e.code < 500
+    except (OSError, ValueError):
+        return False
 
 
 def plain(text: str) -> str:
@@ -146,10 +179,13 @@ class Player:
             raise ValueError("auth_file needs hosts.player in the player config")
         self.runner = runner or Runner(
             cfg.track_dir, cfg.state_dir, host=cfg.host, sandbox_id=cfg.sandbox_id,
-            home=cfg.home, kubeconfig=cfg.kubeconfig,
+            home=cfg.home, kubeconfig=cfg.kubeconfig, check_timeout=cfg.check_timeout,
         )
         self.logins = LoginLimiter()
         self._lock = threading.Lock()
+        self._health_lock = threading.Lock()
+        self._health: dict[str, Any] | None = None
+        self._health_at = 0.0
         self._busy: str | None = None
         self._last: dict[str, Any] | None = None
         self._started: float | None = None
@@ -160,7 +196,8 @@ class Player:
 
     def _position(self) -> dict[str, Any]:
         r = self.runner
-        return {"current": r.current, "entered": r.entered, "completed": r.completed}
+        return {"current": r.current, "entered": r.entered, "completed": r.completed,
+                "skipped": r.skipped}
 
     # -- moves --------------------------------------------------------------
 
@@ -230,17 +267,51 @@ class Player:
             out.append({"index": i, "title": t.title, "type": t.type, "url": url})
         return out
 
+    def health(self) -> dict[str, Any]:
+        """Does each tab of the current chapter answer, and is its setup done?
+
+        One probe round per HEALTH_TTL whatever the number of open pages; the
+        lock also keeps two rounds from running at once.
+        """
+        with self._health_lock:
+            if self._health is not None and time.monotonic() - self._health_at < HEALTH_TTL:
+                return self._health
+            with self._lock:
+                pos, busy, last = dict(self._pos), self._busy, self._last
+            tabs = self.runner.chapter(pos["current"]).tabs
+            keys = ["terminal" if t.type == "terminal" else str(t.port) for t in tabs]
+            urls = [self.cfg.probes.get(k, "") for k in keys]
+            todo = [u for u in urls if u]
+            results: dict[str, bool] = {}
+            if todo:
+                with ThreadPoolExecutor(max_workers=len(todo)) as pool:
+                    results = dict(zip(todo, pool.map(probe, todo)))
+            items = [{"name": t.title, "ok": results.get(u) if u else None} for t, u in zip(tabs, urls)]
+            if pos["entered"]:
+                setup = "done"
+            elif busy == "enter":
+                setup = "running"
+            elif last and last.get("action") == "enter" and not last.get("ok"):
+                setup = "failed"
+            else:
+                setup = "waiting"
+            checked = [i["ok"] for i in items if i["ok"] is not None]
+            self._health = {"checked": bool(checked), "ready": bool(checked) and all(checked),
+                            "items": items, "setup": setup, "chapter": pos["current"]}
+            self._health_at = time.monotonic()
+            return self._health
+
     def state(self) -> dict[str, Any]:
         r = self.runner
         with self._lock:
             busy, last, pos, started = self._busy, self._last, dict(self._pos), self._started
         return {
             "title": self.cfg.title,
-            "chapters": [{"index": c.index, "title": plain(c.title), "check": c.has("check")}
-                         for c in r.chapters],
+            "chapters": [self._chapter_summary(c) for c in r.chapters],
             "current": pos["current"],
             "entered": pos["entered"],
             "completed": pos["completed"],
+            "skipped": pos["skipped"],
             "readable": max([pos["current"], *pos["completed"]]),
             "busy": busy,
             "busy_seconds": round(time.time() - started) if busy and started else 0,
@@ -252,8 +323,15 @@ class Player:
         if not 0 <= index <= self.readable():
             raise IndexError(index)
         ch = self.runner.chapter(index)
-        return {"index": index, "title": plain(ch.title), "body": self.runner.render(index, urls=self.cfg.tab_urls),
-                "tabs": self.tabs(index)}
+        body = self.runner.render(index, urls=self.cfg.tab_urls)
+        return {**self._chapter_summary(ch), "body": body, "tabs": self.tabs(index),
+                "teaser": plain(ch.teaser), **outline(body)}
+
+    @staticmethod
+    def _chapter_summary(ch: Any) -> dict[str, Any]:
+        number, name = chapter_name(ch.title)
+        return {"index": ch.index, "title": plain(ch.title), "check": ch.has("check"),
+                "number": number, "name": name, "difficulty": ch.difficulty}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -391,6 +469,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, page(self.player.cfg.title).encode(), "text/html; charset=utf-8")
         elif path == "/api/state":
             self._json(200, self.player.state())
+        elif path == "/api/health":
+            self._json(200, self.player.health())
         elif path.startswith("/api/chapter/"):
             try:
                 self._json(200, self.player.chapter_view(int(path.rsplit("/", 1)[1])))
@@ -474,4 +554,8 @@ def serve(cfg: PlayerConfig) -> None:
 
 
 def page(title: str) -> str:
-    return (STATIC_DIR / "player.html").read_text().replace("{{TITLE}}", html.escape(title))
+    # The script is served with a long cache; its content hash in the URL makes
+    # a browser fetch the new one after an upgrade.
+    version = hashlib.sha256((STATIC_DIR / "player.js").read_bytes()).hexdigest()[:12]
+    return ((STATIC_DIR / "player.html").read_text()
+            .replace("{{TITLE}}", html.escape(title)).replace("{{ASSET_V}}", version))

@@ -12,6 +12,7 @@ import re
 from dataclasses import dataclass
 
 from ..config import ConfigError
+from ..player.runner import check_timeout_ok
 from .fanout import fanout
 from .inventory import FleetHost, FleetInventory, player_id
 from .ssh_exec import run_remote
@@ -29,7 +30,8 @@ class PlayerSetupRow:
     error: str = ""         # last lines of stderr, never stdout (it holds the link)
 
 
-def setup_argv(inventory: FleetInventory, host: FleetHost, track_ref: str) -> list[str]:
+def setup_argv(inventory: FleetInventory, host: FleetHost, track_ref: str,
+               check_timeout: int | None = None) -> list[str]:
     argv = ["rodeo", "player", "setup", "--track-ref", track_ref, "--json"]
     from ..player.profile import DEFAULT_PROFILE, has_profile
 
@@ -37,6 +39,8 @@ def setup_argv(inventory: FleetInventory, host: FleetHost, track_ref: str) -> li
     # working for virt-rodeo.
     if has_profile(inventory.lab_profile) and inventory.lab_profile != DEFAULT_PROFILE:
         argv += ["--profile", str(inventory.lab_profile)]
+    if check_timeout is not None:
+        argv += ["--check-timeout", str(check_timeout_ok(check_timeout))]
     if inventory.player is not None:
         pid = player_id(host)
         if not pid:
@@ -45,9 +49,10 @@ def setup_argv(inventory: FleetInventory, host: FleetHost, track_ref: str) -> li
     return argv
 
 
-def _one(inventory: FleetInventory, host: FleetHost, track_ref: str, tls_pem: str | None) -> PlayerSetupRow:
+def _one(inventory: FleetInventory, host: FleetHost, track_ref: str, tls_pem: str | None,
+         check_timeout: int | None = None) -> PlayerSetupRow:
     try:
-        argv = setup_argv(inventory, host, track_ref)
+        argv = setup_argv(inventory, host, track_ref, check_timeout)
     except ConfigError as exc:
         return PlayerSetupRow(host.id, False, error=str(exc))
     # The certificate key goes over the SSH session's stdin, never argv or a file.
@@ -61,9 +66,15 @@ def _one(inventory: FleetInventory, host: FleetHost, track_ref: str, tls_pem: st
     return PlayerSetupRow(host.id, True, player=str(out.get("player", "")), chapters=int(out.get("chapters", 0)))
 
 
-def fleet_player_setup(inventory: FleetInventory, *, track_ref: str, concurrency: int = 8) -> list[PlayerSetupRow]:
+def fleet_player_setup(inventory: FleetInventory, *, track_ref: str, concurrency: int = 8,
+                       check_timeout: int | None = None) -> list[PlayerSetupRow]:
     if not _SHA_RE.match(track_ref):
         raise ConfigError("--track-ref must be a full 40-character commit SHA (pin the track)")
+    if check_timeout is not None:
+        try:
+            check_timeout_ok(check_timeout)
+        except ValueError as exc:
+            raise ConfigError(str(exc)) from exc
     if not inventory.hosts:
         raise ConfigError("no hosts in the inventory (run `rodeo fleet provision` first)")
     tls_pem = None
@@ -71,4 +82,5 @@ def fleet_player_setup(inventory: FleetInventory, *, track_ref: str, concurrency
         from .cert import bundle_for_push
 
         tls_pem = bundle_for_push(inventory.player.domain, inventory.player.staging)
-    return fanout(inventory.hosts, lambda h: _one(inventory, h, track_ref, tls_pem), concurrency=concurrency)
+    return fanout(inventory.hosts, lambda h: _one(inventory, h, track_ref, tls_pem, check_timeout),
+                  concurrency=concurrency)

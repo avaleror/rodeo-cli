@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Stand-in for Instruqt's ``agent`` CLI, for chapter scripts only.
+"""The ``agent variable set/get`` command the track scripts call, for chapter scripts only.
 
 Track scripts call ``agent variable set KEY VALUE`` to publish values the
-assignment shows through ``[[ Instruqt-Var key="KEY" ... ]]``. The runner
+assignment shows through the track's variable tags (``key="KEY"``). The runner
 puts a wrapper for this file first on PATH for the scripts it runs, and
 points ``RODEO_PLAYER_VARS`` at a root-only JSON file in the lab state
 directory. The student shell never gets either.

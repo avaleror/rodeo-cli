@@ -51,6 +51,7 @@ from pathlib import Path
 from ..fleet.portal import CADDY_SHA512, CADDY_VERSION, STUDENT_SETUP_SCRIPT, STUDENT_USER
 from .profile import PlayerProfile
 from .profile import load as load_profile
+from .runner import CHECK_TIMEOUT, check_timeout_ok
 
 TTYD_VERSION = "1.7.7"
 TTYD_SHA256 = "8a217c968aba172e0dbf3f34447218dc015bc4d5e59bf51db2f2cd12b7be4f55"  # ttyd.x86_64
@@ -86,6 +87,7 @@ class SetupOptions:
     profile: PlayerProfile = field(default_factory=load_profile)
     track_repo: str = ""            # empty = the profile's
     sandbox_id: str = ""
+    check_timeout: int = CHECK_TIMEOUT  # seconds per check script
     # Owned-zone mode (flat names under one wildcard certificate):
     # base = <label>.<domain>, UIs = <key>-<label>.<domain> (hv-, rancher-).
     # Empty = the sslip.io test mode, UIs = <key>.<base>.
@@ -114,6 +116,7 @@ class SetupOptions:
             raise ValueError("--track-ref must be a full 40-character commit SHA (pin the track)")
         if not self.repo.startswith("https://"):
             raise ValueError("--track-repo must be an https:// git URL")
+        check_timeout_ok(self.check_timeout)
 
     @property
     def names(self) -> dict[str, str]:
@@ -250,6 +253,11 @@ def player_config(opts: SetupOptions) -> dict:
         "port": PLAYER_PORT,
         "sandbox_id": opts.sandbox_id,
         "tab_urls": {str(ui.tab_port): f"https://{n[ui.key]}/" for ui in opts.profile.uis},
+        "check_timeout": opts.check_timeout,
+        # Health probes go straight to the upstreams Caddy proxies, not the
+        # public names (those sit behind the lab login).
+        "probes": {**{str(ui.tab_port): f"https://{ui.upstream}/" for ui in opts.profile.uis},
+                   "terminal": f"http://127.0.0.1:{TTYD_PORT}/terminal/"},
         "terminal_url": "/terminal/",
         "auth_file": str(AUTH_FILE),
         "kubeconfig": str(PLAYER_KUBECONFIG) if opts.profile.kubeconfig else "",
@@ -367,8 +375,8 @@ runuser -u {STUDENT_USER} -- test -r {home}/.rodeo/{kube}""" if kube else ""
     lab_key = opts.profile.student_ssh_key
     key_copy = f"""
 # The lab VM key (the profile's student_ssh_key) as the student's default SSH
-# key, so the assignment's bare `ssh sles@<vm>` works, as it does with the
-# Instruqt sandbox key. Never root's key: refuse if they were ever the same.
+# key, so the assignment's bare `ssh sles@<vm>` works without naming a key.
+# Never root's key: refuse if they were ever the same.
 LABKEY={q(lab_key)}
 if [ -f "$LABKEY" ]; then
   if [ -f /root/.ssh/id_ed25519 ] && cmp -s "$LABKEY" /root/.ssh/id_ed25519; then
@@ -544,9 +552,9 @@ def run_setup(opts: SetupOptions, *, sudo_user: str | None) -> dict:
     if kube:
         src = lab_kubeconfig(sudo_user, name=kube)
         install_kubeconfig(src)
-        # Track scripts hard-code /root/.rodeo/<kubeconfig> (the Instruqt
-        # layout). On a fleet host rodeo up wrote it for the SSH user, so give
-        # root the same file. Never overwrite one root already has.
+        # Track scripts hard-code /root/.rodeo/<kubeconfig> (the layout the
+        # track was written for). On a fleet host rodeo up wrote it for the SSH
+        # user, so give root the same file. Never overwrite one root already has.
         ensure_root_kubeconfig(src, ROOT_RODEO / kube)
     if opts.tls_pem:
         install_tls(opts.tls_pem)

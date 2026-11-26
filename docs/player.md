@@ -27,6 +27,50 @@ and any IP: the link is the lock, not the address. After 20 wrong links in 10
 minutes from one address, that address gets "Too many tries" (HTTP 429) for a
 while, so a bot cannot load the lab host by hammering `/enter`.
 
+## What the student sees
+
+1. **Lobby**, on the first visit: each part of the lab (one row per tab) as it
+   comes up, and the chapters ahead. **Enter lab** turns on when every part
+   answers; after 90 seconds a "Continue anyway" link appears.
+2. **Chapter cover**, the first time a chapter is opened in that browser:
+   chapter number and name, the one-line mission (`teaser`), how many tasks,
+   the level (`difficulty`), **Start mission**, then the chapter's story.
+3. **Working view**: the lab takes the screen. A narrow rail on the left has
+   one button per step. The guide opens as a resizable panel next to the lab
+   or folds away; when folded, a small card shows the current step and the
+   chapter's main button.
+4. **Guide**: the credentials card, one card per step, and "About this
+   chapter" at the end. Code blocks have **Copy** and **Paste in terminal**
+   (it types the command at the prompt and never presses Enter). A failed
+   check shows in the step where it was run, with what the check printed.
+5. **Chapter complete**, after a pass: what was done, what comes next, and the
+   chapter's "why it matters" and links.
+
+The header shows the chapter trail, a "Lab healthy" indicator (the host
+checks each tab every 30 seconds while the page is open) and the theme
+switch. Step ticks, covers seen and the guide's width are kept in the
+student's browser; progress through the chapters is kept on the lab.
+
+## Writing a track for the player
+
+The player reads the structure authors already write, so any rodeo track
+works. Split each chapter's `assignment.md` with top-level headings (a line
+underlined with `===`, or `# Title`):
+
+| Heading | Becomes |
+|---|---|
+| `Chapter N: Name`, first in the file, plus the text up to the next heading | The chapter cover and its story |
+| a heading with `Credentials` in it | The credentials card |
+| `Task N: ...` or `Step N: ...` | One step each |
+| `Bonus ...` or a title ending in `(optional)` | An optional step |
+| `Why ...` | "Why it matters" on the chapter complete screen |
+| `More information`, `Learn more`, `Resources` | Links on the chapter complete screen |
+| anything else | Shown with the step that follows it |
+
+Leading emoji in headings are left out of the rail and the cover. A chapter
+with no task headings is shown as a single step, so older tracks still work.
+The front matter's `teaser` and `difficulty` fill the cover.
+
 ## One lab, test mode
 
 For a quick test on one lab you do not need a domain. Names are
@@ -41,6 +85,20 @@ sudo rodeo player test        # solves every chapter: run it last
 
 sslip.io is on the Public Suffix List, so this mode is for testers only, never
 for students.
+
+## How long a check may run
+
+Each chapter check is stopped after 120 seconds and counts as a failed check.
+A track whose checks wait for something slow (a VM booting, a migration) can
+allow more, from 10 to 3600 seconds:
+
+```bash
+sudo rodeo player setup --track-ref <sha> --check-timeout 300            # one lab
+rodeo fleet player-setup -f workshop.yaml --track-ref <sha> --check-timeout 300   # every lab
+```
+
+The value lands in the player config (`/etc/rodeo-player/config.json`,
+`check_timeout`); `rodeo player test` uses the same value.
 
 ## A fleet with your own domain
 

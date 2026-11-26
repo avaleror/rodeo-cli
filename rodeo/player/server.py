@@ -192,7 +192,7 @@ class Player:
         if not 0 <= index <= self.readable():
             raise IndexError(index)
         ch = self.runner.chapter(index)
-        return {"index": index, "title": plain(ch.title), "body": self.runner.render(index),
+        return {"index": index, "title": plain(ch.title), "body": self.runner.render(index, urls=self.cfg.tab_urls),
                 "tabs": self.tabs(index)}
 
 

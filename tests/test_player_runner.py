@@ -414,3 +414,29 @@ def test_real_track_bodies_render_without_rmstory_spans():
     for ch in load_track(track):
         out = render_body(strip_rmstory_spans(ch.body), {})
         assert 'lang="en"' not in out and "hist=" not in out
+
+
+URLS = {"8443": "https://hv-ab12cd34.example.org/", "30002": "https://rancher-ab12cd34.example.org/"}
+SBX = '[[ Instruqt-Var key="_SANDBOX_ID" hostname="kvm-host" ]]'
+
+
+def test_instruqt_sandbox_links_point_at_this_lab():
+    from rodeo.player.runner import render_body
+
+    body = (f'> <a href="https://kvm-host.{SBX}.instruqt.io:8443">https://kvm-host.{SBX}.instruqt.io:8443</a>\n'
+            "Rancher: https://kvm-host.abc123.instruqt.io:30002/dashboard/home and "
+            "home: https://kvm-host.abc123.instruqt.io/\n")
+    out = render_body(body, {"_SANDBOX_ID": "k7q2mx"}, URLS)
+    assert "instruqt" not in out
+    assert out.count('https://hv-ab12cd34.example.org/') == 2
+    assert "https://rancher-ab12cd34.example.org/dashboard/home" in out
+    assert "home: /" in out  # no tab for 443: the player itself
+
+
+def test_a_variable_inside_a_tag_is_plain_text_not_a_chip():
+    from rodeo.player.runner import render_body
+
+    out = render_body('<a href="https://x/[[ Instruqt-Var key="K" ]]">go</a> [[ Instruqt-Var key="K" ]]',
+                      {"K": 'a"b'})
+    assert '<a href="https://x/a&quot;b">go</a>' in out
+    assert out.endswith('<code class="rodeo-var" title="Click to copy">a&quot;b</code>')

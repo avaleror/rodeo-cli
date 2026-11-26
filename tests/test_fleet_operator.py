@@ -217,6 +217,7 @@ def test_bootstrap_installs_rodeo_and_a_signature_checked_aws_cli(tmp_path, home
     script = op.bootstrap_script(load_inventory(_workshop(tmp_path)))
     assert "install_cli" in script and "OPERATOR_READY" in script
     assert "grep -q '^aws-cli/2'" in script  # the distro's v1 has no `aws login`
+    assert "export RODEO_MODE=control-plane" in script and "import boto3" in script
     assert subprocess.run(["bash", "-n"], input=script, text=True).returncode == 0
 
 

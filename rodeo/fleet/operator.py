@@ -134,7 +134,12 @@ def bootstrap_script(inventory: FleetInventory) -> str:
 if ! command -v curl >/dev/null || ! command -v gpg >/dev/null || ! command -v unzip >/dev/null; then
   ZYPP_LOCK_TIMEOUT=600 zypper -n -q in curl gpg2 unzip
 fi
+# control-plane: install.sh's mode for a machine that drives others, with
+# the [aws,gcp] extras (boto3). On SLES it would pick kvm-host otherwise.
+export RODEO_MODE=control-plane
 {rodeo}
+"$(dirname "$(readlink -f "$(command -v rodeo)")")/python" -c 'import boto3' \\
+  || {{ echo "rodeo on the operator host has no boto3 (the [aws] extra)" >&2; exit 4; }}
 RODEO_BIN=$(readlink -f "$(command -v rodeo)")
 PY=$(head -1 "$RODEO_BIN" | sed 's/^#!//')
 # v2 at /usr/local/bin/aws: the distro's aws (v1) has no `aws login`.

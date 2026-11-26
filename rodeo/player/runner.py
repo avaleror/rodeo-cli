@@ -231,15 +231,40 @@ def strip_rmstory_spans(text: str) -> str:
     return "".join(out)
 
 
-def render_body(body: str, values: dict[str, str]) -> str:
+# An Instruqt sandbox address, written literally or with the _SANDBOX_ID
+# variable: https://<hostname>.<sandbox>.instruqt.io[:port][/path]
+_INSTRUQT_URL = re.compile(
+    r'https?://[A-Za-z0-9-]+\.(?:\[\[\s*Instruqt-Var\s+key="_SANDBOX_ID"[^\]]*\]\]|[A-Za-z0-9-]+)'
+    r'\.instruqt\.io(?::(\d+))?(/[^\s"\'<>)\]]*)?')
+
+
+def rewrite_instruqt_urls(body: str, urls: dict[str, str], home: str = "/") -> str:
+    """Point Instruqt sandbox addresses at this lab: the tab URL for that port
+    (8443 -> the Harvester name), else the player itself. A lab run by rodeo
+    has no instruqt.io name, so a link left as it was would lead nowhere."""
+    def sub(m: re.Match) -> str:
+        base = urls.get(m.group(1) or "443") or home
+        return base.rstrip("/") + m.group(2) if m.group(2) else base
+    return _INSTRUQT_URL.sub(sub, body)
+
+
+def render_body(body: str, values: dict[str, str], urls: dict[str, str] | None = None) -> str:
     """Substitute Instruqt variables and tab buttons; leave the rest as is.
 
     Values are HTML-escaped (they come from scripts). A variable nobody set
     shows as a visible marker, not as an empty string the student would
-    paste into a login box.
+    paste into a login box. Inside an HTML tag (an ``href``) a variable is
+    plain text: a chip there would break the tag. With *urls* (tab port ->
+    URL), Instruqt sandbox addresses point at this lab instead.
     """
+    if urls is not None:
+        body = rewrite_instruqt_urls(body, urls)
+
     def var(m: re.Match) -> str:
         key = m.group(1)
+        before = m.string[:m.start()]
+        if before.rfind("<") > before.rfind(">"):  # inside a tag
+            return html.escape(values.get(key, ""), quote=True)
         if key in values:
             # A click-to-copy chip: students retype these into Harvester and Rancher.
             return f'<code class="rodeo-var" title="Click to copy">{html.escape(values[key])}</code>'
@@ -342,8 +367,8 @@ class Runner:
         """Seed a value the track-level setup would have set on Instruqt."""
         _agent.set_var(self.vars_file, key, value)
 
-    def render(self, index: int | None = None) -> str:
-        return render_body(strip_rmstory_spans(self.chapter(index).body), self.variables())
+    def render(self, index: int | None = None, urls: dict[str, str] | None = None) -> str:
+        return render_body(strip_rmstory_spans(self.chapter(index).body), self.variables(), urls)
 
     # -- subprocesses -------------------------------------------------------
 

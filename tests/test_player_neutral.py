@@ -2,8 +2,8 @@
 
 Covers what students see (the page, the locked page), the player's docs and
 help, and the player's own code and comments. The one allowed exception is
-the track's variable tag syntax, which the parser must match to read a track
-(``runner._VAR``). Names are kept as SHA-256 hashes so this file does not
+the track's own syntax the parser must match to read a track: the variable
+tag (``runner._VAR``) and the hosted sandbox address (``runner._SANDBOX_TAG``, ``runner._SANDBOX_DOMAIN``). Names are kept as SHA-256 hashes so this file does not
 spell them out either.
 """
 from __future__ import annotations
@@ -38,7 +38,9 @@ def _hits(text: str) -> list[str]:
 
 
 def _without_track_syntax(text: str) -> str:
-    return text.replace(runner._VAR.pattern, "")
+    for part in (runner._VAR.pattern, runner._SANDBOX_TAG, runner._SANDBOX_DOMAIN):
+        text = text.replace(part, "")
+    return text
 
 
 def test_player_sources_name_no_other_lab_platform():

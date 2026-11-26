@@ -15,9 +15,16 @@ the same name, ``"managed-by=rodeo fleet=<workshop> host=<host id>"``. That
 TXT is the ownership mark: publish refuses a name that holds anything not
 marked for this lab, and delete only removes names marked for this workshop.
 Nothing outside the zone named by ``player.domain`` is ever written.
+
+A lab the dead-man switch terminated never runs ``fleet destroy``, so its
+names would stay, pointing at an AWS address someone else may get next.
+``prune`` removes every rodeo-marked name (any workshop) whose address is not
+a live rodeo instance in the mark's region; ``fleet dns``, ``fleet up`` and
+``fleet destroy`` run it, and ``fleet dns --prune`` runs it alone.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -49,8 +56,9 @@ def ui_keys(inventory: FleetInventory) -> tuple[str, ...]:
     return tuple(u.key for u in load(inventory.lab_profile).uis)
 
 
-def _txt_value(fleet: str, host_id: str) -> str:
-    return f'"{MARK} fleet={fleet} host={host_id}"'
+def _txt_value(fleet: str, host_id: str, region: str = "") -> str:
+    where = f" region={region}" if region else ""
+    return f'"{MARK} fleet={fleet} host={host_id}{where}"'
 
 
 def _parse_mark(value: str) -> dict[str, str] | None:
@@ -97,6 +105,18 @@ def _apply(client: Any, zone_id: str, changes: list[dict[str, Any]], comment: st
         )
         client.get_waiter("resource_record_sets_changed").wait(
             Id=resp["ChangeInfo"]["Id"], WaiterConfig={"Delay": 5, "MaxAttempts": 60})
+
+
+def _region(inventory: FleetInventory) -> str:
+    return str((inventory.provider or {}).get("region") or "")
+
+
+def _own_mark(rr: dict[str, Any]) -> dict[str, str] | None:
+    """The mark of a TXT that is nothing but one rodeo mark, else None."""
+    values = rr.get("ResourceRecords", [])
+    if rr["Type"] != "TXT" or len(values) != 1:
+        return None
+    return _parse_mark(values[0]["Value"])
 
 
 def _require_player(inventory: FleetInventory) -> str:
@@ -147,7 +167,7 @@ def plan_publish(inventory: FleetInventory, records: list[dict[str, Any]],
         for name in names:
             changes.append({"Action": "UPSERT", "ResourceRecordSet": {
                 "Name": name, "Type": "TXT", "TTL": TTL,
-                "ResourceRecords": [{"Value": _txt_value(inventory.name, host.id)}]}})
+                "ResourceRecords": [{"Value": _txt_value(inventory.name, host.id, _region(inventory))}]}})
             changes.append({"Action": "UPSERT", "ResourceRecordSet": {
                 "Name": name, "Type": "A", "TTL": TTL,
                 "ResourceRecords": [{"Value": host.public_ip}]}})
@@ -184,6 +204,90 @@ def plan_delete(inventory: FleetInventory, records: list[dict[str, Any]],
     # A records first, then the marks that covered them.
     changes.extend({"Action": "DELETE", "ResourceRecordSet": rr} for rr in marked.values())
     return changes, sorted(n.rstrip(".") for n in marked)
+
+
+def plan_prune(domain: str, records: list[dict[str, Any]], is_live: Callable[[str, str], bool],
+               default_region: str) -> tuple[list[dict[str, Any]], list[str]]:
+    """DELETEs for rodeo-marked names whose A address is not live. Pure.
+
+    ``is_live(ip, region)`` answers for one address; the region is the mark's
+    (names written before marks carried one use ``default_region``). A mark
+    with no A record left is removed too. Names rodeo did not mark are never
+    touched.
+    """
+    suffix = "." + domain + "."
+    by_name: dict[str, dict[str, dict[str, Any]]] = {}
+    for rr in records:
+        by_name.setdefault(_fqdn(rr["Name"]), {})[rr["Type"]] = rr
+    changes: list[dict[str, Any]] = []
+    marks: list[dict[str, Any]] = []
+    names: list[str] = []
+    for name, rrs in by_name.items():
+        txt = rrs.get("TXT")
+        mark = _own_mark(txt) if txt and name.endswith(suffix) else None
+        if mark is None:
+            continue
+        a = rrs.get("A")
+        ips = [v["Value"] for v in (a or {}).get("ResourceRecords", [])]
+        region = mark.get("region") or default_region
+        if ips and all(is_live(ip, region) for ip in ips):
+            continue
+        if a:
+            changes.append({"Action": "DELETE", "ResourceRecordSet": a})
+        marks.append({"Action": "DELETE", "ResourceRecordSet": txt})
+        names.append(name.rstrip("."))
+    # A records first, then the marks that covered them.
+    return changes + marks, sorted(names)
+
+
+_LIVE_STATES = ["pending", "running", "stopping", "stopped", "shutting-down"]
+
+
+def live_rodeo_ips(region: str, ec2: Any | None = None) -> set[str]:
+    """Public addresses of rodeo instances in ``region`` that are not terminated."""
+    from ..providers.base import TAG_MANAGED_BY
+
+    if ec2 is None:
+        from ..providers.aws import _require_boto3
+
+        _require_boto3()
+        import boto3
+
+        ec2 = boto3.client("ec2", region_name=region)
+    ips: set[str] = set()
+    pages = ec2.get_paginator("describe_instances").paginate(Filters=[
+        {"Name": f"tag:{TAG_MANAGED_BY}", "Values": ["rodeo"]},
+        {"Name": "instance-state-name", "Values": _LIVE_STATES}])
+    for page in pages:
+        for res in page.get("Reservations", []):
+            for inst in res.get("Instances", []):
+                if inst.get("PublicIpAddress"):
+                    ips.add(inst["PublicIpAddress"])
+    return ips
+
+
+def prune(domain: str, *, default_region: str, client: Any | None = None,
+          live_ips: Callable[[str], set[str]] = live_rodeo_ips) -> list[str]:
+    """Remove rodeo names in ``domain`` that point at no live rodeo instance.
+
+    Returns the names removed. Any failure to list a region's instances
+    raises: nothing is removed on a guess.
+    """
+    client = client or route53_client()
+    zone_id = find_zone(client, domain)
+    seen: dict[str, set[str]] = {}
+
+    def is_live(ip: str, region: str) -> bool:
+        if not region:
+            return True  # no region to ask: keep it
+        if region not in seen:
+            seen[region] = live_ips(region)
+        return ip in seen[region]
+
+    changes, names = plan_prune(domain, _all_records(client, zone_id), is_live, default_region)
+    if changes:
+        _apply(client, zone_id, changes, "rodeo fleet dns --prune")
+    return names
 
 
 def publish(inventory: FleetInventory, *, host_ids: list[str] | None = None,

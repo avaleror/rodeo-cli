@@ -27,6 +27,11 @@ def isolated_env(tmp_path, monkeypatch):
     # Cloud providers tag every resource with the caller (issue #175); tests
     # never call STS, they run as this fixed owner unless they override it.
     monkeypatch.setenv("RODEO_OWNER", TEST_OWNER)
+    # No test reaches a real cloud account: no credentials from the
+    # environment, and no instance-metadata lookup to wait on.
+    for var in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_PROFILE"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "true")
     return tmp_path
 
 

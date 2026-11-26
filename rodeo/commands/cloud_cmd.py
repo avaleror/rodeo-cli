@@ -5,6 +5,7 @@
     rodeo cloud destroy 3f9a1c22         # remove one of yours, from any machine
     rodeo cloud destroy 3f9a1c22 --not-mine   # someone else's: type their owner to confirm
     rodeo cloud ls --provider gcp        # the same on GCP (whole project, every region)
+    rodeo cloud prune                    # SGs and key pairs left by labs that are gone
 
 Every resource rodeo launches carries ``rodeo-owner`` (the caller ARN, or
 ``RODEO_OWNER``) and ``rodeo-deployment`` (8 hex chars per deployment). These
@@ -211,3 +212,29 @@ def cloud_destroy(deployment: str, not_mine: bool, assume_yes: bool,
             delete_lab_ssh_key(key.workshop)
             clear_aws_host_state(key.workshop)
             console.print(f"  [dim]local:[/dim] removed key and host state for {key.workshop}")
+
+
+@cloud_cmd.command("prune")
+@click.option("--dry-run", "dry_run", is_flag=True, help="Only list what would be deleted.")
+@click.option("--grace-hours", type=click.FloatRange(min=0.5), default=None,
+              help="Leave anything younger than this alone (default: 2).")
+@click.option("--region", default=None, help="AWS region (default: plan, then env).")
+@click.option("--config-dir", "config_dir", default=None, metavar="DIR",
+              help="Lab directory to read provider.region from.")
+def cloud_prune(dry_run: bool, grace_hours: float | None, region: str | None,
+                config_dir: str | None) -> None:
+    """Delete your security groups and key pairs left by labs that are gone (AWS).
+
+    A dead-man switch terminates the instances and nothing else. This removes
+    the rest: only resources tagged as yours with a deployment id that no
+    instance carries any more, and older than the grace period. It never
+    terminates an instance. `fleet provision` and `fleet destroy` run it too."""
+    from ..providers.aws import ORPHAN_GRACE_HOURS
+
+    prov, cfg, where = _target("aws", region, None, config_dir)
+    results = prov.prune_orphans(cfg, grace_hours=grace_hours or ORPHAN_GRACE_HOURS, dry_run=dry_run)
+    if not results:
+        console.print(f"Nothing to prune in {where}.")
+        return
+    for r in results:
+        console.print(f"[green]✓[/green]  {r.id}  {r.provider_id}  {r.detail}")

@@ -5,6 +5,7 @@ import json
 import sys
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import click
 from rich.console import Console
@@ -709,6 +710,11 @@ def fleet_provision_cmd(
     try:
         inventory = load_inventory(inventory_path)
         begin_operation(inventory_path, "fleet.provision")
+        if inventory.provider:
+            pruned = _prune_cloud(inventory)
+            if pruned and output_fmt != "json":
+                console.print(f"  [dim]pruned {len(pruned)} leftover security group(s) / key pair(s) "
+                              "of labs that are gone[/dim]")
         hosts = fleet_provision(
             inventory,
             inventory_path,
@@ -923,13 +929,19 @@ def fleet_deprovision_cmd(
             from ..fleet import dns as fleet_dns
 
             removed = fleet_dns.delete(inventory, host_ids=gone_ids if host_ids else None)
+            pruned = fleet_dns.prune(inventory.player.domain, default_region=fleet_dns._region(inventory))
             dns_note = f"removed {len(removed)} DNS name(s)"
+            if pruned:
+                dns_note += f", pruned {len(pruned)} of labs already gone"
         except Exception as exc:  # noqa: BLE001
             dns_note = f"DNS names not removed ({exc}): run `rodeo fleet dns --delete`"
 
     from ..fleet.local_cleanup import forget_cloud_hosts
 
     cleaned = forget_cloud_hosts(inventory.name, inventory_path, results, portal_removed=portal_removed)
+    # Leftovers of earlier labs the dead-man switch ended. This workshop's own
+    # instances are still shutting down, so its group is not touched here.
+    results = [*results, *(_prune_cloud(inventory) if inventory.provider else [])]
     payload = deprovision_payload(inventory.name, results)
     payload["local_cleanup"] = cleaned
     if dns_note:
@@ -1099,14 +1111,47 @@ def fleet_player_setup_cmd(inventory_path: Path, track_ref: str, check_timeout: 
         raise SystemExit(1)
 
 
+def _prune_cloud(inventory: FleetInventory) -> list[Any]:
+    """Best effort: your security groups and key pairs left by labs that are
+    gone (AWS only; see ``rodeo cloud prune``). Never fatal, never an instance."""
+    provider = inventory.provider or {}
+    if str(provider.get("type") or "aws") != "aws" or not provider.get("region"):
+        return []
+    from ..providers.aws import AwsHostProvider
+
+    try:
+        return AwsHostProvider().prune_orphans({"region": str(provider["region"])})
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _prune_dns(inventory: FleetInventory, *, quiet: bool = False) -> list[str]:
+    """Best effort: names of labs that are gone leave the zone. Never fatal."""
+    from ..fleet import dns
+
+    try:
+        names = dns.prune(inventory.player.domain, default_region=dns._region(inventory))
+    except Exception as exc:  # noqa: BLE001
+        if not quiet:
+            console.print(f"[yellow]⚠  could not prune old DNS names ({exc}): "
+                          "run `rodeo fleet dns --prune` later.[/yellow]")
+        return []
+    if names and not quiet:
+        console.print(f"[green]✓[/green]  pruned {len(names)} DNS name(s) of labs that are gone")
+    return names
+
+
 @fleet_cmd.command("dns")
 @_output_opt
 @click.option("--delete", "do_delete", is_flag=True, help="Remove this workshop's records instead.")
+@click.option("--prune", "do_prune", is_flag=True,
+              help="Only remove rodeo names (any workshop) that point at no live rodeo instance.")
 @click.option("--host", "host_ids", multiple=True, help="Only these host ids (repeatable).")
 @click.option("-f", "--file", "inventory_path", required=True,
               type=click.Path(exists=True, dir_okay=False, path_type=Path),
               help="Path to workshop.yaml inventory.")
-def fleet_dns_cmd(inventory_path: Path, do_delete: bool, host_ids: tuple[str, ...], output_fmt: str) -> None:
+def fleet_dns_cmd(inventory_path: Path, do_delete: bool, host_ids: tuple[str, ...], output_fmt: str,
+                  do_prune: bool = False) -> None:
     """Player names for every lab in the player.domain Route 53 zone.
 
     Gives each host a random ``labels.player_id`` (kept in workshop.yaml), then
@@ -1114,7 +1159,9 @@ def fleet_dns_cmd(inventory_path: Path, do_delete: bool, host_ids: tuple[str, ..
     (``hv-<id>``, ``rancher-<id>`` for virt-rodeo) as A records to its public IP.
     Each name carries a rodeo TXT mark; names rodeo did not write are refused.
     Re-runs are safe. ``--delete`` removes only names marked for this workshop
-    (``fleet destroy`` does that too)."""
+    (``fleet destroy`` does that too). Every run first prunes rodeo names whose
+    lab is gone (a dead-man switch never runs ``fleet destroy``); ``--prune``
+    does only that."""
     from ..fleet import dns
     from ..fleet.inventory import ensure_player_ids
 
@@ -1122,6 +1169,15 @@ def fleet_dns_cmd(inventory_path: Path, do_delete: bool, host_ids: tuple[str, ..
         inventory = load_inventory(inventory_path)
         if inventory.player is None:
             raise ConfigError("add a player: block to workshop.yaml (player.domain: <your zone>)")
+        if do_prune:
+            names = dns.prune(inventory.player.domain, default_region=dns._region(inventory))
+            if output_fmt == "json":
+                click.echo(json.dumps({"pruned": names}, indent=2))
+            else:
+                console.print(f"[green]✓[/green]  pruned {len(names)} name(s) of labs that are gone")
+                for n in names:
+                    console.print(f"   {n}")
+            return
         if do_delete:
             names = dns.delete(inventory, host_ids=list(host_ids) or None)
             if output_fmt == "json":
@@ -1131,6 +1187,7 @@ def fleet_dns_cmd(inventory_path: Path, do_delete: bool, host_ids: tuple[str, ..
                 for n in names:
                     console.print(f"   {n}")
             return
+        _prune_dns(inventory, quiet=output_fmt == "json")
         ensure_player_ids(inventory_path)
         inventory = load_inventory(inventory_path)
         rows = dns.publish(inventory, host_ids=list(host_ids) or None)

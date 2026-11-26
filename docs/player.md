@@ -157,7 +157,7 @@ Route 53 cannot tag a single record, so every name rodeo writes also gets a
 TXT record of the same name:
 
 ```text
-"managed-by=rodeo fleet=<workshop name> host=<host id>"
+"managed-by=rodeo fleet=<workshop name> host=<host id> region=<aws region>"
 ```
 
 That TXT is how rodeo knows a name is its own:
@@ -167,9 +167,16 @@ That TXT is how rodeo knows a name is its own:
 - `fleet dns --delete` and `fleet destroy` delete only names marked for this
   workshop. Records you made by hand are never touched.
 - Re-runs are safe. A lab with a new address gets its records moved.
+- A lab the dead-man switch terminated never runs `fleet destroy`, so its names
+  would stay behind, pointing at an AWS address someone else may get next.
+  `fleet dns`, `fleet up` and `fleet destroy` first prune every rodeo-marked
+  name (any workshop) whose address is not a live rodeo instance in the
+  mark's region. `fleet dns --prune` does only that. If the instance list
+  cannot be read, nothing is pruned.
 
 Your AWS identity needs `route53:ListHostedZonesByName`,
-`ListResourceRecordSets`, `ChangeResourceRecordSets` and `GetChange` on the zone.
+`ListResourceRecordSets`, `ChangeResourceRecordSets` and `GetChange` on the zone,
+plus `ec2:DescribeInstances` for the prune.
 
 ### The certificate
 

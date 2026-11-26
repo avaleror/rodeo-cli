@@ -201,6 +201,106 @@ def test_dns_command_writes_ids_then_records(tmp_path, monkeypatch):
     assert res.exit_code == 0 and len(json.loads(res.output)["deleted"]) == 6
 
 
+def _rr(name, typ, value):
+    return {"Name": f"{name}.{ZONE}.", "Type": typ, "TTL": 60, "ResourceRecords": [{"Value": value}]}
+
+
+def _lab(name, ip, mark):
+    return [_rr(name, "A", ip), _rr(name, "TXT", f'"managed-by=rodeo {mark}"')]
+
+
+def test_prune_removes_names_of_labs_that_are_gone_and_nothing_else():
+    records = [
+        *_lab("live1", "198.51.100.1", "fleet=a host=h1 region=eu-north-1"),
+        *_lab("dead1", "198.51.100.2", "fleet=a host=h2 region=eu-north-1"),
+        *_lab("dead2", "198.51.100.3", "fleet=b host=h1"),               # older mark: no region
+        *_lab("west1", "198.51.100.1", "fleet=c host=h1 region=us-west-2"),  # same IP, other region
+        _rr("orphan", "TXT", '"managed-by=rodeo fleet=a host=h3"'),       # mark with no A left
+        _rr("www", "A", "198.51.100.9"),                                   # not ours: no mark
+        _rr("hand", "A", "198.51.100.8"), _rr("hand", "TXT", '"v=spf1 -all"'),
+        _rr("mixed", "A", "198.51.100.7"),
+        {"Name": f"mixed.{ZONE}.", "Type": "TXT", "TTL": 60,               # mark plus someone else's value
+         "ResourceRecords": [{"Value": '"managed-by=rodeo fleet=a host=h9"'}, {"Value": '"other"'}]},
+    ]
+    client = FakeRoute53(records)
+    asked = []
+
+    def live(region):
+        asked.append(region)
+        return {"eu-north-1": {"198.51.100.1", "198.51.100.7"}, "us-west-2": set()}[region]
+
+    removed = dns.prune(ZONE, default_region="eu-north-1", client=client, live_ips=live)
+    assert removed == sorted(f"{n}.{ZONE}" for n in ("dead1", "dead2", "west1", "orphan"))
+    left = {n for n, _ in client.records}
+    assert {f"live1.{ZONE}.", f"www.{ZONE}.", f"hand.{ZONE}.", f"mixed.{ZONE}."} <= left
+    assert not left & {f"{n}.{ZONE}." for n in ("dead1", "dead2", "west1", "orphan")}
+    assert sorted(asked) == ["eu-north-1", "us-west-2"]  # one lookup per region
+    # Each A record goes before the mark that covered it.
+    kinds = [(c["ResourceRecordSet"]["Name"], c["ResourceRecordSet"]["Type"]) for c in client.calls[0]]
+    assert kinds.index((f"dead1.{ZONE}.", "A")) < kinds.index((f"dead1.{ZONE}.", "TXT"))
+    assert dns.prune(ZONE, default_region="eu-north-1", client=client, live_ips=live) == []
+    assert len(client.calls) == 1
+
+
+def test_prune_removes_nothing_when_it_cannot_list_instances():
+    client = FakeRoute53(_lab("dead1", "198.51.100.2", "fleet=a host=h2 region=eu-north-1"))
+
+    def broken(region):
+        raise RuntimeError("expired credentials")
+
+    with pytest.raises(RuntimeError):
+        dns.prune(ZONE, default_region="eu-north-1", client=client, live_ips=broken)
+    assert client.calls == []
+
+
+def test_live_rodeo_ips_asks_for_rodeo_instances_not_terminated():
+    class Ec2:
+        def get_paginator(self, name):
+            assert name == "describe_instances"
+            outer = self
+
+            class P:
+                def paginate(self, Filters):
+                    outer.filters = Filters
+                    yield {"Reservations": [{"Instances": [{"PublicIpAddress": "198.51.100.1"}, {}]}]}
+            return P()
+
+    ec2 = Ec2()
+    assert dns.live_rodeo_ips("eu-north-1", ec2=ec2) == {"198.51.100.1"}
+    f = {x["Name"]: x["Values"] for x in ec2.filters}
+    assert f["tag:ManagedBy"] == ["rodeo"] and "terminated" not in f["instance-state-name"]
+    assert "running" in f["instance-state-name"] and "stopped" in f["instance-state-name"]
+
+
+def test_publish_marks_carry_the_region(tmp_path):
+    p = _workshop(tmp_path, hosts=1)
+    raw = yaml.safe_load(p.read_text())
+    raw["provider"] = {"type": "aws", "region": "eu-north-1", "count": 1}
+    p.write_text(yaml.safe_dump(raw))
+    ensure_player_ids(p)
+    inv = load_inventory(p)
+    client = FakeRoute53()
+    dns.publish(inv, client=client)
+    pid = player_id(inv.hosts[0])
+    assert client.records[(f"{pid}.{ZONE}.", "TXT")]["ResourceRecords"] == [
+        {"Value": '"managed-by=rodeo fleet=ws host=lab-1 region=eu-north-1"'}]
+    # delete still finds them by fleet and host.
+    assert len(dns.delete(inv, client=client)) == 3
+
+
+def test_dns_command_prunes_alone_with_prune(tmp_path, monkeypatch):
+    from rodeo.cli import cli
+
+    p = _workshop(tmp_path)
+    client = FakeRoute53(_lab("dead1", "198.51.100.2", "fleet=old host=h1 region=eu-north-1"))
+    monkeypatch.setattr(dns, "route53_client", lambda: client)
+    monkeypatch.setattr(dns.prune, "__kwdefaults__", {**dns.prune.__kwdefaults__, "live_ips": lambda r: set()})
+    res = CliRunner().invoke(cli, ["fleet", "dns", "-f", str(p), "--prune", "--output", "json"])
+    assert res.exit_code == 0, res.output
+    assert json.loads(res.output) == {"pruned": [f"dead1.{ZONE}"]}
+    assert not any(player_id(h) for h in load_inventory(p).hosts)  # nothing published
+
+
 # ---------------------------------------------------------------- certificate
 
 def test_lego_is_pinned_and_scoped(tmp_path, monkeypatch):

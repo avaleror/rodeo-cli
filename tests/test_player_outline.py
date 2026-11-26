@@ -125,16 +125,16 @@ def test_a_chapter_with_no_headings_at_all_is_one_step():
     assert o["steps"][0]["sections"] == [0]
 
 
-def _real_track() -> Path | None:
-    track = Path(os.environ.get("RODEO_PLAYER_TRACK", Path.home() / "GitHub" / "suse-virt-rodeo"))
-    return track if (track / "03-the-flash-crash-first-vm" / "assignment.md").is_file() else None
+# Resolved at import: test fixtures may point HOME elsewhere while a test runs.
+_TRACK = Path(os.environ.get("RODEO_PLAYER_TRACK", Path.home() / "GitHub" / "suse-virt-rodeo"))
+REAL_TRACK = _TRACK if (_TRACK / "03-the-flash-crash-first-vm" / "assignment.md").is_file() else None
 
 
-@pytest.mark.skipif(_real_track() is None, reason="set RODEO_PLAYER_TRACK to a suse-virt-rodeo checkout")
+@pytest.mark.skipif(REAL_TRACK is None, reason="set RODEO_PLAYER_TRACK to a suse-virt-rodeo checkout")
 def test_real_track_every_chapter_has_a_cover_and_steps():
     from rodeo.player.runner import load_track, render_body, strip_rmstory_spans
 
-    for ch in load_track(_real_track()):
+    for ch in load_track(REAL_TRACK):
         number, name = chapter_name(ch.title)
         assert number == ch.index + 1 and name
         o = outline(render_body(strip_rmstory_spans(ch.body), {}))

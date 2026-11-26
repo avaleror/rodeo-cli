@@ -24,6 +24,7 @@ WORD = re.compile(r"[A-Za-z][A-Za-z0-9]*")
 
 SOURCES = [
     "rodeo/data/player/static/player.html",
+    "rodeo/data/player/static/player.js",
     "docs/player.md",
     "rodeo/commands/player_cmd.py",
     "rodeo/fleet/player.py",

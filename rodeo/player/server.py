@@ -12,6 +12,7 @@ Config is one JSON file (see :func:`load_config`).
 """
 from __future__ import annotations
 
+import hashlib
 import html
 import json
 import mimetypes
@@ -485,4 +486,8 @@ def serve(cfg: PlayerConfig) -> None:
 
 
 def page(title: str) -> str:
-    return (STATIC_DIR / "player.html").read_text().replace("{{TITLE}}", html.escape(title))
+    # The script is served with a long cache; its content hash in the URL makes
+    # a browser fetch the new one after an upgrade.
+    version = hashlib.sha256((STATIC_DIR / "player.js").read_bytes()).hexdigest()[:12]
+    return ((STATIC_DIR / "player.html").read_text()
+            .replace("{{TITLE}}", html.escape(title)).replace("{{ASSET_V}}", version))

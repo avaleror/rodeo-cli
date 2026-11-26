@@ -107,6 +107,12 @@ def test_page_and_static_assets(served):
     assert code == 200 and "<title>SUSE Virtualization Rodeo</title>" in body
     code, js = _get(base + "/static/marked.min.js")
     assert code == 200 and "marked v12.0.2" in js
+    # The page script is versioned by its content, so upgrades are never stale.
+    import re
+    m = re.search(r'src="/static/player\.js\?v=([0-9a-f]{12})"', body)
+    assert m and "{{" not in body
+    code, js = _get(base + f"/static/player.js?v={m.group(1)}")
+    assert code == 200 and "/api/state" in js
     assert _get(base + "/static/../server.py")[0] == 404
     # Light, dark and auto themes live in the page; the SUSE font ships with it.
     assert 'id="theme"' in body and ':root[data-theme="dark"]' in body
@@ -247,8 +253,8 @@ def test_state_reports_elapsed_seconds_while_busy(served, track):
 
 def test_page_strips_scripts_and_handlers_from_assignments(served):
     base, _ = served
-    _, body = _get(base + "/")
-    assert "function clean(" in body and 'querySelectorAll("script' in body and "/^on/i" in body
+    _, js = _get(base + "/static/player.js")
+    assert "function clean(" in js and 'querySelectorAll("script' in js and "/^on/i" in js
 
 
 def test_chapter_view_carries_the_outline_and_summary(served):

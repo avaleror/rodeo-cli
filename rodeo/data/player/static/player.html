@@ -7,42 +7,48 @@
 <script>
   // Apply the saved theme before first paint, so dark mode never flashes white.
   try { const t = localStorage.getItem("rodeo-theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}
+  // The guide's open/folded state too, so the layout does not jump on load.
+  try { if (localStorage.getItem("rodeo-guide") === "folded") document.documentElement.classList.add("guide-folded"); } catch (e) {}
 </script>
 <style>
 @font-face { font-family: "SUSE"; font-style: normal; font-weight: 100 800; font-display: swap;
   src: url(/static/suse.woff2) format("woff2"); }
 
 /* Tokens. Light is SUSE fog and pine; dark is deep pine, never plain black.
-   Jungle green (--go) is kept for the one action that matters: Check. */
+   Jungle green (--go) is kept for the one action that matters: Check.
+   Persimmon (--warn) marks what needs the student's attention; never red. */
 :root {
-  --page: #eef2f0; --surface: #ffffff; --sunk: #f4f7f6; --ink: #0c322c; --ink-2: #4b635c; --ink-3: #7c918b;
+  --page: #eef2f0; --surface: #ffffff; --sunk: #f4f7f6; --ink: #0c322c; --ink-2: #4b635c; --ink-3: #6f857e;
   --line: #d6dfdb; --line-2: #c3d0cb;
   --go: #30ba78; --go-ink: #0c322c; --go-hover: #2aa86b; --link: #17734a; --go-soft: #e2f5eb;
-  --warn: #b2440f; --warn-soft: #fdeee5; --warn-line: #f3c3a6;
-  --seg-done: #30ba78; --seg-now: #0c322c; --seg-ahead: #d6dfdb;
-  --frame-bg: #ffffff; --shadow: 0 1px 2px rgba(12, 50, 44, .06), 0 8px 24px rgba(12, 50, 44, .10);
+  --warn: #b2440f; --warn-soft: #fdeee5; --warn-line: #f3c3a6; --warn-fill: #fe7c3f;
+  --bar: #0c322c; --bar-ink: #ffffff; --bar-ink-2: #c9ddd6; --bar-line: #2e5a52; --bar-accent: #90ebcd;
+  --seg-done: #30ba78; --seg-now: #90ebcd; --seg-ahead: #2e5a52;
+  --frame-bg: #ffffff; --shadow: 0 1px 2px rgba(12, 50, 44, .06), 0 8px 24px rgba(12, 50, 44, .12);
   --font: "SUSE", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
-  --r-sm: 6px; --r-md: 10px;
+  --r-sm: 6px; --r-md: 10px; --r-lg: 14px;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --page: #061815; --surface: #0b2420; --sunk: #08201c; --ink: #e3efea; --ink-2: #9ab5ac; --ink-3: #6b8a81;
+    --page: #061815; --surface: #0b2420; --sunk: #08201c; --ink: #e3efea; --ink-2: #9ab5ac; --ink-3: #7f9c93;
     --line: #18392f; --line-2: #24493f;
     --go: #30ba78; --go-ink: #04140f; --go-hover: #3fcc88; --link: #90ebcd; --go-soft: #0f3a2c;
-    --warn: #ffa06e; --warn-soft: #2e1a10; --warn-line: #6b3517;
-    --seg-done: #30ba78; --seg-now: #90ebcd; --seg-ahead: #1f4137;
+    --warn: #ffa06e; --warn-soft: #2e1a10; --warn-line: #6b3517; --warn-fill: #fe7c3f;
+    --bar: #04120f; --bar-line: #1f4137;
+    --seg-ahead: #1f4137;
     --frame-bg: #0b2420; --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 12px 32px rgba(0, 0, 0, .45);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --page: #061815; --surface: #0b2420; --sunk: #08201c; --ink: #e3efea; --ink-2: #9ab5ac; --ink-3: #6b8a81;
+  --page: #061815; --surface: #0b2420; --sunk: #08201c; --ink: #e3efea; --ink-2: #9ab5ac; --ink-3: #7f9c93;
   --line: #18392f; --line-2: #24493f;
   --go: #30ba78; --go-ink: #04140f; --go-hover: #3fcc88; --link: #90ebcd; --go-soft: #0f3a2c;
-  --warn: #ffa06e; --warn-soft: #2e1a10; --warn-line: #6b3517;
-  --seg-done: #30ba78; --seg-now: #90ebcd; --seg-ahead: #1f4137;
+  --warn: #ffa06e; --warn-soft: #2e1a10; --warn-line: #6b3517; --warn-fill: #fe7c3f;
+  --bar: #04120f; --bar-line: #1f4137;
+  --seg-ahead: #1f4137;
   --frame-bg: #0b2420; --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 12px 32px rgba(0, 0, 0, .45);
   color-scheme: dark;
 }
@@ -50,72 +56,57 @@
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
 body { background: var(--page); color: var(--ink); font: 15px/1.6 var(--font); display: grid;
-  grid-template-rows: auto 1fr; grid-template-columns: minmax(0, 1fr); -webkit-font-smoothing: antialiased; }
+  grid-template-rows: 56px minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); -webkit-font-smoothing: antialiased; }
 button { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--link); outline-offset: 2px; border-radius: 4px; }
 [hidden] { display: none !important; }
 svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8;
   stroke-linecap: round; stroke-linejoin: round; }
-
-/* Header */
-header { display: flex; align-items: center; gap: 12px; height: 52px; padding: 0 12px 0 20px;
-  background: var(--surface); border-bottom: 1px solid var(--line); }
-header h1 { font-size: 16px; font-weight: 650; margin: 0; letter-spacing: -.005em; white-space: nowrap;
-  overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.spacer { flex: 1; }
-#status { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2);
-  white-space: nowrap; }
-/* The button shows a running step; the pill repeats it only on phones, where the steps can be hidden. */
-#status.busy { display: none; }
-#status.busy { color: var(--ink); background: var(--go-soft); padding: 4px 12px 4px 10px; border-radius: 999px; }
 .spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line-2); border-top-color: var(--go);
   animation: spin .8s linear infinite; flex: none; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.iconbtn { display: inline-grid; place-items: center; width: 34px; height: 34px; border: 0; border-radius: var(--r-sm);
-  background: transparent; color: var(--ink-2); cursor: pointer; text-decoration: none; }
-.iconbtn:hover { background: var(--sunk); color: var(--ink); }
-#mobileToggle { display: none; padding: 3px; background: var(--sunk); border-radius: 999px; }
-#mobileToggle button { border: 0; background: transparent; border-radius: 999px; padding: 4px 12px; font-size: 13px;
-  cursor: pointer; color: var(--ink-2); }
-#mobileToggle button.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: var(--shadow); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-/* Two panes and the splitter between them */
-main { display: grid; grid-template-columns: minmax(340px, var(--split, 42%)) 8px minmax(0, 1fr); min-height: 0; }
-#left { display: grid; grid-template-rows: auto auto 1fr auto; min-height: 0; min-width: 0; background: var(--surface); }
-#splitter { cursor: col-resize; background: var(--page); border-left: 1px solid var(--line); position: relative;
-  touch-action: none; }
-#splitter::after { content: ""; position: absolute; left: 2px; top: 50%; width: 3px; height: 36px; margin-top: -18px;
-  border-radius: 2px; background: var(--line-2); }
-#splitter:hover::after, #splitter:focus-visible::after, body.dragging #splitter::after { background: var(--go); }
-body.dragging { cursor: col-resize; user-select: none; }
-body.dragging iframe { pointer-events: none; }
-
-/* The chapter trail: the one bold element. One segment per chapter. */
-#trail { padding: 14px 20px 12px; border-bottom: 1px solid var(--line); position: relative; }
-#trail .meta { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-#where { font-size: 13px; color: var(--ink-2); }
-#where b { color: var(--ink); font-weight: 650; }
-#chapterMenuBtn { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line);
-  background: var(--surface); border-radius: var(--r-sm); padding: 4px 8px 4px 10px; font-size: 13px; cursor: pointer;
-  color: var(--ink); }
-#chapterMenuBtn:hover { border-color: var(--line-2); background: var(--sunk); }
-#segments { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; }
-#segments button { height: 22px; padding: 0; border: 0; background: transparent; cursor: pointer; position: relative; }
+/* ---------------------------------------------------------------- header */
+header { display: flex; align-items: center; gap: 18px; padding: 0 14px 0 20px; background: var(--bar);
+  color: var(--bar-ink); position: relative; z-index: 6; min-width: 0; }
+#brand { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+#product { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--bar-accent);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#chapterTitle { font-size: 16px; font-weight: 650; margin: 0; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; }
+#trail { display: flex; align-items: center; gap: 10px; flex: none; }
+#segments { display: flex; gap: 4px; }
+#segments button { width: 28px; height: 22px; padding: 0; border: 0; background: transparent; cursor: pointer;
+  position: relative; }
 #segments button::before { content: ""; position: absolute; left: 0; right: 0; top: 8px; height: 6px; border-radius: 3px;
-  background: var(--seg-ahead); transition: background .2s, height .15s, top .15s; }
+  background: var(--seg-ahead); transition: top .15s, height .15s; }
 #segments button:hover::before { top: 6px; height: 10px; }
 #segments button.done::before { background: var(--seg-done); }
 #segments button.current::before { background: var(--seg-now); }
-#segments button.viewing::after { content: ""; position: absolute; left: 50%; bottom: -3px; width: 6px; height: 6px;
-  margin-left: -3px; border-radius: 50%; background: var(--ink); }
+#segments button.viewing::after { content: ""; position: absolute; left: 50%; bottom: -2px; width: 6px; height: 6px;
+  margin-left: -3px; border-radius: 50%; background: var(--bar-ink); }
 body.is-busy #segments button.current::before {
   background: linear-gradient(90deg, var(--seg-ahead) 0%, var(--go) 40%, var(--seg-ahead) 80%) 0 0 / 250% 100%;
   animation: sweep 1.4s linear infinite; }
 @keyframes sweep { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+.barbtn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border-radius: 8px;
+  border: 1px solid var(--bar-line); background: transparent; color: var(--bar-ink); font-size: 13px; cursor: pointer;
+  white-space: nowrap; text-decoration: none; }
+.barbtn:hover { background: rgba(255, 255, 255, .08); }
+.barbtn.icon { width: 36px; height: 36px; padding: 0; justify-content: center; }
+#where { font-size: 13px; color: var(--bar-ink-2); white-space: nowrap; }
+.spacer { flex: 1; }
+#status { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--bar-ink-2);
+  white-space: nowrap; }
+#status .spin { border-color: var(--bar-line); border-top-color: var(--go); }
+#health .dot { width: 8px; height: 8px; border-radius: 4px; background: var(--bar-ink-2); }
+#health.ok .dot { background: var(--go); }
+#health.warn .dot { background: var(--warn-fill); }
 
-#chapterMenu { position: absolute; z-index: 5; right: 16px; top: 46px; width: min(380px, calc(100% - 32px));
-  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--shadow);
-  padding: 6px; margin: 0; list-style: none; max-height: 60vh; overflow: auto; }
+#chapterMenu { position: absolute; z-index: 8; left: 20px; top: 52px; width: min(400px, calc(100vw - 40px));
+  background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: var(--r-md);
+  box-shadow: var(--shadow); padding: 6px; margin: 0; list-style: none; max-height: 70vh; overflow: auto; }
 #chapterMenu button { width: 100%; display: grid; grid-template-columns: 22px 1fr auto; align-items: center; gap: 8px;
   text-align: left; border: 0; background: transparent; padding: 8px 10px; border-radius: var(--r-sm); cursor: pointer;
   font-size: 14px; }
@@ -130,46 +121,102 @@ body.is-busy #segments button.current::before {
 #chapterMenu .hint { display: inline-flex; font-size: 12px; color: var(--ink-3); white-space: nowrap; }
 #chapterMenu .hint svg.i { width: 14px; height: 14px; }
 
-/* Reading a past chapter */
+/* ------------------------------------------------- main: rail, guide, lab */
+main { display: grid; grid-template-columns: 64px minmax(340px, var(--guide, 460px)) 8px minmax(0, 1fr);
+  min-height: 0; position: relative; }
+.guide-folded main { grid-template-columns: 64px 0 0 minmax(0, 1fr); }
+.guide-folded #guide, .guide-folded #splitter { visibility: hidden; overflow: hidden; }
+
+#rail { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px 0; background: var(--surface);
+  border-right: 1px solid var(--line); overflow-y: auto; scrollbar-width: none; }
+#rail .sep { width: 28px; height: 1px; background: var(--line); margin: 2px 0; flex: none; }
+.railbtn { width: 44px; height: 44px; flex: none; border-radius: 22px; border: 1px solid var(--line-2);
+  background: var(--surface); color: var(--ink-2); font-size: 15px; display: grid; place-items: center; cursor: pointer; }
+.railbtn:hover { border-color: var(--go); color: var(--ink); }
+.railbtn.square { border-radius: var(--r-md); }
+.railbtn.square.on { background: var(--go-soft); border-color: var(--go); color: var(--ink); }
+.railbtn.done { background: var(--go); border-color: var(--go); color: var(--go-ink); }
+.railbtn.done svg.i { stroke-width: 2.6; }
+.railbtn.current { border: 2px solid var(--go); color: var(--ink); font-weight: 700; }
+.railbtn.optional { border-style: dashed; }
+.railbtn.failed { border: 2px solid var(--warn-fill); color: var(--ink); font-weight: 700; }
+
+#guide { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--surface); }
+#guideBody { flex: 1; min-height: 0; }
+#guideHead { display: flex; align-items: center; gap: 10px; padding: 12px 16px 10px 20px; border-bottom: 1px solid var(--line); }
+#guideMeta { font-size: 13px; color: var(--ink-2); }
+#guideHead .tools { margin-left: auto; display: flex; gap: 6px; }
+.iconbtn { display: inline-grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--line);
+  border-radius: var(--r-sm); background: var(--surface); color: var(--ink-2); cursor: pointer; text-decoration: none; }
+.iconbtn:hover { background: var(--sunk); color: var(--ink); }
+.iconbtn.bare { border-color: transparent; background: transparent; }
 #reading { display: flex; align-items: center; gap: 10px; padding: 8px 20px; font-size: 13px; background: var(--sunk);
   border-bottom: 1px solid var(--line); color: var(--ink-2); }
 #reading button { margin-left: auto; flex: none; }
+#guideBody { overflow: auto; padding: 16px 18px 28px; display: flex; flex-direction: column; gap: 10px; }
+#guideBody:focus { outline: none; }
 
-/* The assignment */
-#assignment { overflow: auto; padding: 20px 28px 32px; min-width: 0; }
-#assignment:focus { outline: none; }
-#assignment > * { max-width: 72ch; }
-#assignment * { max-width: 100%; }
-#assignment h1, #assignment h2, #assignment h3 { line-height: 1.25; letter-spacing: -.01em; margin: 1.6em 0 .5em; }
-#assignment h1 { font-size: 26px; font-weight: 700; }
-#assignment h2 { font-size: 20px; font-weight: 650; }
-#assignment h3 { font-size: 16px; font-weight: 650; }
-#assignment > :first-child, #assignment > style + * { margin-top: 0; }
-#assignment p, #assignment li { margin: .55em 0; }
-#assignment a { color: var(--link); text-underline-offset: 2px; }
-#assignment img { height: auto; border-radius: var(--r-sm); }
-#assignment hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
-#assignment table { border-collapse: collapse; font-size: 14px; margin: 1em 0; display: block; overflow-x: auto; }
-#assignment th, #assignment td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; vertical-align: top; }
-#assignment th { background: var(--sunk); font-weight: 650; }
-#assignment blockquote { margin: 1em 0; padding: 2px 16px; border-left: 3px solid var(--line-2); color: var(--ink-2); }
-#assignment code { font-family: var(--mono); font-size: 13px; }
-#assignment :not(pre) > code:not(.rodeo-var) { background: var(--sunk); border: 1px solid var(--line); padding: 1px 5px;
+/* credentials, steps and the chapter's wrap-up, all as cards in reading order */
+.gcard { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
+.gcard > summary, .step > .stephead { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px; border-radius: var(--r-md); }
+.gcard > summary::-webkit-details-marker { display: none; }
+.gcard > summary:hover, .step > .stephead:hover { background: var(--sunk); }
+.gcard > summary .chev, .stephead .chev { margin-left: auto; color: var(--ink-3); transition: transform .15s; }
+.gcard[open] > summary .chev, .step.open .chev { transform: rotate(180deg); }
+.gcard .gtitle { font-size: 15px; font-weight: 650; }
+.gcard .gbody { padding: 0 16px 14px; }
+.step { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
+.step > .stephead { width: 100%; border: 0; background: transparent; text-align: left; }
+.step .badge { width: 26px; height: 26px; flex: none; border-radius: 13px; display: grid; place-items: center;
+  border: 1.5px solid var(--line-2); color: var(--ink-2); font-size: 13px; font-weight: 700; }
+.step.optional .badge { border-style: dashed; }
+.step.done .badge { background: var(--go); border-color: var(--go); color: var(--go-ink); }
+.step.done .badge svg.i { width: 14px; height: 14px; stroke-width: 3; }
+.step .sname { font-size: 15px; color: var(--ink-2); line-height: 1.35; }
+.step.open { border: 2px solid var(--go); }
+.step.open .sname { font-weight: 650; color: var(--ink); font-size: 16px; }
+.step.open.failed { border-color: var(--warn-fill); }
+.step .sbody { padding: 2px 16px 14px; }
+.step .sresult:not(:empty) { margin: 4px 0 14px; }
+.step:not(.open) .sbody { display: none; }
+.step .stepfoot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; padding-top: 12px;
+  border-top: 1px solid var(--line); }
+.tag { font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); }
+
+/* track content inside cards, the cover and the wrap-up */
+.content { min-width: 0; }
+.content * { max-width: 100%; }
+.content h1, .content h2, .content h3 { line-height: 1.25; letter-spacing: -.01em; margin: 1.3em 0 .5em; }
+.content h1 { font-size: 22px; font-weight: 700; }
+.content h2 { font-size: 18px; font-weight: 650; }
+.content h3 { font-size: 16px; font-weight: 650; }
+.content > :first-child, .content > style + * { margin-top: 0; }
+.content p, .content li { margin: .55em 0; }
+.content a { color: var(--link); text-underline-offset: 2px; }
+.content img { height: auto; border-radius: var(--r-sm); }
+.content hr { border: 0; border-top: 1px solid var(--line); margin: 24px 0; }
+.content table { border-collapse: collapse; font-size: 14px; margin: 1em 0; display: block; overflow-x: auto; }
+.content th, .content td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; vertical-align: top; }
+.content th { background: var(--sunk); font-weight: 650; }
+.content blockquote { margin: 1em 0; padding: 2px 16px; border-left: 3px solid var(--line-2); color: var(--ink-2); }
+.content code { font-family: var(--mono); font-size: 13px; }
+.content :not(pre) > code:not(.rodeo-var) { background: var(--sunk); border: 1px solid var(--line); padding: 1px 5px;
   border-radius: 4px; }
-#assignment pre { background: var(--sunk); border: 1px solid var(--line); padding: 12px 14px; overflow-x: auto;
+.content pre { background: var(--sunk); border: 1px solid var(--line); padding: 12px 14px; overflow-x: auto;
   border-radius: var(--r-sm); margin: 0; line-height: 1.5; }
-#assignment pre code { font-family: var(--mono); }
+.content pre code { font-family: var(--mono); }
 /* Code blocks get the track format's wrapper (div.my-3, copy bar first) so the
    track's own .cred styles keep working; ours stay low specificity. */
 .my-3 { position: relative; margin: .8em 0; }
-.my-3 > .copybar { position: absolute; top: 6px; right: 6px; }
+.my-3 > .copybar { position: absolute; top: 6px; right: 6px; display: flex; gap: 4px; }
 .cred .my-3 > .copybar { position: static; }
-.copy { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); background: var(--surface);
-  color: var(--ink-2); border-radius: 5px; padding: 2px 8px; font-size: 12px; cursor: pointer; opacity: .85; }
-.copy:hover { opacity: 1; color: var(--ink); border-color: var(--line-2); }
-.copy.copied { color: var(--link); border-color: var(--go); opacity: 1; }
+.copy, .paste { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); background: var(--surface);
+  color: var(--ink-2); border-radius: 5px; padding: 2px 8px; font-size: 12px; cursor: pointer; opacity: .9; }
+.copy:hover, .paste:hover { opacity: 1; color: var(--ink); border-color: var(--line-2); }
+.copy.copied, .paste.copied { color: var(--link); border-color: var(--go); opacity: 1; }
 .cred .copy { border: 0; background: transparent; padding: 0 2px; }
-.cred .copy .label { display: none; }
+.cred .copy .label, .cred .paste { display: none; }
 .rodeo-tab-button { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line-2);
   border-radius: 999px; padding: 4px 12px; margin: 2px 0; font-size: 14px; font-weight: 600; cursor: pointer;
   background: var(--surface); color: var(--ink); }
@@ -183,22 +230,22 @@ body.is-busy #segments button.current::before {
 .rodeo-var-missing { color: var(--warn); font-weight: 600; }
 pre .rodeo-var { background: none; border: 0; padding: 0; color: inherit; }
 pre .rodeo-var.copied { background: none; color: var(--link); }
-/* GitHub-style callouts: > [!NOTE] and friends */
-#assignment blockquote.callout { color: var(--ink); background: var(--sunk); border-left-color: var(--link);
+.content blockquote.callout { color: var(--ink); background: var(--sunk); border-left-color: var(--link);
   border-radius: 0 var(--r-sm) var(--r-sm) 0; padding: 10px 16px; }
-#assignment blockquote.callout > :first-child { margin-top: 0; }
-#assignment blockquote.callout > :last-child { margin-bottom: 0; }
+.content blockquote.callout > :first-child { margin-top: 0; }
+.content blockquote.callout > :last-child { margin-bottom: 0; }
 .callout-title { display: block; font-weight: 650; color: var(--link); margin-bottom: 2px; }
-#assignment blockquote.callout.important, #assignment blockquote.callout.warning,
-#assignment blockquote.callout.caution { background: var(--warn-soft); border-left-color: var(--warn); }
+.content blockquote.callout.important, .content blockquote.callout.warning,
+.content blockquote.callout.caution { background: var(--warn-soft); border-left-color: var(--warn); }
 .important > .callout-title, .warning > .callout-title, .caution > .callout-title { color: var(--warn); }
 
-/* The action dock */
-#actions { border-top: 1px solid var(--line); padding: 14px 20px 16px; display: grid; gap: 12px; background: var(--surface); }
+/* the chapter action, at the foot of the guide */
+#actions { border-top: 1px solid var(--line); padding: 12px 18px 14px; display: grid; gap: 10px; background: var(--surface); }
 #result:empty { display: none; }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: var(--r-sm);
-  padding: 9px 16px; font-size: 14px; font-weight: 600; cursor: pointer; border: 1px solid transparent; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 8px;
+  padding: 9px 16px; min-height: 44px; font-size: 14px; font-weight: 600; cursor: pointer; border: 1px solid transparent;
+  text-decoration: none; }
 .btn.primary { background: var(--go); color: var(--go-ink); min-width: 168px; padding: 11px 20px; font-size: 15px;
   font-weight: 700; }
 .btn.primary:hover:not(:disabled) { background: var(--go-hover); }
@@ -207,7 +254,7 @@ pre .rodeo-var.copied { background: none; color: var(--link); }
 .btn.quiet:hover:not(:disabled) { color: var(--ink); background: var(--sunk); }
 .btn.outline { background: var(--surface); color: var(--ink); border-color: var(--line-2); }
 .btn.outline:hover:not(:disabled) { background: var(--sunk); }
-.btn.small { padding: 4px 10px; font-size: 13px; }
+.btn.small { padding: 4px 12px; min-height: 36px; font-size: 13px; }
 .btn:disabled { cursor: default; opacity: .7; }
 .btn.primary.done { background: var(--go-soft); color: var(--link); opacity: 1; }
 
@@ -215,31 +262,40 @@ pre .rodeo-var.copied { background: none; color: var(--link); }
   gap: 2px 10px; font-size: 14px; animation: rise .22s ease-out; }
 .card .ic { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; }
 .card .ic svg.i { width: 13px; height: 13px; stroke-width: 2.6; }
-.card .t { font-weight: 650; align-self: center; }
+.card .t { font-weight: 650; align-self: center; display: flex; gap: 8px; align-items: baseline; }
+.card .t .count { margin-left: auto; font-size: 12px; font-weight: 400; color: var(--ink-2); }
 .card .d { grid-column: 2; color: var(--ink-2); }
 .card.good { background: var(--go-soft); }
 .card.good .ic { background: var(--go); color: var(--go-ink); }
 .card.bad { background: var(--warn-soft); border: 1px solid var(--warn-line); }
-.card.bad .ic { background: var(--warn); color: var(--surface); }
+.card.bad .ic { background: var(--warn-fill); color: #0c322c; }
 .card.ask { background: var(--sunk); border: 1px solid var(--line); }
 .card.ask .ic { background: var(--ink); color: var(--surface); }
 .card.ask .row { grid-column: 2; margin-top: 8px; }
-#output { grid-column: 1 / -1; margin: 8px 0 0; max-height: 28vh; overflow: auto; background: var(--surface);
+.card .output { grid-column: 1 / -1; margin: 8px 0 0; max-height: 28vh; overflow: auto; background: var(--surface);
   border: 1px solid var(--warn-line); padding: 10px 12px; border-radius: var(--r-sm); font: 12.5px/1.5 var(--mono);
   white-space: pre-wrap; color: var(--ink); }
 @keyframes rise { from { opacity: 0; transform: translateY(4px); } }
 
-/* Lab side */
-#right { display: grid; grid-template-rows: auto 1fr; min-height: 0; min-width: 0; background: var(--page); }
-#tabbar { display: flex; align-items: center; gap: 4px; padding: 8px 10px; background: var(--surface);
+#splitter { cursor: col-resize; background: var(--page); border-left: 1px solid var(--line); position: relative;
+  touch-action: none; }
+#splitter::after { content: ""; position: absolute; left: 2px; top: 50%; width: 3px; height: 36px; margin-top: -18px;
+  border-radius: 2px; background: var(--line-2); }
+#splitter:hover::after, #splitter:focus-visible::after, body.dragging #splitter::after { background: var(--go); }
+body.dragging { cursor: col-resize; user-select: none; }
+body.dragging iframe { pointer-events: none; }
+
+/* lab side */
+#lab { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; min-width: 0; background: var(--page);
+  position: relative; }
+#tabbar { display: flex; align-items: flex-end; gap: 4px; height: 48px; padding: 0 10px; background: var(--surface);
   border-bottom: 1px solid var(--line); min-width: 0; }
-#tabs { display: flex; gap: 2px; padding: 3px; background: var(--sunk); border-radius: var(--r-md); overflow-x: auto;
-  min-width: 0; scrollbar-width: none; }
-#tabs .tab { display: inline-flex; align-items: center; gap: 7px; border: 0; background: transparent; cursor: pointer;
-  padding: 6px 14px; border-radius: var(--r-sm); font-size: 14px; color: var(--ink-2); white-space: nowrap; }
+#tabs { display: flex; gap: 2px; overflow-x: auto; min-width: 0; scrollbar-width: none; }
+#tabs .tab { display: inline-flex; align-items: center; gap: 8px; height: 44px; border: 0; border-bottom: 3px solid transparent;
+  background: transparent; cursor: pointer; padding: 0 14px; font-size: 14px; color: var(--ink-2); white-space: nowrap; }
 #tabs .tab:hover { color: var(--ink); }
-#tabs .tab.active { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: var(--shadow); }
-#tabTools { display: flex; gap: 2px; margin-left: auto; }
+#tabs .tab.active { border-bottom-color: var(--go); color: var(--ink); font-weight: 650; }
+#tabTools { display: flex; gap: 2px; margin-left: auto; align-self: center; }
 #frames { position: relative; min-height: 0; }
 #frames iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: var(--frame-bg); }
 #frames .loading { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 12px;
@@ -248,18 +304,67 @@ pre .rodeo-var.copied { background: none; color: var(--link); }
 #frames .empty { position: absolute; inset: 0; margin: 0; display: grid; place-content: center; padding: 24px;
   color: var(--ink-2); }
 
-/* Phones: one surface at a time, the lab at full height. */
-@media (max-width: 800px) {
-  header { padding-left: 14px; gap: 8px; }
-  main { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
-  #splitter { display: none; }
-  #mobileToggle { display: flex; }
-  body.show-lab #left, body:not(.show-lab) #right { display: none; }
-  #status:not(.busy) { display: none; }
-  body.show-lab #status.busy { display: inline-flex; }
-  #assignment { padding: 16px; }
-  #trail, #actions, #reading { padding-left: 16px; padding-right: 16px; }
-  .btn.primary { min-width: 0; flex: 1; }
+/* the floating step card, when the guide is folded */
+#float { position: absolute; right: 24px; bottom: 24px; width: 360px; max-width: calc(100% - 48px); z-index: 3;
+  background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: var(--r-lg);
+  box-shadow: var(--shadow); padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 8px; }
+html:not(.guide-folded) #float { display: none; }
+#float.failed { border: 2px solid var(--warn-fill); }
+#float .fhead { display: flex; align-items: center; gap: 8px; }
+#float .fname { font-size: 18px; font-weight: 650; line-height: 1.25; }
+#float .fexcerpt { font-size: 14px; line-height: 1.5; color: var(--ink-2); }
+#float .fnote { font-size: 13px; color: var(--warn); font-weight: 600; }
+#float .row .btn { flex: 1; min-width: 0; }
+#float.mini { width: auto; padding: 0; border-radius: 999px; }
+#float.mini > :not(#floatOpen) { display: none; }
+#floatOpen { display: none; }
+#float.mini #floatOpen { display: inline-flex; border: 0; background: transparent; padding: 10px 16px; gap: 8px;
+  align-items: center; cursor: pointer; font-weight: 600; font-size: 14px; }
+
+/* ------------------------------------------ full views: cover, complete */
+.view { position: absolute; inset: 0; z-index: 4; overflow: auto; }
+#cover { background: var(--bar); color: var(--bar-ink); }
+#cover .wrap { min-height: 100%; display: flex; align-items: flex-start; padding: clamp(40px, 9vh, 96px) clamp(24px, 8vw, 120px) 64px; }
+#cover .col { display: flex; flex-direction: column; gap: 24px; max-width: 780px; }
+#cover .eyebrow { font-size: 15px; letter-spacing: .14em; text-transform: uppercase; color: var(--bar-accent); font-weight: 650; }
+#cover h2 { margin: 0; font-size: clamp(44px, 6vw, 84px); line-height: 1; font-weight: 750; letter-spacing: -.02em; }
+#cover .lead { margin: 0; font-size: 22px; line-height: 1.45; color: #d4e6df; }
+#cover .stats { display: flex; gap: 40px; flex-wrap: wrap; padding: 18px 0; border-top: 1px solid var(--bar-line);
+  border-bottom: 1px solid var(--bar-line); }
+#cover .stats div { display: flex; flex-direction: column; gap: 2px; }
+#cover .stats span:first-child { font-size: 13px; color: #a7c7bc; }
+#cover .stats span:last-child { font-size: 19px; font-weight: 650; }
+#cover .story { color: #e2efea; font-size: 16px; margin-top: 16px; padding-top: 28px; border-top: 1px solid var(--bar-line); }
+#cover .story.content a { color: var(--bar-accent); }
+#cover .row { gap: 20px; }
+#cover .btn.primary { min-height: 56px; font-size: 18px; padding: 0 32px; }
+#cover .linkbtn { background: none; border: 0; color: var(--bar-accent); font-size: 16px; text-decoration: underline;
+  text-underline-offset: 3px; cursor: pointer; padding: 8px 0; }
+
+#complete { background: var(--page); }
+#complete .wrap { min-height: 100%; display: flex; align-items: center; justify-content: center; padding: 40px 24px; }
+#complete .panel { width: 100%; max-width: 900px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: 18px; overflow: hidden; box-shadow: var(--shadow); }
+#complete .top { background: var(--bar); color: var(--bar-ink); padding: 32px 40px; display: flex; gap: 24px; align-items: center; }
+#complete .big { width: 64px; height: 64px; flex: none; border-radius: 32px; background: var(--go); color: #0c322c;
+  display: grid; place-items: center; }
+#complete .big svg.i { width: 32px; height: 32px; stroke-width: 2.6; }
+#complete .eyebrow { font-size: 14px; letter-spacing: .1em; text-transform: uppercase; color: var(--bar-accent); }
+#complete h2 { margin: 4px 0 0; font-size: 30px; line-height: 1.2; font-weight: 700; }
+#complete .grid { padding: 28px 40px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; }
+#complete .label { font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); margin: 0 0 10px; }
+#complete ul.did { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+#complete ul.did li { display: flex; gap: 10px; align-items: baseline; font-size: 16px; line-height: 1.4; }
+#complete ul.did svg.i { color: var(--link); stroke-width: 2.6; transform: translateY(2px); }
+#complete .next { font-size: 22px; font-weight: 650; }
+#complete .why { padding: 0 40px 8px; }
+#complete .why details { border-top: 1px solid var(--line); padding: 10px 0; }
+#complete .why summary { cursor: pointer; font-weight: 650; }
+#complete .foot { padding: 18px 40px 28px; display: flex; gap: 16px; align-items: center; border-top: 1px solid var(--line); }
+
+@media (max-width: 1100px) {
+  #where, #health .txt { display: none; }
+  #complete .grid { grid-template-columns: minmax(0, 1fr); }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0s !important; animation-iteration-count: 1 !important;
@@ -270,29 +375,44 @@ pre .rodeo-var.copied { background: none; color: var(--link); }
 </head>
 <body>
 <header>
-  <h1 id="title">{{TITLE}}</h1>
-  <div id="mobileToggle" role="group" aria-label="View">
-    <button id="viewText" type="button" class="on" aria-pressed="true">Steps</button>
-    <button id="viewLab" type="button" aria-pressed="false">Lab</button>
+  <div id="brand">
+    <span id="product">{{TITLE}}</span>
+    <h1 id="chapterTitle"></h1>
   </div>
+  <div id="trail">
+    <nav id="segments" aria-label="Chapters"></nav>
+    <button id="chapterMenuBtn" class="barbtn" type="button" aria-haspopup="true" aria-expanded="false"
+      aria-controls="chapterMenu"><span id="where"></span>
+      <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      <span class="sr">Chapters</span></button>
+  </div>
+  <ol id="chapterMenu" hidden></ol>
   <div class="spacer"></div>
   <span id="status" role="status" aria-live="polite"></span>
-  <button id="theme" class="iconbtn" type="button"></button>
+  <button id="health" class="barbtn" type="button" hidden><span class="dot"></span><span class="txt"></span></button>
+  <button id="theme" class="barbtn icon" type="button"></button>
 </header>
 <main>
-  <section id="left" aria-label="Instructions">
-    <div id="trail">
-      <div class="meta">
-        <span id="where"></span>
-        <button id="chapterMenuBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="chapterMenu">
-          Chapters <svg class="i" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+  <nav id="rail" aria-label="Chapter steps">
+    <button id="guideBtn" class="railbtn square" type="button" aria-controls="guide">
+      <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h11a3 3 0 0 1 3 3v12H7a3 3 0 0 1-3-3zM18 8h2v12"/></svg>
+    </button>
+    <span class="sep" aria-hidden="true"></span>
+    <div id="railSteps" style="display: contents"></div>
+  </nav>
+  <section id="guide" aria-label="Guide">
+    <div id="guideHead">
+      <span id="guideMeta"></span>
+      <div class="tools">
+        <button id="storyBtn" class="iconbtn" type="button" title="The chapter's story" aria-label="Show the chapter's story">
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h10l4 4v12H5zM14 4v5h5M8 13h8M8 17h5"/></svg></button>
+        <button id="foldBtn" class="iconbtn" type="button" title="Fold the guide" aria-label="Fold the guide">
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></button>
       </div>
-      <nav id="segments" aria-label="Chapters"></nav>
-      <ol id="chapterMenu" hidden></ol>
     </div>
     <div id="reading" hidden><span id="readingText"></span>
       <button id="tocurrent" type="button" class="btn outline small"></button></div>
-    <article id="assignment" tabindex="-1"></article>
+    <div id="guideBody" tabindex="-1"></div>
     <div id="actions">
       <div id="result" aria-live="polite"></div>
       <div id="confirm" class="card ask" hidden>
@@ -310,494 +430,68 @@ pre .rodeo-var.copied { background: none; color: var(--link); }
       </div>
     </div>
   </section>
-  <div id="splitter" role="separator" aria-orientation="vertical" aria-label="Resize panes" tabindex="0"
+  <div id="splitter" role="separator" aria-orientation="vertical" aria-label="Resize the guide" tabindex="0"
     title="Drag to resize. Double-click to reset."></div>
-  <section id="right" aria-label="Lab">
+  <section id="lab" aria-label="Lab">
     <div id="tabbar">
       <div id="tabs" role="tablist" aria-label="Lab tabs"></div>
       <div id="tabTools">
-        <button id="reloadTab" class="iconbtn" type="button" title="Reload this tab" aria-label="Reload this tab">
+        <button id="reloadTab" class="iconbtn bare" type="button" title="Reload this tab" aria-label="Reload this tab">
           <svg class="i" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg></button>
-        <a id="popTab" class="iconbtn" target="_blank" rel="noopener" title="Open in a new browser tab"
+        <a id="popTab" class="iconbtn bare" target="_blank" rel="noopener" title="Open in a new browser tab"
           aria-label="Open in a new browser tab">
           <svg class="i" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
       </div>
     </div>
     <div id="frames"></div>
+    <section id="float" aria-label="Current step">
+      <button id="floatOpen" type="button"></button>
+      <div class="fhead">
+        <span class="tag" id="floatTag"></span>
+        <span class="spacer"></span>
+        <button id="floatMin" class="iconbtn bare" type="button" title="Make it small" aria-label="Make the step card small">
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+      </div>
+      <span class="fname" id="floatName"></span>
+      <span class="fexcerpt" id="floatExcerpt"></span>
+      <span class="fnote" id="floatNote" hidden></span>
+      <div class="row">
+        <button id="floatGuide" type="button" class="btn outline">Open guide</button>
+        <button id="floatPrimary" type="button" class="btn primary"></button>
+      </div>
+    </section>
+  </section>
+
+  <section id="cover" class="view" aria-labelledby="coverTitle" hidden>
+    <div class="wrap"><div class="col">
+      <span class="eyebrow" id="coverEyebrow"></span>
+      <h2 id="coverTitle"></h2>
+      <p class="lead" id="coverLead"></p>
+      <div class="stats" id="coverStats"></div>
+      <div class="row">
+        <button id="coverStart" type="button" class="btn primary"></button>
+        <button id="coverSkip" type="button" class="linkbtn">Skip the story, show me the tasks</button>
+      </div>
+      <div class="story content" id="coverStory"></div>
+    </div></div>
+  </section>
+
+  <section id="complete" class="view" aria-labelledby="completeTitle" hidden>
+    <div class="wrap"><div class="panel">
+      <div class="top">
+        <span class="big"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg></span>
+        <div><span class="eyebrow" id="completeEyebrow"></span><h2 id="completeTitle"></h2></div>
+      </div>
+      <div class="grid">
+        <div><p class="label">What you did</p><ul class="did" id="completeDid"></ul></div>
+        <div id="completeNextBox"><p class="label">Up next</p><span class="next" id="completeNext"></span></div>
+      </div>
+      <div class="why content" id="completeWhy"></div>
+      <div class="foot"><button id="completeGo" type="button" class="btn primary"></button></div>
+    </div></div>
   </section>
 </main>
 <script src="/static/marked.min.js"></script>
-<script>
-(() => {
-  const $ = (id) => document.getElementById(id);
-  let state = null, viewing = null, activeTab = 0, pendingSkip = null, polling = null;
-  const frames = new Map();  // url -> iframe, kept alive across chapters
-
-  const ICON = {
-    check: '<svg class="i" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></svg>',
-    alert: '<svg class="i" viewBox="0 0 24 24"><path d="M12 7v6M12 17h.01"/></svg>',
-    copy: '<svg class="i" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h10"/></svg>',
-    lock: '<svg class="i" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>',
-    terminal: '<svg class="i" viewBox="0 0 24 24"><path d="m5 8 4 4-4 4M12 16h7"/></svg>',
-    service: '<svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg>',
-    auto: '<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg>',
-    light: '<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
-    dark: '<svg class="i" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg>',
-  };
-  // Browser storage holds per-viewer comforts only (theme, pane width); the
-  // page works the same when it is blocked.
-  const store = {
-    get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
-    set(k, v) { try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} },
-  };
-  const el = (tag, cls, html) => { const n = document.createElement(tag); if (cls) n.className = cls;
-    if (html !== undefined) n.innerHTML = html; return n; };
-
-  // -- theme: auto (follow the system), light, dark ------------------------
-  const THEMES = ["auto", "light", "dark"];
-  const THEME_LABEL = {auto: "Theme follows your system", light: "Light theme", dark: "Dark theme"};
-  function applyTheme(t) {
-    if (t === "auto") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
-    const b = $("theme");
-    b.innerHTML = ICON[t]; b.title = `${THEME_LABEL[t]}. Click to change.`; b.setAttribute("aria-label", b.title);
-  }
-  let theme = store.get("rodeo-theme") || "auto";
-  if (!THEMES.includes(theme)) theme = "auto";
-  applyTheme(theme);
-  $("theme").onclick = () => {
-    theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
-    store.set("rodeo-theme", theme === "auto" ? null : theme);
-    applyTheme(theme);
-    fixContrast($("assignment"));
-  };
-  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => fixContrast($("assignment")));
-
-  // -- splitter -------------------------------------------------------------
-  const main = document.querySelector("main");
-  function setSplit(pct) {
-    const p = Math.max(25, Math.min(70, pct));
-    main.style.setProperty("--split", `${p}%`);
-    $("splitter").setAttribute("aria-valuenow", Math.round(p));
-    return p;
-  }
-  const savedSplit = parseFloat(store.get("rodeo-split"));
-  if (savedSplit) setSplit(savedSplit);
-  $("splitter").addEventListener("pointerdown", (e) => {
-    e.preventDefault();
-    const sp = $("splitter"), rect = main.getBoundingClientRect();
-    sp.setPointerCapture(e.pointerId);
-    document.body.classList.add("dragging");
-    const at = (ev) => ((ev.clientX - rect.left) / rect.width) * 100;
-    const move = (ev) => setSplit(at(ev));
-    const up = (ev) => {
-      document.body.classList.remove("dragging");
-      sp.removeEventListener("pointermove", move);
-      sp.removeEventListener("pointerup", up);
-      store.set("rodeo-split", String(setSplit(at(ev))));
-    };
-    sp.addEventListener("pointermove", move);
-    sp.addEventListener("pointerup", up);
-  });
-  $("splitter").addEventListener("dblclick", () => { main.style.removeProperty("--split"); store.set("rodeo-split", null); });
-  $("splitter").addEventListener("keydown", (e) => {
-    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-    e.preventDefault();
-    const cur = parseFloat(main.style.getPropertyValue("--split")) || 42;
-    store.set("rodeo-split", String(setSplit(cur + (e.key === "ArrowLeft" ? -3 : 3))));
-  });
-
-  // -- assignment rendering ------------------------------------------------
-  // Assignments are trusted track HTML, but a chapter must not be able to
-  // press buttons on its own: drop scripts, embedded frames and inline
-  // handlers, keep the markup and the rodeo-tab-button elements.
-  function clean(html) {
-    const doc = new DOMParser().parseFromString(`<div>${html}</div>`, "text/html");
-    doc.querySelectorAll("script, iframe, object, embed, form, base, meta, link").forEach((n) => n.remove());
-    doc.querySelectorAll("*").forEach((node) => [...node.attributes].forEach((a) => {
-      if (/^on/i.test(a.name) || (/^(href|src|action|formaction)$/i.test(a.name) && /^\s*javascript:/i.test(a.value)))
-        node.removeAttribute(a.name);
-    }));
-    return doc.body.firstChild.innerHTML;
-  }
-
-  // A variable inside a fenced code block (a password in a .cred box) comes
-  // back from marked escaped, so the student saw the raw <code> tag. Turn the
-  // runner's two exact markups back into elements. Their text was escaped
-  // twice (runner, then marked), so unescape it once.
-  const unescapeOnce = (s) => s.replace(/&amp;/g, "&");
-  function restoreVars(html) {
-    return html
-      .replace(/&lt;code class=&quot;rodeo-var&quot; title=&quot;Click to copy&quot;&gt;([\s\S]*?)&lt;\/code&gt;/g,
-        (_, v) => `<code class="rodeo-var" title="Click to copy">${unescapeOnce(v)}</code>`)
-      .replace(/&lt;span class=&quot;rodeo-var-missing&quot;&gt;([\s\S]*?)&lt;\/span&gt;/g,
-        (_, v) => `<span class="rodeo-var-missing">${unescapeOnce(v)}</span>`);
-  }
-
-  function decorate(root) {
-    root.querySelectorAll("pre").forEach((pre) => {
-      if (pre.parentElement.classList.contains("my-3")) return;
-      const wrap = el("div", "my-3"), bar = el("div", "copybar");
-      const b = el("button", "copy", `${ICON.copy}<span class="label">Copy</span>`);
-      b.type = "button"; b.title = "Copy to clipboard"; b.setAttribute("aria-label", "Copy to clipboard");
-      bar.append(b);
-      pre.replaceWith(wrap); wrap.append(bar, pre);
-    });
-    root.querySelectorAll("blockquote").forEach((q) => {
-      const p = q.firstElementChild, t = p && p.firstChild;
-      const m = t && t.nodeType === Node.TEXT_NODE && t.textContent.match(/^\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*/i);
-      if (!m) return;
-      const kind = m[1].toLowerCase();
-      t.textContent = t.textContent.slice(m[0].length);
-      if (p.firstChild && p.firstChild.nodeName === "BR") p.firstChild.remove();
-      const title = el("span", "callout-title"); title.textContent = kind[0].toUpperCase() + kind.slice(1);
-      q.classList.add("callout", kind); q.prepend(title);
-    });
-    root.querySelectorAll("img").forEach((img) => { img.loading = "lazy"; img.decoding = "async"; });
-  }
-
-  // Tracks bring their own colours (brand accents, white-on-dark highlights).
-  // Any rodeo, any product: after render and on every theme change, pull text
-  // under 4.5:1 contrast toward the theme ink until it reads.
-  const rgb = (c) => (c.match(/[\d.]+/g) || [0, 0, 0, 1]).map(Number);
-  const lum = ([r, g, b]) => [r, g, b].map((v) => { v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; })
-    .reduce((a, v, k) => a + v * [.2126, .7152, .0722][k], 0);
-  const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); };
-  function bgBehind(node) {
-    const layers = [];
-    for (let n = node; n; n = n.parentElement) {
-      const c = rgb(getComputedStyle(n).backgroundColor), a = c.length > 3 ? c[3] : 1;
-      if (a > 0) layers.push([...c.slice(0, 3), a]);
-      if (a >= .99) break;
-    }
-    return layers.reduceRight((base, [r, g, b, a]) => [r, g, b].map((v, k) => v * a + base[k] * (1 - a)),
-      rgb(getComputedStyle(document.body).backgroundColor));
-  }
-  function fixContrast(root) {
-    root.querySelectorAll("[data-fixed-color]").forEach((n) => {
-      n.style.removeProperty("color"); if (n.dataset.fixedColor) n.style.setProperty("color", n.dataset.fixedColor);
-      delete n.dataset.fixedColor;
-    });
-    const ink = rgb(getComputedStyle(document.body).color);
-    root.querySelectorAll("*").forEach((n) => {
-      if (n.closest("pre, svg") || ![...n.childNodes].some((c) => c.nodeType === 3 && c.textContent.trim())) return;
-      const cs = getComputedStyle(n), bg = bgBehind(n);
-      if (ratio(rgb(cs.color), bg) >= 4.5) return;
-      n.dataset.fixedColor = n.style.getPropertyValue("color");
-      const fg = rgb(cs.color);
-      for (const keep of [.6, .4, .2, 0]) {
-        const mix = [0, 1, 2].map((k) => Math.round(fg[k] * keep + ink[k] * (1 - keep)));
-        n.style.setProperty("color", `rgb(${mix.join(",")})`, "important");
-        if (ratio(mix, bg) >= 4.5) break;
-      }
-    });
-  }
-
-  function copyText(text, node) {
-    if (!navigator.clipboard) return;
-    navigator.clipboard.writeText(text).then(() => {
-      node.classList.add("copied");
-      const label = node.querySelector(".label");
-      if (label) label.textContent = "Copied";
-      setTimeout(() => { node.classList.remove("copied"); if (label) label.textContent = "Copy"; }, 1400);
-    }).catch(() => {});
-  }
-
-  // "🏦 Chapter 1: The Arrival" -> "The Arrival".
-  const short = (title) => title.replace(/^.*?Chapter\s*\d+\s*[:.-]\s*/i, "") || title;
-  const BUSY = {enter: "Setting up the chapter", check: "Checking your work", next: "Moving on",
-                skip: "Skipping ahead"};
-
-  function setView(lab) {
-    document.body.classList.toggle("show-lab", lab);
-    $("viewLab").classList.toggle("on", lab); $("viewText").classList.toggle("on", !lab);
-    $("viewLab").setAttribute("aria-pressed", lab); $("viewText").setAttribute("aria-pressed", !lab);
-  }
-
-  async function api(path, body) {
-    const opts = body === undefined ? {} : {method: "POST", headers: {"X-Rodeo-Player": "1",
-      "Content-Type": "application/json"}, body: JSON.stringify(body)};
-    const res = await fetch(path, opts);
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || res.statusText);
-    return data;
-  }
-
-  // -- lab tabs -------------------------------------------------------------
-  function setTabs(tabs) {
-    const bar = $("tabs");
-    bar.replaceChildren();
-    tabs.forEach((t) => {
-      const b = el("button", "tab", ICON[t.type === "terminal" ? "terminal" : "service"]);
-      b.type = "button"; b.setAttribute("role", "tab"); b.dataset.index = t.index;
-      b.append(document.createTextNode(t.title));
-      b.addEventListener("click", () => showTab(t.index));
-      bar.append(b);
-    });
-    state.tabsNow = tabs;
-    showTab(Math.max(0, Math.min(activeTab, tabs.length - 1)));
-  }
-
-  function showTab(i) {
-    activeTab = i;
-    const tabs = state.tabsNow || [];
-    document.querySelectorAll("#tabs .tab").forEach((b) => {
-      const on = Number(b.dataset.index) === i;
-      b.classList.toggle("active", on); b.setAttribute("aria-selected", on);
-    });
-    const tab = tabs[i], want = tab && tab.url;
-    $("popTab").hidden = $("reloadTab").hidden = !want;
-    if (want) $("popTab").href = want;
-    // Load a tab the first time it is shown, not all at once on page load:
-    // product UIs are heavy and slow each other down.
-    if (want && !frames.has(want)) {
-      const f = document.createElement("iframe");
-      f.src = want; f.title = tab.title;
-      f.setAttribute("allow", "clipboard-read; clipboard-write");
-      // Until the frame loads, say what is opening; if it stays blank, point at
-      // reload and "open it in a new tab" (a certificate warning or a dropped
-      // VNC websocket cannot show inside a frame).
-      const cover = el("div", "loading");
-      const msg = el("span"); msg.textContent = `Opening ${tab.title}…`;
-      cover.append(el("span", "spin"), msg);
-      const hint = setTimeout(() => {
-        const a = el("a"); a.href = want; a.target = "_blank"; a.rel = "noopener"; a.textContent = "open it in a new tab";
-        const p = el("p"); p.style.margin = "0";
-        p.append("Still blank? Reload it, or ", a, ".");
-        cover.append(p);
-      }, 10000);
-      f.addEventListener("load", () => { clearTimeout(hint); cover.remove(); });
-      f.cover = cover;
-      $("frames").append(f, cover);
-      frames.set(want, f);
-    }
-    frames.forEach((f, url) => { f.hidden = url !== want; if (f.cover) f.cover.hidden = url !== want; });
-    let empty = $("frames").querySelector(".empty");
-    if (!want) {
-      if (!empty) { empty = el("p", "empty"); $("frames").append(empty); }
-      empty.textContent = "This tab is not set up on this lab.";
-    } else if (empty) { empty.remove(); }
-  }
-
-  $("reloadTab").onclick = () => {
-    const tab = (state.tabsNow || [])[activeTab], f = tab && frames.get(tab.url);
-    if (f) f.src = tab.url;
-  };
-
-  // -- chapters -------------------------------------------------------------
-  function chapterState(c) {
-    if (c.index === state.current) return "current";
-    if (state.completed.includes(c.index)) return "done";
-    return c.index > state.readable ? "ahead" : "done";
-  }
-  const STATE_HINT = {done: "passed", current: "you are here", ahead: "skip to here"};
-
-  function renderChapters() {
-    const segs = $("segments"), menu = $("chapterMenu");
-    segs.replaceChildren(); menu.replaceChildren();
-    state.chapters.forEach((c) => {
-      const s = chapterState(c), label = `Chapter ${c.index + 1}: ${short(c.title)}, ${STATE_HINT[s]}`;
-      const seg = el("button", s); seg.type = "button"; seg.title = label; seg.setAttribute("aria-label", label);
-      if (c.index === viewing) seg.setAttribute("aria-current", "page");
-      if (c.index === viewing && viewing !== state.current) seg.classList.add("viewing");
-      seg.addEventListener("click", () => pickChapter(c.index));
-      segs.append(seg);
-
-      const li = el("li"), b = el("button", s);
-      b.type = "button";
-      if (c.index === viewing) b.classList.add("viewing");
-      b.innerHTML = `<span class="n">${s === "done" ? ICON.check : c.index + 1}</span><span></span>` +
-        `<span class="hint">${s === "ahead" ? ICON.lock : STATE_HINT[s]}</span>`;
-      b.children[1].textContent = short(c.title);
-      b.title = label;
-      b.addEventListener("click", () => { closeMenu(); pickChapter(c.index); });
-      li.append(b); menu.append(li);
-    });
-    const shown = viewing === null ? state.current : viewing;
-    $("where").innerHTML = `Chapter <b>${shown + 1}</b> of ${state.chapters.length}`;
-  }
-
-  function openMenu() {
-    $("chapterMenu").hidden = false; $("chapterMenuBtn").setAttribute("aria-expanded", "true");
-    const first = $("chapterMenu").querySelector("button.viewing") || $("chapterMenu").querySelector("button");
-    if (first) first.focus();
-  }
-  function closeMenu() { $("chapterMenu").hidden = true; $("chapterMenuBtn").setAttribute("aria-expanded", "false"); }
-  $("chapterMenuBtn").onclick = (e) => { e.stopPropagation(); $("chapterMenu").hidden ? openMenu() : closeMenu(); };
-  document.addEventListener("click", (e) => { if (!e.target.closest("#chapterMenu")) closeMenu(); });
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !$("chapterMenu").hidden) { closeMenu(); $("chapterMenuBtn").focus(); }
-  });
-
-  function pickChapter(i) {
-    if (i <= state.readable) { pendingSkip = null; $("confirm").hidden = true; loadChapter(i); return; }
-    askSkip(i);
-  }
-
-  function askSkip(i) {
-    if (state.busy) return;
-    pendingSkip = i;
-    $("confirmTitle").textContent = i === state.current + 1 ? `Skip chapter ${state.current + 1}?`
-                                                             : `Skip to chapter ${i + 1}?`;
-    $("confirmText").textContent = i === state.current + 1
-      ? `Its solution script runs first, so your lab ends up as if you had done it. Then chapter ${i + 1} ` +
-        "opens. This can take a few minutes."
-      : "Every chapter before it is set up and solved first, in order, so your lab ends up as if you had " +
-        "done them. This can take several minutes.";
-    $("confirm").hidden = false;
-    $("confirmYes").focus();
-  }
-
-  async function loadChapter(i) {
-    const view = await api(`/api/chapter/${i}`);
-    viewing = i;
-    const html = window.marked ? restoreVars(marked.parse(view.body)) : view.body;
-    $("assignment").innerHTML = clean(html);
-    decorate($("assignment"));
-    fixContrast($("assignment"));
-    $("assignment").scrollTop = 0;
-    const past = i !== state.current;
-    $("reading").hidden = !past;
-    if (past) {
-      $("readingText").textContent = `You are reading chapter ${i + 1}. Your lab is on chapter ${state.current + 1}.`;
-      $("tocurrent").textContent = `Back to chapter ${state.current + 1}`;
-    }
-    renderChapters();
-    renderActions();
-    setTabs(view.tabs);
-  }
-
-  // -- actions --------------------------------------------------------------
-  function primaryAction() {
-    const ch = state.chapters[state.current], n = state.current + 1;
-    if (!state.entered) {
-      const retry = state.last && state.last.action === "enter" && !state.last.ok;
-      return {label: retry ? "Retry chapter setup"
-        : (state.current === 0 && !state.completed.length ? "Start the lab" : `Start chapter ${n}`), action: "enter"};
-    }
-    if (ch.check) return {label: viewing !== null && viewing !== state.current ? `Check chapter ${n}` : "Check my work",
-      action: "check"};
-    if (state.current === state.chapters.length - 1) return {label: "Finish the track", action: "next"};
-    return {label: "Next chapter", action: "next"};
-  }
-
-  function card(kind, title, detail) {
-    const c = el("div", `card ${kind}`, `<span class="ic">${kind === "good" ? ICON.check : ICON.alert}</span>`);
-    const t = el("span", "t"); t.textContent = title; c.append(t);
-    if (detail) { const d = el("span", "d"); d.textContent = detail; c.append(d); }
-    return c;
-  }
-
-  let lastShown = null;
-  function renderActions() {
-    if (!state) return;
-    const btn = $("primary");
-    const done = state.completed.includes(state.chapters.length - 1);
-    const p = primaryAction();
-    document.body.classList.toggle("is-busy", !!state.busy);
-    if (state.busy) {
-      btn.innerHTML = '<span class="spin"></span>';
-      btn.append(document.createTextNode(`${BUSY[state.busy] || "Working"}, ${state.busy_seconds || 0} s`));
-    } else {
-      btn.textContent = done ? "Track complete" : p.label;
-    }
-    btn.classList.toggle("done", done);
-    btn.disabled = !!state.busy || done;
-    btn.onclick = () => run(p.action);
-    // Skip = solve (and cleanup) this chapter, then open the next one.
-    const skip = $("skip");
-    skip.hidden = done || state.current >= state.chapters.length - 1 || !!state.busy;
-    skip.onclick = () => askSkip(state.current + 1);
-
-    const cur = state.chapters[state.current], status = $("status");
-    status.classList.toggle("busy", !!state.busy);
-    status.replaceChildren();
-    if (state.busy) status.append(el("span", "spin"));
-    status.append(document.createTextNode(state.busy
-      ? `${BUSY[state.busy] || state.busy}, ${state.busy_seconds || 0} s`
-      : (done ? "Track complete" : "")));
-
-    const res = $("result"), last = state.last;
-    if (state.busy) { res.replaceChildren(); lastShown = null; return; }
-    const key = last ? `${last.action}:${last.finished}` : "";
-    if (key === lastShown) return;  // keep the card (and its scroll) between polls
-    lastShown = key;
-    res.replaceChildren();
-    if (!last) return;
-    const check = last.scripts.find((s) => s.kind === "check");
-    if (last.ok) {
-      const passed = state.completed[state.completed.length - 1];
-      let title = last.message || "Ready.", detail = "";
-      if (last.action === "check" || last.action === "next") {
-        if (last.message === "track complete") title = "Track complete. Well done!";
-        else { title = `Chapter ${passed + 1} passed`; detail = `Now on chapter ${state.current + 1}: ${short(cur.title)}.`; }
-      } else if (last.action === "skip") {
-        title = `Skipped to chapter ${state.current + 1}`; detail = short(cur.title);
-      } else if (last.action === "enter") {
-        title = `Chapter ${state.current + 1} is ready`;
-        detail = cur.check ? "Follow the steps, then press Check my work." : "Follow the steps, then move on.";
-      }
-      const good = card("good", title, detail);
-      res.append(good);
-      // Good news is read once; give the space back to the steps.
-      setTimeout(() => good.remove(), 10000);
-    } else {
-      const failed = last.scripts.filter((s) => s.exit !== 0 || s.timed_out).map((s) =>
-        s.timed_out ? `The ${s.kind} script timed out.` : `The ${s.kind} script exited with ${s.exit}.`);
-      const isCheck = last.action === "check" && check && check.exit !== 0;
-      const c = card("bad", isCheck ? "Not passed yet" : "That step did not finish",
-        isCheck ? "Here is what the check found. Fix it in the lab, then check again."
-                : [last.message, ...failed].filter(Boolean).join(" "));
-      if (check && check.output && check.exit !== 0) {
-        const out = el("pre"); out.id = "output"; out.textContent = check.output; c.append(out);
-      }
-      res.append(c);
-    }
-  }
-
-  async function refresh(reloadChapter) {
-    const prevCurrent = state && state.current;
-    state = {...await api("/api/state"), tabsNow: state && state.tabsNow};
-    $("title").textContent = state.title;
-    document.title = state.title;
-    if (reloadChapter || viewing === null || prevCurrent !== state.current) await loadChapter(state.current);
-    renderChapters();
-    renderActions();
-    if (state.busy && !polling) polling = setInterval(poll, 2000);
-  }
-
-  async function poll() {
-    const wasBusy = state.busy;
-    try { await refresh(false); } catch (e) { return; }  // a dropped poll retries on the next tick
-    if (!state.busy) { clearInterval(polling); polling = null; if (wasBusy) await loadChapter(state.current); }
-  }
-
-  function showError(message) {
-    lastShown = null;
-    $("result").replaceChildren(card("bad", "That did not work", message));
-  }
-
-  async function run(action, target) {
-    try {
-      await api(`/api/${action}`, target === undefined ? {} : {target});
-    } catch (e) { showError(e.message); return; }
-    await refresh(false);
-  }
-
-  $("confirmYes").onclick = () => { $("confirm").hidden = true; if (pendingSkip !== null) run("skip", pendingSkip); };
-  $("confirmNo").onclick = () => { pendingSkip = null; $("confirm").hidden = true; };
-  $("tocurrent").onclick = () => loadChapter(state.current);
-  $("assignment").addEventListener("click", (e) => {
-    const b = e.target.closest(".rodeo-tab-button");
-    if (b) { showTab(Number(b.dataset.tab)); setView(true); return; }
-    const c = e.target.closest(".copy");
-    if (c) { const pre = c.closest(".my-3").querySelector("pre"); copyText(pre.innerText.replace(/\n$/, ""), c); return; }
-    const v = e.target.closest(".rodeo-var");
-    if (v) copyText(v.textContent, v);
-  });
-  $("viewText").onclick = () => setView(false);
-  $("viewLab").onclick = () => setView(true);
-  refresh(true).catch((e) => showError(e.message));
-})();
-</script>
+<script src="/static/player.js?v={{ASSET_V}}"></script>
 </body>
 </html>

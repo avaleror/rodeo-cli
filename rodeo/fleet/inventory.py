@@ -60,13 +60,15 @@ class PortalConfig:
     title: str = ""
     code_letters: int = 6  # random letters in RODEO-XXXXXX-YYYYMMDD (4-8)
     guide_url: str = ""  # workshop guide link on every student page (https URL or /path)
-    hostname: str | None = None  # default portal-<ip-dashed>.sslip.io
+    hostname: str | None = None  # default portal-<id>.<player.domain>, else portal-<ip-dashed>.sslip.io
     instance_type: str | None = None
     host: str | None = None  # BYO portal machine (user@ip): skips provisioning
     # Written by `fleet provision` (like hosts[]):
     ssh: str | None = None
     public_ip: str | None = None
     provider_id: str | None = None
+    # Random id for its name under player.domain (labels.portal_id), like a lab's player_id.
+    portal_id: str | None = None
 
     @property
     def fqdn(self) -> str | None:
@@ -120,6 +122,59 @@ def player_id(host: FleetHost) -> str | None:
     """The random lab id from ``labels.player_id`` (written by ``fleet dns``)."""
     pid = host.labels.get(PLAYER_ID_LABEL)
     return pid if pid and _PLAYER_ID_RE.match(pid) else None
+
+
+PORTAL_ID_LABEL = "portal_id"
+
+
+def _new_id(used: set[str]) -> str:
+    import secrets
+    import string
+
+    alphabet = string.ascii_lowercase + string.digits
+    while True:
+        pid = secrets.choice(string.ascii_lowercase) + "".join(secrets.choice(alphabet) for _ in range(7))
+        if pid not in used:
+            return pid
+
+
+def ensure_portal_id(inventory_path: Path, taken: Any = None) -> str:
+    """Give the portal a random ``labels.portal_id`` (kept once written): its name is
+    ``portal-<id>.<player.domain>``, a different one for every portal, never guessable
+    from the workshop name. Several portals can be live at once: ``taken(pid)``
+    (a lookup in the zone) makes a new id pick again when its name already exists."""
+    p = Path(inventory_path).expanduser().resolve()
+    raw = yaml.safe_load(p.read_text()) or {}
+    portal = raw.get("portal")
+    if not isinstance(portal, dict):
+        raise ConfigError("workshop.yaml has no portal: block")
+    labels = dict(portal.get("labels") or {})
+    pid = str(labels.get(PORTAL_ID_LABEL) or "")
+    if not _PLAYER_ID_RE.match(pid):
+        for _ in range(20):
+            pid = _new_id(set())
+            if taken is None or not taken(pid):
+                break
+        else:
+            raise ConfigError("could not find a free portal name in the zone")
+        labels[PORTAL_ID_LABEL] = pid
+        portal["labels"] = labels
+        raw["portal"] = portal
+        p.write_text(yaml.dump(raw, default_flow_style=False, sort_keys=False))
+    return pid
+
+
+def portal_fqdn(inventory: FleetInventory) -> str | None:
+    """The portal's name: ``portal.hostname`` if set; ``portal-<id>.<player.domain>``
+    on a fleet with an owned zone; else ``portal-<ip-dashed>.sslip.io``."""
+    portal = inventory.portal
+    if portal is None:
+        return None
+    if portal.hostname:
+        return portal.hostname
+    if inventory.player is not None and portal.portal_id:
+        return f"portal-{portal.portal_id}.{inventory.player.domain}"
+    return portal.fqdn
 
 
 def ensure_player_ids(inventory_path: Path) -> dict[str, str]:
@@ -210,6 +265,8 @@ def _parse_portal(raw: Any, base: Path, provider: dict[str, Any] | None) -> Port
         ssh=str(raw["ssh"]).strip() if raw.get("ssh") else None,
         public_ip=str(raw["public_ip"]).strip() if raw.get("public_ip") else None,
         provider_id=str(labels.get("provider_id")) if isinstance(labels, dict) and labels.get("provider_id") else None,
+        portal_id=(str(labels.get(PORTAL_ID_LABEL)) if isinstance(labels, dict)
+                   and _PLAYER_ID_RE.match(str(labels.get(PORTAL_ID_LABEL) or "")) else None),
     )
 
 

@@ -40,6 +40,7 @@ from .inventory import (
     PortalConfig,
     clear_portal,
     merge_portal,
+    portal_fqdn,
     runs_player,
     require_provider,
 )
@@ -81,7 +82,8 @@ def _portal_host(inventory: FleetInventory) -> FleetHost:
 
 
 def portal_url(inventory: FleetInventory) -> str:
-    fqdn = require_portal(inventory).fqdn
+    require_portal(inventory)
+    fqdn = portal_fqdn(inventory)
     if not fqdn:
         raise ConfigError("portal has no public IP or hostname yet")
     return f"https://{fqdn}"

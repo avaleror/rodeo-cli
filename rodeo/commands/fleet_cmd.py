@@ -928,7 +928,8 @@ def fleet_deprovision_cmd(
         try:
             from ..fleet import dns as fleet_dns
 
-            removed = fleet_dns.delete(inventory, host_ids=gone_ids if host_ids else None)
+            # With --keep-portal the portal keeps its name: only the labs' go.
+            removed = fleet_dns.delete(inventory, host_ids=gone_ids if host_ids or not portal_removed else None)
             pruned = fleet_dns.prune(inventory.player.domain, default_region=fleet_dns._region(inventory))
             dns_note = f"removed {len(removed)} DNS name(s)"
             if pruned:
@@ -1192,6 +1193,9 @@ def fleet_dns_cmd(inventory_path: Path, do_delete: bool, host_ids: tuple[str, ..
         ensure_player_ids(inventory_path)
         inventory = load_inventory(inventory_path)
         rows = dns.publish(inventory, host_ids=list(host_ids) or None)
+        portal = inventory.portal
+        if not host_ids and portal and portal.enabled and portal.portal_id and portal.public_ip:
+            rows.append(dns.publish_portal(inventory))
     except ConfigError as exc:
         console.print(f"[red]✗  {exc}[/red]")
         raise SystemExit(1)

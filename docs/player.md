@@ -173,7 +173,15 @@ rodeo fleet open-access -f workshop.yaml   # opens 443 only
 rodeo fleet portal publish -f workshop.yaml
 ```
 
-`rodeo fleet destroy` also removes the lab names from the zone.
+The claim portal gets its own name there too, `portal-<id>.<zone>`, with a
+random id per portal (written as `portal.labels.portal_id`, re-picked if the
+name already exists), so several portals can run at once without sharing or
+guessing names. `fleet portal up` writes its record before installing, and
+Caddy on the portal gets the certificate for that one name. An explicit
+`portal.hostname` still wins.
+
+`rodeo fleet destroy` also removes the lab names (and the portal's, unless
+`--keep-portal`) from the zone.
 
 Before a lab is open to students, the operator's own address can already reach
 its player on 443 (like the UI ports), to check it.

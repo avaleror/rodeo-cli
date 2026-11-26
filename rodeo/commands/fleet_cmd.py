@@ -1043,9 +1043,11 @@ def fleet_open_access_cmd(
         raise SystemExit(1)
 
 
+from .fleet_operator_cmd import operator_group  # noqa: E402
 from .fleet_portal_cmd import portal_group  # noqa: E402
 from .fleet_up_cmd import fleet_up_cmd  # noqa: E402
 
+fleet_cmd.add_command(operator_group)
 fleet_cmd.add_command(portal_group)
 fleet_cmd.add_command(fleet_up_cmd)
 

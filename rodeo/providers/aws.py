@@ -25,6 +25,8 @@ from ..ssh_key import _safe_lab as safe_lab
 from . import deadman
 from .base import (
     OWNER_ENV,
+    NON_LAB_ROLES,
+    ROLE_OPERATOR,
     ROLE_PORTAL,
     TAG_DEPLOYMENT,
     TAG_HOST_ID,
@@ -73,6 +75,8 @@ STUDENT_ACCESS_CIDR = "0.0.0.0/0"
 PORTAL_PUBLIC_PORTS = (80, 443)
 PORTAL_SG_RESOURCE = "portal-security-group"
 DEFAULT_PORTAL_INSTANCE_TYPE = "t3.small"
+OPERATOR_SG_RESOURCE = "operator-security-group"
+DEFAULT_OPERATOR_INSTANCE_TYPE = "t3.small"
 
 # Recommended default for performance-first Harvester labs (local NVMe).
 DEFAULT_INSTANCE_TYPE = "i7i.8xlarge"
@@ -236,6 +240,25 @@ def _detect_caller_ip() -> str:
             "provider.security_group_ids explicitly to skip auto-detection"
         )
     return ip
+
+
+ALSO_ALLOW_ENV = "RODEO_ALSO_ALLOW_IP"
+
+
+def _also_allowed() -> set[str]:
+    """One more operator address for the managed SG's operator ports.
+
+    ``rodeo fleet operator run`` sets it to the laptop's public IP, so a run
+    from the operator host (the caller there) keeps the laptop's SSH to the
+    labs. A public IPv4 address only; anything else is ignored."""
+    import ipaddress
+
+    raw = os.environ.get(ALSO_ALLOW_ENV, "").strip()
+    try:
+        ip = ipaddress.IPv4Address(raw)
+    except ValueError:
+        return set()
+    return {f"{ip}/32"} if ip.is_global else set()
 
 
 class AwsHostProvider:
@@ -606,7 +629,7 @@ class AwsHostProvider:
         # The player port (rodeo player, portal.player) is the same: no rule
         # unless open-access opened it, so labs without a player never get one.
         for port in (*MANAGED_SG_PORTS, STUDENT_SSH_PORT, PLAYER_PORT):
-            desired = set() if port in (STUDENT_SSH_PORT, PLAYER_PORT) else {caller_cidr}
+            desired = set() if port in (STUDENT_SSH_PORT, PLAYER_PORT) else {caller_cidr, *_also_allowed()}
             if port in open_ports:
                 desired.add(STUDENT_ACCESS_CIDR)
             current = {
@@ -961,7 +984,7 @@ class AwsHostProvider:
         existing_map: dict[str, dict[str, Any]] = {}
         for inst in mine:
             tags = _tags(inst)
-            if tags.get(TAG_ROLE) == ROLE_PORTAL:
+            if tags.get(TAG_ROLE) in NON_LAB_ROLES:
                 continue
             hid = tags.get(TAG_HOST_ID)
             if hid and hid not in existing_map:
@@ -1064,8 +1087,8 @@ class AwsHostProvider:
         for inst in lab:
             tags = _tags(inst)
             hid = tags.get(TAG_HOST_ID) or inst["InstanceId"]
-            if tags.get(TAG_ROLE) == ROLE_PORTAL:
-                continue  # only deprovision_portal terminates the portal
+            if tags.get(TAG_ROLE) in NON_LAB_ROLES:
+                continue  # the portal and the operator host have their own teardown
             if want is not None and hid not in want:
                 continue
             targets.append((hid, inst["InstanceId"]))
@@ -1106,7 +1129,7 @@ class AwsHostProvider:
             # the lab SG alive, or `fleet deprovision --keep-portal` leaks it.
             still_alive = any(
                 inst["InstanceId"] not in terminated_ids
-                and _tag(inst, TAG_ROLE) != ROLE_PORTAL
+                and _tag(inst, TAG_ROLE) not in NON_LAB_ROLES
                 for inst in remaining
             )
             if not still_alive:
@@ -1567,6 +1590,175 @@ class AwsHostProvider:
                                  identity_file=identity)
             self._wait_ssh(spec, host, timeout=ssh_timeout)
         return host
+
+    # ------------------------------------------------------------------ operator host
+    def _ensure_operator_sg(
+        self, ec2: Any, *, vpc_id: str, workshop: str, identity: dict[str, str],
+    ) -> str:
+        """Own SG for the operator host: SSH from this machine's /32, nothing else.
+
+        It holds the lab keys and an AWS session, so nothing is open to the world."""
+        sg_id = self._find_managed_sg(
+            ec2, vpc_id=vpc_id, identity=identity, resource=OPERATOR_SG_RESOURCE
+        )
+        if sg_id is None:
+            sg_id = self._create_sg(
+                ec2,
+                vpc_id=vpc_id,
+                name=f"rodeo-{safe_lab(workshop)[:200]}-{identity[TAG_DEPLOYMENT]}-operator",
+                description=f"rodeo-managed: {workshop} operator host - SSH from the operator only",
+                tags={
+                    TAG_MANAGED_BY: TAG_MANAGED_BY_VALUE,
+                    TAG_WORKSHOP: workshop,
+                    TAG_RESOURCE: OPERATOR_SG_RESOURCE,
+                    **identity,
+                },
+            )
+        caller = f"{self._caller_ip_fn()}/32"
+        perms = (ec2.describe_security_groups(GroupIds=[sg_id]).get("SecurityGroups") or [{}])[0]
+        stale: dict[int, set[str]] = {}
+        have22: set[str] = set()
+        for perm in perms.get("IpPermissions") or []:
+            cidrs = {str(r["CidrIp"]) for r in perm.get("IpRanges") or [] if r.get("CidrIp")}
+            port = perm.get("FromPort")
+            if perm.get("IpProtocol") == "tcp" and port == 22 and perm.get("ToPort") == 22:
+                have22 |= cidrs
+                stale[22] = cidrs - {caller}
+            elif cidrs and port is not None:
+                stale[int(port)] = cidrs
+        for port, cidrs in stale.items():
+            if cidrs:
+                ec2.revoke_security_group_ingress(GroupId=sg_id, IpPermissions=[{
+                    "IpProtocol": "tcp", "FromPort": port, "ToPort": port,
+                    "IpRanges": [{"CidrIp": c} for c in sorted(cidrs)]}])
+        if caller not in have22:
+            ec2.authorize_security_group_ingress(GroupId=sg_id, IpPermissions=[{
+                "IpProtocol": "tcp", "FromPort": 22, "ToPort": 22,
+                "IpRanges": [{"CidrIp": caller, "Description": "rodeo operator"}]}])
+        return sg_id
+
+    @staticmethod
+    def _operator_of(lab: list[dict[str, Any]]) -> dict[str, Any] | None:
+        for inst in lab:
+            if _tag(inst, TAG_ROLE) == ROLE_OPERATOR and inst["State"]["Name"] not in (
+                    "shutting-down", "terminated"):
+                return inst
+        return None
+
+    def provision_operator(
+        self,
+        config: dict[str, Any],
+        *,
+        workshop: str,
+        ssh_user: str,
+        instance_type: str | None = None,
+        wait_ssh: bool = True,
+        ssh_timeout: float = 600.0,
+    ) -> ProvisionedHost:
+        """Create or reuse the workshop's operator host.
+
+        A small instance in the workshop's subnet that runs fleet commands so
+        they do not depend on the laptop. Like the portal: its own SG, no
+        nested virtualisation, the dead-man switch, and only the lab's public
+        key through cloud-init. The lab's private key reaches it later, with
+        ``rodeo fleet operator push``."""
+        self.validate(config)
+        ec2 = self._client(config)
+        cfg = dict(config)
+        cfg["ami"] = self.resolve_ami(ec2, cfg)
+        lab_key, mine = self._lab_key(ec2, cfg, workshop)
+        tags_identity = self.identity_tags(cfg, lab_key)
+        identity = str(lab_key.private)
+        vpc_id = self._vpc_id_for_subnet(ec2, str(cfg["subnet_id"]))
+        sg_id = self._ensure_operator_sg(ec2, vpc_id=vpc_id, workshop=workshop,
+                                         identity=tags_identity)
+        inst = self._operator_of(mine)
+        action = "reuse"
+        if inst is None:
+            op_cfg = {
+                **cfg,
+                "key_name": lab_key.key_name,
+                "public_key": lab_key.public.read_text(),
+                "instance_type": instance_type or DEFAULT_OPERATOR_INSTANCE_TYPE,
+                "nested_virtualization": False,
+                "volume_size_gib": 30,
+                "security_group_ids": [sg_id],
+                "labels": {},
+            }
+            kwargs = self._run_instances_kwargs(
+                op_cfg, host_id=ROLE_OPERATOR, workshop=workshop, ssh_user=ssh_user,
+                extra_labels={TAG_ROLE: ROLE_OPERATOR},
+                identity=tags_identity,
+            )
+            inst = ec2.run_instances(**kwargs)["Instances"][0]
+            action = "create"
+        elif inst["State"]["Name"] in ("stopped", "stopping"):
+            ec2.start_instances(InstanceIds=[inst["InstanceId"]])
+        inst = self._wait_running(ec2, inst["InstanceId"], timeout=float(cfg.get("wait_timeout") or 600))
+        ip = str(inst.get("PublicIpAddress") or "")
+        if action == "create":
+            forget_host_key(workshop, ip)
+        labels = {"provider": "aws", "provision_action": action}
+        expiry_tag = _tag(inst, deadman.TAG_EXPIRES_AT)
+        if expiry_tag:
+            labels["expires_at"] = expiry_tag
+        host = ProvisionedHost(id=ROLE_OPERATOR, ssh=ip, public_ip=ip, labels=labels,
+                               provider_id=inst["InstanceId"])
+        if wait_ssh:
+            spec = ProvisionSpec(workshop=workshop, host_ids=[ROLE_OPERATOR], ssh_user=ssh_user,
+                                 identity_file=identity)
+            self._wait_ssh(spec, host, timeout=ssh_timeout)
+        return host
+
+    def deprovision_operator(self, config: dict[str, Any], *, workshop: str) -> list[DeprovisionResult]:
+        """Terminate the operator host, then delete its SG once its ENI is gone."""
+        self.validate(config)
+        ec2 = self._client(config)
+        key = load_lab_ssh_key(workshop)
+        if key is None:
+            raise ConfigError(
+                f"lab {workshop!r} has no SSH key on this machine, so rodeo cannot tell "
+                "which operator host is yours. Use `rodeo cloud ls` and `rodeo cloud destroy "
+                "<deployment>`."
+            )
+        lab = self._mine(ec2, workshop, key)
+        tags_identity = self.identity_tags(config, key)
+        inst = self._operator_of(lab)
+        results: list[DeprovisionResult] = []
+        if inst is not None:
+            ec2.terminate_instances(InstanceIds=[inst["InstanceId"]])
+            results.append(DeprovisionResult(id=ROLE_OPERATOR, ok=True,
+                                             provider_id=inst["InstanceId"], detail="terminating"))
+        else:
+            results.append(DeprovisionResult(id=ROLE_OPERATOR, ok=True, detail="no operator host"))
+        try:
+            vpc_id = self._vpc_id_for_subnet(ec2, str(config["subnet_id"]))
+            sg_id = self._find_managed_sg(
+                ec2, vpc_id=vpc_id, identity=tags_identity, resource=OPERATOR_SG_RESOURCE
+            )
+        except Exception:  # noqa: BLE001 - cleanup never fails the teardown
+            sg_id = None
+        if sg_id:
+            detail = "still attached - run `fleet operator down` again in a minute"
+            for _ in range(24):
+                try:
+                    ec2.delete_security_group(GroupId=sg_id)
+                    detail = "deleted"
+                    break
+                except Exception as exc:  # noqa: BLE001
+                    code, _msg = _aws_error_parts(exc)
+                    if code != "DependencyViolation":
+                        detail = f"not deleted: {code or exc.__class__.__name__}"
+                        break
+                    self._sleep(10)
+            results.append(DeprovisionResult(id=OPERATOR_SG_RESOURCE, ok=detail == "deleted",
+                                             provider_id=sg_id, detail=detail))
+        exclude = {inst["InstanceId"]} if inst is not None else set()
+        if not self._mine(ec2, workshop, key, exclude=exclude):
+            key_result = self._delete_lab_key(ec2, workshop)
+            if key_result:
+                results.append(key_result)
+        return results
 
     def deprovision_portal(self, config: dict[str, Any], *, workshop: str) -> list[DeprovisionResult]:
         """Terminate the portal VM, then delete its SG once its ENI is gone."""

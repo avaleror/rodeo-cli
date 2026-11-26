@@ -203,6 +203,38 @@ rodeo fleet preflight -f workshop.yaml --count 30   # plan a bigger event with t
 
 Exit code 1 when a check fails.
 
+## Run it from the cloud: `rodeo fleet operator`
+
+A long `fleet up` should not depend on the laptop: a closed lid, sleep or a
+dropped Wi-Fi stops it. The operator host is a small instance (t3.small) in the
+workshop's subnet that runs the fleet command for you:
+
+```bash
+rodeo fleet operator up    -f workshop.yaml   # create it, install rodeo and the AWS CLI
+rodeo fleet operator login -f workshop.yaml   # aws login --remote on it
+rodeo fleet operator push  -f workshop.yaml   # workshop dir, lab key, known_hosts, event cert
+rodeo fleet operator run   -f workshop.yaml -- up --track-ref <sha> --images-bucket <bucket>
+rodeo fleet operator logs  -f workshop.yaml   # Ctrl-C stops following, not the run
+rodeo fleet operator status -f workshop.yaml  # running, done or failed (exit N)
+rodeo fleet operator pull  -f workshop.yaml   # results back; the local copy is backed up first
+rodeo fleet operator down  -f workshop.yaml
+```
+
+- **AWS session**: `login` runs `aws login --remote` on the host. Open the URL
+  on any device and paste the code back. The CLI renews the session on its own
+  for as long as the console session lasts, so the laptop can sleep. An
+  instance role would do the same without the login, but creating one needs
+  IAM rights a PowerUser does not have.
+- **Security**: the host holds the lab SSH key, the event certificate and an
+  AWS session. Its security group opens SSH to your laptop's IP only, it has
+  the dead-man switch like every rodeo instance, and `down` removes it.
+- **Lab SSH from both**: a run from the operator host keeps your laptop's IP
+  allowed on the labs' SSH, next to the operator's own.
+- **Students are not affected**: they reach the labs from any network through
+  `open-access`, as before.
+- `run` takes the fleet command without `-f`. There is nobody to answer a
+  prompt on the host, so pass `--yes` where a command asks.
+
 ## One command: `rodeo fleet up`
 
 `rodeo fleet up` runs the whole instructor flow below in order: `provision`,

@@ -14,6 +14,8 @@ SINGLE_HOST_ID = "primary"
 # Claim portal VM (F5.2): tagged so lab-only logic can tell it apart from labs.
 TAG_ROLE = "rodeo-role"
 ROLE_PORTAL = "portal"
+ROLE_OPERATOR = "operator"  # rodeo fleet operator: runs fleet commands in the cloud
+NON_LAB_ROLES = frozenset({ROLE_PORTAL, ROLE_OPERATOR})
 
 
 # Issue #175: who launched a resource, and which deployment it belongs to. Many

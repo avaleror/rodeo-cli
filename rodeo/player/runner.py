@@ -347,7 +347,7 @@ class Runner:
                 return data
         # New lab, or the track changed under us: start at chapter 1, not entered.
         return {"chapters": [c.dirname for c in self.chapters], "current": 0,
-                "entered": None, "completed": []}
+                "entered": None, "completed": [], "skipped": []}
 
     def _save_state(self) -> None:
         p = self.state_dir / "state.json"
@@ -367,6 +367,11 @@ class Runner:
     @property
     def completed(self) -> list[int]:
         return list(self._state["completed"])
+
+    @property
+    def skipped(self) -> list[int]:
+        """Chapters completed by a skip (solved for the student), not by a check."""
+        return list(self._state.get("skipped", []))
 
     def chapter(self, index: int | None = None) -> Chapter:
         return self.chapters[self.current if index is None else index]
@@ -536,6 +541,7 @@ class Runner:
                 results.append(cleanup)
             if i not in self._state["completed"]:
                 self._state["completed"].append(i)
+                self._state.setdefault("skipped", []).append(i)
         self._state["current"] = target
         self._state["entered"] = None
         entered = self.enter()

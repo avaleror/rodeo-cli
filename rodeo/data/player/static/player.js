@@ -10,6 +10,7 @@
 
   const ICON = {
     check: '<svg class="i" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></svg>',
+    skipped: '<svg class="i" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
     alert: '<svg class="i" viewBox="0 0 24 24"><path d="M12 7v6M12 17h.01"/></svg>',
     copy: '<svg class="i" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h10"/></svg>',
     lock: '<svg class="i" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>',
@@ -587,9 +588,16 @@
     $("completeTitle").textContent = wholeTrack ? state.title : nameOf(v);
     const did = $("completeDid"); did.replaceChildren();
     // The whole track: every chapter. One chapter: its tasks.
-    const lines = wholeTrack ? state.chapters.map((c) => `${c.index + 1} · ${nameOf(c)}`)
-                             : v.steps.filter((s) => s.kind === "task" && s.name).map((s) => s.name);
-    lines.forEach((line) => { const li = el("li", "", ICON.check); li.append(text("span", "", line)); did.append(li); });
+    // A chapter the student skipped was solved for them: say so, not a tick.
+    const skipped = new Set(state.skipped || []);
+    const lines = wholeTrack ? state.chapters.map((c) => [`${c.index + 1} · ${nameOf(c)}`, skipped.has(c.index)])
+                             : v.steps.filter((s) => s.kind === "task" && s.name).map((s) => [s.name, false]);
+    lines.forEach(([line, skip]) => {
+      const li = el("li", skip ? "skipped" : "", skip ? ICON.skipped : ICON.check);
+      li.append(text("span", "", line));
+      if (skip) li.append(text("span", "tag", "skipped"));
+      did.append(li);
+    });
     if (!did.children.length) { const li = el("li", "", ICON.check); li.append(text("span", "", "Finished the chapter")); did.append(li); }
     const next = state.chapters[state.current];
     const hasNext = !trackDone && next && next.index !== index;
@@ -717,7 +725,12 @@
     if (state.current === state.chapters.length - 1) return {label: "Finish the track", action: "next"};
     return {label: "Next chapter", action: "next"};
   }
+  // Reading a past chapter: its page has no action of its own, and the
+  // current chapter's ("Finish the track") would read as this one's.
+  const readingPast = () => viewing !== null && state && viewing !== state.current;
+
   function mirrorPrimary(btn, p) {
+    btn.hidden = readingPast();
     if (state.busy) {
       btn.innerHTML = '<span class="spin"></span>';
       btn.append(document.createTextNode(`${BUSY[state.busy] || "Working"}, ${state.busy_seconds || 0} s`));
@@ -756,7 +769,7 @@
     document.body.classList.toggle("is-busy", !!state.busy);
     mirrorPrimary($("primary"), p);
     const skip = $("skip");
-    skip.hidden = !p.action || state.current >= state.chapters.length - 1 || !!state.busy;
+    skip.hidden = !p.action || state.current >= state.chapters.length - 1 || !!state.busy || readingPast();
     skip.onclick = () => askSkip(state.current + 1);
 
     const status = $("status");

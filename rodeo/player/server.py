@@ -196,7 +196,8 @@ class Player:
 
     def _position(self) -> dict[str, Any]:
         r = self.runner
-        return {"current": r.current, "entered": r.entered, "completed": r.completed}
+        return {"current": r.current, "entered": r.entered, "completed": r.completed,
+                "skipped": r.skipped}
 
     # -- moves --------------------------------------------------------------
 
@@ -310,6 +311,7 @@ class Player:
             "current": pos["current"],
             "entered": pos["entered"],
             "completed": pos["completed"],
+            "skipped": pos["skipped"],
             "readable": max([pos["current"], *pos["completed"]]),
             "busy": busy,
             "busy_seconds": round(time.time() - started) if busy and started else 0,

@@ -1,4 +1,4 @@
-"""rodeo player: the lab player for one lab (virt rodeo first).
+"""rodeo player: the lab player for one lab (any lab profile with a player.yaml).
 
 Runs on the KVM host:
 
@@ -34,25 +34,46 @@ def serve_cmd(config_path: str) -> None:
 
 
 @player_cmd.command("setup")
-@click.option("--track-ref", required=True, help="suse-virt-rodeo commit SHA to pin (40 hex).")
-@click.option("--track-repo", default=None, help="Track git URL (default: suse-virt-rodeo).")
+@click.option("--track-ref", required=True, help="Track commit SHA to pin (40 hex).")
+@click.option("--profile", "profile_name", default=None,
+              help="Lab profile whose player.yaml says what to show (default: virt-rodeo).")
+@click.option("--track-repo", default=None, help="Track git URL (default: the profile's).")
 @click.option("--base", default=None,
-              help="Player hostname; hv.<base> and rancher.<base> are the UIs. "
+              help="Player hostname; <ui>.<base> are the UIs (hv., rancher. for virt-rodeo). "
                    "Default: <public-ip>.sslip.io from AWS instance metadata.")
 @click.option("--domain", default=None,
-              help="Owned DNS zone: names become <label>, hv-<label>, rancher-<label> under it. "
+              help="Owned DNS zone: names become <label> and <ui>-<label> under it. "
                    "Needs --label and --tls-stdin.")
 @click.option("--label", default=None, help="This lab's random id under --domain.")
 @click.option("--tls-stdin", is_flag=True,
               help="Read the certificate chain and key (PEM) from stdin; stored root-only.")
-@click.option("--harvester-upstream", default="192.168.122.10:443", show_default=True)
-@click.option("--rancher-upstream", default="192.168.122.9:30002", show_default=True)
+@click.option("--upstream", "upstreams", multiple=True, metavar="UI=IP:PORT",
+              help="Point one of the profile's UIs elsewhere, e.g. hv=192.168.122.10:443.")
+@click.option("--harvester-upstream", default=None, hidden=True)  # older form of --upstream hv=...
+@click.option("--rancher-upstream", default=None, hidden=True)    # older form of --upstream rancher=...
 @click.option("--json", "as_json", is_flag=True, help="Print the result as JSON.")
-def setup_cmd(track_ref: str, track_repo: str | None, base: str | None, domain: str | None,
-              label: str | None, tls_stdin: bool, harvester_upstream: str,
-              rancher_upstream: str, as_json: bool) -> None:
+def setup_cmd(track_ref: str, profile_name: str | None, track_repo: str | None, base: str | None,
+              domain: str | None, label: str | None, tls_stdin: bool, upstreams: tuple[str, ...],
+              harvester_upstream: str | None, rancher_upstream: str | None, as_json: bool) -> None:
     """Install the player on this lab host (root, after rodeo up)."""
+    from ..player import profile as p
     from ..player import setup as s
+
+    overrides = {"hv": harvester_upstream, "rancher": rancher_upstream}
+    overrides = {k: v for k, v in overrides.items() if v}
+    for item in upstreams:
+        key, sep, value = item.partition("=")
+        if not sep:
+            raise click.ClickException(f"--upstream wants UI=IP:PORT, got {item!r}")
+        overrides[key.strip()] = value.strip()
+    try:
+        prof = p.load(profile_name)
+        if profile_name and prof.name != profile_name:
+            raise click.ClickException(f"profile {profile_name!r} has no player.yaml")
+        if overrides:
+            prof = prof.with_upstreams(overrides)
+    except p.ProfileError as exc:
+        raise click.ClickException(str(exc)) from exc
 
     if os.geteuid() != 0:
         raise click.ClickException("run with sudo: setup installs users, units and binaries")
@@ -70,8 +91,7 @@ def setup_cmd(track_ref: str, track_repo: str | None, base: str | None, domain: 
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
     opts = s.SetupOptions(
-        base=base, track_ref=track_ref, track_repo=track_repo or s.TRACK_REPO,
-        harvester_upstream=harvester_upstream, rancher_upstream=rancher_upstream,
+        base=base, track_ref=track_ref, profile=prof, track_repo=track_repo or "",
         sandbox_id=base.split(".", 1)[0], domain=(domain or "").strip(".").lower(), tls_pem=tls_pem,
     )
     try:
@@ -84,8 +104,8 @@ def setup_cmd(track_ref: str, track_repo: str | None, base: str | None, domain: 
     click.echo(f"Lab link:   {result['access_url']}")
     click.echo("            (give it only to this lab's student; it signs a browser in for 24 h)")
     click.echo(f"Player:     {result['player']}")
-    click.echo(f"Harvester:  {result['harvester']}")
-    click.echo(f"Rancher:    {result['rancher']}")
+    for ui in result["uis"]:
+        click.echo(f"{ui['label']}: {ui['url']}")
     click.echo(f"Chapters:   {result['chapters']}")
     click.echo(f"Variables:  {', '.join(result['variables_seeded']) or 'none found in secrets.yaml'}")
     if result["ca_root"]:

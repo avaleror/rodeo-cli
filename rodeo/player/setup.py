@@ -7,24 +7,27 @@ What it installs, all new names, nothing the existing lab uses:
 
 - the ``student`` user, through the claim portal's own setup script and its
   proofs (no sudo, no privileged groups, cannot read the rodeo key), plus a
-  copy of the Harvester kubeconfig the chapters tell the student to use;
+  copy of the lab kubeconfig the chapters tell the student to use;
 - the track at a pinned commit, root-only (it holds the solve scripts);
 - ``rodeo-player`` (this package, loopback), ``rodeo-player-ttyd`` (the
   browser terminal, as ``student``, loopback) and ``rodeo-player-caddy`` (the
-  only public listener, three names);
-- the lab's Rancher and Harvester passwords as track variables.
+  only public listener: the player's name plus one per product UI);
+- the lab's passwords as track variables.
 
-Access: Caddy runs forward_auth to the player on all three names, so only a
+What the lab shows (title, track, product UIs, kubeconfig, variables) comes
+from the lab profile's ``player.yaml`` (rodeo.player.profile).
+
+Access: Caddy runs forward_auth to the player on every name, so only a
 browser that opened the lab link gets in (see rodeo.player.auth). The link's
 token also ends up in that browser's history and in Caddy's journal: treat it
 like the lab password.
 
 Names and TLS, two modes:
 
-- test mode (no ``--domain``): ``<ip-dashed>.sslip.io``, ``hv.`` and
-  ``rancher.`` under it, Caddy's own CA (``tls internal``);
-- owned zone (``--domain`` + ``--label``): flat names ``<label>``,
-  ``hv-<label>``, ``rancher-<label>`` under the zone, and the event's
+- test mode (no ``--domain``): ``<ip-dashed>.sslip.io``, ``<ui key>.`` under
+  it (``hv.``, ``rancher.``), Caddy's own CA (``tls internal``);
+- owned zone (``--domain`` + ``--label``): flat names ``<label>`` and
+  ``<ui key>-<label>`` under the zone, and the event's
   wildcard certificate pushed by the laptop (``--tls-stdin``). It lands in
   /etc/rodeo-player/tls, root-only 0600; Caddy reads it through systemd
   ``LoadCredential``, so neither the Caddy user nor the student can open the
@@ -46,11 +49,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..fleet.portal import CADDY_SHA512, CADDY_VERSION, STUDENT_SETUP_SCRIPT, STUDENT_USER
+from .profile import PlayerProfile
+from .profile import load as load_profile
 
 TTYD_VERSION = "1.7.7"
 TTYD_SHA256 = "8a217c968aba172e0dbf3f34447218dc015bc4d5e59bf51db2f2cd12b7be4f55"  # ttyd.x86_64
 
-TRACK_REPO = "https://github.com/SUSE-Technical-Marketing/suse-virt-rodeo.git"
 ETC = Path("/etc/rodeo-player")
 VAR = Path("/var/lib/rodeo-player")
 TRACK_DIR = VAR / "track"
@@ -66,34 +70,39 @@ CA_ROOT = CADDY_DATA / "caddy" / "pki" / "authorities" / "local" / "root.crt"
 # rodeo up writes the kubeconfig to the invoking user's ~/.rodeo: /root on a
 # single-host lab, the SSH user's home (ec2-user) on a fleet host. The player
 # keeps its own root-only copy, so it does not depend on which one it was.
-PLAYER_KUBECONFIG = VAR / "harvester-kubeconfig"
-LAB_VM_KEY = "/opt/suse-virt-workshop/lab-vm-key"   # from the profile's 65-student-kit.sh
+PLAYER_KUBECONFIG = VAR / "lab-kubeconfig"
 STUDENT_GROUP = "rodeo-student"
 PLAYER_PORT = 8680
 TTYD_PORT = 7681
 
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _NAME_RE = re.compile(r"^(?=.{1,200}$)[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$")
-_UPSTREAM_RE = re.compile(r"^\d{1,3}(\.\d{1,3}){3}:\d{1,5}$")
 
 
 @dataclass(frozen=True)
 class SetupOptions:
     base: str                       # e.g. 13-61-184-227.sslip.io
-    track_ref: str                  # full commit SHA of suse-virt-rodeo
-    track_repo: str = TRACK_REPO
-    harvester_upstream: str = "192.168.122.10:443"
-    rancher_upstream: str = "192.168.122.9:30002"
-    title: str = "SUSE Virtualization Rodeo"
+    track_ref: str                  # full commit SHA of the track
+    profile: PlayerProfile = field(default_factory=load_profile)
+    track_repo: str = ""            # empty = the profile's
     sandbox_id: str = ""
     # Owned-zone mode (flat names under one wildcard certificate):
-    # base = <label>.<domain>, UIs = hv-<label>.<domain>, rancher-<label>.<domain>.
-    # Empty = the sslip.io test mode, UIs = hv.<base>, rancher.<base>.
+    # base = <label>.<domain>, UIs = <key>-<label>.<domain> (hv-, rancher-).
+    # Empty = the sslip.io test mode, UIs = <key>.<base>.
     domain: str = ""
     # Certificate chain + key (PEM). Empty = Caddy's own CA. Never in repr.
     tls_pem: str = field(default="", repr=False)
 
+    @property
+    def repo(self) -> str:
+        return self.track_repo or self.profile.track_repo
+
+    @property
+    def title(self) -> str:
+        return self.profile.title
+
     def validate(self) -> None:
+        self.profile.validate()
         for name in self.names.values():
             if not _NAME_RE.match(name):
                 raise ValueError(f"not a DNS name: {name!r}")
@@ -103,19 +112,17 @@ class SetupOptions:
             split_pem(self.tls_pem)
         if not _SHA_RE.match(self.track_ref):
             raise ValueError("--track-ref must be a full 40-character commit SHA (pin the track)")
-        if not self.track_repo.startswith("https://"):
+        if not self.repo.startswith("https://"):
             raise ValueError("--track-repo must be an https:// git URL")
-        for up in (self.harvester_upstream, self.rancher_upstream):
-            if not _UPSTREAM_RE.match(up):
-                raise ValueError(f"upstream must be IP:port, got {up!r}")
 
     @property
     def names(self) -> dict[str, str]:
-        if self.domain:
-            label = self.base.removesuffix(f".{self.domain}")
-            return {"player": self.base, "harvester": f"hv-{label}.{self.domain}",
-                    "rancher": f"rancher-{label}.{self.domain}"}
-        return {"player": self.base, "harvester": f"hv.{self.base}", "rancher": f"rancher.{self.base}"}
+        """``player`` and one name per product UI, keyed by the UI's key."""
+        out = {"player": self.base}
+        label = self.base.removesuffix(f".{self.domain}")
+        for ui in self.profile.uis:
+            out[ui.key] = f"{ui.key}-{label}.{self.domain}" if self.domain else f"{ui.key}.{self.base}"
+        return out
 
     @property
     def tls_directive(self) -> str:
@@ -207,6 +214,7 @@ def caddyfile(opts: SetupOptions) -> str:
 }}
 """
 
+    uis = "\n".join(upstream(n[ui.key], ui.upstream) for ui in opts.profile.uis)
     # disable_redirects: Caddy must not bind :80. The lab already serves
     # something there (nginx), and tls internal needs no HTTP challenge.
     return f"""{{
@@ -229,8 +237,7 @@ def caddyfile(opts: SetupOptions) -> str:
 \t}}
 }}
 
-{upstream(n['harvester'], opts.harvester_upstream)}
-{upstream(n['rancher'], opts.rancher_upstream)}"""
+{uis}"""
 
 
 def player_config(opts: SetupOptions) -> dict:
@@ -242,17 +249,17 @@ def player_config(opts: SetupOptions) -> dict:
         "listen": "127.0.0.1",
         "port": PLAYER_PORT,
         "sandbox_id": opts.sandbox_id,
-        "tab_urls": {"8443": f"https://{n['harvester']}/", "30002": f"https://{n['rancher']}/"},
+        "tab_urls": {str(ui.tab_port): f"https://{n[ui.key]}/" for ui in opts.profile.uis},
         "terminal_url": "/terminal/",
         "auth_file": str(AUTH_FILE),
-        "kubeconfig": str(PLAYER_KUBECONFIG),
-        "hosts": {"player": n["player"], "hv": n["harvester"], "rancher": n["rancher"]},
+        "kubeconfig": str(PLAYER_KUBECONFIG) if opts.profile.kubeconfig else "",
+        "hosts": dict(n),
     }
 
 
 def player_unit(rodeo_bin: str) -> str:
     return f"""[Unit]
-Description=rodeo virt rodeo player (loopback)
+Description=rodeo lab player (loopback)
 After=network-online.target
 
 [Service]
@@ -286,7 +293,7 @@ WantedBy=multi-user.target
 
 def ttyd_unit() -> str:
     return f"""[Unit]
-Description=rodeo virt rodeo player terminal (ttyd as {STUDENT_USER}, loopback)
+Description=rodeo lab player terminal (ttyd as {STUDENT_USER}, loopback)
 After=network-online.target
 
 [Service]
@@ -308,7 +315,7 @@ def caddy_unit(opts: SetupOptions | None = None) -> str:
     creds = (f"LoadCredential=cert:{TLS_CERT}\nLoadCredential=key:{TLS_KEY}\n"
              if opts is not None and opts.tls_pem else "")
     return f"""[Unit]
-Description=rodeo virt rodeo player TLS (Caddy)
+Description=rodeo lab player TLS (Caddy)
 After=network-online.target rodeo-player.service
 
 [Service]
@@ -349,9 +356,33 @@ def install_script(opts: SetupOptions, rodeo_bin: str) -> str:
         f"cat > {q(path)} <<'RODEO_PLAYER_EOF'\n{body}RODEO_PLAYER_EOF" for path, body in files.items()
     )
     home = f"/home/{STUDENT_USER}"
+    kube = opts.profile.kubeconfig
+    kube_check = (f'[ -s {PLAYER_KUBECONFIG} ] || {{ echo "{PLAYER_KUBECONFIG} missing: has rodeo up finished?" >&2; exit 2; }}'
+                  if kube else "")
+    kube_copy = f"""
+# The kubeconfig the chapters tell the student to use (~/.rodeo/{kube}).
+install -d -m 750 -o {STUDENT_USER} -g {STUDENT_GROUP} {home}/.rodeo
+install -m 640 -o root -g {STUDENT_GROUP} {PLAYER_KUBECONFIG} {home}/.rodeo/{kube}
+runuser -u {STUDENT_USER} -- test -r {home}/.rodeo/{kube}""" if kube else ""
+    lab_key = opts.profile.student_ssh_key
+    key_copy = f"""
+# The lab VM key (the profile's student_ssh_key) as the student's default SSH
+# key, so the assignment's bare `ssh sles@<vm>` works, as it does with the
+# Instruqt sandbox key. Never root's key: refuse if they were ever the same.
+LABKEY={q(lab_key)}
+if [ -f "$LABKEY" ]; then
+  if [ -f /root/.ssh/id_ed25519 ] && cmp -s "$LABKEY" /root/.ssh/id_ed25519; then
+    echo "the lab VM key is root's key; refusing to give it to {STUDENT_USER}" >&2; exit 3
+  fi
+  SG=$(id -gn {STUDENT_USER})
+  install -d -m 700 -o {STUDENT_USER} -g "$SG" {home}/.ssh
+  install -m 600 -o {STUDENT_USER} -g "$SG" "$LABKEY" {home}/.ssh/id_ed25519
+  install -m 644 -o {STUDENT_USER} -g "$SG" "$LABKEY.pub" {home}/.ssh/id_ed25519.pub
+fi
+""" if lab_key else ""
     return f"""set -euo pipefail
 [ "$(uname -m)" = x86_64 ] || {{ echo "player setup supports x86_64 hosts only" >&2; exit 2; }}
-[ -s {PLAYER_KUBECONFIG} ] || {{ echo "{PLAYER_KUBECONFIG} missing: has rodeo up finished?" >&2; exit 2; }}
+{kube_check}
 WORK=$(mktemp -d); trap 'rm -rf "$WORK"' EXIT
 id rodeo-player-caddy >/dev/null 2>&1 || useradd --system --user-group --home-dir {CADDY_DATA} --shell /usr/sbin/nologin rodeo-player-caddy
 install -d -m 700 {VAR} {STATE_DIR}
@@ -372,33 +403,15 @@ fi
 # The track at a pinned commit, root-only: it holds the solve scripts.
 command -v git >/dev/null || zypper -n -q in git-core
 if [ ! -d {TRACK_DIR}/.git ]; then git init -q {TRACK_DIR}; fi
-git -C {TRACK_DIR} fetch -q --depth 1 {q(opts.track_repo)} {q(opts.track_ref)}
+git -C {TRACK_DIR} fetch -q --depth 1 {q(opts.repo)} {q(opts.track_ref)}
 git -C {TRACK_DIR} -c advice.detachedHead=false checkout -q --force FETCH_HEAD
 [ "$(git -C {TRACK_DIR} rev-parse HEAD)" = {q(opts.track_ref)} ]
 chmod 700 {TRACK_DIR}
 
-# The kubeconfig chapter 1 tells the student to use (~/.rodeo/harvester-kubeconfig).
 getent group {STUDENT_GROUP} >/dev/null || groupadd --system {STUDENT_GROUP}
-usermod -a -G {STUDENT_GROUP} {STUDENT_USER}
-install -d -m 750 -o {STUDENT_USER} -g {STUDENT_GROUP} {home}/.rodeo
-install -m 640 -o root -g {STUDENT_GROUP} {PLAYER_KUBECONFIG} {home}/.rodeo/harvester-kubeconfig
-runuser -u {STUDENT_USER} -- test -r {home}/.rodeo/harvester-kubeconfig
+usermod -a -G {STUDENT_GROUP} {STUDENT_USER}{kube_copy}
 if runuser -u {STUDENT_USER} -- test -r /root/.ssh/id_ed25519; then echo "student can read the rodeo key" >&2; exit 3; fi
-
-# The lab VM key (65-student-kit.sh) as the student's default SSH key, so the
-# assignment's bare `ssh sles@<vm>` works, as it does with the Instruqt
-# sandbox key. Never root's key: refuse if they were ever the same.
-LABKEY={LAB_VM_KEY}
-if [ -f "$LABKEY" ]; then
-  if [ -f /root/.ssh/id_ed25519 ] && cmp -s "$LABKEY" /root/.ssh/id_ed25519; then
-    echo "the lab VM key is root's key; refusing to give it to {STUDENT_USER}" >&2; exit 3
-  fi
-  SG=$(id -gn {STUDENT_USER})
-  install -d -m 700 -o {STUDENT_USER} -g "$SG" {home}/.ssh
-  install -m 600 -o {STUDENT_USER} -g "$SG" "$LABKEY" {home}/.ssh/id_ed25519
-  install -m 644 -o {STUDENT_USER} -g "$SG" "$LABKEY.pub" {home}/.ssh/id_ed25519.pub
-fi
-
+{key_copy}
 {writes}
 chmod 644 {CONFIG} {CADDYFILE}
 export CREDENTIALS_DIRECTORY={TLS_DIR}   # what systemd gives the unit (owned-zone TLS)
@@ -439,18 +452,17 @@ def _secrets_files(sudo_user: str | None) -> list[Path]:
     return paths
 
 
-def lab_passwords(sudo_user: str | None) -> dict[str, str]:
-    """Rancher and Harvester admin passwords from the host's secrets.yaml."""
+def lab_passwords(sudo_user: str | None, variables: dict[str, str] | None = None) -> dict[str, str]:
+    """Track variables from the host's secrets.yaml (*variables*: TRACK_VAR -> secrets key;
+    default: the virt-rodeo profile's)."""
     import yaml
 
+    if variables is None:
+        variables = load_profile().variables
     for path in _secrets_files(sudo_user):
         if path.is_file():
             data = yaml.safe_load(path.read_text()) or {}
-            out = {}
-            if data.get("rancher_admin_password"):
-                out["RANCHER_PASSWORD"] = str(data["rancher_admin_password"])
-            if data.get("harvester_admin_password"):
-                out["HARVESTER_PASSWORD"] = str(data["harvester_admin_password"])
+            out = {var: str(data[key]) for var, key in variables.items() if data.get(key)}
             if out:
                 return out
     return {}
@@ -458,7 +470,8 @@ def lab_passwords(sudo_user: str | None) -> dict[str, str]:
 
 # ---------------------------------------------------------------- run
 
-def lab_kubeconfig(sudo_user: str | None, root_home: Path = Path("/root")) -> Path:
+def lab_kubeconfig(sudo_user: str | None, root_home: Path = Path("/root"),
+                   name: str = "harvester-kubeconfig") -> Path:
     """The kubeconfig rodeo up wrote: the invoking user's ~/.rodeo, then root's."""
     import pwd
 
@@ -470,14 +483,13 @@ def lab_kubeconfig(sudo_user: str | None, root_home: Path = Path("/root")) -> Pa
             pass
     homes.append(root_home)
     for home in homes:
-        path = home / ".rodeo" / "harvester-kubeconfig"
+        path = home / ".rodeo" / name
         try:
             if path.is_file() and path.stat().st_size > 0:
                 return path
         except OSError:  # e.g. an unreadable home: not this one
             continue
-    raise RuntimeError("no ~/.rodeo/harvester-kubeconfig for the invoking user or root: "
-                       "has rodeo up finished?")
+    raise RuntimeError(f"no ~/.rodeo/{name} for the invoking user or root: has rodeo up finished?")
 
 
 def install_kubeconfig(src: Path, dest: Path = PLAYER_KUBECONFIG) -> None:
@@ -491,10 +503,10 @@ def install_kubeconfig(src: Path, dest: Path = PLAYER_KUBECONFIG) -> None:
     dest.chmod(0o600)
 
 
-ROOT_KUBECONFIG = Path("/root/.rodeo/harvester-kubeconfig")
+ROOT_RODEO = Path("/root/.rodeo")
 
 
-def ensure_root_kubeconfig(src: Path, dest: Path = ROOT_KUBECONFIG) -> bool:
+def ensure_root_kubeconfig(src: Path, dest: Path) -> bool:
     """Copy the lab kubeconfig to root's ~/.rodeo if root has none. True if copied."""
     if dest.exists() or src == dest:
         return False
@@ -528,12 +540,14 @@ def run_setup(opts: SetupOptions, *, sudo_user: str | None) -> dict:
 
     # Before the units start: the player refuses to run without it.
     VAR.mkdir(mode=0o700, parents=True, exist_ok=True)
-    src = lab_kubeconfig(sudo_user)
-    install_kubeconfig(src)
-    # The track's own scripts hard-code /root/.rodeo/harvester-kubeconfig (the
-    # Instruqt layout). On a fleet host rodeo up wrote it for the SSH user, so
-    # give root the same file. Never overwrite one root already has.
-    ensure_root_kubeconfig(src)
+    kube = opts.profile.kubeconfig
+    if kube:
+        src = lab_kubeconfig(sudo_user, name=kube)
+        install_kubeconfig(src)
+        # Track scripts hard-code /root/.rodeo/<kubeconfig> (the Instruqt
+        # layout). On a fleet host rodeo up wrote it for the SSH user, so give
+        # root the same file. Never overwrite one root already has.
+        ensure_root_kubeconfig(src, ROOT_RODEO / kube)
     if opts.tls_pem:
         install_tls(opts.tls_pem)
     access = auth.ensure(AUTH_FILE)
@@ -550,15 +564,15 @@ def run_setup(opts: SetupOptions, *, sudo_user: str | None) -> dict:
 
     runner = Runner(TRACK_DIR, STATE_DIR, sandbox_id=opts.sandbox_id)
     seeded = []
-    for key, value in lab_passwords(sudo_user).items():
+    for key, value in lab_passwords(sudo_user, opts.profile.variables).items():
         runner.set_variable(key, value)
         seeded.append(key)
     n = opts.names
     return {
         "access_url": f"https://{n['player']}/enter?t={access.token}",
         "player": f"https://{n['player']}/",
-        "harvester": f"https://{n['harvester']}/",
-        "rancher": f"https://{n['rancher']}/",
+        "profile": opts.profile.name,
+        "uis": [{"key": ui.key, "label": ui.label, "url": f"https://{n[ui.key]}/"} for ui in opts.profile.uis],
         "ca_root": "" if opts.tls_pem else str(CA_ROOT),
         "variables_seeded": seeded,
         "chapters": len(runner.chapters),

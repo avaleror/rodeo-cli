@@ -9,6 +9,7 @@ import pytest
 from click.testing import CliRunner
 
 from rodeo.player import setup as s
+from rodeo.player.profile import PlayerProfile, PlayerUI
 
 SHA = "77022fd" + "0" * 33
 
@@ -27,7 +28,8 @@ def test_sslip_base():
     ({"track_ref": "main"}, "40-character"),
     ({"base": "Bad_Name"}, "DNS name"),
     ({"track_repo": "git@github.com:x/y.git"}, "https"),
-    ({"harvester_upstream": "evil.example:443"}, "IP:port"),
+    ({"profile": PlayerProfile("x", "X", "https://example.com/t.git",
+                               (PlayerUI("hv", "HV", "evil.example:443", 8443),))}, "IP:port"),
 ])
 def test_validation_refuses_bad_input(kw, match):
     base = {"base": "13-61-184-227.sslip.io", "track_ref": SHA}
@@ -157,7 +159,7 @@ def _zone_opts(**kw) -> s.SetupOptions:
 def test_owned_zone_uses_flat_names_and_the_pushed_cert():
     opts = _zone_opts()
     opts.validate()
-    assert opts.names == {"player": "k7q2mx9a.rodeocli.com", "harvester": "hv-k7q2mx9a.rodeocli.com",
+    assert opts.names == {"player": "k7q2mx9a.rodeocli.com", "hv": "hv-k7q2mx9a.rodeocli.com",
                           "rancher": "rancher-k7q2mx9a.rodeocli.com"}
     text = s.caddyfile(opts)
     assert "tls internal" not in text

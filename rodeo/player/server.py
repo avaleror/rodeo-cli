@@ -330,7 +330,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _ui_label(self, host: str) -> str | None:
         hosts = self.player.cfg.hosts
-        return next((k for k in ("hv", "rancher") if hosts.get(k) == host), None)
+        return next((k for k, name in hosts.items() if k != "player" and name == host), None)
 
     def _access(self, path: str, query: dict[str, list[str]]) -> bool:
         """Handle the login routes. True when the request was answered here."""
@@ -350,7 +350,7 @@ class Handler(BaseHTTPRequestHandler):
                 logins.failed(source)
                 self._locked()
             return True
-        if path == "/_auth":  # Caddy's forward_auth for every request, all three names
+        if path == "/_auth":  # Caddy's forward_auth for every request, every name
             if auth.cookie_ok(host, self._cookie()):
                 self._send(200, b"ok", "text/plain")
             elif self._ui_label(host):
@@ -361,7 +361,7 @@ class Handler(BaseHTTPRequestHandler):
             return True
         if path == "/auth/hop" and host == player:
             to = (query.get("to") or [""])[0]
-            target = hosts.get(to) if to in ("hv", "rancher") else None
+            target = hosts.get(to) if to and to != "player" else None
             if not target or not auth.cookie_ok(player, self._cookie()):
                 self._locked()
                 return True

@@ -2,7 +2,8 @@
 
 Laptop side only. Lab hosts and the portal never get AWS credentials.
 
-Per lab, three A records to the lab's public address::
+Per lab, A records to the lab's public address: the player plus one name
+per product UI in the lab profile's player.yaml (virt-rodeo shown)::
 
     <id>.<zone>          the player
     hv-<id>.<zone>       Harvester
@@ -36,9 +37,16 @@ class DnsRow:
     detail: str = ""
 
 
-def lab_names(domain: str, pid: str) -> dict[str, str]:
-    return {"player": f"{pid}.{domain}", "harvester": f"hv-{pid}.{domain}",
-            "rancher": f"rancher-{pid}.{domain}"}
+def lab_names(domain: str, pid: str, keys: tuple[str, ...] = ("hv", "rancher")) -> dict[str, str]:
+    """Same names as ``rodeo player setup --domain`` (rodeo.player.setup.SetupOptions.names)."""
+    return {"player": f"{pid}.{domain}", **{k: f"{k}-{pid}.{domain}" for k in keys}}
+
+
+def ui_keys(inventory: FleetInventory) -> tuple[str, ...]:
+    """The UI keys of this workshop's lab profile (its player.yaml)."""
+    from ..player.profile import load
+
+    return tuple(u.key for u in load(inventory.lab_profile).uis)
 
 
 def _txt_value(fleet: str, host_id: str) -> str:
@@ -106,6 +114,7 @@ def plan_publish(inventory: FleetInventory, records: list[dict[str, Any]],
         by_name.setdefault(_fqdn(rr["Name"]), []).append(rr)
     changes: list[dict[str, Any]] = []
     rows: list[DnsRow] = []
+    keys = ui_keys(inventory)
     for host in hosts:
         pid = player_id(host)
         if not pid:
@@ -114,7 +123,7 @@ def plan_publish(inventory: FleetInventory, records: list[dict[str, Any]],
         if not host.public_ip:
             rows.append(DnsRow(host.id, False, detail="no public_ip in workshop.yaml"))
             continue
-        names = list(lab_names(domain, pid).values())
+        names = list(lab_names(domain, pid, keys).values())
         refused = ""
         for name in names:
             for rr in by_name.get(_fqdn(name), []):

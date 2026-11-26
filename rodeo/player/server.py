@@ -34,11 +34,18 @@ STATIC_DIR = Path(__file__).resolve().parents[1] / "data" / "player" / "static"
 LOOPBACK = {"127.0.0.1", "::1", "localhost"}
 CSRF_HEADER = "X-Rodeo-Player"
 _TAG = re.compile(r"<[^>]+>")
-LOCKED_PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Lab locked</title>
-<style>body{font:16px/1.5 system-ui,sans-serif;max-width:34rem;margin:4rem auto;padding:0 1rem}</style></head>
-<body><h1>This lab needs its link</h1><p>Open the lab link you were given (from the workshop portal or your
-instructor). It signs this browser in for 24 hours.</p></body></html>"""
-_STATIC_TYPES = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8"}
+LOCKED_PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Lab locked</title>
+<style>:root{--bg:#eef2f0;--card:#fff;--ink:#0c322c;--ink2:#4b635c;--go:#30ba78;color-scheme:light dark}
+@media (prefers-color-scheme:dark){:root{--bg:#061815;--card:#0b2420;--ink:#e3efea;--ink2:#9ab5ac}}
+body{margin:0;min-height:100vh;display:grid;place-items:center;padding:16px;box-sizing:border-box;
+background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:30rem;background:var(--card);border-radius:12px;padding:28px 32px;border-top:4px solid var(--go)}
+h1{font-size:22px;margin:0 0 8px}p{margin:0;color:var(--ink2)}</style></head>
+<body><main><h1>This lab needs its link</h1><p>Open the lab link you were given, from the workshop portal or
+your instructor. It signs this browser in for 24 hours.</p></main></body></html>"""
+_STATIC_TYPES = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
+                 ".woff2": "font/woff2", ".txt": "text/plain; charset=utf-8"}
 
 
 @dataclass

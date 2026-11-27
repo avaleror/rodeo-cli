@@ -95,6 +95,7 @@ ALLOWED: dict[tuple[str, str], str] = {
     ("fleet/diagnose.py", "n"): "int() and clamped",
     ("fleet/diagnose.py", "sess"): "shlex.quote just above",
     ("fleet/deploy.py", "sess"): "shlex.quote just above",
+    ("fleet/deploy.py", "key"): "shlex.quote just above",
     ("fleet/deploy.py", "lab"): "shlex.quote just above",
     ("fleet/deploy.py", "target"): "shlex.quote just above",
     ("fleet/deploy.py", "profile_bits"): "built from shlex.quote",

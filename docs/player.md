@@ -286,9 +286,12 @@ Shipped profiles: `virt-rodeo` (track), `virt-workshop`, `virt-workshop-2n`,
   makes that key early and adds it to the edge3/edge4 EIB definitions, so the
   nodes the student builds later trust it too.
 - **student_rodeo_commands**: rodeo subcommands the guide runs on the host as
-  root (suse-edge: `pull-edge-image`, `eject-iso`). The player writes a sudoers
-  rule for exactly those; `rodeo` escalates on its own, so the guide's commands
-  stay the same. Needs `student_libvirt: true`, which is already root-equivalent.
+  root (suse-edge: `pull-edge-image`, `eject-iso`). The student's `rodeo` is a
+  shim that sends exactly those subcommands through `sudo -n` to a root wrapper
+  (`/usr/local/libexec/rodeo-player/rodeo-root`), which clears `SUDO_USER` so
+  rodeo uses root's `~/.rodeo` (trust, secrets), not the student's. The guide's
+  commands stay the same. Needs `student_libvirt: true`, which is already
+  root-equivalent.
 - **credentials**: what the student signs in with, resolved on the lab into a
   root-only file the player serves behind the lab login. `??<key>` only.
 - **variables**: passwords the track shows, read from the host's

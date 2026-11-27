@@ -333,16 +333,21 @@ def test_student_rodeo_commands_get_a_sudoers_rule_for_exactly_those():
                           profile=_vm_profile(student_libvirt=True,
                                               student_rodeo_commands=["pull-edge-image", "eject-iso"]))
     script = s.install_script(opts, "/usr/local/bin/rodeo")
-    assert ("student ALL=(root) NOPASSWD: /usr/local/bin/rodeo pull-edge-image, "
-            "/usr/local/bin/rodeo pull-edge-image *, /usr/local/bin/rodeo eject-iso, "
-            "/usr/local/bin/rodeo eject-iso *") in script
+    root = s.STUDENT_ROOT_RODEO
+    assert (f"student ALL=(root) NOPASSWD: {root} pull-edge-image, {root} pull-edge-image *, "
+            f"{root} eject-iso, {root} eject-iso *") in script
+    # Root's own ~/.rodeo (trust, secrets), not the student's: SUDO_USER is cleared.
+    assert "unset SUDO_USER SUDO_UID SUDO_GID SUDO_COMMAND\nexec /usr/local/bin/rodeo" in script
+    assert 'case "$1" in pull-edge-image|eject-iso) ;; *)' in script
+    assert f'case "$1" in pull-edge-image|eject-iso) exec sudo -n {root} "$@" ;; esac' in script
+    assert f"PATH={s.STUDENT_RODEO_DIR}/bin:$PATH" in script
     assert 'visudo -cqf "$WORK/sudoers"' in script
     assert f"install -m 440 \"$WORK/sudoers\" {s.STUDENT_SUDOERS}" in script
     assert "NoNewPrivileges=no" in s.ttyd_unit(opts)
     # sudo applies the last matching rule: ours must sort after the student's deny.
     assert sorted(["zz-rodeo-student", s.STUDENT_SUDOERS.name])[-1] == s.STUDENT_SUDOERS.name
     plain = s.SetupOptions(base="13-61-184-227.sslip.io", track_ref="", profile=_vm_profile())
-    assert f"rm -f {s.STUDENT_SUDOERS}" in s.install_script(plain, "/usr/local/bin/rodeo")
+    assert f"rm -f {s.STUDENT_SUDOERS} {s.STUDENT_PROFILE_D}" in s.install_script(plain, "/usr/local/bin/rodeo")
     assert "NOPASSWD" not in s.install_script(plain, "/usr/local/bin/rodeo")
     assert "NoNewPrivileges=yes" in s.ttyd_unit(plain)
 

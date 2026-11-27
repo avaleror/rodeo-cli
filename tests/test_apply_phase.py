@@ -69,3 +69,21 @@ def test_apply_is_noop_without_manifest_dirs(tmp_path, monkeypatch):
 
     assert called["n"] == 0
     assert runner._last_rc == 0
+
+
+def test_apply_skips_the_labs_own_folders(tmp_path, monkeypatch):
+    # A rancher lab dir has story/chapters.yaml: it is lab content, not a host.
+    (tmp_path / "story").mkdir()
+    (tmp_path / "story" / "chapters.yaml").write_text("chapters: []\n")
+    (tmp_path / "custom").mkdir()
+    (tmp_path / "custom" / "x.yaml").write_text("a: 1\n")
+    called = {"n": 0}
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: called.__setitem__("n", called["n"] + 1))
+
+    cfg = {"type": "rancher", "name": "t", "config_dir": str(tmp_path), "vms": {"rancher": {}}}
+    runner = DeployRunner(cfg, tmp_path)
+    events = _drain(runner.stream_apply())
+
+    assert called["n"] == 0
+    assert not any(isinstance(e, LogLine) and "story" in e.line for e in events)
+    assert runner._last_rc == 0

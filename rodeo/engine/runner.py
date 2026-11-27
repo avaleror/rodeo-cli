@@ -160,6 +160,11 @@ _HARVESTER_ISO_CHECKSUMS = {
 
 # ---------- Runner ----------
 
+# Folders rodeo itself keeps in a lab dir; stream_apply never treats them as
+# per-host manifest dirs (unless a VM really has that name).
+_LAB_DIRS = frozenset({"story", "custom", "certs", "manifests", "checks", "guide", "scripts"})
+
+
 class DeployRunner:
     """Run the deploy pipeline and stream typed events.
 
@@ -590,6 +595,11 @@ class DeployRunner:
 
         for host_dir in sorted(d for d in manifests_root.iterdir() if d.is_dir()):
             hostname = host_dir.name
+            # The lab dir also holds rodeo's own folders (story/chapters.yaml,
+            # custom/, certs/, ...). They are not hosts: without this, a rancher
+            # lab tried `ssh story` and printed "Could not resolve hostname story".
+            if hostname in _LAB_DIRS and hostname not in vm_cfg:
+                continue
             files = sorted(
                 f for f in host_dir.iterdir()
                 if f.is_file() and f.suffix in (".yaml", ".yml")

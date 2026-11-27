@@ -18,8 +18,8 @@ Engine 階段、Ansible role 與 nested 網路都沒有改變。
 | **F2.1** | 已推出 | 失敗鑑識 | `rodeo fleet diagnose` |
 | **F4a** | 已推出 | AWS 取得主機，每台主機有 6 小時自動銷毀計時（dead-man switch） | `rodeo fleet provision`, `deprovision` |
 | **F4b** | 已推出（單機） | GCP | `rodeo up --target gcp` |
-| **F4c–d** | 規劃中 | Vultr BM → Hetzner | （規劃中） |
-| **F5** | 已推出（AWS，v0.18） | 學員領取入口（claim portal）：每位學員輸入 workshop 代碼，就能拿到自己的 lab；學員 SSH 走獨立的 port | `rodeo fleet open-access`, `rodeo fleet portal ...`（[設計](claim-portal.md)、[計畫](claim-portal-plan.md)） |
+| **F4c–d** | 尚未實作 | 先 Vultr，再 Hetzner。registry 兩者都會拒絕 | `provider.type` 為 `vultr` 或 `hetzner` 時會拋出 `ConfigError` |
+| **F5** | 已推出（AWS，v0.18） | 學員領取入口（claim portal）：每位學員輸入 workshop 代碼，就能拿到自己的 lab，並透過 player 進入 | `rodeo fleet open-access`, `rodeo fleet portal ...`（[設計](claim-portal.md)、[計畫](claim-portal-plan.md)） |
 
 主機前置條件（在每台 lab 機器上執行 [`install.sh`](https://github.com/avaleror/rodeo-cli/blob/main/install.sh) 之後）：
 
@@ -62,9 +62,9 @@ Fleet **尚未**推出的部分。完整檢查清單：[ROADMAP Phase I](https:/
 | 順序 | Provider | 狀態 |
 |-------|----------|--------|
 | **F4a** | **AWS**（`boto3`，`[aws]` extra：請見[安裝](install.md)） | **MVP 已推出**：依 tag 建立／重用、等待 running + SSH、寫入 `hosts[]`、只終止有 tag 的執行個體 |
-| **F4b** | **GCP**（`google-cloud-compute`） | 單機已推出；fleet 的領取入口與 open-access 仍只支援 AWS |
-| **F4c** | **Vultr Bare Metal**（`[vultr]` extra） | 規劃中：排在 GCP 之後；用實體機跑 nested KVM |
-| **F4d** | **Hetzner Cloud**（`hcloud`） | 規劃中：排在 Vultr 之後；nested KVM 必須先驗證 |
+| **F4b** | **GCP**（`google-cloud-compute`） | 單機已實機測試。`fleet provision` 為每個主機 id 建立一台 VM。領取入口與 `open-access` 仍只支援 AWS |
+| **F4c** | **Vultr Bare Metal** | 尚未實作。`get_provider("vultr")` 會拒絕 |
+| **F4d** | **Hetzner Cloud** | 尚未實作。`get_provider("hetzner")` 會拒絕 |
 
 **不在範圍內：** Equinix Metal（服務已終止）。跨主機共用 secret。
 為多主機修改 nested 階段 engine。
@@ -826,7 +826,9 @@ provider:
 provider，每個主機 id 建立一台 VM，但領取入口與 `fleet open-access` 目前
 只支援 AWS。
 
-#### `provider.type: vultr`（F4c） { #providertype-vultr-f4c }
+#### `provider.type: vultr`（F4c，尚未實作） { #providertype-vultr-f4c-not-implemented }
+
+僅為欄位記錄。`fleet provision` 會拒絕 `type: vultr`。
 
 ```yaml
 provider:
@@ -844,7 +846,9 @@ provider:
 或 OpenAPI client，而不是簡易的社群 wrapper。nested KVM **只能用 bare metal**，
 不能用 Vultr Cloud VPS。依所選 profile 的 RAM 篩選 plan（`rodeo doctor`）。
 
-#### `provider.type: hetzner`（F4d） { #providertype-hetzner-f4d }
+#### `provider.type: hetzner`（F4d，尚未實作） { #providertype-hetzner-f4d-not-implemented }
+
+僅為欄位記錄。`fleet provision` 會拒絕 `type: hetzner`。
 
 ```yaml
 provider:

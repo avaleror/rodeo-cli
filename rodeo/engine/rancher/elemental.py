@@ -25,6 +25,16 @@ class ElementalMixin:
         script = (
             "set -euo pipefail\n"
             f"export KUBECONFIG={self.KUBECONFIG}\n"
+            # Rancher validates every new namespace through rancher-webhook, which
+            # it deploys a little after /ping answers. Installing before the
+            # webhook has endpoints fails with "no endpoints available for
+            # service rancher-webhook" (seen live on a fast EC2 fleet host).
+            "for i in $(seq 1 60); do\n"
+            "  if kubectl -n cattle-system get endpoints rancher-webhook"
+            " -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null | grep -q .; then break; fi\n"
+            "  if [ \"$i\" = 60 ]; then echo 'rancher-webhook has no endpoints after 5 min' >&2; exit 1; fi\n"
+            "  sleep 5\n"
+            "done\n"
             f"helm upgrade --install elemental-operator-crds"
             f" oci://registry.suse.com/rancher/elemental-operator-crds-chart"
             f" --version {q(self.elemental_crds_version)}"
@@ -38,9 +48,9 @@ class ElementalMixin:
         )
         yield LogLine(
             f"Installing Elemental Operator {self.elemental_op_version} "
-            "(CRDs + Operator, up to 8 min)..."
+            "(waits for rancher-webhook, then CRDs + Operator, up to 13 min)..."
         )
-        r = self._ssh_script(script, timeout=540)
+        r = self._ssh_script(script, timeout=840)
         for line in (r.stdout + r.stderr).splitlines():
             if line.strip():
                 yield LogLine(f"  {line}")

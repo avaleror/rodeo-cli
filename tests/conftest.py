@@ -32,6 +32,8 @@ def isolated_env(tmp_path, monkeypatch):
     for var in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_PROFILE"):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "true")
+    # The player's student VM key (made by suse-edge's content phase) stays here.
+    monkeypatch.setattr("rodeo.player.setup.STUDENT_VM_KEY", tmp_path / "student-vm-key")
     return tmp_path
 
 

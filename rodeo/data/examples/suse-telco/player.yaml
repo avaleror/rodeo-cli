@@ -1,0 +1,22 @@
+# What the student UI (rodeo player) shows for this lab (see rodeo/player/profile.py).
+# No track: the exercises live on the workshop guide, opened from the player.
+title: SUSE Telco Cloud Workshop
+guide_url: https://avaleror.github.io/suse-telco-workshop/
+
+uis:
+  - key: rancher
+    label: SUSE Rancher Prime
+    upstream: 192.168.122.10:30002
+    tab_port: 30002
+# No site console tab: it only exists after lab 06, and the lobby waits for
+# every tab to answer. The guide opens it on each site's NodePort 30080.
+
+credentials:
+  - label: SUSE Rancher Prime
+    user: admin
+    password: ??rancher_admin_password
+
+# The guide runs virsh on the host and works on mgmt as root: the student's
+# own key to mgmt, never root's host key.
+student_libvirt: true
+student_vm_access: [192.168.122.10]

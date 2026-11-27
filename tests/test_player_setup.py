@@ -328,9 +328,39 @@ def test_student_vm_access_gives_the_student_its_own_key_never_roots():
     assert "install -m 600 -o student" in script and "StrictHostKeyChecking accept-new" in script
 
 
+def test_student_rodeo_commands_get_a_sudoers_rule_for_exactly_those():
+    opts = s.SetupOptions(base="13-61-184-227.sslip.io", track_ref="",
+                          profile=_vm_profile(student_libvirt=True,
+                                              student_rodeo_commands=["pull-edge-image", "eject-iso"]))
+    script = s.install_script(opts, "/usr/local/bin/rodeo")
+    root = s.STUDENT_ROOT_RODEO
+    assert (f"student ALL=(root) NOPASSWD: {root} pull-edge-image, {root} pull-edge-image *, "
+            f"{root} eject-iso, {root} eject-iso *") in script
+    # Root's own ~/.rodeo (trust, secrets), not the student's: SUDO_USER is cleared.
+    assert "unset SUDO_UID SUDO_GID SUDO_COMMAND\nunset SUDO_USER\nexec /usr/local/bin/rodeo" in script
+    # On a fleet host the lab's ~/.rodeo is the deploy user's (ec2-user), never the student's.
+    fleet = s.install_script(opts, "/usr/local/bin/rodeo", "ec2-user")
+    assert "unset SUDO_UID SUDO_GID SUDO_COMMAND\nexport SUDO_USER=ec2-user\nexec /usr/local/bin/rodeo" in fleet
+    assert "export SUDO_USER=student" not in s.install_script(opts, "/usr/local/bin/rodeo", "student")
+    assert 'case "$1" in pull-edge-image|eject-iso) ;; *)' in script
+    assert f'case "$1" in pull-edge-image|eject-iso) exec sudo -n {root} "$@" ;; esac' in script
+    assert f"PATH={s.STUDENT_RODEO_DIR}/bin:$PATH" in script
+    assert 'visudo -cqf "$WORK/sudoers"' in script
+    assert f"install -m 440 \"$WORK/sudoers\" {s.STUDENT_SUDOERS}" in script
+    assert "NoNewPrivileges=no" in s.ttyd_unit(opts)
+    # sudo applies the last matching rule: ours must sort after the student's deny.
+    assert sorted(["zz-rodeo-student", s.STUDENT_SUDOERS.name])[-1] == s.STUDENT_SUDOERS.name
+    plain = s.SetupOptions(base="13-61-184-227.sslip.io", track_ref="", profile=_vm_profile())
+    assert f"rm -f {s.STUDENT_SUDOERS} {s.STUDENT_PROFILE_D}" in s.install_script(plain, "/usr/local/bin/rodeo")
+    assert "NOPASSWD" not in s.install_script(plain, "/usr/local/bin/rodeo")
+    assert "NoNewPrivileges=yes" in s.ttyd_unit(plain)
+
+
 @pytest.mark.parametrize("extra,match", [
     ({"student_vm_access": ["vm1"]}, "lab VM addresses"),
     ({"student_vm_access": ["192.168.122.9"], "student_ssh_key": "/opt/k"}, "pick one"),
+    ({"student_rodeo_commands": ["eject-iso"]}, "needs student_libvirt"),
+    ({"student_libvirt": True, "student_rodeo_commands": ["eject-iso; id"]}, "rodeo subcommands"),
 ])
 def test_student_access_fields_are_validated(extra, match):
     from rodeo.player.profile import ProfileError

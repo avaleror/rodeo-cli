@@ -226,6 +226,21 @@ def test_aws_suse_edge_overlay_does_not_run_on_baremetal_or_other_types():
     assert "rancher_tls" not in out2
 
 
+def test_suse_edge_fleet_host_on_ec2_gets_the_aws_edge_overlay():
+    """Fleet hosts deploy as baremetal on EC2, behind the same managed SG."""
+    cfg = {
+        "type": "suse-edge",
+        "deployment_target": "baremetal",
+        "rancher_tls": {"source": "letsEncrypt"},
+        "resources": {"rancher": {"memory_mib": 8192, "disk_gb": 60}},
+    }
+    out, notes = apply_host_context(cfg, host_facts={"on_ec2": True})
+    assert out["rancher_tls"]["source"] == "secret"
+    assert out["resources"]["rancher"]["memory_mib"] == 12288
+    assert out["storage"]["backend"] == "nvme"
+    assert any("rancher_tls.source" in n for n in notes)
+
+
 def test_deploy_host_facts_mark_ec2_so_fleet_hosts_use_nvme(monkeypatch):
     """Fleet hosts deploy as baremetal on EC2: the NVMe backend must still apply."""
     from rodeo.commands import up_cmd

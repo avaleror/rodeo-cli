@@ -66,6 +66,12 @@ STATE_DIR = VAR / "state"
 CONFIG = ETC / "config.json"
 AUTH_FILE = VAR / "auth.json"     # root-only: lab secret + access token
 CREDENTIALS_FILE = VAR / "credentials.json"  # root-only: what the student logs in with
+# Sorts after the student's blanket deny (zz-rodeo-student, fleet/portal.py):
+# sudo applies the last matching rule.
+STUDENT_SUDOERS = Path("/etc/sudoers.d/zzz-rodeo-player-student")
+STUDENT_RODEO_DIR = Path("/usr/local/libexec/rodeo-player")   # the student's rodeo shim + root wrapper
+STUDENT_ROOT_RODEO = STUDENT_RODEO_DIR / "rodeo-root"
+STUDENT_PROFILE_D = Path("/etc/profile.d/rodeo-player-student.sh")
 STUDENT_VM_KEY = VAR / "student-vm-key"      # root-only copy of the student's key to the lab VMs
 CADDYFILE = ETC / "Caddyfile"
 CADDY_DATA = Path("/var/lib/rodeo-player-caddy")
@@ -315,6 +321,8 @@ WantedBy=multi-user.target
 def ttyd_unit(opts: SetupOptions | None = None) -> str:
     libvirt = (" LIBVIRT_DEFAULT_URI=qemu:///system"
                if opts is not None and opts.profile.student_libvirt else "")
+    # sudo needs new privileges: only labs whose guide runs rodeo commands as root.
+    nnp = "no" if opts is not None and opts.profile.student_rodeo_commands else "yes"
     return f"""[Unit]
 Description=rodeo lab player terminal (ttyd as {STUDENT_USER}, loopback)
 After=network-online.target
@@ -325,7 +333,7 @@ WorkingDirectory=~
 Environment=HOME=/home/{STUDENT_USER} TERM=xterm-256color{libvirt}
 ExecStart=/usr/local/bin/ttyd --interface lo --port {TTYD_PORT} --base-path /terminal --writable -t disableLeaveAlert=true /bin/bash -l
 Restart=on-failure
-NoNewPrivileges=yes
+NoNewPrivileges={nnp}
 
 [Install]
 WantedBy=multi-user.target
@@ -362,7 +370,7 @@ WantedBy=multi-user.target
 """
 
 
-def install_script(opts: SetupOptions, rodeo_bin: str) -> str:
+def install_script(opts: SetupOptions, rodeo_bin: str, lab_user: str | None = None) -> str:
     """Idempotent root script: binaries, track, kubeconfig, files, units."""
     q = shlex.quote
     caddy_url = (f"https://github.com/caddyserver/caddy/releases/download/v{CADDY_VERSION}/"
@@ -422,6 +430,47 @@ usermod -a -G libvirt {STUDENT_USER}
 runuser -u {STUDENT_USER} -- env LIBVIRT_DEFAULT_URI=qemu:///system virsh list --all >/dev/null \\
   || {{ echo "{STUDENT_USER} cannot use virsh on qemu:///system" >&2; exit 4; }}
 """ if opts.profile.student_libvirt else ""
+    commands = opts.profile.student_rodeo_commands
+    allowed = "|".join(commands)
+    # rodeo keeps the lab's state (trust, secrets) under the invoking user's
+    # home: ec2-user on a fleet host, root on a host set up as root. The
+    # wrapper runs as that same user's rodeo, never as the student's.
+    owner = lab_user if lab_user and lab_user != STUDENT_USER and re.match(r"^[a-z_][a-z0-9_-]{0,31}$", lab_user) else ""
+    as_owner = f"export SUDO_USER={owner}" if owner else "unset SUDO_USER"
+    rule = ", ".join(f"{STUDENT_ROOT_RODEO} {c}, {STUDENT_ROOT_RODEO} {c} *" for c in commands)
+    sudo = f"""
+# The rodeo commands the guide runs on the host, as root, and nothing else.
+# sudo would set SUDO_USER to the student, and rodeo would then look for the
+# lab's state, trust and secrets in the student's home: the root wrapper points
+# it at the user who deployed the lab, and the student's own `rodeo` sends
+# exactly these subcommands to it.
+install -d -m 755 {STUDENT_RODEO_DIR} {STUDENT_RODEO_DIR}/bin
+cat > "$WORK/rodeo-root" <<'__ROOT__'
+#!/bin/sh
+case "$1" in {allowed}) ;; *) echo "rodeo $1 is not allowed here" >&2; exit 2 ;; esac
+unset SUDO_UID SUDO_GID SUDO_COMMAND
+{as_owner}
+exec {rodeo_bin} "$@"
+__ROOT__
+cat > "$WORK/rodeo" <<'__SHIM__'
+#!/bin/sh
+case "$1" in {allowed}) exec sudo -n {STUDENT_ROOT_RODEO} "$@" ;; esac
+exec {rodeo_bin} "$@"
+__SHIM__
+install -m 755 "$WORK/rodeo-root" {STUDENT_ROOT_RODEO}
+install -m 755 "$WORK/rodeo" {STUDENT_RODEO_DIR}/bin/rodeo
+cat > {STUDENT_PROFILE_D} <<'__PROFILE__'
+if [ "$(id -un)" = {STUDENT_USER} ]; then PATH={STUDENT_RODEO_DIR}/bin:$PATH; fi
+__PROFILE__
+chmod 644 {STUDENT_PROFILE_D}
+cat > "$WORK/sudoers" <<'__SUDOERS__'
+{STUDENT_USER} ALL=(root) NOPASSWD: {rule}
+__SUDOERS__
+visudo -cqf "$WORK/sudoers"
+install -m 440 "$WORK/sudoers" {STUDENT_SUDOERS}
+""" if commands else f"""rm -f {STUDENT_SUDOERS} {STUDENT_PROFILE_D}
+rm -rf {STUDENT_RODEO_DIR}
+"""
     vm_ips = " ".join(q(ip) for ip in opts.profile.student_vm_access)
     vm_access = f"""
 # The student's own key to the lab VMs (root there), never root's key to this
@@ -476,7 +525,7 @@ fi
 getent group {STUDENT_GROUP} >/dev/null || groupadd --system {STUDENT_GROUP}
 usermod -a -G {STUDENT_GROUP} {STUDENT_USER}{kube_copy}
 if runuser -u {STUDENT_USER} -- test -r /root/.ssh/id_ed25519; then echo "student can read the rodeo key" >&2; exit 3; fi
-{key_copy}{libvirt}{vm_access}
+{key_copy}{libvirt}{vm_access}{sudo}
 {writes}
 chmod 644 {CONFIG} {CADDYFILE}
 export CREDENTIALS_DIRECTORY={TLS_DIR}   # what systemd gives the unit (owned-zone TLS)
@@ -648,7 +697,7 @@ def run_setup(opts: SetupOptions, *, sudo_user: str | None) -> dict:
                              capture_output=True, timeout=300)
     if student.returncode != 0 or "STUDENT_OK" not in student.stdout:
         raise RuntimeError(f"student user setup failed: {student.stderr.strip()[-400:]}")
-    res = subprocess.run(["bash", "-c", install_script(opts, rodeo_bin)], text=True,
+    res = subprocess.run(["bash", "-c", install_script(opts, rodeo_bin, sudo_user)], text=True,
                          capture_output=True, timeout=900)
     if res.returncode != 0 or "PLAYER_UP" not in res.stdout:
         raise RuntimeError(f"player install failed (exit {res.returncode}): {res.stderr.strip()[-800:]}")

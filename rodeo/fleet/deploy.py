@@ -30,6 +30,30 @@ def tmux_session_name(workshop: str, host_id: str) -> str:
     return cleaned[:80] or "rodeo-fleet"
 
 
+def student_key_script(inventory: FleetInventory) -> str:
+    """Make the lab player's student VM key before ``rodeo up`` when the
+    profile gives the student their own key on lab VMs. Images built during
+    the deploy (suse-edge edge3/edge4) then trust it; ``rodeo player setup``
+    reuses the same file later. Empty when the fleet runs no player."""
+    from ..player.profile import ProfileError, load
+    from ..player.setup import STUDENT_USER, STUDENT_VM_KEY
+    from .inventory import runs_player
+
+    if not inventory.lab_profile or not runs_player(inventory):
+        return ""
+    try:
+        if not load(inventory.lab_profile).student_vm_access:
+            return ""
+    except ProfileError:
+        return ""
+    key = shlex.quote(str(STUDENT_VM_KEY))
+    return (
+        f"sudo install -d -m 700 {shlex.quote(str(STUDENT_VM_KEY.parent))} && "
+        f"{{ sudo test -f {key} || sudo ssh-keygen -q -t ed25519 -N '' "
+        f"-C {STUDENT_USER}@lab-vms -f {key}; }} && "
+    )
+
+
 def start_up_script(inventory: FleetInventory, session: str) -> str:
     """Detached tmux running ``rodeo up --yes --no-tmux`` in lab.dir."""
     lab = shlex.quote(inventory.lab_dir)
@@ -51,7 +75,7 @@ def start_up_script(inventory: FleetInventory, session: str) -> str:
     exit_file = '"$HOME/.rodeo/logs/fleet-up.exit"'
     inner = (
         f"set -o pipefail; rm -f {exit_file}; "
-        f"cd {lab} && {trust_bits}rodeo up --yes --no-tmux {profile_bits}"
+        f"cd {lab} && {student_key_script(inventory)}{trust_bits}rodeo up --yes --no-tmux {profile_bits}"
         f"--dir {lab} --target {target} "
         f"2>&1 | tee -a \"$HOME/.rodeo/logs/fleet-up.log\"; "
         f"rc=$?; echo $rc > {exit_file}; echo FLEET_UP_EXIT:$rc"

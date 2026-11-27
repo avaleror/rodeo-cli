@@ -282,9 +282,11 @@ Shipped profiles: `virt-rodeo` (track), `virt-workshop`, `virt-workshop-2n`,
   `qemu:///system` as the default (root-equivalent on that host, so `fleet
   player-setup` refuses it without `per_host_ssh_key: true`). The second makes
   the student their own key and installs it for root on the listed lab VMs,
-  using root's key, which the student never sees. suse-edge's content phase
-  makes that key early and adds it to the edge3/edge4 EIB definitions, so the
-  nodes the student builds later trust it too.
+  using root's key, which the student never sees. A fleet that runs the player
+  makes that key before `rodeo up`, and suse-edge's content phase adds it to the
+  edge3/edge4 EIB definitions, so the nodes the student builds later trust it
+  too. Deploys without the player (self-serve labs, builder images) have no such key
+  and their definitions keep only the host key.
 - **student_rodeo_commands**: rodeo subcommands the guide runs on the host as
   root (suse-edge: `pull-edge-image`, `eject-iso`). The student's `rodeo` is a
   shim that sends exactly those subcommands through `sudo -n` to a root wrapper

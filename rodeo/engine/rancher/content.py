@@ -7,7 +7,7 @@ touching the cluster orchestration code.
 from __future__ import annotations
 
 import json
-import subprocess
+import re
 from pathlib import Path
 from typing import Generator
 
@@ -15,27 +15,27 @@ from ...shellquote import heredoc, q
 from ..runner import DeployEvent, LogLine
 
 
-def student_vm_pubkey(key: Path | None = None) -> str:
-    """Public half of the student's own key to the lab VMs, made here if missing.
+# Type and key only: the comment is dropped and anything odd stops the match.
+_PUBKEY_RE = re.compile(r"^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp256) [A-Za-z0-9+/=]+")
 
-    ``rodeo player setup`` reuses the same file (``STUDENT_VM_KEY``) as the
-    student's default SSH key, so nodes the student builds later in the lab
-    (edge3/edge4 from EIB) trust it without root's host key. Root-only on the
-    host. Empty when it cannot be made (not root, no ssh-keygen): the nodes then
-    trust the host key only, as before.
+
+def student_vm_pubkey(key: Path | None = None) -> str:
+    """Public half of the lab player's student key to the lab VMs, or ''.
+
+    Read only, never made here. A fleet that runs the player makes the key
+    before ``rodeo up`` (``rodeo.fleet.deploy.student_key_script``), so the
+    edge3/edge4 definitions the student builds later trust it; ``rodeo player
+    setup`` reuses the same file. Any other deploy (Instruqt, self-serve labs)
+    has no such key and keeps the definitions as they were.
     """
     if key is None:
         from ...player.setup import STUDENT_VM_KEY as key
-    pub = Path(f"{key}.pub")
     try:
-        if not key.exists():
-            key.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-            subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "student@lab-vms",
-                            "-f", str(key)], check=True, capture_output=True, timeout=30)
-        key.chmod(0o600)
-        return pub.read_text().strip()
-    except (OSError, subprocess.SubprocessError):
+        first = Path(f"{key}.pub").read_text().strip().splitlines()[0]
+    except (OSError, IndexError):
         return ""
+    m = _PUBKEY_RE.match(first)
+    return m.group(0) if m else ""
 
 
 class LabContentMixin:

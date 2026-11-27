@@ -38,6 +38,11 @@ def fleet_provision(
         extra_labels={str(k): str(v) for k, v in dict(extra).items()},
         wait_ssh=wait_ssh,
     )
+    if inventory.lab_profile and not provider_cfg.get("lab_profile"):
+        # instance_tier resolves through the lab profile's catalog entry; without
+        # it the AWS provider falls back to harvester sizing (m8id.8xlarge for a
+        # rancher lab that needs m8id.4xlarge).
+        provider_cfg = {**provider_cfg, "lab_profile": inventory.lab_profile}
     provider = get_provider(str(provider_cfg["type"]))
     hosts = provider.provision(spec, provider_cfg)
     if write_inventory:

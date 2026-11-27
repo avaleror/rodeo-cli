@@ -337,7 +337,11 @@ def test_student_rodeo_commands_get_a_sudoers_rule_for_exactly_those():
     assert (f"student ALL=(root) NOPASSWD: {root} pull-edge-image, {root} pull-edge-image *, "
             f"{root} eject-iso, {root} eject-iso *") in script
     # Root's own ~/.rodeo (trust, secrets), not the student's: SUDO_USER is cleared.
-    assert "unset SUDO_USER SUDO_UID SUDO_GID SUDO_COMMAND\nexec /usr/local/bin/rodeo" in script
+    assert "unset SUDO_UID SUDO_GID SUDO_COMMAND\nunset SUDO_USER\nexec /usr/local/bin/rodeo" in script
+    # On a fleet host the lab's ~/.rodeo is the deploy user's (ec2-user), never the student's.
+    fleet = s.install_script(opts, "/usr/local/bin/rodeo", "ec2-user")
+    assert "unset SUDO_UID SUDO_GID SUDO_COMMAND\nexport SUDO_USER=ec2-user\nexec /usr/local/bin/rodeo" in fleet
+    assert "export SUDO_USER=student" not in s.install_script(opts, "/usr/local/bin/rodeo", "student")
     assert 'case "$1" in pull-edge-image|eject-iso) ;; *)' in script
     assert f'case "$1" in pull-edge-image|eject-iso) exec sudo -n {root} "$@" ;; esac' in script
     assert f"PATH={s.STUDENT_RODEO_DIR}/bin:$PATH" in script

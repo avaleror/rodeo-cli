@@ -288,8 +288,9 @@ Shipped profiles: `virt-rodeo` (track), `virt-workshop`, `virt-workshop-2n`,
 - **student_rodeo_commands**: rodeo subcommands the guide runs on the host as
   root (suse-edge: `pull-edge-image`, `eject-iso`). The student's `rodeo` is a
   shim that sends exactly those subcommands through `sudo -n` to a root wrapper
-  (`/usr/local/libexec/rodeo-player/rodeo-root`), which clears `SUDO_USER` so
-  rodeo uses root's `~/.rodeo` (trust, secrets), not the student's. The guide's
+  (`/usr/local/libexec/rodeo-player/rodeo-root`), which points `SUDO_USER` at
+  the user who deployed the lab, so rodeo uses that `~/.rodeo` (trust,
+  secrets), never the student's. The guide's
   commands stay the same. Needs `student_libvirt: true`, which is already
   root-equivalent.
 - **credentials**: what the student signs in with, resolved on the lab into a

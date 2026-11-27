@@ -370,7 +370,7 @@ WantedBy=multi-user.target
 """
 
 
-def install_script(opts: SetupOptions, rodeo_bin: str) -> str:
+def install_script(opts: SetupOptions, rodeo_bin: str, lab_user: str | None = None) -> str:
     """Idempotent root script: binaries, track, kubeconfig, files, units."""
     q = shlex.quote
     caddy_url = (f"https://github.com/caddyserver/caddy/releases/download/v{CADDY_VERSION}/"
@@ -432,17 +432,24 @@ runuser -u {STUDENT_USER} -- env LIBVIRT_DEFAULT_URI=qemu:///system virsh list -
 """ if opts.profile.student_libvirt else ""
     commands = opts.profile.student_rodeo_commands
     allowed = "|".join(commands)
+    # rodeo keeps the lab's state (trust, secrets) under the invoking user's
+    # home: ec2-user on a fleet host, root on a host set up as root. The
+    # wrapper runs as that same user's rodeo, never as the student's.
+    owner = lab_user if lab_user and lab_user != STUDENT_USER and re.match(r"^[a-z_][a-z0-9_-]{0,31}$", lab_user) else ""
+    as_owner = f"export SUDO_USER={owner}" if owner else "unset SUDO_USER"
     rule = ", ".join(f"{STUDENT_ROOT_RODEO} {c}, {STUDENT_ROOT_RODEO} {c} *" for c in commands)
     sudo = f"""
 # The rodeo commands the guide runs on the host, as root, and nothing else.
-# sudo would leave SUDO_USER set, and rodeo then keeps its state, trust and
-# secrets under the student's home: the root wrapper clears it, and the
-# student's own `rodeo` sends exactly these subcommands to it.
+# sudo would set SUDO_USER to the student, and rodeo would then look for the
+# lab's state, trust and secrets in the student's home: the root wrapper points
+# it at the user who deployed the lab, and the student's own `rodeo` sends
+# exactly these subcommands to it.
 install -d -m 755 {STUDENT_RODEO_DIR} {STUDENT_RODEO_DIR}/bin
 cat > "$WORK/rodeo-root" <<'__ROOT__'
 #!/bin/sh
 case "$1" in {allowed}) ;; *) echo "rodeo $1 is not allowed here" >&2; exit 2 ;; esac
-unset SUDO_USER SUDO_UID SUDO_GID SUDO_COMMAND
+unset SUDO_UID SUDO_GID SUDO_COMMAND
+{as_owner}
 exec {rodeo_bin} "$@"
 __ROOT__
 cat > "$WORK/rodeo" <<'__SHIM__'
@@ -690,7 +697,7 @@ def run_setup(opts: SetupOptions, *, sudo_user: str | None) -> dict:
                              capture_output=True, timeout=300)
     if student.returncode != 0 or "STUDENT_OK" not in student.stdout:
         raise RuntimeError(f"student user setup failed: {student.stderr.strip()[-400:]}")
-    res = subprocess.run(["bash", "-c", install_script(opts, rodeo_bin)], text=True,
+    res = subprocess.run(["bash", "-c", install_script(opts, rodeo_bin, sudo_user)], text=True,
                          capture_output=True, timeout=900)
     if res.returncode != 0 or "PLAYER_UP" not in res.stdout:
         raise RuntimeError(f"player install failed (exit {res.returncode}): {res.stderr.strip()[-800:]}")

@@ -270,8 +270,8 @@ variables:                                # track variable: ??secrets.yaml key
   HARVESTER_PASSWORD: ??harvester_admin_password
 ```
 
-Shipped profiles: `virt-rodeo` (track), `virt-workshop`, `virt-workshop-2n`
-and `suse-telco` (web guide), `harvester`, `harvester-2n`, `rancher-test`, `rancher-lab-config`
+Shipped profiles: `virt-rodeo` (track), `virt-workshop`, `virt-workshop-2n`,
+`suse-edge` and `suse-telco` (web guide), `harvester`, `harvester-2n`, `rancher-test`, `rancher-lab-config`
 (no instructions).
 
 - **uis**: one to eight product UIs. Each gets its own name, its own Caddy site
@@ -284,8 +284,11 @@ and `suse-telco` (web guide), `harvester`, `harvester-2n`, `rancher-test`, `ranc
   player-setup` refuses it without `per_host_ssh_key: true`). The second makes
   the student their own key and installs it for root on the listed lab VMs,
   using root's key, which the student never sees. `suse-telco` uses both
-  (mgmt at `.10`). Not shipped yet for suse-edge: edge3/edge4 images only
-  trust the host key.
+  (mgmt at `.10`), `suse-edge` too (rancher `.9`, eib `.20`). edge3 and
+  edge4 do not exist when the player is set up: a player fleet makes the
+  student key before `rodeo up`, and their EIB definitions list it next to
+  the host key. `rodeo pull-edge-image` and `rodeo eject-iso` work for a
+  libvirt-group user without sudo (through `vol-create-as`/`vol-upload`).
 - **lobby**: `false` on a UI the student brings up later in the lab (telco's
   site console after lab 06). The lobby does not probe it, so "Enter lab"
   does not wait for it.

@@ -66,7 +66,9 @@ STATE_DIR = VAR / "state"
 CONFIG = ETC / "config.json"
 AUTH_FILE = VAR / "auth.json"     # root-only: lab secret + access token
 CREDENTIALS_FILE = VAR / "credentials.json"  # root-only: what the student logs in with
-STUDENT_SUDOERS = Path("/etc/sudoers.d/rodeo-player-student")
+# Sorts after the student's blanket deny (zz-rodeo-student, fleet/portal.py):
+# sudo applies the last matching rule.
+STUDENT_SUDOERS = Path("/etc/sudoers.d/zzz-rodeo-player-student")
 STUDENT_VM_KEY = VAR / "student-vm-key"      # root-only copy of the student's key to the lab VMs
 CADDYFILE = ETC / "Caddyfile"
 CADDY_DATA = Path("/var/lib/rodeo-player-caddy")

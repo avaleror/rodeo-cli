@@ -339,6 +339,8 @@ def test_student_rodeo_commands_get_a_sudoers_rule_for_exactly_those():
     assert 'visudo -cqf "$WORK/sudoers"' in script
     assert f"install -m 440 \"$WORK/sudoers\" {s.STUDENT_SUDOERS}" in script
     assert "NoNewPrivileges=no" in s.ttyd_unit(opts)
+    # sudo applies the last matching rule: ours must sort after the student's deny.
+    assert sorted(["zz-rodeo-student", s.STUDENT_SUDOERS.name])[-1] == s.STUDENT_SUDOERS.name
     plain = s.SetupOptions(base="13-61-184-227.sslip.io", track_ref="", profile=_vm_profile())
     assert f"rm -f {s.STUDENT_SUDOERS}" in s.install_script(plain, "/usr/local/bin/rodeo")
     assert "NOPASSWD" not in s.install_script(plain, "/usr/local/bin/rodeo")

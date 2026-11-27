@@ -309,3 +309,46 @@ def test_probe_is_false_when_nothing_answers():
     from rodeo.player import server as srv
 
     assert srv.probe("http://127.0.0.1:9/never", timeout=0.5) is False  # nothing listens on port 9
+
+
+# ---------------------------------------------------------------- a lab without a track
+@pytest.fixture
+def free(tmp_path: Path):
+    """A profile with no track: the UIs, a terminal, credentials and a guide link."""
+    (tmp_path / "empty").mkdir()
+    creds = tmp_path / "credentials.json"
+    creds.write_text(json.dumps([{"label": "SUSE Rancher Prime", "user": "admin", "password": "pw-1"}]))
+    cfg = PlayerConfig(track_dir=str(tmp_path / "empty"), state_dir=str(tmp_path / "state"), port=0,
+                       title="SUSE Rancher Prime lab", track=False, guide_url="https://guide.example/",
+                       credentials_file=str(creds),
+                       lab_tabs=[{"title": "SUSE Rancher Prime", "type": "service", "port": 30002},
+                                 {"title": "Terminal", "type": "terminal"}],
+                       tab_urls={"30002": "https://rancher.example/"})
+    httpd = make_server(Player(cfg))
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{httpd.server_address[1]}"
+    httpd.shutdown()
+
+
+def test_free_lab_has_no_chapters_but_its_tabs_guide_and_credentials(free):
+    _, state = _get(free + "/api/state")
+    assert state["chapters"] == [] and state["guide_url"] == "https://guide.example/"
+    assert state["credentials"] is True
+    assert [(t["title"], t["url"]) for t in state["tabs"]] == [
+        ("SUSE Rancher Prime", "https://rancher.example/"), ("Terminal", "/terminal/")]
+    _, creds = _get(free + "/api/credentials")
+    assert creds == {"credentials": [{"label": "SUSE Rancher Prime", "user": "admin", "password": "pw-1"}]}
+    _, health = _get(free + "/api/health")
+    assert health["setup"] == "done" and [i["name"] for i in health["items"]] == ["SUSE Rancher Prime", "Terminal"]
+
+
+def test_free_lab_refuses_moves_and_chapters(free):
+    for action in ("enter", "check", "next"):
+        assert _post(free + f"/api/{action}")[0] == 409
+    assert _get(free + "/api/chapter/0")[0] == 404
+
+
+def test_a_track_profile_still_needs_its_chapters(tmp_path):
+    (tmp_path / "empty").mkdir()
+    with pytest.raises(ValueError, match="no NN-slug"):
+        Player(PlayerConfig(track_dir=str(tmp_path / "empty"), state_dir=str(tmp_path / "state")))

@@ -34,7 +34,7 @@ from typing import Any
 from .auth import COOKIE, SESSION_SECONDS, Auth
 from .auth import load as load_auth
 from .outline import chapter_name, outline
-from .runner import CHECK_TIMEOUT, MoveResult, Runner, RunnerError, ScriptResult, check_timeout_ok
+from .runner import CHECK_TIMEOUT, MoveResult, Runner, RunnerError, ScriptResult, Tab, check_timeout_ok
 
 STATIC_DIR = Path(__file__).resolve().parents[1] / "data" / "player" / "static"
 LOOPBACK = {"127.0.0.1", "::1", "localhost"}
@@ -132,6 +132,15 @@ class PlayerConfig:
     # or "terminal" -> a URL on the lab network or loopback, never the public
     # names (those need the student's cookie). Empty: no lab health shown.
     probes: dict[str, str] = field(default_factory=dict)
+    # False for a lab profile without a track: no chapters, the UIs and a terminal.
+    track: bool = True
+    # Web guide for a lab without a track (the profile's guide_url), or "".
+    guide_url: str = ""
+    # Root-only JSON [{label, user, password}] written by setup; "" = none.
+    credentials_file: str = ""
+    # The lab's tabs when there is no track: [{title, type, port}] (service
+    # tabs by tab port, plus the terminal). With a track, each chapter's own.
+    lab_tabs: list[dict[str, Any]] = field(default_factory=list)
 
 
 def load_config(path: Path | str) -> PlayerConfig:
@@ -180,6 +189,7 @@ class Player:
         self.runner = runner or Runner(
             cfg.track_dir, cfg.state_dir, host=cfg.host, sandbox_id=cfg.sandbox_id,
             home=cfg.home, kubeconfig=cfg.kubeconfig, check_timeout=cfg.check_timeout,
+            allow_empty=not cfg.track,
         )
         self.logins = LoginLimiter()
         self._lock = threading.Lock()
@@ -255,9 +265,15 @@ class Player:
             pos = self._pos
         return max([pos["current"], *pos["completed"]])
 
+    def _tab_list(self, index: int) -> list[Tab]:
+        if self.runner.chapters:
+            return list(self.runner.chapter(index).tabs)
+        return [Tab(title=str(t.get("title") or ""), type=str(t.get("type") or "service"),
+                    port=t.get("port")) for t in self.cfg.lab_tabs]
+
     def tabs(self, index: int) -> list[dict[str, Any]]:
         out = []
-        for i, t in enumerate(self.runner.chapter(index).tabs):
+        for i, t in enumerate(self._tab_list(index)):
             if t.type == "terminal":
                 url = self.cfg.terminal_url
             elif t.type == "service" and t.port is not None:
@@ -278,7 +294,7 @@ class Player:
                 return self._health
             with self._lock:
                 pos, busy, last = dict(self._pos), self._busy, self._last
-            tabs = self.runner.chapter(pos["current"]).tabs
+            tabs = self._tab_list(pos["current"])
             keys = ["terminal" if t.type == "terminal" else str(t.port) for t in tabs]
             urls = [self.cfg.probes.get(k, "") for k in keys]
             todo = [u for u in urls if u]
@@ -287,7 +303,7 @@ class Player:
                 with ThreadPoolExecutor(max_workers=len(todo)) as pool:
                     results = dict(zip(todo, pool.map(probe, todo)))
             items = [{"name": t.title, "ok": results.get(u) if u else None} for t, u in zip(tabs, urls)]
-            if pos["entered"]:
+            if pos["entered"] or not self.runner.chapters:
                 setup = "done"
             elif busy == "enter":
                 setup = "running"
@@ -317,7 +333,23 @@ class Player:
             "busy_seconds": round(time.time() - started) if busy and started else 0,
             "last": last,
             "tabs": self.tabs(pos["current"]),
+            "guide_url": self.cfg.guide_url,
+            "credentials": self.has_credentials(),
         }
+
+    def credentials(self) -> list[dict[str, str]]:
+        """What the student logs in to the lab UIs with (behind the lab login)."""
+        if not self.cfg.credentials_file:
+            return []
+        try:
+            data = json.loads(Path(self.cfg.credentials_file).read_text())
+        except (OSError, ValueError):
+            return []
+        return [{k: str(c.get(k, "")) for k in ("label", "user", "password")}
+                for c in data if isinstance(c, dict)] if isinstance(data, list) else []
+
+    def has_credentials(self) -> bool:
+        return bool(self.credentials())
 
     def chapter_view(self, index: int) -> dict[str, Any]:
         if not 0 <= index <= self.readable():
@@ -471,6 +503,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, self.player.state())
         elif path == "/api/health":
             self._json(200, self.player.health())
+        elif path == "/api/credentials":
+            self._json(200, {"credentials": self.player.credentials()})
         elif path.startswith("/api/chapter/"):
             try:
                 self._json(200, self.player.chapter_view(int(path.rsplit("/", 1)[1])))
@@ -520,6 +554,9 @@ class Handler(BaseHTTPRequestHandler):
         # never moves the runner, so a crafted POST cannot rewind a solved lab.
         if action not in {"enter", "check", "next", "skip"}:
             self._error(404, "not found")
+            return
+        if not self.player.runner.chapters:
+            self._error(HTTPStatus.CONFLICT, "this lab has no chapters")
             return
         target = None
         if action == "skip":

@@ -928,7 +928,8 @@ def fleet_deprovision_cmd(
         try:
             from ..fleet import dns as fleet_dns
 
-            removed = fleet_dns.delete(inventory, host_ids=gone_ids if host_ids else None)
+            # With --keep-portal the portal keeps its name: only the labs' go.
+            removed = fleet_dns.delete(inventory, host_ids=gone_ids if host_ids or not portal_removed else None)
             pruned = fleet_dns.prune(inventory.player.domain, default_region=fleet_dns._region(inventory))
             dns_note = f"removed {len(removed)} DNS name(s)"
             if pruned:
@@ -1071,19 +1072,20 @@ fleet_cmd.add_command(fleet_deprovision_cmd, name="destroy")
 @fleet_cmd.command("player-setup")
 @_output_opt
 @_concurrency_opt(8)
-@click.option("--track-ref", required=True, help="suse-virt-rodeo commit SHA to pin (40 hex).")
+@click.option("--track-ref", default=None,
+              help="Track commit SHA to pin (40 hex). Only for a lab profile with a track.")
 @click.option("--check-timeout", type=int, default=None,
               help="Seconds one chapter check may run on every lab (10-3600, default 120).")
 @click.option("-f", "--file", "inventory_path", required=True,
               type=click.Path(exists=True, dir_okay=False, path_type=Path),
               help="Path to workshop.yaml inventory.")
-def fleet_player_setup_cmd(inventory_path: Path, track_ref: str, check_timeout: int | None,
+def fleet_player_setup_cmd(inventory_path: Path, track_ref: str | None, check_timeout: int | None,
                            concurrency: int, output_fmt: str) -> None:
-    """Install the rodeo player on every lab host (after `fleet deploy`).
+    """Install the rodeo player (the student UI) on every lab host (after `fleet deploy`).
 
-    Opt-in and new: nothing else runs it. Then set ``portal.player: true``,
-    run ``fleet open-access`` (opens 443 too) and ``fleet portal publish``
-    so each student's lab page gets an "Open your lab" link.
+    `fleet up` runs it for every workshop fleet. Then ``fleet open-access``
+    opens 443 only and ``fleet portal publish`` gives each student's lab page
+    an "Open your lab" link. A profile with a track needs ``--track-ref``.
     """
     from ..fleet.player import fleet_player_setup
 
@@ -1191,6 +1193,9 @@ def fleet_dns_cmd(inventory_path: Path, do_delete: bool, host_ids: tuple[str, ..
         ensure_player_ids(inventory_path)
         inventory = load_inventory(inventory_path)
         rows = dns.publish(inventory, host_ids=list(host_ids) or None)
+        portal = inventory.portal
+        if not host_ids and portal and portal.enabled and portal.portal_id and portal.public_ip:
+            rows.append(dns.publish_portal(inventory))
     except ConfigError as exc:
         console.print(f"[red]✗  {exc}[/red]")
         raise SystemExit(1)

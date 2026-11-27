@@ -520,7 +520,6 @@ portal:
   enabled: true
   mode: open                  # open (workshop code + email) | roster (invite links) | both
   # roster: students.csv      # roster / both: CSV with name,email[,host_id]
-  student_ssh: true           # per-lab `student` user + key, own sshd on :2222 (key-only)
   title: SUSE Virtualization workshop
   guide_url: https://avaleror.github.io/suse-virt-workshop/   # or /guide/ if served by the portal
   # code_letters: 6           # random letters in RODEO-XXXXXX-YYYYMMDD (4-8; 6 = 191M codes)
@@ -532,7 +531,8 @@ portal:
 rodeo fleet provision -f workshop.yaml     # labs + a small portal VM (own SG: 443/80 open, 22 operator)
 rodeo fleet portal up -f workshop.yaml     # portal service + Caddy with a real TLS certificate
 rodeo fleet deploy -f workshop.yaml
-rodeo fleet open-access -f workshop.yaml   # once every lab is complete (adds :2222 with student_ssh)
+rodeo fleet player-setup -f workshop.yaml  # the student UI (docs/player.md); fleet up does all of this
+rodeo fleet open-access -f workshop.yaml   # once every lab is complete: 443 only with the player
 rodeo fleet portal publish --watch -f workshop.yaml  # follow the deploy on the instructor page;
                                            # each lab is published the moment it is ready
 rodeo fleet portal info -f workshop.yaml   # URL + workshop code for the slide

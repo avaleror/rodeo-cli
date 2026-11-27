@@ -3,7 +3,11 @@
 Runs ``rodeo player setup`` on each host over the fleet's SSH (as root, like
 every fleet step). The access links never come back to the terminal: they
 stay root-only on each host and reach students through
-``rodeo fleet portal publish`` with ``portal.player: true``.
+``rodeo fleet portal publish``.
+
+What the player shows comes from the lab profile's ``player.yaml``. A profile
+with a track needs ``--track-ref`` (the commit to pin); one without a track
+(instructions on a web guide, or none) needs nothing more.
 """
 from __future__ import annotations
 
@@ -30,9 +34,27 @@ class PlayerSetupRow:
     error: str = ""         # last lines of stderr, never stdout (it holds the link)
 
 
-def setup_argv(inventory: FleetInventory, host: FleetHost, track_ref: str,
+def player_profile(inventory: FleetInventory):  # -> PlayerProfile
+    """The lab profile's player.yaml, or a ConfigError that says what to do."""
+    from ..player.profile import ProfileError, has_profile, load
+
+    name = inventory.lab_profile or ""
+    if not has_profile(name):
+        raise ConfigError(
+            f"lab profile {name or '(none)'!r} has no player.yaml, so the student UI does not know "
+            "what to show. Add rodeo/data/examples/<profile>/player.yaml, or set `player: false` "
+            "in workshop.yaml for a fleet without the student UI.")
+    try:
+        return load(name)
+    except ProfileError as exc:
+        raise ConfigError(str(exc)) from exc
+
+
+def setup_argv(inventory: FleetInventory, host: FleetHost, track_ref: str | None,
                check_timeout: int | None = None) -> list[str]:
-    argv = ["rodeo", "player", "setup", "--track-ref", track_ref, "--json"]
+    argv = ["rodeo", "player", "setup", "--json"]
+    if track_ref:
+        argv += ["--track-ref", track_ref]
     from ..player.profile import DEFAULT_PROFILE, has_profile
 
     # Only a non-default profile is named, so a host on an older rodeo keeps
@@ -49,7 +71,7 @@ def setup_argv(inventory: FleetInventory, host: FleetHost, track_ref: str,
     return argv
 
 
-def _one(inventory: FleetInventory, host: FleetHost, track_ref: str, tls_pem: str | None,
+def _one(inventory: FleetInventory, host: FleetHost, track_ref: str | None, tls_pem: str | None,
          check_timeout: int | None = None) -> PlayerSetupRow:
     try:
         argv = setup_argv(inventory, host, track_ref, check_timeout)
@@ -66,10 +88,35 @@ def _one(inventory: FleetInventory, host: FleetHost, track_ref: str, tls_pem: st
     return PlayerSetupRow(host.id, True, player=str(out.get("player", "")), chapters=int(out.get("chapters", 0)))
 
 
-def fleet_player_setup(inventory: FleetInventory, *, track_ref: str, concurrency: int = 8,
+def require_track_ref(inventory: FleetInventory, track_ref: str | None) -> str | None:
+    """The pin a track needs, checked; None for a profile without a track."""
+    prof = player_profile(inventory)
+    if not prof.track_repo:
+        return None
+    if not (track_ref and _SHA_RE.match(track_ref)):
+        raise ConfigError(f"lab profile {prof.name} has a track: give --track-ref <commit SHA, "
+                          "40 hex> to pin it")
+    return track_ref
+
+
+def require_safe_student_access(inventory: FleetInventory) -> None:
+    """A profile that gives the student libvirt gives them root on their host in
+    practice: refuse unless every host has its own root key (per_host_ssh_key),
+    so that root on one lab opens no other."""
+    from ..ssh_key import per_host_ssh_key
+
+    prof = player_profile(inventory)
+    if prof.student_libvirt and inventory.provider and not per_host_ssh_key(inventory.provider):
+        raise ConfigError(
+            f"lab profile {prof.name} gives students libvirt (root-equivalent on their host): "
+            "set provider.per_host_ssh_key: true before provisioning, so root on one lab "
+            "opens no other")
+
+
+def fleet_player_setup(inventory: FleetInventory, *, track_ref: str | None = None, concurrency: int = 8,
                        check_timeout: int | None = None) -> list[PlayerSetupRow]:
-    if not _SHA_RE.match(track_ref):
-        raise ConfigError("--track-ref must be a full 40-character commit SHA (pin the track)")
+    track_ref = require_track_ref(inventory, track_ref)
+    require_safe_student_access(inventory)
     if check_timeout is not None:
         try:
             check_timeout_ok(check_timeout)

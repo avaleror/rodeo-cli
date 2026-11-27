@@ -34,7 +34,7 @@ def serve_cmd(config_path: str) -> None:
 
 
 @player_cmd.command("setup")
-@click.option("--track-ref", required=True, help="Track commit SHA to pin (40 hex).")
+@click.option("--track-ref", default="", help="Track commit SHA to pin (40 hex). Only for a profile with a track.")
 @click.option("--profile", "profile_name", default=None,
               help="Lab profile whose player.yaml says what to show (default: virt-rodeo).")
 @click.option("--track-repo", default=None, help="Track git URL (default: the profile's).")

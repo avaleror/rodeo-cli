@@ -26,7 +26,9 @@ def test_build_inventory_is_a_valid_workshop(tmp_path):
     assert inv.name.startswith("virt-workshop-") and inv.lab_profile == "virt-workshop"
     assert inv.lab_dir == up.LAB_DIR and inv.deploy_concurrency == 3
     assert data["provider"] == {"type": "aws", "count": 3, "region": "eu-north-1", "student_access": "open",
-                                "ttl_hours": 6, "instance_tier": "recommended", "subnet_id": "subnet-default"}
+                                "ttl_hours": 6, "instance_tier": "recommended", "subnet_id": "subnet-default",
+                                "per_host_ssh_key": True}
+    assert "player" not in data  # on by default; no domain given: test mode
     assert inv.portal.enabled and inv.portal.title == "virt-workshop workshop"
     assert data["portal"]["guide_url"] == "https://example.test/guide/"
 
@@ -92,17 +94,20 @@ def test_up_runs_the_instructor_flow_in_order(tmp_path, steps):
     path = _inventory_file(tmp_path)
     r = CliRunner().invoke(fleet_cmd.fleet_cmd, ["up", "-f", str(path)])
     assert r.exit_code == 0, r.output
+    # Every workshop fleet runs the student UI: harvester has a player.yaml
+    # without a track, so no --track-ref and, without a domain, no DNS or cert.
     assert steps == ["fleet_provision_cmd", "fleet_deploy_cmd", "portal_up_cmd", "wait",
-                     "fleet_open_access_cmd", "portal_publish_cmd", "portal_info_cmd"]
+                     "fleet_player_setup_cmd", "fleet_open_access_cmd", "portal_publish_cmd", "portal_info_cmd"]
     assert "fleet destroy -f" in r.output
+    assert "test mode" in r.output
 
 
 def test_up_without_portal_prints_the_access_sheet(tmp_path, steps):
     path = _inventory_file(tmp_path, portal=False)
     r = CliRunner().invoke(fleet_cmd.fleet_cmd, ["up", "-f", str(path)])
     assert r.exit_code == 0, r.output
-    assert steps == ["fleet_provision_cmd", "fleet_deploy_cmd", "wait", "fleet_open_access_cmd",
-                     "fleet_access_cmd"]
+    assert steps == ["fleet_provision_cmd", "fleet_deploy_cmd", "wait", "fleet_player_setup_cmd",
+                     "fleet_open_access_cmd", "fleet_access_cmd"]
 
 
 def test_up_writes_the_inventory_from_flags(tmp_path, steps, monkeypatch):
@@ -162,9 +167,10 @@ def test_fleet_up_refuses_an_unapproved_source_before_provisioning(tmp_path, mon
 SHA = "77022fd51ab5797cd201b9512fe44af3dc2ae9f6"
 
 
-def _player_file(tmp_path, *, domain=True):
+def _player_file(tmp_path, *, domain=True, profile="harvester"):
     path = _inventory_file(tmp_path)
     data = yaml.safe_load(path.read_text())
+    data["lab"]["profile"] = profile
     data["portal"]["player"] = True
     if domain:
         data["player"] = {"domain": "example.org"}
@@ -192,16 +198,61 @@ def test_up_with_portal_player_but_no_domain_skips_dns_and_cert(tmp_path, steps)
 
 
 @pytest.mark.parametrize("ref", [None, "main", "77022fd"])
-def test_up_with_the_player_needs_a_full_track_sha_before_provisioning(tmp_path, steps, ref):
-    path = _player_file(tmp_path)
+def test_up_with_a_track_needs_a_full_track_sha_before_provisioning(tmp_path, steps, ref):
+    path = _player_file(tmp_path, profile="virt-rodeo")
     args = ["up", "-f", str(path)] + (["--track-ref", ref] if ref else [])
     r = CliRunner().invoke(fleet_cmd.fleet_cmd, args)
     assert r.exit_code == 1 and "--track-ref" in r.output
     assert steps == []  # nothing provisioned
 
 
-def test_up_without_the_player_ignores_the_player_steps(tmp_path, steps):
+def _edited(tmp_path, **changes):
     path = _inventory_file(tmp_path)
+    data = yaml.safe_load(path.read_text())
+    for key, value in changes.items():
+        if key == "profile":
+            data["lab"]["profile"] = value
+        elif key == "provider_type":
+            data["provider"]["type"] = value
+        else:
+            data[key] = value
+    path.write_text(yaml.safe_dump(data))
+    return path
+
+
+@pytest.mark.parametrize("change", [{"player": False}, {"profile": "smlm-workshop"}])
+def test_up_without_the_player_ignores_the_player_steps(tmp_path, steps, change):
+    path = _edited(tmp_path, **change)
     r = CliRunner().invoke(fleet_cmd.fleet_cmd, ["up", "-f", str(path)])
     assert r.exit_code == 0, r.output
     assert not {"fleet_dns_cmd", "fleet_cert_cmd", "fleet_player_setup_cmd"} & set(steps)
+
+
+def test_runs_player_rules(tmp_path):
+    from rodeo.fleet.inventory import runs_player
+
+    def runs(**change):
+        sub = tmp_path / str(len(list(tmp_path.iterdir())))
+        sub.mkdir()
+        return runs_player(load_inventory(_edited(sub, **change)))
+
+    assert runs()                                   # AWS + a profile with player.yaml
+    assert not runs(player=False)                   # opted out
+    assert not runs(profile="kvm-hosts")            # operators' KVM clusters
+    assert not runs(profile="smlm-workshop")        # no player.yaml: nothing to show
+    assert not runs(provider_type="gcp")            # no player on GCP yet
+    assert runs(provider_type="gcp", player={"domain": "example.org"}) is True  # asked explicitly
+
+
+def test_up_flags_write_the_player_choice(tmp_path, steps, monkeypatch):
+    monkeypatch.setattr("rodeo.providers.aws.AwsHostProvider.default_subnet", lambda self, p, **k: "subnet-d")
+    on = tmp_path / "on.yaml"
+    r = CliRunner().invoke(fleet_cmd.fleet_cmd, ["up", "-f", str(on), "--profile", "virt-workshop",
+                                                 "--count", "1", "--player-domain", "example.org"])
+    assert r.exit_code == 0, r.output
+    assert yaml.safe_load(on.read_text())["player"] == {"domain": "example.org"}
+    off = tmp_path / "off.yaml"
+    r = CliRunner().invoke(fleet_cmd.fleet_cmd, ["up", "-f", str(off), "--profile", "virt-workshop",
+                                                 "--count", "1", "--no-player"])
+    assert r.exit_code == 0, r.output
+    assert yaml.safe_load(off.read_text())["player"] is False

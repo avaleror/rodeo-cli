@@ -16,11 +16,11 @@ _VALID_TARGETS = frozenset({"baremetal", "instruqt"})
 # operator: this machine's /32 only (default). open: also 0.0.0.0/0, applied
 # only by `rodeo fleet open-access` after every lab is up with strong passwords.
 _VALID_STUDENT_ACCESS = frozenset({"operator", "open"})
-# Student SSH (portal.student_ssh) runs on its own sshd on this port, which only
-# lets the `student` user in. Port 22 stays operator-only, so the fleet-wide
-# rodeo key (root, ssh_user) is never usable from the internet.
+# Older rodeo ran a student-only sshd (portal.student_ssh) on this port. Students
+# now come in through the player only; the constant stays so security groups
+# that still have the port get it closed. Port 22 is always operator-only.
 STUDENT_SSH_PORT = 2222
-# rodeo player (Caddy) on lab hosts with portal.player: opened only by open-access.
+# The rodeo player (Caddy) on lab hosts: opened only by open-access.
 PLAYER_PORT = 443
 
 
@@ -56,18 +56,19 @@ class PortalConfig:
     enabled: bool = False
     mode: str = "both"  # open (workshop code + email) | roster (invite links) | both
     roster: Path | None = None  # CSV name,email[,host_id]; resolved beside workshop.yaml
-    student_ssh: bool = False  # per-lab `student` user + key, :22 opened by open-access
     player: bool = False  # labs run `rodeo player`: publish adds each lab's player link
     title: str = ""
     code_letters: int = 6  # random letters in RODEO-XXXXXX-YYYYMMDD (4-8)
     guide_url: str = ""  # workshop guide link on every student page (https URL or /path)
-    hostname: str | None = None  # default portal-<ip-dashed>.sslip.io
+    hostname: str | None = None  # default portal-<id>.<player.domain>, else portal-<ip-dashed>.sslip.io
     instance_type: str | None = None
     host: str | None = None  # BYO portal machine (user@ip): skips provisioning
     # Written by `fleet provision` (like hosts[]):
     ssh: str | None = None
     public_ip: str | None = None
     provider_id: str | None = None
+    # Random id for its name under player.domain (labels.portal_id), like a lab's player_id.
+    portal_id: str | None = None
 
     @property
     def fqdn(self) -> str | None:
@@ -121,6 +122,59 @@ def player_id(host: FleetHost) -> str | None:
     """The random lab id from ``labels.player_id`` (written by ``fleet dns``)."""
     pid = host.labels.get(PLAYER_ID_LABEL)
     return pid if pid and _PLAYER_ID_RE.match(pid) else None
+
+
+PORTAL_ID_LABEL = "portal_id"
+
+
+def _new_id(used: set[str]) -> str:
+    import secrets
+    import string
+
+    alphabet = string.ascii_lowercase + string.digits
+    while True:
+        pid = secrets.choice(string.ascii_lowercase) + "".join(secrets.choice(alphabet) for _ in range(7))
+        if pid not in used:
+            return pid
+
+
+def ensure_portal_id(inventory_path: Path, taken: Any = None) -> str:
+    """Give the portal a random ``labels.portal_id`` (kept once written): its name is
+    ``portal-<id>.<player.domain>``, a different one for every portal, never guessable
+    from the workshop name. Several portals can be live at once: ``taken(pid)``
+    (a lookup in the zone) makes a new id pick again when its name already exists."""
+    p = Path(inventory_path).expanduser().resolve()
+    raw = yaml.safe_load(p.read_text()) or {}
+    portal = raw.get("portal")
+    if not isinstance(portal, dict):
+        raise ConfigError("workshop.yaml has no portal: block")
+    labels = dict(portal.get("labels") or {})
+    pid = str(labels.get(PORTAL_ID_LABEL) or "")
+    if not _PLAYER_ID_RE.match(pid):
+        for _ in range(20):
+            pid = _new_id(set())
+            if taken is None or not taken(pid):
+                break
+        else:
+            raise ConfigError("could not find a free portal name in the zone")
+        labels[PORTAL_ID_LABEL] = pid
+        portal["labels"] = labels
+        raw["portal"] = portal
+        p.write_text(yaml.dump(raw, default_flow_style=False, sort_keys=False))
+    return pid
+
+
+def portal_fqdn(inventory: FleetInventory) -> str | None:
+    """The portal's name: ``portal.hostname`` if set; ``portal-<id>.<player.domain>``
+    on a fleet with an owned zone; else ``portal-<ip-dashed>.sslip.io``."""
+    portal = inventory.portal
+    if portal is None:
+        return None
+    if portal.hostname:
+        return portal.hostname
+    if inventory.player is not None and portal.portal_id:
+        return f"portal-{portal.portal_id}.{inventory.player.domain}"
+    return portal.fqdn
 
 
 def ensure_player_ids(inventory_path: Path) -> dict[str, str]:
@@ -201,7 +255,6 @@ def _parse_portal(raw: Any, base: Path, provider: dict[str, Any] | None) -> Port
         enabled=enabled,
         mode=mode,
         roster=roster,
-        student_ssh=bool(raw.get("student_ssh", False)),
         player=bool(raw.get("player", False)),
         title=str(raw.get("title") or ""),
         code_letters=code_letters,
@@ -212,6 +265,8 @@ def _parse_portal(raw: Any, base: Path, provider: dict[str, Any] | None) -> Port
         ssh=str(raw["ssh"]).strip() if raw.get("ssh") else None,
         public_ip=str(raw["public_ip"]).strip() if raw.get("public_ip") else None,
         provider_id=str(labels.get("provider_id")) if isinstance(labels, dict) and labels.get("provider_id") else None,
+        portal_id=(str(labels.get(PORTAL_ID_LABEL)) if isinstance(labels, dict)
+                   and _PLAYER_ID_RE.match(str(labels.get(PORTAL_ID_LABEL) or "")) else None),
     )
 
 
@@ -261,6 +316,8 @@ class FleetInventory:
     portal: PortalConfig | None = None
     # rodeo player on an owned DNS zone (optional; none = sslip.io test mode)
     player: PlayerConfig | None = None
+    # ``player: false`` in workshop.yaml: no student UI on this fleet.
+    player_disabled: bool = False
 
     @property
     def ssh_user(self) -> str:
@@ -461,7 +518,8 @@ def load_inventory(path: str | Path) -> FleetInventory:
         operator_secrets=list(secrets_raw),
         ui_ports={str(k): int(v) for k, v in ui_raw.items()},
         portal=_parse_portal(raw.get("portal"), p.parent, provider),
-        player=_parse_player(raw.get("player")),
+        player=None if raw.get("player") is False else _parse_player(raw.get("player")),
+        player_disabled=raw.get("player") is False,
     )
 
 
@@ -533,6 +591,40 @@ def profile_plan_type(profile: str) -> str | None:
         return None
     kind = data.get("type") if isinstance(data, dict) else None
     return str(kind).strip() if kind else None
+
+
+def provider_supports_player(provider_type: str) -> bool:
+    """The cloud can expose the player (443 in, names, certificate). A provider
+    says so with ``supports_player = True``; one that does not yet (GCP today)
+    keeps fleets without a player instead of failing them."""
+    from ..providers import get_provider
+
+    try:
+        return bool(getattr(get_provider(provider_type), "supports_player", False))
+    except ConfigError:
+        return False
+
+
+def runs_player(inventory: FleetInventory) -> bool:
+    """Every rodeo fleet is a workshop and runs the student UI (the rodeo player),
+    except: ``player: false``; a ``kvm-hosts`` fleet (KVM clusters for operators,
+    no students); a lab profile with no ``player.yaml`` (nothing to show: a
+    custom profile, lab-in-a-box); and fleets on hosts or clouds that cannot
+    expose it (static hosts, a provider without ``supports_player``). A
+    ``player:`` block or ``portal.player: true`` asks for it explicitly, and
+    then a missing ``player.yaml`` is an error (``rodeo.fleet.player``)."""
+    from ..player.profile import has_profile
+
+    if inventory.player_disabled:
+        return False
+    if inventory.lab_profile and profile_plan_type(inventory.lab_profile) == "kvm-hosts":
+        return False
+    if inventory.player is not None or (inventory.portal and inventory.portal.player):
+        return True
+    if not has_profile(inventory.lab_profile):
+        return False
+    provider = inventory.provider or {}
+    return bool(provider) and provider_supports_player(str(provider.get("type") or "aws"))
 
 
 def require_provider(inventory: FleetInventory) -> dict[str, Any]:

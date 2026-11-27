@@ -120,6 +120,11 @@ class HostProvider(Protocol):
     def name(self) -> str:
         """Stable id: aws | gcp | vultr | hetzner."""
 
+    # True when the cloud can expose the student UI (rodeo player): 443 open to
+    # students, lab names and a certificate. Fleets on a provider without it run
+    # with no player. A new cloud (Azure, ...) sets it once those pieces exist.
+    supports_player: bool
+
     def validate(self, config: dict[str, Any]) -> None:
         """Fail closed on missing/invalid type-specific fields."""
 

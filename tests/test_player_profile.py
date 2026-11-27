@@ -46,9 +46,37 @@ def test_shipped_virt_rodeo_profile_is_what_the_player_did_before():
     assert p.load(None) == prof
 
 
-def test_a_profile_without_player_yaml_gets_virt_rodeo(examples):
-    assert p.load("no-player", examples).name == "virt-rodeo"
+def test_a_profile_without_player_yaml_is_an_error_never_virt_rodeo(examples):
+    with pytest.raises(p.ProfileError, match="has no player.yaml"):
+        p.load("no-player", examples)
     assert not p.has_profile("no-player", examples) and p.has_profile("suse-edge", examples)
+    assert p.load(None, examples).name == "virt-rodeo"  # hosts set up before profiles existed
+
+
+def test_a_profile_without_a_track_shows_a_guide_and_credentials():
+    prof = p.load("virt-workshop")
+    assert prof.track_repo == "" and prof.guide_url.startswith("https://")
+    assert [(c.label, c.user, c.secret) for c in prof.credentials] == [
+        ("SUSE Virtualization (Harvester)", "admin", "harvester_admin_password"),
+        ("SUSE Rancher Prime", "admin", "rancher_admin_password")]
+
+
+@pytest.mark.parametrize("raw,match", [
+    ({"credentials": [{"label": "R", "user": "admin", "password": "plain-text"}]}, "secrets.yaml key"),
+    ({"credentials": [{"label": "", "user": "admin", "password": "??k"}]}, "credentials need"),
+    ({"guide_url": "http://insecure.example/"}, "guide_url"),
+    ({"uis": [{"key": "x", "upstream": "10.0.0.1:80", "tab_port": 80, "scheme": "ftp"}]}, "scheme"),
+])
+def test_new_fields_are_validated(raw, match):
+    base = {"title": "T", "uis": [{"key": "x", "upstream": "10.0.0.1:443", "tab_port": 443}]}
+    with pytest.raises(p.ProfileError, match=match):
+        p.parse("t", {**base, **raw})
+
+
+def test_http_ui_is_allowed():
+    prof = p.parse("t", {"title": "T", "uis": [{"key": "app", "upstream": "192.168.122.21:30080",
+                                                "tab_port": 30080, "scheme": "http"}]})
+    assert prof.uis[0].scheme == "http"
 
 
 def test_every_shipped_player_yaml_is_valid():

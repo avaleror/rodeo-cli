@@ -359,3 +359,92 @@ def test_bundle_for_push_refuses_a_missing_or_expiring_cert(tmp_path, monkeypatc
                                                                          time.time() + 86400))
     with pytest.raises(ConfigError, match="expires"):
         fcert.bundle_for_push(ZONE)
+
+
+# ---------------------------------------------------------------- the claim portal's own name
+def _portal_ws(tmp_path, name="ws", ip="198.51.100.40"):
+    p = _workshop(tmp_path, hosts=1, name=name)
+    raw = yaml.safe_load(p.read_text())
+    raw["provider"] = {"type": "aws", "region": "eu-north-1", "count": 1, "student_access": "open"}
+    raw["portal"] = {"enabled": True, "ssh": ip, "public_ip": ip}
+    p.write_text(yaml.safe_dump(raw))
+    return p
+
+
+def test_every_portal_gets_its_own_random_name_under_the_zone(tmp_path):
+    from rodeo.fleet.inventory import ensure_portal_id, portal_fqdn
+
+    a, b = tmp_path / "a", tmp_path / "b"
+    a.mkdir(), b.mkdir()
+    pa, pb = _portal_ws(a, "ws-a"), _portal_ws(b, "ws-b", "198.51.100.41")
+    ida, idb = ensure_portal_id(pa), ensure_portal_id(pb)
+    assert ida != idb and ensure_portal_id(pa) == ida  # kept once written
+    ia, ib = load_inventory(pa), load_inventory(pb)
+    assert portal_fqdn(ia) == f"portal-{ida}.{ZONE}" and portal_fqdn(ib) == f"portal-{idb}.{ZONE}"
+    # Two portals live at once: both names, each marked for its own workshop.
+    client = FakeRoute53()
+    assert dns.publish_portal(ia, client=client).ok and dns.publish_portal(ib, client=client).ok
+    assert client.records[(f"portal-{ida}.{ZONE}.", "A")]["ResourceRecords"] == [{"Value": "198.51.100.40"}]
+    assert client.records[(f"portal-{idb}.{ZONE}.", "TXT")]["ResourceRecords"] == [
+        {"Value": '"managed-by=rodeo fleet=ws-b host=portal region=eu-north-1"'}]
+    # Deleting one workshop's names leaves the other portal alone.
+    dns.delete(ia, client=client)
+    assert (f"portal-{ida}.{ZONE}.", "A") not in client.records
+    assert (f"portal-{idb}.{ZONE}.", "A") in client.records
+
+
+def test_a_portal_never_takes_a_name_that_is_not_its_own(tmp_path):
+    from rodeo.fleet.inventory import ensure_portal_id
+
+    p = _portal_ws(tmp_path)
+    pid = ensure_portal_id(p)
+    inv = load_inventory(p)
+    name = f"portal-{pid}.{ZONE}."
+    for foreign in ([{"Name": name, "Type": "TXT", "TTL": 60,
+                      "ResourceRecords": [{"Value": '"managed-by=rodeo fleet=other host=portal"'}]}],
+                    [{"Name": name, "Type": "A", "TTL": 60, "ResourceRecords": [{"Value": "192.0.2.1"}]}]):
+        row = dns.publish_portal(inv, client=FakeRoute53(foreign))
+        assert not row.ok and "refused" in row.detail
+
+
+def test_without_a_zone_or_with_a_hostname_the_portal_name_is_as_before(tmp_path):
+    from rodeo.fleet.inventory import portal_fqdn
+
+    p = _portal_ws(tmp_path)
+    raw = yaml.safe_load(p.read_text())
+    del raw["player"]
+    p.write_text(yaml.safe_dump(raw))
+    assert portal_fqdn(load_inventory(p)) == "portal-198-51-100-40.sslip.io"
+    raw["portal"]["hostname"] = "labs.example.com"
+    p.write_text(yaml.safe_dump(raw))
+    assert portal_fqdn(load_inventory(p)) == "labs.example.com"
+
+
+def test_portal_up_writes_the_portal_name_before_installing(tmp_path, monkeypatch):
+    from rodeo.cli import cli
+
+    p = _portal_ws(tmp_path)
+    client = FakeRoute53()
+    order = []
+    monkeypatch.setattr(dns, "route53_client", lambda: client)
+    real = dns.publish_portal
+    monkeypatch.setattr(dns, "publish_portal", lambda inv, **k: order.append("dns") or real(inv, **k))
+    monkeypatch.setattr("rodeo.commands.fleet_portal_cmd.portal_up",
+                        lambda inv, wait=True: order.append("install") or f"https://portal-{inv.portal.portal_id}.{ZONE}")
+    res = CliRunner().invoke(cli, ["fleet", "portal", "up", "-f", str(p), "--no-wait"])
+    assert res.exit_code == 0, res.output
+    assert order == ["dns", "install"]
+    pid = load_inventory(p).portal.portal_id
+    assert f"portal-{pid}.{ZONE}" in res.output and (f"portal-{pid}.{ZONE}.", "A") in client.records
+
+
+def test_a_new_portal_id_skips_names_already_in_the_zone(tmp_path, monkeypatch):
+    from rodeo.fleet import inventory as finv
+
+    p = _portal_ws(tmp_path)
+    ids = iter(["aaaaaaa1", "bbbbbbb2"])
+    monkeypatch.setattr(finv, "_new_id", lambda used: next(ids))
+    client = FakeRoute53([{"Name": f"portal-aaaaaaa1.{ZONE}.", "Type": "A", "TTL": 60,
+                           "ResourceRecords": [{"Value": "192.0.2.9"}]}])
+    taken = dns.portal_name_taken(load_inventory(p), client=client)
+    assert finv.ensure_portal_id(p, taken=taken) == "bbbbbbb2"

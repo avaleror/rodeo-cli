@@ -50,9 +50,24 @@ def portal_group() -> None:
 @click.option("--no-wait", is_flag=True, help="Do not wait for the HTTPS certificate.")
 @_file
 def portal_up_cmd(inventory_path: Path, no_wait: bool) -> None:
-    """Install or update the portal service + Caddy (TLS) on the portal VM. Idempotent."""
+    """Install or update the portal service + Caddy (TLS) on the portal VM. Idempotent.
+
+    With ``player.domain`` the portal gets its own name, ``portal-<random id>.<zone>``
+    (a Route 53 record written first, so Caddy's certificate can issue), like the
+    labs; otherwise ``portal-<ip>.sslip.io``."""
     try:
-        url = portal_up(load_inventory(inventory_path), wait=not no_wait)
+        inventory = load_inventory(inventory_path)
+        portal = inventory.portal
+        if inventory.player is not None and portal and portal.enabled and not portal.hostname:
+            from ..fleet import dns
+            from ..fleet.inventory import ensure_portal_id
+
+            ensure_portal_id(inventory_path, taken=dns.portal_name_taken(inventory))
+            inventory = load_inventory(inventory_path)
+            row = dns.publish_portal(inventory)
+            if not row.ok:
+                raise ConfigError(f"portal name in {inventory.player.domain}: {row.detail}")
+        url = portal_up(inventory, wait=not no_wait)
     except ConfigError as exc:
         _fail(exc)
     console.print(f"\n  [green]✓[/green]  Portal up: [bold]{url}[/bold]")
@@ -70,7 +85,7 @@ def portal_up_cmd(inventory_path: Path, no_wait: bool) -> None:
 @_file
 def portal_publish_cmd(inventory_path: Path, concurrency: int, output_fmt: str,
                        watch: bool, interval: int) -> None:
-    """Push every lab (URLs, credentials, student SSH) to the portal. Safe to re-run.
+    """Push every lab (its player link, or URLs and credentials) to the portal. Safe to re-run.
 
     Labs that are not ready yet are published as "building" and cannot be claimed.
     With --watch, run it right after `fleet deploy` and follow the deploy on the
@@ -88,11 +103,10 @@ def portal_publish_cmd(inventory_path: Path, concurrency: int, output_fmt: str,
         click.echo(json.dumps([r.__dict__ for r in rows], indent=2))
         return
     t = Table(title=f"Portal publish: {inventory.name}")
-    for col in ("id", "state", "student ssh", "reason"):
+    for col in ("id", "state", "reason"):
         t.add_column(col, overflow="fold")
     for r in rows:
-        t.add_row(r.id, "[green]ready[/green]" if r.ready else "[yellow]building[/yellow]",
-                  "yes" if r.ssh else "-", r.reason or "")
+        t.add_row(r.id, "[green]ready[/green]" if r.ready else "[yellow]building[/yellow]", r.reason or "")
     console.print()
     console.print(t)
     console.print(f"\n  Students: [bold]{portal_url(inventory)}[/bold]\n")

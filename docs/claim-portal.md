@@ -1,6 +1,6 @@
 ---
 title: Fleet claim portal (students get their own lab)
-status: approved design (2026-09-25); F5.0-F5.4 implemented 2026-09-30 (AWS), live end-to-end check pending
+status: approved design (2026-09-25); F5.0-F5.4 implemented 2026-09-30 (AWS); 2026-11-26 students come in through the player only (no student SSH)
 plan: docs/claim-portal-plan.md
 audience: maintainers, implementing AI or engineer
 repo: https://github.com/avaleror/rodeo-cli
@@ -73,13 +73,14 @@ credentials and no rodeo SSH key ever leave the instructor's machine.
                          ──creates──────────────────────────────────────►  host-01..N
   rodeo fleet deploy     ──SSH──────────────────────────────────────────►  rodeo up
   rodeo fleet portal publish
-       │  1. SSH to each ready host, read secrets.yaml, ensure student user/key
+       │  1. SSH to each ready host: its player link (or, without the player, its UI passwords)
        │  2. SSH to portal, upsert lab records   ──SSH──►  sqlite (0600)
        ▼
   rodeo fleet portal status/close/release ──SSH──►  rodeo portal admin (local CLI)
 
   Students ──HTTPS :443──►  Caddy ──►  rodeo portal serve (127.0.0.1)
-  Students ──HTTPS :8443/:30002 (+ SSH :2222 opt.)──────────────────────►  their host
+  Students ──HTTPS :443 (the player, behind its lab login)───────────────►  their host
+           (without the player: HTTPS :8443/:30002; never SSH)
 ```
 
 Key property: **the portal is passive.** It never connects to lab hosts or cloud APIs,
@@ -176,7 +177,7 @@ UIs. Pages send `Cache-Control: no-store` and `Referrer-Policy: no-referrer`.
 | Portal compromise | Portal stores only student-level creds for this workshop; no cloud creds, no rodeo key, no admin web UI. Short-lived: destroyed at deprovision. Encrypted root volume where the provider supports it. |
 | Guessing the event code | 8+ char code, per-IP rate limit and lockout on the claim endpoint, `portal close` to stop claiming, `portal rotate-code`. |
 | Leaked personal link | Tokens stored hashed; `portal release <lab>` or `portal revoke <email>` invalidates the token. |
-| Student escalates to other labs | **Student user has no sudo and cannot read `/root`.** This is mandatory while the fleet-wide rodeo key is planted in `/root/.ssh/` (section 1). `:22` is never opened to the internet; with `student_ssh: true` students get `:2222`, a separate sshd that accepts only `student`, by key (section 14b). |
+| Student escalates to other labs | **Student user has no sudo and cannot read `/root`.** This is mandatory while the fleet-wide rodeo key is planted in `/root/.ssh/` (section 1). `:22` is never opened to the internet, and students get no SSH at all: the player's terminal (as `student`) is their shell (section 14b is history). |
 | Lab UIs reachable from the internet (`student_access: open`) | Enforced strong per-host passwords, only the component ports, short lifetime. See section 7. |
 | Credentials in transit | Laptop to hosts and to portal: SSH only. Students to portal: HTTPS only (HTTP redirects, HSTS). |
 | Secrets in logs | Server logs method, path template and status only; never tokens, PINs, emails or passwords. |
@@ -209,9 +210,10 @@ provider:
 - `open`: **allows** the lab UI ports (`8443`, `30002`) to be opened to `0.0.0.0/0`,
   but provision never opens them. The operator runs `rodeo fleet open-access` once
   every lab is up (decision, Andrés, 2026-09-29). `22` always stays operator-only.
-  With `portal.student_ssh: true` (F5.4) students get `2222` instead, served by a
-  separate sshd that only lets the `student` user in (section 14b). IPv4 only; the
-  hosts have no public IPv6.
+  Students never get SSH (2026-11-26): the player's terminal is their shell, and
+  `open-access` opens 443 only on fleets with the player. `portal.student_ssh` and
+  its port 2222 are gone; re-running `open-access` or `player-setup` removes what an
+  older release left. IPv4 only; the hosts have no public IPv6.
 - Why a separate step: the tester lab on 2026-09-25 showed the ports must open only
   **after** the deploy has set the Harvester/Rancher admin passwords, otherwise the
   first-login screen is on the internet for the whole deploy. `fleet deploy` only
@@ -249,7 +251,6 @@ portal:
   enabled: true
   mode: both                 # roster | open | both
   roster: students.csv       # roster / both
-  student_ssh: false         # per-lab 'student' user + key, on its own sshd at :2222
   close_after: 2h            # optional: stop accepting new claims
   # instance_type: t3.small  # provider-specific override
   # hostname: labs.example.com   # instead of portal-<ip>.sslip.io
@@ -388,7 +389,13 @@ R7 (fleet-wide key in `/root/.ssh` on lab hosts). To verify live: `sshd -T` show
 `passwordauthentication no`, and as `student`,
 `find / -xdev -name 'id_ed25519*' -readable` finds only the student's own key.
 
-## 14b. Student SSH off port 22 (2026-10-05)
+## 14b. Student SSH off port 22 (2026-10-05, removed 2026-11-26)
+
+> Removed on 2026-11-26: students reach their lab through the rodeo player only
+> (docs/player.md). Publish no longer creates a student key or sshd, the portal
+> serves no key, `open-access` refuses 2222 and closes rules an older release left,
+> and the student setup script stops and deletes `rodeo-student-sshd`. Kept below
+> as the record of what was built.
 
 The Cursor security review of PR #53 found that `student_ssh: true` made
 `open-access` open `:22` to `0.0.0.0/0`. That sshd also accepts the fleet-wide rodeo

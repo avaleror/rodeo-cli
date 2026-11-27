@@ -460,6 +460,10 @@ class GcpHostProvider:
 
     name = "gcp"
 
+    # No player yet: the firewall has no 443 rule and the names live in Route 53.
+    # Fleets here run without the student UI until this says True.
+    supports_player = False
+
     def __init__(
         self,
         *,

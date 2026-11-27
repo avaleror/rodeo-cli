@@ -500,7 +500,6 @@ portal:
   enabled: true
   mode: open                  # open（workshop 代碼 + email） | roster（邀請連結） | both
   # roster: students.csv      # roster / both：CSV，欄位為 name,email[,host_id]
-  student_ssh: true           # 每個 lab 一個 `student` 使用者 + key，獨立的 sshd 在 :2222（僅限 key）
   title: SUSE Virtualization workshop
   guide_url: https://avaleror.github.io/suse-virt-workshop/   # 或 /guide/，若由 portal 提供
   # code_letters: 6           # RODEO-XXXXXX-YYYYMMDD 中的隨機字母數（4-8；6 = 1.91 億組代碼）
@@ -512,7 +511,8 @@ portal:
 rodeo fleet provision -f workshop.yaml     # lab + 一台小型 portal VM（獨立 SG：443/80 開放，22 限操作者）
 rodeo fleet portal up -f workshop.yaml     # portal 服務 + 使用正式 TLS 憑證的 Caddy
 rodeo fleet deploy -f workshop.yaml
-rodeo fleet open-access -f workshop.yaml   # 等每個 lab 都完成後執行（啟用 student_ssh 時會加上 :2222）
+rodeo fleet player-setup -f workshop.yaml  # 學生 UI（見 docs/player.md）；fleet up 會自動完成這些步驟
+rodeo fleet open-access -f workshop.yaml   # 等每個 lab 都完成後執行：有 player 時只開放 443
 rodeo fleet portal publish --watch -f workshop.yaml  # 在講師頁面上追蹤部署進度；
                                            # 每個 lab 一準備好就會發布
 rodeo fleet portal info -f workshop.yaml   # 放在投影片上的網址 + workshop 代碼

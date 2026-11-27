@@ -630,9 +630,18 @@
 
   function showLobby() {
     $("lobbyEyebrow").textContent = state.title;
-    $("lobbyCount").textContent = `${state.chapters.length} chapters`;
     const ol = $("lobbyChapters"); ol.replaceChildren();
-    state.chapters.forEach((c) => ol.append(text("li", "", nameOf(c))));
+    if (state.chapters.length) {
+      $("lobbyCount").textContent = `${state.chapters.length} chapters`;
+      state.chapters.forEach((c) => ol.append(text("li", "", nameOf(c))));
+    } else {
+      // No track: what the lab holds, and where the instructions are.
+      $("lobbyCount").textContent = "Your lab";
+      (state.tabs || []).forEach((t) => ol.append(text("li", "", t.title)));
+      $("lobbyKnow").textContent = state.guide_url
+        ? "The workshop guide opens from the guide panel, next to your credentials."
+        : "Your credentials are in the guide panel and under Credentials at the top.";
+    }
     showOverlay("lobby");
     lobbySince = Date.now();
     const tick = async () => {
@@ -688,6 +697,100 @@
   }
   $("health").onclick = checkHealth;
   document.addEventListener("visibilitychange", () => { if (!document.hidden) checkHealth(); });
+
+  // -- credentials (header popover; the guide panel too on a lab without a track)
+  let creds = null;
+  async function loadCredentials() {
+    if (creds === null) {
+      try { creds = (await api("/api/credentials")).credentials || []; } catch (e) { creds = []; }
+    }
+    return creds;
+  }
+  function credsList(list) {
+    const box = el("div", "creds");
+    list.forEach((c) => {
+      const item = el("div", "c");
+      item.append(text("b", "", c.label));
+      [["User", c.user], ["Password", c.password]].forEach(([k, v]) => {
+        const row = el("div", "kv");
+        const btn = el("button", "copy", `${ICON.copy}<span class="label">Copy</span>`);
+        btn.type = "button"; btn.title = `Copy the ${k.toLowerCase()}`;
+        btn.onclick = () => copyText(v, btn);
+        row.append(text("span", "", k), text("code", "", v), btn);
+        item.append(row);
+      });
+      box.append(item);
+    });
+    return box;
+  }
+  async function toggleCreds(open) {
+    const pop = $("credsPop");
+    const show = open === undefined ? pop.hidden : open;
+    if (show) {
+      const list = await loadCredentials();
+      pop.replaceChildren(list.length ? credsList(list) : text("span", "", "No credentials for this lab."));
+    }
+    pop.hidden = !show;
+    $("credsBtn").setAttribute("aria-expanded", String(show));
+  }
+  $("credsBtn").onclick = (e) => { e.stopPropagation(); toggleCreds(); };
+  document.addEventListener("click", (e) => {
+    if (!$("credsPop").hidden && !e.target.closest("#credsPop")) toggleCreds(false);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !$("credsPop").hidden) { toggleCreds(false); $("credsBtn").focus(); }
+  });
+
+  // A lab without a track: no chapters, steps or checks. The tabs, a terminal,
+  // the credentials and the web guide, with the guide folded at first.
+  let freeShown = false;
+  async function showFreeLab() {
+    document.body.classList.add("free");
+    $("chapterTitle").textContent = "Your lab";
+    $("guideMeta").textContent = "Your lab";
+    if (!freeShown) {
+      freeShown = true;
+      if (!store.get("rodeo-free-seen")) { store.set("rodeo-free-seen", "1"); setFolded(true); }
+      setTabs(state.tabs || []);
+    }
+    const box = el("div", "freebox");
+    if (state.guide_url) {
+      const g = el("div", "fcard");
+      g.append(text("h3", "", "Workshop guide"),
+        text("p", "", "The exercises for this lab are in the workshop guide. It opens in a new browser tab."));
+      const a = el("a", "btn primary", `${ICON.guide}<span>Open the workshop guide</span>`);
+      a.href = state.guide_url; a.target = "_blank"; a.rel = "noopener noreferrer";
+      g.append(a); box.append(g);
+    }
+    const list = await loadCredentials();
+    if (list.length) {
+      const c = el("div", "fcard");
+      c.append(text("h3", "", "Sign in"), credsList(list));
+      box.append(c);
+    }
+    if (!state.guide_url) {
+      const n = el("div", "fcard");
+      n.append(text("h3", "", "No step-by-step guide here"),
+        text("p", "", "Use the tabs to reach each part of the lab and the terminal for the command line."));
+      box.append(n);
+    }
+    $("guideBody").replaceChildren(box);
+    // The floating card (guide folded): where the guide and credentials are.
+    $("floatTag").textContent = "Your lab";
+    $("floatName").textContent = state.guide_url ? "Workshop guide and credentials" : "Credentials";
+    $("floatExcerpt").textContent = state.guide_url
+      ? "Open the guide for the exercises. Your user names and passwords are there too."
+      : "Open the guide panel for your user names and passwords.";
+    $("floatOpen").innerHTML = `${ICON.guide}<span>Your lab</span>`;
+    $("floatGuide").textContent = "Credentials";
+    $("floatNote").hidden = true;
+    const fp = $("floatPrimary");
+    fp.hidden = !state.guide_url;
+    fp.disabled = false;
+    fp.classList.remove("done");
+    fp.textContent = "Workshop guide";
+    fp.onclick = () => window.open(state.guide_url, "_blank", "noopener,noreferrer");
+  }
 
   // -- loading a chapter ----------------------------------------------------
   async function loadChapter(i) {
@@ -841,6 +944,12 @@
     state = {...await api("/api/state"), tabsNow: state && state.tabsNow};
     $("product").textContent = state.title;
     document.title = state.title;
+    $("credsBtn").hidden = !state.credentials;
+    if (!state.chapters.length) {
+      await showFreeLab();
+      if (!overlay && wantsLobby()) showLobby();
+      return;
+    }
     const moved = prev && prev.current !== state.current;
     if (reloadChapter || viewing === null || moved) await loadChapter(state.current);
     // A cover still open from before the move belongs to the old chapter.

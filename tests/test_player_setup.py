@@ -245,3 +245,95 @@ def test_root_gets_the_track_kubeconfig_only_when_missing(tmp_path):
     assert s.ensure_root_kubeconfig(src, dest) is False
     assert dest.read_text() == "root's own\n"
     assert s.ensure_root_kubeconfig(dest, dest) is False
+
+
+# ---------------------------------------------------------------- profiles without a track
+def test_a_profile_without_a_track_installs_no_track_and_lists_its_tabs():
+    from rodeo.player.profile import load
+
+    opts = s.SetupOptions(base="13-61-184-227.sslip.io", track_ref="", profile=load("virt-workshop"))
+    opts.validate()
+    script = s.install_script(opts, "/usr/local/bin/rodeo")
+    assert "git -C" not in script and f"install -d -m 700 {s.TRACK_DIR}" in script
+    cfg = s.player_config(opts)
+    assert cfg["track"] is False and cfg["guide_url"].startswith("https://")
+    assert cfg["credentials_file"] == str(s.CREDENTIALS_FILE)
+    assert [t["title"] for t in cfg["lab_tabs"]] == [
+        "SUSE Virtualization (Harvester)", "SUSE Rancher Prime", "Terminal"]
+
+
+def test_track_ref_rules_follow_the_profile():
+    from rodeo.player.profile import load
+
+    with pytest.raises(ValueError, match="drop --track-ref"):
+        s.SetupOptions(base="13-61-184-227.sslip.io", track_ref=SHA, profile=load("virt-workshop")).validate()
+    with pytest.raises(ValueError, match="40-character"):
+        s.SetupOptions(base="13-61-184-227.sslip.io", track_ref="", profile=load("virt-rodeo")).validate()
+
+
+def test_an_http_ui_is_proxied_without_tls():
+    from rodeo.player.profile import parse
+
+    prof = parse("t", {"title": "T", "uis": [
+        {"key": "rancher", "upstream": "192.168.122.10:30002", "tab_port": 30002},
+        {"key": "console", "upstream": "192.168.122.21:30080", "tab_port": 30080, "scheme": "http"}]})
+    opts = s.SetupOptions(base="13-61-184-227.sslip.io", track_ref="", profile=prof)
+    caddy = s.caddyfile(opts)
+    assert "reverse_proxy http://192.168.122.21:30080" in caddy
+    assert "reverse_proxy https://192.168.122.10:30002" in caddy
+    block = caddy.split("console.13-61-184-227.sslip.io")[1]
+    assert "tls_insecure_skip_verify" not in block.split("}\n}\n")[0]
+    assert s.player_config(opts)["probes"]["30080"] == "http://192.168.122.21:30080/"
+
+
+def test_credentials_come_from_secrets_and_are_written_root_only(tmp_path, monkeypatch):
+    from rodeo.player.profile import load
+
+    secrets = tmp_path / "secrets.yaml"
+    secrets.write_text("harvester_admin_password: hv-pw\nrancher_admin_password: r-pw\n")
+    monkeypatch.setattr(s, "_secrets_files", lambda sudo_user: [secrets])
+    creds = s.lab_credentials(None, load("virt-workshop"))
+    assert creds == [{"label": "SUSE Virtualization (Harvester)", "user": "admin", "password": "hv-pw"},
+                     {"label": "SUSE Rancher Prime", "user": "admin", "password": "r-pw"}]
+    dest = tmp_path / "credentials.json"
+    s.write_credentials(creds, dest)
+    assert oct(dest.stat().st_mode & 0o777) == "0o600"
+    assert json.loads(dest.read_text()) == creds
+
+
+def _vm_profile(**extra):
+    from rodeo.player.profile import parse
+
+    return parse("t", {"title": "T", "uis": [{"key": "rancher", "upstream": "192.168.122.9:30002",
+                                               "tab_port": 30002}], **extra})
+
+
+def test_student_libvirt_joins_the_group_and_sets_the_system_uri():
+    opts = s.SetupOptions(base="13-61-184-227.sslip.io", track_ref="", profile=_vm_profile(student_libvirt=True))
+    script = s.install_script(opts, "/usr/local/bin/rodeo")
+    assert "usermod -a -G libvirt student" in script and "exit 4" in script
+    assert "LIBVIRT_DEFAULT_URI=qemu:///system" in s.ttyd_unit(opts)
+    plain = s.SetupOptions(base="13-61-184-227.sslip.io", track_ref="", profile=_vm_profile())
+    assert "usermod -a -G libvirt" not in s.install_script(plain, "/usr/local/bin/rodeo")
+    assert "LIBVIRT_DEFAULT_URI" not in s.ttyd_unit(plain)
+
+
+def test_student_vm_access_gives_the_student_its_own_key_never_roots():
+    opts = s.SetupOptions(base="13-61-184-227.sslip.io", track_ref="",
+                          profile=_vm_profile(student_vm_access=["192.168.122.9", "192.168.122.20"]))
+    script = s.install_script(opts, "/usr/local/bin/rodeo")
+    assert f"VMKEY={s.STUDENT_VM_KEY}" in script and "the student VM key is root's key" in script
+    assert "for ip in 192.168.122.9 192.168.122.20; do" in script
+    assert "ssh -i /root/.ssh/id_ed25519 -o BatchMode=yes" in script  # root's key installs it, stays root's
+    assert "install -m 600 -o student" in script and "StrictHostKeyChecking accept-new" in script
+
+
+@pytest.mark.parametrize("extra,match", [
+    ({"student_vm_access": ["vm1"]}, "lab VM addresses"),
+    ({"student_vm_access": ["192.168.122.9"], "student_ssh_key": "/opt/k"}, "pick one"),
+])
+def test_student_access_fields_are_validated(extra, match):
+    from rodeo.player.profile import ProfileError
+
+    with pytest.raises(ProfileError, match=match):
+        _vm_profile(**extra)

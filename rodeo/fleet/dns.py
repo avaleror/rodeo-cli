@@ -10,6 +10,8 @@ per product UI in the lab profile's player.yaml (virt-rodeo shown)::
     rancher-<id>.<zone>  Rancher
 
 ``<id>`` is the random ``labels.player_id`` (see inventory.ensure_player_ids).
+The claim portal gets ``portal-<id>.<zone>`` the same way (``portal.labels.portal_id``,
+host ``portal`` in its mark), so every workshop's portal has its own name.
 Route 53 cannot tag a single record, so every name also gets a TXT record of
 the same name, ``"managed-by=rodeo fleet=<workshop> host=<host id>"``. That
 TXT is the ownership mark: publish refuses a name that holds anything not
@@ -288,6 +290,62 @@ def prune(domain: str, *, default_region: str, client: Any | None = None,
     if changes:
         _apply(client, zone_id, changes, "rodeo fleet dns --prune")
     return names
+
+
+PORTAL_HOST = "portal"
+
+
+def plan_publish_portal(inventory: FleetInventory, records: list[dict[str, Any]]
+                        ) -> tuple[list[dict[str, Any]], DnsRow]:
+    """UPSERTs for the portal's name. Pure: no AWS calls."""
+    from .inventory import portal_fqdn
+
+    _require_player(inventory)
+    portal = inventory.portal
+    name = portal_fqdn(inventory) if portal else None
+    if not portal or not portal.portal_id or not name:
+        return [], DnsRow(PORTAL_HOST, False, detail="no portal id (run `rodeo fleet portal up`)")
+    if not portal.public_ip:
+        return [], DnsRow(PORTAL_HOST, False, (name,), "no portal public_ip in workshop.yaml")
+    here = [rr for rr in records if _fqdn(rr["Name"]) == _fqdn(name)]
+    for rr in here:
+        if rr["Type"] == "TXT":
+            mark = _own_mark(rr)
+            if mark is None or mark.get("fleet") != inventory.name or mark.get("host") != PORTAL_HOST:
+                return [], DnsRow(PORTAL_HOST, False, (name,), f"refused: {name} is not this portal's")
+        elif rr["Type"] != "A":
+            return [], DnsRow(PORTAL_HOST, False, (name,), f"refused: {name} has a {rr['Type']} record")
+    if any(rr["Type"] == "A" for rr in here) and not any(rr["Type"] == "TXT" for rr in here):
+        return [], DnsRow(PORTAL_HOST, False, (name,), f"refused: {name} has an A record rodeo did not write")
+    changes = [
+        {"Action": "UPSERT", "ResourceRecordSet": {
+            "Name": name, "Type": "TXT", "TTL": TTL,
+            "ResourceRecords": [{"Value": _txt_value(inventory.name, PORTAL_HOST, _region(inventory))}]}},
+        {"Action": "UPSERT", "ResourceRecordSet": {
+            "Name": name, "Type": "A", "TTL": TTL, "ResourceRecords": [{"Value": portal.public_ip}]}},
+    ]
+    return changes, DnsRow(PORTAL_HOST, True, (name,), portal.public_ip)
+
+
+def portal_name_taken(inventory: FleetInventory, *, client: Any | None = None):
+    """A ``taken(pid)`` check for inventory.ensure_portal_id: does
+    ``portal-<pid>.<zone>`` hold any record already (another portal, or anything)?"""
+    domain = _require_player(inventory)
+    client = client or route53_client()
+    zone_id = find_zone(client, domain)
+    names = {_fqdn(rr["Name"]) for rr in _all_records(client, zone_id)}
+    return lambda pid: _fqdn(f"portal-{pid}.{domain}") in names
+
+
+def publish_portal(inventory: FleetInventory, *, client: Any | None = None) -> DnsRow:
+    """The portal's own name under player.domain (``portal-<id>``)."""
+    domain = _require_player(inventory)
+    client = client or route53_client()
+    zone_id = find_zone(client, domain)
+    changes, row = plan_publish_portal(inventory, _all_records(client, zone_id))
+    if changes:
+        _apply(client, zone_id, changes, f"rodeo fleet dns {inventory.name} portal")
+    return row
 
 
 def publish(inventory: FleetInventory, *, host_ids: list[str] | None = None,

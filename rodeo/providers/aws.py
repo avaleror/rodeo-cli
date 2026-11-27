@@ -271,6 +271,9 @@ class AwsHostProvider:
 
     name = "aws"
 
+    # The student UI (rodeo player): 443 in, lab names and the event certificate.
+    supports_player = True
+
     def __init__(
         self,
         *,
@@ -635,12 +638,12 @@ class AwsHostProvider:
         port a previous open-access opened."""
         resp = ec2.describe_security_groups(GroupIds=[sg_id])
         perms = (resp.get("SecurityGroups") or [{}])[0].get("IpPermissions") or []
-        # The student SSH port has no operator rule (the operator uses :22): it
-        # exists only while open-access has it open, and is removed otherwise.
-        # The player port (rodeo player, portal.player) is the same: no rule
-        # unless open-access opened it, so labs without a player never get one.
+        # The old student SSH port is never wanted: any rule on it (from an
+        # older rodeo) is removed. The player port is like the UI ports: the
+        # operator's address always, the world only while open-access has it
+        # open, so the operator can check a lab's player before students come.
         for port in (*MANAGED_SG_PORTS, STUDENT_SSH_PORT, PLAYER_PORT):
-            desired = set() if port in (STUDENT_SSH_PORT, PLAYER_PORT) else {caller_cidr, *_also_allowed()}
+            desired = set() if port == STUDENT_SSH_PORT else {caller_cidr, *_also_allowed()}
             if port in open_ports:
                 desired.add(STUDENT_ACCESS_CIDR)
             current = {
@@ -758,7 +761,6 @@ class AwsHostProvider:
         *,
         workshop: str,
         open_ports: tuple[int, ...],
-        allow_ssh: bool = False,
     ) -> str:
         """Reconcile the workshop's managed SG to operator /32 plus
         ``0.0.0.0/0`` on ``open_ports`` (empty = close). Returns the SG id.
@@ -772,13 +774,11 @@ class AwsHostProvider:
                 "security group it does not own. Open the lab ports on it yourself, "
                 "or omit security_group_ids so rodeo manages one."
             )
-        # :22 is never opened: the fleet-wide rodeo key logs in there as root
-        # and ssh_user. Student SSH has its own port and sshd (student only).
+        # Students never get SSH: :22 is the operator's (the rodeo key logs in
+        # there) and the old student port is closed for good.
         bad = sorted(
             p for p in open_ports
-            if p == 22
-            or (p == STUDENT_SSH_PORT and not allow_ssh)
-            or p not in (*MANAGED_SG_PORTS, STUDENT_SSH_PORT, PLAYER_PORT)
+            if p in (22, STUDENT_SSH_PORT) or p not in (*MANAGED_SG_PORTS, PLAYER_PORT)
         )
         if bad:
             raise ConfigError(f"ports {bad} cannot be opened to students")

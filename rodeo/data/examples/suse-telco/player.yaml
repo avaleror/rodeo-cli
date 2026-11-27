@@ -11,12 +11,19 @@ uis:
     label: SUSE Rancher Prime
     upstream: 192.168.122.10:30002
     tab_port: 30002
-  # The site console answers only after lab 06, so the lobby does not wait for it.
+  # The site consoles answer only after lab 06, so the lobby does not wait for them.
+  # tab_port only names the tab here (no track): each one must be unique.
   - key: console
-    label: Site console
+    label: Site console (site-co-01)
     upstream: 192.168.122.21:30080
     scheme: http
     tab_port: 30080
+    lobby: false
+  - key: ranconsole
+    label: Site console (site-ran-01)
+    upstream: 192.168.122.32:30080
+    scheme: http
+    tab_port: 30081
     lobby: false
 credentials:
   - label: SUSE Rancher Prime

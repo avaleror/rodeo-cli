@@ -14,7 +14,6 @@ Two modes, both format-aware from the file extension (.raw/.qcow2 vs .iso):
 """
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 import sys
@@ -232,10 +231,31 @@ def _vol_replace(uri: str, pool: str, name: str, *create: str) -> None:
     _virsh(uri, "vol-create-as", pool, name, *create)
 
 
-def _upload(uri: str, pool: str, name: str, src: Path, fmt: str) -> str:
-    """Put local file *src* into *pool* as volume *name*; return its path."""
-    _vol_replace(uri, pool, name, str(src.stat().st_size), "--format", fmt)
-    _virsh(uri, "vol-upload", "--pool", pool, name, str(src))
+def _remote_size(eib_ip: str, ssh_key: str, path: str) -> int:
+    r = subprocess.run(["ssh", "-i", ssh_key, *_SCP_OPTS, f"root@{eib_ip}", "stat", "-c", "%s", path],
+                       capture_output=True, text=True, check=True, timeout=30)
+    return int(r.stdout.strip())
+
+
+def _stream_upload(uri: str, pool: str, name: str, eib_ip: str, ssh_key: str, path: str,
+                   size: int, fmt: str) -> str:
+    """Stream *path* from the eib VM straight into *pool* as volume *name*.
+
+    Nothing lands in the caller's home: on fleet hosts that is the small root
+    disk, and a standalone RAW image is 30 GB. Returns the volume's path."""
+    _vol_replace(uri, pool, name, str(size), "--format", fmt)
+    reader = subprocess.Popen(["ssh", "-i", ssh_key, *_SCP_OPTS, f"root@{eib_ip}", "cat", path],
+                              stdout=subprocess.PIPE)
+    try:
+        upload = subprocess.run(["virsh", "-c", uri, "vol-upload", "--pool", pool, name, "/dev/stdin"],
+                                stdin=reader.stdout, capture_output=True, text=True)
+    finally:
+        if reader.stdout is not None:
+            reader.stdout.close()
+        rc = reader.wait()
+    if rc != 0 or upload.returncode != 0:
+        raise RuntimeError(f"copying {path} from the eib VM into pool {pool} failed: "
+                           f"{(upload.stderr or '').strip() or f'ssh exit {rc}'}")
     return _virsh(uri, "vol-path", "--pool", pool, name).stdout.strip()
 
 
@@ -244,43 +264,34 @@ def _libvirt_pull(
 ) -> None:
     """Pull *remote_image* from the eib VM and seed the edge disks through libvirt."""
     pool = _pool_of(_vda_path(edge_names[0], uri), uri)
-    suffix = Path(remote_image).suffix.lower()
-    with tempfile.TemporaryDirectory(prefix="rodeo-edge-", dir=str(Path.home())) as work:
-        local = Path(work) / Path(remote_image).name
-        subprocess.run(["scp", "-i", ssh_key, *_SCP_OPTS, f"root@{eib_ip}:{remote_image}", str(local)],
-                       check=True)
-        if suffix == ".iso":
-            iso_path = _upload(uri, pool, local.name, local, "raw")
-            for name in edge_names:
-                vda = Path(_vda_path(name, uri))
-                console.print(f"  {name}: blank disk + attaching ISO as CDROM...")
-                _vol_replace(uri, pool, vda.name, f"{disk_gb}G", "--format", "qcow2")
-                _redefine_with_iso(name, iso_path, vda, disk_gb, uri)
-            console.print(
-                f"\n[bold green]✓  Edge nodes ready for ISO install.[/bold green]\n"
-                f"   Nodes: {', '.join(edge_names)}\n"
-                f"   After the install powers them off: rodeo eject-iso --nodes {','.join(edge_names)}\n"
-            )
-            return
-        base = Path(work) / f"{local.stem}-base.qcow2"
-        console.print(f"  Converting to qcow2 base: {base.name}...")
-        subprocess.run(["qemu-img", "convert", "-f", "raw", "-O", "qcow2", str(local), str(base)], check=True)
-        local.unlink()
-        info = subprocess.run(["qemu-img", "info", "--output", "json", str(base)],
-                              capture_output=True, text=True, check=True)
-        size = str(json.loads(info.stdout)["virtual-size"])  # clones see the whole image
-        base_path = _upload(uri, pool, base.name, base, "qcow2")
-    for name in edge_names:
-        vda = Path(_vda_path(name, uri))
+    name = Path(remote_image).name
+    size = _remote_size(eib_ip, ssh_key, remote_image)
+    if Path(remote_image).suffix.lower() == ".iso":
+        iso_path = _stream_upload(uri, pool, name, eib_ip, ssh_key, remote_image, size, "raw")
+        for node in edge_names:
+            vda = Path(_vda_path(node, uri))
+            console.print(f"  {node}: blank disk + attaching ISO as CDROM...")
+            _vol_replace(uri, pool, vda.name, f"{disk_gb}G", "--format", "qcow2")
+            _redefine_with_iso(node, iso_path, vda, disk_gb, uri)
+        console.print(
+            f"\n[bold green]✓  Edge nodes ready for ISO install.[/bold green]\n"
+            f"   Nodes: {', '.join(edge_names)}\n"
+            f"   After the install powers them off: rodeo eject-iso --nodes {','.join(edge_names)}\n"
+        )
+        return
+    # The RAW image itself is the read-only base; each node gets a qcow2 overlay.
+    base_path = _stream_upload(uri, pool, f"{Path(remote_image).stem}-base.raw", eib_ip, ssh_key,
+                               remote_image, size, "raw")
+    for node in edge_names:
+        vda = Path(_vda_path(node, uri))
         console.print(f"  Thin clone: {vda.name}")
-        _vol_replace(uri, pool, vda.name, size, "--format", "qcow2",
-                     "--backing-vol", base_path, "--backing-vol-format", "qcow2")
+        _vol_replace(uri, pool, vda.name, str(size), "--format", "qcow2",
+                     "--backing-vol", base_path, "--backing-vol-format", "raw")
     console.print(
         f"\n[bold green]✓  Edge disks ready.[/bold green]\n"
         f"   Base : {base_path}\n"
         f"\n   Start edge nodes: virsh start <node>\n"
     )
-
 
 @click.command("pull-edge-image")
 @config_options

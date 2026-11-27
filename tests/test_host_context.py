@@ -250,3 +250,28 @@ def test_deploy_host_facts_off_ec2_leave_storage_alone(monkeypatch):
     cfg, _ = apply_host_context({"deployment_target": "baremetal", "storage": {}},
                                 host_facts=up_cmd._deploy_host_facts({}))
     assert "backend" not in cfg["storage"]
+
+
+def test_suse_edge_on_an_ec2_fleet_host_gets_the_aws_overlay():
+    """Fleet hosts deploy as baremetal on EC2: Rancher must still move to
+    NodePort 30002 so the lab player can reach it."""
+    cfg = {
+        "type": "suse-edge",
+        "deployment_target": "baremetal",
+        "rancher_tls": {"source": "letsEncrypt"},
+        "resources": {"rancher": {"memory_mib": 8192, "disk_gb": 60}},
+    }
+    out, notes = apply_host_context(cfg, host_facts={"on_ec2": True})
+    assert out["rancher_tls"]["source"] == "secret"
+    assert out["resources"]["rancher"]["memory_mib"] >= 12288
+    assert any("rancher_tls.source" in n for n in notes)
+
+
+def test_ec2_suse_edge_overlay_leaves_other_targets_and_types_alone():
+    instruqt = {"type": "suse-edge", "deployment_target": "instruqt",
+                "rancher_tls": {"source": "letsEncrypt"}}
+    out, _ = apply_host_context(instruqt, host_facts={"on_ec2": True})
+    assert out["rancher_tls"]["source"] == "letsEncrypt"
+    virt = {"type": "suse-virt", "deployment_target": "baremetal"}
+    out2, _ = apply_host_context(virt, host_facts={"on_ec2": True})
+    assert "rancher_tls" not in out2

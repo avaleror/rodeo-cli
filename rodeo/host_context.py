@@ -130,6 +130,11 @@ def apply_host_context(
     # EC2 + NVMe detection can enable the storage backend even on baremetal BYO.
     if target not in ("aws", "gcp") and (facts.get("on_ec2") or facts.get("has_nvme")):
         notes.extend(_ensure_nvme_backend(out, force=bool(facts.get("has_nvme"))))
+    # Fleet hosts are EC2 instances that deploy with target baremetal, so the
+    # suse-edge AWS overlay (Rancher on NodePort 30002, RAM and disk floors)
+    # has to follow the host, not the target.
+    if target == "baremetal" and facts.get("on_ec2") and out.get("type") == "suse-edge":
+        notes.extend(_apply_aws_suse_edge(out))
 
     return out, notes
 

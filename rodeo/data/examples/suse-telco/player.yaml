@@ -1,6 +1,7 @@
 # What the student UI (rodeo player) shows for this lab (see rodeo/player/profile.py).
 # No track: the exercises live on the workshop guide, opened from the player.
 title: SUSE Telco Cloud Workshop
+track_repo: https://github.com/SUSE-Technical-Marketing/suse-telco-rodeo.git
 guide_url: https://avaleror.github.io/suse-telco-workshop/
 # The guide runs virsh on the host and logs in to mgmt as root. libvirt access
 # is root-equivalent on the host, so fleets need per_host_ssh_key.
@@ -38,3 +39,5 @@ credentials:
   - label: mgmt VM (console)
     user: root
     password: ??mgmt_root_password
+variables:                       # track variable: ??secrets.yaml key
+  RANCHER_PASSWORD: ??rancher_admin_password

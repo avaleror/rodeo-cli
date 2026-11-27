@@ -1,6 +1,7 @@
 # What the student UI (rodeo player) shows for this lab (see rodeo/player/profile.py).
 # No track: the exercises live on the workshop guide, opened from the player.
 title: SUSE Edge Workshop
+track_repo: https://github.com/SUSE-Technical-Marketing/suse-edge-rodeo.git
 guide_url: https://avaleror.github.io/suse-edge-workshop/
 # The guide runs virsh and rodeo pull-edge-image on the host and logs in to the
 # lab VMs as root. libvirt access is root-equivalent on the host, so fleets need
@@ -27,3 +28,5 @@ credentials:
   - label: rancher and eib VMs (console)
     user: root
     password: ??rancher_vm_password
+variables:                       # track variable: ??secrets.yaml key
+  RANCHER_PASSWORD: ??rancher_admin_password

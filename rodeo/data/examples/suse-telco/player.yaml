@@ -8,13 +8,34 @@ uis:
     label: SUSE Rancher Prime
     upstream: 192.168.122.10:30002
     tab_port: 30002
-# No site console tab: it only exists after lab 06, and the lobby waits for
-# every tab to answer. The guide opens it on each site's NodePort 30080.
+  # Gitea on mgmt mirrors the site console repo that Fleet deploys.
+  - key: gitea
+    label: Gitea
+    upstream: 192.168.122.10:3000
+    scheme: http
+    tab_port: 3000
+  # The site consoles answer only after lab 06, so the lobby does not wait for them.
+  # tab_port only names the tab here (no track): each one must be unique.
+  - key: console
+    label: Site console (site-co-01)
+    upstream: 192.168.122.21:30080
+    scheme: http
+    tab_port: 30080
+    lobby: false
+  - key: ranconsole
+    label: Site console (site-ran-01)
+    upstream: 192.168.122.32:30080
+    scheme: http
+    tab_port: 30081
+    lobby: false
 
 credentials:
   - label: SUSE Rancher Prime
     user: admin
     password: ??rancher_admin_password
+  - label: mgmt VM (console)
+    user: root
+    password: ??mgmt_root_password
 
 # The guide runs virsh on the host and works on mgmt as root: the student's
 # own key to mgmt, never root's host key.

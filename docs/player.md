@@ -256,6 +256,7 @@ uis:
     upstream: 192.168.122.10:443          # on the lab network
     # scheme: http                        # default https (self-signed is fine)
     tab_port: 8443                        # the port the track's tabs use
+    # lobby: false                        # the lobby does not wait for this UI
   - key: rancher
     label: SUSE Rancher Prime
     upstream: 192.168.122.9:30002
@@ -274,7 +275,11 @@ Shipped profiles: `virt-rodeo` (track), `virt-workshop`, `virt-workshop-2n`,
 `rancher-test`, `rancher-lab-config` (no instructions).
 
 - **uis**: one to eight product UIs. Each gets its own name, its own Caddy site
-  behind the lab login, and the track tabs on `tab_port` open it.
+  behind the lab login, and the track tabs on `tab_port` open it. A track tab
+  with a path (a Gitea repo page, say) opens that page of the UI.
+- **lobby**: `false` on a UI the student brings up later in the lab (telco's
+  site consoles after lab 06). The lobby does not probe it, so "Enter lab"
+  does not wait for it.
 - **kubeconfig** and **student_ssh_key**: leave them out when the track does
   not use them. The student gets a copy of each.
 - **student_libvirt** and **student_vm_access**: for labs whose guide drives
@@ -295,8 +300,12 @@ Shipped profiles: `virt-rodeo` (track), `virt-workshop`, `virt-workshop-2n`,
   root-equivalent.
 - **credentials**: what the student signs in with, resolved on the lab into a
   root-only file the player serves behind the lab login. `??<key>` only.
-- **variables**: passwords the track shows, read from the host's
-  `~/.rodeo/secrets.yaml`. Always `??<key>`, never the password itself.
+- **variables**: passwords the track shows. Always `??<key>`, never the
+  password itself.
+
+Both resolve `??<key>` the way `rodeo up` did: the host's `~/.rodeo/secrets.yaml`
+(the deploying user's over root's) and, over it, the lab's own
+`.rodeo-secrets.yaml` (suse-telco keeps `mgmt_root_password` there).
 
 `rodeo fleet dns` and `rodeo fleet player-setup` read the profile from
 `lab.profile` in `workshop.yaml`. On one host, pass it yourself:

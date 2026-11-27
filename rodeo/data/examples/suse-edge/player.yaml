@@ -8,11 +8,20 @@ uis:
     label: SUSE Rancher Prime
     upstream: 192.168.122.9:30002
     tab_port: 30002
+  # Gitea on the eib VM holds eib-config and the Fleet app repo.
+  - key: gitea
+    label: Gitea
+    upstream: 192.168.122.20:3000
+    scheme: http
+    tab_port: 3000
 
 credentials:
   - label: SUSE Rancher Prime
     user: admin
     password: ??rancher_admin_password
+  - label: rancher and eib VMs (console)
+    user: root
+    password: ??rancher_vm_password
 
 # The guide drives the edge VMs with virsh and logs in to the lab VMs as root:
 # the student's own key, never root's host key. edge3/edge4 (.33/.34) are built

@@ -352,3 +352,23 @@ def test_a_track_profile_still_needs_its_chapters(tmp_path):
     (tmp_path / "empty").mkdir()
     with pytest.raises(ValueError, match="no NN-slug"):
         Player(PlayerConfig(track_dir=str(tmp_path / "empty"), state_dir=str(tmp_path / "state")))
+
+
+def test_a_tab_path_opens_that_page_of_the_ui(served):
+    """A track tab with path: /gitea/eib-config opens that page, not the UI root.
+    Anything that is not a plain absolute path is ignored."""
+    from rodeo.player.runner import Tab
+
+    _, player = served
+    player.cfg.tab_urls["3000"] = "https://gitea.lab.example/"
+    tabs = [Tab(title="Gitea", type="service", port=3000, path="/gitea/eib-config"),
+            Tab(title="Root", type="service", port=3000, path="/"),
+            Tab(title="Evil", type="service", port=3000, path="//evil.example/x"),
+            Tab(title="Quote", type="service", port=3000, path='/a"onload=x')]
+    player._tab_list = lambda index: tabs
+    assert [t["url"] for t in player.tabs(0)] == [
+        "https://gitea.lab.example/gitea/eib-config",
+        "https://gitea.lab.example/",
+        "https://gitea.lab.example/",
+        "https://gitea.lab.example/",
+    ]

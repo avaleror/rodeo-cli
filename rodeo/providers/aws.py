@@ -1049,6 +1049,7 @@ class AwsHostProvider:
             )
             if wait_spec.wait_ssh:
                 self._wait_ssh(wait_spec, host, timeout=wait_spec.ssh_timeout)
+                self._wait_repos(wait_spec, host, timeout=float(cfg.get("repo_timeout") or 600))
                 inv = FleetInventory(
                     name=wait_spec.workshop,
                     lab_dir="/",
@@ -1463,6 +1464,31 @@ class AwsHostProvider:
                 raise ConfigError(f"AWS instance {instance_id} entered state {state}")
             self._sleep(5)
         raise ConfigError(f"timed out waiting for AWS instance {instance_id} to be running")
+
+    # SLES PAYG on EC2 registers its repositories (guestregister) up to a minute after
+    # sshd answers, and the installer's zypper fails with "No repositories defined"
+    # (exit 104) until then. Same wait as the GCP provider. Count enabled repo rows
+    # instead of trusting the exit code: `zypper lr -E` also exits 0 when repos exist
+    # but none is enabled. Images without zypper pass at once.
+    _REPOS_READY = ("command -v zypper >/dev/null || exit 0; "
+                    "sudo -n zypper -n lr -E 2>/dev/null | grep -qE '^ *[0-9]+ *\\|'")
+
+    def _wait_repos(self, spec: ProvisionSpec, host: ProvisionedHost, *, timeout: float) -> None:
+        inv = FleetInventory(name=spec.workshop, lab_dir="/", hosts=[],
+                             defaults={"ssh_user": spec.ssh_user, "identity_file": spec.identity_file})
+        fh = FleetHost(id=host.id, ssh=host.ssh, public_ip=host.public_ip)
+        deadline = time.monotonic() + timeout
+        while True:
+            result = run_remote(inv, fh, ["bash", "-c", self._REPOS_READY], timeout=60.0, as_root=False)
+            if result.ok:
+                return
+            if time.monotonic() >= deadline:
+                raise ConfigError(
+                    f"{host.public_ip}: the image's package repositories are still not "
+                    f"registered after {int(timeout)} s (SLES PAYG registers them at boot; "
+                    "check `sudo systemctl status guestregister` on the host)"
+                )
+            self._sleep(10)
 
     def _wait_ssh(self, spec: ProvisionSpec, host: ProvisionedHost, *, timeout: float) -> None:
         inventory = FleetInventory(

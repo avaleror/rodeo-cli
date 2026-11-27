@@ -482,6 +482,7 @@ def test_provision_primary_and_execute(tmp_path, monkeypatch):
         "rodeo.providers.aws.AwsHostProvider._wait_ssh",
         lambda *a, **k: None,
     )
+    monkeypatch.setattr("rodeo.providers.aws.AwsHostProvider._wait_repos", lambda *a, **k: None)
     monkeypatch.setattr("rodeo.providers.aws.plant_rodeo_ssh_key", lambda *a, **k: None)
     monkeypatch.setattr(
         "rodeo.providers.remote_up.run_remote",
@@ -538,6 +539,7 @@ def test_destroy_cli_yes(tmp_path, monkeypatch):
         "rodeo.providers.aws.AwsHostProvider._wait_ssh",
         lambda *a, **k: None,
     )
+    monkeypatch.setattr("rodeo.providers.aws.AwsHostProvider._wait_repos", lambda *a, **k: None)
     monkeypatch.setattr("rodeo.providers.aws.plant_rodeo_ssh_key", lambda *a, **k: None)
     monkeypatch.setattr(
         "rodeo.providers.remote_up.rodeo_state_dir",

@@ -790,10 +790,11 @@ class GcpHostProvider:
 
     # SLES PAYG on GCE registers its repositories (guestregister) a minute or two after
     # sshd answers. rodeo's installer runs zypper straight away, and with no repositories
-    # it fails ("No repositories defined"). Live-caught 2026-11-24. Images without zypper
-    # pass at once.
+    # it fails ("No repositories defined"). Live-caught 2026-11-24. Count enabled repo
+    # rows: `zypper lr` also exits 0 when repos exist but none is enabled. Images without
+    # zypper pass at once.
     _REPOS_READY = ("command -v zypper >/dev/null || exit 0; "
-                    "sudo -n zypper -n -q lr >/dev/null 2>&1")
+                    "sudo -n zypper -n lr -E 2>/dev/null | grep -qE '^ *[0-9]+ *\\|'")
 
     def _wait_repos(self, spec: ProvisionSpec, host: ProvisionedHost, *, timeout: float) -> None:
         inv = FleetInventory(name=spec.workshop, lab_dir="/", hosts=[],

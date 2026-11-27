@@ -1,6 +1,6 @@
 site_name: rodeo-cli
 site_description: A declarative CLI that deploys hands-on lab infrastructure (Harvester HCI, Rancher Prime, SUSE Edge) on KVM.
-site_url: https://avaleror.github.io/rodeo-cli/
+site_url: https://rodeocli.com/
 repo_url: https://github.com/avaleror/rodeo-cli
 repo_name: avaleror/rodeo-cli
 edit_uri: edit/main/docs/

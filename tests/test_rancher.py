@@ -545,3 +545,44 @@ def test_elemental_ui_reconcile_cancel_stops_phase(cfg, monkeypatch):
     phase = _elemental_phase(cfg, monkeypatch, order, reconcile_result=False, error="cancelled")
     _, ok = drain(phase._install_elemental())
     assert ok is False
+
+
+def _elemental_script(cfg, monkeypatch):
+    phase = RancherPhase(cfg)
+    phase.profile_type = "rancher"  # operator only, no suse-edge content
+    seen: dict[str, str] = {}
+
+    def capture(self, script, timeout=120):
+        seen["script"] = script
+        return subprocess.CompletedProcess([], 0, "", "")
+
+    monkeypatch.setattr(RancherPhase, "_ssh_script", capture)
+    drain(phase._install_elemental())
+    return seen["script"]
+
+
+def test_elemental_waits_for_rancher_webhook_before_helm(cfg, monkeypatch):
+    """Seen live: helm created the namespace before rancher-webhook had
+    endpoints and Rancher's admission webhook rejected it."""
+    script = _elemental_script(cfg, monkeypatch)
+    assert "get endpoints rancher-webhook" in script
+    assert script.index("rancher-webhook") < script.index("helm upgrade --install")
+
+
+def test_rancher_webhook_wait_loop_runs(cfg, monkeypatch, tmp_path):
+    """The loop itself: no endpoints twice, then one; helm runs after."""
+    script = _elemental_script(cfg, monkeypatch)
+    loop = script.split("helm upgrade")[0].replace("set -euo pipefail\n", "set -eu\n")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    count = tmp_path / "count"
+    (bin_dir / "kubectl").write_text(
+        f'#!/bin/sh\nn=$(cat {count} 2>/dev/null || echo 0); n=$((n+1)); echo $n > {count}\n'
+        '[ "$n" -ge 3 ] && echo 10.42.0.7\nexit 0\n')
+    (bin_dir / "sleep").write_text("#!/bin/sh\nexit 0\n")
+    for f in bin_dir.iterdir():
+        f.chmod(0o755)
+    r = subprocess.run(["bash", "-c", loop + "echo READY\n"], capture_output=True, text=True,
+                       env={"PATH": f"{bin_dir}:/usr/bin:/bin"})
+    assert r.returncode == 0 and "READY" in r.stdout
+    assert count.read_text().strip() == "3"

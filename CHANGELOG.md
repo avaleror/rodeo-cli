@@ -1,5 +1,70 @@
 # Changelog
 
+## [0.35.0](https://github.com/avaleror/rodeo-cli/compare/v0.34.0...v0.35.0) (2026-11-27)
+
+
+### Features
+
+* **fleet:** every workshop fleet runs the student UI, no student SSH, portal under the event zone ([#249](https://github.com/avaleror/rodeo-cli/issues/249)) ([a30f972](https://github.com/avaleror/rodeo-cli/commit/a30f972fcfcc47c80c1245be0c35177a32d050e9))
+* **fleet:** fleet up runs the lab player steps ([#242](https://github.com/avaleror/rodeo-cli/issues/242)) ([a65489e](https://github.com/avaleror/rodeo-cli/commit/a65489e90fdaf765f97cb7a5818acd2e8bda948f))
+* **fleet:** provider.per_host_ssh_key, one root key per lab host (R7) ([18bd251](https://github.com/avaleror/rodeo-cli/commit/18bd251cc448db8e0fa3b6cb94ae830050dcaa88))
+* **fleet:** rodeo fleet operator, run fleet commands from a cloud host ([#247](https://github.com/avaleror/rodeo-cli/issues/247)) ([9063eba](https://github.com/avaleror/rodeo-cli/commit/9063eba7c085d2d7e5b7cc3751275dc22fbd7b19))
+* **fleet:** rodeo fleet player-setup and the player port in open-access ([93bb104](https://github.com/avaleror/rodeo-cli/commit/93bb104bc74b556f21afc6cf7c0b2344de39b38f))
+* **fleet:** rodeo fleet preflight, read-only checks before an event ([#244](https://github.com/avaleror/rodeo-cli/issues/244)) ([aa44873](https://github.com/avaleror/rodeo-cli/commit/aa44873c96dd64aa5356df9838eed1a6fc19ad9d))
+* **player:** a window a student can follow without a presenter ([6fe9f87](https://github.com/avaleror/rodeo-cli/commit/6fe9f87b50fea8a407f7b1fc6e93ea57ad3b14b9))
+* **player:** Instruqt-like lab player for the virt rodeo on our own fleet ([4bdea32](https://github.com/avaleror/rodeo-cli/commit/4bdea32bfb80e61aac33df6abea1fc771607dfcb))
+* **player:** lab login, one access link and per-host cookies ([00a7962](https://github.com/avaleror/rodeo-cli/commit/00a7962eb51f54b0ee7843ab6a9d56c11cd81270))
+* **player:** limit wrong lab links per address ([#241](https://github.com/avaleror/rodeo-cli/issues/241)) ([e3cfdb5](https://github.com/avaleror/rodeo-cli/commit/e3cfdb5388c325e6fec151e4c5659ce39ca92fd6))
+* **player:** locked first-check results; render the track like Instruqt ([160a52c](https://github.com/avaleror/rodeo-cli/commit/160a52c63bd3203c46135636bf73e1bc627eb2b6))
+* **player:** loopback web app with assignment, tabs and Check/Next/Skip ([9affb6e](https://github.com/avaleror/rodeo-cli/commit/9affb6eec2ed3e12431488bad92236b983ca7097))
+* **player:** owned DNS zone, Route 53 names and one wildcard cert per event ([6ccb1ad](https://github.com/avaleror/rodeo-cli/commit/6ccb1ad134fff319036fb63d20bd960e245b4d06))
+* **player:** per-product player profile in the lab profile's player.yaml ([#245](https://github.com/avaleror/rodeo-cli/issues/245)) ([41d374a](https://github.com/avaleror/rodeo-cli/commit/41d374a6dcb02d39c8ad29ae709c73e7b846932e))
+* **player:** redesign the lab UI (light, dark and auto themes) ([#240](https://github.com/avaleror/rodeo-cli/issues/240)) ([9504ba3](https://github.com/avaleror/rodeo-cli/commit/9504ba341a7ac8bb7fa0b752c2152a6e4b4c65ad))
+* **player:** rodeo player setup/serve/test on the lab host ([1123b0e](https://github.com/avaleror/rodeo-cli/commit/1123b0e0de3b2e119e97f06916c0f8c066b3ad3b))
+* **player:** sandbox the root player service ([dfd5b5d](https://github.com/avaleror/rodeo-cli/commit/dfd5b5d76c9446b96b74d5f99fdeb44612e557fb))
+* **player:** student flow with lobby, chapter covers and a foldable guide ([#246](https://github.com/avaleror/rodeo-cli/issues/246)) ([daedde8](https://github.com/avaleror/rodeo-cli/commit/daedde8fde538a688f5da4fa4959f55f97c26a14))
+* **player:** visible Skip chapter button ([4657fd2](https://github.com/avaleror/rodeo-cli/commit/4657fd290209bf9a463f723e92201228fd99b21d))
+* **portal:** opt-in "Open your lab" card for labs with the player ([e3df453](https://github.com/avaleror/rodeo-cli/commit/e3df4534350f60b4e74df21e8bcdb08497de4ac0))
+* **virt-rodeo:** SLES images from a private bucket, chapter 3 passes ([73cf94f](https://github.com/avaleror/rodeo-cli/commit/73cf94fc92c003fddd71aff270f133dfff80e8d3))
+
+
+### Bug Fixes
+
+* **apply:** don't treat the lab's own folders as hosts ([#231](https://github.com/avaleror/rodeo-cli/issues/231)) ([64b8f27](https://github.com/avaleror/rodeo-cli/commit/64b8f273362a803d6bc845b20ffc52a7a6fc01da))
+* **aws:** keep polling when a just-launched instance is not visible yet ([#232](https://github.com/avaleror/rodeo-cli/issues/232)) ([f85beb1](https://github.com/avaleror/rodeo-cli/commit/f85beb124c96f03d08c40b1edf98e55fb17e25b8))
+* **aws:** wait for SLES PAYG repo registration before deploying ([#230](https://github.com/avaleror/rodeo-cli/issues/230)) ([0319923](https://github.com/avaleror/rodeo-cli/commit/0319923b68da4c3acd0db03e9df03258f71efacc))
+* clean up what the dead-man switch leaves behind (DNS names, security groups, key pairs) ([#248](https://github.com/avaleror/rodeo-cli/issues/248)) ([36f9bde](https://github.com/avaleror/rodeo-cli/commit/36f9bde005bdbed94a4e23527c4b69af08a6075a))
+* **fleet:** deploy keeps rodeo up's real exit code; status stops calling a failed lab done ([4399952](https://github.com/avaleror/rodeo-cli/commit/43999522fe56a3634c921096b31b11bfd78dc210))
+* **fleet:** deploy keeps rodeo up's real exit code; status stops calling a failed lab done ([d630826](https://github.com/avaleror/rodeo-cli/commit/d63082647abc61e0812942bcd04b5bef6aa15f4e))
+* **fleet:** deprovision crashed reading provider_id from FleetHost ([4cff091](https://github.com/avaleror/rodeo-cli/commit/4cff0917a250d001ee817684513ac08a8cfa6a68))
+* **fleet:** deprovision crashed reading provider_id from FleetHost ([a825fec](https://github.com/avaleror/rodeo-cli/commit/a825fecdc31c417667a32b07bb34b42c6ff147db))
+* **fleet:** size instance_tier by the workshop's lab.profile ([#228](https://github.com/avaleror/rodeo-cli/issues/228)) ([211c2f5](https://github.com/avaleror/rodeo-cli/commit/211c2f5ebe0f85ebe1f2fd6655e98157c1e102b0))
+* **player:** Caddy off :80, no firewalld reload (found live) ([bbca13d](https://github.com/avaleror/rodeo-cli/commit/bbca13dcf6aa574a34e865cd1dc403cbad614bd2))
+* **player:** cert propagation on the zone's nameservers; staging certs kept apart ([686e81a](https://github.com/avaleror/rodeo-cli/commit/686e81a7ac603f7512183050db678a4212ab5f79))
+* **player:** fleet hosts keep the kubeconfig in the SSH user's home; lab-images links outlived by deploys ([3e63f59](https://github.com/avaleror/rodeo-cli/commit/3e63f5937c3a8d924e38a142fa779cd9e70b9391))
+* **player:** give root the track's kubeconfig path on fleet hosts ([e4a2cd8](https://github.com/avaleror/rodeo-cli/commit/e4a2cd8df1ee53f4ed46eca867bdb9c6d79eeca2))
+* **player:** kubeconfig lookup skips an unreadable home; test no longer reads the real /root ([d2d64e4](https://github.com/avaleror/rodeo-cli/commit/d2d64e4bb1ebd8b75550b2e9cc4d9bc258329920))
+* **player:** load each tab's iframe on first view ([877e70c](https://github.com/avaleror/rodeo-cli/commit/877e70c959aaf54f04bb1fcad78c396d516ed2fa))
+* **player:** no Instruqt addresses in a rodeo lab ([#243](https://github.com/avaleror/rodeo-cli/issues/243)) ([335e2ff](https://github.com/avaleror/rodeo-cli/commit/335e2ff05b2c060a3eb3879599abd37827e7e6a4))
+* **player:** pass the browser's Host to Harvester and Rancher ([305278f](https://github.com/avaleror/rodeo-cli/commit/305278fb9f9c30cd19d04c24cc978b8b5719bf7e))
+* **player:** review notes: no /api/back, locked state, no ticket in Referer ([b6c4f9e](https://github.com/avaleror/rodeo-cli/commit/b6c4f9e09bcc19996097c042a0d175720a9026ad))
+* **player:** serve the track's images at /assets/ ([2cc4d1b](https://github.com/avaleror/rodeo-cli/commit/2cc4d1b618b248c9a70d61c30b47091489b773d4))
+* **portal:** with the player, publish one link and open 443 only ([b07d31d](https://github.com/avaleror/rodeo-cli/commit/b07d31d1e7778ce3235a31214a88d31e9433075c))
+* **up:** treat EC2 hosts deployed as baremetal as NVMe hosts ([#229](https://github.com/avaleror/rodeo-cli/issues/229)) ([d02816c](https://github.com/avaleror/rodeo-cli/commit/d02816cf67dc37383e33c4675d95c849c9121cb9))
+* **virt-rodeo:** chapter 4 works, and Skip runs skipped chapters' setup ([d19e071](https://github.com/avaleror/rodeo-cli/commit/d19e07174deb2b073a230e7fcf8459cf39697e14))
+* **virt-rodeo:** custom scripts find the kubeconfig in the invoking user's home ([18b5813](https://github.com/avaleror/rodeo-cli/commit/18b5813339986136058f7df02857e940cb6e8014))
+* **virt-rodeo:** keep licensed SLES images inside the lab ([ab57b15](https://github.com/avaleror/rodeo-cli/commit/ab57b1512c402c622dc60a0d5dc91296d729b6d6))
+* **virt-rodeo:** keep the backup image on the VM disk, boot-safe fstab ([900ada7](https://github.com/avaleror/rodeo-cli/commit/900ada794aeaa1601c8429e06682c4c61b855576))
+
+
+### Documentation
+
+* add multi-language support and a zh-TW translation ([7b71eed](https://github.com/avaleror/rodeo-cli/commit/7b71eedb53b661dca37f7f8a23001a9e8ffb09f4))
+* **player:** the lab player, test mode and a fleet on an owned DNS zone ([b80e76d](https://github.com/avaleror/rodeo-cli/commit/b80e76dc549997b051ebdf400fa2513ae57378b3))
+* **zh-TW:** add Traditional Chinese translation of the docs site ([e64e3f6](https://github.com/avaleror/rodeo-cli/commit/e64e3f6a79d09b4a3866b9277e654325e3a7202c))
+* **zh-TW:** translate the 0.34.0 changes to fleet, get-started, install and plan ([c89e83b](https://github.com/avaleror/rodeo-cli/commit/c89e83b32250e684a2555da6be6a7946de757439))
+* **zh-TW:** use Taiwan terms for "save" and "mirror" ([a219ff7](https://github.com/avaleror/rodeo-cli/commit/a219ff777a9fabc92a818872e6b25f3fcf397c9b))
+
 ## [0.34.0](https://github.com/avaleror/rodeo-cli/compare/v0.33.0...v0.34.0) (2026-11-24)
 
 

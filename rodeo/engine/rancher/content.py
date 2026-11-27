@@ -7,10 +7,28 @@ touching the cluster orchestration code.
 from __future__ import annotations
 
 import json
+import re
+from pathlib import Path
 from typing import Generator
 
 from ...shellquote import heredoc, q
 from ..runner import DeployEvent, LogLine
+
+# The lab player's student key to the lab VMs (rodeo.player.setup.STUDENT_VM_KEY).
+# A fleet that runs the player makes it before rodeo up, so edge3/edge4, which the
+# student builds and boots later, trust it too. Absent on self-serve labs.
+STUDENT_VM_PUB = Path("/var/lib/rodeo-player/student-vm-key.pub")
+_PUBKEY_RE = re.compile(r"^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp256) [A-Za-z0-9+/=]+")
+
+
+def student_vm_pubkey(path: Path = STUDENT_VM_PUB) -> str:
+    """Type and key of the student's public key, without the comment; '' if none."""
+    try:
+        first = path.read_text().strip().splitlines()[0]
+    except (OSError, IndexError):
+        return ""
+    m = _PUBKEY_RE.match(first)
+    return m.group(0) if m else ""
 
 
 class LabContentMixin:
@@ -103,6 +121,7 @@ class LabContentMixin:
         Credentials: admin_user from definition.yaml, password from secrets.yaml.
         """
         image = f"docker.io/gitea/gitea:{self.gitea_version}-rootless"
+        student_pub = student_vm_pubkey()
         gitea_url = f"http://localhost:{self.gitea_port}"
         # Same filenames _populate_hauler stages onto the eib VM (self.iso_fname /
         # self.raw_fname, set once in RancherPhase.__init__) — the .raw (not
@@ -399,7 +418,10 @@ class LabContentMixin:
             # whenever a user has sshKeys.
             "HOSTKEY=$(grep -m1 -E '^ssh-' /root/.ssh/authorized_keys)\n"
             "for f in rke2-edge3 k3s-edge4; do\n"
-            "  sed -i \"/^operatingSystem:\\$/a\\\\  users:\\\\n    - username: root\\\\n      createHomeDir: true\\\\n      sshKeys:\\\\n        - $HOSTKEY\" \"$EIB_REPO/$f-definition.yaml\"\n"
+            "  sed -i \"/^operatingSystem:\\$/a\\\\  users:\\\\n    - username: root\\\\n      createHomeDir: true\\\\n      sshKeys:\\\\n        - $HOSTKEY"
+            # The lab player's student key, when there is one (never root's key).
+            + (f"\\\\n        - {student_pub}" if student_pub else "")
+            + "\" \"$EIB_REPO/$f-definition.yaml\"\n"
             "done\n\n"
             # Commit and push to local Gitea
             "git -C \"$EIB_REPO\" init\n"

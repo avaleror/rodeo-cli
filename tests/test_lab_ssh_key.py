@@ -152,7 +152,9 @@ def test_stale_keys_of_other_labs_are_swept(managed_ssh, no_wait):  # noqa: F811
     p = _aws(fake)
     p.provision(_spec("gone"), _provider())
     gone = load_lab_ssh_key("gone")
+    _age(gone)
     other_region = new_lab_ssh_key("elsewhere", region="us-east-1")
+    _age(other_region)
     for inst in fake.instances.values():
         inst["State"] = {"Name": "terminated"}  # dead-man switch
     p.provision(_spec("demo"), _provider())
@@ -160,6 +162,26 @@ def test_stale_keys_of_other_labs_are_swept(managed_ssh, no_wait):  # noqa: F811
     assert load_lab_ssh_key("gone") is None
     # A key recorded for another region is not this client's to judge.
     assert load_lab_ssh_key("elsewhere") == other_region
+
+
+def _age(key, hours=3.0):
+    """Make a local lab key look older than the sweep's grace."""
+    import os
+    import time
+
+    old = time.time() - hours * 3600
+    os.utime(key.private, (old, old))
+
+
+def test_a_key_still_provisioning_on_this_machine_is_not_swept(managed_ssh, no_wait):  # noqa: F811
+    """Two fleet ups at once: the second must not delete the first one's key
+    before its instances exist (seen live: FileNotFoundError on the .pub)."""
+    fake = _FakeEC2WithSG()
+    p = _aws(fake)
+    starting = new_lab_ssh_key("starting", region=_provider()["region"])  # no instances yet
+    p.provision(_spec("demo"), _provider())
+    assert starting.key_name not in getattr(fake, "deleted_key_pairs", [])
+    assert load_lab_ssh_key("starting") == starting
 
 
 def _live(fake):

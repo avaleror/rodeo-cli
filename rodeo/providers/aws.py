@@ -1318,11 +1318,16 @@ class AwsHostProvider:
     def _sweep_stale_lab_keys(self, ec2: Any, region: str, *, skip: str) -> None:
         """Delete this machine's lab keys whose lab is gone (dead-man switch,
         console termination): the key pair in EC2 and the private key here.
-        Only keys recorded for ``region``, and only when no instance of that
-        key's own deployment is left; never fails the caller."""
+        Only keys recorded for ``region``, older than ORPHAN_GRACE_HOURS, and
+        only when no instance of that key's own deployment is left; never fails
+        the caller. The grace keeps a second ``fleet up`` on this machine from
+        deleting the key of a lab still provisioning (no instances yet)."""
         try:
+            cutoff = time.time() - ORPHAN_GRACE_HOURS * 3600
             for key in list_lab_ssh_keys():
                 if key.workshop == skip or not key.region or key.region != region:
+                    continue
+                if key.private.stat().st_mtime > cutoff:
                     continue
                 if self._mine(ec2, key.workshop, key):
                     continue

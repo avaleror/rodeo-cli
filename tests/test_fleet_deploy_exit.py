@@ -72,3 +72,27 @@ def test_running_deploy_is_not_ok_yet(tmp_path):
 def test_success_and_old_hosts_keep_todays_behaviour(tmp_path):
     assert _state(tmp_path, fleet_up_exit=0).state == "ok"
     assert _state(tmp_path).state == "ok"  # no exit file: deploys from before this change
+
+
+def test_player_fleets_make_the_student_vm_key_before_rodeo_up(tmp_path, monkeypatch):
+    """suse-edge bakes the student key into edge3/edge4 during rodeo up, so it
+    must exist first. Root's key is never involved; fleets without the player
+    make nothing."""
+    from rodeo.fleet import deploy, inventory
+    from rodeo.player import setup
+    from rodeo.player.profile import parse
+
+    inv = _inv(tmp_path)
+    monkeypatch.setattr(inventory, "runs_player", lambda i: True)
+    prof = parse("x", {"title": "X", "uis": [{"key": "r", "upstream": "192.168.122.9:30002",
+                                              "tab_port": 30002}],
+                       "student_vm_access": ["192.168.122.20"]})
+    monkeypatch.setattr("rodeo.player.profile.load", lambda name: prof)
+    script = start_up_script(inv, "rodeo-fleet-demo-h1")
+    assert "ssh-keygen" in script and str(setup.STUDENT_VM_KEY) in script
+    assert script.index("ssh-keygen") < script.index("rodeo up")
+    assert "/root/.ssh" not in deploy.student_key_script(inv)
+
+    monkeypatch.setattr(inventory, "runs_player", lambda i: False)
+    assert deploy.student_key_script(inv) == ""
+

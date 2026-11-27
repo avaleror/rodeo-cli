@@ -118,19 +118,28 @@ def test_edge_nodes_also_trust_the_students_own_vm_key(monkeypatch):
     assert script.index("HOSTKEY=") < script.index("STUDENTKEY=") < script.index('git -C "$EIB_REPO" init')
 
 
-def test_student_vm_pubkey_is_made_once_and_kept_root_only(tmp_path):
+def test_student_vm_pubkey_is_read_never_made(tmp_path):
+    """Instruqt and self-serve labs have no player key: nothing is made, so
+    their edge3/edge4 definitions keep only the host key."""
     from rodeo.engine.rancher.content import student_vm_pubkey
 
-    key = tmp_path / "player" / "student-vm-key"
-    first = student_vm_pubkey(key)
-    assert first.startswith("ssh-ed25519 ") and first.endswith("student@lab-vms")
-    assert oct(key.stat().st_mode & 0o777) == "0o600"
-    assert student_vm_pubkey(key) == first
+    key = tmp_path / "student-vm-key"
+    assert student_vm_pubkey(key) == ""
+    assert not key.exists() and not tmp_path.joinpath("student-vm-key.pub").exists()
 
 
-def test_student_vm_pubkey_is_empty_when_it_cannot_be_made(tmp_path):
+def test_student_vm_pubkey_is_type_and_key_only(tmp_path):
     from rodeo.engine.rancher.content import student_vm_pubkey
 
-    blocked = tmp_path / "file"
-    blocked.write_text("")
-    assert student_vm_pubkey(blocked / "student-vm-key") == ""
+    key = tmp_path / "k"
+    key.with_name("k.pub").write_text("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB+x/y= student@lab-vms\n")
+    assert student_vm_pubkey(key) == "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB+x/y="
+    key.with_name("k.pub").write_text('ssh-ed25519 AAAA"; rm -rf / #\n')
+    assert student_vm_pubkey(key) == "ssh-ed25519 AAAA"
+
+
+def test_no_player_key_leaves_the_definitions_alone(monkeypatch):
+    from rodeo.engine.rancher import content
+
+    monkeypatch.setattr(content, "student_vm_pubkey", lambda key=None: "")
+    assert "STUDENTKEY=''" in _captured_gitea_script()

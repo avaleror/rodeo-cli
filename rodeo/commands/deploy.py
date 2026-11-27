@@ -103,6 +103,7 @@ def deploy_cmd(
 
     from ..host_context import apply_host_context, persist_host_context_notes
     from ..preflight import detect_host
+    from ..providers.remote_up import on_ec2
 
     host = detect_host()
     cfg, hc_notes = apply_host_context(
@@ -111,6 +112,7 @@ def deploy_cmd(
             "cpus": host.get("cpus") or 0,
             "disk_free_gib": host.get("disk_free_gib"),
             "image_dir": host.get("image_dir"),
+            "on_ec2": on_ec2(),
         },
     )
     persist_host_context_notes(cfg, hc_notes)
@@ -182,6 +184,7 @@ def execute_deploy(
     """
     from ..host_context import apply_host_context, persist_host_context_notes
     from ..preflight import detect_host
+    from ..providers.remote_up import on_ec2
 
     if from_phase is not None:
         get_profile(cfg.get("type", "suse-virt")).check_phase(from_phase)
@@ -193,6 +196,7 @@ def execute_deploy(
             "cpus": host.get("cpus") or 0,
             "disk_free_gib": host.get("disk_free_gib"),
             "image_dir": host.get("image_dir"),
+            "on_ec2": on_ec2(),
         },
     )
     persist_host_context_notes(cfg, hc_notes)

@@ -269,9 +269,9 @@ variables:                                # track variable: ??secrets.yaml key
   HARVESTER_PASSWORD: ??harvester_admin_password
 ```
 
-Shipped profiles: `virt-rodeo` (track), `virt-workshop` and `virt-workshop-2n`
-(web guide), `harvester`, `harvester-2n`, `rancher-test`, `rancher-lab-config`
-(no instructions).
+Shipped profiles: `virt-rodeo` (track), `virt-workshop`, `virt-workshop-2n`,
+`suse-edge` and `suse-telco` (web guide), `harvester`, `harvester-2n`,
+`rancher-test`, `rancher-lab-config` (no instructions).
 
 - **uis**: one to eight product UIs. Each gets its own name, its own Caddy site
   behind the lab login, and the track tabs on `tab_port` open it.
@@ -282,8 +282,13 @@ Shipped profiles: `virt-rodeo` (track), `virt-workshop` and `virt-workshop-2n`
   `qemu:///system` as the default (root-equivalent on that host, so `fleet
   player-setup` refuses it without `per_host_ssh_key: true`). The second makes
   the student their own key and installs it for root on the listed lab VMs,
-  using root's key, which the student never sees. Not shipped yet for
-  suse-edge and suse-telco: edge3/edge4 images only trust the host key.
+  using root's key, which the student never sees. suse-edge's content phase
+  makes that key early and adds it to the edge3/edge4 EIB definitions, so the
+  nodes the student builds later trust it too.
+- **student_rodeo_commands**: rodeo subcommands the guide runs on the host as
+  root (suse-edge: `pull-edge-image`, `eject-iso`). The player writes a sudoers
+  rule for exactly those; `rodeo` escalates on its own, so the guide's commands
+  stay the same. Needs `student_libvirt: true`, which is already root-equivalent.
 - **credentials**: what the student signs in with, resolved on the lab into a
   root-only file the player serves behind the lab login. `??<key>` only.
 - **variables**: passwords the track shows, read from the host's

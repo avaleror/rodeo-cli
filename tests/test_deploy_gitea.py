@@ -105,3 +105,32 @@ def test_repo_creation_only_tolerates_409_not_every_error():
     script = _captured_gitea_script()
     assert "write:user" in script
     assert script.count('if [ "$RC" = "409" ]') == 2
+
+
+def test_edge_nodes_also_trust_the_students_own_vm_key(monkeypatch):
+    """edge3/edge4 are built by the student from these definitions: the player
+    terminal cannot read root's host key, so the student's VM key goes in too."""
+    from rodeo.engine.rancher import content
+
+    monkeypatch.setattr(content, "student_vm_pubkey", lambda key=None: "ssh-ed25519 AAAA student@lab-vms")
+    script = _captured_gitea_script()
+    assert "STUDENTKEY='ssh-ed25519 AAAA student@lab-vms'" in script
+    assert script.index("HOSTKEY=") < script.index("STUDENTKEY=") < script.index('git -C "$EIB_REPO" init')
+
+
+def test_student_vm_pubkey_is_made_once_and_kept_root_only(tmp_path):
+    from rodeo.engine.rancher.content import student_vm_pubkey
+
+    key = tmp_path / "player" / "student-vm-key"
+    first = student_vm_pubkey(key)
+    assert first.startswith("ssh-ed25519 ") and first.endswith("student@lab-vms")
+    assert oct(key.stat().st_mode & 0o777) == "0o600"
+    assert student_vm_pubkey(key) == first
+
+
+def test_student_vm_pubkey_is_empty_when_it_cannot_be_made(tmp_path):
+    from rodeo.engine.rancher.content import student_vm_pubkey
+
+    blocked = tmp_path / "file"
+    blocked.write_text("")
+    assert student_vm_pubkey(blocked / "student-vm-key") == ""

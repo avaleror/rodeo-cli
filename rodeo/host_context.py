@@ -130,6 +130,10 @@ def apply_host_context(
     # EC2 + NVMe detection can enable the storage backend even on baremetal BYO.
     if target not in ("aws", "gcp") and (facts.get("on_ec2") or facts.get("has_nvme")):
         notes.extend(_ensure_nvme_backend(out, force=bool(facts.get("has_nvme"))))
+    # Fleet hosts deploy as baremetal on EC2 behind the same managed security
+    # group as --target aws: suse-edge needs the same Rancher TLS and sizing.
+    if target == "baremetal" and facts.get("on_ec2") and out.get("type") == "suse-edge":
+        notes.extend(_apply_aws_suse_edge(out))
 
     return out, notes
 

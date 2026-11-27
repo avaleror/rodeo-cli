@@ -328,9 +328,28 @@ def test_student_vm_access_gives_the_student_its_own_key_never_roots():
     assert "install -m 600 -o student" in script and "StrictHostKeyChecking accept-new" in script
 
 
+def test_student_rodeo_commands_get_a_sudoers_rule_for_exactly_those():
+    opts = s.SetupOptions(base="13-61-184-227.sslip.io", track_ref="",
+                          profile=_vm_profile(student_libvirt=True,
+                                              student_rodeo_commands=["pull-edge-image", "eject-iso"]))
+    script = s.install_script(opts, "/usr/local/bin/rodeo")
+    assert ("student ALL=(root) NOPASSWD: /usr/local/bin/rodeo pull-edge-image, "
+            "/usr/local/bin/rodeo pull-edge-image *, /usr/local/bin/rodeo eject-iso, "
+            "/usr/local/bin/rodeo eject-iso *") in script
+    assert 'visudo -cqf "$WORK/sudoers"' in script
+    assert f"install -m 440 \"$WORK/sudoers\" {s.STUDENT_SUDOERS}" in script
+    assert "NoNewPrivileges=no" in s.ttyd_unit(opts)
+    plain = s.SetupOptions(base="13-61-184-227.sslip.io", track_ref="", profile=_vm_profile())
+    assert f"rm -f {s.STUDENT_SUDOERS}" in s.install_script(plain, "/usr/local/bin/rodeo")
+    assert "NOPASSWD" not in s.install_script(plain, "/usr/local/bin/rodeo")
+    assert "NoNewPrivileges=yes" in s.ttyd_unit(plain)
+
+
 @pytest.mark.parametrize("extra,match", [
     ({"student_vm_access": ["vm1"]}, "lab VM addresses"),
     ({"student_vm_access": ["192.168.122.9"], "student_ssh_key": "/opt/k"}, "pick one"),
+    ({"student_rodeo_commands": ["eject-iso"]}, "needs student_libvirt"),
+    ({"student_libvirt": True, "student_rodeo_commands": ["eject-iso; id"]}, "rodeo subcommands"),
 ])
 def test_student_access_fields_are_validated(extra, match):
     from rodeo.player.profile import ProfileError

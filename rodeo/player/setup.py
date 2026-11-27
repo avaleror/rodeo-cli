@@ -66,6 +66,7 @@ STATE_DIR = VAR / "state"
 CONFIG = ETC / "config.json"
 AUTH_FILE = VAR / "auth.json"     # root-only: lab secret + access token
 CREDENTIALS_FILE = VAR / "credentials.json"  # root-only: what the student logs in with
+STUDENT_SUDOERS = Path("/etc/sudoers.d/rodeo-player-student")
 STUDENT_VM_KEY = VAR / "student-vm-key"      # root-only copy of the student's key to the lab VMs
 CADDYFILE = ETC / "Caddyfile"
 CADDY_DATA = Path("/var/lib/rodeo-player-caddy")
@@ -315,6 +316,8 @@ WantedBy=multi-user.target
 def ttyd_unit(opts: SetupOptions | None = None) -> str:
     libvirt = (" LIBVIRT_DEFAULT_URI=qemu:///system"
                if opts is not None and opts.profile.student_libvirt else "")
+    # sudo needs new privileges: only labs whose guide runs rodeo commands as root.
+    nnp = "no" if opts is not None and opts.profile.student_rodeo_commands else "yes"
     return f"""[Unit]
 Description=rodeo lab player terminal (ttyd as {STUDENT_USER}, loopback)
 After=network-online.target
@@ -325,7 +328,7 @@ WorkingDirectory=~
 Environment=HOME=/home/{STUDENT_USER} TERM=xterm-256color{libvirt}
 ExecStart=/usr/local/bin/ttyd --interface lo --port {TTYD_PORT} --base-path /terminal --writable -t disableLeaveAlert=true /bin/bash -l
 Restart=on-failure
-NoNewPrivileges=yes
+NoNewPrivileges={nnp}
 
 [Install]
 WantedBy=multi-user.target
@@ -422,6 +425,17 @@ usermod -a -G libvirt {STUDENT_USER}
 runuser -u {STUDENT_USER} -- env LIBVIRT_DEFAULT_URI=qemu:///system virsh list --all >/dev/null \\
   || {{ echo "{STUDENT_USER} cannot use virsh on qemu:///system" >&2; exit 4; }}
 """ if opts.profile.student_libvirt else ""
+    commands = opts.profile.student_rodeo_commands
+    rule = ", ".join(f"{rodeo_bin} {c}, {rodeo_bin} {c} *" for c in commands)
+    sudo = f"""
+# The rodeo commands the guide runs on the host, as root, and nothing else.
+cat > "$WORK/sudoers" <<'__SUDOERS__'
+{STUDENT_USER} ALL=(root) NOPASSWD: {rule}
+__SUDOERS__
+visudo -cqf "$WORK/sudoers"
+install -m 440 "$WORK/sudoers" {STUDENT_SUDOERS}
+""" if commands else f"""rm -f {STUDENT_SUDOERS}
+"""
     vm_ips = " ".join(q(ip) for ip in opts.profile.student_vm_access)
     vm_access = f"""
 # The student's own key to the lab VMs (root there), never root's key to this
@@ -476,7 +490,7 @@ fi
 getent group {STUDENT_GROUP} >/dev/null || groupadd --system {STUDENT_GROUP}
 usermod -a -G {STUDENT_GROUP} {STUDENT_USER}{kube_copy}
 if runuser -u {STUDENT_USER} -- test -r /root/.ssh/id_ed25519; then echo "student can read the rodeo key" >&2; exit 3; fi
-{key_copy}{libvirt}{vm_access}
+{key_copy}{libvirt}{vm_access}{sudo}
 {writes}
 chmod 644 {CONFIG} {CADDYFILE}
 export CREDENTIALS_DIRECTORY={TLS_DIR}   # what systemd gives the unit (owned-zone TLS)

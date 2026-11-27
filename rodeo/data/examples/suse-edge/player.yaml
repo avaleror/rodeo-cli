@@ -1,0 +1,23 @@
+# What the student UI (rodeo player) shows for this lab (see rodeo/player/profile.py).
+# No track: the exercises live on the workshop guide, opened from the player.
+title: SUSE Edge Workshop
+guide_url: https://avaleror.github.io/suse-edge-workshop/
+
+uis:
+  - key: rancher
+    label: SUSE Rancher Prime
+    upstream: 192.168.122.9:30002
+    tab_port: 30002
+
+credentials:
+  - label: SUSE Rancher Prime
+    user: admin
+    password: ??rancher_admin_password
+
+# The guide drives the edge VMs with virsh and logs in to the lab VMs as root:
+# the student's own key, never root's host key. edge3/edge4 (.33/.34) are built
+# later from EIB definitions that already trust that key (content phase).
+student_libvirt: true
+student_vm_access: [192.168.122.9, 192.168.122.20]
+# Exercise 4 seeds and ejects the edge node disks with rodeo, as root.
+student_rodeo_commands: [pull-edge-image, eject-iso]

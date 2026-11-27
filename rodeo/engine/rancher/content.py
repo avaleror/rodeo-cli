@@ -7,10 +7,35 @@ touching the cluster orchestration code.
 from __future__ import annotations
 
 import json
+import subprocess
+from pathlib import Path
 from typing import Generator
 
 from ...shellquote import heredoc, q
 from ..runner import DeployEvent, LogLine
+
+
+def student_vm_pubkey(key: Path | None = None) -> str:
+    """Public half of the student's own key to the lab VMs, made here if missing.
+
+    ``rodeo player setup`` reuses the same file (``STUDENT_VM_KEY``) as the
+    student's default SSH key, so nodes the student builds later in the lab
+    (edge3/edge4 from EIB) trust it without root's host key. Root-only on the
+    host. Empty when it cannot be made (not root, no ssh-keygen): the nodes then
+    trust the host key only, as before.
+    """
+    if key is None:
+        from ...player.setup import STUDENT_VM_KEY as key
+    pub = Path(f"{key}.pub")
+    try:
+        if not key.exists():
+            key.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "student@lab-vms",
+                            "-f", str(key)], check=True, capture_output=True, timeout=30)
+        key.chmod(0o600)
+        return pub.read_text().strip()
+    except (OSError, subprocess.SubprocessError):
+        return ""
 
 
 class LabContentMixin:
@@ -103,6 +128,7 @@ class LabContentMixin:
         Credentials: admin_user from definition.yaml, password from secrets.yaml.
         """
         image = f"docker.io/gitea/gitea:{self.gitea_version}-rootless"
+        student_pub = student_vm_pubkey()
         gitea_url = f"http://localhost:{self.gitea_port}"
         # Same filenames _populate_hauler stages onto the eib VM (self.iso_fname /
         # self.raw_fname, set once in RancherPhase.__init__) — the .raw (not
@@ -400,6 +426,12 @@ class LabContentMixin:
             "HOSTKEY=$(grep -m1 -E '^ssh-' /root/.ssh/authorized_keys)\n"
             "for f in rke2-edge3 k3s-edge4; do\n"
             "  sed -i \"/^operatingSystem:\\$/a\\\\  users:\\\\n    - username: root\\\\n      createHomeDir: true\\\\n      sshKeys:\\\\n        - $HOSTKEY\" \"$EIB_REPO/$f-definition.yaml\"\n"
+            "done\n"
+            # The student's own VM key too (rodeo player): they log in from the
+            # player terminal, which cannot read root's host key.
+            f"STUDENTKEY={q(student_pub)}\n"
+            "[ -z \"$STUDENTKEY\" ] || for f in rke2-edge3 k3s-edge4; do\n"
+            "  sed -i \"/^      sshKeys:\\$/a\\\\        - $STUDENTKEY\" \"$EIB_REPO/$f-definition.yaml\"\n"
             "done\n\n"
             # Commit and push to local Gitea
             "git -C \"$EIB_REPO\" init\n"

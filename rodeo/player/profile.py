@@ -16,6 +16,7 @@ its ``rodeo-plan.yaml`` (``rodeo/data/examples/<profile>/player.yaml``)::
         tab_port: 8443                    # the port the track's tabs use
     student_libvirt: false                # student may use virsh (qemu:///system); root-equivalent
     student_vm_access: [192.168.122.9]    # lab VMs where the student's own key logs in as root
+    student_rodeo_commands: [eject-iso]   # rodeo subcommands the student may run as root (sudo)
     credentials:                          # shown to the student in the player
       - label: SUSE Virtualization
         user: admin
@@ -47,6 +48,7 @@ _UPSTREAM_RE = re.compile(r"^\d{1,3}(\.\d{1,3}){3}:\d{1,5}$")
 _VAR_RE = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
 _FILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 _RESERVED = {"player", "www", "terminal"}
+_COMMAND_RE = re.compile(r"^[a-z][a-z0-9-]{1,39}$")
 _TEXT_RE = re.compile(r"^[^\x00-\x1f<>]{1,80}$")
 
 
@@ -85,6 +87,10 @@ class PlayerProfile:
     # access is root-equivalent on the host: fleets need per_host_ssh_key.
     student_libvirt: bool = False
     student_vm_access: tuple[str, ...] = ()
+    # rodeo subcommands the guide has the student run on the host (they need
+    # root): a sudoers rule for exactly these. Needs student_libvirt, which is
+    # already root-equivalent, so it adds no exposure.
+    student_rodeo_commands: tuple[str, ...] = ()
 
     def ui(self, key: str) -> PlayerUI | None:
         return next((u for u in self.uis if u.key == key), None)
@@ -99,7 +105,7 @@ class PlayerProfile:
                     for u in self.uis)
         out = PlayerProfile(self.name, self.title, self.track_repo, uis, self.kubeconfig,
                             self.student_ssh_key, dict(self.variables), self.guide_url, self.credentials,
-                            self.student_libvirt, self.student_vm_access)
+                            self.student_libvirt, self.student_vm_access, self.student_rodeo_commands)
         out.validate()
         return out
 
@@ -116,6 +122,12 @@ class PlayerProfile:
         for ip in self.student_vm_access:
             if not re.match(r"^\d{1,3}(\.\d{1,3}){3}$", ip):
                 raise ProfileError(f"{where}: student_vm_access lists lab VM addresses, got {ip!r}")
+        for cmd in self.student_rodeo_commands:
+            if not _COMMAND_RE.match(cmd):
+                raise ProfileError(f"{where}: student_rodeo_commands lists rodeo subcommands, got {cmd!r}")
+        if self.student_rodeo_commands and not self.student_libvirt:
+            raise ProfileError(f"{where}: student_rodeo_commands needs student_libvirt: true "
+                               "(both give the student root on the host)")
         if self.student_vm_access and self.student_ssh_key:
             raise ProfileError(f"{where}: student_ssh_key and student_vm_access both set the student's "
                                "default key: pick one")
@@ -191,6 +203,7 @@ def parse(name: str, raw: Any) -> PlayerProfile:
         credentials=tuple(creds),
         student_libvirt=bool(raw.get("student_libvirt", False)),
         student_vm_access=tuple(str(x) for x in (raw.get("student_vm_access") or [])),
+        student_rodeo_commands=tuple(str(x) for x in (raw.get("student_rodeo_commands") or [])),
     )
     profile.validate()
     return profile

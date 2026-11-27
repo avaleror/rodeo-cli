@@ -1,10 +1,34 @@
 """Hauler store population — airgap artifacts for EIB image builds."""
 from __future__ import annotations
 
+import re
 from typing import Generator
 
 from ...shellquote import heredoc, q
 from ..runner import DeployEvent, LogLine
+
+
+# The elemental RPMs come from a rolling OBS dev channel: each rebuild bumps the
+# release (slfo.1.2.8 -> slfo.1.2.9) and removes the old file, so a pinned URL
+# 404s sooner or later. fetch_rpm tries the pinned URL, then the newest build of
+# the same package in the same directory listing.
+FETCH_RPM_FN = (
+    "fetch_rpm() {\n"
+    '  curl -fsSL --retry 3 --retry-delay 5 -o "$2" "$1" && return 0\n'
+    '  local dir="${1%/*}/" name\n'
+    '  name=$(curl -fsSL --retry 3 --retry-delay 5 "$dir" | grep -o "$3-[0-9][^\\"<>/ ]*\\.x86_64\\.rpm"'
+    " | sort -uV | tail -1 || true)\n"
+    '  [ -n "$name" ] || { echo "no $3 rpm in $dir" >&2; return 1; }\n'
+    '  echo "$3: the pinned rpm is gone upstream, using $name"\n'
+    '  curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors -o "$2" "$dir$name"\n'
+    "}\n"
+)
+
+
+def rpm_package(url: str) -> str:
+    """``.../elemental-register-1.8.0~dev-slfo.1.2.8.x86_64.rpm`` -> ``elemental-register``."""
+    m = re.match(r"^([A-Za-z0-9_.+-]+?)-\d", url.rsplit("/", 1)[-1])
+    return m.group(1) if m else ""
 
 
 class HaulerMixin:
@@ -39,7 +63,8 @@ class HaulerMixin:
         mirror_host = heredoc(heredoc(str(self.eib_ip), "K3S_REG"), "EOF")
         script = (
             "set -euo pipefail\n"
-            "STORE=/var/lib/hauler\n"
+            + FETCH_RPM_FN
+            + "STORE=/var/lib/hauler\n"
             "HAULER=/usr/local/bin/hauler\n\n"
             # Mirror the EIB container image into Hauler so participants can run
             # EIB without internet access from the eib VM.
@@ -76,12 +101,12 @@ class HaulerMixin:
             # Elemental builds (edge1/edge2) so they need no SUSE Customer Center
             # registration code. Fixed lowercase local names, decoupled from the
             # upstream dev channel's exact (and possibly changing) filename.
-            f'curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors '
-            f'-o "/tmp/elemental-register.rpm" {q(self.elemental_register_rpm_url)}\n'
+            f'fetch_rpm {q(self.elemental_register_rpm_url)} /tmp/elemental-register.rpm '
+            f'{q(rpm_package(self.elemental_register_rpm_url) or "elemental-register")}\n'
             f'$HAULER store add file "/tmp/elemental-register.rpm" --name "elemental-register.rpm" --store $STORE\n'
             f'rm -f "/tmp/elemental-register.rpm"\n'
-            f'curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors '
-            f'-o "/tmp/elemental-system-agent.rpm" {q(self.elemental_system_agent_rpm_url)}\n'
+            f'fetch_rpm {q(self.elemental_system_agent_rpm_url)} /tmp/elemental-system-agent.rpm '
+            f'{q(rpm_package(self.elemental_system_agent_rpm_url) or "elemental-system-agent")}\n'
             f'$HAULER store add file "/tmp/elemental-system-agent.rpm" --name "elemental-system-agent.rpm" --store $STORE\n'
             f'rm -f "/tmp/elemental-system-agent.rpm"\n\n'
             # Enable and start Hauler services (service units written by cloud-init)

@@ -67,6 +67,7 @@ from ..providers.remote_up import (
     execute_aws_up,
     execute_aws_up_detached,
     on_cloud_host,
+    on_ec2,
 )
 from ..secretgen import append_secret, ensure_plan_secrets, ensure_secrets_file, secrets_path
 from .deploy import execute_deploy
@@ -1008,6 +1009,22 @@ def _choose_profile(host: dict, assume_yes: bool) -> str:
     return choice
 
 
+def _deploy_host_facts(host_info: dict) -> dict:
+    """Host facts for apply_host_context on the machine that runs the phases.
+
+    ``on_ec2`` matters for fleet hosts: they deploy with ``lab.target:
+    baremetal``, so without it the instance-store NVMe never becomes the
+    libvirt pool and preflight fails ("need ~220 GB, have 7 GB free") on the
+    10 GB root EBS of an m8id host.
+    """
+    return {
+        "cpus": host_info.get("cpus") or 0,
+        "disk_free_gib": host_info.get("disk_free_gib"),
+        "image_dir": host_info.get("image_dir"),
+        "on_ec2": on_ec2(),
+    }
+
+
 def _deploy(lab: Path, assume_yes: bool, reconcile: bool = True) -> None:
     """Load the lab, preflight, and run the pipeline (called as root)."""
     try:
@@ -1021,14 +1038,7 @@ def _deploy(lab: Path, assume_yes: bool, reconcile: bool = True) -> None:
     from ..preflight import detect_host as _detect_host
 
     host_info = _detect_host()
-    cfg, hc_notes = apply_host_context(
-        cfg,
-        host_facts={
-            "cpus": host_info.get("cpus") or 0,
-            "disk_free_gib": host_info.get("disk_free_gib"),
-            "image_dir": host_info.get("image_dir"),
-        },
-    )
+    cfg, hc_notes = apply_host_context(cfg, host_facts=_deploy_host_facts(host_info))
     persist_host_context_notes(cfg, hc_notes)
 
     root = find_ansible_root(cfg)

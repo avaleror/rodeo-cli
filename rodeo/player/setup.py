@@ -263,7 +263,8 @@ def player_config(opts: SetupOptions) -> dict:
         "check_timeout": opts.check_timeout,
         # Health probes go straight to the upstreams Caddy proxies, not the
         # public names (those sit behind the lab login).
-        "probes": {**{str(ui.tab_port): f"{ui.scheme}://{ui.upstream}/" for ui in opts.profile.uis},
+        "probes": {**{str(ui.tab_port): f"{ui.scheme}://{ui.upstream}/"
+                      for ui in opts.profile.uis if ui.lobby},
                    "terminal": f"http://127.0.0.1:{TTYD_PORT}/terminal/"},
         "terminal_url": "/terminal/",
         "track": bool(opts.repo),

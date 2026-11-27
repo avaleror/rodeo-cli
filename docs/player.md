@@ -256,6 +256,7 @@ uis:
     upstream: 192.168.122.10:443          # on the lab network
     # scheme: http                        # default https (self-signed is fine)
     tab_port: 8443                        # the port the track's tabs use
+    # lobby: false                        # the lobby does not wait for this UI
   - key: rancher
     label: SUSE Rancher Prime
     upstream: 192.168.122.9:30002
@@ -269,8 +270,8 @@ variables:                                # track variable: ??secrets.yaml key
   HARVESTER_PASSWORD: ??harvester_admin_password
 ```
 
-Shipped profiles: `virt-rodeo` (track), `virt-workshop` and `virt-workshop-2n`
-(web guide), `harvester`, `harvester-2n`, `rancher-test`, `rancher-lab-config`
+Shipped profiles: `virt-rodeo` (track), `virt-workshop`, `virt-workshop-2n`
+and `suse-telco` (web guide), `harvester`, `harvester-2n`, `rancher-test`, `rancher-lab-config`
 (no instructions).
 
 - **uis**: one to eight product UIs. Each gets its own name, its own Caddy site
@@ -282,8 +283,12 @@ Shipped profiles: `virt-rodeo` (track), `virt-workshop` and `virt-workshop-2n`
   `qemu:///system` as the default (root-equivalent on that host, so `fleet
   player-setup` refuses it without `per_host_ssh_key: true`). The second makes
   the student their own key and installs it for root on the listed lab VMs,
-  using root's key, which the student never sees. Not shipped yet for
-  suse-edge and suse-telco: edge3/edge4 images only trust the host key.
+  using root's key, which the student never sees. `suse-telco` uses both
+  (mgmt at `.10`). Not shipped yet for suse-edge: edge3/edge4 images only
+  trust the host key.
+- **lobby**: `false` on a UI the student brings up later in the lab (telco's
+  site console after lab 06). The lobby does not probe it, so "Enter lab"
+  does not wait for it.
 - **credentials**: what the student signs in with, resolved on the lab into a
   root-only file the player serves behind the lab login. `??<key>` only.
 - **variables**: passwords the track shows, read from the host's

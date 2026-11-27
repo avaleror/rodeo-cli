@@ -86,7 +86,10 @@ def eject_iso_cmd(
     Run this after 'rodeo start <nodes>' boots and Elemental powers off the VMs.
     Then 'rodeo start <nodes>' again to boot from the installed disk.
     """
-    if not is_root():
+    from .pull_edge_image_cmd import libvirt_user
+
+    # Pure virsh: a libvirt-group user (the lab player's student) needs no root.
+    if not is_root() and not libvirt_user():
         ensure_root(sys.argv[1:])
 
     if config_dir is None:
@@ -94,7 +97,12 @@ def eject_iso_cmd(
         if ctx.obj:
             config_dir = ctx.obj.get("config_dir")
 
-    cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir)
+    try:
+        cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir)
+    except Exception:  # noqa: BLE001
+        if is_root():
+            raise
+        cfg = {}  # the student cannot read root's lab dir; --nodes names the VMs
     vms = cfg.get("vms", {})
     uri = cfg.get("libvirt", {}).get("uri", "qemu:///system")
 

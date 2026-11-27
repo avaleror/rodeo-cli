@@ -14,6 +14,7 @@ Two modes, both format-aware from the file extension (.raw/.qcow2 vs .iso):
 """
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -178,6 +179,109 @@ def _local_iso(
     )
 
 
+# --- libvirt mode: a non-root user with access to qemu:///system (the lab player's
+# student is in the libvirt group, without sudo). Every write to the image dir goes
+# through libvirt (vol-create-as / vol-upload); the copy from the eib VM uses the
+# user's own key. The root path above stays as it is.
+
+_SUSE_EDGE_EIB_IP = "192.168.122.20"
+_DEFAULT_EDGE_DISK_GB = 25
+
+
+def libvirt_user(uri: str = "qemu:///system") -> bool:
+    """True for a non-root caller that can manage domains on *uri* (libvirt group)."""
+    if is_root():
+        return False
+    try:
+        r = subprocess.run(["virsh", "-c", uri, "uri"], capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return r.returncode == 0
+
+
+def _virsh(uri: str, *args: str, check: bool = True) -> subprocess.CompletedProcess:
+    return subprocess.run(["virsh", "-c", uri, *args], capture_output=True, text=True, check=check)
+
+
+def _vda_path(domain: str, uri: str) -> str:
+    """The file behind the domain's vda, from its inactive XML."""
+    r = _virsh(uri, "dumpxml", "--inactive", domain)
+    devices = ET.fromstring(r.stdout).find("devices")
+    for disk_el in (devices.findall("disk") if devices is not None else []):
+        tgt, src = disk_el.find("target"), disk_el.find("source")
+        if tgt is not None and tgt.get("dev") == "vda" and src is not None and src.get("file"):
+            return src.get("file")
+    raise RuntimeError(f"{domain} has no vda file disk")
+
+
+def _pool_of(path: str, uri: str) -> str:
+    """Name of the libvirt pool whose target directory holds *path*."""
+    r = _virsh(uri, "vol-pool", path, check=False)
+    if r.returncode == 0 and r.stdout.strip():
+        return r.stdout.strip()
+    want = str(Path(path).parent)
+    for name in _virsh(uri, "pool-list", "--name").stdout.split():
+        root = ET.fromstring(_virsh(uri, "pool-dumpxml", name).stdout)
+        if (root.findtext("target/path") or "").rstrip("/") == want.rstrip("/"):
+            return name
+    raise RuntimeError(f"no libvirt pool holds {want}: ask the instructor to define one")
+
+
+def _vol_replace(uri: str, pool: str, name: str, *create: str) -> None:
+    _virsh(uri, "vol-delete", "--pool", pool, name, check=False)
+    _virsh(uri, "vol-create-as", pool, name, *create)
+
+
+def _upload(uri: str, pool: str, name: str, src: Path, fmt: str) -> str:
+    """Put local file *src* into *pool* as volume *name*; return its path."""
+    _vol_replace(uri, pool, name, str(src.stat().st_size), "--format", fmt)
+    _virsh(uri, "vol-upload", "--pool", pool, name, str(src))
+    return _virsh(uri, "vol-path", "--pool", pool, name).stdout.strip()
+
+
+def _libvirt_pull(
+    eib_ip: str, remote_image: str, edge_names: list[str], uri: str, disk_gb: int, ssh_key: str
+) -> None:
+    """Pull *remote_image* from the eib VM and seed the edge disks through libvirt."""
+    pool = _pool_of(_vda_path(edge_names[0], uri), uri)
+    suffix = Path(remote_image).suffix.lower()
+    with tempfile.TemporaryDirectory(prefix="rodeo-edge-", dir=str(Path.home())) as work:
+        local = Path(work) / Path(remote_image).name
+        subprocess.run(["scp", "-i", ssh_key, *_SCP_OPTS, f"root@{eib_ip}:{remote_image}", str(local)],
+                       check=True)
+        if suffix == ".iso":
+            iso_path = _upload(uri, pool, local.name, local, "raw")
+            for name in edge_names:
+                vda = Path(_vda_path(name, uri))
+                console.print(f"  {name}: blank disk + attaching ISO as CDROM...")
+                _vol_replace(uri, pool, vda.name, f"{disk_gb}G", "--format", "qcow2")
+                _redefine_with_iso(name, iso_path, vda, disk_gb, uri)
+            console.print(
+                f"\n[bold green]✓  Edge nodes ready for ISO install.[/bold green]\n"
+                f"   Nodes: {', '.join(edge_names)}\n"
+                f"   After the install powers them off: rodeo eject-iso --nodes {','.join(edge_names)}\n"
+            )
+            return
+        base = Path(work) / f"{local.stem}-base.qcow2"
+        console.print(f"  Converting to qcow2 base: {base.name}...")
+        subprocess.run(["qemu-img", "convert", "-f", "raw", "-O", "qcow2", str(local), str(base)], check=True)
+        local.unlink()
+        info = subprocess.run(["qemu-img", "info", "--output", "json", str(base)],
+                              capture_output=True, text=True, check=True)
+        size = str(json.loads(info.stdout)["virtual-size"])  # clones see the whole image
+        base_path = _upload(uri, pool, base.name, base, "qcow2")
+    for name in edge_names:
+        vda = Path(_vda_path(name, uri))
+        console.print(f"  Thin clone: {vda.name}")
+        _vol_replace(uri, pool, vda.name, size, "--format", "qcow2",
+                     "--backing-vol", base_path, "--backing-vol-format", "qcow2")
+    console.print(
+        f"\n[bold green]✓  Edge disks ready.[/bold green]\n"
+        f"   Base : {base_path}\n"
+        f"\n   Start edge nodes: virsh start <node>\n"
+    )
+
+
 @click.command("pull-edge-image")
 @config_options
 @click.option(
@@ -222,13 +326,19 @@ def pull_edge_image_cmd(
                      Boot with 'rodeo start', wait for Elemental to install and power off,
                      then run 'rodeo eject-iso' to restore disk-first boot.
     """
-    if not is_root():
+    via_libvirt = libvirt_user()
+    if not is_root() and not via_libvirt:
         ensure_root(sys.argv[1:])
 
     if config_dir is None:
         ctx = click.get_current_context()
         if ctx.obj:
             config_dir = ctx.obj.get("config_dir")
+
+    if via_libvirt:
+        _pull_via_libvirt(config_path, config_dir, params, paramfile, remote_image, local_image,
+                          node_names)
+        return
 
     cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir, secrets="all")
     vms = cfg.get("vms", {})
@@ -357,3 +467,39 @@ def pull_edge_image_cmd(
         f"   Disks: {', '.join(f'{n}-vda.qcow2' for n in edge_names)}\n"
         f"\n   Start edge nodes: rodeo start {' '.join(edge_names)}\n"
     )
+
+
+def _pull_via_libvirt(
+    config_path: str,
+    config_dir: str | None,
+    params: tuple[str, ...],
+    paramfile: str | None,
+    remote_image: str | None,
+    local_image: str | None,
+    node_names: str | None,
+) -> None:
+    """pull-edge-image for a libvirt-group user: the lab plan is optional (the
+    student cannot read root's lab dir), so suse-edge's addresses are the fallback."""
+    if local_image:
+        console.print("[red]✗  --local needs root. Without it, pull the image from the eib VM.[/red]")
+        raise SystemExit(1)
+    try:
+        cfg = load_config(config_path, params=params, paramfile=paramfile, config_dir=config_dir)
+    except Exception:  # noqa: BLE001 - unreadable or missing plan: suse-edge defaults
+        cfg = {}
+    uri = cfg.get("libvirt", {}).get("uri", "qemu:///system")
+    eib_ip = (cfg.get("vms", {}).get("eib") or {}).get("ip", _SUSE_EDGE_EIB_IP)
+    disk_gb = int(cfg.get("resources", {}).get("edge-node", {}).get("disk_gb") or _DEFAULT_EDGE_DISK_GB)
+    edge_names = ([n.strip() for n in node_names.split(",") if n.strip()] if node_names
+                  else cfg.get("edge_node_names") or ["edge1", "edge2", "edge3", "edge4"])
+    if not remote_image:
+        console.print("[red]✗  Name the image with --image (the path on the eib VM).[/red]")
+        raise SystemExit(1)
+    ssh_key = str(Path.home() / ".ssh" / "id_ed25519")
+    console.print(f"\n[dim]Copying {remote_image} from eib VM ({eib_ip}) through libvirt...[/dim]")
+    try:
+        _libvirt_pull(eib_ip, remote_image, edge_names, uri, disk_gb, ssh_key)
+    except (subprocess.CalledProcessError, RuntimeError) as exc:
+        detail = getattr(exc, "stderr", "") or ""
+        console.print(f"[red]✗  {exc}[/red]" + (f"\n{detail.strip()}" if detail.strip() else ""))
+        raise SystemExit(1)

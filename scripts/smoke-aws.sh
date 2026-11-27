@@ -45,7 +45,13 @@ fi
 
 destroy() {
   echo "==> Destroying the smoke host"
-  "$RODEO" destroy --cloud --yes --config-dir "$LAB" || echo "destroy failed: check the AWS console" >&2
+  if ! "$RODEO" destroy --cloud --yes --config-dir "$LAB"; then
+    echo "destroy failed: check the AWS console" >&2
+    if [[ -z "${DETACH_JSON:-}" ]]; then
+      # `rodeo up` failed before it started a host: usually nothing was created.
+      echo "rodeo up never started a host. Check \`$RODEO cloud ls\`, then rm -rf $LAB to rerun." >&2
+    fi
+  fi
 }
 trap destroy EXIT
 

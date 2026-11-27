@@ -773,6 +773,12 @@ def _resolve_gcp_instance_choice(
     return cfg
 
 
+def _unset_or_placeholder(value) -> bool:
+    """True for an empty plan value or an example placeholder like subnet-CHANGE-ME."""
+    text = str(value or "").strip()
+    return not text or "change-me" in text.lower()
+
+
 def _resolve_aws_instance_choice(
     cfg: dict,
     *,
@@ -834,7 +840,8 @@ def _resolve_aws_instance_choice(
     provider["instance_type"] = itype
     if tier_used:
         provider["instance_tier"] = tier_used
-    if not str(provider.get("subnet_id") or "").strip():
+    # The example plans ship `subnet-CHANGE-ME`: a placeholder means "not set".
+    if _unset_or_placeholder(provider.get("subnet_id")):
         provider["subnet_id"] = AwsHostProvider().default_subnet(provider, instance_type=itype)
         console.print(
             f"[dim]provider.subnet_id not set, using {provider['subnet_id']} "

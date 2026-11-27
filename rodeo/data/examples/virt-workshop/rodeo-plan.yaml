@@ -9,15 +9,17 @@
 # For a plain 3-node lab without workshop scripts, prefer:
 #   rodeo up --yes --profile harvester --target aws --instance-tier recommended
 #
-# Fill in provider.region and provider.subnet_id, then: rodeo up --target aws
+# Region and subnet are optional: rodeo uses your AWS config region and a
+# public subnet of its default VPC. Then: rodeo up --target aws
 
 name: virt-workshop-rodeo
 deployment_target: aws
 
 provider:
   type: aws
-  region: eu-central-1          # <- set to your region
-  subnet_id: subnet-CHANGE-ME   # <- must be in a VPC with an internet gateway
+  # region: eu-central-1        # default: your AWS config region
+  # subnet_id: subnet-0123abcd  # default: a public subnet of the default VPC;
+  #                             # yours must route to an internet gateway
   instance_tier: recommended    # recommended | performance (no budget tier for this profile; see instance_catalog.py)
   # instance_type: m8id.8xlarge   # or pin explicitly instead of a tier
   associate_public_ip: true

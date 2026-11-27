@@ -77,6 +77,8 @@ def test_apply_skips_the_labs_own_folders(tmp_path, monkeypatch):
     (tmp_path / "story" / "chapters.yaml").write_text("chapters: []\n")
     (tmp_path / "custom").mkdir()
     (tmp_path / "custom" / "x.yaml").write_text("a: 1\n")
+    (tmp_path / "bake").mkdir()  # smlm-workshop's image bake inputs
+    (tmp_path / "bake" / "b.yaml").write_text("b: 1\n")
     called = {"n": 0}
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: called.__setitem__("n", called["n"] + 1))
 

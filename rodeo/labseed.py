@@ -28,8 +28,8 @@ PROFILE_EXAMPLE = {
     "virt-workshop": "virt-workshop",       # harvester topology + custom/scripts/ (image cache, NFS, pre-created VM) for suse-virt-workshop
     "virt-rodeo": "virt-rodeo",             # virt-workshop infra for the suse-virt-rodeo track + player; NFS export on a nosuid,nodev,noexec loop fs, no checks/
     "virt-workshop-2n": "virt-workshop-2n", # budget tier: 2-node Harvester (like harvester-2n) + same custom/scripts/, sized for m8id.4xlarge
-    "suse-edge": "suse-edge",               # Rancher + Elemental + EIB + 4 edge nodes (SUSE Edge 3.6)
-    "suse-telco": "suse-telco",             # Telco Cloud 3.7: mgmt + site-co + site-ran (topology only)
+    "suse-edge": "suse-edge",               # Rancher + Elemental + EIB + 4 edge nodes (SUSE Edge 3.7)
+    "suse-telco": "suse-telco",             # Telco Cloud 3.7: mgmt, BMC, image, enroll; students apply manifests
     "smlm-workshop": "smlm-workshop",       # lab-in-a-box: SUSE Multi-Linux Manager + 8 clients (instruqt-SMLM track)
     "kvm-hosts": "kvm-hosts",               # plain KVM hosts, no VMs (fleet: a small KVM cluster, dead-man switch optional)
 }

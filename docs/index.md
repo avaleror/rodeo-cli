@@ -7,7 +7,7 @@ title: rodeo-cli
 
 # Deploy real lab infrastructure without writing Ansible or touching libvirt
 
-<p class="rc-tagline">rodeo-cli is a declarative CLI that turns a YAML file into a working lab on KVM: SUSE Virtualization (Harvester HCI) clusters, Rancher Prime with K3s and RKE2 clusters, or a full SUSE Edge stack. Run it on a SLES 16 host, or from your laptop on AWS. Pick a profile, run one command.</p>
+<p class="rc-tagline">rodeo-cli is a declarative CLI that turns a YAML file into a working lab on KVM: SUSE Virtualization (Harvester), Rancher Prime, SUSE Edge, SUSE Telco Cloud, or a plain KVM host. The profile is the lab. Where it runs is separate: a SLES 16 host, an Instruqt builder, AWS, Google Cloud, or a KVM host you already own.</p>
 
 <div class="rc-hero-actions">
   <a href="get-started/" class="rc-btn rc-btn-primary">Get started →</a>
@@ -16,8 +16,8 @@ title: rodeo-cli
 </div>
 
 <div class="rc-stats" markdown>
-<div class="rc-stat"><div class="rc-stat-num">10</div><div class="rc-stat-label">Bundled profiles</div></div>
-<div class="rc-stat"><div class="rc-stat-num">1,000+</div><div class="rc-stat-label">Tests passing</div></div>
+<div class="rc-stat"><div class="rc-stat-num">12</div><div class="rc-stat-label">Bundled profiles</div></div>
+<div class="rc-stat"><div class="rc-stat-num">1,800+</div><div class="rc-stat-label">Tests</div></div>
 <div class="rc-stat"><div class="rc-stat-num">1</div><div class="rc-stat-label">Command to deploy</div></div>
 <div class="rc-stat"><div class="rc-stat-num rc-stat-num--text">GPL-3.0</div><div class="rc-stat-label">License</div></div>
 </div>
@@ -40,8 +40,8 @@ A **profile** is a config-dir with two YAML files. `rodeo-plan.yaml` sets resour
 
 <div class="rc-card" markdown>
 <div class="rc-card-label">Batteries included</div>
-### 10 bundled profiles
-Two to three-node Harvester HCI with or without Rancher, the SUSE Virtualization workshop lab, Rancher Prime with K3s and RKE2 clusters, and a full SUSE Edge stack with Elemental, EIB and edge nodes.
+### 12 bundled profiles
+Harvester HCI (2-node, 3-node, HA, with or without Rancher), the SUSE Virtualization workshop, Rancher Prime with K3s and RKE2, SUSE Edge, SUSE Telco Cloud, SUSE Multi-Linux Manager, and plain KVM hosts.
 </div>
 
 <div class="rc-card" markdown>
@@ -69,11 +69,9 @@ Credentials live in `~/.rodeo/secrets.yaml`, chmod 600, referenced from plans wi
 </div>
 
 <div class="rc-card" markdown>
-<div class="rc-card-label">Cloud</div>
-### AWS from your laptop
-`rodeo up --profile harvester --target aws` creates the EC2 host, picks the region,
-subnet and size, and builds the lab. Every cloud host terminates itself after 6 hours
-unless you say otherwise. Works from macOS or any Linux. See [Install](install.md).
+<div class="rc-card-label">Where it runs</div>
+### Five deployment targets
+`baremetal` and `instruqt` deploy on the machine you are on. `aws` and `gcp` create the machine from a laptop and build the lab over SSH. `remote` uses a KVM host you already own. Cloud hosts terminate after 6 hours unless you set `provider.ttl_hours`. Vultr and Hetzner are named in the fleet docs and are not implemented. See [Get started](get-started.md).
 </div>
 
 <div class="rc-card" markdown>

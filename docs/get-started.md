@@ -55,10 +55,15 @@ To pick a specific profile instead of letting `rodeo up` choose:
 | `harvester-2n` | 2-node Harvester HCI + Rancher | ~56 GiB |
 | `harvester` | 3-node Harvester HCI + Rancher | ~72 GiB |
 | `virt-workshop` | `harvester` + image cache, NFS and sample VMs for the SUSE Virtualization workshop | AWS `m8id.8xlarge` |
-| `suse-edge` | Rancher + Elemental + EIB + edge nodes | ~40 GiB |
-| `smlm-workshop` | SUSE Multi-Linux Manager workshop (lab-in-a-box plugin) | ~30 GiB |
+| `virt-workshop-2n` | 2-node workshop, same scripts | AWS `m8id.4xlarge` |
+| `suse-edge` | Rancher + Elemental + EIB + edge nodes (SUSE Edge 3.7) | ~40 GiB |
+| `suse-telco` | SUSE Telco Cloud 3.7: management cluster, BMC, downstream image, enrolled hosts. Students apply the manifests | AWS `m8id.4xlarge` starting size, not measured |
+| `smlm-workshop` | SUSE Multi-Linux Manager. rodeo prepares the host; lab-in-a-box builds the VMs | ~30 GiB |
+| `kvm-hosts` | KVM and libvirt only. You create the VMs | 8 vCPU / 32 GiB per host on AWS |
 
-Full walkthroughs live in the profile guides: [Rancher Prime](guide-rancher.md), [Harvester HCI](guide-harvester.md), [SUSE Edge](guide-suse-edge.md).
+Full walkthroughs: [Rancher Prime](guide-rancher.md), [Harvester HCI](guide-harvester.md), [SUSE Edge](guide-suse-edge.md), [SUSE Telco Cloud](guide-suse-telco.md), [Plain KVM hosts](guide-kvm-hosts.md).
+
+The old names `virt-workshop-aws` and `virt-workshop-aws-2n` still work. They mean `virt-workshop` and `virt-workshop-2n`. AWS is `--target`, not a second profile.
 
 ## Day-2 operations
 
@@ -106,7 +111,7 @@ rodeo uses your gcloud project, `europe-west4` (or `$RODEO_GCP_REGION`) and the 
 
 ## Many hosts (workshop fleet)
 
-To run the **same** lab for a whole room, use `rodeo fleet` with a `workshop.yaml` inventory. On AWS, `rodeo fleet provision` creates one host per attendee; `deploy` builds every lab in parallel, and `status`, `doctor`, `retry` and `diagnose` work per lab. The claim portal lets each attendee claim their own lab with a workshop code. See [Fleet](fleet.md).
+To run the **same** lab for a whole room, use `rodeo fleet` with a `workshop.yaml` inventory. `rodeo fleet provision` creates one host per attendee on AWS or GCP; `deploy` builds every lab in parallel, and `status`, `doctor`, `retry` and `diagnose` work per lab. The claim portal and `fleet open-access` are AWS-only. See [Fleet](fleet.md).
 
 ## Something not working?
 

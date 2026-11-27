@@ -199,6 +199,6 @@ each run.
 ## 6. Out of scope
 
 - Replacing the fleet-wide nested-hop key (R7), tracked separately.
-- GCP/Vultr/Hetzner portal support (comes free with F4b-d via `HostProvider`, verified
-  when those land).
+- GCP, Vultr, and Hetzner portal support. GCP hosts can be provisioned. The portal
+  and `open-access` are still AWS-only. Vultr and Hetzner have no provider.
 - Email sending, SSO, web admin UI, proxying lab traffic.

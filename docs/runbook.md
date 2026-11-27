@@ -406,6 +406,10 @@ rodeo status --cloud --lines 200 --output json
 
 `gone` means the recorded process is dead without an exit code (killed, or the host rebooted). A second `rodeo up --target aws` while one runs stops with exit 75. Without `--detach`, `rodeo up --target aws` waits and follows the log as before.
 
+`--detach` works the same way for `gcp` and for `deployment_target: remote`. The files on the host are `gcp-up.log` or `remote-up.log`, with `.pid` and `.exit` beside them. `rodeo status --cloud` reads whichever this plan deploys to. A remote plan names the host. rodeo does not create it and does not destroy it.
+
+The MCP server detaches `aws` only. A `gcp` or `remote` deploy started from `rodeo_up` blocks until the host finishes. `rodeo_status` with `cloud: true` can still read a detached run.
+
 ---
 
 ## AWS: login, region and capacity errors

@@ -7,7 +7,7 @@ title: rodeo-cli
 
 # 不用寫 Ansible、不用碰 libvirt，就能建出真正的 lab 環境
 
-<p class="rc-tagline">rodeo-cli 是一套宣告式 CLI，把一個 YAML 檔變成 KVM 上可以實際操作的 lab：SUSE Virtualization（Harvester HCI）叢集、搭配 K3s 與 RKE2 叢集的 Rancher Prime，或是完整的 SUSE Edge 堆疊。可以在 SLES 16 主機上執行，也可以從你的筆電部署到 AWS。選好 profile，一個指令就完成。</p>
+<p class="rc-tagline">rodeo-cli 是一套宣告式 CLI，把一個 YAML 檔變成 KVM 上可以實際操作的 lab：SUSE Virtualization（Harvester）、Rancher Prime、SUSE Edge、SUSE Telco Cloud，或單純的 KVM 主機。profile 就是 lab，要在哪裡執行則另外決定：SLES 16 主機、Instruqt builder、AWS、Google Cloud，或你已經有的 KVM 主機。</p>
 
 <div class="rc-hero-actions">
   <a href="get-started/" class="rc-btn rc-btn-primary">開始使用 →</a>
@@ -16,8 +16,8 @@ title: rodeo-cli
 </div>
 
 <div class="rc-stats" markdown>
-<div class="rc-stat"><div class="rc-stat-num">10</div><div class="rc-stat-label">內建 profile</div></div>
-<div class="rc-stat"><div class="rc-stat-num">1,000+</div><div class="rc-stat-label">項測試通過</div></div>
+<div class="rc-stat"><div class="rc-stat-num">12</div><div class="rc-stat-label">內建 profile</div></div>
+<div class="rc-stat"><div class="rc-stat-num">1,800+</div><div class="rc-stat-label">項測試</div></div>
 <div class="rc-stat"><div class="rc-stat-num">1</div><div class="rc-stat-label">個指令完成部署</div></div>
 <div class="rc-stat"><div class="rc-stat-num rc-stat-num--text">GPL-3.0</div><div class="rc-stat-label">授權</div></div>
 </div>
@@ -40,8 +40,8 @@ title: rodeo-cli
 
 <div class="rc-card" markdown>
 <div class="rc-card-label">開箱即用</div>
-### 10 個內建 profile { #10-bundled-profiles }
-兩到三節點的 Harvester HCI（可搭配或不搭配 Rancher）、SUSE Virtualization workshop lab、搭配 K3s 與 RKE2 叢集的 Rancher Prime，以及含 Elemental、EIB 與 edge 節點的完整 SUSE Edge 堆疊。
+### 12 個內建 profile { #12-bundled-profiles }
+Harvester HCI（2 節點、3 節點、HA，可搭配或不搭配 Rancher）、SUSE Virtualization workshop、搭配 K3s 與 RKE2 的 Rancher Prime、SUSE Edge、SUSE Telco Cloud、SUSE Multi-Linux Manager，以及單純的 KVM 主機。
 </div>
 
 <div class="rc-card" markdown>
@@ -69,11 +69,9 @@ title: rodeo-cli
 </div>
 
 <div class="rc-card" markdown>
-<div class="rc-card-label">雲端</div>
-### 從筆電部署到 AWS { #aws-from-your-laptop }
-`rodeo up --profile harvester --target aws` 會建立 EC2 主機，自動選定 region、
-subnet 與規格，再把 lab 建好。每台雲端主機預設 6 小時後自動終止，
-除非你另外設定。macOS 或任何 Linux 都能用。請見[安裝](install.md)。
+<div class="rc-card-label">在哪裡執行</div>
+### 五種部署目標 { #five-deployment-targets }
+`baremetal` 與 `instruqt` 部署在你所在的機器上。`aws` 與 `gcp` 從筆電建立機器，再透過 SSH 建好 lab。`remote` 使用你已經有的 KVM 主機。雲端主機預設 6 小時後終止，除非你設定 `provider.ttl_hours`。fleet 文件提到 Vultr 與 Hetzner，但尚未實作。請見[開始使用](get-started.md)。
 </div>
 
 <div class="rc-card" markdown>

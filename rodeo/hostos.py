@@ -57,5 +57,7 @@ def control_plane_hint() -> str:
     return (
         "This machine can still drive labs on a remote host:\n"
         "  rodeo up --profile <name> --target aws\n"
+        "  rodeo up --profile <name> --target gcp\n"
+        "  rodeo up --profile <name> --target remote\n"
         f"(Or set {ALLOW_ENV}=1 to try a local lab anyway, unsupported.)"
     )

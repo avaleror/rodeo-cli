@@ -102,6 +102,7 @@ nav:
     - SUSE Virtualization (Harvester): guide-harvester.md
     - Rancher Prime: guide-rancher.md
     - SUSE Edge: guide-suse-edge.md
+    - SUSE Telco Cloud: guide-suse-telco.md
     - Plain KVM hosts: guide-kvm-hosts.md
   - Create your own rodeo: custom-rodeos.md
   - Rodeo Builder: rodeo-builder.md
@@ -121,5 +122,5 @@ nav:
   - For contributors:
     - Architecture: architecture.md
     - Releasing and validation: releasing.md
-    - Claim portal (design): claim-portal.md
+    - Claim portal: claim-portal.md
     - Claim portal (implementation plan): claim-portal-plan.md

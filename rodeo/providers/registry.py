@@ -75,7 +75,7 @@ def get_provider(name: str) -> "HostProvider":
         return factory()
     if key in _PLANNED:
         raise ConfigError(
-            f"provider.type {key} is planned ({_PLANNED[key]}) — not implemented yet; use aws"
+            f"provider.type {key} is planned ({_PLANNED[key]}) — not implemented yet; use aws or gcp"
         )
     raise ConfigError(
         f"unsupported provider.type: {name!r} (expected one of {list_providers()})"

@@ -13,9 +13,12 @@ Technical reference for contributors and maintainers. For deploying a workshop, 
 
 The stack it builds depends on the chosen **engine type** (see [Engine types & profiles](#engine-types-profiles)):
 
-- **`suse-virt`**: a 3-node Harvester HCI cluster (+ optional Rancher Prime)
+- **`suse-virt`**: a Harvester HCI cluster (+ optional Rancher Prime)
 - **`rancher`**: Rancher Prime on K3s plus K3s/RKE2 clusters Rancher provisions on lab VMs (`rancher-test` is the 2-cluster variant)
 - **`suse-edge`**: Rancher Prime + Elemental + Edge Image Builder + edge nodes
+- **`suse-telco`**: SUSE Telco Cloud 3.7 management cluster, emulated BMC, downstream image, enrolled hosts
+- **`kvm-hosts`**: KVM and libvirt only
+- **`lab-in-a-box`**: host prep in rodeo; the VMs are built by lab-in-a-box's `setup_lab.py`
 
 Every profile shares the same foundation: host networking, firewalld DNAT, DNS, storage, and phase orchestration on nested KVM/libvirt. The tool runs on **cloud instances**, **Instruqt builder VMs**, **local VMs**, or **bare metal**, anywhere you have KVM and enough RAM/disk.
 
@@ -65,8 +68,9 @@ rancher            aws              Rancher on an AWS EC2 KVM host
 | `instruqt` | Instruqt managed KVM builder | `finalise` guarded; vCPU/RAM presets (~70% host) |
 | `aws` | Provisioned EC2 *or* BYO on EC2 | `provider:` + destroy; `disk_gb` floor 500/Harvester-node, 60/Rancher-node (flat); NVMe → `image_dir` |
 | `gcp` | GCE VM with nested KVM | ephemeral external IP; per-lab VPC firewall rule; native maxRunDuration dead-man switch |
+| `remote` | A KVM host you already own | SSH only. rodeo does not create the host and does not destroy it |
 
-**Two install roles.** `install.sh` installs a **KVM host** on SLES 16 / Leap 16 (`/opt/rodeo-cli`, system packages, a venv with system site packages for the libvirt binding) and a **control machine** everywhere else (macOS, other Linux: no root, an isolated venv with the `[aws]` extra, a private Python via a pinned uv when the system one is older than 3.10). `rodeo/hostos.py` makes the same call at run time: on a machine that cannot host labs, `rodeo up` without `--target aws` and `rodeo deploy` stop with the reason instead of failing halfway (`RODEO_ALLOW_ANY_KVM_HOST=1` overrides). lab-in-a-box profiles are left to the plugin.
+**Two install roles.** `install.sh` installs a **KVM host** on SLES 16 / Leap 16 (`/opt/rodeo-cli`, system packages, a venv with system site packages for the libvirt binding) and a **control machine** everywhere else (macOS, other Linux: no root, an isolated venv with the `[aws]` extra, a private Python via a pinned uv when the system one is older than 3.10). `rodeo/hostos.py` makes the same call at run time: on a machine that cannot host labs, `rodeo up` without `--target aws`, `--target gcp`, or `--target remote`, and `rodeo deploy`, stop with the reason instead of failing halfway (`RODEO_ALLOW_ANY_KVM_HOST=1` overrides). A `lab-in-a-box` profile skips that host check.
 
 **Cloud dead-man switch.** Every EC2 instance rodeo creates (single host, fleet hosts, portal VM) goes through `AwsHostProvider._run_instances_kwargs`, which sets `InstanceInitiatedShutdownBehavior: terminate`, tags the expiry as `rodeo-expires-at`, and adds a cloud-init systemd timer (`rodeo-deadman.timer`, absolute UTC time, `Persistent=true`) that powers the guest off. `provider.ttl_hours` (default 6, at most 168) lengthens it. Only `kvm-hosts` labs deployed with fleet may turn it off (`ttl_hours: off`): the fleet inventory loader checks the lab type and marks the provider config, every other path refuses `off`. Those hosts are tagged `rodeo-expires-at: never` and stop instead of terminating on an in-guest poweroff. Logic in `rodeo/providers/deadman.py`.
 
@@ -94,7 +98,7 @@ rodeo up --yes --profile harvester --target aws --instance-tier recommended
 
 **Acquire vs adapt.** Host acquire can be provisioned (`rodeo up --target aws` / Fleet `provider:`) or BYO (SSH inventory / operator-created EC2). Both must hit `apply_host_context()` before deploy so workshops do not fork playbooks per cloud. Tech platform declares *what* lab; host context declares *where* and *how the host must be shaped*.
 
-Adding a new host context is one call: `host_context.register_host_context(name, overlay)`. Registration makes the target valid in plans, `--target`, and the `rodeo up` prompt; the overlay is also where engine behaviour is customized, values it sets on the plan (`libvirt.disk_cache`/`disk_io`, `storage.backend`, resources) are honored by DeployRunner over its per-target defaults. Only a target needing bespoke *detection* (like Instruqt's env probe) still touches `up_cmd.py`. See the Extension points table below.
+Adding a new host context is one call: `host_context.register_host_context(name, overlay)`. A registered name passes plan validation, `--target`, and the `rodeo up` prompt. The overlay is also where engine behaviour is customized; values it sets on the plan (`libvirt.disk_cache`/`disk_io`, `storage.backend`, resources) are honored by DeployRunner over its per-target defaults. Seeding a new lab still only accepts `baremetal`, `instruqt`, `aws`, `gcp`, and `remote` (`labseed.normalize_plan`). A plugin target is accepted by `load_config` once registered, and `rodeo up` will not seed one until that tuple changes. Only a target needing bespoke *detection* (like Instruqt's env probe) still touches `up_cmd.py`. See the Extension points table below.
 
 ---
 
@@ -102,8 +106,8 @@ Adding a new host context is one call: `host_context.register_host_context(name,
 
 Two terms that sound alike but are different:
 
-- **Engine `type`**: the deploy *pipeline*: which phases run and how. Code lives in `rodeo/profiles/<name>.py` (a `RodeoProfile` subclass) + `data/platforms/<name>/definition.yaml`. There are four today (`suse-virt`, `rancher`, `rancher-test`, `suse-edge`); `lab-in-a-box` arrives as an external plugin with its own engine.
-- **Profile** (`--profile`): a named, runnable *lab* (a config-dir, bundled or under `~/.rodeo/profiles/`). Each profile picks one engine type. Topology profiles are the *what*; AWS is only a *where*.
+- **Engine `type`**: the deploy *pipeline*: which phases run and how. Code lives in `rodeo/profiles/<name>.py` (a `RodeoProfile` subclass) plus `data/platforms/<name>/definition.yaml` when the engine has one. Seven are registered: `suse-virt`, `rancher`, `rancher-test`, `suse-edge`, `suse-telco`, `kvm-hosts`, `lab-in-a-box`. The lab-in-a-box engine is in this repo. It prepares the host and calls lab-in-a-box's `setup_lab.py` to build the VMs.
+- **Profile** (`--profile`): a named, runnable *lab* (a config-dir, bundled or under `~/.rodeo/profiles/`). Each profile picks one engine type. The profile is the *what*. `aws`, `gcp`, and `remote` are *where*.
 
 Since PR #4 the profile classes are thin: `RodeoProfile` (`profiles/base.py`) owns config assembly (`default_cfg()` (loads the definition with a static fallback) and phase dispatch (a table-driven `run_phase()` with a no-Rancher skip guard). Each subclass carries only its data and deltas)`static_vms`, `resources`, `versions`, and small hooks like `extra_cfg()` / `_default_user()`.
 
@@ -114,6 +118,9 @@ Since PR #4 the profile classes are thin: `RodeoProfile` (`profiles/base.py`) ow
 | `suse-virt` | `kvm_host → vms → pxe_server → cluster → rancher → apply → finalise` | iPXE network install (UEFI) | Harvester HCI cluster (+ optional Rancher Prime) |
 | `rancher`, `rancher-test` | `kvm_host → vms → boot → rancher → downstream → apply → finalise` | cloud-init image | Rancher Prime on K3s + Rancher-provisioned K3s/RKE2 clusters |
 | `suse-edge` | `kvm_host → vms → boot → rancher → elemental → apply → finalise` | cloud-init image | Rancher Prime + Elemental Operator + EIB + edge nodes |
+| `suse-telco` | `kvm_host → vms → bmc → boot → mgmt → images → enroll → finalise → custom_scripts` | SL Micro / Leap Micro image, then Metal3 for the site hosts | SUSE Telco Cloud 3.7. Students apply the workshop manifests |
+| `kvm-hosts` | `kvm_host → custom_scripts` | none | KVM and libvirt. No VMs |
+| `lab-in-a-box` | `kvm_host → labinabox_host → labinabox → custom_scripts` | lab-in-a-box | Host prep here; VMs from lab-in-a-box |
 
 The Harvester path is the outlier: it needs `pxe_server` (iPXE/TFTP/HTTP) and a `cluster` phase that network-installs each node and waits for the VIP. The cloud-image profiles skip both: a single `boot` phase starts the network and VMs directly. `suse-edge` adds one phase, `elemental`, which installs the Elemental Operator after Rancher so edge nodes can register over TPM. `rancher`/`elemental`/`downstream` phases are skipped automatically when a topology has no Rancher node. The `rancher` profiles add `downstream`, which creates K3s/RKE2 custom clusters in Rancher and registers their nodes.
 
@@ -128,9 +135,11 @@ The Harvester path is the outlier: it needs `pxe_server` (iPXE/TFTP/HTTP) and a 
 | `harvester-2n` | `suse-virt` | 2-node Harvester + Rancher Prime |
 | `harvester` | `suse-virt` | 3-node Harvester HCI + Rancher Prime (AWS: same profile + `--target aws`; recommended `m8id.8xlarge`) |
 | `suse-edge` | `suse-edge` | Rancher + Elemental + EIB + 4 edge nodes (SUSE Edge 3.7; AWS: same profile + `--target aws`) |
+| `suse-telco` | `suse-telco` | Telco Cloud 3.7: mgmt, four site hosts, emulated BMC, image, enroll. Students apply manifests |
 | `virt-workshop` | `suse-virt` | Workshop overlay on harvester topology (`custom/scripts/` for image cache / NFS / sample VMs) |
 | `virt-workshop-2n` | `suse-virt` | 2-node workshop overlay (budget instance tier) |
-| `smlm-workshop` | `lab-in-a-box` | SMLM server (pre-built image) + SLES / CentOS 7 / Ubuntu clients for the instruqt-SMLM track; VMs and SMLM config by lab-in-a-box |
+| `smlm-workshop` | `lab-in-a-box` | SMLM server (pre-built image) + SLES / CentOS 7 / Ubuntu clients; rodeo prepares the host, lab-in-a-box builds the VMs |
+| `kvm-hosts` | `kvm-hosts` | KVM and libvirt only. Fleet may set `ttl_hours: off` |
 
 `virt-workshop` / `virt-workshop-2n` are workshop-specific overlays (custom scripts for suse-virt-workshop), not AWS twins of `harvester`.
 
@@ -499,9 +508,9 @@ store needs, from that store:
 
 For N identical student/instructor KVM hosts, the laptop runs `rodeo fleet` over
 OpenSSH. Each remote still executes single-host `rodeo up` / `doctor` / `status`.
-Shipped: JSON reports, fan-out, deploy/retry/access/diagnose, AWS provisioning,
-open-access for students and the claim portal. Next host providers: GCP, Vultr
-Bare Metal, Hetzner Cloud (planned stubs today). See [Fleet](fleet.md#roadmap).
+Shipped: JSON reports, fan-out, deploy/retry/access/diagnose, AWS and GCP
+provisioning, and (AWS only) open-access plus the claim portal. Vultr and
+Hetzner are names the provider registry rejects. See [Fleet](fleet.md#roadmap).
 
 ---
 

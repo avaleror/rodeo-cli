@@ -142,7 +142,7 @@ def link_cmd(config_path: str, rotate: bool) -> None:
 @click.option("--config", "config_path", type=click.Path(exists=True, dir_okay=False),
               default="/etc/rodeo-player/config.json", show_default=True)
 @click.option("--keep-going", is_flag=True, help="Do not stop at the first failing chapter.")
-@click.option("--expect", "expect_path", type=click.Path(exists=True, dir_okay=False), default=None,
+@click.option("--expect", "expect_path", default=None, metavar="FILE|none",
               help="Expected check results before each solve (default: the bundled "
                    "suse-virt-rodeo file). 'none' to judge nothing.")
 def test_cmd(config_path: str, keep_going: bool, expect_path: str | None) -> None:
@@ -167,7 +167,12 @@ def test_cmd(config_path: str, keep_going: bool, expect_path: str | None) -> Non
     from ..player.runner import load_expectations
 
     default = Path(__file__).resolve().parents[1] / "data" / "player" / "suse-virt-rodeo.expect.yaml"
-    expect = load_expectations(expect_path or default)
+    if expect_path == "none":
+        expect: dict[str, str] = {}
+    elif expect_path and not Path(expect_path).is_file():
+        raise click.BadParameter(f"{expect_path} is not a file (or 'none')", param_hint="--expect")
+    else:
+        expect = load_expectations(expect_path or default)
     report = track_test(runner, stop_on_failure=not keep_going, expect=expect)
     failed = False
     for t in report:

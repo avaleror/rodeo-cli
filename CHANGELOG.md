@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.36.0](https://github.com/avaleror/rodeo-cli/compare/v0.35.0...v0.36.0) (2026-11-27)
+
+
+### Features
+
+* **player:** Gitea tabs, telco site consoles, credentials from the lab's secrets ([#261](https://github.com/avaleror/rodeo-cli/issues/261)) ([eb2a1cd](https://github.com/avaleror/rodeo-cli/commit/eb2a1cddc154aff87bcdda0ee87880fe5b9c9e74))
+* **player:** suse-edge and suse-telco workshops run in the student UI ([#252](https://github.com/avaleror/rodeo-cli/issues/252)) ([d645a27](https://github.com/avaleror/rodeo-cli/commit/d645a2760448145cec40123c15c320d8ebec824b))
+
+
+### Bug Fixes
+
+* **aws:** stale lab key sweep leaves keys younger than 2 h alone ([#256](https://github.com/avaleror/rodeo-cli/issues/256)) ([f1e4f92](https://github.com/avaleror/rodeo-cli/commit/f1e4f9244ec29426a446268705bbc0bc761ca3bc))
+* **docs:** keep the rodeocli.com custom domain on every deploy ([#253](https://github.com/avaleror/rodeo-cli/issues/253)) ([cb829a3](https://github.com/avaleror/rodeo-cli/commit/cb829a32e308f8a59c52e3f29a1815168456a1dc))
+* **elemental:** wait for rancher-webhook before the operator install ([#257](https://github.com/avaleror/rodeo-cli/issues/257)) ([7655584](https://github.com/avaleror/rodeo-cli/commit/7655584bc6ea5a742330c4c5ed5c3762c32720eb))
+* **fleet:** open-access help no longer offers student SSH on 2222 ([#259](https://github.com/avaleror/rodeo-cli/issues/259)) ([501a308](https://github.com/avaleror/rodeo-cli/commit/501a3081a53e3bdc40c1d1d7e02fbf4e48c18e39))
+* **hauler:** elemental RPMs survive upstream rebuilds ([#258](https://github.com/avaleror/rodeo-cli/issues/258)) ([8a9f812](https://github.com/avaleror/rodeo-cli/commit/8a9f812be3de068c52e0acab545eeec17ab1d1ad))
+* **suse-edge:** only player fleets get the student key in edge3/edge4 ([#260](https://github.com/avaleror/rodeo-cli/issues/260)) ([3bd2bc6](https://github.com/avaleror/rodeo-cli/commit/3bd2bc6a995baa0d63f103dd2e61343011379762))
+* **up:** example plans no longer block rodeo up --target aws on placeholders ([#251](https://github.com/avaleror/rodeo-cli/issues/251)) ([e8e1409](https://github.com/avaleror/rodeo-cli/commit/e8e14095991c2b8d6ca9174a6a729f8fbc03205a))
+
+
+### Documentation
+
+* match the site to the 12 profiles and five targets ([#235](https://github.com/avaleror/rodeo-cli/issues/235)) ([95c412c](https://github.com/avaleror/rodeo-cli/commit/95c412c2b80e59e79318fb57291b510fda4d4be1))
+
 ## [0.35.0](https://github.com/avaleror/rodeo-cli/compare/v0.34.0...v0.35.0) (2026-11-27)
 
 

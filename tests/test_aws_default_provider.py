@@ -126,6 +126,20 @@ def test_up_keeps_an_explicit_provider(tmp_path, monkeypatch):
         assert cfg["provider"][key] == value
 
 
+def test_up_treats_the_example_placeholder_subnet_as_unset(tmp_path, monkeypatch):
+    # virt-workshop's example plan ships subnet-CHANGE-ME: use the default VPC.
+    seen: dict = {}
+    _stub_aws(monkeypatch, seen)
+    placeholder = {"type": "aws", "region": "eu-north-1", "subnet_id": "subnet-CHANGE-ME"}
+    lab = _lab(tmp_path, placeholder)
+    cfg = up_cmd._resolve_aws_instance_choice(
+        {"type": "rancher", "name": "rancher", "provider": dict(placeholder)},
+        lab=lab, lab_profile="rancher", instance_tier=None, assume_yes=True,
+    )
+    assert cfg["provider"]["subnet_id"] == "subnet-default"
+    assert seen["subnet_call"][0] == "eu-north-1"
+
+
 @pytest.mark.parametrize(
     "profile, harvester, rancher",
     [("rancher", False, True), ("rancher-test", False, True), ("suse-virt", True, True)],

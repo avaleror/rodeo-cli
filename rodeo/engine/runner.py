@@ -162,7 +162,9 @@ _HARVESTER_ISO_CHECKSUMS = {
 
 # Folders rodeo itself keeps in a lab dir; stream_apply never treats them as
 # per-host manifest dirs (unless a VM really has that name).
-_LAB_DIRS = frozenset({"story", "custom", "certs", "manifests", "checks", "guide", "scripts"})
+_LAB_DIRS = frozenset(
+    {"story", "custom", "certs", "manifests", "checks", "guide", "scripts", "bake"}
+)
 
 
 class DeployRunner:

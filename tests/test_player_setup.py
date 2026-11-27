@@ -367,3 +367,23 @@ def test_student_access_fields_are_validated(extra, match):
 
     with pytest.raises(ProfileError, match=match):
         _vm_profile(**extra)
+
+
+def test_credentials_also_come_from_the_lab_secrets(tmp_path, monkeypatch):
+    """suse-telco keeps mgmt_root_password in the lab's own .rodeo-secrets.yaml,
+    which wins over the global file (as in rodeo up). Seen live: it was missing."""
+    from rodeo.player.profile import parse
+
+    glob = tmp_path / "secrets.yaml"
+    glob.write_text("rancher_admin_password: r-pw\nmgmt_root_password: old\n")
+    lab = tmp_path / "lab"
+    lab.mkdir()
+    (lab / ".rodeo-secrets.yaml").write_text("mgmt_root_password: m-pw\n")
+    monkeypatch.setattr(s, "_secrets_files", lambda sudo_user: [glob])
+    monkeypatch.setattr(s, "_last_lab", lambda sudo_user: lab)
+    prof = parse("t", {"title": "T", "uis": [{"key": "r", "upstream": "192.168.122.10:30002",
+                                              "tab_port": 30002}],
+                       "credentials": [{"label": "R", "user": "admin", "password": "??rancher_admin_password"},
+                                       {"label": "M", "user": "root", "password": "??mgmt_root_password"}]})
+    assert s.lab_credentials(None, prof) == [{"label": "R", "user": "admin", "password": "r-pw"},
+                                             {"label": "M", "user": "root", "password": "m-pw"}]

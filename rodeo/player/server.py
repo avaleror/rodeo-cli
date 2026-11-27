@@ -154,6 +154,8 @@ def load_config(path: Path | str) -> PlayerConfig:
     return cfg
 
 
+# A tab path the player appends to the UI address: absolute, no scheme, host or quotes.
+_TAB_PATH = re.compile(r"/(?!/)[A-Za-z0-9._~%/?=&+-]*")
 HEALTH_TTL = 5.0      # seconds a health answer is reused, however many pages poll
 PROBE_TIMEOUT = 3.0
 
@@ -278,6 +280,9 @@ class Player:
                 url = self.cfg.terminal_url
             elif t.type == "service" and t.port is not None:
                 url = self.cfg.tab_urls.get(str(t.port), "")
+                # The track's tab path (e.g. a Gitea repo page), on the same UI name.
+                if url and t.path not in ("", "/") and _TAB_PATH.fullmatch(t.path):
+                    url = url.rstrip("/") + t.path
             else:
                 url = ""
             out.append({"index": i, "title": t.title, "type": t.type, "url": url})

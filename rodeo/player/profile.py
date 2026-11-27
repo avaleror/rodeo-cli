@@ -14,6 +14,8 @@ its ``rodeo-plan.yaml`` (``rodeo/data/examples/<profile>/player.yaml``)::
         upstream: 192.168.122.10:443      # on the lab network
         scheme: https                     # https (default) or http
         tab_port: 8443                    # the port the track's tabs use
+        lobby: true                       # false: the lobby does not wait for it (a UI
+                                          # the student brings up later in the lab)
     student_libvirt: false                # student may use virsh (qemu:///system); root-equivalent
     student_vm_access: [192.168.122.9]    # lab VMs where the student's own key logs in as root
     student_rodeo_commands: [eject-iso]   # rodeo subcommands the student may run as root (sudo)
@@ -63,6 +65,7 @@ class PlayerUI:
     upstream: str   # IP:port on the lab network
     tab_port: int   # the track tab's port, e.g. 8443
     scheme: str = "https"  # how the product serves it: https (self-signed is fine) or http
+    lobby: bool = True     # False: not probed, so the lobby does not wait for it
 
 
 @dataclass(frozen=True)
@@ -101,7 +104,8 @@ class PlayerProfile:
         if unknown:
             raise ProfileError(f"no UI {sorted(unknown)[0]!r} in profile {self.name} "
                                f"(it has: {', '.join(u.key for u in self.uis)})")
-        uis = tuple(PlayerUI(u.key, u.label, overrides.get(u.key, u.upstream), u.tab_port, u.scheme)
+        uis = tuple(PlayerUI(u.key, u.label, overrides.get(u.key, u.upstream), u.tab_port, u.scheme,
+                             u.lobby)
                     for u in self.uis)
         out = PlayerProfile(self.name, self.title, self.track_repo, uis, self.kubeconfig,
                             self.student_ssh_key, dict(self.variables), self.guide_url, self.credentials,
@@ -181,7 +185,8 @@ def parse(name: str, raw: Any) -> PlayerProfile:
         except (TypeError, ValueError) as exc:
             raise ProfileError(f"{name}/{FILE}: tab_port must be a number") from exc
         uis.append(PlayerUI(str(u.get("key") or ""), str(u.get("label") or u.get("key") or ""),
-                            str(u.get("upstream") or ""), port, str(u.get("scheme") or "https")))
+                            str(u.get("upstream") or ""), port, str(u.get("scheme") or "https"),
+                            bool(u.get("lobby", True))))
     creds = []
     for i, c in enumerate(raw.get("credentials") or []):
         if not isinstance(c, dict):

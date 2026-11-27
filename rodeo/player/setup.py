@@ -50,6 +50,7 @@ import subprocess
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from ..fleet.portal import CADDY_SHA512, CADDY_VERSION, STUDENT_SETUP_SCRIPT, STUDENT_USER
 from .profile import PlayerProfile
@@ -269,7 +270,8 @@ def player_config(opts: SetupOptions) -> dict:
         "check_timeout": opts.check_timeout,
         # Health probes go straight to the upstreams Caddy proxies, not the
         # public names (those sit behind the lab login).
-        "probes": {**{str(ui.tab_port): f"{ui.scheme}://{ui.upstream}/" for ui in opts.profile.uis},
+        "probes": {**{str(ui.tab_port): f"{ui.scheme}://{ui.upstream}/"
+                      for ui in opts.profile.uis if ui.lobby},
                    "terminal": f"http://127.0.0.1:{TTYD_PORT}/terminal/"},
         "terminal_url": "/terminal/",
         "track": bool(opts.repo),
@@ -566,35 +568,65 @@ def _secrets_files(sudo_user: str | None) -> list[Path]:
     return paths
 
 
+def _last_lab(sudo_user: str | None) -> Path | None:
+    """The lab ``rodeo up`` last ran (``~/.rodeo/last_lab`` of the deploying user, then root)."""
+    import pwd
+
+    homes = []
+    if sudo_user:
+        try:
+            homes.append(Path(pwd.getpwnam(sudo_user).pw_dir))
+        except KeyError:
+            pass
+    homes.append(Path("/root"))
+    for home in homes:
+        try:
+            lab = Path((home / ".rodeo" / "last_lab").read_text().strip())
+        except OSError:
+            continue
+        if lab.is_absolute() and lab.is_dir():
+            return lab
+    return None
+
+
+def lab_secrets(sudo_user: str | None) -> dict[str, Any]:
+    """What ``rodeo up`` resolved ``??keys`` from: the global secrets.yaml (the
+    deploying user's over root's) and, over them, the lab's own
+    ``.rodeo-secrets.yaml`` (suse-telco keeps mgmt_root_password there)."""
+    import yaml
+
+    from ..config import ConfigError, LAB_SECRETS_FILE, checked_lab_secrets
+    from ..labfs import read_lab_file
+
+    data: dict[str, Any] = {}
+    for path in reversed(_secrets_files(sudo_user)):
+        if path.is_file():
+            data.update(yaml.safe_load(path.read_text()) or {})
+    lab = _last_lab(sudo_user)
+    if lab is not None:
+        try:
+            if checked_lab_secrets(lab) is not None:
+                data.update(yaml.safe_load(read_lab_file(lab, LAB_SECRETS_FILE) or "") or {})
+        except (ConfigError, OSError, yaml.YAMLError):
+            pass
+    return data
+
+
 def lab_passwords(sudo_user: str | None, variables: dict[str, str] | None = None) -> dict[str, str]:
     """Track variables from the host's secrets.yaml (*variables*: TRACK_VAR -> secrets key;
     default: the virt-rodeo profile's)."""
-    import yaml
-
     if variables is None:
         variables = load_profile().variables
-    for path in _secrets_files(sudo_user):
-        if path.is_file():
-            data = yaml.safe_load(path.read_text()) or {}
-            out = {var: str(data[key]) for var, key in variables.items() if data.get(key)}
-            if out:
-                return out
-    return {}
+    data = lab_secrets(sudo_user)
+    return {var: str(data[key]) for var, key in variables.items() if data.get(key)}
 
 
 def lab_credentials(sudo_user: str | None, profile: PlayerProfile) -> list[dict[str, str]]:
     """The profile's credentials with their passwords from secrets.yaml. A
     credential whose secret is missing is left out, never shown empty."""
-    import yaml
-
-    for path in _secrets_files(sudo_user):
-        if path.is_file():
-            data = yaml.safe_load(path.read_text()) or {}
-            out = [{"label": c.label, "user": c.user, "password": str(data[c.secret])}
-                   for c in profile.credentials if data.get(c.secret)]
-            if out or not profile.credentials:
-                return out
-    return []
+    data = lab_secrets(sudo_user)
+    return [{"label": c.label, "user": c.user, "password": str(data[c.secret])}
+            for c in profile.credentials if data.get(c.secret)]
 
 
 def write_credentials(creds: list[dict[str, str]], dest: Path = CREDENTIALS_FILE) -> None:

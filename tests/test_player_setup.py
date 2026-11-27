@@ -286,6 +286,22 @@ def test_an_http_ui_is_proxied_without_tls():
     assert s.player_config(opts)["probes"]["30080"] == "http://192.168.122.21:30080/"
 
 
+def test_a_ui_with_lobby_false_is_not_probed():
+    """A console the student brings up later must not hold the lobby."""
+    from rodeo.player.profile import parse
+
+    prof = parse("t", {"title": "T", "uis": [
+        {"key": "rancher", "upstream": "192.168.122.10:30002", "tab_port": 30002},
+        {"key": "console", "upstream": "192.168.122.21:30080", "tab_port": 30080, "scheme": "http",
+         "lobby": False}]})
+    opts = s.SetupOptions(base="13-61-184-227.sslip.io", track_ref="", profile=prof)
+    cfg = s.player_config(opts)
+    assert "30080" not in cfg["probes"]
+    assert "30002" in cfg["probes"]
+    assert any(t.get("port") == 30080 for t in cfg["lab_tabs"])
+    assert "reverse_proxy http://192.168.122.21:30080" in s.caddyfile(opts)
+
+
 def test_credentials_come_from_secrets_and_are_written_root_only(tmp_path, monkeypatch):
     from rodeo.player.profile import load
 
@@ -367,3 +383,23 @@ def test_student_access_fields_are_validated(extra, match):
 
     with pytest.raises(ProfileError, match=match):
         _vm_profile(**extra)
+
+
+def test_credentials_also_come_from_the_lab_secrets(tmp_path, monkeypatch):
+    """suse-telco keeps mgmt_root_password in the lab's own .rodeo-secrets.yaml,
+    which wins over the global file (as in rodeo up). Seen live: it was missing."""
+    from rodeo.player.profile import parse
+
+    glob = tmp_path / "secrets.yaml"
+    glob.write_text("rancher_admin_password: r-pw\nmgmt_root_password: old\n")
+    lab = tmp_path / "lab"
+    lab.mkdir()
+    (lab / ".rodeo-secrets.yaml").write_text("mgmt_root_password: m-pw\n")
+    monkeypatch.setattr(s, "_secrets_files", lambda sudo_user: [glob])
+    monkeypatch.setattr(s, "_last_lab", lambda sudo_user: lab)
+    prof = parse("t", {"title": "T", "uis": [{"key": "r", "upstream": "192.168.122.10:30002",
+                                              "tab_port": 30002}],
+                       "credentials": [{"label": "R", "user": "admin", "password": "??rancher_admin_password"},
+                                       {"label": "M", "user": "root", "password": "??mgmt_root_password"}]})
+    assert s.lab_credentials(None, prof) == [{"label": "R", "user": "admin", "password": "r-pw"},
+                                             {"label": "M", "user": "root", "password": "m-pw"}]

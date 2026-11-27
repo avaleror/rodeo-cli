@@ -188,3 +188,36 @@ def test_setup_command_refuses_an_unknown_profile(monkeypatch):
     res = CliRunner().invoke(player_cmd, ["setup", "--track-ref", SHA, "--base", "1-2-3-4.sslip.io",
                                           "--upstream", "gitea=1.2.3.4:443"])
     assert res.exit_code != 0 and "no UI 'gitea'" in res.output
+
+
+def test_player_test_accepts_expect_none(tmp_path, monkeypatch):
+    """`--expect none` judges nothing, as its help says (it used to demand a file)."""
+    from click.testing import CliRunner
+
+    from rodeo.commands import player_cmd
+
+    seen = {}
+
+    def fake_track_test(runner, stop_on_failure, expect):
+        seen["expect"] = expect
+        return []
+
+    class Cfg:
+        track_dir = str(tmp_path)
+        state_dir = str(tmp_path / "state")
+        host = "kvm-host"
+        sandbox_id = ""
+        home = str(tmp_path)
+        kubeconfig = ""
+        check_timeout = 120
+
+    monkeypatch.setattr("rodeo.player.server.load_config", lambda path: Cfg)
+    monkeypatch.setattr("rodeo.player.runner.Runner", lambda *a, **k: object())
+    monkeypatch.setattr("rodeo.player.runner.track_test", fake_track_test)
+    conf = tmp_path / "config.json"
+    conf.write_text("{}")
+    r = CliRunner().invoke(player_cmd.test_cmd, ["--config", str(conf), "--expect", "none"])
+    assert seen.get("expect") == {}, r.output
+    r = CliRunner().invoke(player_cmd.test_cmd, ["--config", str(conf), "--expect",
+                                                 str(tmp_path / "missing.yaml")])
+    assert r.exit_code != 0 and "not a file" in r.output

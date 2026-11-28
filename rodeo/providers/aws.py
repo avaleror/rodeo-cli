@@ -51,6 +51,8 @@ TAG_RESOURCE = "rodeo-resource"
 # CreateTime). The orphan prune leaves anything younger than its grace alone.
 TAG_CREATED_AT = "rodeo-created-at"
 ORPHAN_GRACE_HOURS = 2.0
+# How long past its dead-man expiry an instance may live before a prune ends it.
+EXPIRED_GRACE_MINUTES = 30.0
 LAB_SG_RESOURCE = "security-group"
 
 _REQUIRED = ("region", "subnet_id")
@@ -2013,6 +2015,53 @@ class AwsHostProvider:
                     and old(pair.get("CreateTime")):
                 row(tags)["key_pairs"].append(str(pair["KeyName"]))
         return sorted(rows.values(), key=lambda r: (r["workshop"], r["deployment"]))
+
+    def expired(self, config: dict[str, Any], *, grace_minutes: float = EXPIRED_GRACE_MINUTES,
+                now: float | None = None) -> list[dict[str, str]]:
+        """Your rodeo instances still alive more than ``grace_minutes`` after
+        their dead-man expiry (``rodeo-expires-at``).
+
+        The guest timer should have powered them off; one that hung, failed its
+        boot script or had the timer stopped keeps billing. Only instances tagged
+        ``ManagedBy=rodeo`` with your ``rodeo-owner``. ``never`` (no switch) and
+        an unreadable expiry are never listed.
+        """
+        ec2 = self._client(config)
+        cutoff = (time.time() if now is None else now) - grace_minutes * 60
+        rows: list[dict[str, str]] = []
+        for page in ec2.get_paginator("describe_instances").paginate(Filters=[
+            {"Name": f"tag:{TAG_MANAGED_BY}", "Values": [TAG_MANAGED_BY_VALUE]},
+            {"Name": f"tag:{TAG_OWNER}", "Values": [self.owner(config)]},
+            {"Name": "instance-state-name", "Values": LIVE_STATES},
+        ]):
+            for res in page.get("Reservations") or []:
+                for inst in res.get("Instances") or []:
+                    tags = _tags(inst)
+                    stamp = tags.get(deadman.TAG_EXPIRES_AT, "")
+                    try:
+                        when = calendar.timegm(time.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ"))
+                    except ValueError:
+                        continue  # "never", missing or garbled: not ours to judge
+                    if when <= cutoff:
+                        rows.append({"instance": str(inst["InstanceId"]), "expires_at": stamp,
+                                     "workshop": tags.get(TAG_WORKSHOP, ""),
+                                     "deployment": tags.get(TAG_DEPLOYMENT, "")})
+        return sorted(rows, key=lambda r: (r["workshop"], r["instance"]))
+
+    def terminate_expired(self, config: dict[str, Any], *,
+                          grace_minutes: float = EXPIRED_GRACE_MINUTES,
+                          dry_run: bool = False) -> list[DeprovisionResult]:
+        """Terminate what ``expired`` lists: the backstop for a dead-man switch
+        that did not fire. Their groups and keys go on a later prune."""
+        rows = self.expired(config, grace_minutes=grace_minutes)
+        if not rows:
+            return []
+        if not dry_run:
+            self._client(config).terminate_instances(InstanceIds=[r["instance"] for r in rows])
+        verb = "would terminate" if dry_run else "terminated"
+        return [DeprovisionResult(id="instance", ok=True, provider_id=r["instance"],
+                                  detail=f"{verb}: expired {r['expires_at']} ({r['workshop']} {r['deployment']})")
+                for r in rows]
 
     def prune_orphans(self, config: dict[str, Any], *, grace_hours: float = ORPHAN_GRACE_HOURS,
                       dry_run: bool = False) -> list[DeprovisionResult]:

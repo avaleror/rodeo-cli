@@ -713,8 +713,12 @@ def fleet_provision_cmd(
         if inventory.provider:
             pruned = _prune_cloud(inventory)
             if pruned and output_fmt != "json":
-                console.print(f"  [dim]pruned {len(pruned)} leftover security group(s) / key pair(s) "
-                              "of labs that are gone[/dim]")
+                ended = [r for r in pruned if r.id == "instance"]
+                for r in ended:
+                    console.print(f"  [yellow]![/yellow] {r.provider_id} {r.detail}")
+                if len(pruned) > len(ended):
+                    console.print(f"  [dim]pruned {len(pruned) - len(ended)} leftover security group(s) / "
+                                  "key pair(s) of labs that are gone[/dim]")
         hosts = fleet_provision(
             inventory,
             inventory_path,
@@ -1114,15 +1118,17 @@ def fleet_player_setup_cmd(inventory_path: Path, track_ref: str | None, check_ti
 
 
 def _prune_cloud(inventory: FleetInventory) -> list[Any]:
-    """Best effort: your security groups and key pairs left by labs that are
-    gone (AWS only; see ``rodeo cloud prune``). Never fatal, never an instance."""
+    """Best effort (AWS only; see ``rodeo cloud prune``): your instances still
+    running past their dead-man expiry are terminated, then your security groups
+    and key pairs left by labs that are gone. Never fatal."""
     provider = inventory.provider or {}
     if str(provider.get("type") or "aws") != "aws" or not provider.get("region"):
         return []
     from ..providers.aws import AwsHostProvider
 
     try:
-        return AwsHostProvider().prune_orphans({"region": str(provider["region"])})
+        prov, cfg = AwsHostProvider(), {"region": str(provider["region"])}
+        return prov.terminate_expired(cfg) + prov.prune_orphans(cfg)
     except Exception:  # noqa: BLE001
         return []
 

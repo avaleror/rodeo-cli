@@ -440,12 +440,36 @@ never picks cloud resources by lab name alone. Every resource carries
 - `rodeo cloud destroy <deployment>` removes one of your deployments from
   anywhere: instances, security groups and key pair. Someone else's needs
   `--not-mine`, and you have to type their owner to confirm.
-- `rodeo cloud prune` deletes the security groups and key pairs left by your
-  labs that are gone. A dead-man switch terminates the instances and nothing
-  else, so these pile up. It only touches resources tagged as yours whose
-  deployment no instance carries any more, leaves anything younger than two
-  hours alone (`--grace-hours`), and never terminates an instance. `--dry-run`
-  lists without deleting. `fleet provision` and `fleet destroy` run it too.
+- `rodeo cloud prune` cleans up after labs that are gone. First it terminates
+  your instances still running 30 minutes past their `rodeo-expires-at`: the
+  backstop for a dead-man switch that did not fire (a host that hung, or whose
+  boot script never armed the timer). Hosts with no expiry (`never`) are never
+  touched; `--keep-expired` skips this step. Then it deletes the security
+  groups and key pairs a dead-man switch leaves behind: only resources tagged
+  as yours whose deployment no instance carries any more, older than two hours
+  (`--grace-hours`). `--dns-zone <zone>` also removes rodeo-marked names that
+  point at no live lab. `--dry-run` lists without changing anything.
+  `fleet provision` and `fleet destroy` run the first two steps too.
+- To have that happen without anyone running rodeo, run `rodeo cloud prune` from
+  a timer on a machine that holds AWS credentials, for example a systemd user
+  timer every hour:
+
+  ```ini
+  # ~/.config/systemd/user/rodeo-prune.service
+  [Service]
+  Type=oneshot
+  ExecStart=%h/.local/bin/rodeo cloud prune --region eu-north-1 --dns-zone rodeocli.com
+
+  # ~/.config/systemd/user/rodeo-prune.timer
+  [Timer]
+  OnCalendar=hourly
+  Persistent=true
+  [Install]
+  WantedBy=timers.target
+  ```
+
+  It only works while those credentials are valid (an SSO login expires in
+  hours); when they have expired it fails and changes nothing.
 - Labs from before this change have no `rodeo-deployment`. The machine holding
   their key adopts them on the next `up` or `destroy` (tags added, names kept).
   Anyone else sees them as `legacy` in `rodeo cloud ls --all`.

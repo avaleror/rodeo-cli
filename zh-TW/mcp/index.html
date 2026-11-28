@@ -1,0 +1,2169 @@
+
+<!doctype html>
+<html lang="zh-TW" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A declarative CLI that deploys hands-on lab infrastructure (Harvester HCI, Rancher Prime, SUSE Edge) on KVM.">
+      
+      
+      
+        <link rel="canonical" href="https://rodeocli.com/zh-TW/mcp/">
+      
+      
+        <link rel="prev" href="../player/">
+      
+      
+        <link rel="next" href="../reference/plan/">
+      
+      
+        
+          <link rel="alternate" href="../../mcp/" hreflang="en">
+        
+          <link rel="alternate" href="./" hreflang="zh-TW">
+        
+      
+      
+      <link rel="icon" href="../../assets/logo/favicon.ico">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
+    
+    
+      
+        <title>MCP server（AI agent） - rodeo-cli</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/custom.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="rodeo-cli">
+  <meta property="og:title" content="MCP server（AI agent） - rodeo-cli">
+  <meta property="og:description" content="A declarative CLI that deploys hands-on lab infrastructure (Harvester HCI, Rancher Prime, SUSE Edge) on KVM.">
+  <meta property="og:url" content="https://rodeocli.com/zh-TW/mcp/">
+  <meta property="og:image" content="https://rodeocli.com/assets/social-card.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="627">
+  <meta property="og:image:alt" content="rodeo-cli logo: a green horseshoe around a terminal prompt">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="MCP server（AI agent） - rodeo-cli">
+  <meta name="twitter:description" content="A declarative CLI that deploys hands-on lab infrastructure (Harvester HCI, Rancher Prime, SUSE Edge) on KVM.">
+  <meta name="twitter:image" content="https://rodeocli.com/assets/social-card.png">
+
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#mcp-server" class="md-skip">
+          跳轉到
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="頁首">
+    <a href="../" title="rodeo-cli" class="md-header__button md-logo" aria-label="rodeo-cli" data-md-component="logo">
+      
+  <img src="../../assets/logo/horseshoe-mark.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            rodeo-cli
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              MCP server（AI agent）
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="選擇語言">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="../../mcp/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="zh-TW" class="md-select__link">
+              繁體中文
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="搜尋" placeholder="搜尋" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="搜尋">
+        
+        <button type="reset" class="md-search__icon md-icon" title="清除" aria-label="清除" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            正在初始化搜尋引擎
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/avaleror/rodeo-cli" title="前往倉庫" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    avaleror/rodeo-cli
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="標籤" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../" class="md-tabs__link">
+        
+  
+  
+    
+  
+  首頁
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../get-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  開始使用
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../install/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  在 Linux 與 macOS 上安裝
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../guide-harvester/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Profile 指南
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../custom-rodeos/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  建立自己的 rodeo
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../rodeo-builder/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Rodeo Builder
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../fleet/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Fleet（多主機 workshop）
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../player/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Lab player
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  MCP server（AI agent）
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../reference/plan/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  參考
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../examples/bare-metal/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  範例
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../runbook/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  故障排除
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../architecture/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  給貢獻者
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="導覽列" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../" title="rodeo-cli" class="md-nav__button md-logo" aria-label="rodeo-cli" data-md-component="logo">
+      
+  <img src="../../assets/logo/horseshoe-mark.svg" alt="logo">
+
+    </a>
+    rodeo-cli
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/avaleror/rodeo-cli" title="前往倉庫" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    avaleror/rodeo-cli
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    首頁
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../get-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    開始使用
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    在 Linux 與 macOS 上安裝
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Profile 指南
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Profile 指南
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-harvester/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SUSE Virtualization (Harvester)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-rancher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rancher Prime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-suse-edge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SUSE Edge
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-suse-telco/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SUSE Telco Cloud
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-kvm-hosts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    一般 KVM 主機
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../custom-rodeos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    建立自己的 rodeo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rodeo-builder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rodeo Builder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fleet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fleet（多主機 workshop）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../player/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Lab player
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP server（AI agent）
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP server（AI agent）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目錄">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目錄
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#run-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        執行
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#limit-the-server-to-listed-labs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        把 server 限制在列出的 lab
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#register-it-with-a-client" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        向用戶端註冊
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#keep-the-agent-on-the-mcp-tools-rodeo-agent-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        讓 agent 只用 MCP 工具：rodeo agent-setup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        工具
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#plan-as-json" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        以 JSON 輸出 plan
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#plugin-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        外掛工具
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="外掛工具">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rodeo_up-on-aws-returns-a-pid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AWS 上的 rodeo_up 會回傳 pid
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adding-a-tool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        新增工具
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    參考
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    參考
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    rodeo-plan.yaml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/definition/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    definition.yaml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    範例
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    範例
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/bare-metal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    裸機
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/aws-macos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    從 Mac 部署到 AWS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/instruqt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Instruqt track
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/workshop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workshop fleet 清單
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    測試與 CI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../runbook/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    故障排除
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_13" >
+        
+          
+          <label class="md-nav__link" for="__nav_13" id="__nav_13_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    給貢獻者
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_13_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_13">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    給貢獻者
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing and validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../claim-portal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claim portal
+  
+
+    
+  </span>
+  
+  
+    
+  
+  
+    <span class="md-status md-status--shipped for AWS fleets in v0.18.0 (2026-10-02). Student SSH on port 2222 shipped in v0.20.1 and was removed in"></span>
+  
+
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../claim-portal-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claim portal (implementation plan)
+  
+
+    
+  </span>
+  
+  
+    
+  
+  
+    <span class="md-status md-status--approved design; F5.0 live-checked 2026-09-30; F5.1-F5.4 implemented 2026-09-30, live end-to-end check pending"></span>
+  
+
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目錄">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目錄
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#run-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        執行
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#limit-the-server-to-listed-labs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        把 server 限制在列出的 lab
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#register-it-with-a-client" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        向用戶端註冊
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#keep-the-agent-on-the-mcp-tools-rodeo-agent-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        讓 agent 只用 MCP 工具：rodeo agent-setup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        工具
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#plan-as-json" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        以 JSON 輸出 plan
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#plugin-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        外掛工具
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="外掛工具">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rodeo_up-on-aws-returns-a-pid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AWS 上的 rodeo_up 會回傳 pid
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adding-a-tool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        新增工具
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="mcp-server">MCP server<a class="headerlink" href="#mcp-server" title="Permanent link">&para;</a></h1>
+<p><code>rodeo mcp</code> 透過 MCP <strong>stdio</strong> transport（以換行分隔的 JSON-RPC 2.0），把 rodeo 提供給 MCP 用戶端——Claude Code、編輯器、agent
+執行環境——使用。
+它不需要額外的相依套件：協定實作在 <code>rodeo/mcp/</code> 中。</p>
+<p>每個工具都是直接執行 rodeo CLI，所以涵蓋的範圍包括 <strong>native</strong> 階段
+pipeline（<code>suse-virt</code>、<code>rancher</code>、<code>suse-edge</code>、<code>suse-telco</code>）以及<strong>外部
+engine</strong>（<code>lab-in-a-box</code>、外掛提供的類型），用的就是操作者
+輸入的同一組指令。</p>
+<h2 id="run-it">執行<a class="headerlink" href="#run-it" title="Permanent link">&para;</a></h2>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>rodeo<span class="w"> </span>mcp<span class="w"> </span>--list-tools<span class="w">                      </span><span class="c1"># 會提供哪些工具</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>rodeo<span class="w"> </span>mcp<span class="w">                                   </span><span class="c1"># 唯讀 server</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>rodeo<span class="w"> </span>mcp<span class="w"> </span>--allow-write<span class="w"> </span>--lab-dir<span class="w"> </span>~/rodeo-labs/harvester
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>選項</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--allow-write</code></td>
+<td>也提供生命週期工具。預設關閉，所以 server 無法部署、清除或銷毀任何東西。</td>
+</tr>
+<tr>
+<td><code>--lab-dir DIR</code></td>
+<td>lab 範圍工具的預設 lab 目錄。沒有指定時，使用偵測到的 lab 目錄，否則使用目前的工作目錄。</td>
+</tr>
+<tr>
+<td><code>--list-tools</code></td>
+<td>印出提供的工具後結束。</td>
+</tr>
+</tbody>
+</table>
+<p>lab 範圍的工具在每次呼叫時也接受 <code>lab_dir</code> 參數，它會覆寫
+server 的預設值——rodeo 指令是以 lab 目錄為基準的。</p>
+<h2 id="limit-the-server-to-listed-labs">把 server 限制在列出的 lab<a class="headerlink" href="#limit-the-server-to-listed-labs" title="Permanent link">&para;</a></h2>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>rodeo<span class="w"> </span>lab<span class="w"> </span>add<span class="w"> </span>~/rodeo-labs/harvester<span class="w">    </span><span class="c1"># 需要終端機</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>rodeo<span class="w"> </span>lab<span class="w"> </span>list
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>rodeo<span class="w"> </span>lab<span class="w"> </span>remove<span class="w"> </span>~/rodeo-labs/harvester<span class="w"> </span><span class="c1"># 需要終端機</span>
+</span></code></pre></div>
+<p><code>rodeo lab add</code> 會把 lab 的 realpath 寫入 <code>~/.rodeo/labs.yaml</code>（權限 0600）。
+這個檔案一旦存在，即使清單是空的，MCP 工具收到的每個路徑
+都必須解析到列出的 lab 或其中的路徑：<code>lab_dir</code>（或 server
+預設值）、<code>rodeo_up</code> 的 <code>dir</code>、<code>rodeo_init</code> 的 <code>target_dir</code>、<code>rodeo_instances_list</code>
+的 <code>dir</code>、<code>rodeo_new</code> 的 <code>from_zip</code> 與 <code>from_lab_json</code>，以及 fleet 的 <code>file</code>。symlink
+與 <code>..</code> 會先被解析，相對路徑則以工具的 lab
+目錄為基準。這時 <code>rodeo_new</code> 的 <code>from_base</code> 只接受內建的 profile 名稱，不接受
+網址。lab 範圍的工具也需要該目錄本身有 <code>rodeo-plan.yaml</code> 或 <code>definition.yaml</code>，
+否則 rodeo 會退回使用上層的 lab
+或最後使用的 lab（<code>rodeo_init</code>，以及帶 <code>dir</code> 的 <code>rodeo_up</code>，可以植入一個
+空的）。被拒絕的呼叫會成為工具錯誤，不會執行任何東西。</p>
+<p>沒有這個檔案時，server 會維持目前的行為，接受任何目錄，
+並在啟動時於 stderr 印出一則警告。</p>
+<p>這份清單只是一般的使用者資料：它能防止 MCP 用戶端或搞混的模型
+把工具指向其他目錄，但擋不住以同一個使用者身分執行的程序，
+因為那種程序可以編輯這個檔案。</p>
+<h2 id="register-it-with-a-client">向用戶端註冊<a class="headerlink" href="#register-it-with-a-client" title="Permanent link">&para;</a></h2>
+<p>Claude Code（<code>~/.claude.json</code> 或專案的 <code>.mcp.json</code>）：</p>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">{</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">"mcpServers"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="nt">"rodeo"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">      </span><span class="nt">"command"</span><span class="p">:</span><span class="w"> </span><span class="s2">"rodeo"</span><span class="p">,</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">      </span><span class="nt">"args"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"mcp"</span><span class="p">,</span><span class="w"> </span><span class="s2">"--allow-write"</span><span class="p">,</span><span class="w"> </span><span class="s2">"--lab-dir"</span><span class="p">,</span><span class="w"> </span><span class="s2">"/root/rodeo-labs/harvester"</span><span class="p">]</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">  </span><span class="p">}</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="p">}</span>
+</span></code></pre></div>
+<p>如果 agent 只應該觀察 lab，就拿掉 <code>--allow-write</code>。</p>
+<h2 id="keep-the-agent-on-the-mcp-tools-rodeo-agent-setup">讓 agent 只用 MCP 工具：<code>rodeo agent-setup</code><a class="headerlink" href="#keep-the-agent-on-the-mcp-tools-rodeo-agent-setup" title="Permanent link">&para;</a></h2>
+<p>有 shell 的 agent 可能會略過 MCP server，自己輸入 <code>rodeo up</code> 或 <code>sudo
+virsh destroy</code>。<code>rodeo agent-setup</code> 會在 lab 中寫入一套 Claude Code 工具組，
+用來攔下這種錯誤：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nb">cd</span><span class="w"> </span>~/rodeo-labs/harvester
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>rodeo<span class="w"> </span>agent-setup<span class="w">            </span><span class="c1"># 寫入 .claude/settings.json</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>rodeo<span class="w"> </span>agent-setup<span class="w"> </span>--check<span class="w">    </span><span class="c1"># 缺少工具組時以結束碼 1 結束</span>
+</span></code></pre></div>
+<p>它會合併進 <code>&lt;lab&gt;/.claude/settings.json</code>：</p>
+<ul>
+<li><code>permissions.deny</code>：<code>Bash(rodeo)</code>、<code>Bash(rodeo *)</code>、<code>Bash(sudo *)</code>、
+  <code>Bash(virsh *)</code>，以及 plan 中列出的每個 VM
+  名稱、VM 位址、VIP 與 AWS 主機的 <code>Bash(ssh *HOST*)</code>／<code>Bash(scp *HOST*)</code>。</li>
+<li>Bash 上的一個 <code>PreToolUse</code> hook（<code>python -I .../rodeo/agent_guard.py</code>），它也會
+  攔下串接的形式（<code>cd lab &amp;&amp; rodeo up</code>、<code>bash -c '...'</code>、
+  <code>$(rodeo status)</code>），並告訴模型改用 MCP 工具。</li>
+</ul>
+<p>你自己的規則與 hook 會保留，奇怪或無效的 JSON 會被拒絕而不是
+覆寫，symlink 的 settings 檔或 <code>.claude</code> 目錄會被拒絕，
+第二次執行不會改變任何東西。在 lab 的主機變更之後（例如新增一台
+AWS 主機）請重跑：新的主機規則會被加入，rodeo 的 hook 項目也會
+就地更新。<code>.claude/</code> 不屬於 lab hash 的一部分，所以寫入工具組
+不會讓 lab 變成不受信任。</p>
+<p><strong>這是錯誤過濾器，不是安全邊界。</strong> 它是一個同一個使用者就能編輯或刪除的
+設定檔，所以它擋得住搞混的模型，擋不住惡意的
+模型。</p>
+<p>MCP 本機部署（<code>rodeo_up</code>、<code>rodeo_deploy</code> 以及其他需要 root 的寫入工具）
+仍然需要執行 MCP server 的使用者有 NOPASSWD sudo。
+工具組只在 agent 的 shell 中禁止 <code>sudo</code>，不會在 server 中禁止。</p>
+<p><code>rodeo doctor</code> 會顯示目前的 lab 是否已安裝工具組（而
+<code>rodeo doctor --output json</code> 會以 <code>agent_kit</code> 帶出這項資訊）。它能判斷
+工具組已安裝，但無法判斷是否有 agent session 在沒有工具組的情況下執行（當
+doctor 本身是從沒有工具組的 Claude Code shell 執行時，它會說明這一點）。目前只有
+Claude Code 有工具組。當 doctor 發現 Gemini CLI 或 Codex CLI 的
+設定時，會回報「no kit for this client」。</p>
+<h2 id="tools">工具<a class="headerlink" href="#tools" title="Permanent link">&para;</a></h2>
+<p>唯讀（一律提供）：</p>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>rodeo 指令</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>rodeo_version</code></td>
+<td><code>rodeo --version</code></td>
+</tr>
+<tr>
+<td><code>rodeo_help</code></td>
+<td><code>rodeo [COMMAND] --help</code>——找出沒有專屬工具的指令</td>
+</tr>
+<tr>
+<td><code>rodeo_engines</code></td>
+<td>已註冊的 lab 類型，每個都標示為 <code>native</code> 或 <code>external</code>（JSON）</td>
+</tr>
+<tr>
+<td><code>rodeo_doctor</code></td>
+<td><code>rodeo doctor</code></td>
+</tr>
+<tr>
+<td><code>rodeo_profiles</code></td>
+<td><code>rodeo profiles</code></td>
+</tr>
+<tr>
+<td><code>rodeo_plan</code></td>
+<td><code>rodeo plan</code>（<code>output: json</code> 輸出單一 JSON 物件，請見下方）</td>
+</tr>
+<tr>
+<td><code>rodeo_status</code></td>
+<td><code>rodeo status</code></td>
+</tr>
+</tbody>
+</table>
+<p>| <code>rodeo_plan</code> | <code>rodeo plan</code> |
+| <code>rodeo_status</code> | <code>rodeo status</code>；<code>cloud: true</code> 會執行 <code>rodeo status --cloud</code>（AWS 主機的部署） |
+| <code>rodeo_list</code> | <code>rodeo list</code> |
+| <code>rodeo_logs</code> | <code>rodeo logs --no-follow</code> |
+| <code>rodeo_instances_list</code> | <code>rodeo instances list</code> |
+| <code>rodeo_fleet_status</code> | <code>rodeo fleet status</code> |
+| <code>rodeo_fleet_doctor</code> | <code>rodeo fleet doctor</code> |
+| <code>rodeo_preflight</code> | <code>rodeo deploy --check</code>——只驗證，不部署任何東西 |</p>
+<p>生命週期（只在加上 <code>--allow-write</code> 時提供）：</p>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>rodeo 指令</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>rodeo_up</code></td>
+<td><code>rodeo up --yes --no-tmux</code>；目標為 <code>aws</code> 時會加上 <code>--detach</code>（請見下方）</td>
+</tr>
+<tr>
+<td><code>rodeo_deploy</code></td>
+<td><code>rodeo deploy --no-tui</code>（<code>from_phase</code> 從某個階段接續執行）</td>
+</tr>
+<tr>
+<td><code>rodeo_init</code></td>
+<td><code>rodeo init</code></td>
+</tr>
+<tr>
+<td><code>rodeo_new</code></td>
+<td><code>rodeo new</code></td>
+</tr>
+<tr>
+<td><code>rodeo_start</code>, <code>rodeo_stop</code>, <code>rodeo_start_if_needed</code>, <code>rodeo_restart</code></td>
+<td>VM 電源</td>
+</tr>
+<tr>
+<td><code>rodeo_clean</code></td>
+<td><code>rodeo clean --yes</code>——具破壞性</td>
+</tr>
+<tr>
+<td><code>rodeo_destroy</code></td>
+<td><code>rodeo destroy --yes</code>——具破壞性</td>
+</tr>
+<tr>
+<td><code>rodeo_set_password</code></td>
+<td><code>rodeo set-password</code></td>
+</tr>
+<tr>
+<td><code>rodeo_install_extensions</code></td>
+<td><code>rodeo install-extensions</code></td>
+</tr>
+<tr>
+<td><code>rodeo_self_update</code></td>
+<td><code>rodeo self-update</code></td>
+</tr>
+</tbody>
+</table>
+<p>每個工具都是非互動式的：沒有 TUI、沒有 tmux 包裝、沒有提示、沒有顏色。
+失敗的指令會以工具錯誤的形式回傳，帶有 rodeo 的結束碼與
+輸出的結尾部分，絕不會以協定錯誤的形式回傳。</p>
+<p>逾時或被用戶端取消（<code>notifications/cancelled</code>）的呼叫
+會停止它整個 process group：先送 SIGTERM，5 秒後再送 SIGKILL。需要 root 的寫入
+工具會透過 <code>sudo</code> 重新執行自己，所以它們的 <code>rodeo</code> 及其
+<code>ansible-playbook</code>/<code>ssh</code> 子程序都以 root 執行，server 碰不到。sudo
+會把 SIGTERM 轉送給那個 root 的 <code>rodeo</code>，由它停止自己啟動的程序
+（它的子孫程序，以及當它是 process group leader 時的整個 process group），對於忽略 SIGTERM 的程序，
+3 秒後送 SIGKILL，然後結束。它絕不會對只是繼承而來的 group 中
+其他成員送訊號，例如執行
+<code>sudo rodeo</code> 的腳本或 <code>timeout</code>。從 MCP 進行的本機部署
+需要 NOPASSWD sudo，因為沒有終端機可以輸入密碼。</p>
+<h2 id="plan-as-json">以 JSON 輸出 plan<a class="headerlink" href="#plan-as-json" title="Permanent link">&para;</a></h2>
+<p><code>rodeo plan --output json</code>（MCP：<code>rodeo_plan</code> 搭配 <code>output: json</code>）會印出一個
+物件：<code>schema</code>（1）、<code>name</code>、<code>type</code>、<code>host_reachable</code>、<code>creates</code>、<code>changes</code>
+（<code>kind</code> 為 memory、vcpu 或 dhcp，並帶有 <code>from</code> 與 <code>to</code>）、<code>unchanged</code>、
+<code>foreign_vms</code>、<code>network</code>、<code>storage</code>（<code>image_dir</code>、<code>downloads</code>）、<code>phases</code>
+（<code>state</code> 為 done、drift、guarded、pending 或 failed）、<code>phases_pending</code>、
+<code>summary</code> 與 <code>config_error</code>。無法載入的 plan 只會印出
+<code>{"schema": 1, "error": "..."}</code>。</p>
+<p>這個物件不含任何帳密值：<code>plan</code> 不會解析任何 <code>??</code> 占位符、
+絕不讀取 <code>secrets.yaml</code> 或 lab 的 secret 檔，並會遮蔽 plan 本身
+直接寫入的帳密值，以及網址中任何的 <code>user:password@</code>。結束碼
+與文字輸出一致：當部署會拒絕這個 plan 時（不受信任的 lab、
+無效的值）為 2，即使 JSON 已經印出。受信任 lab 中的 <code>??</code> 來源
+會延後到部署時處理，不算失敗。</p>
+<h2 id="plugin-tools">外掛工具<a class="headerlink" href="#plugin-tools" title="Permanent link">&para;</a></h2>
+<p>外掛（一個 <code>rodeo.plugins</code> entry point）透過
+<code>rodeo.mcp.tools.register_mcp_tool(tool, mutating=..., lab_scoped=...)</code> 新增工具。兩個
+旗標都是必填。內建名稱，或已被其他外掛使用的名稱，會被拒絕：
+外掛不能取代內建工具。會變更狀態的外掛工具只在
+加上 <code>--allow-write</code> 時提供，而每個外掛工具都要經過上述的 lab 清單檢查
+（lab 範圍時檢查 <code>lab_dir</code>，另外還有每個以 <code>path="path"</code> 宣告的 <code>Arg</code>）。</p>
+<h3 id="rodeo_up-on-aws-returns-a-pid">AWS 上的 <code>rodeo_up</code> 會回傳 pid<a class="headerlink" href="#rodeo_up-on-aws-returns-a-pid" title="Permanent link">&para;</a></h3>
+<p>AWS 部署需要一到兩個小時。當目標是 <code>aws</code> 時（<code>target</code>
+參數，否則為 plan 的 <code>deployment_target</code>），<code>rodeo_up</code> 會傳入 <code>--detach</code>：
+rodeo 建立 EC2 主機、在那裡啟動 <code>rodeo up</code>，並回傳一個 JSON
+物件 <code>{"state": "started", "pid", "start", "log", "host"}</code>。部署會在主機上
+繼續執行。用 <code>rodeo_status</code> 搭配 <code>cloud: true</code> 追蹤，它會
+回報 <code>running</code>、帶結束碼的 <code>exited</code>、<code>gone</code>（被終止或主機
+重開機）或 <code>none</code>，再加上 log 的結尾部分。如果那裡已經有部署在執行，
+會以工具錯誤的形式回傳
+<code>{"state": "already_running", "pid", "log", "host"}</code>（rodeo 結束碼 75）。</p>
+<p>本機部署目前還沒有 detach：其他任何目標的 <code>rodeo_up</code> 都會一直等到
+部署結束，在 server 的逾時範圍內。</p>
+<h2 id="adding-a-tool">新增工具<a class="headerlink" href="#adding-a-tool" title="Permanent link">&para;</a></h2>
+<p>在 <code>rodeo/mcp/tools.py</code> 的 <code>READ_TOOLS</code> 或 <code>WRITE_TOOLS</code> 中加入一列：rodeo
+子指令、它帶型別的 <code>Arg</code>，以及任何固定的旗標。Schema、分派與
+寫入閘門都會從這一列自動產生——<code>rodeo/mcp/server.py</code> 不需要修改。</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  回到頂端
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.top", "navigation.indexes", "content.code.copy", "content.code.annotate", "toc.follow", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u8907\u88fd", "clipboard.copy": "\u8907\u88fd", "search.result.more.one": "\u6b64\u9801\u5c1a\u6709 1 \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.more.other": "\u6b64\u9801\u5c1a\u6709 # \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.none": "\u6c92\u6709\u7b26\u5408\u7684\u9805\u76ee", "search.result.one": "\u627e\u5230 1 \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.other": "\u627e\u5230 # \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.placeholder": "\u6253\u5b57\u9032\u884c\u641c\u5c0b", "search.result.term.missing": "\u7f3a\u5c11\u5b57\u8a5e", "select.version": "\u9078\u64c7\u7248\u672c"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+    
+  </body>
+</html>

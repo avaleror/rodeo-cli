@@ -1,0 +1,2256 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A declarative CLI that deploys hands-on lab infrastructure (Harvester HCI, Rancher Prime, SUSE Edge) on KVM.">
+      
+      
+      
+        <link rel="canonical" href="https://rodeocli.com/player/">
+      
+      
+        <link rel="prev" href="../fleet/">
+      
+      
+        <link rel="next" href="../mcp/">
+      
+      
+        
+          <link rel="alternate" href="./" hreflang="en">
+        
+          <link rel="alternate" href="../zh-TW/player/" hreflang="zh-TW">
+        
+      
+      
+      <link rel="icon" href="../assets/logo/favicon.ico">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
+    
+    
+      
+        <title>Lab player - rodeo-cli</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/custom.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="rodeo-cli">
+  <meta property="og:title" content="Lab player - rodeo-cli">
+  <meta property="og:description" content="A declarative CLI that deploys hands-on lab infrastructure (Harvester HCI, Rancher Prime, SUSE Edge) on KVM.">
+  <meta property="og:url" content="https://rodeocli.com/player/">
+  <meta property="og:image" content="https://rodeocli.com/assets/social-card.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="627">
+  <meta property="og:image:alt" content="rodeo-cli logo: a green horseshoe around a terminal prompt">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Lab player - rodeo-cli">
+  <meta name="twitter:description" content="A declarative CLI that deploys hands-on lab infrastructure (Harvester HCI, Rancher Prime, SUSE Edge) on KVM.">
+  <meta name="twitter:image" content="https://rodeocli.com/assets/social-card.png">
+
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#lab-player" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="rodeo-cli" class="md-header__button md-logo" aria-label="rodeo-cli" data-md-component="logo">
+      
+  <img src="../assets/logo/horseshoe-mark.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            rodeo-cli
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Lab player
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="Select language">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="../zh-TW/player/" hreflang="zh-TW" class="md-select__link">
+              繁體中文
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/avaleror/rodeo-cli" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    avaleror/rodeo-cli
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../get-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Get started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../install/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Install on Linux and macOS
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../guide-harvester/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Profiles
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../custom-rodeos/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Create your own rodeo
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../rodeo-builder/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Rodeo Builder
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../fleet/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Fleet (multi-host workshops)
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Lab player
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../mcp/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  MCP server (agents)
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../reference/plan/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../examples/bare-metal/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Examples
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../runbook/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Troubleshooting
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../architecture/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  For contributors
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="rodeo-cli" class="md-nav__button md-logo" aria-label="rodeo-cli" data-md-component="logo">
+      
+  <img src="../assets/logo/horseshoe-mark.svg" alt="logo">
+
+    </a>
+    rodeo-cli
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/avaleror/rodeo-cli" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    avaleror/rodeo-cli
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../get-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Get started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install on Linux and macOS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Profiles
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Profiles
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-harvester/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SUSE Virtualization (Harvester)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-rancher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rancher Prime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-suse-edge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SUSE Edge
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-suse-telco/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SUSE Telco Cloud
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-kvm-hosts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plain KVM hosts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../custom-rodeos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Create your own rodeo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rodeo-builder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rodeo Builder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fleet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fleet (multi-host workshops)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Lab player
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Lab player
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#how-it-fits-together" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How it fits together
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-student-sees" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the student sees
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#writing-a-track-for-the-player" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Writing a track for the player
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#every-fleet-is-a-workshop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Every fleet is a workshop
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#one-lab-test-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        One lab, test mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-long-a-check-may-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How long a check may run
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-fleet-with-your-own-domain" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A fleet with your own domain
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="A fleet with your own domain">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#dns-records" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DNS records
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-certificate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The certificate
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#player-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Player profiles
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mcp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP server (agents)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    rodeo-plan.yaml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/definition/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    definition.yaml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Examples
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/bare-metal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bare metal
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/aws-macos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AWS from a Mac
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/instruqt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Instruqt track
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/workshop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workshop fleet inventory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing & CI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../runbook/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_13" >
+        
+          
+          <label class="md-nav__link" for="__nav_13" id="__nav_13_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    For contributors
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_13_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_13">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    For contributors
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing and validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../claim-portal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claim portal
+  
+
+    
+  </span>
+  
+  
+    
+  
+  
+    <span class="md-status md-status--shipped for AWS fleets in v0.18.0 (2026-10-02). Student SSH on port 2222 shipped in v0.20.1 and was removed in"></span>
+  
+
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../claim-portal-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claim portal (implementation plan)
+  
+
+    
+  </span>
+  
+  
+    
+  
+  
+    <span class="md-status md-status--approved design; F5.0 live-checked 2026-09-30; F5.1-F5.4 implemented 2026-09-30, live end-to-end check pending"></span>
+  
+
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#how-it-fits-together" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How it fits together
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-student-sees" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the student sees
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#writing-a-track-for-the-player" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Writing a track for the player
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#every-fleet-is-a-workshop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Every fleet is a workshop
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#one-lab-test-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        One lab, test mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-long-a-check-may-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How long a check may run
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-fleet-with-your-own-domain" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A fleet with your own domain
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="A fleet with your own domain">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#dns-records" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DNS records
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-certificate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The certificate
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#player-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Player profiles
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="lab-player">Lab player<a class="headerlink" href="#lab-player" title="Permanent link">&para;</a></h1>
+<p>The rodeo player gives each student one browser window for their lab: the
+chapter text on the left, then tabs for a terminal, Harvester and Rancher, plus
+<strong>Check</strong>, <strong>Next</strong> and <strong>Skip</strong>. It runs the SUSE Virtualization Rodeo track
+(<code>suse-virt-rodeo</code>) on your own cloud labs, with the same setup, check and solve
+scripts the track already has.</p>
+<p>It is opt-in. Nothing in rodeo runs it unless you call <code>rodeo player</code> or
+<code>rodeo fleet player-setup</code>. Any lab profile can use it: what the player shows
+comes from the profile's <code>player.yaml</code> (see <a href="#player-profiles">Player profiles</a>).
+Today <code>virt-rodeo</code> is the profile that ships one.</p>
+<h2 id="how-it-fits-together">How it fits together<a class="headerlink" href="#how-it-fits-together" title="Permanent link">&para;</a></h2>
+<p>On each lab host:</p>
+<ul>
+<li><code>rodeo-player</code> serves the page and runs the chapter scripts, on loopback only.</li>
+<li><code>rodeo-player-ttyd</code> is the browser terminal, as the unprivileged <code>student</code> user.</li>
+<li><code>rodeo-player-caddy</code> is the only public listener (port 443). Every request
+  goes through the player's login first, then to the player, the terminal,
+  Harvester or Rancher.</li>
+</ul>
+<p>A student signs in once with their lab link (<code>/enter?t=...</code>). The link is a
+secret: anyone who has it can use that lab. Students can come from any network
+and any IP: the link is the lock, not the address. After 20 wrong links in 10
+minutes from one address, that address gets "Too many tries" (HTTP 429) for a
+while, so a bot cannot load the lab host by hammering <code>/enter</code>.</p>
+<h2 id="what-the-student-sees">What the student sees<a class="headerlink" href="#what-the-student-sees" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>Lobby</strong>, on the first visit: each part of the lab (one row per tab) as it
+   comes up, and the chapters ahead. <strong>Enter lab</strong> turns on when every part
+   answers; after 90 seconds a "Continue anyway" link appears.</li>
+<li><strong>Chapter cover</strong>, the first time a chapter is opened in that browser:
+   chapter number and name, the one-line mission (<code>teaser</code>), how many tasks,
+   the level (<code>difficulty</code>), <strong>Start mission</strong>, then the chapter's story.</li>
+<li><strong>Working view</strong>: the lab takes the screen. A narrow rail on the left has
+   one button per step. The guide opens as a resizable panel next to the lab
+   or folds away; when folded, a small card shows the current step and the
+   chapter's main button.</li>
+<li><strong>Guide</strong>: the credentials card, one card per step, and "About this
+   chapter" at the end. Code blocks have <strong>Copy</strong> and <strong>Paste in terminal</strong>
+   (it types the command at the prompt and never presses Enter). A failed
+   check shows in the step where it was run, with what the check printed.</li>
+<li><strong>Chapter complete</strong>, after a pass: what was done, what comes next, and the
+   chapter's "why it matters" and links.</li>
+</ol>
+<p>The header shows the chapter trail, a "Lab healthy" indicator (the host
+checks each tab every 30 seconds while the page is open) and the theme
+switch. Step ticks, covers seen and the guide's width are kept in the
+student's browser; progress through the chapters is kept on the lab.</p>
+<h2 id="writing-a-track-for-the-player">Writing a track for the player<a class="headerlink" href="#writing-a-track-for-the-player" title="Permanent link">&para;</a></h2>
+<p>The player reads the structure authors already write, so any rodeo track
+works. Split each chapter's <code>assignment.md</code> with top-level headings (a line
+underlined with <code>===</code>, or <code># Title</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Heading</th>
+<th>Becomes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Chapter N: Name</code>, first in the file, plus the text up to the next heading</td>
+<td>The chapter cover and its story</td>
+</tr>
+<tr>
+<td>a heading with <code>Credentials</code> in it</td>
+<td>The credentials card</td>
+</tr>
+<tr>
+<td><code>Task N: ...</code> or <code>Step N: ...</code></td>
+<td>One step each</td>
+</tr>
+<tr>
+<td><code>Bonus ...</code> or a title ending in <code>(optional)</code></td>
+<td>An optional step</td>
+</tr>
+<tr>
+<td><code>Why ...</code></td>
+<td>"Why it matters" on the chapter complete screen</td>
+</tr>
+<tr>
+<td><code>More information</code>, <code>Learn more</code>, <code>Resources</code></td>
+<td>Links on the chapter complete screen</td>
+</tr>
+<tr>
+<td>anything else</td>
+<td>Shown with the step that follows it</td>
+</tr>
+</tbody>
+</table>
+<p>Leading emoji in headings are left out of the rail and the cover. A chapter
+with no task headings is shown as a single step, so older tracks still work.
+The front matter's <code>teaser</code> and <code>difficulty</code> fill the cover.</p>
+<h2 id="every-fleet-is-a-workshop">Every fleet is a workshop<a class="headerlink" href="#every-fleet-is-a-workshop" title="Permanent link">&para;</a></h2>
+<p><code>rodeo fleet</code> gives students the player and nothing else: no SSH, no UI ports
+on the internet. <code>fleet open-access</code> opens 443 only, the UIs sit behind the
+player's lab login, and the portal hands out one "Open your lab" link per lab.</p>
+<p>What decides it, for each fleet:</p>
+<table>
+<thead>
+<tr>
+<th>Fleet</th>
+<th>Player</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>AWS, lab profile with a <code>player.yaml</code></td>
+<td>yes, by default</td>
+</tr>
+<tr>
+<td><code>player: false</code> in workshop.yaml, or <code>fleet up --no-player</code></td>
+<td>no: students get the UI URLs and passwords</td>
+</tr>
+<tr>
+<td><code>kvm-hosts</code> profile</td>
+<td>no: KVM clusters for operators, not students</td>
+</tr>
+<tr>
+<td>a profile with no <code>player.yaml</code> (custom, lab-in-a-box)</td>
+<td>no, unless asked for, and then an error</td>
+</tr>
+<tr>
+<td>GCP (and any cloud whose provider has <code>supports_player = False</code>)</td>
+<td>no, for now</td>
+</tr>
+<tr>
+<td>static hosts (no <code>provider:</code>)</td>
+<td>only with a <code>player:</code> block</td>
+</tr>
+</tbody>
+</table>
+<p>A profile with a track gets its chapters. A profile without one gets the lab
+tabs, a terminal and the credentials, with the guide folded; the guide panel
+has a button to the workshop guide when the profile names one (<code>guide_url</code>).
+Credentials (from the profile's <code>credentials:</code>) are always under
+<strong>Credentials</strong> in the header.</p>
+<p>The student's terminal runs as <code>student</code>: no sudo, cannot read <code>/root</code>. New
+fleets get <code>per_host_ssh_key: true</code>, so root on one lab opens no other.</p>
+<h2 id="one-lab-test-mode">One lab, test mode<a class="headerlink" href="#one-lab-test-mode" title="Permanent link">&para;</a></h2>
+<p>For a quick test on one lab you do not need a domain. Names are
+<code>&lt;ip-dashed&gt;.sslip.io</code> and Caddy uses its own CA, so the tester trusts that CA
+in their browser.</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>sudo<span class="w"> </span>rodeo<span class="w"> </span>player<span class="w"> </span>setup<span class="w"> </span>--track-ref<span class="w"> </span>&lt;<span class="m">40</span>-char<span class="w"> </span>suse-virt-rodeo<span class="w"> </span>commit&gt;<span class="w">   </span><span class="c1"># a profile with a track</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>sudo<span class="w"> </span>rodeo<span class="w"> </span>player<span class="w"> </span>setup<span class="w"> </span>--profile<span class="w"> </span>virt-workshop<span class="w">                           </span><span class="c1"># one without</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>sudo<span class="w"> </span>rodeo<span class="w"> </span>player<span class="w"> </span>link<span class="w">        </span><span class="c1"># prints the lab link</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>sudo<span class="w"> </span>rodeo<span class="w"> </span>player<span class="w"> </span><span class="nb">test</span><span class="w">        </span><span class="c1"># solves every chapter: run it last</span>
+</span></code></pre></div>
+<p>sslip.io is on the Public Suffix List, so this mode is for testers only, never
+for students.</p>
+<h2 id="how-long-a-check-may-run">How long a check may run<a class="headerlink" href="#how-long-a-check-may-run" title="Permanent link">&para;</a></h2>
+<p>Each chapter check is stopped after 120 seconds and counts as a failed check.
+A track whose checks wait for something slow (a VM booting, a migration) can
+allow more, from 10 to 3600 seconds:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>sudo<span class="w"> </span>rodeo<span class="w"> </span>player<span class="w"> </span>setup<span class="w"> </span>--track-ref<span class="w"> </span>&lt;sha&gt;<span class="w"> </span>--check-timeout<span class="w"> </span><span class="m">300</span><span class="w">            </span><span class="c1"># one lab</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>player-setup<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>--track-ref<span class="w"> </span>&lt;sha&gt;<span class="w"> </span>--check-timeout<span class="w"> </span><span class="m">300</span><span class="w">   </span><span class="c1"># every lab</span>
+</span></code></pre></div>
+<p>The value lands in the player config (<code>/etc/rodeo-player/config.json</code>,
+<code>check_timeout</code>); <code>rodeo player test</code> uses the same value.</p>
+<h2 id="a-fleet-with-your-own-domain">A fleet with your own domain<a class="headerlink" href="#a-fleet-with-your-own-domain" title="Permanent link">&para;</a></h2>
+<p>For students, use a DNS zone you own in Route 53 (not on the Public Suffix
+List) and one wildcard certificate per event. Without one, <code>fleet up</code> warns
+and runs in test mode: browsers do not trust Caddy's own CA, so the lab tabs
+stay blank. Add a <code>player:</code> block to <code>workshop.yaml</code> (or pass
+<code>fleet up --player-domain &lt;zone&gt;</code> when it writes a new one):</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">player</span><span class="p">:</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">domain</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rodeocli.com</span><span class="w">      </span><span class="c1"># a public Route 53 hosted zone in the fleet's AWS account</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span><span class="nt">acme_email</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">you@example.com</span><span class="w">   </span><span class="c1"># optional, for Let's Encrypt expiry mail</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span><span class="c1"># staging: true           # first try: Let's Encrypt staging (untrusted, no rate limit)</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="nt">provider</span><span class="p">:</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">  </span><span class="nt">per_host_ssh_key</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">    </span><span class="c1"># one root key per lab (fleet up writes it for new workshops)</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="nt">portal</span><span class="p">:</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">             </span><span class="c1"># the portal hands out each lab's link</span>
+</span></code></pre></div>
+<p>Each lab gets a random 8-character id and one name per UI under the zone: <code>&lt;id&gt;</code>
+for the player, then <code>&lt;ui&gt;-&lt;id&gt;</code> for each product UI in the profile's
+<code>player.yaml</code> (<code>hv-&lt;id&gt;</code> and <code>rancher-&lt;id&gt;</code> for <code>virt-rodeo</code>).</p>
+<p>One command does the whole run, and a failed run resumes with the same command:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>up<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>--track-ref<span class="w"> </span>&lt;sha&gt;<span class="w"> </span>--images-bucket<span class="w"> </span>&lt;private<span class="w"> </span>image<span class="w"> </span>bucket&gt;
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>up<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w">                  </span><span class="c1"># a profile without a track needs neither</span>
+</span></code></pre></div>
+<p>It waits until every lab is ready, then fetches the images, writes the lab
+names, reuses or issues the certificate, installs the player, opens 443 and
+publishes the labs. <code>--images-bucket</code> is only for tracks that need private
+images. The same steps one by one:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>provision<span class="w">   </span>-f<span class="w"> </span>workshop.yaml
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>deploy<span class="w">      </span>-f<span class="w"> </span>workshop.yaml
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>lab-images<span class="w">  </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>--bucket<span class="w"> </span>&lt;private<span class="w"> </span>image<span class="w"> </span>bucket&gt;<span class="w"> </span>--run
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>dns<span class="w">         </span>-f<span class="w"> </span>workshop.yaml<span class="w">   </span><span class="c1"># ids + A records</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>cert<span class="w">        </span>-f<span class="w"> </span>workshop.yaml<span class="w">   </span><span class="c1"># *.&lt;zone&gt;, once per event</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>player-setup<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>--track-ref<span class="w"> </span>&lt;sha&gt;<span class="w">   </span><span class="c1"># --track-ref only with a track</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>open-access<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w">   </span><span class="c1"># opens 443 only</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>portal<span class="w"> </span>publish<span class="w"> </span>-f<span class="w"> </span>workshop.yaml
+</span></code></pre></div>
+<p>The claim portal gets its own name there too, <code>portal-&lt;id&gt;.&lt;zone&gt;</code>, with a
+random id per portal (written as <code>portal.labels.portal_id</code>, re-picked if the
+name already exists), so several portals can run at once without sharing or
+guessing names. <code>fleet portal up</code> writes its record before installing, and
+Caddy on the portal gets the certificate for that one name. An explicit
+<code>portal.hostname</code> still wins.</p>
+<p><code>rodeo fleet destroy</code> also removes the lab names (and the portal's, unless
+<code>--keep-portal</code>) from the zone.</p>
+<p>Before a lab is open to students, the operator's own address can already reach
+its player on 443 (like the UI ports), to check it.</p>
+<p><code>lab-images</code> signs S3 links on your laptop, and a link dies with the
+credentials that signed it. <code>aws login</code> credentials live about 15 minutes, so
+fetch the images right after the deploy with <code>--run</code>. Without <code>--run</code>, the
+command refuses when your credentials end within the hour.</p>
+<h3 id="dns-records">DNS records<a class="headerlink" href="#dns-records" title="Permanent link">&para;</a></h3>
+<p>Route 53 cannot tag a single record, so every name rodeo writes also gets a
+TXT record of the same name:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>"managed-by=rodeo fleet=&lt;workshop name&gt; host=&lt;host id&gt; region=&lt;aws region&gt;"
+</span></code></pre></div>
+<p>That TXT is how rodeo knows a name is its own:</p>
+<ul>
+<li><code>fleet dns</code> refuses a name that already holds anything rodeo did not mark
+  for that lab, and changes nothing for that lab.</li>
+<li><code>fleet dns --delete</code> and <code>fleet destroy</code> delete only names marked for this
+  workshop. Records you made by hand are never touched.</li>
+<li>Re-runs are safe. A lab with a new address gets its records moved.</li>
+<li>A lab the dead-man switch terminated never runs <code>fleet destroy</code>, so its names
+  would stay behind, pointing at an AWS address someone else may get next.
+  <code>fleet dns</code>, <code>fleet up</code> and <code>fleet destroy</code> first prune every rodeo-marked
+  name (any workshop) whose address is not a live rodeo instance in the
+  mark's region. <code>fleet dns --prune</code> does only that. If the instance list
+  cannot be read, nothing is pruned.</li>
+</ul>
+<p>Your AWS identity needs <code>route53:ListHostedZonesByName</code>,
+<code>ListResourceRecordSets</code>, <code>ChangeResourceRecordSets</code> and <code>GetChange</code> on the zone,
+plus <code>ec2:DescribeInstances</code> for the prune.</p>
+<h3 id="the-certificate">The certificate<a class="headerlink" href="#the-certificate" title="Permanent link">&para;</a></h3>
+<p><code>rodeo fleet cert</code> runs on your laptop. It downloads a pinned
+<a href="https://go-acme.github.io/lego/">lego</a> release once (checked against a
+sha256 in rodeo), then gets <code>*.&lt;zone&gt;</code> from Let's Encrypt with a DNS-01
+challenge in your zone. lego gets your current AWS credentials as short-lived
+environment variables, so an <code>aws login</code> session works. The files stay in
+<code>~/.rodeo/certs/&lt;zone&gt;/</code>; a re-run reuses the certificate until it is due for
+renewal.</p>
+<p>Let's Encrypt allows 50 certificates per registered domain per week. One
+wildcard per event keeps you far from that limit. Use <code>staging: true</code> for
+your first tries.</p>
+<p><code>fleet player-setup</code> pushes the certificate and key to each lab over the SSH
+session's stdin. On the lab they live in <code>/etc/rodeo-player/tls/</code>, root-only
+(directory <code>0700</code>, files <code>0600</code>). Caddy reads them through systemd
+<code>LoadCredential</code>, so neither the Caddy user nor the student can open the key
+file. Lab hosts never run ACME and never get AWS credentials.</p>
+<h2 id="player-profiles">Player profiles<a class="headerlink" href="#player-profiles" title="Permanent link">&para;</a></h2>
+<p>The player is the same for every SUSE product. What changes per lab sits in a
+<code>player.yaml</code> next to the lab profile's <code>rodeo-plan.yaml</code>
+(<code>rodeo/data/examples/&lt;profile&gt;/player.yaml</code>). This is the <code>virt-rodeo</code> one:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">title</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">SUSE Virtualization Rodeo</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nt">track_repo</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://github.com/SUSE-Technical-Marketing/suse-virt-rodeo.git</span><span class="w">  </span><span class="c1"># optional</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="c1"># guide_url: https://.../workshop-guide/  # without a track: the web guide</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="nt">kubeconfig</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">harvester-kubeconfig</span><span class="w">          </span><span class="c1"># in ~/.rodeo, written by rodeo up (optional)</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="nt">student_ssh_key</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/opt/suse-virt-workshop/lab-vm-key</span><span class="w">   </span><span class="c1"># optional</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="nt">uis</span><span class="p">:</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">key</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">hv</span><span class="w">                               </span><span class="c1"># name: hv-&lt;id&gt;.&lt;zone&gt;</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">    </span><span class="nt">label</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">SUSE Virtualization (Harvester)</span>
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">    </span><span class="nt">upstream</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">192.168.122.10:443</span><span class="w">          </span><span class="c1"># on the lab network</span>
+</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">    </span><span class="c1"># scheme: http                        # default https (self-signed is fine)</span>
+</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="w">    </span><span class="nt">tab_port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">8443</span><span class="w">                        </span><span class="c1"># the port the track's tabs use</span>
+</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="w">    </span><span class="c1"># lobby: false                        # the lobby does not wait for this UI</span>
+</span><span id="__span-6-13"><a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">key</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rancher</span>
+</span><span id="__span-6-14"><a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="w">    </span><span class="nt">label</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">SUSE Rancher Prime</span>
+</span><span id="__span-6-15"><a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="w">    </span><span class="nt">upstream</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">192.168.122.9:30002</span>
+</span><span id="__span-6-16"><a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a><span class="w">    </span><span class="nt">tab_port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">30002</span>
+</span><span id="__span-6-17"><a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a><span class="nt">credentials</span><span class="p">:</span><span class="w">                              </span><span class="c1"># shown under Credentials in the player</span>
+</span><span id="__span-6-18"><a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">label</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">SUSE Rancher Prime</span>
+</span><span id="__span-6-19"><a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a><span class="w">    </span><span class="nt">user</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">admin</span>
+</span><span id="__span-6-20"><a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a><span class="w">    </span><span class="nt">password</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">??rancher_admin_password</span>
+</span><span id="__span-6-21"><a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a><span class="nt">variables</span><span class="p">:</span><span class="w">                                </span><span class="c1"># track variable: ??secrets.yaml key</span>
+</span><span id="__span-6-22"><a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a><span class="w">  </span><span class="nt">RANCHER_PASSWORD</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">??rancher_admin_password</span>
+</span><span id="__span-6-23"><a id="__codelineno-6-23" name="__codelineno-6-23" href="#__codelineno-6-23"></a><span class="w">  </span><span class="nt">HARVESTER_PASSWORD</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">??harvester_admin_password</span>
+</span></code></pre></div>
+<p>Shipped profiles: <code>virt-rodeo</code>, <code>suse-edge</code> and <code>suse-telco</code> (track; edge and
+telco also keep their web guide as a button), <code>virt-workshop</code>,
+<code>virt-workshop-2n</code> (web guide), <code>harvester</code>, <code>harvester-2n</code>, <code>rancher-test</code>,
+<code>rancher-lab-config</code> (no instructions).</p>
+<ul>
+<li><strong>uis</strong>: one to eight product UIs. Each gets its own name, its own Caddy site
+  behind the lab login, and the track tabs on <code>tab_port</code> open it. A track tab
+  with a path (a Gitea repo page, say) opens that page of the UI.</li>
+<li><strong>lobby</strong>: <code>false</code> on a UI the student brings up later in the lab (telco's
+  site consoles after lab 06). The lobby does not probe it, so "Enter lab"
+  does not wait for it.</li>
+<li><strong>kubeconfig</strong> and <strong>student_ssh_key</strong>: leave them out when the track does
+  not use them. The student gets a copy of each.</li>
+<li><strong>student_libvirt</strong> and <strong>student_vm_access</strong>: for labs whose guide drives
+  VMs from the host. The first puts the student in the <code>libvirt</code> group with
+  <code>qemu:///system</code> as the default (root-equivalent on that host, so <code>fleet
+  player-setup</code> refuses it without <code>per_host_ssh_key: true</code>). The second makes
+  the student their own key and installs it for root on the listed lab VMs,
+  using root's key, which the student never sees. A fleet that runs the player
+  makes that key before <code>rodeo up</code>, and suse-edge's content phase adds it to the
+  edge3/edge4 EIB definitions, so the nodes the student builds later trust it
+  too. Deploys without the player (self-serve labs, builder images) have no such key
+  and their definitions keep only the host key.</li>
+<li><strong>student_rodeo_commands</strong>: rodeo subcommands the guide runs on the host as
+  root (suse-edge: <code>pull-edge-image</code>, <code>eject-iso</code>). The student's <code>rodeo</code> is a
+  shim that sends exactly those subcommands through <code>sudo -n</code> to a root wrapper
+  (<code>/usr/local/libexec/rodeo-player/rodeo-root</code>), which points <code>SUDO_USER</code> at
+  the user who deployed the lab, so rodeo uses that <code>~/.rodeo</code> (trust,
+  secrets), never the student's. The guide's
+  commands stay the same. Needs <code>student_libvirt: true</code>, which is already
+  root-equivalent.</li>
+<li><strong>credentials</strong>: what the student signs in with, resolved on the lab into a
+  root-only file the player serves behind the lab login. <code>??&lt;key&gt;</code> only.</li>
+<li><strong>variables</strong>: passwords the track shows. Always <code>??&lt;key&gt;</code>, never the
+  password itself.</li>
+</ul>
+<p>Both resolve <code>??&lt;key&gt;</code> the way <code>rodeo up</code> did: the host's <code>~/.rodeo/secrets.yaml</code>
+(the deploying user's over root's) and, over it, the lab's own
+<code>.rodeo-secrets.yaml</code> (suse-telco keeps <code>mgmt_root_password</code> there).</p>
+<p><code>rodeo fleet dns</code> and <code>rodeo fleet player-setup</code> read the profile from
+<code>lab.profile</code> in <code>workshop.yaml</code>. On one host, pass it yourself:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>sudo<span class="w"> </span>rodeo<span class="w"> </span>player<span class="w"> </span>setup<span class="w"> </span>--profile<span class="w"> </span>&lt;profile&gt;<span class="w"> </span><span class="o">[</span>--track-ref<span class="w"> </span>&lt;sha&gt;<span class="o">]</span>
+</span></code></pre></div>
+<p>A profile without a <code>player.yaml</code> is an error: the player never borrows
+another product's UIs. To point a UI at another address on a single lab, use
+<code>--upstream &lt;ui&gt;=&lt;ip&gt;:&lt;port&gt;</code>.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.top", "navigation.indexes", "content.code.copy", "content.code.annotate", "toc.follow", "search.suggest", "search.highlight"], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+    
+  </body>
+</html>

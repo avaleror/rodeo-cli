@@ -1,0 +1,2193 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A declarative CLI that deploys hands-on lab infrastructure (Harvester HCI, Rancher Prime, SUSE Edge) on KVM.">
+      
+      
+      
+        <link rel="canonical" href="https://rodeocli.com/mcp/">
+      
+      
+        <link rel="prev" href="../player/">
+      
+      
+        <link rel="next" href="../reference/plan/">
+      
+      
+        
+          <link rel="alternate" href="./" hreflang="en">
+        
+          <link rel="alternate" href="../zh-TW/mcp/" hreflang="zh-TW">
+        
+      
+      
+      <link rel="icon" href="../assets/logo/favicon.ico">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
+    
+    
+      
+        <title>MCP server (agents) - rodeo-cli</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/custom.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="rodeo-cli">
+  <meta property="og:title" content="MCP server (agents) - rodeo-cli">
+  <meta property="og:description" content="A declarative CLI that deploys hands-on lab infrastructure (Harvester HCI, Rancher Prime, SUSE Edge) on KVM.">
+  <meta property="og:url" content="https://rodeocli.com/mcp/">
+  <meta property="og:image" content="https://rodeocli.com/assets/social-card.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="627">
+  <meta property="og:image:alt" content="rodeo-cli logo: a green horseshoe around a terminal prompt">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="MCP server (agents) - rodeo-cli">
+  <meta name="twitter:description" content="A declarative CLI that deploys hands-on lab infrastructure (Harvester HCI, Rancher Prime, SUSE Edge) on KVM.">
+  <meta name="twitter:image" content="https://rodeocli.com/assets/social-card.png">
+
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#mcp-server" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="rodeo-cli" class="md-header__button md-logo" aria-label="rodeo-cli" data-md-component="logo">
+      
+  <img src="../assets/logo/horseshoe-mark.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            rodeo-cli
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              MCP server (agents)
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="Select language">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="../zh-TW/mcp/" hreflang="zh-TW" class="md-select__link">
+              繁體中文
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/avaleror/rodeo-cli" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    avaleror/rodeo-cli
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../get-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Get started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../install/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Install on Linux and macOS
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../guide-harvester/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Profiles
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../custom-rodeos/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Create your own rodeo
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../rodeo-builder/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Rodeo Builder
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../fleet/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Fleet (multi-host workshops)
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../player/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Lab player
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  MCP server (agents)
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../reference/plan/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../examples/bare-metal/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Examples
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../runbook/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Troubleshooting
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../architecture/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  For contributors
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="rodeo-cli" class="md-nav__button md-logo" aria-label="rodeo-cli" data-md-component="logo">
+      
+  <img src="../assets/logo/horseshoe-mark.svg" alt="logo">
+
+    </a>
+    rodeo-cli
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/avaleror/rodeo-cli" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    avaleror/rodeo-cli
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../get-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Get started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install on Linux and macOS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Profiles
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Profiles
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-harvester/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SUSE Virtualization (Harvester)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-rancher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rancher Prime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-suse-edge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SUSE Edge
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-suse-telco/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SUSE Telco Cloud
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-kvm-hosts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plain KVM hosts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../custom-rodeos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Create your own rodeo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rodeo-builder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rodeo Builder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fleet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fleet (multi-host workshops)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../player/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Lab player
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP server (agents)
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP server (agents)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#run-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run it
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#limit-the-server-to-listed-labs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Limit the server to listed labs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#register-it-with-a-client" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Register it with a client
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#keep-the-agent-on-the-mcp-tools-rodeo-agent-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Keep the agent on the MCP tools: rodeo agent-setup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tools
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#plan-as-json" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Plan as JSON
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#plugin-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Plugin tools
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Plugin tools">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rodeo_up-on-aws-returns-a-pid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rodeo_up on AWS returns a pid
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adding-a-tool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adding a tool
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    rodeo-plan.yaml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/definition/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    definition.yaml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Examples
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/bare-metal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bare metal
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/aws-macos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AWS from a Mac
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/instruqt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Instruqt track
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/workshop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workshop fleet inventory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing & CI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../runbook/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_13" >
+        
+          
+          <label class="md-nav__link" for="__nav_13" id="__nav_13_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    For contributors
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_13_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_13">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    For contributors
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing and validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../claim-portal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claim portal
+  
+
+    
+  </span>
+  
+  
+    
+  
+  
+    <span class="md-status md-status--shipped for AWS fleets in v0.18.0 (2026-10-02). Student SSH on port 2222 shipped in v0.20.1 and was removed in"></span>
+  
+
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../claim-portal-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claim portal (implementation plan)
+  
+
+    
+  </span>
+  
+  
+    
+  
+  
+    <span class="md-status md-status--approved design; F5.0 live-checked 2026-09-30; F5.1-F5.4 implemented 2026-09-30, live end-to-end check pending"></span>
+  
+
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#run-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run it
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#limit-the-server-to-listed-labs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Limit the server to listed labs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#register-it-with-a-client" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Register it with a client
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#keep-the-agent-on-the-mcp-tools-rodeo-agent-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Keep the agent on the MCP tools: rodeo agent-setup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tools
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#plan-as-json" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Plan as JSON
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#plugin-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Plugin tools
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Plugin tools">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rodeo_up-on-aws-returns-a-pid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rodeo_up on AWS returns a pid
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adding-a-tool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adding a tool
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="mcp-server">MCP server<a class="headerlink" href="#mcp-server" title="Permanent link">&para;</a></h1>
+<p><code>rodeo mcp</code> exposes rodeo to MCP clients — Claude Code, editors, agent
+runtimes — over the MCP <strong>stdio</strong> transport (newline-delimited JSON-RPC 2.0).
+It has no extra dependency: the protocol is implemented in <code>rodeo/mcp/</code>.</p>
+<p>Every tool runs the rodeo CLI itself, so the surface covers <strong>native</strong> phase
+pipelines (<code>suse-virt</code>, <code>rancher</code>, <code>suse-edge</code>, <code>suse-telco</code>) and <strong>external
+engines</strong> (<code>lab-in-a-box</code>, plugin-provided types) through the same commands an
+operator types.</p>
+<h2 id="run-it">Run it<a class="headerlink" href="#run-it" title="Permanent link">&para;</a></h2>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>rodeo<span class="w"> </span>mcp<span class="w"> </span>--list-tools<span class="w">                      </span><span class="c1"># what would be offered</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>rodeo<span class="w"> </span>mcp<span class="w">                                   </span><span class="c1"># read-only server</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>rodeo<span class="w"> </span>mcp<span class="w"> </span>--allow-write<span class="w"> </span>--lab-dir<span class="w"> </span>~/rodeo-labs/harvester
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--allow-write</code></td>
+<td>Also offer the lifecycle tools. Off by default, so the server cannot deploy, clean or destroy anything.</td>
+</tr>
+<tr>
+<td><code>--lab-dir DIR</code></td>
+<td>Default lab directory for lab-scoped tools. Without it, the detected lab dir is used, else the working directory.</td>
+</tr>
+<tr>
+<td><code>--list-tools</code></td>
+<td>Print the offered tools and exit.</td>
+</tr>
+</tbody>
+</table>
+<p>Lab-scoped tools also take a per-call <code>lab_dir</code> argument, which overrides the
+server default — rodeo commands are lab-directory relative.</p>
+<h2 id="limit-the-server-to-listed-labs">Limit the server to listed labs<a class="headerlink" href="#limit-the-server-to-listed-labs" title="Permanent link">&para;</a></h2>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>rodeo<span class="w"> </span>lab<span class="w"> </span>add<span class="w"> </span>~/rodeo-labs/harvester<span class="w">    </span><span class="c1"># needs a terminal</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>rodeo<span class="w"> </span>lab<span class="w"> </span>list
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>rodeo<span class="w"> </span>lab<span class="w"> </span>remove<span class="w"> </span>~/rodeo-labs/harvester<span class="w"> </span><span class="c1"># needs a terminal</span>
+</span></code></pre></div>
+<p><code>rodeo lab add</code> writes the lab's realpath to <code>~/.rodeo/labs.yaml</code> (mode 0600).
+Once that file exists, even with an empty list, every path an MCP tool receives
+must resolve to a listed lab or a path inside one: <code>lab_dir</code> (or the server
+default), <code>rodeo_up</code> <code>dir</code>, <code>rodeo_init</code> <code>target_dir</code>, <code>rodeo_instances_list</code>
+<code>dir</code>, <code>rodeo_new</code> <code>from_zip</code> and <code>from_lab_json</code>, and fleet <code>file</code>. Symlinks
+and <code>..</code> are resolved first, and a relative path counts from the tool's lab
+directory. <code>rodeo_new</code> <code>from_base</code> then takes bundled profile names only, no
+URL. A lab-scoped tool also needs <code>rodeo-plan.yaml</code> or <code>definition.yaml</code> in
+that directory itself, because rodeo would otherwise fall back to a parent lab
+or the last lab used (<code>rodeo_init</code>, and <code>rodeo_up</code> with <code>dir</code>, may seed an
+empty one). A refused call is a tool error and runs nothing.</p>
+<p>Without the file the server keeps today's behaviour, accepts any directory and
+prints one warning on stderr when it starts.</p>
+<p>The list is ordinary user data: it stops an MCP client or a confused model from
+pointing tools at other directories, not a process running as the same user,
+which can edit the file.</p>
+<h2 id="register-it-with-a-client">Register it with a client<a class="headerlink" href="#register-it-with-a-client" title="Permanent link">&para;</a></h2>
+<p>Claude Code (<code>~/.claude.json</code> or project <code>.mcp.json</code>):</p>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">{</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">"mcpServers"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="nt">"rodeo"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">      </span><span class="nt">"command"</span><span class="p">:</span><span class="w"> </span><span class="s2">"rodeo"</span><span class="p">,</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">      </span><span class="nt">"args"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"mcp"</span><span class="p">,</span><span class="w"> </span><span class="s2">"--allow-write"</span><span class="p">,</span><span class="w"> </span><span class="s2">"--lab-dir"</span><span class="p">,</span><span class="w"> </span><span class="s2">"/root/rodeo-labs/harvester"</span><span class="p">]</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">  </span><span class="p">}</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="p">}</span>
+</span></code></pre></div>
+<p>Drop <code>--allow-write</code> for an agent that should only observe a lab.</p>
+<h2 id="keep-the-agent-on-the-mcp-tools-rodeo-agent-setup">Keep the agent on the MCP tools: <code>rodeo agent-setup</code><a class="headerlink" href="#keep-the-agent-on-the-mcp-tools-rodeo-agent-setup" title="Permanent link">&para;</a></h2>
+<p>An agent with a shell can skip the MCP server and type <code>rodeo up</code> or <code>sudo
+virsh destroy</code> itself. <code>rodeo agent-setup</code> writes a Claude Code kit into the
+lab that catches this mistake:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nb">cd</span><span class="w"> </span>~/rodeo-labs/harvester
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>rodeo<span class="w"> </span>agent-setup<span class="w">            </span><span class="c1"># writes .claude/settings.json</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>rodeo<span class="w"> </span>agent-setup<span class="w"> </span>--check<span class="w">    </span><span class="c1"># exit 1 if the kit is missing</span>
+</span></code></pre></div>
+<p>It merges into <code>&lt;lab&gt;/.claude/settings.json</code>:</p>
+<ul>
+<li><code>permissions.deny</code>: <code>Bash(rodeo)</code>, <code>Bash(rodeo *)</code>, <code>Bash(sudo *)</code>,
+  <code>Bash(virsh *)</code>, and <code>Bash(ssh *HOST*)</code> / <code>Bash(scp *HOST*)</code> for every VM
+  name, VM address, VIP and AWS host the plan names.</li>
+<li>A <code>PreToolUse</code> hook on Bash (<code>python -I .../rodeo/agent_guard.py</code>) that also
+  catches the chained forms (<code>cd lab &amp;&amp; rodeo up</code>, <code>bash -c '...'</code>,
+  <code>$(rodeo status)</code>) and tells the model to use the MCP tools instead.</li>
+</ul>
+<p>Your own rules and hooks are kept, odd or invalid JSON is refused rather than
+overwritten, a symlinked settings file or <code>.claude</code> directory is refused, and
+a second run changes nothing. Re-run it after the lab's hosts change (a new
+AWS host, for example): new host rules are added and rodeo's hook entry is
+updated in place. <code>.claude/</code> is not part of the lab hash, so writing the kit
+does not untrust a lab.</p>
+<p><strong>This is a mistake filter, not a security boundary.</strong> It is a settings file
+the same user can edit or delete, so it stops a confused model, not a hostile
+one.</p>
+<p>MCP local deploys (<code>rodeo_up</code>, <code>rodeo_deploy</code> and the other write tools that
+need root) still need NOPASSWD sudo for the user running the MCP server. The
+kit only denies <code>sudo</code> in the agent's shell, not in the server.</p>
+<p><code>rodeo doctor</code> shows whether the kit is installed in the current lab (and
+<code>rodeo doctor --output json</code> carries it as <code>agent_kit</code>). It can tell that the
+kit is installed, not whether an agent session is running without it (when
+doctor itself runs from a Claude Code shell without the kit, it says so). Only
+Claude Code has a kit today. When doctor finds a Gemini CLI or Codex CLI
+config, it reports "no kit for this client".</p>
+<h2 id="tools">Tools<a class="headerlink" href="#tools" title="Permanent link">&para;</a></h2>
+<p>Read-only (always offered):</p>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>rodeo command</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>rodeo_version</code></td>
+<td><code>rodeo --version</code></td>
+</tr>
+<tr>
+<td><code>rodeo_help</code></td>
+<td><code>rodeo [COMMAND] --help</code> — discover commands with no tool of their own</td>
+</tr>
+<tr>
+<td><code>rodeo_engines</code></td>
+<td>registered lab types, each tagged <code>native</code> or <code>external</code> (JSON)</td>
+</tr>
+<tr>
+<td><code>rodeo_doctor</code></td>
+<td><code>rodeo doctor</code></td>
+</tr>
+<tr>
+<td><code>rodeo_profiles</code></td>
+<td><code>rodeo profiles</code></td>
+</tr>
+<tr>
+<td><code>rodeo_plan</code></td>
+<td><code>rodeo plan</code> (<code>output: json</code> for one JSON object, see below)</td>
+</tr>
+<tr>
+<td><code>rodeo_status</code></td>
+<td><code>rodeo status</code>; <code>cloud: true</code> runs <code>rodeo status --cloud</code> (the AWS or GCP host, or the KVM host when the plan says <code>deployment_target: remote</code>)</td>
+</tr>
+<tr>
+<td><code>rodeo_list</code></td>
+<td><code>rodeo list</code></td>
+</tr>
+<tr>
+<td><code>rodeo_logs</code></td>
+<td><code>rodeo logs --no-follow</code></td>
+</tr>
+<tr>
+<td><code>rodeo_instances_list</code></td>
+<td><code>rodeo instances list</code></td>
+</tr>
+<tr>
+<td><code>rodeo_fleet_status</code></td>
+<td><code>rodeo fleet status</code></td>
+</tr>
+<tr>
+<td><code>rodeo_fleet_doctor</code></td>
+<td><code>rodeo fleet doctor</code></td>
+</tr>
+<tr>
+<td><code>rodeo_preflight</code></td>
+<td><code>rodeo deploy --check</code> — validate, deploy nothing</td>
+</tr>
+</tbody>
+</table>
+<p>Lifecycle (only with <code>--allow-write</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>rodeo command</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>rodeo_up</code></td>
+<td><code>rodeo up --yes --no-tmux</code>; for target <code>aws</code> it adds <code>--detach</code> (see below). <code>gcp</code> and <code>remote</code> do not, yet.</td>
+</tr>
+<tr>
+<td><code>rodeo_deploy</code></td>
+<td><code>rodeo deploy --no-tui</code> (<code>from_phase</code> resumes a phase)</td>
+</tr>
+<tr>
+<td><code>rodeo_init</code></td>
+<td><code>rodeo init</code></td>
+</tr>
+<tr>
+<td><code>rodeo_new</code></td>
+<td><code>rodeo new</code></td>
+</tr>
+<tr>
+<td><code>rodeo_start</code>, <code>rodeo_stop</code>, <code>rodeo_start_if_needed</code>, <code>rodeo_restart</code></td>
+<td>VM power</td>
+</tr>
+<tr>
+<td><code>rodeo_clean</code></td>
+<td><code>rodeo clean --yes</code> — destructive</td>
+</tr>
+<tr>
+<td><code>rodeo_destroy</code></td>
+<td><code>rodeo destroy --yes</code> — destructive</td>
+</tr>
+<tr>
+<td><code>rodeo_set_password</code></td>
+<td><code>rodeo set-password</code></td>
+</tr>
+<tr>
+<td><code>rodeo_install_extensions</code></td>
+<td><code>rodeo install-extensions</code></td>
+</tr>
+<tr>
+<td><code>rodeo_self_update</code></td>
+<td><code>rodeo self-update</code></td>
+</tr>
+</tbody>
+</table>
+<p>Every tool is non-interactive: no TUI, no tmux wrap, no prompts, no colour. A
+failing command comes back as a tool error carrying rodeo's exit code and the
+tail of its output, never as a protocol error.</p>
+<p>A call that times out or that the client cancels (<code>notifications/cancelled</code>)
+stops its whole process group: SIGTERM, then SIGKILL after 5 seconds. Write
+tools that need root re-exec through <code>sudo</code>, so their <code>rodeo</code> and its
+<code>ansible-playbook</code>/<code>ssh</code> children run as root, out of the server's reach. sudo
+relays the SIGTERM to that root <code>rodeo</code>, which stops the processes it started
+(its descendants, plus its process group when it leads one) with SIGKILL after
+3 seconds for anything that ignores SIGTERM, and exits. It never signals the
+rest of a group it only inherited, such as the script or <code>timeout</code> that ran
+<code>sudo rodeo</code>. Local deploys
+from MCP need NOPASSWD sudo, since there is no terminal to type a password in.</p>
+<h2 id="plan-as-json">Plan as JSON<a class="headerlink" href="#plan-as-json" title="Permanent link">&para;</a></h2>
+<p><code>rodeo plan --output json</code> (MCP: <code>rodeo_plan</code> with <code>output: json</code>) prints one
+object: <code>schema</code> (1), <code>name</code>, <code>type</code>, <code>host_reachable</code>, <code>creates</code>, <code>changes</code>
+(<code>kind</code> is memory, vcpu or dhcp, with <code>from</code> and <code>to</code>), <code>unchanged</code>,
+<code>foreign_vms</code>, <code>network</code>, <code>storage</code> (<code>image_dir</code>, <code>downloads</code>), <code>phases</code>
+(<code>state</code> is done, drift, guarded, pending or failed), <code>phases_pending</code>,
+<code>summary</code> and <code>config_error</code>. A plan that fails to load prints only
+<code>{"schema": 1, "error": "..."}</code>.</p>
+<p>The object holds no credential values: <code>plan</code> resolves no <code>??</code> placeholder,
+never reads <code>secrets.yaml</code> or the lab secrets file, and masks the plan's own
+literal credential values and any <code>user:password@</code> in a URL. The exit code
+follows the text output: 2 when deploy would refuse the plan (an untrusted lab,
+an invalid value), even though the JSON was printed. A <code>??</code> source in a trusted
+lab is deferred to deploy and is not a failure.</p>
+<h2 id="plugin-tools">Plugin tools<a class="headerlink" href="#plugin-tools" title="Permanent link">&para;</a></h2>
+<p>A plugin (a <code>rodeo.plugins</code> entry point) adds tools with
+<code>rodeo.mcp.tools.register_mcp_tool(tool, mutating=..., lab_scoped=...)</code>. Both
+flags are required. A built-in name, or a name another plugin took, is refused:
+plugins can't replace a built-in tool. A mutating plugin tool is offered only
+with <code>--allow-write</code>, and every plugin tool goes through the lab list above
+(<code>lab_dir</code> when lab-scoped, plus each <code>Arg</code> declared with <code>path="path"</code>).</p>
+<h3 id="rodeo_up-on-aws-returns-a-pid"><code>rodeo_up</code> on AWS returns a pid<a class="headerlink" href="#rodeo_up-on-aws-returns-a-pid" title="Permanent link">&para;</a></h3>
+<p>An AWS deploy takes one to two hours. When the target is <code>aws</code> (the <code>target</code>
+parameter, else the plan's <code>deployment_target</code>), <code>rodeo_up</code> passes <code>--detach</code>:
+rodeo provisions the EC2 host, starts <code>rodeo up</code> there and returns one JSON
+object, <code>{"state": "started", "pid", "start", "log", "host"}</code>. The deploy keeps
+running on the host. Follow it with <code>rodeo_status</code> and <code>cloud: true</code>, which
+reports <code>running</code>, <code>exited</code> with the exit code, <code>gone</code> (killed or the host
+rebooted) or <code>none</code>, plus the tail of the log. A deploy that is already running
+there comes back as a tool error carrying
+<code>{"state": "already_running", "pid", "log", "host"}</code> (rodeo exit 75).</p>
+<p>On the CLI, <code>--detach</code> also works for <code>gcp</code> and for <code>remote</code> (a KVM host you
+already own, since v0.33.0). <code>rodeo status --cloud</code> reads that run. The log
+files are <code>aws-up.log</code>, <code>gcp-up.log</code>, or <code>remote-up.log</code>, each with a <code>.pid</code>
+and a <code>.exit</code> beside it. The MCP tool does not pass <code>--detach</code> for <code>gcp</code> or
+<code>remote</code>, and its <code>target</code> enum is <code>baremetal</code>, <code>instruqt</code>, or <code>aws</code>. A gcp or
+remote plan still deploys. The call blocks until the host finishes.
+<code>rodeo_status</code> with <code>cloud: true</code> does follow the CLI, so a detached gcp or
+remote run can be read from here once it exists.</p>
+<p>A local <code>baremetal</code> deploy has no detach. <code>rodeo_up</code> blocks until it ends,
+within the server's timeout.</p>
+<h2 id="adding-a-tool">Adding a tool<a class="headerlink" href="#adding-a-tool" title="Permanent link">&para;</a></h2>
+<p>Add a row to <code>READ_TOOLS</code> or <code>WRITE_TOOLS</code> in <code>rodeo/mcp/tools.py</code>: the rodeo
+subcommand, its typed <code>Arg</code>s, and any fixed flags. Schema, dispatch and the
+write gate follow from that row — <code>rodeo/mcp/server.py</code> needs no change.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.top", "navigation.indexes", "content.code.copy", "content.code.annotate", "toc.follow", "search.suggest", "search.highlight"], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+    
+  </body>
+</html>

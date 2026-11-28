@@ -1,0 +1,2778 @@
+
+<!doctype html>
+<html lang="zh-TW" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A declarative CLI that deploys hands-on lab infrastructure (Harvester HCI, Rancher Prime, SUSE Edge) on KVM.">
+      
+      
+      
+        <link rel="canonical" href="https://rodeocli.com/zh-TW/guide-harvester/">
+      
+      
+        <link rel="prev" href="../install/">
+      
+      
+        <link rel="next" href="../guide-rancher/">
+      
+      
+        
+          <link rel="alternate" href="../../guide-harvester/" hreflang="en">
+        
+          <link rel="alternate" href="./" hreflang="zh-TW">
+        
+      
+      
+      <link rel="icon" href="../../assets/logo/favicon.ico">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
+    
+    
+      
+        <title>SUSE Virtualization (Harvester) - rodeo-cli</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/custom.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="rodeo-cli">
+  <meta property="og:title" content="SUSE Virtualization (Harvester) - rodeo-cli">
+  <meta property="og:description" content="A declarative CLI that deploys hands-on lab infrastructure (Harvester HCI, Rancher Prime, SUSE Edge) on KVM.">
+  <meta property="og:url" content="https://rodeocli.com/zh-TW/guide-harvester/">
+  <meta property="og:image" content="https://rodeocli.com/assets/social-card.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="627">
+  <meta property="og:image:alt" content="rodeo-cli logo: a green horseshoe around a terminal prompt">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="SUSE Virtualization (Harvester) - rodeo-cli">
+  <meta name="twitter:description" content="A declarative CLI that deploys hands-on lab infrastructure (Harvester HCI, Rancher Prime, SUSE Edge) on KVM.">
+  <meta name="twitter:image" content="https://rodeocli.com/assets/social-card.png">
+
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#suse-virtualizationharvesterprofile" class="md-skip">
+          跳轉到
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="頁首">
+    <a href="../" title="rodeo-cli" class="md-header__button md-logo" aria-label="rodeo-cli" data-md-component="logo">
+      
+  <img src="../../assets/logo/horseshoe-mark.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            rodeo-cli
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              SUSE Virtualization (Harvester)
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="選擇語言">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="../../guide-harvester/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="zh-TW" class="md-select__link">
+              繁體中文
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="搜尋" placeholder="搜尋" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="搜尋">
+        
+        <button type="reset" class="md-search__icon md-icon" title="清除" aria-label="清除" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            正在初始化搜尋引擎
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/avaleror/rodeo-cli" title="前往倉庫" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    avaleror/rodeo-cli
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="標籤" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../" class="md-tabs__link">
+        
+  
+  
+    
+  
+  首頁
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../get-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  開始使用
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../install/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  在 Linux 與 macOS 上安裝
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Profile 指南
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../custom-rodeos/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  建立自己的 rodeo
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../rodeo-builder/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Rodeo Builder
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../fleet/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Fleet（多主機 workshop）
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../player/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Lab player
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../mcp/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  MCP server（AI agent）
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../reference/plan/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  參考
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../examples/bare-metal/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  範例
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../runbook/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  故障排除
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../architecture/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  給貢獻者
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="導覽列" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../" title="rodeo-cli" class="md-nav__button md-logo" aria-label="rodeo-cli" data-md-component="logo">
+      
+  <img src="../../assets/logo/horseshoe-mark.svg" alt="logo">
+
+    </a>
+    rodeo-cli
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/avaleror/rodeo-cli" title="前往倉庫" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    avaleror/rodeo-cli
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    首頁
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../get-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    開始使用
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    在 Linux 與 macOS 上安裝
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Profile 指南
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Profile 指南
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SUSE Virtualization (Harvester)
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SUSE Virtualization (Harvester)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目錄">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目錄
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#pick-your-profile" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        選擇 profile
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-you-get" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        你會得到什麼
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="你會得到什麼">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#all-harvester-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        所有 Harvester profile
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#harvester-and-harvester-2n-profiles-add" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        harvester 與 harvester-2n profile 另外加上
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#host-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        主機需求
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deploy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        部署
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="部署">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#on-aws" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        在 AWS 上
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-happens-during-deploy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        部署期間會發生什麼事
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="部署期間會發生什麼事">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#time-estimates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        時間估計
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#log-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        登入
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="登入">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#download-the-kubeconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        下載 kubeconfig
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#day-2-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Day-2 維運
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Day-2 維運">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#resume-a-failed-deploy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        接續失敗的部署
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rancher-ui-extensions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rancher UI extension
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#instruqt-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Instruqt 工作流程
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        故障排除
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="故障排除">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#harvester-vip-not-reachable-after-cluster-phase" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        cluster 階段之後連不到 Harvester VIP
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ui-reachable-but-host8443-not-working" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UI 連得到，但 host:8443 不通
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#node-never-joins-the-cluster" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        節點一直沒有加入叢集
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#etcd-recovery-last-resort" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        etcd 復原（最後手段）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#admin-password-unknown-not-in-secretsyaml-not-the-persisted-file-not-adminadmin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        不知道管理者密碼（不在 secrets.yaml、不是儲存的檔案裡那組、也不是 admin/admin）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#customize" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        自訂
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="自訂">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#change-node-resources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        變更節點資源
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#change-the-disk-size" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        變更磁碟大小
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#build-a-custom-harvester-lab" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        建立自訂的 Harvester lab
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-rancher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rancher Prime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-suse-edge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SUSE Edge
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-suse-telco/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SUSE Telco Cloud
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-kvm-hosts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    一般 KVM 主機
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../custom-rodeos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    建立自己的 rodeo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rodeo-builder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rodeo Builder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fleet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fleet（多主機 workshop）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../player/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Lab player
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mcp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP server（AI agent）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    參考
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    參考
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    rodeo-plan.yaml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/definition/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    definition.yaml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    範例
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    範例
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/bare-metal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    裸機
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/aws-macos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    從 Mac 部署到 AWS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/instruqt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Instruqt track
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/workshop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workshop fleet 清單
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    測試與 CI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../runbook/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    故障排除
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_13" >
+        
+          
+          <label class="md-nav__link" for="__nav_13" id="__nav_13_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    給貢獻者
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_13_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_13">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    給貢獻者
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing and validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../claim-portal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claim portal
+  
+
+    
+  </span>
+  
+  
+    
+  
+  
+    <span class="md-status md-status--shipped for AWS fleets in v0.18.0 (2026-10-02). Student SSH on port 2222 shipped in v0.20.1 and was removed in"></span>
+  
+
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../claim-portal-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claim portal (implementation plan)
+  
+
+    
+  </span>
+  
+  
+    
+  
+  
+    <span class="md-status md-status--approved design; F5.0 live-checked 2026-09-30; F5.1-F5.4 implemented 2026-09-30, live end-to-end check pending"></span>
+  
+
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目錄">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目錄
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#pick-your-profile" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        選擇 profile
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-you-get" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        你會得到什麼
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="你會得到什麼">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#all-harvester-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        所有 Harvester profile
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#harvester-and-harvester-2n-profiles-add" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        harvester 與 harvester-2n profile 另外加上
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#host-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        主機需求
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deploy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        部署
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="部署">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#on-aws" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        在 AWS 上
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-happens-during-deploy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        部署期間會發生什麼事
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="部署期間會發生什麼事">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#time-estimates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        時間估計
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#log-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        登入
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="登入">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#download-the-kubeconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        下載 kubeconfig
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#day-2-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Day-2 維運
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Day-2 維運">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#resume-a-failed-deploy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        接續失敗的部署
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rancher-ui-extensions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rancher UI extension
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#instruqt-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Instruqt 工作流程
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        故障排除
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="故障排除">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#harvester-vip-not-reachable-after-cluster-phase" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        cluster 階段之後連不到 Harvester VIP
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ui-reachable-but-host8443-not-working" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UI 連得到，但 host:8443 不通
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#node-never-joins-the-cluster" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        節點一直沒有加入叢集
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#etcd-recovery-last-resort" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        etcd 復原（最後手段）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#admin-password-unknown-not-in-secretsyaml-not-the-persisted-file-not-adminadmin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        不知道管理者密碼（不在 secrets.yaml、不是儲存的檔案裡那組、也不是 admin/admin）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#customize" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        自訂
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="自訂">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#change-node-resources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        變更節點資源
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#change-the-disk-size" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        變更磁碟大小
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#build-a-custom-harvester-lab" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        建立自訂的 Harvester lab
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="suse-virtualizationharvesterprofile">SUSE Virtualization（Harvester）：profile 指南<a class="headerlink" href="#suse-virtualizationharvesterprofile" title="Permanent link">&para;</a></h1>
+<p>本指南說明 rodeo-cli 裡的 Harvester profile。這些 profile 都會在單一主機上，以 nested KVM VM 的形式部署 <strong>SUSE Virtualization（Harvester HCI）</strong>：可以是你自己的 SLES 16 主機，也可以是 rodeo 替你建立的 EC2 執行個體。請依你的主機與 workshop 目標挑一個適合的。</p>
+<p><strong>元件版本：</strong> Harvester 1.8.2（RKE2、Longhorn、KubeVirt、Kube-OVN）· K3s v1.35.3+k3s1 上的 Rancher Prime 2.14.5 · cert-manager v1.20.1 · Harvester UI extension 1.8.2。</p>
+<hr />
+<h2 id="pick-your-profile">選擇 profile<a class="headerlink" href="#pick-your-profile" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Profile</th>
+<th>節點</th>
+<th>Rancher</th>
+<th>etcd</th>
+<th>需要的 RAM</th>
+<th>適用情境</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>test</code></td>
+<td>2 台 Harvester</td>
+<td>無</td>
+<td>1 個 leader</td>
+<td>約 36 GiB</td>
+<td>快速評估、主機資源吃緊、不需要 HA</td>
+</tr>
+<tr>
+<td><code>harvester-ha</code></td>
+<td>3 台 Harvester</td>
+<td>無</td>
+<td>3 成員 HA</td>
+<td>約 52 GiB</td>
+<td>具備完整 etcd HA 的 Harvester workshop，不含 Rancher</td>
+</tr>
+<tr>
+<td><code>harvester-2n</code></td>
+<td>2 台 Harvester + 1 台 Rancher</td>
+<td>有</td>
+<td>1 個 leader</td>
+<td>約 56 GiB</td>
+<td>在中型主機上跑 HCI + Rancher，不需要 etcd HA</td>
+</tr>
+<tr>
+<td><code>harvester</code></td>
+<td>3 台 Harvester + 1 台 Rancher</td>
+<td>有</td>
+<td>3 成員 HA</td>
+<td>約 72 GiB</td>
+<td>完整 lab：HCI + 多叢集管理</td>
+</tr>
+<tr>
+<td><code>virt-workshop</code></td>
+<td>3 台 Harvester + 1 台 Rancher</td>
+<td>有</td>
+<td>3 成員 HA</td>
+<td>AWS <code>m8id.8xlarge</code></td>
+<td><a href="https://avaleror.github.io/suse-virt-workshop/">SUSE Virtualization workshop</a>：<code>harvester</code> 再加上映像快取、NFS 備份目標與範例 VM</td>
+</tr>
+</tbody>
+</table>
+<p>執行 <code>rodeo doctor</code>，查看哪些 profile 放得進你主機的可用 RAM。</p>
+<hr />
+<h2 id="what-you-get">你會得到什麼<a class="headerlink" href="#what-you-get" title="Permanent link">&para;</a></h2>
+<h3 id="all-harvester-profiles">所有 Harvester profile<a class="headerlink" href="#all-harvester-profiles" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>元件</th>
+<th>預設 IP</th>
+<th>存取方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Harvester VIP</td>
+<td>192.168.122.10</td>
+<td><code>https://192.168.122.10</code>（直接連線，在 lab 網路內）</td>
+</tr>
+<tr>
+<td>透過主機存取 Harvester UI</td>
+<td>主機 IP</td>
+<td><code>https://&lt;host&gt;:8443</code>（DNAT，可從外部連線）</td>
+</tr>
+<tr>
+<td>harvester1</td>
+<td>192.168.122.11</td>
+<td><code>rodeo ssh harvester1</code></td>
+</tr>
+<tr>
+<td>harvester2</td>
+<td>192.168.122.12</td>
+<td><code>rodeo ssh harvester2</code></td>
+</tr>
+<tr>
+<td>harvester3</td>
+<td>192.168.122.13</td>
+<td><code>rodeo ssh harvester3</code>（<code>test</code> / <code>harvester-2n</code> 沒有這台）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="harvester-and-harvester-2n-profiles-add"><code>harvester</code> 與 <code>harvester-2n</code> profile 另外加上<a class="headerlink" href="#harvester-and-harvester-2n-profiles-add" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>元件</th>
+<th>預設 IP</th>
+<th>存取方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Rancher Prime</td>
+<td>192.168.122.9</td>
+<td><code>https://&lt;host&gt;:30002</code>（DNAT）</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="host-requirements">主機需求<a class="headerlink" href="#host-requirements" title="Permanent link">&para;</a></h2>
+<p>lab 的占用量（guest RAM 總和）列在上表。<code>rodeo doctor</code> 使用較高的<strong>主機可用 RAM</strong> 門檻，讓 nested KVM 有餘裕，例如 <code>harvester</code> 的 guest 需要約 60 GiB，但 doctor 建議主機上要有約 72 GiB 可用。</p>
+<table>
+<thead>
+<tr>
+<th>Profile</th>
+<th>主機 RAM（doctor）</th>
+<th>磁碟</th>
+<th>CPU</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>test</code></td>
+<td>約 36 GiB</td>
+<td><code>/var/lib/libvirt/images</code> 約 600 GiB</td>
+<td>約 16 vCPU</td>
+</tr>
+<tr>
+<td><code>harvester-ha</code></td>
+<td>約 52 GiB</td>
+<td>約 1000 GiB</td>
+<td>約 20 vCPU</td>
+</tr>
+<tr>
+<td><code>harvester-2n</code></td>
+<td>約 56 GiB</td>
+<td>約 700 GiB</td>
+<td>約 24 vCPU</td>
+</tr>
+<tr>
+<td><code>harvester</code></td>
+<td>約 72 GiB</td>
+<td>約 1050 GiB</td>
+<td>約 34 vCPU</td>
+</tr>
+</tbody>
+</table>
+<p><strong>作業系統：</strong> 具備 KVM 的 SLES 16 或 Leap 16。在其他任何機器上，<code>rodeo up</code> 會停下來並引導你改用 <code>--target aws</code>（設定 <code>RODEO_ALLOW_ANY_KVM_HOST=1</code> 可以在其他 Linux 上試跑，風險自負）。如果主機本身是 VM（雲端、Instruqt），必須啟用 nested virtualization。</p>
+<p>Harvester 透過 <strong>iPXE 網路開機</strong>安裝（<code>pxe_server</code> 階段會透過 HTTP 提供開機腳本與設定）。這就是磁碟需求這麼高的原因：每個節點都有一顆 320 GiB 的虛擬磁碟（不論磁碟多大，Harvester 的 Elemental 安裝程式都會切出固定 150 GiB 的 persistent 分割區，剩下的空間給 Longhorn 自己的分割區）。</p>
+<hr />
+<h2 id="deploy">部署<a class="headerlink" href="#deploy" title="Permanent link">&para;</a></h2>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>rodeo<span class="w"> </span>up<span class="w"> </span>--profile<span class="w"> </span><span class="nb">test</span><span class="w">           </span><span class="c1"># 兩節點，最快</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>rodeo<span class="w"> </span>up<span class="w"> </span>--profile<span class="w"> </span>harvester-ha<span class="w">   </span><span class="c1"># 三節點 HA，不含 Rancher</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>rodeo<span class="w"> </span>up<span class="w"> </span>--profile<span class="w"> </span>harvester<span class="w">      </span><span class="c1"># 完整 lab</span>
+</span></code></pre></div>
+<p><code>rodeo up</code> 會檢查主機、安裝缺少的套件（會先徵求你同意）、產生帳密，並執行完整的 pipeline。它會自動以 sudo 提權。</p>
+<p><strong>斷線保護（tmux）：</strong> <code>rodeo up</code> 在開始部署前，會自動把自己包進一個具名的 tmux session。如果你的 SSH 或 Instruqt 連線在部署途中斷掉，部署行程會繼續執行。隨時可以接回來：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>tmux<span class="w"> </span>attach<span class="w"> </span>-t<span class="w"> </span>rodeo-harvester<span class="w">    </span><span class="c1"># 或 rodeo-test、rodeo-harvester-ha，和 --profile 名稱對應</span>
+</span></code></pre></div>
+<p>不停止部署、只離開 session：<code>Ctrl+b  d</code>。如果你再次執行 <code>rodeo up</code> 而 session 已經存在，它會接回正在執行的部署，而不是啟動第二次部署。在腳本裡用 <code>--no-tmux</code> 可以略過這個行為。</p>
+<h3 id="on-aws">在 AWS 上<a class="headerlink" href="#on-aws" title="Permanent link">&para;</a></h3>
+<p>從你的筆電（macOS 或任何 Linux，請見<a href="../install/">安裝</a>）：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>aws<span class="w"> </span>login
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>rodeo<span class="w"> </span>up<span class="w"> </span>--profile<span class="w"> </span>harvester<span class="w"> </span>--target<span class="w"> </span>aws<span class="w"> </span>--yes<span class="w">          </span><span class="c1"># 完整 lab</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>rodeo<span class="w"> </span>up<span class="w"> </span>--profile<span class="w"> </span>virt-workshop<span class="w"> </span>--target<span class="w"> </span>aws<span class="w"> </span>--yes<span class="w">  </span><span class="c1"># workshop lab</span>
+</span></code></pre></div>
+<p>rodeo 會挑選 region、subnet 與執行個體（<code>m8id.8xlarge</code>，32 vCPU / 128 GiB / 本機 NVMe），建立 EC2 主機，並在上面執行同樣的 pipeline。在這種執行個體上，workshop lab 從頭到尾大約花了 25 分鐘。主機有 6 小時的自動銷毀計時（dead-man switch）（用 <code>provider.ttl_hours</code> 延長）；用 <code>rodeo destroy --cloud --yes --config-dir ~/rodeo-labs/&lt;profile&gt;</code> 拆除。</p>
+<p>如果要每位參加者一套 lab，請見 <a href="../fleet/">Fleet</a>。</p>
+<hr />
+<h2 id="what-happens-during-deploy">部署期間會發生什麼事<a class="headerlink" href="#what-happens-during-deploy" title="Permanent link">&para;</a></h2>
+<p><code>suse-virt</code> pipeline（四個 Harvester profile 都使用它）會執行這些階段：</p>
+<ol>
+<li><strong>kvm_host</strong>：準備 hypervisor：KVM 套件、libvirt daemon、防火牆規則（包括讓 <code>:8443</code> 連到 Harvester VIP 的 DNAT 規則），以及映像儲存池</li>
+<li><strong>vms</strong>：下載 Harvester ISO、建立虛擬磁碟（大小依 profile 而定，請見上方的主機需求），並寫出 libvirt XML 定義（VM 已定義但尚未啟動）</li>
+<li><strong>pxe_server</strong>：在主機的 <code>virbr0</code>（192.168.122.1）上設定 nginx + TFTP + dnsmasq。產生一個 <code>boot.ipxe</code>，串接到每個節點依 MAC 對應的腳本，並為每個節點產生一份 Harvester 設定 YAML</li>
+<li><strong>cluster</strong>：依序啟動 VM（先 <code>harvester1</code>，間隔一段時間讓 etcd 就緒，再啟動其餘節點）。等待每個節點透過 iPXE 安裝 Harvester、加入叢集並變成 <code>Ready</code>。監看 VIP（192.168.122.10），等叢集收斂</li>
+<li><strong>rancher</strong>：（<code>harvester</code>、<code>harvester-2n</code> 與 workshop profile）在 <code>rancher</code> VM 上安裝 K3s + Rancher Prime，透過 NodePort 30002 對外提供服務，設定 admin API 與 Harvester UI extension。預設把 Harvester 匯入 Rancher 留作 lab 練習；在 plan 裡設定 <code>harvester_auto_import: true</code> 就會由 rodeo 來做</li>
+<li><strong>finalise</strong>：啟用主機重新開機時 VM 自動啟動（在 Instruqt 上會略過；請在 hostimage 開機時使用 <code>rodeo start-if-needed</code>，而不是把 finalise 燒進映像）</li>
+</ol>
+<h3 id="time-estimates">時間估計<a class="headerlink" href="#time-estimates" title="Permanent link">&para;</a></h3>
+<p>在 AWS <code>m8id.8xlarge</code>（本機 NVMe）上，完整的 workshop lab 大約花了 25 分鐘，這是 2026 年 9 月與 10 月的量測結果。在磁碟較慢的主機上，請預留更多時間：</p>
+<table>
+<thead>
+<tr>
+<th>Profile</th>
+<th>在較慢主機上的一般時間</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>test</code></td>
+<td>45–90 分鐘</td>
+</tr>
+<tr>
+<td><code>harvester-ha</code></td>
+<td>60–120 分鐘</td>
+</tr>
+<tr>
+<td><code>harvester</code></td>
+<td>90–150 分鐘</td>
+</tr>
+</tbody>
+</table>
+<p>大部分的時間都花在 nested KVM 裡的 Harvester iPXE 安裝。即時查看進度：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>rodeo<span class="w"> </span>watch<span class="w">              </span><span class="c1"># 分割畫面的 TUI：階段 + serial 日誌</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>rodeo<span class="w"> </span>logs<span class="w"> </span>harvester1<span class="w">    </span><span class="c1"># 只看單一節點的 serial 日誌</span>
+</span></code></pre></div>
+<p>TUI 會以垂直分割的方式同時顯示所有 VM 的 serial console。左側面板有整個部署的總經過時間計時器。每個 console 視窗會顯示該 VM 自己的經過時間計時器，從該節點收到第一筆 serial 輸出時開始計時，方便找出較晚啟動或停止回應的節點。</p>
+<hr />
+<h2 id="log-in">登入<a class="headerlink" href="#log-in" title="Permanent link">&para;</a></h2>
+<p>部署完成後，<code>rodeo up</code> 會印出網址與帳密。要再看一次：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>rodeo<span class="w"> </span>status
+</span></code></pre></div>
+<ul>
+<li><strong>Harvester UI：</strong> <code>https://&lt;host&gt;:8443</code></li>
+<li><strong>使用者名稱：</strong> <code>admin</code></li>
+<li><strong>密碼：</strong> <code>~/.rodeo/secrets.yaml</code> 裡 <code>harvester_admin_password</code> 的值</li>
+<li><strong>Rancher UI</strong>（含 Rancher 的 profile）：<code>https://&lt;host&gt;:30002</code>，密碼為 <code>rancher_admin_password</code></li>
+</ul>
+<p>如果叢集還沒收斂，Harvester 的 bootstrap 流程會在第一次登入時要求輸入 VIP。如果 UI 要求 VIP，請使用 <code>192.168.122.10</code>。</p>
+<blockquote>
+<p><strong>Instruqt lab：</strong> 把 Harvester 叢集匯入 Rancher 是第一個 lab 挑戰。基礎架構已經準備好；學員透過 Rancher UI &gt; Virtualization Management &gt; Import Existing 完成匯入。</p>
+</blockquote>
+<h3 id="download-the-kubeconfig">下載 kubeconfig<a class="headerlink" href="#download-the-kubeconfig" title="Permanent link">&para;</a></h3>
+<p>從 Harvester UI：Support → Download KubeConfig。</p>
+<p>或透過 SSH 通道連到 VIP：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>ssh<span class="w"> </span>-i<span class="w"> </span>~/.ssh/your-key<span class="w"> </span>-N<span class="w"> </span>-L<span class="w"> </span><span class="m">6443</span>:192.168.122.10:6443<span class="w"> </span>user@&lt;host&gt;
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="c1"># 然後在另一個終端機：</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>kubectl<span class="w"> </span>--kubeconfig<span class="w"> </span>~/.rodeo/harvester-kubeconfig<span class="w"> </span>get<span class="w"> </span>nodes
+</span></code></pre></div>
+<p>部署完成後，主機上的 <code>/root/.rodeo/harvester-kubeconfig</code> 也有這份 kubeconfig。</p>
+<hr />
+<h2 id="day-2-operations">Day-2 維運<a class="headerlink" href="#day-2-operations" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>工作</th>
+<th>指令</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>檢查叢集與 VM 健康狀態</td>
+<td><code>rodeo status</code></td>
+</tr>
+<tr>
+<td>查看即時日誌</td>
+<td><code>rodeo watch</code></td>
+</tr>
+<tr>
+<td>SSH 進入節點</td>
+<td><code>rodeo ssh harvester1</code></td>
+</tr>
+<tr>
+<td>持續查看 serial 日誌</td>
+<td><code>rodeo logs harvester2</code></td>
+</tr>
+<tr>
+<td>重新啟動單一節點</td>
+<td><code>rodeo restart harvester1</code></td>
+</tr>
+<tr>
+<td>正常停止（保留 VM）</td>
+<td><code>rodeo stop --all --yes</code></td>
+</tr>
+<tr>
+<td>停止後啟動</td>
+<td><code>rodeo start --all --yes</code></td>
+</tr>
+<tr>
+<td>銷毀 lab</td>
+<td><code>rodeo clean --yes</code></td>
+</tr>
+<tr>
+<td>完整重設主機</td>
+<td><code>rodeo clean --all --yes --secrets</code></td>
+</tr>
+<tr>
+<td>Support bundle</td>
+<td><code>rodeo logs --bundle -o rodeo-bundle.tar.gz</code></td>
+</tr>
+<tr>
+<td>更換管理者密碼</td>
+<td><code>rodeo set-password</code></td>
+</tr>
+<tr>
+<td>安裝／同步 Rancher UI extension</td>
+<td><code>rodeo install-extensions</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="resume-a-failed-deploy">接續失敗的部署<a class="headerlink" href="#resume-a-failed-deploy" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>rodeo<span class="w"> </span>status<span class="w">                      </span><span class="c1"># 查看哪個階段失敗</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>rodeo<span class="w"> </span>deploy<span class="w"> </span>--from<span class="w"> </span>cluster<span class="w">       </span><span class="c1"># 從那個階段接續</span>
+</span></code></pre></div>
+<p>部署 pipeline 在同一個階段內可以重複執行。如果 <code>cluster</code> 階段在等待節點時逾時，接續之前先查看 serial 日誌（<code>rodeo logs harvester1</code>）找出根本原因。</p>
+<h3 id="rancher-ui-extensions">Rancher UI extension<a class="headerlink" href="#rancher-ui-extensions" title="Permanent link">&para;</a></h3>
+<p>extension（例如 SUSE Virtualization / Harvester extension）只要在 <code>definition.yaml</code> 的
+<code>rancher.ui_extensions</code> 下宣告一次，格式請見<a href="../reference/definition/#rancherui_extensions">完整欄位
+參考</a>。每次
+部署都會自動同步宣告的清單；如果要在已部署的 lab 上安裝或升級某個 extension，
+而不重新部署，執行：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>rodeo<span class="w"> </span>install-extensions<span class="w"> </span>--yes
+</span></code></pre></div>
+<p>它會透過 SSH/API 直接和正在執行的 Rancher Prime 溝通，所以對運作中的叢集執行
+也很安全。先確認實際安裝了什麼：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>rodeo<span class="w"> </span>ssh<span class="w"> </span>rancher
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">KUBECONFIG</span><span class="o">=</span>/etc/rancher/k3s/k3s.yaml
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>kubectl<span class="w"> </span>-n<span class="w"> </span>cattle-ui-plugin-system<span class="w"> </span>get<span class="w"> </span>uiplugins.catalog.cattle.io<span class="w"> </span>harvester<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">  </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.spec.plugin.version}'</span>
+</span></code></pre></div>
+<p>結果是空的（或 <code>NotFound</code>）表示還沒安裝；版本字串
+和 <code>definition.yaml</code> 不符，表示該同步了。</p>
+<hr />
+<h2 id="instruqt-workflow">Instruqt 工作流程<a class="headerlink" href="#instruqt-workflow" title="Permanent link">&para;</a></h2>
+<p>這是建立內含預先部署好 Harvester 叢集的 <strong>Instruqt hostimage</strong> 的工作流程。完整說明：<a href="../examples/instruqt/">Instruqt 範例</a>。</p>
+<ol>
+<li>在 <code>rodeo-plan.yaml</code> 設定 <code>deployment_target: instruqt</code>（會略過 <code>finalise</code>，請維持這樣）</li>
+<li>部署 lab（<code>rodeo up --profile harvester --yes</code> 或 <code>rodeo deploy</code>）</li>
+<li>驗證：<code>rodeo status</code></li>
+<li><strong>儲存之前：</strong> <strong>不要</strong>執行 <code>rodeo deploy --finalise</code>；確認 agent port <code>15778</code>/<code>15779</code>，以及 <code>libvirt-guests</code> 已停用（成功畫面會印出這份檢查清單）</li>
+<li>在 Instruqt UI 儲存 hostimage</li>
+<li>把 <strong><code>rodeo start-if-needed</code></strong> 接進 track 的 setup 腳本，讓每位參加者開機時都會啟動 VM，並重新套用 DNAT/nft</li>
+</ol>
+<p>不要把 <code>finalise</code> 燒進 hostimage：nested VM 自動啟動會和 Instruqt agent 搶時序，可能讓 console 停在 <strong>Please Wait</strong>。</p>
+<hr />
+<h2 id="troubleshooting">故障排除<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
+<h3 id="harvester-vip-not-reachable-after-cluster-phase">cluster 階段之後連不到 Harvester VIP<a class="headerlink" href="#harvester-vip-not-reachable-after-cluster-phase" title="Permanent link">&para;</a></h3>
+<p>cluster 階段會等待 VIP（<code>192.168.122.10</code>）在 port 443 回應。如果逾時：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>rodeo<span class="w"> </span>logs<span class="w"> </span>harvester1<span class="w">    </span><span class="c1"># 檢查安裝日誌，是不是還在安裝？</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>rodeo<span class="w"> </span>ssh<span class="w"> </span>harvester1<span class="w">     </span><span class="c1"># 如果節點已經起來，檢查：kubectl get nodes</span>
+</span></code></pre></div>
+<p>常見原因：磁碟太小（Harvester 的 Elemental 安裝程式一律會切出固定 150 GiB 的 persistent 分割區，磁碟太小會讓它空間不足，導致 containerd 出現「no space」錯誤）、沒有啟用 nested virt、RAM 不足。</p>
+<h3 id="ui-reachable-but-host8443-not-working">UI 連得到，但 host:8443 不通<a class="headerlink" href="#ui-reachable-but-host8443-not-working" title="Permanent link">&para;</a></h3>
+<p>從 <code>host:8443</code> 到 Harvester VIP 的 DNAT 會經過 libvirt 的 nftables 防火牆。如果在 <code>virsh net-destroy</code>／重新啟動之後 port forwarding 壞掉：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>sudo<span class="w"> </span>/etc/libvirt/hooks/network<span class="w"> </span>default<span class="w"> </span>started<span class="w">   </span><span class="c1"># 重新套用 DNAT 規則</span>
+</span></code></pre></div>
+<p>這個 hook 由 <code>kvm_host</code> 階段安裝。libvirt 重新啟動 default 網路時，它會自動重新執行。</p>
+<h3 id="node-never-joins-the-cluster">節點一直沒有加入叢集<a class="headerlink" href="#node-never-joins-the-cluster" title="Permanent link">&para;</a></h3>
+<p>查看卡住節點的 serial 日誌。常見問題：</p>
+<ul>
+<li><strong>iPXE 設定回傳 HTTP 403</strong>：nginx 讀不到設定檔（權限問題）。重新執行 <code>rodeo deploy --from pxe_server</code>。</li>
+<li><strong>設定裡的網卡名稱錯誤</strong>：Harvester 設定用 <code>hwAddr</code>（MAC）識別網路介面，而不是 <code>eth0</code>。這會自動處理：如果你看到網卡錯誤，檢查 <code>definition.yaml</code> 裡的 MAC 和 VM 是否相符。</li>
+<li><strong>加入時 etcd 逾時</strong>：啟動 harvester1 與啟動其他節點之間有內建的間隔（預設 60 秒）。如果 etcd 還是逾時，可能是第一個節點還沒裝完，請檢查它的日誌。</li>
+</ul>
+<h3 id="etcd-recovery-last-resort">etcd 復原（最後手段）<a class="headerlink" href="#etcd-recovery-last-resort" title="Permanent link">&para;</a></h3>
+<p>如果某個 etcd 成員永久損壞（例如不小心銷毀了它的 VM），復原分成三個步驟：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># 1. 從健康的節點移除損壞的成員</span>
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>crictl<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>&lt;etcd-container-id&gt;<span class="w"> </span>etcdctl<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">  </span>--endpoints<span class="o">=</span>https://127.0.0.1:2379<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">  </span>--cacert<span class="o">=</span>/var/lib/rancher/rke2/server/tls/etcd/server-ca.crt<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="w">  </span>--cert<span class="o">=</span>/var/lib/rancher/rke2/server/tls/etcd/server-client.crt<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="w">  </span>--key<span class="o">=</span>/var/lib/rancher/rke2/server/tls/etcd/server-client.key<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="w">  </span>member<span class="w"> </span>remove<span class="w"> </span>&lt;member-id&gt;
+</span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>
+</span><span id="__span-11-9"><a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="c1"># 2. 在損壞的節點上清除 etcd 資料，並加上重新加入的設定</span>
+</span><span id="__span-11-10"><a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>rm<span class="w"> </span>-rf<span class="w"> </span>/var/lib/rancher/rke2/server/db/etcd
+</span><span id="__span-11-11"><a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>cat<span class="w"> </span>&gt;<span class="w"> </span>/etc/rancher/rke2/config.yaml.d/00-rejoin.yaml<span class="w"> </span><span class="s">&lt;&lt;EOF</span>
+</span><span id="__span-11-12"><a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a><span class="s">server: https://192.168.122.10:9345</span>
+</span><span id="__span-11-13"><a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a><span class="s">token: &lt;cluster-token&gt;</span>
+</span><span id="__span-11-14"><a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a><span class="s">EOF</span>
+</span><span id="__span-11-15"><a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a>
+</span><span id="__span-11-16"><a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a><span class="c1"># 3. 在損壞的節點上重新啟動 rke2-server</span>
+</span><span id="__span-11-17"><a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a>systemctl<span class="w"> </span>restart<span class="w"> </span>rke2-server
+</span></code></pre></div>
+<p>叢集 token 是 <code>~/.rodeo/secrets.yaml</code> 裡的 <code>harvester_token</code>。</p>
+<h3 id="admin-password-unknown-not-in-secretsyaml-not-the-persisted-file-not-adminadmin">不知道管理者密碼（不在 secrets.yaml、不是儲存的檔案裡那組、也不是 admin/admin）<a class="headerlink" href="#admin-password-unknown-not-in-secretsyaml-not-the-persisted-file-not-adminadmin" title="Permanent link">&para;</a></h3>
+<p><code>rodeo set-password</code> 會嘗試已知的候選密碼來找回管理者密碼：
+<code>secrets.yaml</code> 裡設定的值、它上次儲存在主機上的值，以及
+<code>admin</code>/<code>admin</code> 的 bootstrap 密碼。如果這些都不符（例如有人在
+rodeo-cli 之外手動改了密碼又忘記），它就沒有任何可以<em>用來</em>登入的密碼，因此
+無法把密碼往下更新。這時請改用 <code>kubectl</code> 直接復原：這和 Rancher 針對「被鎖在外面、
+不知道目前密碼」所記載的技巧相同，而且在這裡也適用，因為 Harvester 的 dashboard 內嵌了同一個
+<code>users.management.cattle.io</code> 使用者管理 CRD（已在實機確認：<code>cattle-system</code>
+執行完整的 3 副本 <code>rancher</code> deployment，作為 Harvester UI/API 的前端）。</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="c1"># 1. 找出管理者使用者的物件名稱</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">KUBECONFIG</span><span class="o">=</span>/root/.rodeo/harvester-kubeconfig
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>kubectl<span class="w"> </span>get<span class="w"> </span>users.management.cattle.io<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">  </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{range .items[*]}{.metadata.name}{" "}{.username}{"\n"}{end}'</span>
+</span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="c1"># -&gt; 例如 user-4wwtk admin</span>
+</span><span id="__span-12-6"><a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>
+</span><span id="__span-12-7"><a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="c1"># 2. 產生新密碼的 bcrypt 雜湊（Go 的 bcrypt 對 $2a$/$2b$/$2y$ 一視同仁）</span>
+</span><span id="__span-12-8"><a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>python3<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--quiet<span class="w"> </span>bcrypt
+</span><span id="__span-12-9"><a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>python3<span class="w"> </span>-c<span class="w"> </span><span class="s2">"import bcrypt; print(bcrypt.hashpw(b'YourNewPassword123', bcrypt.gensalt(10)).decode())"</span>
+</span><span id="__span-12-10"><a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a>
+</span><span id="__span-12-11"><a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="c1"># 3. 直接 patch 使用者物件：一次設定密碼雜湊並清除</span>
+</span><span id="__span-12-12"><a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a><span class="c1">#    「必須變更密碼」旗標</span>
+</span><span id="__span-12-13"><a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a>kubectl<span class="w"> </span>patch<span class="w"> </span>users.management.cattle.io<span class="w"> </span>&lt;user-object-name&gt;<span class="w"> </span>--type<span class="o">=</span>merge<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-12-14"><a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a><span class="w">  </span>-p<span class="w"> </span><span class="s1">'{"password":"&lt;hash-from-step-2&gt;","mustChangePassword":false}'</span>
+</span><span id="__span-12-15"><a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a>
+</span><span id="__span-12-16"><a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a><span class="c1"># 4. 重新啟動 Rancher，讓 3 個副本都丟掉記憶體裡快取的</span>
+</span><span id="__span-12-17"><a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a><span class="c1">#    舊雜湊：不這樣做的話，kube-vip 會把你的登入嘗試輪流分配到各個</span>
+</span><span id="__span-12-18"><a id="__codelineno-12-18" name="__codelineno-12-18" href="#__codelineno-12-18"></a><span class="c1">#    副本，即使 patch 已經順利寫進 etcd，你還是會間歇看到 401。只會動到 cattle-system：不影響 VM／儲存／網路。</span>
+</span><span id="__span-12-19"><a id="__codelineno-12-19" name="__codelineno-12-19" href="#__codelineno-12-19"></a>kubectl<span class="w"> </span>-n<span class="w"> </span>cattle-system<span class="w"> </span>rollout<span class="w"> </span>restart<span class="w"> </span>deployment/rancher
+</span><span id="__span-12-20"><a id="__codelineno-12-20" name="__codelineno-12-20" href="#__codelineno-12-20"></a>kubectl<span class="w"> </span>-n<span class="w"> </span>cattle-system<span class="w"> </span>rollout<span class="w"> </span>status<span class="w"> </span>deployment/rancher<span class="w"> </span>--timeout<span class="o">=</span>180s
+</span></code></pre></div>
+<p>驗證之後，把 <code>secrets.yaml</code> 與儲存候選密碼的檔案同步回來，
+下次更換密碼時才不會再發生：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>curl<span class="w"> </span>-sk<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>https://192.168.122.10/v3-public/localProviders/local?action<span class="o">=</span>login<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">  </span>-H<span class="w"> </span><span class="s1">'Content-Type: application/json'</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">'{"username":"admin","password":"YourNewPassword123"}'</span>
+</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="c1"># -&gt; 回傳的 JSON 內容有 "token" 欄位，就表示成功了</span>
+</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>
+</span><span id="__span-13-6"><a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="c1"># 把 ~/.rodeo/secrets.yaml 的 harvester_admin_password 更新成相同的值，然後：</span>
+</span><span id="__span-13-7"><a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="nb">echo</span><span class="w"> </span>-n<span class="w"> </span><span class="s1">'YourNewPassword123'</span><span class="w"> </span>&gt;<span class="w"> </span>/root/harvester-password
+</span><span id="__span-13-8"><a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>chmod<span class="w"> </span><span class="m">600</span><span class="w"> </span>/root/harvester-password
+</span></code></pre></div>
+<p>如果手邊有 <code>htpasswd</code>（<code>apache2-utils</code> 的一部分）而沒有 Python，<code>htpasswd
+-bnBC 10 "" 'YourNewPassword123' | tr -d ':\n'</code> 可以產生等效的雜湊。</p>
+<hr />
+<h2 id="customize">自訂<a class="headerlink" href="#customize" title="Permanent link">&para;</a></h2>
+<h3 id="change-node-resources">變更節點資源<a class="headerlink" href="#change-node-resources" title="Permanent link">&para;</a></h3>
+<p>編輯 <code>~/.rodeo/profiles/&lt;profile&gt;/</code> 裡的 profile 檔案，或在部署時覆寫：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>rodeo<span class="w"> </span>deploy<span class="w"> </span>-P<span class="w"> </span>resources.harvester.memory_mib<span class="o">=</span><span class="m">20480</span>
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>rodeo<span class="w"> </span>deploy<span class="w"> </span>-P<span class="w"> </span>resources.harvester.vcpu<span class="o">=</span><span class="m">10</span>
+</span></code></pre></div>
+<h3 id="change-the-disk-size">變更磁碟大小<a class="headerlink" href="#change-the-disk-size" title="Permanent link">&para;</a></h3>
+<p>預設每個 Harvester 節點 320 GiB。不要低於約 250：不論磁碟多大，Harvester 的 Elemental 安裝程式一律會切出固定 150 GiB 的 persistent 分割區，磁碟太小會讓它空間不足、無法拉取容器映像，也讓 Longhorn 本身沒剩多少空間。</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>rodeo<span class="w"> </span>deploy<span class="w"> </span>-P<span class="w"> </span>resources.harvester.disk_gb<span class="o">=</span><span class="m">400</span>
+</span></code></pre></div>
+<h3 id="build-a-custom-harvester-lab">建立自訂的 Harvester lab<a class="headerlink" href="#build-a-custom-harvester-lab" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>rodeo<span class="w"> </span>new<span class="w"> </span>edge-lab<span class="w"> </span>--from<span class="w"> </span>harvester-ha<span class="w">    </span><span class="c1"># 以三節點 HA 為基礎產生</span>
+</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="nv">$EDITOR</span><span class="w"> </span>~/.rodeo/profiles/edge-lab/definition.yaml
+</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>rodeo<span class="w"> </span>up<span class="w"> </span>--profile<span class="w"> </span>edge-lab
+</span></code></pre></div>
+<p>完整格式參考：<a href="../custom-rodeos/">建立自己的 rodeo</a>。</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  回到頂端
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.top", "navigation.indexes", "content.code.copy", "content.code.annotate", "toc.follow", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u8907\u88fd", "clipboard.copy": "\u8907\u88fd", "search.result.more.one": "\u6b64\u9801\u5c1a\u6709 1 \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.more.other": "\u6b64\u9801\u5c1a\u6709 # \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.none": "\u6c92\u6709\u7b26\u5408\u7684\u9805\u76ee", "search.result.one": "\u627e\u5230 1 \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.other": "\u627e\u5230 # \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.placeholder": "\u6253\u5b57\u9032\u884c\u641c\u5c0b", "search.result.term.missing": "\u7f3a\u5c11\u5b57\u8a5e", "select.version": "\u9078\u64c7\u7248\u672c"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+    
+  </body>
+</html>

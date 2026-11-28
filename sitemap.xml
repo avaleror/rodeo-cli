@@ -1,0 +1,423 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+    <url>
+        <loc>https://rodeocli.com/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/architecture/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/architecture/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/architecture/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/claim-portal-plan/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/claim-portal-plan/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/claim-portal-plan/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/claim-portal/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/claim-portal/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/claim-portal/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/custom-rodeos/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/custom-rodeos/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/custom-rodeos/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/fleet/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/fleet/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/fleet/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/get-started/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/get-started/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/get-started/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/guide-harvester/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/guide-harvester/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/guide-harvester/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/guide-kvm-hosts/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/guide-kvm-hosts/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/guide-kvm-hosts/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/guide-rancher/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/guide-rancher/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/guide-rancher/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/guide-suse-edge/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/guide-suse-edge/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/guide-suse-edge/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/guide-suse-telco/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/guide-suse-telco/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/guide-suse-telco/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/install/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/install/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/install/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/mcp/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/mcp/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/mcp/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/player/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/player/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/player/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/releasing/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/releasing/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/releasing/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/rodeo-builder/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/rodeo-builder/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/rodeo-builder/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/runbook/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/runbook/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/runbook/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/user-guide/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/user-guide/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/user-guide/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/archive/audit-2026-07-14/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/archive/audit-2026-07-14/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/archive/audit-2026-07-14/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/archive/audit-2026-07-16/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/archive/audit-2026-07-16/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/archive/audit-2026-07-16/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/archive/audit-2026-08-05/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/archive/audit-2026-08-05/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/archive/audit-2026-08-05/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/examples/aws-fleet-claude-test-plan/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/examples/aws-fleet-claude-test-plan/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/examples/aws-fleet-claude-test-plan/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/examples/aws-macos/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/examples/aws-macos/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/examples/aws-macos/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/examples/bare-metal/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/examples/bare-metal/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/examples/bare-metal/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/examples/instruqt/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/examples/instruqt/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/examples/instruqt/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/examples/testing/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/examples/testing/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/examples/testing/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/examples/workshop/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/examples/workshop/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/examples/workshop/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/reference/definition/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/reference/definition/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/reference/definition/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/reference/plan/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/reference/plan/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/reference/plan/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/zh-TW/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/zh-TW/architecture/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/architecture/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/architecture/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/zh-TW/claim-portal-plan/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/claim-portal-plan/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/claim-portal-plan/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/zh-TW/claim-portal/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/claim-portal/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/claim-portal/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/zh-TW/custom-rodeos/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/custom-rodeos/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/custom-rodeos/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/zh-TW/fleet/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/fleet/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/fleet/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/zh-TW/get-started/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/get-started/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/get-started/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/zh-TW/guide-harvester/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/guide-harvester/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/guide-harvester/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/zh-TW/guide-kvm-hosts/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/guide-kvm-hosts/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/guide-kvm-hosts/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/zh-TW/guide-rancher/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/guide-rancher/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/guide-rancher/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/zh-TW/guide-suse-edge/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/guide-suse-edge/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/guide-suse-edge/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/zh-TW/guide-suse-telco/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/guide-suse-telco/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/guide-suse-telco/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/zh-TW/install/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/install/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/install/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/zh-TW/mcp/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/mcp/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/mcp/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/zh-TW/player/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/player/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/player/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/zh-TW/releasing/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/releasing/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/releasing/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/zh-TW/rodeo-builder/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/rodeo-builder/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/rodeo-builder/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/zh-TW/runbook/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/runbook/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/runbook/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/zh-TW/user-guide/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/user-guide/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/user-guide/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/zh-TW/archive/audit-2026-07-14/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/archive/audit-2026-07-14/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/archive/audit-2026-07-14/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/zh-TW/archive/audit-2026-07-16/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/archive/audit-2026-07-16/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/archive/audit-2026-07-16/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/zh-TW/archive/audit-2026-08-05/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/archive/audit-2026-08-05/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/archive/audit-2026-08-05/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/zh-TW/examples/aws-fleet-claude-test-plan/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/examples/aws-fleet-claude-test-plan/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/examples/aws-fleet-claude-test-plan/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/zh-TW/examples/aws-macos/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/examples/aws-macos/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/examples/aws-macos/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/zh-TW/examples/bare-metal/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/examples/bare-metal/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/examples/bare-metal/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/zh-TW/examples/instruqt/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/examples/instruqt/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/examples/instruqt/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/zh-TW/examples/testing/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/examples/testing/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/examples/testing/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/zh-TW/examples/workshop/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/examples/workshop/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/examples/workshop/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/zh-TW/reference/definition/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/reference/definition/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/reference/definition/"/>
+    </url>
+    <url>
+        <loc>https://rodeocli.com/zh-TW/reference/plan/</loc>
+        <lastmod>2026-11-28</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://rodeocli.com/zh-TW/reference/plan/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://rodeocli.com/reference/plan/"/>
+    </url>
+</urlset>

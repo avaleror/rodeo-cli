@@ -1,0 +1,3271 @@
+
+<!doctype html>
+<html lang="zh-TW" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A declarative CLI that deploys hands-on lab infrastructure (Harvester HCI, Rancher Prime, SUSE Edge) on KVM.">
+      
+      
+      
+        <link rel="canonical" href="https://rodeocli.com/zh-TW/reference/plan/">
+      
+      
+        <link rel="prev" href="../../mcp/">
+      
+      
+        <link rel="next" href="../definition/">
+      
+      
+        
+          <link rel="alternate" href="../../../reference/plan/" hreflang="en">
+        
+          <link rel="alternate" href="./" hreflang="zh-TW">
+        
+      
+      
+      <link rel="icon" href="../../../assets/logo/favicon.ico">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
+    
+    
+      
+        <title>rodeo-plan.yaml - rodeo-cli</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+      <link rel="stylesheet" href="../../../stylesheets/custom.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="rodeo-cli">
+  <meta property="og:title" content="rodeo-plan.yaml - rodeo-cli">
+  <meta property="og:description" content="A declarative CLI that deploys hands-on lab infrastructure (Harvester HCI, Rancher Prime, SUSE Edge) on KVM.">
+  <meta property="og:url" content="https://rodeocli.com/zh-TW/reference/plan/">
+  <meta property="og:image" content="https://rodeocli.com/assets/social-card.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="627">
+  <meta property="og:image:alt" content="rodeo-cli logo: a green horseshoe around a terminal prompt">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="rodeo-plan.yaml - rodeo-cli">
+  <meta name="twitter:description" content="A declarative CLI that deploys hands-on lab infrastructure (Harvester HCI, Rancher Prime, SUSE Edge) on KVM.">
+  <meta name="twitter:image" content="https://rodeocli.com/assets/social-card.png">
+
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#rodeo-planyaml" class="md-skip">
+          跳轉到
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="頁首">
+    <a href="../../" title="rodeo-cli" class="md-header__button md-logo" aria-label="rodeo-cli" data-md-component="logo">
+      
+  <img src="../../../assets/logo/horseshoe-mark.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            rodeo-cli
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              rodeo-plan.yaml
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="選擇語言">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="../../../reference/plan/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="zh-TW" class="md-select__link">
+              繁體中文
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="搜尋" placeholder="搜尋" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="搜尋">
+        
+        <button type="reset" class="md-search__icon md-icon" title="清除" aria-label="清除" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            正在初始化搜尋引擎
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/avaleror/rodeo-cli" title="前往倉庫" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    avaleror/rodeo-cli
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="標籤" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../" class="md-tabs__link">
+        
+  
+  
+    
+  
+  首頁
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../get-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  開始使用
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../install/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  在 Linux 與 macOS 上安裝
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guide-harvester/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Profile 指南
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../custom-rodeos/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  建立自己的 rodeo
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../rodeo-builder/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Rodeo Builder
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../fleet/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Fleet（多主機 workshop）
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../player/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Lab player
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../mcp/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  MCP server（AI agent）
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
+  
+    
+  
+  參考
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../examples/bare-metal/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  範例
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../runbook/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  故障排除
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../architecture/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  給貢獻者
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="導覽列" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../" title="rodeo-cli" class="md-nav__button md-logo" aria-label="rodeo-cli" data-md-component="logo">
+      
+  <img src="../../../assets/logo/horseshoe-mark.svg" alt="logo">
+
+    </a>
+    rodeo-cli
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/avaleror/rodeo-cli" title="前往倉庫" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    avaleror/rodeo-cli
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    首頁
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../get-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    開始使用
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    在 Linux 與 macOS 上安裝
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Profile 指南
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Profile 指南
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide-harvester/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SUSE Virtualization (Harvester)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide-rancher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rancher Prime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide-suse-edge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SUSE Edge
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide-suse-telco/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SUSE Telco Cloud
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide-kvm-hosts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    一般 KVM 主機
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../custom-rodeos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    建立自己的 rodeo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../rodeo-builder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rodeo Builder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../fleet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fleet（多主機 workshop）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../player/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Lab player
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../mcp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP server（AI agent）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    參考
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    參考
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    rodeo-plan.yaml
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    rodeo-plan.yaml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目錄">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目錄
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#full-annotated-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        完整註解範例
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#field-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        欄位參考
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="欄位參考">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#type" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        type
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#name" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        name
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deployment_target" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        deployment_target
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#remote_host" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        remote_host
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#provider-when-deployment_target-aws" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        provider（deployment_target: aws 時）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#provider-when-deployment_target-gcp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        provider（deployment_target: gcp 時）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#resources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        resources
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#credentials" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        credentials
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#network" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        network
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#storage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        storage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#libvirt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        libvirt
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#versions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        versions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cli-overrides" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI 覆寫
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#story-workshop-narrative-languages-and-variants" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        story：workshop 敘事、語言與變體
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#content-the-labs-instructions-apart-from-its-infrastructure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        content：lab 的操作說明，與基礎架構分開
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#lab_in_a_box-deploying-with-or-exporting-to-lab-in-a-box" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        lab_in_a_box：用 lab-in-a-box 部署，或匯出成 lab-in-a-box
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-belongs-here-vs-definitionyaml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        哪些放這裡、哪些放 definition.yaml
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../definition/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    definition.yaml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    範例
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    範例
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/bare-metal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    裸機
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/aws-macos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    從 Mac 部署到 AWS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/instruqt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Instruqt track
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/workshop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workshop fleet 清單
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    測試與 CI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../runbook/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    故障排除
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_13" >
+        
+          
+          <label class="md-nav__link" for="__nav_13" id="__nav_13_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    給貢獻者
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_13_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_13">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    給貢獻者
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing and validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claim-portal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claim portal
+  
+
+    
+  </span>
+  
+  
+    
+  
+  
+    <span class="md-status md-status--shipped for AWS fleets in v0.18.0 (2026-10-02). Student SSH on port 2222 shipped in v0.20.1 and was removed in"></span>
+  
+
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../claim-portal-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claim portal (implementation plan)
+  
+
+    
+  </span>
+  
+  
+    
+  
+  
+    <span class="md-status md-status--approved design; F5.0 live-checked 2026-09-30; F5.1-F5.4 implemented 2026-09-30, live end-to-end check pending"></span>
+  
+
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目錄">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目錄
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#full-annotated-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        完整註解範例
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#field-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        欄位參考
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="欄位參考">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#type" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        type
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#name" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        name
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deployment_target" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        deployment_target
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#remote_host" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        remote_host
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#provider-when-deployment_target-aws" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        provider（deployment_target: aws 時）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#provider-when-deployment_target-gcp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        provider（deployment_target: gcp 時）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#resources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        resources
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#credentials" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        credentials
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#network" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        network
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#storage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        storage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#libvirt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        libvirt
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#versions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        versions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cli-overrides" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI 覆寫
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#story-workshop-narrative-languages-and-variants" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        story：workshop 敘事、語言與變體
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#content-the-labs-instructions-apart-from-its-infrastructure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        content：lab 的操作說明，與基礎架構分開
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#lab_in_a_box-deploying-with-or-exporting-to-lab-in-a-box" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        lab_in_a_box：用 lab-in-a-box 部署，或匯出成 lab-in-a-box
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-belongs-here-vs-definitionyaml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        哪些放這裡、哪些放 definition.yaml
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="rodeo-planyaml">rodeo-plan.yaml 參考<a class="headerlink" href="#rodeo-planyaml" title="Permanent link">&para;</a></h1>
+<p><code>rodeo-plan.yaml</code> 是 lab 的資源與部署設定。它回答的是：VM 有多大、存放在哪裡、帳密是什麼，以及這個 lab 跑在哪個部署目標上？</p>
+<p>它<strong>不</strong>描述拓撲（節點、網路、服務）。拓撲放在 <a href="../definition/"><code>definition.yaml</code></a>。</p>
+<p>這兩個檔案合起來構成一個 <strong>profile</strong>：也就是 <code>rodeo up</code>、<code>plan</code> 與 <code>deploy</code> 所讀取的完整 lab 描述。</p>
+<hr />
+<h2 id="full-annotated-example">完整註解範例<a class="headerlink" href="#full-annotated-example" title="Permanent link">&para;</a></h2>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># 這個 plan 使用的流程。決定要執行哪些階段。</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="c1"># suse-virt: Harvester HCI（含或不含 Rancher）</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="c1"># rancher:   只有 K3s 上的 Rancher Prime（沒有 Harvester、沒有 PXE）</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">suse-virt</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="c1"># 用作 libvirt 物件前綴、狀態檔名稱與 log 標籤。</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="c1"># 如果在同一台主機上跑多個 lab，每台主機內必須唯一。</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-lab</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="c1"># 這個 lab 跑在哪裡。控制 finalise 階段是否延後執行，</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="c1"># 以及（aws 時）筆電是否先建立一台 EC2 主機再遠端部署。</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="c1"># baremetal: 在這台主機上完整部署，包含主機重開機時 VM 自動啟動</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="c1"># remote:    透過 SSH 部署到 remote_host: 中的 KVM 主機（各階段在那台主機上以 baremetal 執行）</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="c1"># instruqt:  略過 finalise，直到你執行 `rodeo deploy --from finalise --finalise`</span>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="c1"># aws:       筆電當控制端：建立 EC2，然後遠端執行 `rodeo up --target baremetal`</span>
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="nt">deployment_target</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">baremetal</span>
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="c1"># 虛擬機資源配置。</span>
+</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="c1"># 這些是每台 VM 的值。主機總 RAM = (harvester 節點數 × memory_mib) + rancher.memory_mib。</span>
+</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="nt">resources</span><span class="p">:</span>
+</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="w">  </span><span class="nt">harvester</span><span class="p">:</span>
+</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="w">    </span><span class="nt">memory_mib</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">16384</span><span class="w">   </span><span class="c1"># 每個 Harvester 節點的 RAM，單位 MiB（16 GiB）</span>
+</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="w">    </span><span class="nt">vcpu</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">8</span><span class="w">             </span><span class="c1"># 每個 Harvester 節點的 vCPU</span>
+</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="w">    </span><span class="nt">disk_gb</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">320</span><span class="w">        </span><span class="c1"># 每個 Harvester 節點的磁碟：不要低於約 250（見說明）</span>
+</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>
+</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a><span class="w">  </span><span class="nt">rancher</span><span class="p">:</span>
+</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a><span class="w">    </span><span class="nt">memory_mib</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">8192</span><span class="w">    </span><span class="c1"># Rancher VM 的 RAM，單位 MiB（8 GiB）</span>
+</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a><span class="w">    </span><span class="nt">vcpu</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">4</span><span class="w">             </span><span class="c1"># Rancher 的 vCPU</span>
+</span><span id="__span-0-29"><a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a><span class="w">    </span><span class="nt">disk_gb</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">60</span><span class="w">         </span><span class="c1"># Rancher VM 的磁碟</span>
+</span><span id="__span-0-30"><a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>
+</span><span id="__span-0-31"><a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a><span class="c1"># 帳密。以 ?? 開頭的值會在部署時解析：絕不在這裡寫死。</span>
+</span><span id="__span-0-32"><a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a><span class="c1">#</span>
+</span><span id="__span-0-33"><a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a><span class="c1"># ?? 的解析來源（依優先順序）：</span>
+</span><span id="__span-0-34"><a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a><span class="c1">#   ??key            → ~/.rodeo/secrets.yaml 中名為 "key" 的 key</span>
+</span><span id="__span-0-35"><a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a><span class="c1">#   ??env:VAR_NAME   → 環境變數 VAR_NAME</span>
+</span><span id="__span-0-36"><a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a><span class="c1">#   ??file:/path     → 檔案內容</span>
+</span><span id="__span-0-37"><a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a><span class="c1">#   ??cmd:command    → shell 指令的 stdout（去除前後空白）</span>
+</span><span id="__span-0-38"><a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a><span class="c1">#</span>
+</span><span id="__span-0-39"><a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a><span class="c1"># secret 只會在受信任的 lab 中解析。rodeo trust 會核准整個 lab</span>
+</span><span id="__span-0-40"><a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a><span class="c1"># 目錄（對其中每個檔案計算 sha256，但不含 rodeo 自己寫入的狀態，例如</span>
+</span><span id="__span-0-41"><a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a><span class="c1"># .rodeo-secrets.yaml、content/ 與 logs）；任何變更都會讓它重新變成</span>
+</span><span id="__span-0-42"><a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a><span class="c1"># 不受信任。rodeo 從內建 profile 建立到空目錄中的 lab</span>
+</span><span id="__span-0-43"><a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a><span class="c1"># 本來就受信任；clone、匯入、catalog 與手工建立的 lab 需要</span>
+</span><span id="__span-0-44"><a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a><span class="c1"># `rodeo trust`（自動化時用 `rodeo trust --yes`）。以 URL 抓取的</span>
+</span><span id="__span-0-45"><a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a><span class="c1"># content repository 依 URL 與 ref 信任，而不是依 commit。寫入類指令（deploy、up、clean、export……）會解析</span>
+</span><span id="__span-0-46"><a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a><span class="c1"># secret；讀取類指令（plan、status、logs……）永遠不會。-P 與 --paramfile</span>
+</span><span id="__span-0-47"><a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a><span class="c1"># 的值不能包含 ??、{{、{% 或換行，而且只能設定資料類的 key：</span>
+</span><span id="__span-0-48"><a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a><span class="c1"># resources、versions、network、name、type、deployment_target、instance、</span>
+</span><span id="__span-0-49"><a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a><span class="c1"># libvirt.disk_cache/disk_io、rancher_tls.email、elemental.registrations、</span>
+</span><span id="__span-0-50"><a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a><span class="c1"># lab_in_a_box.variant/iso_image、provider.region/instance_type/ttl_hours、</span>
+</span><span id="__span-0-51"><a id="__codelineno-0-51" name="__codelineno-0-51" href="#__codelineno-0-51"></a><span class="c1"># story.language/id、content.facts（每個值都會檢查），以及下方</span>
+</span><span id="__span-0-52"><a id="__codelineno-0-52" name="__codelineno-0-52" href="#__codelineno-0-52"></a><span class="c1"># parameters: 中的名稱（只餵給 template 的純量值）。URL、ref、</span>
+</span><span id="__span-0-53"><a id="__codelineno-0-53" name="__codelineno-0-53" href="#__codelineno-0-53"></a><span class="c1"># checksum 與路徑類的 key，例如 plan 宣告的 versions.&lt;x&gt;_url 或</span>
+</span><span id="__span-0-54"><a id="__codelineno-0-54" name="__codelineno-0-54" href="#__codelineno-0-54"></a><span class="c1"># versions.&lt;x&gt;_ref，不能透過 -P 設定：請在這個檔案裡修改。</span>
+</span><span id="__span-0-55"><a id="__codelineno-0-55" name="__codelineno-0-55" href="#__codelineno-0-55"></a><span class="c1"># content.facts 只接受一般句子或 http(s) URL：它們只會填進</span>
+</span><span id="__span-0-56"><a id="__codelineno-0-56" name="__codelineno-0-56" href="#__codelineno-0-56"></a><span class="c1"># 渲染出來的指南，絕不會進入 shell。provider.ttl_hours 必須在 (0, 168] 之間。在 sudo 底下環境變數</span>
+</span><span id="__span-0-57"><a id="__codelineno-0-57" name="__codelineno-0-57" href="#__codelineno-0-57"></a><span class="c1"># 不會傳下去，所以在那裡能用的是 ??key 這種形式。</span>
+</span><span id="__span-0-58"><a id="__codelineno-0-58" name="__codelineno-0-58" href="#__codelineno-0-58"></a><span class="c1">#</span>
+</span><span id="__span-0-59"><a id="__codelineno-0-59" name="__codelineno-0-59" href="#__codelineno-0-59"></a><span class="c1"># rodeo up 與 rodeo init 會自動產生 ~/.rodeo/secrets.yaml。</span>
+</span><span id="__span-0-60"><a id="__codelineno-0-60" name="__codelineno-0-60" href="#__codelineno-0-60"></a><span class="c1"># 只要有任何 ?? 占位符無法解析，部署就會立刻失敗。</span>
+</span><span id="__span-0-61"><a id="__codelineno-0-61" name="__codelineno-0-61" href="#__codelineno-0-61"></a><span class="nt">credentials</span><span class="p">:</span>
+</span><span id="__span-0-62"><a id="__codelineno-0-62" name="__codelineno-0-62" href="#__codelineno-0-62"></a><span class="w">  </span><span class="nt">harvester_os_password</span><span class="p">:</span><span class="w"> </span><span class="s">"??harvester_os_password"</span><span class="w">     </span><span class="c1"># Harvester 節點的作業系統登入（rancher 使用者）</span>
+</span><span id="__span-0-63"><a id="__codelineno-0-63" name="__codelineno-0-63" href="#__codelineno-0-63"></a><span class="w">  </span><span class="nt">harvester_admin_password</span><span class="p">:</span><span class="w"> </span><span class="s">"??harvester_admin_password"</span><span class="w"> </span><span class="c1"># Harvester 網頁介面的管理者密碼</span>
+</span><span id="__span-0-64"><a id="__codelineno-0-64" name="__codelineno-0-64" href="#__codelineno-0-64"></a><span class="w">  </span><span class="nt">rancher_admin_password</span><span class="p">:</span><span class="w"> </span><span class="s">"??rancher_admin_password"</span><span class="w">   </span><span class="c1"># Rancher 網頁介面的管理者密碼</span>
+</span><span id="__span-0-65"><a id="__codelineno-0-65" name="__codelineno-0-65" href="#__codelineno-0-65"></a><span class="w">  </span><span class="nt">harvester_token</span><span class="p">:</span><span class="w"> </span><span class="s">"??harvester_token"</span><span class="w">                 </span><span class="c1"># RKE2 叢集 join token（內部使用）</span>
+</span><span id="__span-0-66"><a id="__codelineno-0-66" name="__codelineno-0-66" href="#__codelineno-0-66"></a>
+</span><span id="__span-0-67"><a id="__codelineno-0-67" name="__codelineno-0-67" href="#__codelineno-0-67"></a><span class="c1"># plan 層級的網路設定。大部分網路設定都在 definition.yaml。</span>
+</span><span id="__span-0-68"><a id="__codelineno-0-68" name="__codelineno-0-68" href="#__codelineno-0-68"></a><span class="c1"># 只有在你的主機使用非預設的 VIP 或 gateway 時才在這裡覆寫。</span>
+</span><span id="__span-0-69"><a id="__codelineno-0-69" name="__codelineno-0-69" href="#__codelineno-0-69"></a><span class="nt">network</span><span class="p">:</span>
+</span><span id="__span-0-70"><a id="__codelineno-0-70" name="__codelineno-0-70" href="#__codelineno-0-70"></a><span class="w">  </span><span class="nt">vip</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">192.168.122.10</span><span class="w">     </span><span class="c1"># Harvester 叢集 VIP（kube-vip 浮動 IP）</span>
+</span><span id="__span-0-71"><a id="__codelineno-0-71" name="__codelineno-0-71" href="#__codelineno-0-71"></a>
+</span><span id="__span-0-72"><a id="__codelineno-0-72" name="__codelineno-0-72" href="#__codelineno-0-72"></a><span class="c1"># 主機的儲存設定。</span>
+</span><span id="__span-0-73"><a id="__codelineno-0-73" name="__codelineno-0-73" href="#__codelineno-0-73"></a><span class="nt">storage</span><span class="p">:</span>
+</span><span id="__span-0-74"><a id="__codelineno-0-74" name="__codelineno-0-74" href="#__codelineno-0-74"></a><span class="w">  </span><span class="nt">device</span><span class="p">:</span><span class="w"> </span><span class="s">""</span><span class="w">                          </span><span class="c1"># "" = 使用預設的單一磁碟路徑</span>
+</span><span id="__span-0-75"><a id="__codelineno-0-75" name="__codelineno-0-75" href="#__codelineno-0-75"></a><span class="w">                                      </span><span class="c1"># "/dev/nvme1n1" = 專用第二顆磁碟</span>
+</span><span id="__span-0-76"><a id="__codelineno-0-76" name="__codelineno-0-76" href="#__codelineno-0-76"></a><span class="w">  </span><span class="nt">image_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/var/lib/libvirt/images</span><span class="w">  </span><span class="c1"># VM 磁碟與 ISO 的存放位置</span>
+</span><span id="__span-0-77"><a id="__codelineno-0-77" name="__codelineno-0-77" href="#__codelineno-0-77"></a>
+</span><span id="__span-0-78"><a id="__codelineno-0-78" name="__codelineno-0-78" href="#__codelineno-0-78"></a><span class="c1"># 軟體版本。固定這些值就能重現特定的 lab。</span>
+</span><span id="__span-0-79"><a id="__codelineno-0-79" name="__codelineno-0-79" href="#__codelineno-0-79"></a><span class="nt">versions</span><span class="p">:</span>
+</span><span id="__span-0-80"><a id="__codelineno-0-80" name="__codelineno-0-80" href="#__codelineno-0-80"></a><span class="w">  </span><span class="nt">harvester</span><span class="p">:</span><span class="w"> </span><span class="s">"1.8.2"</span><span class="w">          </span><span class="c1"># 要下載並安裝的 Harvester ISO 版本</span>
+</span><span id="__span-0-81"><a id="__codelineno-0-81" name="__codelineno-0-81" href="#__codelineno-0-81"></a><span class="w">  </span><span class="nt">rancher</span><span class="p">:</span><span class="w"> </span><span class="s">"2.14.5"</span><span class="w">           </span><span class="c1"># Rancher Prime Helm chart 版本</span>
+</span><span id="__span-0-82"><a id="__codelineno-0-82" name="__codelineno-0-82" href="#__codelineno-0-82"></a><span class="w">  </span><span class="nt">k3s</span><span class="p">:</span><span class="w"> </span><span class="s">"v1.35.3+k3s1"</span><span class="w">         </span><span class="c1"># Rancher VM 上的 K3s 版本</span>
+</span><span id="__span-0-83"><a id="__codelineno-0-83" name="__codelineno-0-83" href="#__codelineno-0-83"></a><span class="w">  </span><span class="nt">cert_manager</span><span class="p">:</span><span class="w"> </span><span class="s">"v1.20.1"</span><span class="w">     </span><span class="c1"># cert-manager Helm chart 版本（Rancher 的相依套件）</span>
+</span><span id="__span-0-84"><a id="__codelineno-0-84" name="__codelineno-0-84" href="#__codelineno-0-84"></a>
+</span><span id="__span-0-85"><a id="__codelineno-0-85" name="__codelineno-0-85" href="#__codelineno-0-85"></a><span class="c1"># Jinja2 樣板：定義這個檔案中使用的變數。</span>
+</span><span id="__span-0-86"><a id="__codelineno-0-86" name="__codelineno-0-86" href="#__codelineno-0-86"></a><span class="c1"># 部署時可以用 -P 或 --paramfile 覆寫這些值。</span>
+</span><span id="__span-0-87"><a id="__codelineno-0-87" name="__codelineno-0-87" href="#__codelineno-0-87"></a><span class="nt">parameters</span><span class="p">:</span>
+</span><span id="__span-0-88"><a id="__codelineno-0-88" name="__codelineno-0-88" href="#__codelineno-0-88"></a><span class="w">  </span><span class="nt">harvester_mem</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">16384</span>
+</span><span id="__span-0-89"><a id="__codelineno-0-89" name="__codelineno-0-89" href="#__codelineno-0-89"></a>
+</span><span id="__span-0-90"><a id="__codelineno-0-90" name="__codelineno-0-90" href="#__codelineno-0-90"></a><span class="c1"># 然後這樣使用：</span>
+</span><span id="__span-0-91"><a id="__codelineno-0-91" name="__codelineno-0-91" href="#__codelineno-0-91"></a><span class="c1"># resources:</span>
+</span><span id="__span-0-92"><a id="__codelineno-0-92" name="__codelineno-0-92" href="#__codelineno-0-92"></a><span class="c1">#   harvester:</span>
+</span><span id="__span-0-93"><a id="__codelineno-0-93" name="__codelineno-0-93" href="#__codelineno-0-93"></a><span class="c1">#     memory_mib: {{ harvester_mem }}</span>
+</span></code></pre></div>
+<hr />
+<h2 id="field-reference">欄位參考<a class="headerlink" href="#field-reference" title="Permanent link">&para;</a></h2>
+<h3 id="type"><code>type</code><a class="headerlink" href="#type" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>值</th>
+<th>流程</th>
+<th>階段</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>suse-virt</code></td>
+<td>Harvester HCI（含或不含 Rancher）</td>
+<td><code>kvm_host</code> → <code>vms</code> → <code>pxe_server</code> → <code>cluster</code> → <code>rancher</code> → <code>apply</code> → <code>finalise</code> → <code>custom_scripts</code></td>
+</tr>
+<tr>
+<td><code>rancher</code>、<code>rancher-test</code></td>
+<td>K3s 上的 Rancher Prime + 它建立的 K3s/RKE2 叢集</td>
+<td><code>kvm_host</code> → <code>vms</code> → <code>boot</code> → <code>rancher</code> → <code>downstream</code> → <code>apply</code> → <code>finalise</code> → <code>custom_scripts</code></td>
+</tr>
+<tr>
+<td><code>suse-edge</code></td>
+<td>SUSE Edge 3.7（Rancher + Elemental + EIB + edge 節點）</td>
+<td><code>kvm_host</code> → <code>vms</code> → <code>boot</code> → <code>rancher</code> → <code>elemental</code> → <code>apply</code> → <code>finalise</code> → <code>custom_scripts</code></td>
+</tr>
+<tr>
+<td><code>lab-in-a-box</code></td>
+<td>外部外掛：由 lab-in-a-box 引擎建立 lab</td>
+<td>它自己的階段（請見該外掛的文件）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>必填。</strong>沒有預設值。</p>
+<h3 id="name"><code>name</code><a class="headerlink" href="#name" title="Permanent link">&para;</a></h3>
+<p>字串。用作所有 libvirt 物件的前綴（<code>&lt;name&gt;-harvester1</code> 等）、狀態檔名稱（<code>~/.rodeo/state/&lt;name&gt;.yaml</code>）與 log 標籤。</p>
+<p>在每台主機內必須唯一。部署後更改 <code>name</code> 會留下孤立的資源，請先執行 <code>rodeo clean</code>。</p>
+<h3 id="deployment_target"><code>deployment_target</code><a class="headerlink" href="#deployment_target" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>值</th>
+<th>行為</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>baremetal</code></td>
+<td>在 rodeo 執行的主機（這台機器）上完整部署。<code>finalise</code> 會啟用主機重開機時 VM 自動啟動。</td>
+</tr>
+<tr>
+<td><code>instruqt</code></td>
+<td>自動略過 <code>finalise</code>。在 Instruqt 快照之後再執行：<code>rodeo deploy --from finalise --finalise</code></td>
+</tr>
+<tr>
+<td><code>aws</code></td>
+<td>筆電當控制端：需要 <code>provider:</code> 區塊，建立或沿用一台 EC2 KVM 主機、等待 SSH 可用，然後在那台主機上遠端執行 <code>rodeo up</code>。用 <code>rodeo destroy --cloud --yes</code> 拆除。自備（BYO）：自己建立 instance，保留 <code>deployment_target: aws</code>（或設定 <code>storage.backend: nvme</code>），然後在那台機器上部署。</td>
+</tr>
+<tr>
+<td><code>gcp</code></td>
+<td>和 <code>aws</code> 相同，只是在 Google Cloud 上：建立或沿用一台啟用 nested virtualization 的 Compute Engine VM、等待 SSH 可用，然後在 VM 上遠端執行 <code>rodeo up</code>。用 <code>rodeo destroy --cloud --yes</code> 拆除。請見 <a href="#provider-when-deployment_target-gcp"><code>provider</code>（gcp）</a>。</td>
+</tr>
+</tbody>
+</table>
+<p>| <code>remote</code> | 控制端：部署到你已經擁有的 KVM 主機。需要 <code>remote_host:</code> 區塊，會透過 SSH 把 lab 的 plan 檔案送過去，並在主機上執行 <code>rodeo up --target baremetal</code>。不會建立任何資源，<code>rodeo destroy --cloud</code> 也不適用：主機是你的。 |</p>
+<p><strong>必填。</strong>省略時預設為 <code>baremetal</code>。外掛可以透過
+<code>host_context.register_host_context()</code> 新增目標（請見架構文件的擴充點）：
+註冊過的目標在這裡、在 <code>--target</code>，以及在
+<code>rodeo up</code> 的提示中都會被接受。</p>
+<p>在 <strong>instruqt</strong> 上，<code>rodeo up</code> / lab 初次建立（seed）時也會套用依主機調整的 <code>resources</code> 預設組合，
+讓 guest vCPU 總和維持在 builder 的約 70% 左右（Harvester 通常為 6–8 vCPU / 20 GiB）。
+重新部署時不會改寫既有的 plan；只有 seed 出來的 plan 會套用這些預設組合。
+當 plan 仍然超出預算時，<code>rodeo doctor</code> / <code>rodeo deploy --check</code> 會發出警告（不會中止）。</p>
+<h3 id="remote_host"><code>remote_host</code><a class="headerlink" href="#remote_host" title="Permanent link">&para;</a></h3>
+<p><code>deployment_target: remote</code> 必填，其他目標一律忽略。主機是你的：
+rodeo 既不建立也不銷毀它，只需要連得到它。</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">deployment_target</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">remote</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nt">remote_host</span><span class="p">:</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">kvm-01.lab.example</span><span class="w">        </span><span class="c1"># 名稱或 IP（必填）</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="nt">ssh_user</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">root</span><span class="w">                  </span><span class="c1"># 登入帳號；預設 root</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span><span class="nt">identity_file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">~/.ssh/id_ed25519</span><span class="w">  </span><span class="c1"># 私鑰；預設為 rodeo 管理的金鑰</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="nt">lab_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/root/rodeo-lab</span><span class="w">        </span><span class="c1"># lab 放在主機上的位置</span>
+</span></code></pre></div>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>rodeo<span class="w"> </span>up<span class="w"> </span>--yes<span class="w"> </span>--profile<span class="w"> </span>harvester<span class="w"> </span>--target<span class="w"> </span>remote
+</span></code></pre></div>
+<p>控制端會透過 SSH 送出 <code>rodeo-plan.yaml</code>、<code>definition.yaml</code> 與實際生效的 secret，
+在主機上安裝或更新 rodeo（<code>--ref</code> 可固定它執行的版本），然後在那裡執行
+<code>rodeo up --target baremetal</code>，並把輸出串流回來。主機需要：能以
+<em>ssh_user</em> 搭配該金鑰 SSH 登入、該使用者有<strong>免密碼 sudo</strong>，以及一個能
+執行 lab 的發行版（與本機 <code>baremetal</code> 部署的需求相同）。它的 log 留在主機上的
+<code>~/.rodeo/logs/remote-up.log</code>。</p>
+<p>私鑰本身永遠不會被送出：只有控制端會讀取它。在 builder 中，
+儲存的 <strong>KVM host (SSH)</strong> 帳密會填入這個區塊，並把金鑰寫進 lab
+目錄，檔名為 <code>.rodeo-remote-key</code>（權限 600）。</p>
+<p><code>--detach</code> 會在主機開始部署後立刻返回，印出一行 JSON（pid、log、
+host）；之後 <code>rodeo status --cloud</code> 會回報那次執行以及它 log 的結尾。每個目標在主機上
+都有自己的檔案（<code>remote-up.log</code>、<code>.pid</code>、<code>.exit</code>，與 aws 的檔案並列），所以部署
+到 KVM 主機的那一次與部署到 EC2 主機的那一次，絕不會讀取或佔用彼此的狀態。在那裡已有一次部署執行中時，第二次
+<code>rodeo up</code> 會以 75 結束，而不是跟它搶著執行。</p>
+<p>在 <strong>aws</strong> 上，<code>apply_host_context()</code>（seed + deploy）會把 <code>resources.harvester.disk_gb</code>
+提高到固定的<strong>每個 Harvester 節點 500 GB</strong>，並把 <code>resources.rancher.disk_gb</code> 提高到 <strong>60 GB</strong>
+（絕不依節點數縮放：NVMe 裝置的其餘空間刻意保留不用，
+以符合實際環境/Instruqt 的配置）。同時會設定 <code>storage.backend: nvme</code>，並把
+最大的非 root NVMe 掛載到 <code>image_dir</code>。在非 metal
+類型上預設會啟用 nested virt。</p>
+<p><strong>選項 A：一個拓撲 profile，AWS 只是部署的地方。</strong>使用基本 profile 加上
+<code>--target aws</code>（沒有另外的 <code>*-aws</code> plan 樣板）：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>rodeo<span class="w"> </span>up<span class="w"> </span>--yes<span class="w"> </span>--profile<span class="w"> </span>harvester<span class="w"> </span>--target<span class="w"> </span>aws<span class="w"> </span>--instance-tier<span class="w"> </span>recommended
+</span></code></pre></div>
+<p>Instance 大小來自 <code>rodeo/providers/instance_catalog.py</code>，以那個
+<strong>相同的</strong> profile 名稱為 key。<code>harvester</code> 與 <code>harvester-2n</code> 的 <strong>recommended</strong> 是
+<strong><code>m8id.8xlarge</code></strong>（32 vCPU / 128 GiB / 單一約 1.9 TiB 的 NVMe 裝置，不像
+<code>i7i.8xlarge</code> 會把 NVMe 分散在兩個裝置上，而 rodeo 只會掛載
+其中一個）。<code>suse-edge</code> 的 recommended 是 <strong><code>m8id.4xlarge</code></strong>。明確指定的
+<code>provider.instance_type</code> 仍然優先。</p>
+<p>在 instance 上的 plan 中保留 <code>deployment_target: aws</code>（host-context +
+<code>destroy --cloud</code> 標記）。在 EC2 機器本身，各階段以 <strong>baremetal</strong> 執行。
+絕對不要在 Fleet 的 <code>workshop.yaml</code> 中設定 <code>lab.target: aws</code>，那裡請用 <code>lab.target: baremetal</code>
+（請見 <a href="../../fleet/">Fleet</a>）。</p>
+<h3 id="provider-when-deployment_target-aws"><code>provider</code>（<code>deployment_target: aws</code> 時）<a class="headerlink" href="#provider-when-deployment_target-aws" title="Permanent link">&para;</a></h3>
+<p>格式與 Fleet 的 <a href="../../fleet/#workshopyaml-provider-schema"><code>workshop.yaml</code> provider</a> 相同。
+AWS 需要 <code>type</code>、<code>region</code>、<code>subnet_id</code>，以及 <strong><code>instance_type</code></strong> 或
+<strong><code>instance_tier</code></strong> 其中之一。</p>
+<p><strong>對 <code>rodeo up --target aws</code> 而言，這個區塊是選填的。</strong>任何 profile 都能用
+<code>rodeo up --profile &lt;name&gt; --target aws</code> 部署，完全不需要 <code>provider:</code>。缺少的
+值會被補上並寫回 <code>rodeo-plan.yaml</code>，讓重新執行與
+<code>rodeo destroy --cloud</code> 使用相同的值：</p>
+<table>
+<thead>
+<tr>
+<th>欄位</th>
+<th>預設值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>type</code></td>
+<td><code>aws</code></td>
+</tr>
+<tr>
+<td><code>region</code></td>
+<td><code>$RODEO_AWS_REGION</code>，否則為 <code>eu-north-1</code>（不是 AWS CLI 設定的 region：帳號的防護規則可能讓那個 region 沒有對外網路）</td>
+</tr>
+<tr>
+<td><code>subnet_id</code></td>
+<td>該 region 的預設 VPC 中，位於有提供該 instance type 的 AZ 內的第一個公開 default-for-AZ subnet</td>
+</tr>
+<tr>
+<td><code>instance_type</code></td>
+<td>profile 的 <code>recommended</code> 等級（見下方）</td>
+</tr>
+<tr>
+<td><code>ttl_hours</code></td>
+<td><code>6</code>：自動銷毀計時（dead-man switch）（見下方）</td>
+</tr>
+</tbody>
+</table>
+<p>沒有預設 VPC 的 region 會失敗，並在訊息中列出需要設定的欄位。</p>
+<p><strong>每台雲端主機都有 dead-man switch。</strong>rodeo 建立的每個 instance
+（單台主機、fleet 主機、portal VM）都會在啟動後 <code>provider.ttl_hours</code> 到期，
+預設為 <strong>6 小時</strong>。到期時，guest 裡的 systemd timer 會將它關機，
+而且因為 instance 建立時設定了 <code>InstanceInitiatedShutdownBehavior:
+terminate</code>，AWS 會將它終止，而不是留下一個仍然要為磁碟計費的已停止 instance。
+timer 以絕對的 UTC 時間執行，並設定
+<code>Persistent=true</code>，所以一台停機超過到期時間的主機，一開機就會
+再次關機。到期時間記錄在 instance 標籤 <code>rodeo-expires-at</code>、主機上的
+<code>/etc/rodeo-expires-at</code>，以及 <code>rodeo up --target aws</code>
+與 <code>rodeo fleet provision</code> 的輸出中。</p>
+<p>這個計時無法關閉，唯一的例外是用 <code>rodeo fleet</code> 部署的 <a href="../../guide-kvm-hosts/">kvm-hosts</a> lab（<code>ttl_hours: off</code>）。較長的 workshop 請在主機建立<strong>之前</strong>設定 <code>provider.ttl_hours</code>
+（大於 0，最多 168）；對既有主機重新執行 <code>up</code> 或
+<code>fleet provision</code> 會保留它原本的到期時間。</p>
+<p><strong>除非你指定，否則 security group 會自動管理。</strong>省略
+<code>security_group_ids</code> 時，rodeo 會在 subnet 所在的 VPC 中建立（或沿用）名為 <code>rodeo-&lt;name&gt;</code> 的 SG，
+只開放主機需要的連接埠：SSH (22)、
+Harvester UI (8443)、Rancher NodePort (30002)，並把這三個都限定在
+<em>這台機器目前的公開 IP</em>，會自動偵測。從
+不同的 IP 重新執行（換了 wifi、切換 VPN）時，會就地更新規則，而不是
+累積一堆過時的規則。<code>rodeo destroy --cloud --yes</code> 會在沒有其他
+標記為該 workshop 的資源還在執行時刪除它（盡力而為：如果 instance
+還沒完成分離，請重新執行 destroy：它絕不會被當成硬性
+失敗）。明確設定 <code>security_group_ids</code> 就能改回手動管理的
+SG：適合多位學員共用的 IP 範圍、bastion 拓撲，或是你公司資安政策已經管理的
+SG。</p>
+<p><strong>Instance 大小（單主機 v1）：</strong>為 lab profile 從三個等級中選一個，或設定
+明確的 type。兩者都沒設定時，<code>rodeo up --target aws</code> 會以互動方式詢問；
+加上 <code>--yes</code> 時使用 <strong>recommended</strong>。</p>
+<table>
+<thead>
+<tr>
+<th>等級</th>
+<th>意義</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>budget</code></td>
+<td>符合 profile 的最低需求（通常是 EBS-backed Nitro）</td>
+</tr>
+<tr>
+<td><code>recommended</code></td>
+<td>該 profile 的建議大小（通常有本機 NVMe；請見 <code>instance_catalog</code>）</td>
+</tr>
+<tr>
+<td><code>performance</code></td>
+<td>Metal / 更大規格的備案</td>
+</tr>
+</tbody>
+</table>
+<p>建立之前，rodeo 會檢查該 type 是否<strong>在該 region 有提供</strong>，並透過
+<code>RunInstances</code> DryRun 探測容量。如果該 region 沒有容量，會失敗並提示你
+改試其他 region 或等級：它不會在沒有提示的情況下自動降規。</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">deployment_target</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">aws</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nt">provider</span><span class="p">:</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">aws</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span><span class="nt">region</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">eu-central-1</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">  </span><span class="c1"># 二選一：</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">  </span><span class="nt">instance_tier</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">recommended</span><span class="w">          </span><span class="c1"># budget | recommended | performance</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">  </span><span class="c1"># 或明確指定：</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">  </span><span class="c1"># instance_type: m8id.8xlarge</span>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">  </span><span class="c1"># ttl_hours: 6                      # dead-man switch，預設 6，最多 168</span>
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">  </span><span class="c1"># 省略 ami → 使用最新的 suse-sles-16-0-v&lt;date&gt;-hvm-ssd-x86_64（SLES 16 PAYG）</span>
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="w">  </span><span class="c1"># ami: ami-…                        # 選填，固定版本</span>
+</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="w">  </span><span class="c1"># ami_name_filter: "suse-sles-16-0-v????????-hvm-ssd-x86_64"</span>
+</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="w">  </span><span class="nt">subnet_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">subnet-…</span>
+</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="w">  </span><span class="c1"># security_group_ids: [sg-…]        # 省略 → rodeo 建立／管理一個，</span>
+</span><span id="__span-4-15"><a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="w">  </span><span class="c1">#                                    # 限定在這台機器的公開 IP</span>
+</span><span id="__span-4-16"><a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="w">  </span><span class="nt">ssh_user</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ec2-user</span><span class="w">                  </span><span class="c1"># SLES 16 / Leap 的預設值</span>
+</span><span id="__span-4-17"><a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a><span class="w">  </span><span class="c1"># nested_virtualization: true       # 非 metal 預設開啟</span>
+</span><span id="__span-4-18"><a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="w">  </span><span class="c1"># volume_size_gib: 100              # root EBS；lab 磁碟使用 NVMe</span>
+</span><span id="__span-4-19"><a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a><span class="w">  </span><span class="c1"># ref: main                         # 要在主機上執行的 rodeo-cli git ref</span>
+</span><span id="__span-4-20"><a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a><span class="w">  </span><span class="c1"># install_url: https://…/install.sh # fork 或離線環境的 mirror</span>
+</span></code></pre></div>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>rodeo<span class="w"> </span>up<span class="w"> </span>--yes<span class="w"> </span>--profile<span class="w"> </span>harvester<span class="w"> </span>--target<span class="w"> </span>aws<span class="w"> </span>--instance-tier<span class="w"> </span>recommended
+</span></code></pre></div>
+<p><strong>主機執行的是哪一版 rodeo-cli（<code>--ref</code> / <code>provider.ref</code>）。</strong>Instance
+會用 GitHub 上的 <code>install.sh</code> 自行 bootstrap，你本機的工作目錄
+永遠不會傳到那裡。預設情況下，bootstrap <strong>只在沒有 <code>rodeo</code> 時</strong>
+執行，所以主機會停留在它第一次安裝時的程式碼上，就像
+<code>clean --refresh</code> 在沒被要求時不會變更已固定版本主機的版本一樣。</p>
+<p>傳入一個 ref 就能改變這個行為：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>rodeo<span class="w"> </span>up<span class="w"> </span>--target<span class="w"> </span>aws<span class="w"> </span>--ref<span class="w"> </span>main<span class="w">         </span><span class="c1"># 取得 bootstrap 之後推送的 commit</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>rodeo<span class="w"> </span>up<span class="w"> </span>--target<span class="w"> </span>aws<span class="w"> </span>--ref<span class="w"> </span>v0.15.0<span class="w">      </span><span class="c1"># 固定在某個 release</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>rodeo<span class="w"> </span>up<span class="w"> </span>--target<span class="w"> </span>aws<span class="w"> </span>--ref<span class="w"> </span>feat/my-fix<span class="w">  </span><span class="c1"># 在真實主機上測試某個 branch</span>
+</span></code></pre></div>
+<p>指定 ref 會讓 bootstrap <strong>每次都</strong>執行，並把主機的
+checkout 硬性重設到該 ref（<code>install.sh --ref</code>），這是讓剛推送的
+commit 進到既有主機的唯一方法。安裝程式本身也從同一個
+ref 抓取，所以 <code>install.sh</code> 與它安裝的程式碼不會不一致。明確指定的
+<code>provider.install_url</code> 會原樣使用：用於 fork 或離線環境的 mirror，
+而 ref 仍然會傳給它。<code>--ref</code> 優先於 <code>provider.ref</code>；無效的
+ref 會在啟動任何 instance <strong>之前</strong>被拒絕，所以打錯字不會有任何代價。
+<code>--ref</code> 只在筆電是 AWS 控制端時有效；其他情況下
+會發出警告並忽略。</p>
+<p>要在不編輯 plan 的情況下測試 fork，請在執行 <code>rodeo</code> 的地方
+設定環境變數：</p>
+<table>
+<thead>
+<tr>
+<th>變數</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>RODEO_REPO</code></td>
+<td><code>install.sh</code> clone 與更新來源的 git URL；會傳給遠端的 bootstrap。GitHub URL 也會讓預設的安裝 URL 指向該 repository 的 <code>install.sh</code></td>
+</tr>
+<tr>
+<td><code>RODEO_INSTALL_URL_TEMPLATE</code></td>
+<td>含 <code>{ref}</code> 占位符的 install.sh URL，用於非 GitHub 的 mirror</td>
+</tr>
+</tbody>
+</table>
+<p>設定的 <code>install_url</code> 仍然優先於這兩者。Fleet 也有相同的機制，
+請見 <a href="../../fleet/#which-rodeo-cli-the-hosts-run"><code>fleet deploy --ref</code> / <code>lab.ref</code></a>。</p>
+<p><strong>AWS API 帳密</strong>（boto3：絕不放在 plan 裡）：<code>~/.aws/credentials</code> /
+<code>AWS_PROFILE</code>，<strong>或</strong> <code>AWS_ACCESS_KEY_ID</code> + <code>AWS_SECRET_ACCESS_KEY</code>
+（+ 選填的 <code>AWS_SESSION_TOKEN</code>）。AWS CLI 是選用的。<code>rodeo up</code> 會在建立任何資源之前
+檢查它們（<code>sts get-caller-identity</code>），缺少或過期時就會停止。</p>
+<p><strong>AMI 的選擇比看起來更重要。</strong>預設是 SLES 16
+<strong>pay-as-you-go</strong>（由 SUSE 透過 Amazon 發布），它和其他選項
+不能互換：</p>
+<ul>
+<li><strong>openSUSE Leap 16</strong> 是 Marketplace 產品，它的上架條件不允許
+  第 7 代 Intel instance type。nested virtualisation 偏偏就需要這些，
+  所以 Leap 除了 <code>*.metal</code> 之外，無法在任何類型上跑 nested lab。</li>
+<li><strong>SLES BYOS</strong> 映像允許 <code>i7i</code>，但不附訂閱，所以 zypper
+  沒有 repo，<code>install-deps</code> 會失敗。rodeo 不會幫主機註冊。</li>
+</ul>
+<p>PAYG 可以避開這兩個陷阱，代價是在 <code>i7i.8xlarge</code> 上每小時約 $0.125 的授權附加費。
+不需要訂閱 Marketplace 或額外啟用。</p>
+<p><strong>SSH / root：</strong>新的 instance 會拿到 cloud-init UserData，為 <strong>root</strong> 安裝受管理的
+公鑰，並為 <code>ssh_user</code>（SLES 16 上是 <code>ec2-user</code>）設定<strong>免密碼 sudo</strong>。
+遠端的 <code>rodeo up</code> 以 <code>sudo -n</code> 執行，所以絕不會跳出提示。<code>rodeo ssh primary</code>
+或 <code>rodeo ssh primary/rancher</code> 使用同一把受管理的金鑰。</p>
+<h3 id="provider-when-deployment_target-gcp"><code>provider</code>（<code>deployment_target: gcp</code> 時）<a class="headerlink" href="#provider-when-deployment_target-gcp" title="Permanent link">&para;</a></h3>
+<p><strong><code>rodeo up --target gcp</code> 可以不寫這個區塊。</strong>用
+<code>gcloud auth application-default login</code> 登入一次之後，任何 profile 都可以用
+<code>rodeo up --profile &lt;name&gt; --target gcp</code> 部署。缺少的欄位會自動補上，並寫回
+<code>rodeo-plan.yaml</code>：</p>
+<table>
+<thead>
+<tr>
+<th>欄位</th>
+<th>預設值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>type</code></td>
+<td><code>gcp</code></td>
+</tr>
+<tr>
+<td><code>project</code></td>
+<td><code>$RODEO_GCP_PROJECT</code>／<code>$GOOGLE_CLOUD_PROJECT</code>，否則用 application default credentials 的 quota project，再否則用 <code>gcloud config get-value project</code></td>
+</tr>
+<tr>
+<td><code>region</code></td>
+<td><code>$RODEO_GCP_REGION</code>，否則 <code>europe-west4</code>（歐盟唯一提供所有等級機型的 region）</td>
+</tr>
+<tr>
+<td><code>zone</code></td>
+<td>該 region 中第一個提供此機型的 zone；某個 zone 容量不足時改用下一個</td>
+</tr>
+<tr>
+<td><code>instance_type</code></td>
+<td>profile 的 <code>recommended</code> 等級（見下表）</td>
+</tr>
+<tr>
+<td><code>image</code></td>
+<td><code>suse-cloud</code> 中最新的 <code>sles-16-1-x86-64</code>（SLES 16.1 pay-as-you-go）。用 <code>image_family</code>／<code>image_project</code> 指定其他 family</td>
+</tr>
+<tr>
+<td><code>ssh_user</code></td>
+<td><code>rodeo</code>（由 guest agent 依 <code>ssh-keys</code> metadata 中的 lab key 建立，具備免密碼 sudo）</td>
+</tr>
+<tr>
+<td><code>network</code>／<code>subnetwork</code></td>
+<td>兩者都是 <code>rodeo-&lt;region&gt;</code>，第一次使用時建立（10.90.0.0/20）。要用自己的 VPC 就設定這兩個欄位</td>
+</tr>
+<tr>
+<td><code>allowed_cidrs</code></td>
+<td>這台機器的公開 IP（<code>/32</code>）</td>
+</tr>
+<tr>
+<td><code>boot_disk_gb</code></td>
+<td><code>-lssd</code> 機型為 100；沒有 local SSD 的機型為 plan 中 guest 磁碟的總和加 60</td>
+</tr>
+<tr>
+<td><code>service_account</code></td>
+<td><code>default</code>（project 的 compute service account），只有 <code>userinfo.email</code> scope</td>
+</tr>
+<tr>
+<td><code>ttl_hours</code></td>
+<td><code>6</code>：自動銷毀計時</td>
+</tr>
+</tbody>
+</table>
+<p>rodeo 建立的資源全部都有 <code>managed-by=rodeo</code> 與 <code>rodeo-workshop=&lt;lab&gt;</code> label：</p>
+<ul>
+<li><strong>VM</strong>，啟用 <code>enableNestedVirtualization</code>。GCE 上只有 Intel 系列能跑 nested KVM
+  （C4、N4、N2、C3、Z3）；AMD、Arm 與 E2 機型會被拒絕。</li>
+<li><strong>一條防火牆規則</strong> <code>rodeo-&lt;lab&gt;</code>，對 <code>allowed_cidrs</code> 開放 22、8443 與 30002 埠；
+  你的 IP 改變時會重新調整範圍，最後一台 instance 刪除時一併刪除。</li>
+<li><strong>自動銷毀計時是 GCP 原生功能</strong>：<code>scheduling.maxRunDuration</code> 搭配
+  <code>instanceTerminationAction: DELETE</code>。時間到時 Google 會刪除 VM 與它的磁碟，
+  即使你的筆電已經關機也一樣。</li>
+<li><strong>VM 上的 service account。</strong>SLES pay-as-you-go 用 VM 的 identity token
+  註冊 repo。沒有 service account 就沒有 token，zypper 也就沒有 repo。</li>
+</ul>
+<p><strong>各等級的機型</strong>（暫不提供 bare metal：最小規格就是 192 vCPU，每小時約 $9）：</p>
+<table>
+<thead>
+<tr>
+<th>等級</th>
+<th>系列</th>
+<th>範例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>budget</code></td>
+<td>N4 + Hyperdisk Balanced（沒有 local SSD，儲存池放在開機磁碟上）</td>
+<td><code>n4-standard-16</code></td>
+</tr>
+<tr>
+<td><code>recommended</code></td>
+<td>C4 <code>-lssd</code>（本機 NVMe）</td>
+<td><code>c4-standard-16-lssd</code>；Harvester 用 <code>c4-standard-32-lssd</code></td>
+</tr>
+<tr>
+<td><code>performance</code></td>
+<td>更大或高記憶體的 C4 <code>-lssd</code></td>
+<td><code>c4-highmem-32-lssd</code></td>
+</tr>
+</tbody>
+</table>
+<p>Local SSD 以 375 GiB 的 NVMe 磁碟提供，超過 8 vCPU 的機型會有好幾顆
+（<code>c4-standard-32-lssd</code> 有 5 顆）。<code>kvm_host</code> 階段會把它們組成一個 RAID0 儲存池，
+作為 <code>image_dir</code>。VM 停止後資料就會消失，和 AWS 的 instance store 一樣。</p>
+<h3 id="resources"><code>resources</code><a class="headerlink" href="#resources" title="Permanent link">&para;</a></h3>
+<p>每台 VM 的大小。所有欄位都是每個節點的值（不是總和）。</p>
+<table>
+<thead>
+<tr>
+<th>欄位</th>
+<th>單位</th>
+<th>最小值</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>memory_mib</code></td>
+<td>MiB</td>
+<td>Harvester 為 12288（12 GiB）</td>
+<td>Harvester 至少需要 12 GiB；建議 16 GiB</td>
+</tr>
+<tr>
+<td><code>vcpu</code></td>
+<td>執行緒</td>
+<td>4</td>
+<td>在啟用 hyper-threading 的主機上，每個執行緒都算一個</td>
+</tr>
+<tr>
+<td><code>disk_gb</code></td>
+<td>GiB</td>
+<td><strong>Harvester 為 320</strong></td>
+<td>不論磁碟多大，Elemental 的持久分割區都固定佔掉至少 150 GiB；低於約 250 時空間會不夠用，containerd 就會失敗；其餘空間給 Longhorn 自己的分割區，所以磁碟越大，Longhorn 的空間就越多</td>
+</tr>
+</tbody>
+</table>
+<p>只有在拓撲包含 Rancher VM 時才會用到 <code>rancher</code> 區塊（請見 <code>definition.yaml</code>）。</p>
+<h3 id="credentials"><code>credentials</code><a class="headerlink" href="#credentials" title="Permanent link">&para;</a></h3>
+<p>所有帳密值都必須使用 <code>??</code> 占位符。plan 檔案中的明文密碼會被 <code>validate_config()</code> 拒絕。</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>harvester_os_password</code></td>
+<td>Harvester 節點的作業系統登入（<code>rancher</code> 使用者的 SSH + console）</td>
+</tr>
+<tr>
+<td><code>harvester_admin_password</code></td>
+<td>Harvester 網頁介面中的 <code>admin</code> 使用者</td>
+</tr>
+<tr>
+<td><code>rancher_admin_password</code></td>
+<td>Rancher 網頁介面中的 <code>admin</code> 使用者</td>
+</tr>
+<tr>
+<td><code>harvester_token</code></td>
+<td>RKE2 叢集 join token：內部使用；不要分享給學員</td>
+</tr>
+</tbody>
+</table>
+<p><code>rodeo up</code> 與 <code>rodeo init</code> 會產生隨機值，並寫入 <code>~/.rodeo/secrets.yaml</code>（chmod 600）。絕對不要 commit 這個檔案。</p>
+<h3 id="network"><code>network</code><a class="headerlink" href="#network" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>欄位</th>
+<th>預設值</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>vip</code></td>
+<td><code>192.168.122.10</code></td>
+<td>Harvester 叢集 VIP。必須與節點在同一個 <code>/24</code>，但在 DHCP 範圍之外。</td>
+</tr>
+</tbody>
+</table>
+<p>大部分網路拓撲（CIDR、gateway、DNS 網域、每個節點的 IP）都在 <code>definition.yaml</code>。</p>
+<h3 id="storage"><code>storage</code><a class="headerlink" href="#storage" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>欄位</th>
+<th>預設值</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>device</code></td>
+<td><code>""</code></td>
+<td>單一磁碟的主機請留空。設為 <code>/dev/nvme1n1</code>（或類似的裝置）以專用第二顆磁碟。請用 <code>lsblk</code> 確認。</td>
+</tr>
+<tr>
+<td><code>image_dir</code></td>
+<td><code>/var/lib/libvirt/images</code></td>
+<td>libvirt 存放 VM 磁碟與 ISO 的位置。完整 lab 需要 600–900 GiB 的可用空間。</td>
+</tr>
+</tbody>
+</table>
+<h3 id="libvirt"><code>libvirt</code><a class="headerlink" href="#libvirt" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>欄位</th>
+<th>預設值</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>uri</code></td>
+<td><code>qemu:///system</code></td>
+<td>libvirt 連線 URI：<code>qemu:///system</code>、<code>qemu:///session</code>，或以 <code>qemu+ssh</code>/<code>qemu+tls</code>/<code>qemu+tcp</code> 連到 <code>[user@]host[:port]</code>（可用加上中括號的 IPv6 位址）再加上 <code>/system</code> 或 <code>/session</code>。不能有 query string：<code>?keyfile=</code>、<code>?known_hosts=</code>、<code>?no_verify=</code> 之類的都會被拒絕（有些會執行指令）；SSH 選項請改放在 <code>~/.ssh/config</code>。</td>
+</tr>
+<tr>
+<td><code>disk_cache</code></td>
+<td>依目標而定</td>
+<td>guest qcow2 的 <code>cache=</code> 模式。baremetal 預設 <code>none</code>，<code>deployment_target: instruqt</code> 時預設 <code>writeback</code>（nested 雲端 I/O 較好）。可用值：<code>none</code>、<code>writethrough</code>、<code>writeback</code>、<code>unsafe</code>、<code>directsync</code>。</td>
+</tr>
+<tr>
+<td><code>disk_io</code></td>
+<td>依目標而定</td>
+<td>guest qcow2 的 <code>io=</code> 模式。baremetal 預設 <code>native</code>，Instruqt 上預設 <code>threads</code>。可用值：<code>native</code>、<code>threads</code>、<code>io_uring</code>。</td>
+</tr>
+</tbody>
+</table>
+<p>不用編輯 plan，在部署時覆寫：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>rodeo<span class="w"> </span>deploy<span class="w"> </span>-P<span class="w"> </span>libvirt.disk_cache<span class="o">=</span>writeback<span class="w"> </span>-P<span class="w"> </span>libvirt.disk_io<span class="o">=</span>threads
+</span></code></pre></div>
+<h3 id="versions"><code>versions</code><a class="headerlink" href="#versions" title="Permanent link">&para;</a></h3>
+<p>預設值依引擎類型而定：</p>
+<table>
+<thead>
+<tr>
+<th>欄位</th>
+<th><code>suse-virt</code></th>
+<th><code>rancher</code> / <code>rancher-test</code></th>
+<th><code>suse-edge</code></th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>harvester</code></td>
+<td><code>"1.8.2"</code></td>
+<td></td>
+<td></td>
+<td>Harvester ISO；沒有固定 sha512 的版本 rodeo 會拒絕（請設定 <code>versions.harvester_iso_checksum: sha512:&lt;digest&gt;</code>）。</td>
+</tr>
+<tr>
+<td><code>rancher</code></td>
+<td><code>"2.14.5"</code></td>
+<td><code>"2.15.2"</code></td>
+<td><code>"2.15.1"</code></td>
+<td>Rancher Prime Helm chart。</td>
+</tr>
+<tr>
+<td><code>k3s</code></td>
+<td><code>"v1.35.3+k3s1"</code></td>
+<td><code>"v1.36.4+k3s1"</code></td>
+<td><code>"v1.36.3+k3s1"</code></td>
+<td>Rancher VM 上的 K3s。</td>
+</tr>
+<tr>
+<td><code>cert_manager</code></td>
+<td><code>"v1.20.1"</code></td>
+<td><code>"v1.21.2"</code></td>
+<td><code>"v1.20.1"</code></td>
+<td>cert-manager Helm chart。</td>
+</tr>
+<tr>
+<td><code>downstream_k3s</code></td>
+<td></td>
+<td><code>"v1.36.4+k3s1"</code></td>
+<td></td>
+<td>Rancher 建立的 K3s 叢集的 Kubernetes 版本。</td>
+</tr>
+<tr>
+<td><code>downstream_rke2</code></td>
+<td></td>
+<td><code>"v1.36.4+rke2r1"</code></td>
+<td></td>
+<td>Rancher 建立的 RKE2 叢集的 Kubernetes 版本。</td>
+</tr>
+<tr>
+<td><code>elemental_operator</code>, <code>elemental_operator_crds</code></td>
+<td></td>
+<td></td>
+<td><code>"1.9.2"</code></td>
+<td>Elemental Operator chart。</td>
+</tr>
+<tr>
+<td><code>elemental_ui_extension</code></td>
+<td></td>
+<td></td>
+<td><code>"3.0.3"</code></td>
+<td>Rancher 中的 Elemental UI extension。</td>
+</tr>
+<tr>
+<td><code>eib</code></td>
+<td></td>
+<td></td>
+<td><code>"1.3.4"</code></td>
+<td>Edge Image Builder 容器。</td>
+</tr>
+</tbody>
+</table>
+<p><code>downstream_k3s</code> / <code>downstream_rke2</code> 必須是該 Rancher release 支援的版本（Rancher 2.15.2：最高到 v1.36）。</p>
+<h3 id="parameters"><code>parameters</code><a class="headerlink" href="#parameters" title="Permanent link">&para;</a></h3>
+<p>選填的 Jinja2 樣板變數對應表。用來避免在檔案中重複相同的值。部署時可以用 <code>-P key=value</code> 或 <code>--paramfile overrides.yaml</code> 覆寫。</p>
+<hr />
+<h2 id="cli-overrides">CLI 覆寫<a class="headerlink" href="#cli-overrides" title="Permanent link">&para;</a></h2>
+<p>不用編輯檔案，你可以在部署時覆寫任何 plan 值：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># 單一值</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>rodeo<span class="w"> </span>deploy<span class="w"> </span>-P<span class="w"> </span>resources.harvester.memory_mib<span class="o">=</span><span class="m">20480</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="c1"># 多個值</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>rodeo<span class="w"> </span>deploy<span class="w"> </span>-P<span class="w"> </span>resources.harvester.vcpu<span class="o">=</span><span class="m">10</span><span class="w"> </span>-P<span class="w"> </span>versions.harvester<span class="o">=</span><span class="m">1</span>.5.0
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="c1"># 從檔案（深度合併到 plan 之上）</span>
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>rodeo<span class="w"> </span>deploy<span class="w"> </span>--paramfile<span class="w"> </span>big-lab.yaml
+</span></code></pre></div>
+<p><strong>優先順序（由低到高）：</strong>profile 預設值 → <code>rodeo-plan.yaml</code> → <code>--paramfile</code> → <code>-P</code></p>
+<hr />
+<h2 id="story-workshop-narrative-languages-and-variants">story：workshop 敘事、語言與變體<a class="headerlink" href="#story-workshop-narrative-languages-and-variants" title="Permanent link">&para;</a></h2>
+<p><code>rodeo story render</code> 會從 lab 的 <code>story/</code> 目錄中帶有 rmstory 標記的 markdown，
+產生這個 lab 給學員的講義：</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>&lt;lab&gt;/story/*.md       帶標記的 markdown 原始檔（以英文撰寫）
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>&lt;lab&gt;/story/stories/   story 變體索引，每個變體一個 &lt;id&gt;.yaml
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>&lt;lab&gt;/story/strings/   翻譯儲存區（rmstory 檔案系統後端）
+</span></code></pre></div>
+<p>選填的 <code>story:</code> 區塊設定預設值（CLI 旗標可覆寫）：</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nt">story</span><span class="p">:</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">  </span><span class="nt">language</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">es</span><span class="w">          </span><span class="c1"># 目標語言（預設 en = 原文，不翻譯）</span>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">  </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">villain-arc</span><span class="w">       </span><span class="c1"># 要組合的 story 變體（預設：所有段落）</span>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">  </span><span class="nt">engine</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">gemini</span><span class="w">        </span><span class="c1"># 用來以機器補齊缺少翻譯的 rmstory 引擎</span>
+</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="w">  </span><span class="nt">engine_env</span><span class="p">:</span><span class="w">           </span><span class="c1"># 引擎的帳密：?? secret 會被解析</span>
+</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="w">    </span><span class="nt">GEMINI_API_KEY</span><span class="p">:</span><span class="w"> </span><span class="s">"??gemini_api_key"</span>
+</span></code></pre></div>
+<p>部署資訊（fact）會以 Jinja 運算式代入渲染後的文字中，
+請把它們寫在不變段落（invariant span）裡，翻譯才永遠不會動到它們：
+<code>&lt;span no&gt;{{ rancher_url }}&lt;/span&gt;</code>。可用的 fact：<code>name</code>、<code>type</code>、
+<code>language</code>、<code>vip</code>、<code>harvester_url</code>、<code>rancher_ip</code>、<code>rancher_url</code>、
+<code>rancher_nodeport</code>、<code>dns_domain</code>、<code>gateway</code>、<code>vms</code>、<code>vm_names</code>、<code>credentials</code>。</p>
+<p>以原文語言渲染且不指定變體時，不需要安裝任何東西；
+翻譯與變體組合會用到 <code>rmstory</code> 系統套件
+（<code>sudo rodeo install-deps --story</code>：發行版套件，絕不用 PyPI）。</p>
+<p>部署後的成功畫面也使用同一套機制：每個 profile 都附有一個
+帶標記的 <code>success.md</code>，lab 可以用 <code>story/success.md</code> 覆寫它，而
+<code>story.language</code> 會將它在地化。翻譯出問題時，一律退回
+英文原文：成果畫面永遠不會失敗。</p>
+<hr />
+<h2 id="content-the-labs-instructions-apart-from-its-infrastructure">content：lab 的操作說明，與基礎架構分開<a class="headerlink" href="#content-the-labs-instructions-apart-from-its-infrastructure" title="Permanent link">&para;</a></h2>
+<p>plan 可以指定它的操作說明放在哪裡，而不是把說明放在
+profile 裡。這樣環境（<code>rodeo up</code>）與操作說明（<code>rodeo content
+apply</code>）就能分開部署：更新操作說明永遠不會重新部署
+lab。</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="nt">content</span><span class="p">:</span>
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">  </span><span class="nt">repo</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://github.com/&lt;owner&gt;/&lt;repo&gt;</span><span class="w">   </span><span class="c1"># https、公開、不含帳密</span>
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">  </span><span class="nt">ref</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">main</span><span class="w">             </span><span class="c1"># branch、tag 或 commit（預設：預設 branch）</span>
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">  </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">story</span><span class="w">           </span><span class="c1"># repository 中的目錄（預設：根目錄）</span>
+</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="w">  </span><span class="nt">format</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rmstory</span><span class="w">       </span><span class="c1"># rmstory | instruqt | markdown</span>
+</span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="w">  </span><span class="nt">facts</span><span class="p">:</span><span class="w">                </span><span class="c1"># instruqt：[[ Instruqt-Var key="..." ]] 的值</span>
+</span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="w">    </span><span class="nt">SMLM_URL</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://smlm.rodeo.lab</span>
+</span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="w">  </span><span class="nt">replace</span><span class="p">:</span><span class="w">              </span><span class="c1"># 渲染時逐字替換的文字</span>
+</span><span id="__span-11-9"><a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="w">    </span><span class="s">"smlm.example.com"</span><span class="p p-Indicator">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">smlm.rodeo.lab</span>
+</span></code></pre></div>
+<p><code>rodeo content apply</code>（在 lab 目錄中執行）會把 content 抓到
+<code>&lt;lab&gt;/content/</code>、在 <code>&lt;lab&gt;/content.lock</code> 記錄 commit，並把
+指南渲染到 <code>&lt;lab&gt;/guide/</code>（只有擁有者可讀的檔案：fact 可能包含 lab 密碼）：</p>
+<p><strong>語言 branch。</strong>content repository 把原文語言放在
+預設 branch，每個翻譯放在以該語言命名的 branch
+（<code>es</code>、<code>pt-br</code>……）。沒有 <code>ref</code> 時，如果 plan 的 <code>story.language</code> 不是
+原文語言（<code>en</code>），就會使用以該語言命名的 branch。如果
+repository 沒有這樣的 branch，操作說明會取自預設 branch，並且
+rodeo 會發出警告。無論是使用語言 branch，還是把 <code>ref:</code> 設成它，rodeo 也會在
+該 branch 落後預設 branch 時發出警告：也就是預設 branch 有
+語言 branch 尚未納入的 commit。<code>rmstory/</code>、
+<code>rmstory-stories/</code>、<code>story/</code> 與 <code>.github/</code> 底下的變更不算。catalog rodeo
+（<code>rodeo new &lt;name&gt; --from &lt;repo&gt;@&lt;lang&gt;</code>，或 catalog 的 <code>ref:</code>）在該 ref 是它 plan 的
+<code>story.language</code> 時，也會收到同樣的警告。</p>
+<p><code>rodeo story check [DIR]</code> 會在 content repository 的 clone 上執行這項檢查。
+它會為每個語言 branch 列出該 branch 缺少的 commit，並在
+有 branch 落後時以 1 結束，所以可以當作 CI 的關卡（請 checkout 完整歷史，例如
+<code>fetch-depth: 0</code>）。沒有 <code>--language</code> 時，它會檢查每個名稱像
+兩個字母語言標籤的 branch。當原文 branch 不是 clone 的預設 branch 時，用 <code>--source</code> 指定它。</p>
+<table>
+<thead>
+<tr>
+<th>format</th>
+<th>從 <code>&lt;path&gt;</code> 讀取</th>
+<th>指南</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>rmstory</code></td>
+<td><code>*.md</code>、<code>chapters.yaml</code>、<code>stories/</code>、<code>strings/</code></td>
+<td><code>guide.md</code>，渲染方式與 <code>rodeo story render</code> 相同</td>
+</tr>
+<tr>
+<td><code>instruqt</code></td>
+<td><code>&lt;challenge&gt;/assignment.md</code></td>
+<td>每個 challenge 一個 <code>&lt;challenge&gt;.md</code>，套用 <code>facts</code> 與 <code>replace</code></td>
+</tr>
+<tr>
+<td><code>markdown</code></td>
+<td><code>*.md</code></td>
+<td>每個檔案一份，套用 <code>replace</code></td>
+</tr>
+</tbody>
+</table>
+<p>在 repository 的根目錄（不論 <code>path</code> 指向哪裡），content 也可以帶有
+profile 結構中的 <code>checks/</code> 與 <code>custom/scripts/</code>：</p>
+<ul>
+<li><code>checks/</code> 會安裝到 <code>/opt/rodeo/&lt;plan name&gt;/checks/</code>，擁有者為 root，
+  主機上每個使用者（包含學員的帳號）都可以讀取與執行，
+  並取代先前的版本。安裝需要 root；沒有 root 時
+  指南仍會渲染，指令也會說明如何重新執行。<code>rodeo clean</code>
+  會移除它（<code>rodeo clean --all</code>：移除每個 plan 的）。</li>
+<li><code>custom/scripts/</code> 放的是設定腳本：其中可執行的腳本會依排序順序
+  在主機上、從該目錄執行，使用的環境與 profile 自己的
+  <code>custom/scripts/</code> 相同（<code>KUBECONFIG</code>、<code>RODEO_PLAN_NAME</code>、<code>RODEO_CONFIG_DIR</code>、
+  <code>RODEO_LAB_DIR</code>），另外加上 <code>RODEO_CONTENT_DIR</code>，也就是抓下來的 repository。它們在
+  每次 apply 時都會執行，所以請寫成 可重複執行。每個腳本都會印出自己的輸出；某個腳本失敗
+  不會讓其他腳本停止，但 <code>rodeo content apply</code> 最後會以 1 結束。</li>
+</ul>
+<p>腳本以執行 rodeo 的使用者身分執行（在 <code>rodeo up</code> 底下是 root），內容取自
+<code>ref</code> 指向的版本：repository 不是你的時，請固定在某個 tag 或 commit。</p>
+<p><code>rodeo up</code> 會在部署成功後、在 profile 自己的
+<code>custom/scripts/</code> 之後套用它；那裡的失敗只會發出警告。如果 content 腳本與
+profile 自己的 <code>custom/scripts/</code> 中某個腳本同名，就會在那裡被略過，因為 profile 的版本
+已經執行過了。在 <code>deployment_target: instruqt</code> 上，
+對於會略過 profile 自訂腳本的引擎（那些腳本應該放進預先建好的映像），<code>rodeo up</code> 也會略過這些設定腳本；
+<code>rodeo content apply</code> 則會執行它們。<code>rodeo content show</code> 會印出這個區塊、最後一次抓取的 commit、
+設定腳本，以及 checks 安裝在哪裡。當 lab 沒有自己的 <code>story/</code> 時，
+<code>rodeo story render</code> 讀取的也是 rmstory content。
+<code>workshop:</code> 區塊（lab-in-a-box lab 的 Instruqt track）與
+profile 內的 <code>story/</code> 都照舊運作。</p>
+<hr />
+<h2 id="lab_in_a_box-deploying-with-or-exporting-to-lab-in-a-box">lab_in_a_box：用 lab-in-a-box 部署，或匯出成 lab-in-a-box<a class="headerlink" href="#lab_in_a_box-deploying-with-or-exporting-to-lab-in-a-box" title="Permanent link">&para;</a></h2>
+<p><a href="https://github.com/SUSE-Technical-Marketing/lab-in-a-box">lab-in-a-box</a> 會從
+<code>lab.json</code> 建立 VM 並執行外掛（SUSE Multi-Linux Manager、Uyuni、NeuVector……）。rodeo 會從 plan 與 definition 渲染出這個檔案，
+而 plan 與 definition 仍然是唯一的資料來源。用法有兩種：</p>
+<ul>
+<li><code>type: lab-in-a-box</code> 透過它部署。rodeo 會準備主機（套件、
+  libvirt 網路與 DNS、<code>exposed_services</code> 的防火牆轉送、基礎
+  映像、secret），安裝 lab-in-a-box（除非
+  <code>source.ref</code> 另有指定，否則安裝最新 release），然後執行它的 <code>setup_lab.py</code>。各階段為
+  <code>kvm_host</code>、<code>labinabox_host</code>、<code>labinabox</code> 與 <code>custom_scripts</code>。
+  <code>rodeo clean</code> 會執行它的 <code>destroy_lab.py</code>。</li>
+<li><code>rodeo export --format lab-in-a-box</code> 只會寫出 <code>lab.json</code>，給你自己運作的
+  lab-in-a-box automation node 使用。</li>
+</ul>
+<p><code>lab_in_a_box:</code> 區塊放的是只存在於 lab-in-a-box 端的設定：</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="nt">lab_in_a_box</span><span class="p">:</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">  </span><span class="nt">source</span><span class="p">:</span><span class="w">                               </span><span class="c1"># 僅 type: lab-in-a-box，要執行哪個 lab-in-a-box</span>
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">    </span><span class="nt">repo</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://github.com/SUSE-Technical-Marketing/lab-in-a-box</span>
+</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">    </span><span class="nt">ref</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">latest</span><span class="w">                         </span><span class="c1"># latest（最高版本 tag，預設）、tag、branch 或 SHA</span>
+</span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="w">  </span><span class="nt">parallel</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">4</span><span class="w">                           </span><span class="c1"># setup_lab.py --parallel=N</span>
+</span><span id="__span-12-6"><a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="w">  </span><span class="nt">root_password</span><span class="p">:</span><span class="w"> </span><span class="s">"??universal_pwd"</span><span class="w">      </span><span class="c1"># 每台 VM 的 root 密碼</span>
+</span><span id="__span-12-7"><a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="w">  </span><span class="nt">images</span><span class="p">:</span><span class="w">                               </span><span class="c1"># 基礎映像：在 lab.json 中變成 SOURCE_IMAGE/SOURCE_SHA256；</span>
+</span><span id="__span-12-8"><a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="w">                                        </span><span class="c1"># lab-in-a-box 會下載並驗證到 ISO_LOC</span>
+</span><span id="__span-12-9"><a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ubuntu-24.04-server-cloudimg-amd64.img</span>
+</span><span id="__span-12-10"><a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="w">      </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img</span>
+</span><span id="__span-12-11"><a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="w">      </span><span class="nt">sha256_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://cloud-images.ubuntu.com/releases/24.04/release/SHA256SUMS</span><span class="w">   </span><span class="c1"># 或 sha256: &lt;hex&gt;</span>
+</span><span id="__span-12-12"><a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a><span class="w">  </span><span class="nt">nodes</span><span class="p">:</span><span class="w">                                </span><span class="c1"># 每個節點的 lab.json key，以節點短名稱為 key</span>
+</span><span id="__span-12-13"><a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a><span class="w">    </span><span class="nt">ubuntu2404lts</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">SOURCE_IMAGE</span><span class="p">:</span><span class="w"> </span><span class="nv">ubuntu-24.04-server-cloudimg-amd64.img</span><span class="p p-Indicator">,</span><span class="nt"> ssh_pwauth</span><span class="p">:</span><span class="w"> </span><span class="s">"true"</span><span class="p p-Indicator">}</span>
+</span><span id="__span-12-14"><a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a><span class="w">    </span><span class="nt">smlm</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">SOURCE_IMAGE</span><span class="p">:</span><span class="w"> </span><span class="nv">smlm.qcow2</span><span class="p p-Indicator">,</span><span class="nt"> addons</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">smlm</span><span class="p p-Indicator">]}</span>
+</span><span id="__span-12-15"><a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a><span class="w">  </span><span class="nt">iso_image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">openSUSE-Leap-15.6.qcow2</span><span class="w">   </span><span class="c1"># 沒有自己映像的節點所用的共同基礎映像</span>
+</span><span id="__span-12-16"><a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a><span class="w">  </span><span class="nt">config_method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">cloud-init</span><span class="w">             </span><span class="c1"># cloud-init（預設） | virt_customize | ""（ignition/combustion）</span>
+</span><span id="__span-12-17"><a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a><span class="w">  </span><span class="nt">cluster_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mgmt</span><span class="w">                    </span><span class="c1"># kcluster 名稱（也是它的 DNS 紀錄：&lt;name&gt;.&lt;domain&gt;）</span>
+</span><span id="__span-12-18"><a id="__codelineno-12-18" name="__codelineno-12-18" href="#__codelineno-12-18"></a><span class="w">  </span><span class="nt">cluster_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">k3s</span><span class="w">                     </span><span class="c1"># k3s（預設） | rke2</span>
+</span><span id="__span-12-19"><a id="__codelineno-12-19" name="__codelineno-12-19" href="#__codelineno-12-19"></a><span class="w">  </span><span class="nt">clu_rel</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">stable</span><span class="w">                       </span><span class="c1"># 安裝 channel，精確的版本固定不會帶過去</span>
+</span><span id="__span-12-20"><a id="__codelineno-12-20" name="__codelineno-12-20" href="#__codelineno-12-20"></a><span class="w">  </span><span class="nt">addons</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">rancher</span><span class="p p-Indicator">]</span><span class="w">                     </span><span class="c1"># 覆寫推導出來的 kcluster install_&lt;addon&gt; 清單</span>
+</span><span id="__span-12-21"><a id="__codelineno-12-21" name="__codelineno-12-21" href="#__codelineno-12-21"></a><span class="w">  </span><span class="nt">sections</span><span class="p">:</span><span class="w">                             </span><span class="c1"># 原樣放入 lab.json 的區段（外掛設定）</span>
+</span><span id="__span-12-22"><a id="__codelineno-12-22" name="__codelineno-12-22" href="#__codelineno-12-22"></a><span class="w">    </span><span class="nt">smlm</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">smlm_deployment</span><span class="p">:</span><span class="w"> </span><span class="nv">podman</span><span class="p p-Indicator">,</span><span class="nt"> smlm_admin_pass</span><span class="p">:</span><span class="w"> </span><span class="s">"??smlm_admin_password"</span><span class="p p-Indicator">}</span>
+</span></code></pre></div>
+<p><strong>lab 本身：</strong><code>lab_in_a_box.lab</code> 也可以改為放一整個 lab-in-a-box lab
+（<code>common</code>、以 FQDN 為 key 的 <code>nodes</code>、<code>kclusters</code>、每個外掛一個區段），也就是
+lab-in-a-box lab-builder 編輯的格式。rodeo 會照原樣部署它，只設定
+屬於主機的部分：common 的網路 key 與 <code>lab_name</code>、每個節點的
+<code>BRIDGE</code>、<code>myip</code>、<code>mymac</code> 與 FQDN 網域、kcluster 的 <code>mydomain</code>、映像
+（<code>SOURCE_IMAGE</code>）與 secret。lab 的節點就是 lab 的 VM：
+<code>definition.yaml</code> 有列出的節點會保留該位址，其他節點則在 lab 網路中
+使用其 <code>myip</code> 的主機部分（若該位址空著，否則使用下一個空位址）；lab 沒有列出的
+definition 節點不會被部署。上面的 <code>nodes</code> 與 <code>sections</code>，以及變體中的同名設定，
+都會合併進去。在外掛區段中以 <code>${node_fqdn:&lt;vm&gt;}</code> /
+<code>${node_ip:&lt;vm&gt;}</code> 引用 VM。<code>smlm-workshop</code> 就是用這種方式帶著它的 lab。
+<code>rodeo new &lt;name&gt; --from-lab-json &lt;file&gt;</code> 會從既有的 lab 寫出這樣的 plan
+（請見<a href="../../custom-rodeos/">建立自己的 rodeo</a>）。</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="nt">lab_in_a_box</span><span class="p">:</span>
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">  </span><span class="nt">lab</span><span class="p">:</span>
+</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">    </span><span class="nt">common</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">config_method</span><span class="p">:</span><span class="w"> </span><span class="nv">cloud-init</span><span class="p p-Indicator">}</span>
+</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">    </span><span class="nt">nodes</span><span class="p">:</span>
+</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="w">      </span><span class="nt">smlm.rodeo.lab</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">myip</span><span class="p">:</span><span class="w"> </span><span class="s">"192.168.122.20"</span><span class="p p-Indicator">,</span><span class="nt"> VM_MEM</span><span class="p">:</span><span class="w"> </span><span class="s">"16384"</span><span class="p p-Indicator">,</span><span class="nt"> VM_CPU</span><span class="p">:</span><span class="w"> </span><span class="s">"8"</span><span class="p p-Indicator">,</span><span class="nt"> VM_DSK</span><span class="p">:</span><span class="w"> </span><span class="s">"300"</span><span class="p p-Indicator">,</span>
+</span><span id="__span-13-6"><a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="nt">                       SOURCE_IMAGE</span><span class="p">:</span><span class="w"> </span><span class="nv">smlm.qcow2</span><span class="p p-Indicator">,</span><span class="nt"> addons</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">smlm</span><span class="p p-Indicator">]}</span>
+</span><span id="__span-13-7"><a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="w">    </span><span class="nt">smlm</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">smlm_deployment</span><span class="p">:</span><span class="w"> </span><span class="nv">podman</span><span class="p p-Indicator">,</span><span class="nt"> smlm_admin_pass</span><span class="p">:</span><span class="w"> </span><span class="s">"??smlm_admin_password"</span><span class="p p-Indicator">}</span>
+</span></code></pre></div>
+<p><strong>變體：</strong><code>lab_in_a_box.variants.&lt;name&gt;</code> 會疊加在這個區塊上，
+<code>lab_in_a_box.variant</code> 則選擇其中一個（<code>-P lab_in_a_box.variant=&lt;name&gt;</code>）。在
+疊加時，dict 會合併、<code>null</code> 會刪除一個 key，而 <code>images</code> 依名稱合併
+（<code>remove: true</code> 會移除一個）。變體可以加入 <code>operator_secrets</code>，以及部署時
+記錄的 <code>notice</code>。只會詢問被選中變體的 secret。
+<code>smlm-workshop</code> 用這個機制在「從預先建好的伺服器開機」
+（<code>image</code>）與「從標準 SLES 建置」（<code>scratch</code>）之間切換。</p>
+<p>映像的 <code>url</code> 也可以是一份 mirror 清單，會依序嘗試，並且全部以
+同一個 checksum 驗證。</p>
+<p><strong>Secret：</strong>每個帳密都是一個 <code>??key</code>。plan 引用了但 <code>~/.rodeo/secrets.yaml</code> 缺少的
+一般 <code>??key</code>，<code>rodeo up</code> 會自動產生。列在頂層 <code>operator_secrets:</code>
+底下的 key 是例外：那些是只有你才有的值，例如 SCC regcode 或預先建好映像的密碼，
+<code>rodeo up</code> 會改為詢問你（在 <code>--yes</code> 底下它會停止，並說明要加入哪些）。
+渲染出來的 <code>lab.json</code> 包含解析後的值，所以會以 <code>0600</code> 寫到
+<code>&lt;lab&gt;/.labinabox/</code>。只要還有任何 <code>??</code> 值未解析，部署就會停止。</p>
+<p>要在不編輯 plan 的情況下測試另一個 lab-in-a-box，請設定
+<code>RODEO_LABINABOX_REPO</code> 和/或 <code>RODEO_LABINABOX_REF</code>；它們各自優先於
+對應的 <code>source:</code> key。若要使用本機的 lab-in-a-box checkout，請設定
+<code>RODEO_LABINABOX_PATH=/path/to/lab-in-a-box</code>；它優先於上述所有設定。
+這些變數是在執行 <code>rodeo up</code> 的主機上讀取。當 lab-in-a-box 的來源改變時，
+重新執行會重新安裝它：改用另一個 repo 或 ref，或是本機
+checkout 有新的 commit 或未 commit 的修改。</p>
+<p><strong>既有的 lab-in-a-box 主機：</strong>預設情況下（<code>target.mode: auto</code>），rodeo 會把
+lab-in-a-box 安裝在它執行的主機上。在以下情況，它會改用既有的 lab-in-a-box：該
+主機已經設定好 lab-in-a-box（有一個不是 rodeo 寫的 <code>/etc/lab_creation.cfg</code>），
+或 <code>target.host</code> 指定了一台遠端 automation node：</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="nt">lab_in_a_box</span><span class="p">:</span>
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="w">  </span><span class="nt">target</span><span class="p">:</span>
+</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">    </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">auto</span><span class="w">            </span><span class="c1"># auto | managed | existing</span>
+</span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="w">    </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">automation.example.lab</span><span class="w">   </span><span class="c1"># 遠端 lab-in-a-box 主機（rodeo 的金鑰要在它的 authorized_keys 中）</span>
+</span><span id="__span-14-5"><a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="w">    </span><span class="nt">ssh_user</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">root</span>
+</span><span id="__span-14-6"><a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="w">    </span><span class="nt">libvirt_uri</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">qemu+ssh://root@kvm1.example.lab/system</span><span class="w">   </span><span class="c1"># 它的 hypervisor，用於 status/start/stop</span>
+</span></code></pre></div>
+<p>使用既有的 lab-in-a-box 時，rodeo 會略過 <code>kvm_host</code>，不動那台主機的
+安裝、網路、防火牆與金鑰。lab 必須配合那台主機自己的
+網路：在 <code>definition.yaml</code> 中設定 <code>network.bridge</code>/<code>cidr</code>/<code>gateway</code>/<code>domain</code>，
+其他設定則放在 <code>sections.common</code> 底下（例如 <code>mydns</code>）。</p>
+<p>遠端主機會透過 SSH stdin 收到 <code>lab.json</code>，放在 <code>~/.rodeo-labs/&lt;plan&gt;/</code>（權限
+0600，附有擁有者標記）。<code>setup_lab.py</code> 在那裡執行，輸出會串流
+回來。<code>rodeo clean</code> 會在那裡執行 <code>destroy_lab.py</code>，但只針對帶有這個
+plan 標記的 lab。<code>rodeo ssh &lt;vm&gt;</code> 會經由那台主機跳轉。</p>
+<p>每次部署，不論哪種模式，都會先以已安裝的
+lab-in-a-box 自己的 schema（<code>lab_schema</code>）檢查 <code>lab.json</code>，如果那個
+lab-in-a-box 對這個 plan 來說太舊，就會停止並列出相關欄位。</p>
+<p><strong>用雲端帳號中的 VM 取代 nested KVM：</strong>使用 <code>lab_in_a_box.cloud</code> 時，
+lab-in-a-box 會透過它自己的運算
+後端，在雲端帳號中建立每個節點：aws、gcp、hetzner、alibaba、scaleway、upcloud、ovhcloud、exoscale。此時
+rodeo 主機只負責執行 lab-in-a-box，所以不需要 KVM（筆電或一台小型
+VM 就夠了）：</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="nt">lab_in_a_box</span><span class="p">:</span>
+</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">  </span><span class="nt">iso_image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ami-0123456789abcdef0</span><span class="w">      </span><span class="c1"># provider 的映像（AMI、映像名稱/ID），依 region 而定</span>
+</span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">  </span><span class="nt">cloud</span><span class="p">:</span>
+</span><span id="__span-15-4"><a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="w">    </span><span class="nt">cloudtype</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">aws</span>
+</span><span id="__span-15-5"><a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="w">    </span><span class="nt">account</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">aws-lab</span><span class="w">                    </span><span class="c1"># 帳密檔名稱，每個 lab 一個（clean 會移除它）</span>
+</span><span id="__span-15-6"><a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="w">    </span><span class="nt">settings</span><span class="p">:</span><span class="w">                           </span><span class="c1"># 後端的 key，與 lab-in-a-box 的 README 相同</span>
+</span><span id="__span-15-7"><a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="w">      </span><span class="nt">AWS_REGION</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">eu-north-1</span>
+</span><span id="__span-15-8"><a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a><span class="w">      </span><span class="nt">AWS_ACCESS_KEY_ID</span><span class="p">:</span><span class="w"> </span><span class="s">"??aws_access_key_id"</span>
+</span><span id="__span-15-9"><a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a><span class="w">      </span><span class="nt">AWS_SECRET_ACCESS_KEY</span><span class="p">:</span><span class="w"> </span><span class="s">"??aws_secret_access_key"</span>
+</span><span id="__span-15-10"><a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a><span class="w">  </span><span class="nt">nodes</span><span class="p">:</span>
+</span><span id="__span-15-11"><a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a><span class="w">    </span><span class="nt">vm1</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">cloud_instance_type</span><span class="p">:</span><span class="w"> </span><span class="nv">t3.large</span><span class="p p-Indicator">}</span>
+</span></code></pre></div>
+<p>使用 AWS SSO 登入時，請用 profile 取代金鑰：<code>AWS_PROFILE: &lt;profile&gt;</code>
+（執行 rodeo 的那個使用者的 profile；profile 優先於金鑰）。臨時金鑰
+還需要 <code>AWS_SESSION_TOKEN</code>。</p>
+<p><code>cloudtype: aws</code> 時，lab-in-a-box 會呼叫 <code>aws</code> CLI：<code>sudo rodeo install-deps --aws</code>
+會從 AWS 安裝 AWS CLI v2（會先以 AWS 的金鑰檢查安裝程式的 PGP 簽章），
+CLI 不存在時 <code>rodeo up</code> 會主動提議幫你安裝。接著 preflight
+會向 AWS 查詢 plan 的帳密屬於誰，在沒有帳密、帳密過期或被拒絕時停止部署
+（例如「run <code>aws sso login --profile &lt;profile&gt;</code>」）。</p>
+<p>rodeo 會把帳號寫到 <code>/etc/lab_creation/credentials/&lt;account&gt;.yaml</code>（0600）。
+<code>settings</code> 中的任何 <code>??key</code> 一律會詢問，絕不自動產生。節點不會有靜態
+IP/MAC：由 provider 指派。rodeo 會在部署後讀回這些位址，
+所以 <code>rodeo ssh &lt;vm&gt;</code> 與成功畫面會使用它們。</p>
+<p>省略 <code>settings</code>，就會使用 lab-in-a-box 主機上已經存在的帳號，
+例如用 <code>setup_credentials.py</code> 建立的加密帳號。</p>
+<p><code>rodeo status</code>/<code>start</code>/<code>stop</code>/<code>restart</code> 在每個 provider 上都會詢問 lab-in-a-box 的 <code>vm_power.py</code>。</p>
+<p><code>exposed_services</code> 會變成每台目標 VM 的 <code>open_ports</code>。lab-in-a-box 會用
+provider 自己的機制開放它們：</p>
+<table>
+<thead>
+<tr>
+<th>Provider</th>
+<th>連接埠如何開放</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>aws</td>
+<td>security group 規則（需要 <code>AWS_SECURITY_GROUP_ID</code>）</td>
+</tr>
+<tr>
+<td>gcp</td>
+<td>一條防火牆規則，加上 VM 上的網路標籤</td>
+</tr>
+<tr>
+<td>alibaba</td>
+<td><code>ALIBABA_SECURITY_GROUP_ID</code> 上的規則</td>
+</tr>
+<tr>
+<td>exoscale</td>
+<td>每台 VM 一個 security group</td>
+</tr>
+<tr>
+<td>hetzner, scaleway, upcloud, ovhcloud</td>
+<td>不需要開放：它們預設允許入站流量，除非你自己加了防火牆</td>
+</tr>
+</tbody>
+</table>
+<p><strong>同一台主機上的多個 instance：</strong>頂層的 <code>instance: N</code>（1–99；0 代表照
+plan 原樣）會把一個 lab-in-a-box lab 移開，避免與其他副本衝突：</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>instance 0</th>
+<th>instance N</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>libvirt 網路 / bridge</td>
+<td><code>default</code> / <code>virbr0</code></td>
+<td><code>rodeo-iN</code> / <code>rbrN</code></td>
+</tr>
+<tr>
+<td>子網路、節點 IP</td>
+<td>照定義</td>
+<td>第三個八位元組 + N</td>
+</tr>
+<tr>
+<td>DNS 網域</td>
+<td>照定義</td>
+<td><code>iN.&lt;domain&gt;</code></td>
+</tr>
+<tr>
+<td>MAC</td>
+<td>照定義</td>
+<td>第三個位元組 = N</td>
+</tr>
+<tr>
+<td>對外的主機連接埠</td>
+<td>照定義</td>
+<td>+ N × <code>instance_port_stride</code>（1000）</td>
+</tr>
+</tbody>
+</table>
+<p>產生的密碼會寫到 lab 自己的 <code>.rodeo-secrets.yaml</code>，所以每個 instance
+都有自己的密碼；操作者的 secret 則保留在 <code>~/.rodeo/secrets.yaml</code>。
+<code>rodeo instances new &lt;profile&gt; --count N</code> 會建立編號的 lab，<code>rodeo instances
+up</code> 會逐一部署它們，<code>rodeo instances list</code> 會列出它們（以及這台主機剩餘的 RAM 與磁碟
+還放得下幾個），<code>rodeo instances clean</code> 則會
+移除它們。</p>
+<p>在外掛區段中，<code>${node_fqdn:&lt;vm&gt;}</code> 與 <code>${node_ip:&lt;vm&gt;}</code> 代表該 lab
+自己的節點。<code>lab_in_a_box.dns_aliases: {&lt;vm&gt;: [name, ...]}</code> 會在該 instance 的網路中
+為節點加上它會回應的名稱，例如預先建好的伺服器映像安裝時使用的固定名稱。</p>
+<p><strong>Workshop track：</strong>頂層的 <code>workshop:</code> 區塊會在部署時把 Instruqt track 抓到
+<code>&lt;lab&gt;/workshop</code>。接著它會針對沒有對應
+lab VM 的 track 機器，以及沒有值的 assignment 變數發出警告：</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="nt">workshop</span><span class="p">:</span>
+</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="w">  </span><span class="nt">repo</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://github.com/SUSE-Technical-Marketing/instruqt-SMLM</span>
+</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="w">  </span><span class="nt">branch</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">main</span>
+</span><span id="__span-16-4"><a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="w">  </span><span class="nt">track</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">smlms</span>
+</span><span id="__span-16-5"><a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="w">  </span><span class="nt">skip_vms</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">zbastion</span><span class="p p-Indicator">]</span><span class="w">                  </span><span class="c1"># lab 刻意取代掉的機器</span>
+</span><span id="__span-16-6"><a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="w">  </span><span class="nt">facts</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">SMLM_USERNAME</span><span class="p">:</span><span class="w"> </span><span class="nv">myadmin</span><span class="p p-Indicator">}</span><span class="w">       </span><span class="c1"># [[ Instruqt-Var ]] 的值，會顯示在成功畫面上</span>
+</span></code></pre></div>
+<p><code>rodeo export</code> 不會帶過去的項目（匯出時會警告）：以 PXE 開機的
+Harvester 節點（lab-in-a-box 沒有 PXE：用 <code>--skip-unsupported</code> 匯出
+其餘部分）、對外服務的主機 port forward、storage/image-dir 的選擇，以及
+精確的 k3s/rke2 版本固定。</p>
+<hr />
+<h2 id="what-belongs-here-vs-definitionyaml">哪些放這裡、哪些放 definition.yaml<a class="headerlink" href="#what-belongs-here-vs-definitionyaml" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>放在 <code>rodeo-plan.yaml</code></th>
+<th>放在 <code>definition.yaml</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>VM 資源大小（RAM、CPU、磁碟）</td>
+<td>節點名稱、IP、MAC</td>
+</tr>
+<tr>
+<td>帳密與 secret 引用</td>
+<td>網路 CIDR、gateway、DNS 網域</td>
+</tr>
+<tr>
+<td>部署目標（baremetal/instruqt/aws）</td>
+<td>啟動順序與 etcd join 間隔</td>
+</tr>
+<tr>
+<td>軟體版本</td>
+<td>對外服務與連接埠對應</td>
+</tr>
+<tr>
+<td>儲存裝置路徑</td>
+<td>節點 template（介面角色）</td>
+</tr>
+<tr>
+<td>Jinja2 參數</td>
+<td>主機準備需求（sysctl、SELinux）</td>
+</tr>
+</tbody>
+</table>
+<p>經驗法則：plan 是<strong>多大</strong>與<strong>在哪裡</strong>。definition 是<strong>什麼</strong>。</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  回到頂端
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.top", "navigation.indexes", "content.code.copy", "content.code.annotate", "toc.follow", "search.suggest", "search.highlight"], "search": "../../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u8907\u88fd", "clipboard.copy": "\u8907\u88fd", "search.result.more.one": "\u6b64\u9801\u5c1a\u6709 1 \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.more.other": "\u6b64\u9801\u5c1a\u6709 # \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.none": "\u6c92\u6709\u7b26\u5408\u7684\u9805\u76ee", "search.result.one": "\u627e\u5230 1 \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.other": "\u627e\u5230 # \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.placeholder": "\u6253\u5b57\u9032\u884c\u641c\u5c0b", "search.result.term.missing": "\u7f3a\u5c11\u5b57\u8a5e", "select.version": "\u9078\u64c7\u7248\u672c"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+    
+  </body>
+</html>

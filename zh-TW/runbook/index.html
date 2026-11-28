@@ -1,0 +1,2492 @@
+
+<!doctype html>
+<html lang="zh-TW" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A declarative CLI that deploys hands-on lab infrastructure (Harvester HCI, Rancher Prime, SUSE Edge) on KVM.">
+      
+      
+      
+        <link rel="canonical" href="https://rodeocli.com/zh-TW/runbook/">
+      
+      
+        <link rel="prev" href="../examples/testing/">
+      
+      
+        <link rel="next" href="../architecture/">
+      
+      
+        
+          <link rel="alternate" href="../../runbook/" hreflang="en">
+        
+          <link rel="alternate" href="./" hreflang="zh-TW">
+        
+      
+      
+      <link rel="icon" href="../../assets/logo/favicon.ico">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
+    
+    
+      
+        <title>故障排除 - rodeo-cli</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/custom.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="rodeo-cli">
+  <meta property="og:title" content="故障排除 - rodeo-cli">
+  <meta property="og:description" content="A declarative CLI that deploys hands-on lab infrastructure (Harvester HCI, Rancher Prime, SUSE Edge) on KVM.">
+  <meta property="og:url" content="https://rodeocli.com/zh-TW/runbook/">
+  <meta property="og:image" content="https://rodeocli.com/assets/social-card.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="627">
+  <meta property="og:image:alt" content="rodeo-cli logo: a green horseshoe around a terminal prompt">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="故障排除 - rodeo-cli">
+  <meta name="twitter:description" content="A declarative CLI that deploys hands-on lab infrastructure (Harvester HCI, Rancher Prime, SUSE Edge) on KVM.">
+  <meta name="twitter:image" content="https://rodeocli.com/assets/social-card.png">
+
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#_1" class="md-skip">
+          跳轉到
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="頁首">
+    <a href="../" title="rodeo-cli" class="md-header__button md-logo" aria-label="rodeo-cli" data-md-component="logo">
+      
+  <img src="../../assets/logo/horseshoe-mark.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            rodeo-cli
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              故障排除
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="選擇語言">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="../../runbook/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="zh-TW" class="md-select__link">
+              繁體中文
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="搜尋" placeholder="搜尋" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="搜尋">
+        
+        <button type="reset" class="md-search__icon md-icon" title="清除" aria-label="清除" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            正在初始化搜尋引擎
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/avaleror/rodeo-cli" title="前往倉庫" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    avaleror/rodeo-cli
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="標籤" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../" class="md-tabs__link">
+        
+  
+  
+    
+  
+  首頁
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../get-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  開始使用
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../install/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  在 Linux 與 macOS 上安裝
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../guide-harvester/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Profile 指南
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../custom-rodeos/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  建立自己的 rodeo
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../rodeo-builder/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Rodeo Builder
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../fleet/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Fleet（多主機 workshop）
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../player/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Lab player
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../mcp/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  MCP server（AI agent）
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../reference/plan/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  參考
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../examples/bare-metal/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  範例
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  故障排除
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../architecture/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  給貢獻者
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="導覽列" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../" title="rodeo-cli" class="md-nav__button md-logo" aria-label="rodeo-cli" data-md-component="logo">
+      
+  <img src="../../assets/logo/horseshoe-mark.svg" alt="logo">
+
+    </a>
+    rodeo-cli
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/avaleror/rodeo-cli" title="前往倉庫" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    avaleror/rodeo-cli
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    首頁
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../get-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    開始使用
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    在 Linux 與 macOS 上安裝
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Profile 指南
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Profile 指南
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-harvester/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SUSE Virtualization (Harvester)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-rancher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rancher Prime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-suse-edge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SUSE Edge
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-suse-telco/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SUSE Telco Cloud
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-kvm-hosts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    一般 KVM 主機
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../custom-rodeos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    建立自己的 rodeo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rodeo-builder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rodeo Builder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fleet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fleet（多主機 workshop）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../player/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Lab player
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mcp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP server（AI agent）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    參考
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    參考
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    rodeo-plan.yaml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/definition/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    definition.yaml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    範例
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    範例
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/bare-metal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    裸機
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/aws-macos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    從 Mac 部署到 AWS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/instruqt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Instruqt track
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/workshop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workshop fleet 清單
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    測試與 CI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    故障排除
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    故障排除
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目錄">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目錄
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#deploy-failed-mid-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        部署在 pipeline 中途失敗
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#harvester-install-appears-stuck-stuck-vs-timed-out" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Harvester 安裝看起來卡住：卡住還是逾時
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#harvester-vip-not-responding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Harvester VIP 沒有回應
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#host-port-forward-not-working-host8443-host30002" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        主機 port forward 無效（host:8443 / host:30002）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#secrets-not-resolved" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        secret 無法解析
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#python3-lxml-not-found-error" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        「python3-lxml not found」錯誤
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#vm-stuck-in-paused-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VM 卡在 paused 狀態
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#etcd-member-broken-one-node-lost" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        etcd 成員損壞（遺失一個節點）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#libvirt-not-starting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        libvirt 無法啟動
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#virbr0-missing-after-host-reboot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        主機重開機後 virbr0 不見了
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#accidentally-destroyed-the-virbr0-network-with-virsh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        不小心用 virsh 銷毀了 virbr0 網路
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#full-host-reset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        完整重設主機
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#collect-a-support-bundle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        收集支援套件
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#multi-host-workshop-failures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        多主機 workshop 失敗
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#this-machine-cannot-host-labs-not-a-supported-kvm-host" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        「This machine cannot host labs」／「not a supported KVM host」
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#install-fails-with-setuptools68-or-another-pip-error" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        安裝失敗，出現 setuptools&gt;=68 或其他 pip 錯誤
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#aws-start-a-deploy-and-come-back-later" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AWS：開始部署之後晚點再回來看
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#aws-login-region-and-capacity-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AWS：登入、region 與容量錯誤
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#aws-lab-unreachable-or-host-gone" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AWS：lab 連不到或主機不見了
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sudo-rodeo-sudo-ssh-i-rootsshid_ed25519-says-command-not-found" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        sudo rodeo／sudo ssh -i /root/.ssh/id_ed25519 ... 顯示「command not found」
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_13" >
+        
+          
+          <label class="md-nav__link" for="__nav_13" id="__nav_13_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    給貢獻者
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_13_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_13">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    給貢獻者
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing and validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../claim-portal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claim portal
+  
+
+    
+  </span>
+  
+  
+    
+  
+  
+    <span class="md-status md-status--shipped for AWS fleets in v0.18.0 (2026-10-02). Student SSH on port 2222 shipped in v0.20.1 and was removed in"></span>
+  
+
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../claim-portal-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claim portal (implementation plan)
+  
+
+    
+  </span>
+  
+  
+    
+  
+  
+    <span class="md-status md-status--approved design; F5.0 live-checked 2026-09-30; F5.1-F5.4 implemented 2026-09-30, live end-to-end check pending"></span>
+  
+
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目錄">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目錄
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#deploy-failed-mid-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        部署在 pipeline 中途失敗
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#harvester-install-appears-stuck-stuck-vs-timed-out" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Harvester 安裝看起來卡住：卡住還是逾時
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#harvester-vip-not-responding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Harvester VIP 沒有回應
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#host-port-forward-not-working-host8443-host30002" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        主機 port forward 無效（host:8443 / host:30002）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#secrets-not-resolved" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        secret 無法解析
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#python3-lxml-not-found-error" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        「python3-lxml not found」錯誤
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#vm-stuck-in-paused-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VM 卡在 paused 狀態
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#etcd-member-broken-one-node-lost" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        etcd 成員損壞（遺失一個節點）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#libvirt-not-starting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        libvirt 無法啟動
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#virbr0-missing-after-host-reboot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        主機重開機後 virbr0 不見了
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#accidentally-destroyed-the-virbr0-network-with-virsh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        不小心用 virsh 銷毀了 virbr0 網路
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#full-host-reset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        完整重設主機
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#collect-a-support-bundle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        收集支援套件
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#multi-host-workshop-failures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        多主機 workshop 失敗
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#this-machine-cannot-host-labs-not-a-supported-kvm-host" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        「This machine cannot host labs」／「not a supported KVM host」
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#install-fails-with-setuptools68-or-another-pip-error" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        安裝失敗，出現 setuptools&gt;=68 或其他 pip 錯誤
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#aws-start-a-deploy-and-come-back-later" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AWS：開始部署之後晚點再回來看
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#aws-login-region-and-capacity-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AWS：登入、region 與容量錯誤
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#aws-lab-unreachable-or-host-gone" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AWS：lab 連不到或主機不見了
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sudo-rodeo-sudo-ssh-i-rootsshid_ed25519-says-command-not-found" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        sudo rodeo／sudo ssh -i /root/.ssh/id_ed25519 ... 顯示「command not found」
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="_1">故障排除手冊<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
+<p>在已部署的 rodeo lab 中診斷問題並復原的快速參考。每一節都先說明如何確認問題，再說明修正方式。</p>
+<hr />
+<h2 id="deploy-failed-mid-pipeline">部署在 pipeline 中途失敗<a class="headerlink" href="#deploy-failed-mid-pipeline" title="Permanent link">&para;</a></h2>
+<p><strong>確認：</strong> <code>rodeo status</code> 顯示有紅色的階段。終端機輸出中有錯誤訊息。</p>
+<p><strong>修正：</strong> 找出失敗的階段，然後接續執行：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>rodeo<span class="w"> </span>status<span class="w">                      </span><span class="c1"># 找出最後一個失敗的階段</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>rodeo<span class="w"> </span>deploy<span class="w"> </span>--from<span class="w"> </span>&lt;phase&gt;<span class="w">       </span><span class="c1"># 從那裡接續執行</span>
+</span></code></pre></div>
+<p>如果你不確定改了什麼，就強制完整重跑失敗的階段：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>rodeo<span class="w"> </span>deploy<span class="w"> </span>--from<span class="w"> </span>kvm_host<span class="w"> </span>--force<span class="w">   </span><span class="c1"># 從 kvm_host 階段開始全部重跑</span>
+</span></code></pre></div>
+<p><strong>回顧某次執行：</strong> 每次部署都會把事件附加到
+<code>&lt;lab&gt;/.rodeo/events.jsonl</code>（權限 0600），每行一個 JSON 物件，已知的
+secret 值會被遮蔽：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">'select(.kind=="PhaseFailed") | "\(.phase) rc=\(.rc) \(.text)"'</span><span class="w"> </span>.rodeo/events.jsonl
+</span></code></pre></div>
+<p>Schema v0：<code>ts</code>（Unix 時間）、<code>lab</code>（lab 的 realpath）、<code>phase</code>（第一個階段之前為 null）、
+<code>kind</code>（<code>PhaseStarted</code>、<code>PhaseSkipped</code>、<code>PhaseDone</code>、
+<code>PhaseFailed</code>、<code>LogLine</code>、<code>ProgressUpdate</code>、<code>DeployComplete</code>）、<code>text</code>（log
+行、失敗訊息、略過原因或進度步驟）、<code>rc</code>（僅 PhaseFailed）、
+<code>elapsed</code>（秒數，PhaseDone 與 ProgressUpdate）以及 <code>v</code>（0）。檔案到 10 MB 時
+會移到 <code>events.jsonl.1</code>，取代較舊的那份。rodeo 以 lab 目錄為基準寫入這個檔案，
+如果那裡是 symlink 或 hard link 就拒絕寫入；寫入失敗只會記錄一次 log，絕不會中止部署。</p>
+<hr />
+<h2 id="harvester-install-appears-stuck-stuck-vs-timed-out">Harvester 安裝看起來卡住：卡住還是逾時<a class="headerlink" href="#harvester-install-appears-stuck-stuck-vs-timed-out" title="Permanent link">&para;</a></h2>
+<p><strong>背景：</strong> <code>cluster</code> 階段最多會等 60 分鐘讓 Harvester VIP 起來。在 nested KVM 上這可能要 45–90 分鐘。問題在於安裝是否仍在進行，還是真的卡死了。</p>
+<p><strong>步驟 1：檢查 heartbeat 檔案：</strong></p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>cat<span class="w"> </span>~/.rodeo/logs/&lt;lab-name&gt;-heartbeat.txt
+</span></code></pre></div>
+<p>rodeo 在等待 VIP 與節點就緒期間，每 5 分鐘寫入這個檔案一次。它記錄 VM 狀態與經過時間。如果檔案存在而且時間戳記是最近的（&lt; 6 分鐘前），部署就還活著。如果檔案不見了或太舊，主機上的程序可能已經死掉。</p>
+<p><strong>步驟 2：檢查 VM 狀態：</strong></p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>virsh<span class="w"> </span>list<span class="w"> </span>--all
+</span></code></pre></div>
+<ul>
+<li>全部是 <code>running</code> = 安裝進行中（正常）。用 <code>rodeo logs harvester1</code> 觀察 kernel／安裝程式的輸出。</li>
+<li>全部是 <code>shut off</code> = 安裝程式提早結束。查看 serial log 中的錯誤：</li>
+</ul>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>rodeo<span class="w"> </span>logs<span class="w"> </span>harvester1
+</span></code></pre></div>
+<ul>
+<li>有任何 <code>paused</code> = 主機記憶體吃緊。釋放 RAM 或加上 swap，然後執行 <code>virsh resume &lt;vm&gt;</code>。</li>
+</ul>
+<p><strong>步驟 3：區分安裝卡住與 Instruqt session 逾時：</strong></p>
+<p>Instruqt 會在平台設定的閒置逾時之後終止 GCP lab VM（不只是瀏覽器 session）。如果 lab VM 已經不在，就無法重新連線，安裝也不可能是「卡住」，因為主機已經不存在了。</p>
+<p>lab 已被終止（而不是卡住）的跡象：
+- <code>virsh list --all</code> 失敗，顯示「failed to connect to the hypervisor」
+- SSH 連到 Instruqt 主機完全逾時
+- heartbeat 檔案不見了，或是上一次執行留下的</p>
+<p>安裝真的卡住的跡象：
+- VM 是 <code>running</code>、heartbeat 是新的，但 serial log 超過 15 分鐘都沒有捲動
+- Serial log 顯示重複出現的錯誤（磁碟已滿、找不到網路介面、etcd 選舉迴圈）</p>
+<p><strong>常見的安裝卡住原因：</strong></p>
+<table>
+<thead>
+<tr>
+<th>Serial log 中的症狀</th>
+<th>原因</th>
+<th>修正</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>no network interface found</code> 或卡在網路設定</td>
+<td>網路介面名稱不符：安裝程式拿到的設定寫的是 <code>eth0</code>，但 kernel 使用 <code>ens3</code></td>
+<td>清掉 VM（<code>rodeo deploy --from vms --force</code>）後重新部署</td>
+</tr>
+<tr>
+<td>連到設定網址時出現 <code>curl: (7) Failed to connect</code></td>
+<td>nginx 沒有執行，或 virbr0 沒有起來</td>
+<td>檢查 nginx：<code>rodeo ssh &lt;host&gt; -- sudo systemctl status nginx</code></td>
+</tr>
+<tr>
+<td>磁碟已滿／<code>containerd</code> 錯誤</td>
+<td>VM 磁碟太小（Elemental 的 persistent partition 下限固定為 150 GiB）</td>
+<td>在 plan 中設定 <code>disk_gb: 320</code> 後重新部署</td>
+</tr>
+<tr>
+<td><code>etcd</code> 選舉迴圈，節點一直無法加入</td>
+<td>三節點環境中快速加入造成的競爭</td>
+<td>調高 <code>definition.yaml</code> 中的 <code>etcd_join_gap_seconds</code>（預設：90）</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="harvester-vip-not-responding">Harvester VIP 沒有回應<a class="headerlink" href="#harvester-vip-not-responding" title="Permanent link">&para;</a></h2>
+<p><strong>症狀：</strong> <code>cluster</code> 階段在等待 <code>192.168.122.10:443</code> 時逾時。</p>
+<p><strong>確認：</strong></p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>rodeo<span class="w"> </span>logs<span class="w"> </span>harvester1<span class="w">   </span><span class="c1"># 安裝程式還在跑嗎？</span>
+</span></code></pre></div>
+<p>如果 log 還在前進（你看到 kernel 訊息或 Harvester 安裝程式），就繼續等：在磁碟較慢的主機上，nested KVM 可能要 45–90 分鐘。</p>
+<p>如果 log 卡住或是空的：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>rodeo<span class="w"> </span>ssh<span class="w"> </span>harvester1<span class="w">              </span><span class="c1"># 連到節點</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>sudo<span class="w"> </span>journalctl<span class="w"> </span>-u<span class="w"> </span>rke2-server<span class="w"> </span>-f<span class="w"> </span><span class="c1"># 檢查 RKE2 狀態</span>
+</span></code></pre></div>
+<p><strong>常見原因與修正：</strong></p>
+<table>
+<thead>
+<tr>
+<th>原因</th>
+<th>修正</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>磁碟太小</td>
+<td>清除後在 plan 中設定 <code>disk_gb: 320</code> 重新部署</td>
+</tr>
+<tr>
+<td>RAM 不足</td>
+<td>用 <code>rodeo doctor</code> 檢查；釋放 RAM 或改用較小的 profile</td>
+</tr>
+<tr>
+<td><code>pxe_server</code> 提供了錯誤的設定</td>
+<td>檢查 nginx log：<code>rodeo ssh &lt;host&gt; -- sudo journalctl -u nginx</code></td>
+</tr>
+<tr>
+<td>etcd 加入競爭</td>
+<td>90 秒的 <code>etcd_join_gap_seconds</code> 可以避免這個問題；檢查它是否被調低了</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="host-port-forward-not-working-host8443-host30002">主機 port forward 無效（host:8443 / host:30002）<a class="headerlink" href="#host-port-forward-not-working-host8443-host30002" title="Permanent link">&para;</a></h2>
+<p><strong>症狀：</strong> 從外部連 <code>https://&lt;host&gt;:8443</code> 會逾時，但在主機內部連 <code>https://192.168.122.10:443</code> 是正常的。</p>
+<p><strong>確認：</strong></p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># 在主機上：</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>sudo<span class="w"> </span>nft<span class="w"> </span>list<span class="w"> </span>table<span class="w"> </span>ip<span class="w"> </span>libvirt_network<span class="w">   </span><span class="c1"># 找 guest_input chain</span>
+</span></code></pre></div>
+<p>如果 <code>guest_input</code> chain 有 <code>reject</code> 規則，但它前面沒有 <code>ct status dnat accept</code> 規則，代表 libvirt hook 不見了或沒有觸發。</p>
+<p><strong>修正：</strong></p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>sudo<span class="w"> </span>/etc/libvirt/hooks/network<span class="w"> </span>default<span class="w"> </span>started<span class="w">   </span><span class="c1"># 重新套用 DNAT 規則</span>
+</span></code></pre></div>
+<p>如果 hook 檔案不見了（例如 <code>kvm_host</code> 階段沒有完成之後）：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>rodeo<span class="w"> </span>deploy<span class="w"> </span>--from<span class="w"> </span>kvm_host<span class="w"> </span>--force<span class="w">   </span><span class="c1"># 重新安裝 hook</span>
+</span></code></pre></div>
+<hr />
+<h2 id="secrets-not-resolved">secret 無法解析<a class="headerlink" href="#secrets-not-resolved" title="Permanent link">&para;</a></h2>
+<p><strong>症狀：</strong> 部署立即失敗，顯示 <code>unresolved credential</code> 或 <code>empty password</code>。</p>
+<p><strong>修正：</strong></p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># 重新產生 secret</span>
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>rodeo<span class="w"> </span>init<span class="w"> </span>--force
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="c1"># 然後重試部署</span>
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>rodeo<span class="w"> </span>deploy<span class="w"> </span>--from<span class="w"> </span>kvm_host<span class="w"> </span>--force
+</span></code></pre></div>
+<p>或直接編輯 <code>~/.rodeo/secrets.yaml</code>，補上缺少的 key。</p>
+<hr />
+<h2 id="python3-lxml-not-found-error">「python3-lxml not found」錯誤<a class="headerlink" href="#python3-lxml-not-found-error" title="Permanent link">&para;</a></h2>
+<p><strong>症狀：</strong> <code>vms</code> Ansible 階段失敗，錯誤是缺少 <code>lxml</code> 模組。</p>
+<p><strong>修正：</strong></p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>sudo<span class="w"> </span>rodeo<span class="w"> </span>install-deps<span class="w">   </span><span class="c1"># 會連同其他主機套件一起安裝 python3-lxml</span>
+</span></code></pre></div>
+<p>然後接續執行：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>rodeo<span class="w"> </span>deploy<span class="w"> </span>--from<span class="w"> </span>vms
+</span></code></pre></div>
+<hr />
+<h2 id="vm-stuck-in-paused-state">VM 卡在 <code>paused</code> 狀態<a class="headerlink" href="#vm-stuck-in-paused-state" title="Permanent link">&para;</a></h2>
+<p><strong>確認：</strong></p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>virsh<span class="w"> </span>list<span class="w"> </span>--all<span class="w">   </span><span class="c1"># 顯示 STATE = paused</span>
+</span></code></pre></div>
+<p><strong>修正：</strong></p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>virsh<span class="w"> </span>resume<span class="w"> </span>&lt;vm-name&gt;
+</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="c1"># 或透過 rodeo：</span>
+</span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>rodeo<span class="w"> </span>restart<span class="w"> </span>&lt;vm-name&gt;
+</span></code></pre></div>
+<p>如果它馬上又暫停，請檢查主機 RAM：記憶體壓力到達臨界時，hypervisor 會暫停 VM。</p>
+<hr />
+<h2 id="etcd-member-broken-one-node-lost">etcd 成員損壞（遺失一個節點）<a class="headerlink" href="#etcd-member-broken-one-node-lost" title="Permanent link">&para;</a></h2>
+<p>如果叢集在執行中時，某台 Harvester VM 被強制刪除或它的磁碟損毀，就會發生這種情況。</p>
+<p><strong>從健康的節點確認：</strong></p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>rodeo<span class="w"> </span>ssh<span class="w"> </span>harvester2
+</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="c1"># 在 VM 內：</span>
+</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="nv">ETCD_CERT</span><span class="o">=</span>/var/lib/rancher/rke2/server/tls/etcd
+</span><span id="__span-16-4"><a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>crictl<span class="w"> </span><span class="nb">exec</span><span class="w"> </span><span class="k">$(</span>crictl<span class="w"> </span>ps<span class="w"> </span>--name<span class="w"> </span>etcd<span class="w"> </span>-q<span class="k">)</span><span class="w"> </span>etcdctl<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-16-5"><a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="w">  </span>--endpoints<span class="o">=</span>https://127.0.0.1:2379<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-16-6"><a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="w">  </span>--cacert<span class="o">=</span><span class="nv">$ETCD_CERT</span>/server-ca.crt<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-16-7"><a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a><span class="w">  </span>--cert<span class="o">=</span><span class="nv">$ETCD_CERT</span>/server-client.crt<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-16-8"><a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a><span class="w">  </span>--key<span class="o">=</span><span class="nv">$ETCD_CERT</span>/server-client.key<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-16-9"><a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a><span class="w">  </span>member<span class="w"> </span>list
+</span></code></pre></div>
+<p>如果有一個成員顯示 <code>unstarted</code> 或不見了：</p>
+<p><strong>復原（3 個步驟）：</strong></p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="c1"># 步驟 1：從健康的節點移除損壞的成員</span>
+</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="nv">MEMBER_ID</span><span class="o">=</span>&lt;id<span class="w"> </span>from<span class="w"> </span>member<span class="w"> </span>list&gt;
+</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>crictl<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>&lt;etcd-container-id&gt;<span class="w"> </span>etcdctl<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-17-4"><a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="w">  </span>--endpoints<span class="o">=</span>https://127.0.0.1:2379<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-17-5"><a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="w">  </span>--cacert<span class="o">=</span><span class="nv">$ETCD_CERT</span>/server-ca.crt<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-17-6"><a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="w">  </span>--cert<span class="o">=</span><span class="nv">$ETCD_CERT</span>/server-client.crt<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-17-7"><a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="w">  </span>--key<span class="o">=</span><span class="nv">$ETCD_CERT</span>/server-client.key<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-17-8"><a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="w">  </span>member<span class="w"> </span>remove<span class="w"> </span><span class="nv">$MEMBER_ID</span>
+</span></code></pre></div>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="c1"># 步驟 2：在損壞的節點上清除 etcd 資料，並加上重新加入的設定</span>
+</span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>rodeo<span class="w"> </span>ssh<span class="w"> </span>harvester1<span class="w">   </span><span class="c1"># 或是任何一台損壞的節點</span>
+</span><span id="__span-18-3"><a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>sudo<span class="w"> </span>rm<span class="w"> </span>-rf<span class="w"> </span>/var/lib/rancher/rke2/server/db/etcd
+</span><span id="__span-18-4"><a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>sudo<span class="w"> </span>tee<span class="w"> </span>/etc/rancher/rke2/config.yaml.d/00-rejoin.yaml<span class="w"> </span><span class="s">&lt;&lt;EOF</span>
+</span><span id="__span-18-5"><a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="s">server: https://192.168.122.10:9345</span>
+</span><span id="__span-18-6"><a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a><span class="s">token: $(grep harvester_token ~/.rodeo/secrets.yaml | awk '{print $2}')</span>
+</span><span id="__span-18-7"><a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a><span class="s">EOF</span>
+</span></code></pre></div>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="c1"># 步驟 3：在損壞的節點上重新啟動 rke2-server</span>
+</span><span id="__span-19-2"><a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>sudo<span class="w"> </span>systemctl<span class="w"> </span>restart<span class="w"> </span>rke2-server
+</span><span id="__span-19-3"><a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="c1"># 等待約 3 分鐘，然後驗證：</span>
+</span><span id="__span-19-4"><a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>kubectl<span class="w"> </span>get<span class="w"> </span>nodes<span class="w">   </span><span class="c1"># 應該全部都是 Ready</span>
+</span></code></pre></div>
+<hr />
+<h2 id="libvirt-not-starting">libvirt 無法啟動<a class="headerlink" href="#libvirt-not-starting" title="Permanent link">&para;</a></h2>
+<p><strong>症狀：</strong> <code>virsh list</code> 失敗，出現連線錯誤。</p>
+<p><strong>確認：</strong></p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>systemctl<span class="w"> </span>status<span class="w"> </span>virtqemud.socket<span class="w"> </span>virtnetworkd.socket
+</span></code></pre></div>
+<p>SLES 16 使用<strong>模組化 libvirt</strong>（由 socket 啟動的 daemon），而不是單一的 <code>libvirtd</code>。如果 socket 沒有啟用：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>sudo<span class="w"> </span>systemctl<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>--now<span class="w"> </span>virtqemud.socket<span class="w"> </span>virtnetworkd.socket<span class="w"> </span>virtstoraged.socket
+</span></code></pre></div>
+<hr />
+<h2 id="virbr0-missing-after-host-reboot">主機重開機後 virbr0 不見了<a class="headerlink" href="#virbr0-missing-after-host-reboot" title="Permanent link">&para;</a></h2>
+<p><strong>症狀：</strong> VM 無法啟動，因為 <code>virbr0</code> 不存在。</p>
+<p><strong>原因：</strong> 沒有啟用 <code>libvirt-guests</code>（<code>finalise</code> 階段被略過或失敗），所以 libvirt 沒有自動啟動。</p>
+<p><strong>修正：</strong></p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-22-1"><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>sudo<span class="w"> </span>virsh<span class="w"> </span>net-start<span class="w"> </span>default
+</span><span id="__span-22-2"><a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>sudo<span class="w"> </span>virsh<span class="w"> </span>net-autostart<span class="w"> </span>default
+</span></code></pre></div>
+<p>或重跑 finalise：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-23-1"><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>rodeo<span class="w"> </span>deploy<span class="w"> </span>--from<span class="w"> </span>finalise<span class="w"> </span>--finalise
+</span></code></pre></div>
+<hr />
+<h2 id="accidentally-destroyed-the-virbr0-network-with-virsh">不小心用 virsh 銷毀了 virbr0 網路<a class="headerlink" href="#accidentally-destroyed-the-virbr0-network-with-virsh" title="Permanent link">&para;</a></h2>
+<p><strong>症狀：</strong> 在叢集執行中時執行了 <code>virsh net-destroy default</code>。所有 VM 的網路連線都中斷了。</p>
+<p><strong>修正（不重新啟動 VM 就恢復連線）：</strong></p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-24-1"><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="c1"># 重新建立 bridge 並重新接上 tap 裝置</span>
+</span><span id="__span-24-2"><a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>sudo<span class="w"> </span>ip<span class="w"> </span>link<span class="w"> </span><span class="nb">set</span><span class="w"> </span>virbr0<span class="w"> </span>up
+</span><span id="__span-24-3"><a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a><span class="k">for</span><span class="w"> </span>tap<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="k">$(</span>virsh<span class="w"> </span>domiflist<span class="w"> </span>harvester1<span class="w"> </span><span class="p">|</span><span class="w"> </span>awk<span class="w"> </span><span class="s1">'/vnet/{print $1}'</span><span class="k">)</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-24-4"><a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a><span class="w">           </span><span class="k">$(</span>virsh<span class="w"> </span>domiflist<span class="w"> </span>harvester2<span class="w"> </span><span class="p">|</span><span class="w"> </span>awk<span class="w"> </span><span class="s1">'/vnet/{print $1}'</span><span class="k">)</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-24-5"><a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a><span class="w">           </span><span class="k">$(</span>virsh<span class="w"> </span>domiflist<span class="w"> </span>harvester3<span class="w"> </span><span class="p">|</span><span class="w"> </span>awk<span class="w"> </span><span class="s1">'/vnet/{print $1}'</span><span class="k">)</span><span class="p">;</span><span class="w"> </span><span class="k">do</span>
+</span><span id="__span-24-6"><a id="__codelineno-24-6" name="__codelineno-24-6" href="#__codelineno-24-6"></a><span class="w">    </span>sudo<span class="w"> </span>ip<span class="w"> </span>link<span class="w"> </span><span class="nb">set</span><span class="w"> </span><span class="nv">$tap</span><span class="w"> </span>master<span class="w"> </span>virbr0
+</span><span id="__span-24-7"><a id="__codelineno-24-7" name="__codelineno-24-7" href="#__codelineno-24-7"></a><span class="w">    </span>sudo<span class="w"> </span>ip<span class="w"> </span>link<span class="w"> </span><span class="nb">set</span><span class="w"> </span><span class="nv">$tap</span><span class="w"> </span>up
+</span><span id="__span-24-8"><a id="__codelineno-24-8" name="__codelineno-24-8" href="#__codelineno-24-8"></a><span class="k">done</span>
+</span><span id="__span-24-9"><a id="__codelineno-24-9" name="__codelineno-24-9" href="#__codelineno-24-9"></a>sudo<span class="w"> </span>ip<span class="w"> </span>neigh<span class="w"> </span>flush<span class="w"> </span>dev<span class="w"> </span>virbr0
+</span><span id="__span-24-10"><a id="__codelineno-24-10" name="__codelineno-24-10" href="#__codelineno-24-10"></a>
+</span><span id="__span-24-11"><a id="__codelineno-24-11" name="__codelineno-24-11" href="#__codelineno-24-11"></a><span class="c1"># 重新啟動 libvirt 網路（重新套用 DNAT 規則與防火牆 hook）</span>
+</span><span id="__span-24-12"><a id="__codelineno-24-12" name="__codelineno-24-12" href="#__codelineno-24-12"></a>sudo<span class="w"> </span>virsh<span class="w"> </span>net-start<span class="w"> </span>default
+</span><span id="__span-24-13"><a id="__codelineno-24-13" name="__codelineno-24-13" href="#__codelineno-24-13"></a>sudo<span class="w"> </span>/etc/libvirt/hooks/network<span class="w"> </span>default<span class="w"> </span>started
+</span></code></pre></div>
+<p>驗證連線：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-25-1"><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>ping<span class="w"> </span>-c<span class="w"> </span><span class="m">3</span><span class="w"> </span><span class="m">192</span>.168.122.11<span class="w">   </span><span class="c1"># harvester1</span>
+</span><span id="__span-25-2"><a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>ping<span class="w"> </span>-c<span class="w"> </span><span class="m">3</span><span class="w"> </span><span class="m">192</span>.168.122.10<span class="w">   </span><span class="c1"># VIP</span>
+</span></code></pre></div>
+<p>如果 VM 遺失了叢集狀態，你可能需要復原 etcd（請見上方）。</p>
+<hr />
+<h2 id="full-host-reset">完整重設主機<a class="headerlink" href="#full-host-reset" title="Permanent link">&para;</a></h2>
+<p>當你想完全重新開始時使用，這會清除所有 lab VM、磁碟、狀態與帳密，但保留套件與 rodeo 執行檔：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-26-1"><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>rodeo<span class="w"> </span>stop<span class="w"> </span>--all<span class="w"> </span>--yes<span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">true</span><span class="w">   </span><span class="c1"># 先正常關機</span>
+</span><span id="__span-26-2"><a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>rodeo<span class="w"> </span>clean<span class="w"> </span>--all<span class="w"> </span>--yes<span class="w"> </span>--secrets<span class="w"> </span>--force-network
+</span></code></pre></div>
+<p>然後重新部署：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-27-1"><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>rodeo<span class="w"> </span>up<span class="w"> </span>--profile<span class="w"> </span>&lt;name&gt;
+</span></code></pre></div>
+<hr />
+<h2 id="collect-a-support-bundle">收集支援套件<a class="headerlink" href="#collect-a-support-bundle" title="Permanent link">&para;</a></h2>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-28-1"><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>rodeo<span class="w"> </span>logs<span class="w"> </span>--bundle<span class="w"> </span>-o<span class="w"> </span>rodeo-bundle.tar.gz
+</span></code></pre></div>
+<p>套件包含：遮蔽過的 plan（secret 以 <code>***</code> 取代）、階段狀態、所有 VM 最近的 serial log 結尾，以及 <code>virsh</code> domain 資訊。回報 bug 或向維護者升級處理時，請附上這個套件。</p>
+<hr />
+<h2 id="multi-host-workshop-failures">多主機 workshop 失敗<a class="headerlink" href="#multi-host-workshop-failures" title="Permanent link">&para;</a></h2>
+<p>對於 fleet 部署，從工作檔或 <code>rodeo fleet status</code> 找出失敗的主機，然後把鑑識資料抓回筆電：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-29-1"><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>diagnose<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w">                  </span><span class="c1"># 失敗的主機（預設）</span>
+</span><span id="__span-29-2"><a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>diagnose<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>--all-selected<span class="w">   </span><span class="c1"># 每台選定的主機</span>
+</span></code></pre></div>
+<p>產出物的目錄結構請見 <a href="../fleet/#diagnose-failure-forensics">Fleet：Diagnose</a>。</p>
+<hr />
+<h2 id="this-machine-cannot-host-labs-not-a-supported-kvm-host">「This machine cannot host labs」／「not a supported KVM host」<a class="headerlink" href="#this-machine-cannot-host-labs-not-a-supported-kvm-host" title="Permanent link">&para;</a></h2>
+<p><strong>確認：</strong> <code>rodeo up</code> 或 <code>rodeo deploy</code> 停止，並顯示 <code>macOS cannot host labs</code> 或 <code>&lt;distribution&gt; is not a supported KVM host</code>。</p>
+<p><strong>原因：</strong> lab 只能在 SLES 16 / Leap 16 上執行。其他任何機器都是控制端：它驅動 AWS 上或透過 SSH 連線的主機，但自己絕不執行 lab。</p>
+<p><strong>修正：</strong> 從那台機器部署到雲端，或在 SLES 16 主機上執行 rodeo：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-30-1"><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>rodeo<span class="w"> </span>up<span class="w"> </span>--profile<span class="w"> </span>&lt;name&gt;<span class="w"> </span>--target<span class="w"> </span>aws
+</span></code></pre></div>
+<p><code>RODEO_ALLOW_ANY_KVM_HOST=1</code> 讓你仍然可以在其他 Linux 上試跑本機 lab，但不受支援。</p>
+<hr />
+<h2 id="install-fails-with-setuptools68-or-another-pip-error">安裝失敗，出現 <code>setuptools&gt;=68</code> 或其他 pip 錯誤<a class="headerlink" href="#install-fails-with-setuptools68-or-another-pip-error" title="Permanent link">&para;</a></h2>
+<p><strong>確認：</strong> <code>install.sh</code> 在設定 Python 環境時停止，常見於 SLES/Leap 15（Python 3.6）。</p>
+<p><strong>修正：</strong> 重跑目前版本的安裝程式。從 v0.22 開始，它會在這些系統上安裝成控制端，使用它找到的 Python 3.10+，或下載一份私有的 Python，並重建損壞的環境：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-31-1"><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://raw.githubusercontent.com/avaleror/rodeo-cli/main/install.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span>bash
+</span></code></pre></div>
+<hr />
+<h2 id="aws-start-a-deploy-and-come-back-later">AWS：開始部署之後晚點再回來看<a class="headerlink" href="#aws-start-a-deploy-and-come-back-later" title="Permanent link">&para;</a></h2>
+<p><code>rodeo up --target aws --detach</code> 會在主機開始執行 <code>rodeo up</code> 後立即返回。它會印出一行 JSON（<code>pid</code>、<code>log</code>、<code>host</code>），部署則在主機上繼續執行。在 lab 目錄中查看進度：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-32-1"><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a>rodeo<span class="w"> </span>status<span class="w"> </span>--cloud<span class="w">            </span><span class="c1"># running / exited N / gone / none，再加上最後 40 行 log</span>
+</span><span id="__span-32-2"><a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a>rodeo<span class="w"> </span>status<span class="w"> </span>--cloud<span class="w"> </span>--lines<span class="w"> </span><span class="m">200</span><span class="w"> </span>--output<span class="w"> </span>json
+</span></code></pre></div>
+<p><code>gone</code> 表示記錄的程序已經死掉，而且沒有結束碼（被終止，或主機重開機）。在已有一個執行中時再執行一次 <code>rodeo up --target aws</code>，會以結束碼 75 停止。沒有 <code>--detach</code> 時，<code>rodeo up --target aws</code> 會像以前一樣等待並追蹤 log。</p>
+<hr />
+<h2 id="aws-login-region-and-capacity-errors">AWS：登入、region 與容量錯誤<a class="headerlink" href="#aws-login-region-and-capacity-errors" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>訊息</th>
+<th>修正</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>session has expired</code> / <code>CreateOAuth2Token</code></td>
+<td>再執行一次 <code>aws login</code>。指令執行中途出現暫時性的 <code>CreateOAuth2Token</code> 錯誤，也可能只需要重跑一次。</td>
+</tr>
+<tr>
+<td><code>MissingDependencyException</code></td>
+<td>缺少 <code>[aws]</code> extra（<code>boto3[crt]</code>）。重跑 <code>install.sh</code>，它會在控制端上安裝這個 extra。</td>
+</tr>
+<tr>
+<td><code>no default VPC in &lt;region&gt;</code></td>
+<td>該 region 沒有預設 VPC。把 <code>RODEO_AWS_REGION</code> export 成有預設 VPC 的 region，或在 plan 中設定 <code>provider.region</code> 與 <code>provider.subnet_id</code>。</td>
+</tr>
+<tr>
+<td><code>not offered in region</code> / <code>not enough capacity</code></td>
+<td>換一個 region 或 <code>--instance-tier</code>，或固定 <code>provider.instance_type</code>。rodeo 絕不會自己降低規格。</td>
+</tr>
+<tr>
+<td><code>has no public IP</code> / 沒有網際網路路由</td>
+<td>該 subnet 沒有路由到 internet gateway。請選擇 public subnet。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="aws-lab-unreachable-or-host-gone">AWS：lab 連不到或主機不見了<a class="headerlink" href="#aws-lab-unreachable-or-host-gone" title="Permanent link">&para;</a></h2>
+<p><strong>從筆電連 UI 或 SSH 逾時。</strong> rodeo 的 security group 只允許你在建立主機時的 public IP。如果你的 IP 變了（換了網路、VPN），在 lab 目錄中重跑 <code>rodeo up --target aws</code>：它會把規則改成你目前的 IP，並略過已完成的階段。</p>
+<p><strong>主機在 session 中途消失。</strong> 是自動銷毀計時（dead-man switch）把它終止了：每台雲端主機都會在啟動後經過 <code>provider.ttl_hours</code>（預設 6）到期，這會在 <code>rodeo up</code> 結束時以 <code>Self-destructs</code> 顯示，也記錄在 <code>rodeo-expires-at</code> 執行個體 tag 中。重新部署，並在為長時間 session 建立主機之前，設定更長的 <code>provider.ttl_hours</code>。</p>
+<p><strong>還有東西在計費嗎？</strong> 用 <code>rodeo destroy --cloud --yes --config-dir &lt;lab dir&gt;</code> 拆除（fleet 則用 <code>rodeo fleet deprovision</code>）。兩者也會移除被終止主機在本機留下的東西（host key、學員 key、<code>~/.rodeo/fleet/&lt;name&gt;/</code>），所以重用 IP 的新執行個體絕不會撞到過期的 host key。要檢查每個 region 是否有殘留：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-33-1"><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a><span class="k">for</span><span class="w"> </span>r<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="k">$(</span>aws<span class="w"> </span>ec2<span class="w"> </span>describe-regions<span class="w"> </span>--query<span class="w"> </span><span class="s1">'Regions[].RegionName'</span><span class="w"> </span>--output<span class="w"> </span>text<span class="k">)</span><span class="p">;</span><span class="w"> </span><span class="k">do</span>
+</span><span id="__span-33-2"><a id="__codelineno-33-2" name="__codelineno-33-2" href="#__codelineno-33-2"></a><span class="w">  </span>aws<span class="w"> </span>ec2<span class="w"> </span>describe-instances<span class="w"> </span>--region<span class="w"> </span><span class="s2">"</span><span class="nv">$r</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-33-3"><a id="__codelineno-33-3" name="__codelineno-33-3" href="#__codelineno-33-3"></a><span class="w">    </span>--filters<span class="w"> </span><span class="nv">Name</span><span class="o">=</span>tag:ManagedBy,Values<span class="o">=</span>rodeo<span class="w"> </span><span class="nv">Name</span><span class="o">=</span>instance-state-name,Values<span class="o">=</span>pending,running,stopping,stopped<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-33-4"><a id="__codelineno-33-4" name="__codelineno-33-4" href="#__codelineno-33-4"></a><span class="w">    </span>--query<span class="w"> </span><span class="s1">'Reservations[].Instances[].[InstanceId,InstanceType,State.Name]'</span><span class="w"> </span>--output<span class="w"> </span>text
+</span><span id="__span-33-5"><a id="__codelineno-33-5" name="__codelineno-33-5" href="#__codelineno-33-5"></a><span class="k">done</span>
+</span></code></pre></div>
+<hr />
+<h2 id="sudo-rodeo-sudo-ssh-i-rootsshid_ed25519-says-command-not-found"><code>sudo rodeo</code>／<code>sudo ssh -i /root/.ssh/id_ed25519 ...</code> 顯示「command not found」<a class="headerlink" href="#sudo-rodeo-sudo-ssh-i-rootsshid_ed25519-says-command-not-found" title="Permanent link">&para;</a></h2>
+<p>SUSE 預設的 <code>/usr/etc/sudoers</code> 內含兩行互相衝突的 <code>Defaults secure_path=</code>；
+第二行（範圍較窄，缺少 <code>/usr/local/*</code>）會生效，所以 <code>sudo</code> 找不到
+<code>rodeo</code>（安裝在 <code>/usr/local/bin</code>），即使不加
+<code>sudo</code> 時一切正常。從全新的 <code>rodeo deploy</code> 開始，<code>kvm_host</code> 階段會在 SUSE 主機上自動修正這個問題（請見
+<code>/etc/sudoers.d/rodeo-secure-path</code>）。</p>
+<p>如果你在已經有 VM 在執行的主機上遇到這個問題，不要只為了這件事重跑 <code>--from
+kvm_host</code>：在運作中的 lab 上，那個階段也會重新動到 firewalld
+與 libvirt 網路，可能會和已經起來的 domain 衝突。
+改為直接套用一次性的修正：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-34-1"><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a><span class="nb">echo</span><span class="w"> </span><span class="s1">'Defaults secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"'</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-34-2"><a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a><span class="w">  </span><span class="p">|</span><span class="w"> </span>sudo<span class="w"> </span>tee<span class="w"> </span>/etc/sudoers.d/rodeo-secure-path<span class="w"> </span>&gt;/dev/null
+</span><span id="__span-34-3"><a id="__codelineno-34-3" name="__codelineno-34-3" href="#__codelineno-34-3"></a>sudo<span class="w"> </span>visudo<span class="w"> </span>-c<span class="w">   </span><span class="c1"># 在信任它之前，先確認語法可以解析</span>
+</span></code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  回到頂端
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.top", "navigation.indexes", "content.code.copy", "content.code.annotate", "toc.follow", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u8907\u88fd", "clipboard.copy": "\u8907\u88fd", "search.result.more.one": "\u6b64\u9801\u5c1a\u6709 1 \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.more.other": "\u6b64\u9801\u5c1a\u6709 # \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.none": "\u6c92\u6709\u7b26\u5408\u7684\u9805\u76ee", "search.result.one": "\u627e\u5230 1 \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.other": "\u627e\u5230 # \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.placeholder": "\u6253\u5b57\u9032\u884c\u641c\u5c0b", "search.result.term.missing": "\u7f3a\u5c11\u5b57\u8a5e", "select.version": "\u9078\u64c7\u7248\u672c"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+    
+  </body>
+</html>

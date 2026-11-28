@@ -1,0 +1,3512 @@
+
+<!doctype html>
+<html lang="zh-TW" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A declarative CLI that deploys hands-on lab infrastructure (Harvester HCI, Rancher Prime, SUSE Edge) on KVM.">
+      
+      
+      
+        <link rel="canonical" href="https://rodeocli.com/zh-TW/fleet/">
+      
+      
+        <link rel="prev" href="../rodeo-builder/">
+      
+      
+        <link rel="next" href="../player/">
+      
+      
+        
+          <link rel="alternate" href="../../fleet/" hreflang="en">
+        
+          <link rel="alternate" href="./" hreflang="zh-TW">
+        
+      
+      
+      <link rel="icon" href="../../assets/logo/favicon.ico">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
+    
+    
+      
+        <title>Fleet（多主機 workshop） - rodeo-cli</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/custom.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="rodeo-cli">
+  <meta property="og:title" content="Fleet（多主機 workshop） - rodeo-cli">
+  <meta property="og:description" content="A declarative CLI that deploys hands-on lab infrastructure (Harvester HCI, Rancher Prime, SUSE Edge) on KVM.">
+  <meta property="og:url" content="https://rodeocli.com/zh-TW/fleet/">
+  <meta property="og:image" content="https://rodeocli.com/assets/social-card.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="627">
+  <meta property="og:image:alt" content="rodeo-cli logo: a green horseshoe around a terminal prompt">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Fleet（多主機 workshop） - rodeo-cli">
+  <meta name="twitter:description" content="A declarative CLI that deploys hands-on lab infrastructure (Harvester HCI, Rancher Prime, SUSE Edge) on KVM.">
+  <meta name="twitter:image" content="https://rodeocli.com/assets/social-card.png">
+
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#fleet-workshop" class="md-skip">
+          跳轉到
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="頁首">
+    <a href="../" title="rodeo-cli" class="md-header__button md-logo" aria-label="rodeo-cli" data-md-component="logo">
+      
+  <img src="../../assets/logo/horseshoe-mark.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            rodeo-cli
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Fleet（多主機 workshop）
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="選擇語言">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="../../fleet/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="zh-TW" class="md-select__link">
+              繁體中文
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="搜尋" placeholder="搜尋" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="搜尋">
+        
+        <button type="reset" class="md-search__icon md-icon" title="清除" aria-label="清除" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            正在初始化搜尋引擎
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/avaleror/rodeo-cli" title="前往倉庫" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    avaleror/rodeo-cli
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="標籤" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../" class="md-tabs__link">
+        
+  
+  
+    
+  
+  首頁
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../get-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  開始使用
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../install/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  在 Linux 與 macOS 上安裝
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../guide-harvester/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Profile 指南
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../custom-rodeos/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  建立自己的 rodeo
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../rodeo-builder/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Rodeo Builder
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Fleet（多主機 workshop）
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../player/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Lab player
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../mcp/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  MCP server（AI agent）
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../reference/plan/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  參考
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../examples/bare-metal/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  範例
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../runbook/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  故障排除
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../architecture/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  給貢獻者
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="導覽列" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../" title="rodeo-cli" class="md-nav__button md-logo" aria-label="rodeo-cli" data-md-component="logo">
+      
+  <img src="../../assets/logo/horseshoe-mark.svg" alt="logo">
+
+    </a>
+    rodeo-cli
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/avaleror/rodeo-cli" title="前往倉庫" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    avaleror/rodeo-cli
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    首頁
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../get-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    開始使用
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    在 Linux 與 macOS 上安裝
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Profile 指南
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Profile 指南
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-harvester/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SUSE Virtualization (Harvester)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-rancher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rancher Prime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-suse-edge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SUSE Edge
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-suse-telco/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SUSE Telco Cloud
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide-kvm-hosts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    一般 KVM 主機
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../custom-rodeos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    建立自己的 rodeo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rodeo-builder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rodeo Builder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fleet（多主機 workshop）
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fleet（多主機 workshop）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目錄">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目錄
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#capabilities-by-phase" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        各階段功能
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#labs-with-operator-secrets-or-other-uis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        需要操作者 secret 或其他 UI 的 lab
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#roadmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        規劃
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="規劃">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#f4-host-acquire" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F4：取得主機
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#related-not-fleet-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        相關功能（不限 Fleet）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#f0-json-on-a-single-host" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F0：單機上的 JSON
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inventory-workshopyaml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        清單（workshop.yaml）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#f1-doctor-and-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F1：doctor 與 status
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#before-a-big-event-rodeo-fleet-preflight" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        大型活動之前：rodeo fleet preflight
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#run-it-from-the-cloud-rodeo-fleet-operator" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        從雲端執行：rodeo fleet operator
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#one-command-rodeo-fleet-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        一個指令：rodeo fleet up
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#f2-deploy-retry-access" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F2：deploy、retry、access
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="F2：deploy、retry、access">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#instructor-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        講師流程
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-fleet-deploy-does-on-each-host" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        fleet deploy 在每台主機上做了什麼
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#job-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        工作檔
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#retry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        重試
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#which-rodeo-cli-the-hosts-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        主機執行哪一版 rodeo-cli
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#diagnose-failure-forensics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Diagnose（失敗鑑識）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#access-sheet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        存取表
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#student-network-access-aws" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        學員網路存取（AWS）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#shared-accounts-who-owns-what-aws-and-gcp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        共用帳號：哪些資源是誰的（AWS 與 GCP）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#track-workshop-cost" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        追蹤 workshop 費用
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#claim-portal-f5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        領取入口（F5）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#openssh-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OpenSSH 需求
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        設計備註
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#f4-host-acquire-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F4 取得主機設計
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="F4 取得主機設計">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#hostprovider-protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HostProvider Protocol
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#workshopyaml-provider-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        workshop.yaml 的 provider: schema
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="workshop.yaml 的 provider: schema">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#common-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        通用欄位
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#aws-api-credentials" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AWS API 帳密
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#providertype-aws" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        provider.type: aws
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#providertype-gcp-f4b" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        provider.type: gcp（F4b）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#providertype-vultr-f4c-not-implemented" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        provider.type: vultr（F4c，尚未實作）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#providertype-hetzner-f4d-not-implemented" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        provider.type: hetzner（F4d，尚未實作）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#merge-semantics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        合併語意
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../player/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Lab player
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mcp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP server（AI agent）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    參考
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    參考
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    rodeo-plan.yaml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/definition/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    definition.yaml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    範例
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    範例
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/bare-metal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    裸機
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/aws-macos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    從 Mac 部署到 AWS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/instruqt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Instruqt track
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/workshop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workshop fleet 清單
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    測試與 CI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../runbook/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    故障排除
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_13" >
+        
+          
+          <label class="md-nav__link" for="__nav_13" id="__nav_13_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    給貢獻者
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_13_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_13">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    給貢獻者
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing and validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../claim-portal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claim portal
+  
+
+    
+  </span>
+  
+  
+    
+  
+  
+    <span class="md-status md-status--shipped for AWS fleets in v0.18.0 (2026-10-02). Student SSH on port 2222 shipped in v0.20.1 and was removed in"></span>
+  
+
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../claim-portal-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claim portal (implementation plan)
+  
+
+    
+  </span>
+  
+  
+    
+  
+  
+    <span class="md-status md-status--approved design; F5.0 live-checked 2026-09-30; F5.1-F5.4 implemented 2026-09-30, live end-to-end check pending"></span>
+  
+
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目錄">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目錄
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#capabilities-by-phase" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        各階段功能
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#labs-with-operator-secrets-or-other-uis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        需要操作者 secret 或其他 UI 的 lab
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#roadmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        規劃
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="規劃">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#f4-host-acquire" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F4：取得主機
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#related-not-fleet-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        相關功能（不限 Fleet）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#f0-json-on-a-single-host" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F0：單機上的 JSON
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inventory-workshopyaml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        清單（workshop.yaml）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#f1-doctor-and-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F1：doctor 與 status
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#before-a-big-event-rodeo-fleet-preflight" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        大型活動之前：rodeo fleet preflight
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#run-it-from-the-cloud-rodeo-fleet-operator" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        從雲端執行：rodeo fleet operator
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#one-command-rodeo-fleet-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        一個指令：rodeo fleet up
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#f2-deploy-retry-access" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F2：deploy、retry、access
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="F2：deploy、retry、access">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#instructor-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        講師流程
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-fleet-deploy-does-on-each-host" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        fleet deploy 在每台主機上做了什麼
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#job-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        工作檔
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#retry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        重試
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#which-rodeo-cli-the-hosts-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        主機執行哪一版 rodeo-cli
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#diagnose-failure-forensics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Diagnose（失敗鑑識）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#access-sheet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        存取表
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#student-network-access-aws" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        學員網路存取（AWS）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#shared-accounts-who-owns-what-aws-and-gcp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        共用帳號：哪些資源是誰的（AWS 與 GCP）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#track-workshop-cost" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        追蹤 workshop 費用
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#claim-portal-f5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        領取入口（F5）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#openssh-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OpenSSH 需求
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        設計備註
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#f4-host-acquire-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F4 取得主機設計
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="F4 取得主機設計">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#hostprovider-protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HostProvider Protocol
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#workshopyaml-provider-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        workshop.yaml 的 provider: schema
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="workshop.yaml 的 provider: schema">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#common-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        通用欄位
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#aws-api-credentials" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AWS API 帳密
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#providertype-aws" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        provider.type: aws
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#providertype-gcp-f4b" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        provider.type: gcp（F4b）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#providertype-vultr-f4c-not-implemented" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        provider.type: vultr（F4c，尚未實作）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#providertype-hetzner-f4d-not-implemented" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        provider.type: hetzner（F4d，尚未實作）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#merge-semantics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        合併語意
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="fleet-workshop">Fleet：多主機 workshop 編排<a class="headerlink" href="#fleet-workshop" title="Permanent link">&para;</a></h1>
+<p>在筆電端執行的控制平面，透過 OpenSSH 驅動<strong>多台遠端 KVM 主機</strong>。
+每台主機仍然執行一般的單機 <code>rodeo</code>；fleet 只負責分派與追蹤工作。
+Engine 階段、Ansible role 與 nested 網路都沒有改變。</p>
+<p>另請參閱：<a href="../get-started/">開始使用</a>（單機）、<a href="../architecture/">架構</a>、
+<a href="https://github.com/avaleror/rodeo-cli/blob/main/ROADMAP.md">ROADMAP.md</a>（Phase I）。</p>
+<h2 id="capabilities-by-phase">各階段功能<a class="headerlink" href="#capabilities-by-phase" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>階段</th>
+<th>狀態</th>
+<th>內容</th>
+<th>指令</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>F0</strong></td>
+<td>已推出</td>
+<td>機器可讀的主機 CLI</td>
+<td><code>rodeo doctor --output json</code>, <code>rodeo status --output json</code></td>
+</tr>
+<tr>
+<td><strong>F1</strong></td>
+<td>已推出</td>
+<td>清單 + 唯讀分派</td>
+<td><code>rodeo fleet doctor</code>, <code>rodeo fleet status</code></td>
+</tr>
+<tr>
+<td><strong>F2</strong></td>
+<td>已推出</td>
+<td>部署／重試／存取表</td>
+<td><code>rodeo fleet deploy</code>, <code>retry</code>, <code>access</code></td>
+</tr>
+<tr>
+<td><strong>F2.2</strong></td>
+<td>已推出</td>
+<td>一個指令跑完整個流程</td>
+<td><code>rodeo fleet up</code></td>
+</tr>
+<tr>
+<td><strong>F2.1</strong></td>
+<td>已推出</td>
+<td>失敗鑑識</td>
+<td><code>rodeo fleet diagnose</code></td>
+</tr>
+<tr>
+<td><strong>F4a</strong></td>
+<td>已推出</td>
+<td>AWS 取得主機，每台主機有 6 小時自動銷毀計時（dead-man switch）</td>
+<td><code>rodeo fleet provision</code>, <code>deprovision</code></td>
+</tr>
+<tr>
+<td><strong>F4b</strong></td>
+<td>已推出（單機）</td>
+<td>GCP</td>
+<td><code>rodeo up --target gcp</code></td>
+</tr>
+<tr>
+<td><strong>F4c–d</strong></td>
+<td>尚未實作</td>
+<td>先 Vultr，再 Hetzner。registry 兩者都會拒絕</td>
+<td><code>provider.type</code> 為 <code>vultr</code> 或 <code>hetzner</code> 時會拋出 <code>ConfigError</code></td>
+</tr>
+<tr>
+<td><strong>F5</strong></td>
+<td>已推出（AWS，v0.18）</td>
+<td>學員領取入口（claim portal）：每位學員輸入 workshop 代碼，就能拿到自己的 lab，並透過 player 進入</td>
+<td><code>rodeo fleet open-access</code>, <code>rodeo fleet portal ...</code>（<a href="../claim-portal/">設計</a>、<a href="../claim-portal-plan/">計畫</a>）</td>
+</tr>
+</tbody>
+</table>
+<p>主機前置條件（在每台 lab 機器上執行 <a href="https://github.com/avaleror/rodeo-cli/blob/main/install.sh"><code>install.sh</code></a> 之後）：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>rodeo<span class="w"> </span>doctor<span class="w"> </span>--output<span class="w"> </span>json
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="c1"># 在 lab 目錄中執行：</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>rodeo<span class="w"> </span>status<span class="w"> </span>--output<span class="w"> </span>json
+</span></code></pre></div>
+<hr />
+<h2 id="labs-with-operator-secrets-or-other-uis">需要操作者 secret 或其他 UI 的 lab<a class="headerlink" href="#labs-with-operator-secrets-or-other-uis" title="Permanent link">&para;</a></h2>
+<p>有些 lab 需要只有你才有的值（lab 的 <code>operator_secrets</code>，例如 SCC
+regcode 或預先建好的映像網址）。把它們列在 <code>workshop.yaml</code> 裡：<code>fleet deploy</code>
+會在 <code>rodeo up</code> 之前，只把這些 key 從你的 <code>~/.rodeo/secrets.yaml</code> 複製到每台主機（透過 SSH
+stdin，權限 0600）。只要缺少任何一個，它就會停下來，不會動到任何主機。<code>ui_ports</code> 會在 <code>fleet access</code> 加上欄位：</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">lab</span><span class="p">:</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">profile</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">smlm-workshop</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/root/rodeo-lab</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="nt">components</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[]</span><span class="w">                 </span><span class="c1"># 這個 lab 沒有 Harvester/Rancher UI</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span><span class="nt">ui_ports</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">smlm</span><span class="p">:</span><span class="w"> </span><span class="nv">443</span><span class="p p-Indicator">}</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="nt">operator_secrets</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">smlm_image_url</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">smlm_image_sha256</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">smlm_image_admin_pass</span><span class="p p-Indicator">,</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">                     </span><span class="nv">sles15sp5_image_url</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">sles15sp5_image_sha256</span><span class="p p-Indicator">,</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">                     </span><span class="nv">sles15sp6_image_url</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">sles15sp6_image_sha256</span><span class="p p-Indicator">]</span>
+</span></code></pre></div>
+<h2 id="roadmap">規劃<a class="headerlink" href="#roadmap" title="Permanent link">&para;</a></h2>
+<p>Fleet <strong>尚未</strong>推出的部分。完整檢查清單：<a href="https://github.com/avaleror/rodeo-cli/blob/main/ROADMAP.md#phase-i--fleet--workshop-fan-out">ROADMAP Phase I</a>。</p>
+<h3 id="f4-host-acquire">F4：取得主機<a class="headerlink" href="#f4-host-acquire" title="Permanent link">&para;</a></h3>
+<p><strong>從筆電建立 KVM 主機</strong>，合併進 <code>workshop.yaml</code>，然後執行一般的
+收斂迴圈。provider 只負責到清單為止；deploy／diagnose／retry 仍然
+只走 OpenSSH。</p>
+<table>
+<thead>
+<tr>
+<th>順序</th>
+<th>Provider</th>
+<th>狀態</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>F4a</strong></td>
+<td><strong>AWS</strong>（<code>boto3</code>，<code>[aws]</code> extra：請見<a href="../install/">安裝</a>）</td>
+<td><strong>MVP 已推出</strong>：依 tag 建立／重用、等待 running + SSH、寫入 <code>hosts[]</code>、只終止有 tag 的執行個體</td>
+</tr>
+<tr>
+<td><strong>F4b</strong></td>
+<td><strong>GCP</strong>（<code>google-cloud-compute</code>）</td>
+<td>單機已實機測試。<code>fleet provision</code> 為每個主機 id 建立一台 VM。領取入口與 <code>open-access</code> 仍只支援 AWS</td>
+</tr>
+<tr>
+<td><strong>F4c</strong></td>
+<td><strong>Vultr Bare Metal</strong></td>
+<td>尚未實作。<code>get_provider("vultr")</code> 會拒絕</td>
+</tr>
+<tr>
+<td><strong>F4d</strong></td>
+<td><strong>Hetzner Cloud</strong></td>
+<td>尚未實作。<code>get_provider("hetzner")</code> 會拒絕</td>
+</tr>
+</tbody>
+</table>
+<p><strong>不在範圍內：</strong> Equinix Metal（服務已終止）。跨主機共用 secret。
+為多主機修改 nested 階段 engine。</p>
+<p><strong>MVP 缺口（AWS）：</strong> 還沒有 <code>plan</code> dry-run；自動 SG 之後再做。</p>
+<p><strong>本機清理。</strong> <code>deprovision</code> 也會移除筆電為每台被終止的
+主機保留的東西：<code>workshop.yaml</code> 中它的 <code>hosts[]</code> 項目、
+<code>~/.rodeo/fleet/&lt;workshop&gt;/known_hosts</code> 中它的 host key，以及它的學員 SSH key。當主機都沒了
+而且 portal 也已移除時，<code>~/.rodeo/fleet/&lt;workshop&gt;/</code> 與
+<code>workshop.job.yaml</code> 也會一併刪除。BYO 主機、終止失敗的主機、<code>workshop.yaml</code>
+的其他內容、plan、<code>secrets.yaml</code> 以及受管理的 SSH key 都不會被動到。<code>--json</code> 會在 <code>local_cleanup</code> 底下列出移除了哪些東西。</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s1">'.[aws]'</span><span class="w">        </span><span class="c1"># 只需一次，在你的 rodeo-cli checkout 中執行（請見 install.md）</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="c1"># AWS API 帳密（boto3：絕不放進 YAML）。二擇一：</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="c1">#   ~/.aws/credentials  （+ 可選的 AWS_PROFILE / ~/.aws/config）</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="c1">#   或 AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY（+ 可選的 AWS_SESSION_TOKEN）</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="c1"># SSH：每個 workshop 都有自己的 key（~/.rodeo/ssh/labs/&lt;workshop&gt;/），會隨 workshop 一起刪除</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>provision<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w">    </span><span class="c1"># 建立／重用 → 寫入 hosts[]</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>deploy<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w">       </span><span class="c1"># 在每台主機安裝 rodeo，啟動 lab</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>doctor<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w">       </span><span class="c1"># 主機上需要有 rodeo，所以要在 deploy 之後</span>
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>deprovision<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>--yes
+</span></code></pre></div>
+<p>共用的 <code>HostProvider</code> Protocol 與 <code>provider:</code> YAML schema：
+請見下方的<a href="#f4-host-acquire-design">取得主機設計</a>。</p>
+<h3 id="related-not-fleet-only">相關功能（不限 Fleet）<a class="headerlink" href="#related-not-fleet-only" title="Permanent link">&para;</a></h3>
+<p>單機的 <code>deployment_target: aws</code> 與 fleet 建立主機共用同一個 <code>rodeo/providers/aws</code>
+adapter 與 <code>provider:</code> YAML schema。
+在 EC2 guest 上，lab 仍然以 <code>baremetal</code> 執行。</p>
+<p>實機冒煙測試檢查清單：</p>
+<ul>
+<li><a href="../examples/aws-fleet-claude-test-plan/">AWS 單機 + fleet</a></li>
+<li><a href="../examples/testing/#aws-live-smoke">測試：AWS 實機冒煙測試</a></li>
+</ul>
+<hr />
+<h2 id="f0-json-on-a-single-host">F0：單機上的 JSON<a class="headerlink" href="#f0-json-on-a-single-host" title="Permanent link">&para;</a></h2>
+<p>結構化報告放在 <code>rodeo/service/</code>，讓 CLI 與 fleet 共用同一種格式。</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>rodeo<span class="w"> </span>doctor<span class="w"> </span>--output<span class="w"> </span>json
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>rodeo<span class="w"> </span>status<span class="w"> </span>--output<span class="w"> </span>json<span class="w">   </span><span class="c1"># 需要有 lab（目前目錄或 --config-dir）</span>
+</span></code></pre></div>
+<p>預設的 <code>--output text</code> 保留原本的 Rich 表格。</p>
+<hr />
+<h2 id="inventory-workshopyaml">清單（<code>workshop.yaml</code>）<a class="headerlink" href="#inventory-workshopyaml" title="Permanent link">&para;</a></h2>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">suse-virt-rodeo-emea</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nt">lab</span><span class="p">:</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span><span class="nt">dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/root/suse-virt-workshop</span><span class="w">     </span><span class="c1"># 遠端路徑（status + deploy 的工作目錄）</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span><span class="c1"># F2：以下二擇一：</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">  </span><span class="nt">source</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git:https://github.com/avaleror/suse-virt-workshop.git</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">  </span><span class="c1"># profile: harvester              # 另一種做法：植入內建／自訂 profile</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">  </span><span class="nt">branch</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">main</span><span class="w">                      </span><span class="c1"># 可選（僅限 git）</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">  </span><span class="nt">target</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">baremetal</span><span class="w">                 </span><span class="c1"># baremetal | instruqt（AWS 主機請用 baremetal）</span>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">  </span><span class="nt">concurrency</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">4</span><span class="w">                    </span><span class="c1"># deploy/retry 預設的 -j</span>
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">  </span><span class="nt">ports</span><span class="p">:</span>
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="w">    </span><span class="nt">harvester</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">8443</span><span class="w">                 </span><span class="c1"># 在主機 public IP 上做 DNAT</span>
+</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="w">    </span><span class="nt">rancher</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">30002</span>
+</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="w">  </span><span class="c1"># components: [harvester]         # 可選：請見下方的「存取表」。</span>
+</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="w">  </span><span class="c1">#                                  # 省略的話，會顯示 fleet 能組出的所有網址。</span>
+</span><span id="__span-4-15"><a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="w">  </span><span class="c1"># ref: main                        # 主機要執行的 rodeo-cli git ref</span>
+</span><span id="__span-4-16"><a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="w">  </span><span class="c1"># install_url: https://…           # install.sh 的 fork 或離線鏡像站</span>
+</span><span id="__span-4-17"><a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a><span class="nt">defaults</span><span class="p">:</span>
+</span><span id="__span-4-18"><a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="w">  </span><span class="nt">ssh_user</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ec2-user</span><span class="w">                 </span><span class="c1"># AMI 使用者（ec2-user / sles / root）；非 root 時透過 sudo -n 執行</span>
+</span><span id="__span-4-19"><a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a><span class="w">  </span><span class="c1"># identity_file: 可選；預設為 workshop key（雲端）或 ~/.rodeo/ssh/id_ed25519</span>
+</span><span id="__span-4-20"><a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a><span class="nt">hosts</span><span class="p">:</span>
+</span><span id="__span-4-21"><a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">student-01</span>
+</span><span id="__span-4-22"><a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a><span class="w">    </span><span class="nt">ssh</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">203.0.113.11</span><span class="w">               </span><span class="c1"># host 或 user@host</span>
+</span><span id="__span-4-23"><a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a><span class="w">    </span><span class="nt">public_ip</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">203.0.113.11</span><span class="w">         </span><span class="c1"># 供 fleet access 使用</span>
+</span><span id="__span-4-24"><a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a><span class="w">    </span><span class="nt">labels</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> room</span><span class="p">:</span><span class="w"> </span><span class="nv">a</span><span class="w"> </span><span class="p p-Indicator">}</span>
+</span><span id="__span-4-25"><a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">student-02</span>
+</span><span id="__span-4-26"><a id="__codelineno-4-26" name="__codelineno-4-26" href="#__codelineno-4-26"></a><span class="w">    </span><span class="nt">ssh</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">root@lab-02.example</span>
+</span><span id="__span-4-27"><a id="__codelineno-4-27" name="__codelineno-4-27" href="#__codelineno-4-27"></a><span class="w">    </span><span class="nt">public_ip</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">203.0.113.12</span>
+</span><span id="__span-4-28"><a id="__codelineno-4-28" name="__codelineno-4-28" href="#__codelineno-4-28"></a><span class="w">    </span><span class="nt">labels</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> room</span><span class="p">:</span><span class="w"> </span><span class="nv">b</span><span class="w"> </span><span class="p p-Indicator">}</span>
+</span></code></pre></div>
+<p>驗證採 fail-closed：<code>id</code> 不可重複、<code>ssh</code> 必填、<code>lab.dir</code> 必填。
+<code>lab.source</code> 或 <code>lab.profile</code> 只有在 <strong>deploy</strong>／<strong>retry</strong> 時才是必填。</p>
+<hr />
+<h2 id="f1-doctor-and-status">F1：doctor 與 status<a class="headerlink" href="#f1-doctor-and-status" title="Permanent link">&para;</a></h2>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>doctor<span class="w"> </span>-f<span class="w"> </span>workshop.yaml
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>status<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>--output<span class="w"> </span>json
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>doctor<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>--label<span class="w"> </span><span class="nv">room</span><span class="o">=</span>a
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>status<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>--host<span class="w"> </span>student-01<span class="w"> </span>-j<span class="w"> </span><span class="m">4</span>
+</span></code></pre></div>
+<ul>
+<li>只有在每台選定的主機都成功時，結束碼才是 <code>0</code>。</li>
+<li>兩者都會在主機上執行 <code>rodeo</code>，所以在裝好之前都會以 <code>rodeo: command not found</code> 失敗。
+  對於由 <code>rodeo fleet provision</code> 建立的主機，安裝是在
+  <code>rodeo fleet deploy</code> 中進行，所以要在 deploy 之後才跑 doctor。對於已經執行過
+  <code>install.sh</code> 的 BYO 主機，doctor 在 deploy 之前也能用。</li>
+<li><strong>doctor：</strong> 只看遠端程序的結束碼還不夠，fleet 也會檢查 KVM、nested
+  virt、核心工具，以及內建 profile 是否放得進 RAM
+  （<code>rodeo/fleet/doctor.py::_readiness_problems</code>）。</li>
+<li><strong>status：</strong> 在每台主機的 <code>lab.dir</code> 中執行。如果有 <code>workshop.job.yaml</code>，
+  status 會更新每台主機的工作狀態，供之後重試使用。</li>
+</ul>
+<hr />
+<h2 id="before-a-big-event-rodeo-fleet-preflight">大型活動之前：<code>rodeo fleet preflight</code><a class="headerlink" href="#before-a-big-event-rodeo-fleet-preflight" title="Permanent link">&para;</a></h2>
+<p>在建立任何資源之前，執行唯讀檢查：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>preflight<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w">              </span><span class="c1"># 依清單的規劃</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>preflight<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>--count<span class="w"> </span><span class="m">30</span><span class="w">   </span><span class="c1"># 用同一個檔案規劃更大的活動</span>
+</span></code></pre></div>
+<ul>
+<li><strong>vCPU 配額</strong>：該執行個體系列的隨需配額中可用的 vCPU，與新主機（以及 portal 機器）
+  所需的數量比較。超過 80% 時警告，超過配額時失敗，並列出要提高的 Service Quotas 代碼。
+  請在活動前數週向 AWS 申請：提高配額不會立即生效。</li>
+<li><strong>執行個體類型</strong>：子網路所在的可用區域有提供此類型。</li>
+<li><strong>AWS 工作階段</strong>：可自動更新的憑證（<code>aws login</code>、SSO）沒有問題；固定憑證的有效時間
+  必須超過約一小時的執行。</li>
+<li><strong>有 <code>player:</code> 區塊時</strong>：Route 53 區域存在，且活動憑證還有 7 天以上的效期
+  （<code>fleet cert</code> 會簽發或更新）。</li>
+</ul>
+<p>有檢查失敗時，結束代碼為 1。</p>
+<h2 id="run-it-from-the-cloud-rodeo-fleet-operator">從雲端執行：<code>rodeo fleet operator</code><a class="headerlink" href="#run-it-from-the-cloud-rodeo-fleet-operator" title="Permanent link">&para;</a></h2>
+<p>長時間的 <code>fleet up</code> 不應該依賴筆電：闔上螢幕、睡眠或 Wi-Fi 斷線都會讓它停止。operator
+主機是 workshop 子網路中的一台小型執行個體（t3.small），替你執行 fleet 指令：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>operator<span class="w"> </span>up<span class="w">    </span>-f<span class="w"> </span>workshop.yaml<span class="w">   </span><span class="c1"># 建立主機，安裝 rodeo 與 AWS CLI</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>operator<span class="w"> </span>login<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w">   </span><span class="c1"># 在主機上執行 aws login --remote</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>operator<span class="w"> </span>push<span class="w">  </span>-f<span class="w"> </span>workshop.yaml<span class="w">   </span><span class="c1"># workshop 目錄、lab 金鑰、known_hosts、活動憑證</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>operator<span class="w"> </span>run<span class="w">   </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>--<span class="w"> </span>up<span class="w"> </span>--track-ref<span class="w"> </span>&lt;sha&gt;<span class="w"> </span>--images-bucket<span class="w"> </span>&lt;bucket&gt;
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>operator<span class="w"> </span>logs<span class="w">  </span>-f<span class="w"> </span>workshop.yaml<span class="w">   </span><span class="c1"># Ctrl-C 只停止追蹤，不會停止執行</span>
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>operator<span class="w"> </span>status<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w">  </span><span class="c1"># running、done 或 failed (exit N)</span>
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>operator<span class="w"> </span>pull<span class="w">  </span>-f<span class="w"> </span>workshop.yaml<span class="w">   </span><span class="c1"># 取回結果；會先備份本機副本</span>
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>operator<span class="w"> </span>down<span class="w">  </span>-f<span class="w"> </span>workshop.yaml
+</span></code></pre></div>
+<ul>
+<li><strong>AWS 工作階段</strong>：<code>login</code> 會在主機上執行 <code>aws login --remote</code>。在任何裝置上開啟網址，
+  再把代碼貼回來。只要主控台工作階段仍有效，CLI 會自動更新，所以筆電可以睡眠。
+  執行個體角色不需要登入也能做到，但建立角色需要 PowerUser 沒有的 IAM 權限。</li>
+<li><strong>安全性</strong>：主機上有 lab SSH 金鑰、活動憑證與一個 AWS 工作階段。它的安全群組只對你的
+  筆電 IP 開放 SSH，與每台 rodeo 執行個體一樣有 dead-man switch，<code>down</code> 會移除它。</li>
+<li><strong>兩邊都能 SSH 到 lab</strong>：從 operator 主機執行時，lab 的 SSH 仍允許你的筆電 IP，
+  與 operator 自己的 IP 並存。</li>
+<li><strong>不影響學員</strong>：學員和以前一樣，透過 <code>open-access</code> 從任何網路連到 lab。</li>
+<li><code>run</code> 接的 fleet 指令不用加 <code>-f</code>。主機上沒有人能回答提示，指令需要確認時請加上 <code>--yes</code>。</li>
+</ul>
+<h2 id="one-command-rodeo-fleet-up">一個指令：<code>rodeo fleet up</code><a class="headerlink" href="#one-command-rodeo-fleet-up" title="Permanent link">&para;</a></h2>
+<p><code>rodeo fleet up</code> 會依序執行下方整套講師流程：<code>provision</code>、
+<code>deploy</code>、<code>portal up</code>、等到每個 lab 都完成、<code>open-access</code>、
+<code>portal publish</code> 與 <code>portal info</code>（沒有 portal 時則是 <code>access</code>）。</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># 新的 workshop：寫入 workshop.yaml，然後部署</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>up<span class="w"> </span>--profile<span class="w"> </span>virt-workshop<span class="w"> </span>--count<span class="w"> </span><span class="m">3</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">  </span>--guide-url<span class="w"> </span>https://avaleror.github.io/suse-virt-workshop/
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="c1"># 既有的清單，或接續一次中斷的執行</span>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>up<span class="w"> </span>-f<span class="w"> </span>workshop.yaml
+</span></code></pre></div>
+<p>加上 <code>--profile</code> 與 <code>--count</code> 時，它會寫入 <code>-f</code>（預設為 <code>workshop.yaml</code>，這個檔案
+必須還不存在）：AWS 位於 <code>--region</code>（預設為 <code>RODEO_AWS_REGION</code>，否則為
+eu-north-1）、使用 profile 的 <code>--instance-tier</code>（預設 <code>recommended</code>），除非
+指定了 <code>--instance-type</code>、使用該 region 預設 VPC 的 public subnet，除非指定了
+<code>--subnet-id</code>、<code>--ttl-hours</code>（預設 6），以及領取入口，除非加上
+<code>--no-portal</code>。之後每一個 <code>rodeo fleet</code> 指令都使用同一個檔案。</p>
+<p>它最多等待 <code>--wait-minutes</code>（預設 90），遇到第一個失敗的 lab 就停下來，
+並列出要執行的 <code>diagnose</code>／<code>retry --failed-only</code> 指令。再次執行
+<code>rodeo fleet up -f workshop.yaml</code> 就會接續：主機會被重用，已完成的
+lab 會被略過。用 <code>rodeo fleet deprovision -f workshop.yaml --yes</code> 拆除。</p>
+<h2 id="f2-deploy-retry-access">F2：deploy、retry、access<a class="headerlink" href="#f2-deploy-retry-access" title="Permanent link">&para;</a></h2>
+<h3 id="instructor-flow">講師流程<a class="headerlink" href="#instructor-flow" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>deploy<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>-j<span class="w"> </span><span class="m">4</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>doctor<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>-j<span class="w"> </span><span class="m">8</span><span class="w">     </span><span class="c1"># 在 deploy 之後：主機上需要有 rodeo</span>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>status<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w">          </span><span class="c1"># 反覆查詢，直到各階段完成</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>diagnose<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w">        </span><span class="c1"># 抓取失敗主機的 log</span>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>retry<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>--failed-only
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>access<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>--output<span class="w"> </span>json
+</span></code></pre></div>
+<h3 id="what-fleet-deploy-does-on-each-host"><code>fleet deploy</code> 在每台主機上做了什麼<a class="headerlink" href="#what-fleet-deploy-does-on-each-host" title="Permanent link">&para;</a></h3>
+<ol>
+<li>確保 <code>rodeo</code> 在 PATH 上（缺少時執行 <code>install.sh</code>，指定 ref 時則每次都執行；
+   請見<a href="#which-rodeo-cli-the-hosts-run">主機執行哪一版 rodeo-cli</a>）。</li>
+<li>同步 lab：<code>git clone</code>／<code>git pull --ff-only</code>，若是 profile 則執行 <code>rodeo up --no-deploy</code>。</li>
+<li>啟動<strong>背景執行（detached）的 tmux</strong>，在 <code>lab.dir</code> 中執行 <code>rodeo up --yes --no-tmux</code>
+   （session 名稱為 <code>rodeo-fleet-&lt;workshop&gt;-&lt;host-id&gt;</code>）。</li>
+<li>立即返回：<strong>不會</strong>等待 90–150 分鐘的安裝。</li>
+<li>在清單旁邊寫入 <strong><code>workshop.job.yaml</code></strong>（chmod 600）。</li>
+</ol>
+<p><strong>可快取</strong>的階段已經全部 <code>completed</code> 的主機會被<strong>略過</strong>，
+除非加上 <code>--force</code>。<code>apply</code> 階段永遠不會被快取（每次本機部署都會重跑），
+也不會擋住這項檢查。</p>
+<p>secret：由遠端 <code>rodeo up</code> <strong>為每台主機</strong>各自產生，fleet 絕不會 scp 一份共用的
+<code>secrets.yaml</code>。</p>
+<h3 id="job-file">工作檔<a class="headerlink" href="#job-file" title="Permanent link">&para;</a></h3>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nt">workshop</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">suse-virt-rodeo-emea</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="nt">hosts</span><span class="p">:</span>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">  </span><span class="nt">student-01</span><span class="p">:</span>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">    </span><span class="nt">state</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">running</span><span class="w">    </span><span class="c1"># pending | running | ok | failed</span>
+</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="w">    </span><span class="nt">tmux</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rodeo-fleet-suse-virt-rodeo-emea-student-01</span>
+</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="w">  </span><span class="nt">student-02</span><span class="p">:</span>
+</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="w">    </span><span class="nt">state</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">failed</span>
+</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="w">    </span><span class="nt">last_error</span><span class="p">:</span><span class="w"> </span><span class="s">"..."</span>
+</span></code></pre></div>
+<h3 id="retry">重試<a class="headerlink" href="#retry" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>retry<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>--failed-only<span class="w">   </span><span class="c1"># 預設</span>
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>retry<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>--all-selected<span class="w">  </span><span class="c1"># 忽略工作失敗紀錄；搭配 --host/--label 使用</span>
+</span></code></pre></div>
+<p>先從即時的 <code>status</code> 更新工作狀態，再對選定的主機以 <code>--force</code>
+重新啟動部署。</p>
+<h3 id="which-rodeo-cli-the-hosts-run">主機執行哪一版 rodeo-cli<a class="headerlink" href="#which-rodeo-cli-the-hosts-run" title="Permanent link">&para;</a></h3>
+<p>主機會從 GitHub 自行安裝：你本機的工作目錄永遠不會傳到
+主機上。預設情況下，安裝<strong>只在缺少 <code>rodeo</code> 的主機上</strong>執行，所以主機
+會一直保留第一次安裝時的程式碼；<code>--force</code> 重跑的是<em>部署</em>，不是
+安裝。</p>
+<p>對於鎖定在某個 release 的 workshop，這樣沒問題；但如果你剛
+push 了一個修正，就不對了：整個 fleet 的部署會悄悄地在每台主機上同時跑舊的程式碼。
+指定一個 ref 來強制更新：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>deploy<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>--ref<span class="w"> </span>main<span class="w">         </span><span class="c1"># 每台主機都用 main 的最新版</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>retry<span class="w">  </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>--ref<span class="w"> </span>feat/my-fix<span class="w">  </span><span class="c1"># 用修正版重跑失敗的主機</span>
+</span></code></pre></div>
+<p>指定 ref 時，安裝每次都會執行，<code>install.sh --ref</code> 會把每台
+主機的 checkout 強制重設（hard reset）到那個 ref。<code>lab.ref</code> 在清單中設定同樣的東西；<code>--ref</code>
+會覆寫它。安裝程式會從它要 checkout 的同一個 ref 抓取，除非
+<code>lab.install_url</code> 明確指向別處（fork、離線鏡像站），這時會
+原樣使用該網址，並把 ref 傳給它。無效的 ref 會在載入清單時就失敗，在連到任何主機之前。</p>
+<p>這和單機的 <code>rodeo up --target aws --ref …</code> 是同一套機制，兩條
+路徑共用 <code>rodeo/install_source.py</code>。</p>
+<h3 id="diagnose-failure-forensics">Diagnose（失敗鑑識）<a class="headerlink" href="#diagnose-failure-forensics" title="Permanent link">&para;</a></h3>
+<p><code>fleet status</code>／工作檔會告訴你是<em>哪一台</em>主機、哪個階段失敗。要知道
+<em>原因</em>，把 log 抓回筆電：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>diagnose<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w">                  </span><span class="c1"># 失敗的主機（預設）</span>
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>diagnose<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>--all-selected<span class="w">   </span><span class="c1"># 每台選定的主機</span>
+</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>diagnose<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>-o<span class="w"> </span>/tmp/diag<span class="w"> </span>--output<span class="w"> </span>json
+</span></code></pre></div>
+<p>每台主機的結果放在 <code>&lt;inventory&gt;.diagnose-&lt;utc&gt;/&lt;host-id&gt;/</code>（或 <code>-o</code> 指定的位置）下：</p>
+<table>
+<thead>
+<tr>
+<th>產出物</th>
+<th>來源</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>status.json</code></td>
+<td>遠端 <code>rodeo status --output json</code></td>
+</tr>
+<tr>
+<td><code>logs/*.log</code></td>
+<td><code>~/.rodeo/logs/</code> 的結尾部分（包含 <code>fleet-up.log</code>）</td>
+</tr>
+<tr>
+<td><code>meta/state/</code></td>
+<td><code>~/.rodeo/state/*.yaml</code> 階段快取</td>
+</tr>
+<tr>
+<td><code>meta/tmux-pane.txt</code></td>
+<td>工作 session 還在時擷取的 tmux pane 內容</td>
+</tr>
+<tr>
+<td><code>summary.json</code></td>
+<td>該主機的簡短失敗摘要</td>
+</tr>
+<tr>
+<td><code>index.json</code></td>
+<td>整個 workshop 的索引（使用 <code>--output json</code> 時也會印出）</td>
+</tr>
+</tbody>
+</table>
+<p>不會印出或收集 secret。收集成功時結束碼為 <code>0</code>；任何主機的 SSH
+或封存解壓縮失敗時為 <code>1</code>。</p>
+<h3 id="access-sheet">存取表<a class="headerlink" href="#access-sheet" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>access<span class="w"> </span>-f<span class="w"> </span>workshop.yaml
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>id</th>
+<th>Harvester</th>
+<th>Rancher</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>student-01</td>
+<td><code>https://203.0.113.11:8443</code></td>
+<td><code>https://203.0.113.11:30002</code></td>
+</tr>
+</tbody>
+</table>
+<p>Nested VIP 在每台主機內部維持 <code>192.168.122.10</code>；學員使用<strong>主機 public IP +
+DNAT</strong>。密碼<strong>絕不會</strong>印出：它們存放在每台主機的
+<code>~/.rodeo/secrets.yaml</code>。</p>
+<p>預設情況下，<code>access</code> 會為每台主機印出兩個網址，因為 fleet 在本機沒有可靠的
+訊號判斷某個 lab 實際提供哪些 UI（內建 profile
+名稱不會一對一對應到元件：例如 <code>test</code> profile 的範例目錄
+完全沒有 Rancher 節點）。在清單中設定 <code>lab.components: [harvester]</code> 或
+<code>[rancher]</code>，就能隱藏不適用於你的
+workshop 的網址。</p>
+<p>存取表是給講師用的。若要讓每位學員拿到自己的 lab（連結、
+帳密，而且從任何網路都連得到），請使用
+<a href="#claim-portal-f5">領取入口</a>。</p>
+<h3 id="student-network-access-aws">學員網路存取（AWS）<a class="headerlink" href="#student-network-access-aws" title="Permanent link">&para;</a></h3>
+<p>rodeo 管理的 security group 只允許操作者的 IP，所以預設情況下學員
+連不到自己的 lab。若要讓他們從任何網路進來、又不用知道他們的
+IP，請設定 <code>provider.student_access: open</code>，並在每個 lab 都起來之後開放 lab UI 的 port：</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="nt">provider</span><span class="p">:</span>
+</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">aws</span>
+</span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">  </span><span class="nt">student_access</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">open</span><span class="w">     </span><span class="c1"># operator（預設） | open</span>
+</span></code></pre></div>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>provision<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w">     </span><span class="c1"># port 維持只對操作者開放</span>
+</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>deploy<span class="w"> </span>-f<span class="w"> </span>workshop.yaml
+</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>status<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w">        </span><span class="c1"># 等到每台主機都完成</span>
+</span><span id="__span-16-4"><a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>open-access<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w">   </span><span class="c1"># 8443/30002 對 0.0.0.0/0 開放</span>
+</span><span id="__span-16-5"><a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>open-access<span class="w"> </span>--close<span class="w"> </span>-f<span class="w"> </span>workshop.yaml
+</span></code></pre></div>
+<p>除非每台主機都已完成所有階段，而且 Harvester
+與 Rancher 管理者密碼都夠強（16 個字元以上，包含大寫、小寫與數字），否則 <code>open-access</code> 會拒絕執行。
+檢查在每台主機上進行，只回報 strong／weak／missing；密碼絕不會
+離開主機。security group 由整個 workshop 共用，所以只要有一台主機
+還沒準備好，就會擋住所有主機的開放。port 依照 <code>lab.components</code> 決定；SSH（<code>22</code>）一律
+只對操作者開放。之後任何一次 <code>fleet provision</code> 都會再把 port 關起來。若使用
+<code>provider.security_group_ids</code>（BYO），rodeo 不會做任何變更，而是請你自己開放
+這些 port。</p>
+<h3 id="shared-accounts-who-owns-what-aws-and-gcp">共用帳號：哪些資源是誰的（AWS 與 GCP）<a class="headerlink" href="#shared-accounts-who-owns-what-aws-and-gcp" title="Permanent link">&para;</a></h3>
+<p>常常有好幾個人部署到同一個 AWS 帳號，而且 lab 名稱會重複：兩個人都跑
+<code>rancher-test</code> profile，就會各有一個叫 <code>rancher-test</code> 的 lab。所以 rodeo
+絕不只憑 lab 名稱挑選雲端資源。每個資源都帶有
+<code>rodeo-owner</code>（呼叫者的 ARN，CI 中則是 <code>RODEO_OWNER</code>）與 <code>rodeo-deployment</code>
+（8 個十六進位字元，由 lab key 產生），由這兩者決定哪些是你的。</p>
+<ul>
+<li>兩個人可以在同一個 region、同一時間使用相同的 plan 或 workshop 名稱。
+  每個人都有自己的執行個體、security group
+  （<code>rodeo-&lt;lab&gt;-&lt;deployment&gt;</code>）與 key pair。</li>
+<li><code>rodeo destroy --cloud</code>、<code>fleet deprovision</code> 與 portal 拆除只會移除
+  這個登入身分擁有的部署。這台機器上沒有 lab key 時，只會處理
+  這台機器記錄過的執行個體 id；一個都沒有就拒絕執行。</li>
+<li><code>rodeo cloud ls</code> 列出你在某個 region 的部署（<code>--all</code> 會列出所有人的，
+  並顯示擁有者）。它從 AWS 讀取 tag，所以換一台筆電也能用。</li>
+<li><code>rodeo cloud destroy &lt;deployment&gt;</code> 可以在任何地方移除你的某個部署：
+  執行個體、security group 與 key pair。要移除別人的部署需要
+  <code>--not-mine</code>，而且你必須輸入對方的擁有者名稱確認。</li>
+<li>這項改變之前建立的 lab 沒有 <code>rodeo-deployment</code>。持有它們 key 的機器
+  會在下一次 <code>up</code> 或 <code>destroy</code> 時接管它們（補上 tag，名稱不變）。
+  其他人在 <code>rodeo cloud ls --all</code> 中會看到它們標示為 <code>legacy</code>。</li>
+</ul>
+<p>GCP 上規則相同，但有三點不同。擁有者是你的 GCP 帳號
+（來自 Application Default Credentials）。label 不能包含 <code>@</code> 或 <code>.</code>，所以
+<code>rodeo-owner</code> label 是一個易讀的形式加上一段短雜湊，原始帳號則放在
+執行個體的 metadata 中。防火牆規則不能加 label，所以 <code>rodeo-&lt;lab&gt;-&lt;deployment&gt;</code>
+會把擁有者與部署記錄在說明欄位中。請使用 <code>rodeo cloud ls --provider gcp</code>
+（整個 project）與 <code>rodeo cloud destroy --provider gcp &lt;deployment&gt;</code>。這項改變之前的
+GCP lab，由 lab 公鑰位於執行個體 <code>ssh-keys</code> metadata 中的那台機器接管。</p>
+<p>擁有者檢查是為了防止 rodeo 指令動到錯的 lab。它不是權限系統：
+任何有 PowerUser 權限的人仍然可以在主控台刪除執行個體。</p>
+<h3 id="track-workshop-cost">追蹤 workshop 費用<a class="headerlink" href="#track-workshop-cost" title="Permanent link">&para;</a></h3>
+<p>上面這些 tag 也是成本分配 tag（cost allocation tag）。<code>rodeo-workshop</code> 依 workshop
+拆分帳單，<code>rodeo-owner</code> 依人拆分，<code>ManagedBy</code> 則加總 rodeo 執行的所有資源。</p>
+<ul>
+<li>要在 AWS 的<strong>管理（付款）帳號</strong>中啟用，位置在 Billing 的 Cost
+  allocation tags。連結帳號（linked account）無法啟用（在那裡
+  <code>aws ce list-cost-allocation-tags</code> 會失敗），請詢問負責帳務的人。</li>
+<li>啟用後約 24 小時才會出現新資料。回填（最多回溯 12 個月，
+  每 24 小時只能申請一次）只會計入資源上已經有該 tag 的時數。</li>
+<li>值有區分大小寫：<code>rodeo-workshop=suse-virt</code> 與 <code>SUSE-Virt</code> 在帳單上是
+  兩行。</li>
+<li>根磁碟區與網路介面也帶有這些 tag，所以磁碟費用會算在該
+  workshop 下。公開 IPv4 的費用在 Cost Explorer 中是否會跟著網路介面的 tag，
+  目前尚未確認：依賴它之前請先看一次實際帳單。</li>
+</ul>
+<p>tag 只能說明帳單，不能限制金額。上限仍然是自動銷毀計時：預設 6 小時，
+最多 168 小時（<code>provider.ttl_hours</code>）。</p>
+<h3 id="claim-portal-f5">領取入口（F5）<a class="headerlink" href="#claim-portal-f5" title="Permanent link">&para;</a></h3>
+<p>學員開啟一個 HTTPS 頁面，輸入你給他們的 <strong>workshop 代碼</strong>（來自
+<code>portal info</code>，例如 <code>RODEO-XVFD-20260930</code>；大小寫、空格與連字號都不影響）。
+輸入之後才會看到 lab 看板與領取表單：姓名、email，以及自己選的 6 位數
+PIN（123456 或 111111 這類太明顯的會被拒絕）。他們會拿到
+自己的 lab：Harvester 與 Rancher 網址加上管理者密碼，也可以選擇提供
+lab 主機的 SSH key。你可以看到誰拿了哪個 lab。設計：
+<a href="../claim-portal/">claim-portal.md</a>。</p>
+<p>回到 lab 的方式：</p>
+<ol>
+<li><strong>同一台裝置：</strong> 瀏覽器會記住這個 lab 3 天；重新開啟 portal
+   會顯示「Continue to your lab」，甚至在輸入 workshop 代碼之前就會出現。「Not you? Forget this
+   device」可以在共用電腦上清除紀錄。</li>
+<li><strong>另一台裝置：</strong> 「Already have a lab? Get it back」只要求輸入 email 與 PIN
+   （email 用來找到 lab，PIN 證明這是他們的，所以兩位學員用同一個
+   PIN 也沒關係）。它會用新的連結回傳同一個 lab；舊的連結會
+   失效。領取關閉期間也能使用。PIN 錯五次會鎖住該 email。</li>
+<li><strong>其他情況：</strong> 講師頁面上有每一個 lab，而
+   <code>rodeo fleet portal unlock EMAIL</code> 可以解除鎖定。</li>
+</ol>
+<p>隱私：每個頁面都有一行頁尾（「we only keep your name and email for this
+workshop, deleted when it ends; essential cookies only」），連結到 <code>/privacy</code>，
+領取表單在輸入資料的地方也會重複這段說明。<code>/privacy</code>（公開，不需要代碼）
+說明保留了什麼、保留多久，以及三個 cookie（<code>csrf</code>、<code>access</code>、<code>lab</code>）；
+其中的期限來自設定 cookie 的同一組常數，若兩者不一致，測試就會失敗。
+在公開活動之前，請先讓你的隱私團隊審閱這些措辭。</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="nt">provider</span><span class="p">:</span>
+</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">aws</span>
+</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="w">  </span><span class="nt">student_access</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">open</span><span class="w">        </span><span class="c1"># 必填：學員必須連得到自己的 lab</span>
+</span><span id="__span-17-4"><a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="nt">portal</span><span class="p">:</span>
+</span><span id="__span-17-5"><a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-17-6"><a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="w">  </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">open</span><span class="w">                  </span><span class="c1"># open（workshop 代碼 + email） | roster（邀請連結） | both</span>
+</span><span id="__span-17-7"><a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="w">  </span><span class="c1"># roster: students.csv      # roster / both：CSV，欄位為 name,email[,host_id]</span>
+</span><span id="__span-17-8"><a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="w">  </span><span class="nt">title</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">SUSE Virtualization workshop</span>
+</span><span id="__span-17-9"><a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a><span class="w">  </span><span class="nt">guide_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://avaleror.github.io/suse-virt-workshop/</span><span class="w">   </span><span class="c1"># 或 /guide/，若由 portal 提供</span>
+</span><span id="__span-17-10"><a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a><span class="w">  </span><span class="c1"># code_letters: 6           # RODEO-XXXXXX-YYYYMMDD 中的隨機字母數（4-8；6 = 1.91 億組代碼）</span>
+</span><span id="__span-17-11"><a id="__codelineno-17-11" name="__codelineno-17-11" href="#__codelineno-17-11"></a><span class="w">  </span><span class="c1"># hostname: labs.example.com   # 預設為 portal-&lt;ip&gt;.sslip.io（Let's Encrypt）</span>
+</span><span id="__span-17-12"><a id="__codelineno-17-12" name="__codelineno-17-12" href="#__codelineno-17-12"></a><span class="w">  </span><span class="c1"># instance_type: t3.small</span>
+</span></code></pre></div>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>provision<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w">     </span><span class="c1"># lab + 一台小型 portal VM（獨立 SG：443/80 開放，22 限操作者）</span>
+</span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>portal<span class="w"> </span>up<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w">     </span><span class="c1"># portal 服務 + 使用正式 TLS 憑證的 Caddy</span>
+</span><span id="__span-18-3"><a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>deploy<span class="w"> </span>-f<span class="w"> </span>workshop.yaml
+</span><span id="__span-18-4"><a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>player-setup<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w">  </span><span class="c1"># 學生 UI（見 docs/player.md）；fleet up 會自動完成這些步驟</span>
+</span><span id="__span-18-5"><a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>open-access<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w">   </span><span class="c1"># 等每個 lab 都完成後執行：有 player 時只開放 443</span>
+</span><span id="__span-18-6"><a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>portal<span class="w"> </span>publish<span class="w"> </span>--watch<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w">  </span><span class="c1"># 在講師頁面上追蹤部署進度；</span>
+</span><span id="__span-18-7"><a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a><span class="w">                                           </span><span class="c1"># 每個 lab 一準備好就會發布</span>
+</span><span id="__span-18-8"><a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>portal<span class="w"> </span>info<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w">   </span><span class="c1"># 放在投影片上的網址 + workshop 代碼</span>
+</span><span id="__span-18-9"><a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>portal<span class="w"> </span>status<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span><span class="c1"># 誰拿了哪個 lab</span>
+</span><span id="__span-18-10"><a id="__codelineno-18-10" name="__codelineno-18-10" href="#__codelineno-18-10"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>portal<span class="w"> </span>admin-link<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w">  </span><span class="c1"># 講師頁面（包含所有 lab 帳密；不要投影出來）</span>
+</span><span id="__span-18-11"><a id="__codelineno-18-11" name="__codelineno-18-11" href="#__codelineno-18-11"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>deprovision<span class="w"> </span>--yes<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w">  </span><span class="c1"># lab + portal（加 --keep-portal 保留 portal）</span>
+</span></code></pre></div>
+<p><strong>為沒到場的人縮減規模。</strong> 依預期人數建立主機，等
+現場人數穩定之後，再移除沒人領取的 lab：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>portal<span class="w"> </span>status<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w">                  </span><span class="c1"># 還有幾個空的？</span>
+</span><span id="__span-19-2"><a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>deprovision<span class="w"> </span>--yes<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>--unclaimed<span class="w"> </span><span class="m">35</span><span class="w">   </span><span class="c1"># 保留幾個備用</span>
+</span><span id="__span-19-3"><a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>rodeo<span class="w"> </span>fleet<span class="w"> </span>deprovision<span class="w"> </span>--yes<span class="w"> </span>-f<span class="w"> </span>workshop.yaml<span class="w"> </span>--unclaimed<span class="w"> </span>all<span class="w">  </span><span class="c1"># 或移除所有未領取的 lab</span>
+</span></code></pre></div>
+<p><code>--unclaimed N</code> 會自己挑選 lab：先挑還沒準備好的（仍在建置或
+失敗的），再從編號最大的空閒 lab 往下挑，所以留下來的備用 lab 是
+編號小的，也就是新的領取會優先拿到的那些。如果數字大於
+portal 上未領取的 lab 數，它會拒絕執行。若要手動挑選 lab，改用 <code>--host &lt;lab&gt;</code>
+（可重複指定）；學員已領取的 lab 會被拒絕，除非你加上 <code>--force</code>。</p>
+<p>不論哪種方式，在移除 lab 的期間都會暫停領取，之後再重新開放（如果
+原本是開放的），而被終止的 lab 也會從 portal 移除，所以沒有人會
+領到已經不存在的 lab。portal VM 本身永遠不會被動到。在 roster 模式下，每位
+受邀的學員都算已領取，不論有沒有開啟過。在這個 release 之前建立的 portal
+需要執行一次 <code>rodeo fleet portal up</code>，才會學到移除指令；在那之前，
+<code>deprovision</code> 會發出警告並讓領取維持關閉。</p>
+<table>
+<thead>
+<tr>
+<th>講師指令</th>
+<th>內容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>portal publish [--watch] [--interval 60]</code></td>
+<td>把 lab 推送到 portal。加上 <code>--watch</code> 時：講師頁面上會顯示每個 lab 的部署進度（已完成階段、目前階段、經過時間、失敗），每個 lab 一準備好就能被領取。請讓筆電保持喚醒（<a href="../install/#differences-and-things-to-know">install.md</a>）</td>
+</tr>
+<tr>
+<td><code>portal status</code> / <code>export [-o file.csv]</code></td>
+<td>領取紀錄：lab、姓名、email、領取方式、領取時間、第一次開啟時間</td>
+</tr>
+<tr>
+<td><code>portal admin-link</code></td>
+<td>產生講師頁面的新秘密連結：包含每一筆領取紀錄，以及每個 lab 的網址、密碼與 SSH key（舊的連結會失效）</td>
+</tr>
+<tr>
+<td><code>portal open</code> / <code>close</code> / <code>rotate-code</code></td>
+<td>領取時段；產生新的 workshop 代碼（會讓所有人登出看板；個人 lab 連結仍可使用）</td>
+</tr>
+<tr>
+<td><code>portal release LAB</code> / <code>revoke EMAIL</code> / <code>reassign EMAIL LAB</code> / <code>unlock EMAIL</code></td>
+<td>在 workshop 進行中修正錯誤</td>
+</tr>
+<tr>
+<td><code>portal invite [--rotate]</code></td>
+<td>Roster 模式：保留 lab，寫出包含個人連結的 <code>&lt;workshop&gt;-invites.csv</code>（0600）</td>
+</tr>
+</tbody>
+</table>
+<p>各項防護機制：</p>
+<ul>
+<li><strong>portal 是被動的。</strong> 它永遠不會連到 lab 主機或雲端 API，也不持有
+  rodeo SSH key 或雲端帳密。是由筆電透過 SSH、經由 stdin 把 lab 紀錄推送給它。
+  portal 的程式碼是 <code>rodeo/portal/</code>（只用標準函式庫），原樣複製過去，
+  並以非特權使用者在強化過的 systemd unit 中執行。</li>
+<li><strong>先輸入 workshop 代碼。</strong> portal 的主機名稱幾分鐘內就會公開（TLS
+  憑證會記錄在 Certificate Transparency 中），所以在輸入代碼之前，首頁
+  只會顯示一個代碼欄位。輸入之後，一個 cookie（綁定
+  目前的代碼，24 小時）會顯示所有 lab 的看板（空閒／已領取／建置中），
+  上面只有領取者的<em>姓名</em>，絕不顯示 email 或任何帳密，還有領取
+  表單。預設代碼有 6 個隨機字母（約 1.91 億組代碼）。錯誤的代碼
+  也會在所有位址合計後設上限（每 10 分鐘 200 次），所以即使 1,000 個
+  位址同時嘗試，在 8 小時的 workshop 中猜中的機率也只有約 0.06%。設定 <code>portal.code_letters</code>（4-8）可以改變長度，若
+  代碼外洩則用 <code>rotate-code</code>。升級之後，對既有 portal 執行的下一次 <code>portal up</code> 會把它的
+  代碼換成新的長度（設定 <code>code_letters: 4</code> 可保留舊的代碼）。</li>
+<li><strong>Workshop 指南連結：</strong> 設定 <code>portal.guide_url</code> 後，每個學員頁面（領取頁面，以及
+  他們的 lab 頁面中帳密上方）都會連結到練習題：可以是 <code>https://</code> 網址，例如
+  GitHub Pages，或是由 portal 本身提供的路徑。指南預設放在 GitHub Pages，
+  因為 portal 會隨 fleet 一起銷毀，而學員在 workshop 結束後仍可保留指南。
+  隨時可以用 <code>portal up</code> 更改；領取紀錄會保留。</li>
+<li><strong>講師頁面</strong>放在秘密連結後面，會顯示 email、部署進度以及
+  每個 lab 的帳密。</li>
+<li><strong>領取：</strong> 個人連結是 24 個隨機位元組，以 SHA-256 儲存，PIN 以 scrypt 儲存，
+  PIN 錯 5 次會鎖住該 email，每個表單都有 CSRF 防護，並設有 no-store 與 CSP 標頭。只有
+  <em>失敗</em>的嘗試（錯誤的代碼或 PIN、未知的連結）會計入每個位址每 10 分鐘 30 次的
+  上限，所以整間教室共用一個 NAT 位址也能領取。
+  錯誤的 workshop 代碼也會計入整個 portal 每 10 分鐘 200 次的上限。
+  超過之後，只有已經送出 3 次錯誤代碼的位址需要等待；新學員仍然
+  可以進入，已經進入的人也會保有 24 小時的存取權。
+  log 中絕不會包含 token、email、代碼、PIN 或密碼。</li>
+<li><strong>學員 SSH：</strong> 每台 lab 主機一個 <code>student</code> 使用者，僅限 key 登入，key 是在
+  你的筆電上另外產生的（<code>~/.rodeo/fleet/&lt;workshop&gt;/student-keys/</code>）。Publish 會在每台
+  主機上驗證該使用者沒有 sudo、不屬於任何特權群組，而且無法讀取 <code>/root</code>
+  （整個 fleet 共用的 rodeo key 就放在那裡）；任何一項檢查失敗都會中止。學員永遠拿不到
+  lab 主機的 root。</li>
+<li><code>publish</code> 可以安全地重跑（在 <code>fleet retry</code> 之後，或某個 lab 較晚完成時）：
+  還沒準備好的 lab 會對學員顯示為「still building」，而且絕不會被
+  分配出去。</li>
+</ul>
+<hr />
+<h2 id="openssh-requirements">OpenSSH 需求<a class="headerlink" href="#openssh-requirements" title="Permanent link">&para;</a></h2>
+<ul>
+<li>使用 <code>BatchMode=yes</code> 的 key 驗證（不會出現密碼提示）。</li>
+<li>Host key 在第一次使用時信任，之後依 workshop 固定下來
+  （<code>StrictHostKeyChecking=accept-new</code>、<code>~/.rodeo/fleet/&lt;workshop&gt;/known_hosts</code>），因為
+  fleet 會透過這些連線傳送 lab 密碼與學員 key。建立主機時
+  會忘掉它建立的每個位址的 key（EC2 會重複使用 public IP）。如果某台主機
+  在 rodeo 之外被重建，而 SSH 回報 host key 已變更，請用
+  <code>ssh-keygen -R &lt;ip&gt; -f ~/.rodeo/fleet/&lt;workshop&gt;/known_hosts</code> 移除。lab 內部的
+  主機→VM 連線（<code>rodeo/ssh.py</code>）仍然略過驗證：那些 VM 一直在
+  私有網路上被重建。</li>
+<li>筆電的 PATH 上要有 <code>ssh</code>；Agent／<code>ProxyJump</code>／<code>identity_file</code> 照常可用。</li>
+<li>每台遠端主機上：SSH 使用者的 PATH 上要有 <code>rodeo</code> + <code>tmux</code>；通常是 <code>root@</code>。</li>
+</ul>
+<p>Fleet <strong>不會</strong>在筆電上以 sudo 重新執行自己。</p>
+<h2 id="design-notes">設計備註<a class="headerlink" href="#design-notes" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>rodeo/ssh.py</code> = 主機→VM 的 lab 連線。</li>
+<li><code>rodeo/fleet/ssh_exec.py</code> = 筆電→KVM 主機。</li>
+<li>並行數預設值：doctor/status 為 <code>-j 8</code>；deploy/retry 使用 <code>lab.concurrency</code>
+  （預設 4），除非指定了 <code>-j</code>。deploy 建議使用低並行數（ISO／網路）。</li>
+<li>F4 取得主機請見<a href="#roadmap">規劃</a>。Equinix 不在範圍內。
+  共用 secret 與修改階段 pipeline 仍然不屬於 Fleet。</li>
+</ul>
+<hr />
+<h2 id="f4-host-acquire-design">F4 取得主機設計<a class="headerlink" href="#f4-host-acquire-design" title="Permanent link">&para;</a></h2>
+<p>取得主機的共用 Protocol／schema。<strong>AWS（F4a）MVP 已實作</strong>於
+<code>rodeo/providers/</code>，供 Fleet 與單機 <code>deployment_target: aws</code> 使用。
+Vultr／Hetzner 仍是 stub；GCP 已有 provider（單機已實機測試）。摘要請見<a href="#roadmap">規劃</a>。</p>
+<p><strong>重要：絕不要在 <code>workshop.yaml</code> 中設定 <code>lab.target: aws</code>。</strong></p>
+<p>由 AWS 建立的 workshop 主機以 <code>lab.target: baremetal</code> 執行 lab（完整的
+firewalld／DNAT／<code>finalise</code>）。<code>deployment_target: aws</code> 是筆電
+控制平面／plan 的主機情境標記（<code>rodeo up --target aws</code>，以及
+保留在執行個體上、用於磁碟下限 + <code>destroy --cloud</code> 的 plan）。把
+<code>lab.target: aws</code> 混進 Fleet 清單會破壞階段的行為。</p>
+<table>
+<thead>
+<tr>
+<th>面向</th>
+<th>單機</th>
+<th>Fleet workshop</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>取得主機</td>
+<td><code>rodeo up --target aws</code> + plan 中的 <code>provider:</code></td>
+<td><code>rodeo fleet provision</code> + <code>workshop.yaml</code> 中的 <code>provider:</code></td>
+</tr>
+<tr>
+<td>Lab 拓撲 profile</td>
+<td><code>--profile harvester</code></td>
+<td>在每台主機上植入相同的基礎 profile</td>
+</tr>
+<tr>
+<td>在 KVM 主機上執行</td>
+<td>以 <code>baremetal</code> 執行各階段</td>
+<td><code>lab.target: baremetal</code></td>
+</tr>
+<tr>
+<td>主機上的 plan 標記</td>
+<td>保留 <code>deployment_target: aws</code></td>
+<td><strong>不要</strong>設定 <code>lab.target: aws</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="hostprovider-protocol"><code>HostProvider</code> Protocol<a class="headerlink" href="#hostprovider-protocol" title="Permanent link">&para;</a></h3>
+<p>位於規劃中的 <code>rodeo/providers/</code> 的共用合約。Fleet CLI 絕不直接 import boto3/GCP/hcloud：
+只透過 registry + 這組介面。</p>
+<p><strong>型別（概念上）</strong></p>
+<table>
+<thead>
+<tr>
+<th>名稱</th>
+<th>角色</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ProviderConfig</code></td>
+<td>解析後的 <code>workshop.yaml</code> → <code>provider:</code> 對應（type + 各 type 專屬欄位）</td>
+</tr>
+<tr>
+<td><code>ProvisionSpec</code></td>
+<td>Workshop 名稱、想要的數量／host id、SSH 預設值、要套用的 label</td>
+</tr>
+<tr>
+<td><code>ProvisionedHost</code></td>
+<td>一對一對應到清單的 <code>hosts[]</code>：<code>id</code>、<code>ssh</code>、<code>public_ip</code>、<code>labels</code>、可選的 <code>provider_id</code>（雲端執行個體 id）</td>
+</tr>
+<tr>
+<td><code>DeprovisionResult</code></td>
+<td>每台主機的結果：destroyed／skipped／error</td>
+</tr>
+</tbody>
+</table>
+<p><strong>必要操作</strong></p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>行為</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>固定 id：<code>aws</code> | <code>gcp</code> | <code>vultr</code> | <code>hetzner</code></td>
+</tr>
+<tr>
+<td><code>validate(config) → None</code></td>
+<td>欄位缺少或無效時 fail closed（<code>ConfigError</code>），<strong>只檢查該 type 的欄位</strong></td>
+</tr>
+<tr>
+<td><code>plan(spec, config) → list[action]</code></td>
+<td>可選的 dry-run：對每個想要的 host id 回報 create／reuse／noop（F4a 有的話更好）</td>
+</tr>
+<tr>
+<td><code>provision(spec, config) → list[ProvisionedHost]</code></td>
+<td>冪等：重用已為此 workshop+host id 加上 tag 的執行個體；其餘的則建立；等到 <strong>running</strong> + <strong>SSH BatchMode</strong> 成功</td>
+</tr>
+<tr>
+<td><code>deprovision(spec, config) → list[DeprovisionResult]</code></td>
+<td><strong>只</strong>銷毀帶有下方擁有權 tag 的資源；拒絕沒有 tag 的資源</td>
+</tr>
+</tbody>
+</table>
+<p><strong>共用部分（非各 provider 各自實作）</strong></p>
+<ul>
+<li>SSH 等待／探測使用既有的 <code>rodeo/fleet/ssh_exec.py</code>（不用 paramiko）。</li>
+<li>清單合併：依 <code>id</code> 寫入／更新 <code>hosts[]</code>；除非加上 <code>--prune</code>，否則不刪除靜態主機。</li>
+<li>可選 extra：<code>[aws]</code>、<code>[gcp]</code>、<code>[vultr]</code>、<code>[hetzner]</code>，讓核心安裝保持輕量。</li>
+</ul>
+<p><strong>擁有權 tag</strong>（每個建立的執行個體都有；所有雲端使用相同的 key）</p>
+<table>
+<thead>
+<tr>
+<th>Tag／label key</th>
+<th>值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ManagedBy</code></td>
+<td><code>rodeo</code></td>
+</tr>
+<tr>
+<td><code>rodeo-workshop</code></td>
+<td>plan 的 <code>name:</code>／workshop 的 <code>name:</code></td>
+</tr>
+<tr>
+<td><code>rodeo-host-id</code></td>
+<td>清單中的主機 <code>id</code>（例如 <code>student-01</code>），單機則為 <code>primary</code></td>
+</tr>
+<tr>
+<td><code>rodeo-owner</code></td>
+<td>誰啟動的：<code>sts get-caller-identity</code> 回傳的呼叫者 ARN，或 <code>RODEO_OWNER</code></td>
+</tr>
+<tr>
+<td><code>rodeo-deployment</code></td>
+<td>8 個十六進位字元，每次部署一個（也是 lab key pair 名稱的後綴）</td>
+</tr>
+<tr>
+<td><code>rodeo-version</code></td>
+<td>建立它的 rodeo-cli 版本</td>
+</tr>
+<tr>
+<td><code>rodeo-created-by</code></td>
+<td>原始的呼叫者 ARN</td>
+</tr>
+</tbody>
+</table>
+<p>在 AWS 上，相同的 tag 會加在執行個體、它的根磁碟區、它的網路介面、
+lab 與 portal 的 security group，以及 lab key pair 上。<code>provider.labels</code> 不能
+設定 <code>ManagedBy</code>、<code>managed-by</code> 或任何 <code>rodeo-*</code> key：設定了會驗證失敗。</p>
+<p>GCP 使用 label（DNS-1123）；在雲端要求的地方把 key 轉成小寫，但保留相同的邏輯名稱。</p>
+<p><strong>Protocol 的非目標</strong></p>
+<ul>
+<li>不做跨雲端的「通用機型」列舉：規格／映像維持各 provider 專屬。</li>
+<li>F4 不做共用 secret／AMI 發布 pipeline。</li>
+<li>預設路徑不需要 Libcloud／OpenTofu。</li>
+</ul>
+<h3 id="workshopyaml-provider-schema"><code>workshop.yaml</code> 的 <code>provider:</code> schema<a class="headerlink" href="#workshopyaml-provider-schema" title="Permanent link">&para;</a></h3>
+<p>最上層的 <code>provider:</code> 是可選的。沒有設定 → 維持目前的行為（只有靜態 <code>hosts:</code>）。
+有設定 → 可以使用 <code>fleet provision</code>／<code>deprovision</code>；<code>type</code> 決定使用哪個 adapter。</p>
+<h4 id="common-fields">通用欄位<a class="headerlink" href="#common-fields" title="Permanent link">&para;</a></h4>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">suse-virt-rodeo-emea</span><span class="w">          </span><span class="c1"># 作為 rodeo-workshop tag 使用</span>
+</span><span id="__span-20-2"><a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="nt">lab</span><span class="p">:</span>
+</span><span id="__span-20-3"><a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="w">  </span><span class="nt">dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/root/suse-virt-workshop</span>
+</span><span id="__span-20-4"><a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="w">  </span><span class="nt">source</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git:https://github.com/example/suse-virt-workshop.git</span>
+</span><span id="__span-20-5"><a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a><span class="w">  </span><span class="c1"># … 既有的 lab key 不變 …</span>
+</span><span id="__span-20-6"><a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a><span class="nt">defaults</span><span class="p">:</span>
+</span><span id="__span-20-7"><a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a><span class="w">  </span><span class="nt">ssh_user</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">root</span><span class="w">                     </span><span class="c1"># 或依 AMI 使用 ec2-user / sles / …</span>
+</span><span id="__span-20-8"><a id="__codelineno-20-8" name="__codelineno-20-8" href="#__codelineno-20-8"></a><span class="w">  </span><span class="nt">identity_file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">~/.ssh/rodeo-workshop.pem</span>
+</span><span id="__span-20-9"><a id="__codelineno-20-9" name="__codelineno-20-9" href="#__codelineno-20-9"></a><span class="w">  </span><span class="c1"># ssh_options: ["ProxyJump=bastion"]</span>
+</span><span id="__span-20-10"><a id="__codelineno-20-10" name="__codelineno-20-10" href="#__codelineno-20-10"></a><span class="nt">provider</span><span class="p">:</span>
+</span><span id="__span-20-11"><a id="__codelineno-20-11" name="__codelineno-20-11" href="#__codelineno-20-11"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">aws</span><span class="w">                         </span><span class="c1"># aws | gcp | vultr | hetzner（有 provider: 時必填）</span>
+</span><span id="__span-20-12"><a id="__codelineno-20-12" name="__codelineno-20-12" href="#__codelineno-20-12"></a><span class="w">  </span><span class="nt">count</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">12</span><span class="w">                         </span><span class="c1"># hosts: [] 或數量不足時，要確保的主機數</span>
+</span><span id="__span-20-13"><a id="__codelineno-20-13" name="__codelineno-20-13" href="#__codelineno-20-13"></a><span class="w">  </span><span class="c1"># host_id_prefix: student-        # 預設為 "student-"；id 為 student-01 … student-N</span>
+</span><span id="__span-20-14"><a id="__codelineno-20-14" name="__codelineno-20-14" href="#__codelineno-20-14"></a><span class="w">  </span><span class="c1"># ttl_hours: 10                   # 自動銷毀計時，預設 6：每台主機（以及</span>
+</span><span id="__span-20-15"><a id="__codelineno-20-15" name="__codelineno-20-15" href="#__codelineno-20-15"></a><span class="w">  </span><span class="c1">#                                 # portal VM）在啟動後經過這段時間就會關機並被終止。</span>
+</span><span id="__span-20-16"><a id="__codelineno-20-16" name="__codelineno-20-16" href="#__codelineno-20-16"></a><span class="w">  </span><span class="c1">#                                 # 超過 6 小時的 workshop 請設定這個值。</span>
+</span><span id="__span-20-17"><a id="__codelineno-20-17" name="__codelineno-20-17" href="#__codelineno-20-17"></a><span class="w">  </span><span class="c1"># 套用到每台建立的主機的可選覆寫值：</span>
+</span><span id="__span-20-18"><a id="__codelineno-20-18" name="__codelineno-20-18" href="#__codelineno-20-18"></a><span class="w">  </span><span class="c1"># labels: { room: a, event: emea }</span>
+</span><span id="__span-20-19"><a id="__codelineno-20-19" name="__codelineno-20-19" href="#__codelineno-20-19"></a><span class="nt">hosts</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[]</span><span class="w">                           </span><span class="c1"># 空的 → 由 provision 建立；或預先放入靜態 + 雲端混合</span>
+</span></code></pre></div>
+<p>驗證規則（fail closed）：</p>
+<ul>
+<li><code>provider.type</code> ∈ <code>{aws, gcp, vultr, hetzner}</code>。</li>
+<li>設定 <code>provider.student_access</code> 時須 ∈ <code>{operator, open}</code>（預設 <code>operator</code>）；請見<a href="#student-network-access-aws">學員網路存取</a>。</li>
+<li>設定 <code>provider.ttl_hours</code> 時須大於 0 且不超過 168（預設 6）；它無法關閉，只有 <a href="../guide-kvm-hosts/">kvm-hosts</a> lab 可以設為 <code>off</code>。</li>
+<li><code>provider.host_to_host: true</code> 讓主機之間可以在任何 port 互連（kvm-hosts 預設啟用）。請見<a href="../reference/plan/#provider-when-deployment_target-aws">自動銷毀計時</a>。</li>
+<li>設定 <code>provider.count</code> 時須為 1–64 的整數；如果 <code>hosts:</code> 不是空的而且省略 count，就只確保那些 id（依 <code>rodeo-host-id</code> 重用／建立）。</li>
+<li>雲端主機上的 SSH 身分是 <code>~/.rodeo/ssh/labs/&lt;workshop&gt;/</code> 底下每個 workshop 專屬的 key（請見下方的 SSH）。BYO 主機使用 <code>~/.rodeo/ssh/id_ed25519</code> 或 <code>defaults.identity_file</code>。<code>provider.key_name</code> 會被忽略。</li>
+<li>各 type 專屬的必填 key 只由該 adapter 的 <code>validate()</code> 檢查。</li>
+</ul>
+<h4 id="aws-api-credentials">AWS API 帳密<a class="headerlink" href="#aws-api-credentials" title="Permanent link">&para;</a></h4>
+<p>建立主機<strong>只使用 boto3</strong>（AWS CLI 是可選的）。透過以下其中一種方式提供帳密：</p>
+<table>
+<thead>
+<tr>
+<th>方式</th>
+<th>做法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>共用檔案</td>
+<td><code>~/.aws/credentials</code>（以及可選的 <code>~/.aws/config</code>／<code>AWS_PROFILE</code>）</td>
+</tr>
+<tr>
+<td>環境變數</td>
+<td><code>AWS_ACCESS_KEY_ID</code> + <code>AWS_SECRET_ACCESS_KEY</code>（+ 可選的 <code>AWS_SESSION_TOKEN</code>）</td>
+</tr>
+</tbody>
+</table>
+<p>絕不要把 AWS access key 放進 <code>workshop.yaml</code> 或 <code>rodeo-plan.yaml</code>。</p>
+<h4 id="providertype-aws"><code>provider.type: aws</code><a class="headerlink" href="#providertype-aws" title="Permanent link">&para;</a></h4>
+<p>Harvester lab 請使用 <strong><code>m8id.8xlarge</code></strong>（32 vCPU / 128 GiB / 一顆本機 NVMe 裝置；目錄中的 <code>recommended</code> 等級），SUSE Edge 與 <code>rancher</code> profile 則用 <code>m8id.4xlarge</code>。Metal 機型仍然可用。Fleet 需要在 <code>workshop.yaml</code> 中設定 <code>region</code> 與 <code>subnet_id</code>；自動的 region 與 subnet 預設值只適用於單機的 <code>rodeo up --target aws</code>。</p>
+<p>每台建立的主機，以及 portal VM，都有<strong>自動銷毀計時</strong>：啟動後經過 <code>provider.ttl_hours</code>，它會關機並由 AWS 終止（預設 6，最多 168，除了 <a href="../guide-kvm-hosts/">kvm-hosts</a> lab 以外無法關閉）。如果 workshop 比這更長，請在 <code>fleet provision</code> 之前設定；<code>fleet provision</code> 會顯示每台主機的到期時間。
+<code>apply_host_context</code> 會把 <code>resources.harvester.disk_gb</code> 提高到固定的 <strong>500 GB</strong>，
+並把 <code>resources.rancher.disk_gb</code> 提高到 <strong>60 GB</strong>：絕不依節點數放大，所以
+NVMe 裝置的其餘空間是刻意保留的；它也會把 NVMe 掛載到
+<code>image_dir</code>。根磁碟的 <code>volume_size_gib</code> 只需要放作業系統（約 100 GiB）。過小／
+burstable 機型會在驗證時被拒絕。非 metal 機型預設<strong>啟用</strong> nested virt。</p>
+<p>SSH：每次部署都有自己的 key。當 workshop 沒有存活中的執行個體時，
+<code>provision</code> 會在 <code>~/.rodeo/ssh/labs/&lt;workshop&gt;/</code> 產生一組新的 ed25519 金鑰對，並把它
+匯入成 EC2 key pair <strong><code>rodeo-&lt;workshop&gt;-&lt;random&gt;</code></strong>（加上 <code>ManagedBy=rodeo</code> tag）。之後
+加入同一個存活中 workshop 的主機，以及 portal VM，都會重用這把 key。rodeo 會把它
+放到每台 KVM 主機上，讓 nested VM 也共用它，而 <code>rodeo ssh</code>／<code>fleet</code> 會自動
+取用。當 workshop 的最後一個執行個體被移除時（<code>fleet deprovision</code>、
+<code>rodeo destroy --cloud</code>），rodeo 會刪除 EC2 中的 key pair 與本機的 key。以其他方式結束的
+lab（自動銷毀計時、主控台）的 key，會在同一個 region 的下一次
+<code>provision</code> 時清掉。共用帳號中其他使用者同名的存活 lab 不是你的：
+<code>provision</code> 會略過它，另外開始自己的部署，請見
+<a href="#shared-accounts-who-owns-what-aws-and-gcp">共用帳號</a>。
+新的執行個體也會取得 cloud-init UserData：root authorized_keys + 為
+<code>ssh_user</code> 設定 <code>NOPASSWD</code> sudo，讓遠端 <code>rodeo up</code> 永遠不會要求輸入密碼。
+使用 <code>rodeo ssh student-01</code> 或 <code>rodeo ssh student-01/rancher</code>。</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="nt">provider</span><span class="p">:</span>
+</span><span id="__span-21-2"><a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">aws</span>
+</span><span id="__span-21-3"><a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="w">  </span><span class="nt">count</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">12</span>
+</span><span id="__span-21-4"><a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="w">  </span><span class="nt">region</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">eu-central-1</span><span class="w">              </span><span class="c1"># 必填</span>
+</span><span id="__span-21-5"><a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a><span class="w">  </span><span class="nt">instance_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">m8id.8xlarge</span><span class="w">       </span><span class="c1"># 或 instance_tier: recommended</span>
+</span><span id="__span-21-6"><a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a><span class="w">  </span><span class="c1"># ttl_hours: 10                   # 自動銷毀計時，預設 6</span>
+</span><span id="__span-21-7"><a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a><span class="w">  </span><span class="c1"># 省略 ami → 使用最新的 SLES 16 PAYG（suse-sles-16-0-v*-hvm-ssd-x86_64）</span>
+</span><span id="__span-21-8"><a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a><span class="w">  </span><span class="c1"># ami: ami-0123456789abcdef0      # 可選，固定版本</span>
+</span><span id="__span-21-9"><a id="__codelineno-21-9" name="__codelineno-21-9" href="#__codelineno-21-9"></a><span class="w">  </span><span class="nt">subnet_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">subnet-0abc…</span><span class="w">           </span><span class="c1"># 必填</span>
+</span><span id="__span-21-10"><a id="__codelineno-21-10" name="__codelineno-21-10" href="#__codelineno-21-10"></a><span class="w">  </span><span class="c1"># security_group_ids: [sg-0abc…]  # 省略 → rodeo 管理一個只限你 IP 的 SG</span>
+</span><span id="__span-21-11"><a id="__codelineno-21-11" name="__codelineno-21-11" href="#__codelineno-21-11"></a><span class="w">  </span><span class="c1"># associate_public_ip: true       # 預設 true</span>
+</span><span id="__span-21-12"><a id="__codelineno-21-12" name="__codelineno-21-12" href="#__codelineno-21-12"></a><span class="w">  </span><span class="c1"># nested_virtualization: true     # 非 metal 機型預設啟用</span>
+</span><span id="__span-21-13"><a id="__codelineno-21-13" name="__codelineno-21-13" href="#__codelineno-21-13"></a><span class="w">  </span><span class="c1"># volume_size_gib: 100            # 根 EBS；lab 磁碟透過 host_context 使用 NVMe</span>
+</span></code></pre></div>
+<p><strong><code>security_group_ids</code> 是可選的，但真正的 fleet 請明確設定。</strong>
+省略的話，rodeo 會自動管理一個，範圍限定在<em>執行 <code>fleet
+provision</code> 的那台機器</em>目前的 public IP：這適用於單機的 <code>rodeo up --target
+aws</code>（你既是操作者，也是唯一需要連進去的人），但不適用於
+多位學員的 fleet，因為每位學員都從自己的 IP 連線：除了你以外，
+他們全都會被擋在外面。只要 <code>count</code> &gt; 1 位真正的學員，就把 <code>security_group_ids</code> 設成一個真的
+涵蓋學員網路的 SG（教室的 CIDR、公開
+workshop 用 <code>0.0.0.0/0</code>，或 VPN 網段）。</p>
+<p>先在 <a href="https://aws.amazon.com/marketplace/pp/prodview-wn2xje27ui45o">Marketplace 上的 openSUSE Leap</a> 訂閱一次
+（目前的 build 範例：<em>openSUSE Leap 16.0 (x86_64) - v20260629</em>）。SSH 使用者：<strong><code>ec2-user</code></strong>。
+SLES 16 也可以用：把 <code>ami:</code> 設成該映像的 id，如果使用者不是 <code>ec2-user</code>，也要設定 <code>ssh_user</code>。</p>
+<h4 id="providertype-gcp-f4b"><code>provider.type: gcp</code>（F4b）<a class="headerlink" href="#providertype-gcp-f4b" title="Permanent link">&para;</a></h4>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-22-1"><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="nt">provider</span><span class="p">:</span>
+</span><span id="__span-22-2"><a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">gcp</span>
+</span><span id="__span-22-3"><a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a><span class="w">  </span><span class="nt">count</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">12</span>
+</span><span id="__span-22-4"><a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a><span class="w">  </span><span class="nt">project</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-gcp-project</span><span class="w">           </span><span class="c1"># 預設：gcloud／ADC 的 project</span>
+</span><span id="__span-22-5"><a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a><span class="w">  </span><span class="nt">region</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">europe-west4</span><span class="w">              </span><span class="c1"># 預設值；zone 依容量挑選</span>
+</span><span id="__span-22-6"><a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a><span class="w">  </span><span class="c1"># zone: europe-west4-b            # 固定使用某個 zone</span>
+</span><span id="__span-22-7"><a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a><span class="w">  </span><span class="nt">instance_tier</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">recommended</span><span class="w">        </span><span class="c1"># 或 instance_type: c4-standard-32-lssd</span>
+</span><span id="__span-22-8"><a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a><span class="w">  </span><span class="c1"># image_family: sles-16-1-x86-64  # 預設值，image_project: suse-cloud</span>
+</span><span id="__span-22-9"><a id="__codelineno-22-9" name="__codelineno-22-9" href="#__codelineno-22-9"></a><span class="w">  </span><span class="c1"># network: rodeo-europe-west4     # 預設：由 rodeo 建立</span>
+</span><span id="__span-22-10"><a id="__codelineno-22-10" name="__codelineno-22-10" href="#__codelineno-22-10"></a><span class="w">  </span><span class="c1"># allowed_cidrs: ["203.0.113.0/24"]   # 預設：只有這台機器的 IP</span>
+</span><span id="__span-22-11"><a id="__codelineno-22-11" name="__codelineno-22-11" href="#__codelineno-22-11"></a><span class="w">  </span><span class="c1"># ttl_hours: 6</span>
+</span></code></pre></div>
+<p>驗證：Application Default Credentials（<code>gcloud auth application-default login</code>），絕不存放
+在 <code>workshop.yaml</code> 中。欄位細節請見 <a href="../reference/plan/#provider-when-deployment_target-gcp">plan 參考</a>。</p>
+<p>擁有權的運作方式和 AWS 相同：請見<a href="#shared-accounts-who-owns-what-aws-and-gcp">共用帳號</a>。</p>
+<p>狀態：單機的 <code>rodeo up --target gcp</code> 已實機測試。<code>fleet provision</code> 使用相同的
+provider，每個主機 id 建立一台 VM，但領取入口與 <code>fleet open-access</code> 目前
+只支援 AWS。</p>
+<h4 id="providertype-vultr-f4c-not-implemented"><code>provider.type: vultr</code>（F4c，尚未實作）<a class="headerlink" href="#providertype-vultr-f4c-not-implemented" title="Permanent link">&para;</a></h4>
+<p>僅為欄位記錄。<code>fleet provision</code> 會拒絕 <code>type: vultr</code>。</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-23-1"><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="nt">provider</span><span class="p">:</span>
+</span><span id="__span-23-2"><a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">vultr</span>
+</span><span id="__span-23-3"><a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="w">  </span><span class="nt">count</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">12</span>
+</span><span id="__span-23-4"><a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a><span class="w">  </span><span class="nt">region</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ewr</span><span class="w">                       </span><span class="c1"># 必填（Vultr location id）</span>
+</span><span id="__span-23-5"><a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a><span class="w">  </span><span class="nt">plan</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">vbm-8c-128gb</span><span class="w">                </span><span class="c1"># 必填：完整的 Harvester lab 請用 ≥128 GiB</span>
+</span><span id="__span-23-6"><a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a><span class="w">  </span><span class="nt">os_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2284</span><span class="w">                       </span><span class="c1"># 必填（或 snapshot_id / iPXE）</span>
+</span><span id="__span-23-7"><a id="__codelineno-23-7" name="__codelineno-23-7" href="#__codelineno-23-7"></a><span class="w">  </span><span class="c1"># sshkey_id: ["…"]                # Vultr SSH key id</span>
+</span><span id="__span-23-8"><a id="__codelineno-23-8" name="__codelineno-23-8" href="#__codelineno-23-8"></a><span class="w">  </span><span class="c1"># firewall_group_id: "…"          # 必須允許 22 / UI port，存取表才能用</span>
+</span><span id="__span-23-9"><a id="__codelineno-23-9" name="__codelineno-23-9" href="#__codelineno-23-9"></a><span class="w">  </span><span class="c1"># label_prefix: rodeo-            # 可選</span>
+</span></code></pre></div>
+<p>驗證：<code>VULTR_API_KEY</code>（API key 可能需要設定 IP 允許清單）。建議使用 REST <code>/v2/bare-metals</code>
+或 OpenAPI client，而不是簡易的社群 wrapper。nested KVM <strong>只能用 bare metal</strong>，
+不能用 Vultr Cloud VPS。依所選 profile 的 RAM 篩選 plan（<code>rodeo doctor</code>）。</p>
+<h4 id="providertype-hetzner-f4d-not-implemented"><code>provider.type: hetzner</code>（F4d，尚未實作）<a class="headerlink" href="#providertype-hetzner-f4d-not-implemented" title="Permanent link">&para;</a></h4>
+<p>僅為欄位記錄。<code>fleet provision</code> 會拒絕 <code>type: hetzner</code>。</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-24-1"><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="nt">provider</span><span class="p">:</span>
+</span><span id="__span-24-2"><a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">hetzner</span>
+</span><span id="__span-24-3"><a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a><span class="w">  </span><span class="nt">count</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">12</span>
+</span><span id="__span-24-4"><a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a><span class="w">  </span><span class="nt">location</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">fsn1</span><span class="w">                    </span><span class="c1"># 必填</span>
+</span><span id="__span-24-5"><a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a><span class="w">  </span><span class="nt">server_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">cpx51</span><span class="w">                </span><span class="c1"># 必填：必須通過 lab 用的 nested-KVM 驗證</span>
+</span><span id="__span-24-6"><a id="__codelineno-24-6" name="__codelineno-24-6" href="#__codelineno-24-6"></a><span class="w">  </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rocky-9</span><span class="w">                    </span><span class="c1"># 必填（或 snapshot id）；SLES 做法待定</span>
+</span><span id="__span-24-7"><a id="__codelineno-24-7" name="__codelineno-24-7" href="#__codelineno-24-7"></a><span class="w">  </span><span class="c1"># ssh_keys: ["rodeo-workshop"]    # Hetzner SSH key 名稱／id</span>
+</span><span id="__span-24-8"><a id="__codelineno-24-8" name="__codelineno-24-8" href="#__codelineno-24-8"></a><span class="w">  </span><span class="c1"># networks: []                    # 可選的私有網路</span>
+</span><span id="__span-24-9"><a id="__codelineno-24-9" name="__codelineno-24-9" href="#__codelineno-24-9"></a><span class="w">  </span><span class="c1"># firewalls: []                   # 必須開放 22 / UI port，存取表才能用</span>
+</span></code></pre></div>
+<p>驗證：<code>HCLOUD_TOKEN</code>（或未來的 <code>??</code> secret key），不以明文放在清單中。
+<strong>關卡：</strong> 在 <code>fleet doctor</code> 於 workshop 實際使用的 Hetzner Cloud 機型上顯示
+nested KVM 之前，不要把 F4d 標為完成。</p>
+<h4 id="merge-semantics">合併語意<a class="headerlink" href="#merge-semantics" title="Permanent link">&para;</a></h4>
+<table>
+<thead>
+<tr>
+<th>情境</th>
+<th><code>fleet provision</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>hosts: []</code>、<code>count: N</code></td>
+<td>建立／重用 <code>student-01</code>…<code>student-N</code>；寫入 <code>hosts[]</code></td>
+</tr>
+<tr>
+<td><code>hosts:</code> 列出 id</td>
+<td>只確保那些 id（忽略 count，或要求 count ≥ 數量）</td>
+</tr>
+<tr>
+<td>執行個體已帶有 <code>rodeo-workshop</code> + <code>rodeo-host-id</code> tag</td>
+<td>重用；更新 YAML 中的 <code>ssh</code>／<code>public_ip</code></td>
+</tr>
+<tr>
+<td><code>fleet deprovision</code></td>
+<td>終止／刪除帶有 tag 的執行個體；清除或標記 YAML 中來自雲端的主機</td>
+</tr>
+</tbody>
+</table>
+<p>靜態主機（沒有 <code>labels.provider</code>／沒有雲端 <code>provider_id</code>）絕不會被
+deprovision 銷毀，除非之後明確選取（<code>--all-tagged</code> 維持預設的安全行為）。</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  回到頂端
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.top", "navigation.indexes", "content.code.copy", "content.code.annotate", "toc.follow", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u8907\u88fd", "clipboard.copy": "\u8907\u88fd", "search.result.more.one": "\u6b64\u9801\u5c1a\u6709 1 \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.more.other": "\u6b64\u9801\u5c1a\u6709 # \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.none": "\u6c92\u6709\u7b26\u5408\u7684\u9805\u76ee", "search.result.one": "\u627e\u5230 1 \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.other": "\u627e\u5230 # \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.placeholder": "\u6253\u5b57\u9032\u884c\u641c\u5c0b", "search.result.term.missing": "\u7f3a\u5c11\u5b57\u8a5e", "select.version": "\u9078\u64c7\u7248\u672c"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,6 +1,8 @@
 # What the student UI (rodeo player) shows for this lab (see rodeo/player/profile.py).
-# No track: the exercises live on the workshop guide, opened from the player.
+# The chapters come from the track repo (story, steps and checks, shown in the
+# player). The workshop guide stays as a button for reference.
 title: SUSE Telco Cloud Workshop
+track_repo: https://github.com/SUSE-Technical-Marketing/suse-telco-rodeo.git
 guide_url: https://avaleror.github.io/suse-telco-workshop/
 
 uis:
@@ -41,3 +43,7 @@ credentials:
 # own key to mgmt, never root's host key.
 student_libvirt: true
 student_vm_access: [192.168.122.10]
+
+# Track variables: ??secrets.yaml key.
+variables:
+  RANCHER_PASSWORD: ??rancher_admin_password

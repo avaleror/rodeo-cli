@@ -270,9 +270,10 @@ variables:                                # track variable: ??secrets.yaml key
   HARVESTER_PASSWORD: ??harvester_admin_password
 ```
 
-Shipped profiles: `virt-rodeo` (track), `virt-workshop`, `virt-workshop-2n`,
-`suse-edge` and `suse-telco` (web guide), `harvester`, `harvester-2n`,
-`rancher-test`, `rancher-lab-config` (no instructions).
+Shipped profiles: `virt-rodeo`, `suse-edge` and `suse-telco` (track; edge and
+telco also keep their web guide as a button), `virt-workshop`,
+`virt-workshop-2n` (web guide), `harvester`, `harvester-2n`, `rancher-test`,
+`rancher-lab-config` (no instructions).
 
 - **uis**: one to eight product UIs. Each gets its own name, its own Caddy site
   behind the lab login, and the track tabs on `tab_port` open it. A track tab

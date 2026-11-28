@@ -1,6 +1,8 @@
 # What the student UI (rodeo player) shows for this lab (see rodeo/player/profile.py).
-# No track: the exercises live on the workshop guide, opened from the player.
+# The chapters come from the track repo (story, steps and checks, shown in the
+# player). The workshop guide stays as a button for reference.
 title: SUSE Edge Workshop
+track_repo: https://github.com/SUSE-Technical-Marketing/suse-edge-rodeo.git
 guide_url: https://avaleror.github.io/suse-edge-workshop/
 
 uis:
@@ -30,3 +32,7 @@ student_libvirt: true
 student_vm_access: [192.168.122.9, 192.168.122.20]
 # Exercise 4 seeds and ejects the edge node disks with rodeo, as root.
 student_rodeo_commands: [pull-edge-image, eject-iso]
+
+# Track variables: ??secrets.yaml key.
+variables:
+  RANCHER_PASSWORD: ??rancher_admin_password

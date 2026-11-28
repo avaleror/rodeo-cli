@@ -448,3 +448,10 @@ def test_a_new_portal_id_skips_names_already_in_the_zone(tmp_path, monkeypatch):
                            "ResourceRecords": [{"Value": "192.0.2.9"}]}])
     taken = dns.portal_name_taken(load_inventory(p), client=client)
     assert finv.ensure_portal_id(p, taken=taken) == "bbbbbbb2"
+
+
+def test_prune_dry_run_lists_and_removes_nothing():
+    client = FakeRoute53([*_lab("dead1", "198.51.100.2", "fleet=a host=h2 region=eu-north-1")])
+    names = dns.prune(ZONE, default_region="eu-north-1", client=client, live_ips=lambda r: set(),
+                      dry_run=True)
+    assert names == [f"dead1.{ZONE}"] and client.calls == []

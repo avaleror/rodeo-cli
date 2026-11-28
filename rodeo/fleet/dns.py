@@ -269,7 +269,7 @@ def live_rodeo_ips(region: str, ec2: Any | None = None) -> set[str]:
 
 
 def prune(domain: str, *, default_region: str, client: Any | None = None,
-          live_ips: Callable[[str], set[str]] = live_rodeo_ips) -> list[str]:
+          live_ips: Callable[[str], set[str]] = live_rodeo_ips, dry_run: bool = False) -> list[str]:
     """Remove rodeo names in ``domain`` that point at no live rodeo instance.
 
     Returns the names removed. Any failure to list a region's instances
@@ -287,7 +287,7 @@ def prune(domain: str, *, default_region: str, client: Any | None = None,
         return ip in seen[region]
 
     changes, names = plan_prune(domain, _all_records(client, zone_id), is_live, default_region)
-    if changes:
+    if changes and not dry_run:
         _apply(client, zone_id, changes, "rodeo fleet dns --prune")
     return names
 

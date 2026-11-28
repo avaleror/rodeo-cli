@@ -5,7 +5,7 @@
     rodeo cloud destroy 3f9a1c22         # remove one of yours, from any machine
     rodeo cloud destroy 3f9a1c22 --not-mine   # someone else's: type their owner to confirm
     rodeo cloud ls --provider gcp        # the same on GCP (whole project, every region)
-    rodeo cloud prune                    # SGs and key pairs left by labs that are gone
+    rodeo cloud prune                    # expired instances, then SGs and key pairs of labs that are gone
 
 Every resource rodeo launches carries ``rodeo-owner`` (the caller ARN, or
 ``RODEO_OWNER``) and ``rodeo-deployment`` (8 hex chars per deployment). These
@@ -215,26 +215,48 @@ def cloud_destroy(deployment: str, not_mine: bool, assume_yes: bool,
 
 
 @cloud_cmd.command("prune")
-@click.option("--dry-run", "dry_run", is_flag=True, help="Only list what would be deleted.")
+@click.option("--dry-run", "dry_run", is_flag=True, help="Only list what would be done.")
 @click.option("--grace-hours", type=click.FloatRange(min=0.5), default=None,
-              help="Leave anything younger than this alone (default: 2).")
+              help="Leave groups and keys younger than this alone (default: 2).")
+@click.option("--keep-expired", "keep_expired", is_flag=True,
+              help="Do not terminate your instances still running past their expiry.")
+@click.option("--dns-zone", "dns_zone", default=None, metavar="ZONE",
+              help="Also remove rodeo names in this Route 53 zone that point at no live lab.")
 @click.option("--region", default=None, help="AWS region (default: plan, then env).")
 @click.option("--config-dir", "config_dir", default=None, metavar="DIR",
               help="Lab directory to read provider.region from.")
-def cloud_prune(dry_run: bool, grace_hours: float | None, region: str | None,
-                config_dir: str | None) -> None:
-    """Delete your security groups and key pairs left by labs that are gone (AWS).
+def cloud_prune(dry_run: bool, grace_hours: float | None, keep_expired: bool, dns_zone: str | None,
+                region: str | None, config_dir: str | None) -> None:
+    """Clean up what labs that are gone left behind (AWS).
 
-    A dead-man switch terminates the instances and nothing else. This removes
-    the rest: only resources tagged as yours with a deployment id that no
-    instance carries any more, and older than the grace period. It never
-    terminates an instance. `fleet provision` and `fleet destroy` run it too."""
+    A dead-man switch powers a host off at its expiry and AWS terminates it.
+    This is the backstop and the cleanup:
+
+    \b
+    - your instances still running 30 min past their rodeo-expires-at are
+      terminated (a host that hung or never armed its timer; --keep-expired
+      skips this; hosts with no expiry are never touched)
+    - your security groups and key pairs of deployments no instance carries
+      any more, older than the grace period
+    - with --dns-zone, rodeo-marked names that point at no live lab
+
+    Only resources tagged ManagedBy=rodeo with your owner tag (DNS: rodeo's
+    own marks). `fleet provision` and `fleet destroy` run the same steps.
+    Safe to run from a timer: see docs/fleet.md."""
     from ..providers.aws import ORPHAN_GRACE_HOURS
 
     prov, cfg, where = _target("aws", region, None, config_dir)
-    results = prov.prune_orphans(cfg, grace_hours=grace_hours or ORPHAN_GRACE_HOURS, dry_run=dry_run)
-    if not results:
+    results = [] if keep_expired else prov.terminate_expired(cfg, dry_run=dry_run)
+    results += prov.prune_orphans(cfg, grace_hours=grace_hours or ORPHAN_GRACE_HOURS, dry_run=dry_run)
+    names: list[str] = []
+    if dns_zone:
+        from ..fleet import dns
+
+        names = dns.prune(dns_zone, default_region=cfg["region"], dry_run=dry_run)
+    if not results and not names:
         console.print(f"Nothing to prune in {where}.")
         return
     for r in results:
         console.print(f"[green]✓[/green]  {r.id}  {r.provider_id}  {r.detail}")
+    for n in names:
+        console.print(f"[green]✓[/green]  dns  {n}  {'would remove' if dry_run else 'removed'}")

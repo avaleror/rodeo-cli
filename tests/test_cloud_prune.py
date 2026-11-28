@@ -83,7 +83,7 @@ class FakeEc2:
     def delete_key_pair(self, KeyName):
         del self.pairs[KeyName]
 
-    def terminate_instances(self, InstanceIds):  # must never be called
+    def terminate_instances(self, InstanceIds):  # only for expired instances
         self.terminated += InstanceIds
 
 
@@ -175,3 +175,74 @@ def test_cloud_prune_command(monkeypatch):
     assert res.exit_code == 0 and "sg-gone" not in fake.groups
     res = CliRunner().invoke(cli, ["cloud", "prune", "--region", "eu-north-1"])
     assert "Nothing to prune" in res.output
+
+
+# The backstop for a dead-man switch that did not fire: a hung host, a boot
+# script that never armed the timer. Only your own instances, past expiry + grace.
+
+def _exp(iid, hours_ago, *, owner=ME, state="running", managed=True, stamp=None):
+    tags = _tags(dep=f"d-{iid}", owner=owner, ws=f"ws-{iid}", managed=managed)
+    tags.append({"Key": "rodeo-expires-at", "Value": stamp if stamp is not None else _stamp(hours_ago)})
+    return {"InstanceId": iid, "State": {"Name": state}, "Tags": tags}
+
+
+def _expired_world():
+    return FakeEc2(instances=[
+        _exp("i-late", 3),                              # 3 h past expiry: terminated
+        _exp("i-stopped", 3, state="stopped"),          # stopped still bills its disks
+        _exp("i-grace", 0.2),                           # 12 min past: the timer may still be at work
+        _exp("i-future", -2),                           # not expired yet
+        _exp("i-never", 0, stamp="never"),              # kvm-hosts without a switch
+        _exp("i-garbled", 0, stamp="soon"),
+        _exp("i-theirs", 3, owner=TEAMMATE),
+        _exp("i-bare", 3, managed=False),
+        _exp("i-gone", 3, state="terminated"),
+    ])
+
+
+def test_expired_lists_only_your_instances_past_expiry_and_grace():
+    rows = _aws(_expired_world()).expired({"region": "eu-north-1"}, now=NOW)
+    assert [r["instance"] for r in rows] == ["i-late", "i-stopped"]
+    assert rows[0]["workshop"] == "ws-i-late"
+
+
+def test_terminate_expired_dry_run_then_for_real():
+    fake = _expired_world()
+    dry = _aws(fake).terminate_expired({"region": "eu-north-1"}, dry_run=True)
+    assert {r.provider_id for r in dry} == {"i-late", "i-stopped"}
+    assert all(r.detail.startswith("would terminate") for r in dry) and fake.terminated == []
+    done = _aws(fake).terminate_expired({"region": "eu-north-1"})
+    assert sorted(fake.terminated) == ["i-late", "i-stopped"]
+    assert all(r.detail.startswith("terminated") for r in done)
+
+
+def test_cloud_prune_terminates_expired_unless_kept(monkeypatch):
+    from rodeo.cli import cli
+
+    fake = _expired_world()
+    monkeypatch.setattr("rodeo.commands.cloud_cmd.AwsHostProvider", lambda: _aws(fake))
+    res = CliRunner().invoke(cli, ["cloud", "prune", "--keep-expired", "--region", "eu-north-1"])
+    assert res.exit_code == 0, res.output
+    assert fake.terminated == []
+    res = CliRunner().invoke(cli, ["cloud", "prune", "--region", "eu-north-1"])
+    assert res.exit_code == 0, res.output
+    assert "i-late" in res.output and sorted(fake.terminated) == ["i-late", "i-stopped"]
+
+
+def test_cloud_prune_dns_zone(monkeypatch):
+    from rodeo.cli import cli
+
+    fake = FakeEc2()
+    seen = {}
+
+    def prune(zone, *, default_region, dry_run=False):
+        seen.update(zone=zone, region=default_region, dry_run=dry_run)
+        return [f"dead.{zone}"]
+
+    monkeypatch.setattr("rodeo.commands.cloud_cmd.AwsHostProvider", lambda: _aws(fake))
+    monkeypatch.setattr("rodeo.fleet.dns.prune", prune)
+    res = CliRunner().invoke(cli, ["cloud", "prune", "--dry-run", "--dns-zone", "example.com",
+                                   "--region", "eu-north-1"])
+    assert res.exit_code == 0, res.output
+    assert seen == {"zone": "example.com", "region": "eu-north-1", "dry_run": True}
+    assert "dead.example.com" in res.output and "would remove" in res.output

@@ -449,6 +449,7 @@ never picks cloud resources by lab name alone. Every resource carries
   as yours whose deployment no instance carries any more, older than two hours
   (`--grace-hours`). `--dns-zone <zone>` also removes rodeo-marked names that
   point at no live lab. `--dry-run` lists without changing anything.
+  It also deletes your TTL alarms (`rodeo-ttl-*`) whose instance is gone.
   `fleet provision` and `fleet destroy` run the first two steps too.
 - To have that happen without anyone running rodeo, run `rodeo cloud prune` from
   a timer on a machine that holds AWS credentials, for example a systemd user
@@ -799,6 +800,8 @@ Never put AWS access keys in `workshop.yaml` or `rodeo-plan.yaml`.
 Use **`m8id.8xlarge`** for Harvester labs (32 vCPU / 128 GiB / one local NVMe device; the catalog's `recommended` tier) and `m8id.4xlarge` for SUSE Edge and the `rancher` profile. Metal remains valid. Fleet needs `region` and `subnet_id` in `workshop.yaml`; the automatic region and subnet defaults only apply to single-host `rodeo up --target aws`.
 
 Every provisioned host, and the portal VM, gets the **dead-man switch**: it powers off and AWS terminates it `provider.ttl_hours` after launch (default 6, at most 168, cannot be turned off except for [kvm-hosts](guide-kvm-hosts.md) labs). Set it before `fleet provision` for workshops longer than that; `fleet provision` shows each host's expiry.
+
+AWS also holds its own copy of that deadline. At launch rodeo creates a CloudWatch alarm per instance (`rodeo-ttl-<instance id>`) that counts the hours the instance runs and terminates it about an hour after its expiry, so a host that hung, or whose timer never armed, still goes away when no `rodeo cloud prune` runs. It needs `cloudwatch:PutMetricAlarm` and, once per account, `iam:CreateServiceLinkedRole` for the CloudWatch service-linked role (PowerUser has both). Without them rodeo prints a warning and launches anyway. The alarm costs about 0.10 USD a month while it exists; `destroy`, `deprovision` and `rodeo cloud prune` delete it. CloudWatch counts at most 7 days, so a `ttl_hours` above 166 gets no alarm.
 `apply_host_context` raises `resources.harvester.disk_gb` to a flat **500 GB**
 and `resources.rancher.disk_gb` to **60 GB**: never scaled by node count, so
 the rest of the NVMe device is deliberately left free, and mounts NVMe on

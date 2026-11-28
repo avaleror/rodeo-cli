@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 
 from click.testing import CliRunner
 
-from rodeo.providers.aws import TAG_CREATED_AT, AwsHostProvider
+from rodeo.providers.aws import TAG_CREATED_AT, AwsHostProvider, ttl_alarm_periods
 
 ME = "arn:aws:sts::123456789012:assumed-role/RodeoTest/tester@example.com"  # conftest owner
 TEAMMATE = "arn:aws:sts::123456789012:assumed-role/RodeoTest/bob@example.com"
@@ -47,6 +47,9 @@ class FakeEc2:
                     return False
             elif name.startswith("tag:"):
                 if tags.get(name[4:]) not in values:
+                    return False
+            elif name == "instance-id":
+                if res["InstanceId"] not in values:
                     return False
             elif name == "instance-state-name":
                 if res["State"]["Name"] not in values:
@@ -246,3 +249,106 @@ def test_cloud_prune_dns_zone(monkeypatch):
     assert res.exit_code == 0, res.output
     assert seen == {"zone": "example.com", "region": "eu-north-1", "dry_run": True}
     assert "dead.example.com" in res.output and "would remove" in res.output
+
+
+# --- AWS-side TTL alarm: the backstop for a guest timer that never fires ---
+
+
+class FakeCw:
+    def __init__(self, alarms=(), fail=False):
+        self.alarms = {a["AlarmName"]: a for a in alarms}
+        self.fail = fail
+        self.put = []
+
+    def put_metric_alarm(self, **kw):
+        if self.fail:
+            err = Exception("denied")
+            err.response = {"Error": {"Code": "AccessDenied"}}  # type: ignore[attr-defined]
+            raise err
+        self.put.append(kw)
+
+    def delete_alarms(self, AlarmNames):
+        for n in AlarmNames:
+            self.alarms.pop(n, None)
+
+    def list_tags_for_resource(self, ResourceARN):
+        return {"Tags": next(a["Tags"] for a in self.alarms.values() if a["AlarmArn"] == ResourceARN)}
+
+    def get_paginator(self, op):
+        assert op == "describe_alarms"
+        fake = self
+
+        class P:
+            def paginate(self, AlarmNamePrefix, AlarmTypes):
+                yield {"MetricAlarms": [a for n, a in fake.alarms.items() if n.startswith(AlarmNamePrefix)]}
+        return P()
+
+
+def _alarm(iid, owner=ME):
+    return {"AlarmName": f"rodeo-ttl-{iid}", "AlarmArn": f"arn:alarm:{iid}",
+            "Tags": [{"Key": "ManagedBy", "Value": "rodeo"}, {"Key": "rodeo-owner", "Value": owner}]}
+
+
+def _aws_cw(fake, cw):
+    return AwsHostProvider(ec2_client=fake, cloudwatch_client=cw, sleep=lambda s: None,
+                           caller_ip_fn=lambda: "203.0.113.9")
+
+
+def test_ttl_alarm_waits_two_periods_past_the_hours_left():
+    # The first period is the partial launch hour, so hours + 2 periods fire
+    # about an hour after the guest timer.
+    assert ttl_alarm_periods(_stamp(-4), now=NOW) == 6
+    assert ttl_alarm_periods(_stamp(-3.5), now=NOW) == 6
+    assert ttl_alarm_periods(_stamp(-166), now=NOW) == 168
+    assert ttl_alarm_periods(_stamp(-167), now=NOW) is None  # past CloudWatch's 7 days
+    assert ttl_alarm_periods("never", now=NOW) is None
+    assert ttl_alarm_periods("", now=NOW) is None
+
+
+def _launch_kwargs(expires):
+    tags = [{"Key": "ManagedBy", "Value": "rodeo"}, {"Key": "rodeo-owner", "Value": ME},
+            {"Key": "rodeo-workshop", "Value": "ws"}, {"Key": "rodeo-deployment", "Value": "d1"},
+            {"Key": "rodeo-expires-at", "Value": expires}, {"Key": "Name", "Value": "ws-student-01"}]
+    return {"TagSpecifications": [{"ResourceType": "instance", "Tags": tags}]}
+
+
+def test_launch_arms_a_terminate_alarm():
+    cw = FakeCw()
+    _aws_cw(FakeEc2(), cw)._arm_ttl_alarm({"region": "eu-north-1"}, {"InstanceId": "i-new"},
+                                          _launch_kwargs(_stamp(-6)))
+    [kw] = cw.put
+    assert kw["AlarmName"] == "rodeo-ttl-i-new"
+    assert kw["Dimensions"] == [{"Name": "InstanceId", "Value": "i-new"}]
+    assert (kw["Period"], kw["EvaluationPeriods"], kw["DatapointsToAlarm"]) == (3600, 8, 8)
+    assert kw["Statistic"] == "SampleCount" and kw["TreatMissingData"] == "notBreaching"
+    assert kw["AlarmActions"] == ["arn:aws:automate:eu-north-1:ec2:terminate"]
+    assert {t["Key"]: t["Value"] for t in kw["Tags"]} == {
+        "ManagedBy": "rodeo", "rodeo-owner": ME, "rodeo-workshop": "ws", "rodeo-deployment": "d1"}
+
+
+def test_no_alarm_without_a_switch_and_a_failed_alarm_only_warns(capsys):
+    cw = FakeCw()
+    _aws_cw(FakeEc2(), cw)._arm_ttl_alarm({"region": "eu-north-1"}, {"InstanceId": "i-k"},
+                                          _launch_kwargs("never"))
+    assert cw.put == []
+    _aws_cw(FakeEc2(), FakeCw(fail=True))._arm_ttl_alarm(
+        {"region": "eu-north-1"}, {"InstanceId": "i-x"}, _launch_kwargs(_stamp(-6)))
+    assert "no AWS-side TTL alarm for i-x (AccessDenied)" in capsys.readouterr().err
+
+
+def test_terminating_drops_the_alarm():
+    cw = FakeCw([_alarm("i-late"), _alarm("i-future")])
+    _aws_cw(_expired_world(), cw).terminate_expired({"region": "eu-north-1"})
+    assert set(cw.alarms) == {"rodeo-ttl-i-future"}
+
+
+def test_prune_deletes_only_your_alarms_whose_instance_is_gone():
+    fake = FakeEc2(instances=[_inst("live0001"), _inst("gone0001", state="terminated")])
+    cw = FakeCw([_alarm("i-live0001"), _alarm("i-gone0001"), _alarm("i-vanished"),
+                 _alarm("i-theirs", owner=TEAMMATE)])
+    dry = _aws_cw(fake, cw).prune_orphans({"region": "eu-north-1"}, dry_run=True)
+    assert {r.provider_id for r in dry if r.id == "ttl-alarm"} == {"rodeo-ttl-i-gone0001",
+                                                                   "rodeo-ttl-i-vanished"}
+    assert len(cw.alarms) == 4
+    _aws_cw(fake, cw).prune_orphans({"region": "eu-north-1"})
+    assert set(cw.alarms) == {"rodeo-ttl-i-live0001", "rodeo-ttl-i-theirs"}

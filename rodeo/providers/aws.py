@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import calendar
+import math
 import os
+import sys
 import time
 from typing import Any, Callable
 
@@ -54,6 +56,33 @@ ORPHAN_GRACE_HOURS = 2.0
 # How long past its dead-man expiry an instance may live before a prune ends it.
 EXPIRED_GRACE_MINUTES = 30.0
 LAB_SG_RESOURCE = "security-group"
+
+# AWS-side backstop for the guest dead-man timer (a hung host, or a timer that
+# never armed or was stopped): one CloudWatch alarm per instance that counts
+# hours with EC2 metrics and terminates it about an hour after its expiry.
+TTL_ALARM_PREFIX = "rodeo-ttl-"
+TTL_ALARM_PERIOD = 3600
+# CloudWatch evaluates at most 7 days of 1 h periods.
+TTL_ALARM_MAX_PERIODS = 168
+_TERMINATE_ACTION = "arn:aws:automate:{region}:ec2:terminate"
+
+
+def ttl_alarm_periods(expires_at: str, now: float | None = None) -> int | None:
+    """Hourly periods the TTL alarm waits for, or None when it cannot help.
+
+    The first period is the partial hour the instance launched in, so N
+    periods fire about N-1 hours after launch (live test, 2026-11-28). The
+    hours left plus two puts the alarm about an hour after the guest timer, so
+    the two never race. None for ``never``, an unreadable expiry, or a TTL past
+    what CloudWatch can count (the prune still covers those).
+    """
+    try:
+        when = calendar.timegm(time.strptime(expires_at, "%Y-%m-%dT%H:%M:%SZ"))
+    except (TypeError, ValueError):
+        return None
+    hours = max(1, math.ceil((when - (time.time() if now is None else now)) / 3600))
+    periods = hours + 2
+    return periods if periods <= TTL_ALARM_MAX_PERIODS else None
 
 _REQUIRED = ("region", "subnet_id")
 
@@ -280,11 +309,13 @@ class AwsHostProvider:
         self,
         *,
         ec2_client: Any | None = None,
+        cloudwatch_client: Any | None = None,
         sleep: Callable[[float], None] = time.sleep,
         caller_ip_fn: Callable[[], str] = _detect_caller_ip,
         sts_fn: Callable[[str], str] = _sts_caller_arn,
     ) -> None:
         self._ec2 = ec2_client
+        self._cloudwatch = cloudwatch_client
         self._sleep = sleep
         self._caller_ip_fn = caller_ip_fn
         self._sts_fn = sts_fn
@@ -311,6 +342,111 @@ class AwsHostProvider:
         import boto3
 
         return boto3.client("ec2", region_name=str(config["region"]))
+
+    def _cw(self, config: dict[str, Any]) -> Any | None:
+        """CloudWatch client for the TTL alarms. None when only an EC2 client
+        was injected (tests): the alarms are a backstop, never required."""
+        if self._cloudwatch is not None:
+            return self._cloudwatch
+        if self._ec2 is not None:
+            return None
+        _require_boto3()
+        import boto3
+
+        self._cloudwatch = boto3.client("cloudwatch", region_name=str(config["region"]))
+        return self._cloudwatch
+
+    def _arm_ttl_alarm(self, config: dict[str, Any], inst: dict[str, Any],
+                       run_kwargs: dict[str, Any]) -> None:
+        """Terminate ``inst`` from AWS if it outlives its expiry by an hour.
+
+        Best effort: a failure (no CloudWatch permission, no way to create the
+        CloudWatch service-linked role) only warns; the guest timer and
+        ``rodeo cloud prune`` still stand.
+        """
+        tags = {t["Key"]: t["Value"] for t in run_kwargs["TagSpecifications"][0]["Tags"]}
+        periods = ttl_alarm_periods(tags.get(deadman.TAG_EXPIRES_AT, ""))
+        cw = self._cw(config) if periods else None
+        if cw is None:
+            return
+        iid = str(inst["InstanceId"])
+        try:
+            cw.put_metric_alarm(
+                AlarmName=f"{TTL_ALARM_PREFIX}{iid}",
+                AlarmDescription=(
+                    f"rodeo dead-man backstop: terminates {iid} about an hour after "
+                    f"its expiry {tags[deadman.TAG_EXPIRES_AT]}"
+                ),
+                Namespace="AWS/EC2", MetricName="CPUUtilization",
+                Dimensions=[{"Name": "InstanceId", "Value": iid}],
+                # SampleCount >= 1 in an hour means "the instance ran that hour".
+                Statistic="SampleCount", Period=TTL_ALARM_PERIOD,
+                EvaluationPeriods=periods, DatapointsToAlarm=periods,
+                Threshold=1, ComparisonOperator="GreaterThanOrEqualToThreshold",
+                # A stopped hour breaks the run: only running time counts.
+                TreatMissingData="notBreaching",
+                AlarmActions=[_TERMINATE_ACTION.format(region=config["region"])],
+                Tags=[{"Key": k, "Value": tags[k]}
+                      for k in (TAG_MANAGED_BY, TAG_OWNER, TAG_WORKSHOP, TAG_DEPLOYMENT)
+                      if tags.get(k)],
+            )
+        except Exception as exc:  # noqa: BLE001 - a backstop never fails a provision
+            code, msg = _aws_error_parts(exc)
+            print(f"warning: no AWS-side TTL alarm for {iid} ({code or msg or exc}); "
+                  "the guest dead-man timer and `rodeo cloud prune` still apply",
+                  file=sys.stderr)
+
+    def _drop_ttl_alarms(self, config: dict[str, Any], instance_ids: list[str]) -> None:
+        """Delete the TTL alarms of instances rodeo just terminated."""
+        cw = self._cw(config)
+        if cw is None or not instance_ids:
+            return
+        names = [f"{TTL_ALARM_PREFIX}{i}" for i in instance_ids]
+        try:
+            for start in range(0, len(names), 100):
+                cw.delete_alarms(AlarmNames=names[start:start + 100])
+        except Exception:  # noqa: BLE001 - a later prune deletes what is left
+            pass
+
+    def stale_ttl_alarms(self, config: dict[str, Any]) -> list[str]:
+        """Your TTL alarms whose instance is gone (terminated by its dead-man
+        switch, the alarm itself, or by hand). Each one bills while it exists."""
+        cw = self._cw(config)
+        if cw is None:
+            return []
+        alarms: dict[str, tuple[str, str]] = {}  # instance id -> (name, arn)
+        for page in cw.get_paginator("describe_alarms").paginate(
+            AlarmNamePrefix=TTL_ALARM_PREFIX, AlarmTypes=["MetricAlarm"],
+        ):
+            for a in page.get("MetricAlarms") or []:
+                name = str(a["AlarmName"])
+                alarms[name[len(TTL_ALARM_PREFIX):]] = (name, str(a.get("AlarmArn") or ""))
+        if not alarms:
+            return []
+        live: set[str] = set()
+        ec2 = self._client(config)
+        ids = sorted(alarms)
+        for start in range(0, len(ids), 200):
+            resp = ec2.describe_instances(Filters=[
+                {"Name": "instance-id", "Values": ids[start:start + 200]},
+                {"Name": "instance-state-name", "Values": LIVE_STATES},
+            ])
+            live |= {str(i["InstanceId"]) for r in resp.get("Reservations") or []
+                     for i in r.get("Instances") or []}
+        owner = self.owner(config)
+        stale: list[str] = []
+        for iid in ids:
+            if iid in live:
+                continue
+            name, arn = alarms[iid]
+            try:
+                tags = {t["Key"]: t["Value"] for t in cw.list_tags_for_resource(
+                    ResourceARN=arn).get("Tags") or []}
+            except Exception:  # noqa: BLE001
+                continue
+            if tags.get(TAG_MANAGED_BY) == TAG_MANAGED_BY_VALUE and tags.get(TAG_OWNER) == owner:
+                stale.append(name)
+        return stale
 
     def default_subnet(self, config: dict[str, Any], *, instance_type: str = "") -> str:
         """The default VPC's public subnet for ``config['region']``.
@@ -1118,6 +1254,7 @@ class AwsHostProvider:
             ids = [iid for _, iid in targets]
             try:
                 ec2.terminate_instances(InstanceIds=ids)
+                self._drop_ttl_alarms(config, ids)
                 results = [
                     DeprovisionResult(id=hid, ok=True, provider_id=iid, detail="terminating")
                     for hid, iid in targets
@@ -1358,8 +1495,9 @@ class AwsHostProvider:
             max_count=1,
             lab_host=True,
         )
-        resp = ec2.run_instances(**kwargs)
-        return resp["Instances"][0]
+        inst = ec2.run_instances(**kwargs)["Instances"][0]
+        self._arm_ttl_alarm(config, inst, kwargs)
+        return inst
 
     def _run_instances_kwargs(
         self,
@@ -1628,6 +1766,7 @@ class AwsHostProvider:
                 identity=tags_identity,
             )
             inst = ec2.run_instances(**kwargs)["Instances"][0]
+            self._arm_ttl_alarm(cfg, inst, kwargs)
             action = "create"
         elif inst["State"]["Name"] in ("stopped", "stopping"):
             ec2.start_instances(InstanceIds=[inst["InstanceId"]])
@@ -1748,6 +1887,7 @@ class AwsHostProvider:
                 identity=tags_identity,
             )
             inst = ec2.run_instances(**kwargs)["Instances"][0]
+            self._arm_ttl_alarm(cfg, inst, kwargs)
             action = "create"
         elif inst["State"]["Name"] in ("stopped", "stopping"):
             ec2.start_instances(InstanceIds=[inst["InstanceId"]])
@@ -1784,6 +1924,7 @@ class AwsHostProvider:
         results: list[DeprovisionResult] = []
         if inst is not None:
             ec2.terminate_instances(InstanceIds=[inst["InstanceId"]])
+            self._drop_ttl_alarms(config, [inst["InstanceId"]])
             results.append(DeprovisionResult(id=ROLE_OPERATOR, ok=True,
                                              provider_id=inst["InstanceId"], detail="terminating"))
         else:
@@ -1836,6 +1977,7 @@ class AwsHostProvider:
         inst = self._portal_of(lab)
         if inst is not None:
             ec2.terminate_instances(InstanceIds=[inst["InstanceId"]])
+            self._drop_ttl_alarms(config, [inst["InstanceId"]])
             results.append(DeprovisionResult(id=ROLE_PORTAL, ok=True,
                                              provider_id=inst["InstanceId"], detail="terminating"))
         else:
@@ -1940,6 +2082,7 @@ class AwsHostProvider:
         results: list[DeprovisionResult] = []
         if insts:
             ec2.terminate_instances(InstanceIds=[i["InstanceId"] for i in insts])
+            self._drop_ttl_alarms(config, [i["InstanceId"] for i in insts])
             results += [
                 DeprovisionResult(id=_tag(i, TAG_HOST_ID) or i["InstanceId"], ok=True,
                                   provider_id=i["InstanceId"], detail="terminating")
@@ -2058,6 +2201,7 @@ class AwsHostProvider:
             return []
         if not dry_run:
             self._client(config).terminate_instances(InstanceIds=[r["instance"] for r in rows])
+            self._drop_ttl_alarms(config, [r["instance"] for r in rows])
         verb = "would terminate" if dry_run else "terminated"
         return [DeprovisionResult(id="instance", ok=True, provider_id=r["instance"],
                                   detail=f"{verb}: expired {r['expires_at']} ({r['workshop']} {r['deployment']})")
@@ -2065,7 +2209,8 @@ class AwsHostProvider:
 
     def prune_orphans(self, config: dict[str, Any], *, grace_hours: float = ORPHAN_GRACE_HOURS,
                       dry_run: bool = False) -> list[DeprovisionResult]:
-        """Delete what ``orphans`` lists. Never terminates an instance."""
+        """Delete what ``orphans`` lists, and your TTL alarms whose instance is
+        gone. Never terminates an instance."""
         ec2 = self._client(config)
         results: list[DeprovisionResult] = []
         for r in self.orphans(config, grace_hours=grace_hours):
@@ -2089,6 +2234,15 @@ class AwsHostProvider:
                     ok = delete_ec2_key_pair(ec2, name)
                     detail = f"deleted ({r['workshop']} {r['deployment']})" if ok else "delete failed"
                 results.append(DeprovisionResult(id="key-pair", ok=True, provider_id=name, detail=detail))
+        try:
+            stale = self.stale_ttl_alarms(config)
+            if stale and not dry_run:
+                self._drop_ttl_alarms(config, [n[len(TTL_ALARM_PREFIX):] for n in stale])
+        except Exception:  # noqa: BLE001 - alarms are a backstop; never fail a prune
+            stale = []
+        verb = "would delete" if dry_run else "deleted"
+        results += [DeprovisionResult(id="ttl-alarm", ok=True, provider_id=n,
+                                      detail=f"{verb} (its instance is gone)") for n in stale]
         return results
 
     def _delete_sg_retrying(self, ec2: Any, sg_id: str, attempts: int = 12) -> DeprovisionResult:

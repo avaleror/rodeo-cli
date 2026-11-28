@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.37.0](https://github.com/avaleror/rodeo-cli/compare/v0.36.0...v0.37.0) (2026-11-28)
+
+
+### Features
+
+* **aws:** CloudWatch alarm terminates a host its dead-man switch missed ([#265](https://github.com/avaleror/rodeo-cli/issues/265)) ([41fdf0c](https://github.com/avaleror/rodeo-cli/commit/41fdf0cb80468eb027db6c2af60b9b7825a3a9c2))
+* **player:** suse-edge and suse-telco run their rodeo tracks ([#262](https://github.com/avaleror/rodeo-cli/issues/262)) ([4a9bca4](https://github.com/avaleror/rodeo-cli/commit/4a9bca4602f31fd34612719380d21ea70cd7332e))
+
+
+### Bug Fixes
+
+* **aws:** prune terminates instances the dead-man switch missed ([#263](https://github.com/avaleror/rodeo-cli/issues/263)) ([75764a6](https://github.com/avaleror/rodeo-cli/commit/75764a6b4becba95303cc95184d4d162e45c7c75))
+
 ## [0.36.0](https://github.com/avaleror/rodeo-cli/compare/v0.35.0...v0.36.0) (2026-11-27)
 
 
